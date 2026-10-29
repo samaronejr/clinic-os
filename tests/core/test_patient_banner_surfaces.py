@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from apps.core.patient_context import PATIENT_BOUND_VIEWS
 from apps.intake.models import PatientClinicEnrollment
 from apps.prescription.signing import initiate_signature
 from apps.tenancy.db import tenant_context
+from django.contrib.auth import SESSION_KEY
 from django.urls import reverse
 
-from core.test_navigation import PATIENT, _client_for, _get, _post
+from consent.test_purposes import register_physician
+from core.test_navigation import PATIENT, _client_for, _get, _post, _reauthenticate
 from core.test_workspace_boundaries import remove_permission
+from ehr.test_autosave import registration
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
 from patient_http_support import seed_patients
+from patients.test_patient_cpf_error_contract import _refused_request
 from renewal.test_clinical_history import begin
 from renewal.test_document_artifacts import seed_rendered
 from renewal.test_encounters import physician_client
@@ -40,11 +45,26 @@ def _ehr_surface(
 ) -> tuple[Client, str, dict[str, str], _MonkeyPatchedWSGIResponse]:
     encounter = begin(graph)
     url = reverse(view, kwargs={"clinic_id": graph.clinic_a})
-    data = (
-        {"action": "show", "encounter_id": str(encounter.pk)}
-        if view == "ehr:encounter"
-        else {"action": "open", "encounter_id": str(encounter.pk)}
-    )
+    if view == "intake:patient-timeline":
+        register_physician(graph)
+        with owner_context(graph.organization_a):
+            enrollment = PatientClinicEnrollment.objects.get(
+                clinic_id=graph.clinic_a, patient_id=encounter.patient_id
+            )
+        data = {"enrollment_id": str(enrollment.pk)}
+    else:
+        data = (
+            {"action": "show", "encounter_id": str(encounter.pk)}
+            if view == "ehr:encounter"
+            else {"action": "open", "encounter_id": str(encounter.pk)}
+        )
+        if view == "ehr:patient-workspace":
+            registration(graph, graph.physician, graph.clinic_a)
+            with owner_context(graph.organization_a):
+                enrollment = PatientClinicEnrollment.objects.get(
+                    clinic_id=graph.clinic_a, patient_id=encounter.patient_id
+                )
+            data = {"action": "open", "enrollment_id": str(enrollment.pk)}
     with physician_client(graph) as client:
         response = client.post(url, data, follow=True)
     return client, url, data, response
@@ -84,9 +104,8 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     settings: SettingsWrapper,
     synthetic_provider: object,
 ) -> None:
-    graph = rbac_graph
-    role = "physician"
-    if view.startswith("ehr:"):
+    graph, role = rbac_graph, "physician"
+    if view.startswith("ehr:") or view == "intake:patient-timeline":
         client, url, data, response = _ehr_surface(graph, view)
     elif view.startswith("prescription:"):
         client, url, data, response = _prescription_surface(graph, view, settings)
@@ -105,9 +124,11 @@ def test_each_patient_surface_binds_and_refuses_revocation(
         with physician_client(graph) as client:
             response = client.post(url, data)
     else:
-        assert view in {"intake:patient-contacts", "intake:patient-access"}, (
-            "Uncovered patient surface"
-        )
+        assert view in {
+            "intake:patient-contacts",
+            "intake:patient-access",
+            "intake:patient-demographics",
+        }, "Uncovered patient surface"
         role = "receptionist"
         client, user = _client_for(graph, role)
         seed_patients(graph, user.pk, graph.clinic_a, (PATIENT,))
@@ -118,12 +139,15 @@ def test_each_patient_surface_binds_and_refuses_revocation(
         response = _post(client, url, data)
     assert response.status_code == 200
     assert b"data-patient-banner" in response.content, view
+    if view != "intake:patient-demographics":
+        _refused_request(_client_for(graph, "finance")[0], url, data)
     key = f"workspace.patient.{graph.clinic_a}"
     assert key in client.session
     pinned = client.session[key]
     with owner_context(graph.organization_a):
         name = str(PatientClinicEnrollment.objects.get(pk=pinned).patient.full_name)
     remove_permission(graph, role, "demographics.read")
+    _reauthenticate(client, UUID(client.session[SESSION_KEY]), role)
     refused = _post(client, url, data) if data else _get(client, url)
     assert refused.status_code in {403, 404}
     assert b"data-patient-banner" not in refused.content

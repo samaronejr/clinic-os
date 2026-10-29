@@ -40,11 +40,13 @@ from apps.intake.patient_access import (
 from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from django.utils import timezone
 from psycopg import sql
 
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
+    arrived_synthetic_appointment,
     create_synthetic_appointment,
     seed_appointment_setup,
     seed_cross_clinic_appointment_setups,
@@ -94,7 +96,7 @@ def test_exact_revisions_issue_settlement_and_receipt_lineage(
 ) -> None:
     setup = seed_appointment_setup(rbac_graph)
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
-        appointment = create_synthetic_appointment(setup)
+        appointment = arrived_synthetic_appointment(setup)
     with runtime_role(), tenant_context(setup.practitioner_id, setup.organization_id):
         encounter = open_encounter(
             clinic_id=setup.clinic_id, appointment_id=appointment.pk
@@ -451,7 +453,7 @@ def test_canonical_billing_roles_and_revocation(
         invoice = charge(setup)
         assert [i.pk for i in list_invoices(clinic_id=setup.clinic_id)] == [invoice.pk]
     with fixture_scope(setup.organization_id):
-        assignment.delete()
+        UserClinicRole.objects.filter(pk=assignment.pk).update(revoked_at=Now())
     with runtime_role(), tenant_context(rbac_graph.clinic_admin, setup.organization_id):
         assert not Invoice.objects.exists()
         with pytest.raises(BillingAccessDeniedError):

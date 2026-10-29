@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django import forms
+from django.utils.translation import gettext_lazy
 
 from apps.ehr.services import MAX_CONTENT, SOAP_FIELDS
 
@@ -12,6 +13,20 @@ if TYPE_CHECKING:
     from django.http import QueryDict
 
     from apps.ehr.models import ClinicalDocumentVersion
+
+
+SECTION_LABELS = dict(
+    zip(
+        SOAP_FIELDS,
+        (
+            gettext_lazy("Subjective"),
+            gettext_lazy("Objective"),
+            gettext_lazy("Assessment"),
+            gettext_lazy("Plan"),
+        ),
+        strict=True,
+    )
+)
 
 
 class DraftForm(forms.Form):
@@ -32,8 +47,7 @@ class DraftForm(forms.Form):
                 **{field: getattr(version, field) for field in SOAP_FIELDS},
             },
         )
-        labels = ("Subjetivo", "Objetivo", "Avaliação", "Plano")
-        for key, label in zip(SOAP_FIELDS, labels, strict=True):
+        for key, label in SECTION_LABELS.items():
             self.fields[key] = forms.CharField(
                 label=label,
                 required=False,

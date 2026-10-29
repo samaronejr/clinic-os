@@ -65,7 +65,7 @@ def _revoke(graph: RbacGraph) -> None:
             [str(graph.organization_a)],
         )
         owner.execute(
-            "DELETE FROM clinic_app.identity_userclinicrole "
+            "UPDATE clinic_app.identity_userclinicrole SET revoked_at=now() "
             "WHERE user_id = %s AND clinic_id = %s",
             [graph.shared_user, graph.clinic_a],
         )

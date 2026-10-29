@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from django.db.models import Q
+from django.db.models import BooleanField, F, Func, Q
 
 from apps.scheduling.locks import (
     acquire_advisory_locks,
     clinic_lock_key,
     patient_lock_key,
+    resource_lock_keys,
     user_lock_keys,
 )
 from apps.scheduling.models import Appointment, AvailabilityBlock
@@ -22,6 +23,21 @@ from apps.scheduling.patient_authority import (
 if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
+
+
+def due_hold() -> Q:
+    """Match holds at or past their database-time deadline (no longer occupying).
+
+    The lifecycle trigger expires it (as the machine actor) before any
+    overlapping write, so pre-lock checks must not report it as a conflict.
+    """
+    return Q(status=Appointment.Status.HELD) & Q(
+        Func(
+            F("hold_expires_at"),
+            function="clinic_app.scheduling_hold_due",
+            output_field=BooleanField(),
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,18 +57,20 @@ class AppointmentWriteTarget:
     clinic_id: UUID
     patient_id: UUID
     practitioner_ids: tuple[UUID, ...]
+    resource_ids: tuple[UUID, ...] = ()
 
 
 def acquire_appointment_write_gates(
     *,
     target: AppointmentWriteTarget,
 ) -> None:
-    """Take clinic, organization-patient, then sorted practitioner gates."""
+    """Take clinic, practitioners, ordered resources, then patient gates."""
     acquire_advisory_locks((clinic_lock_key(target.clinic_id),))
+    acquire_advisory_locks(user_lock_keys(target.practitioner_ids))
+    acquire_advisory_locks(resource_lock_keys(target.resource_ids))
     acquire_advisory_locks(
         (patient_lock_key(target.organization_id, target.patient_id),)
     )
-    acquire_advisory_locks(user_lock_keys(target.practitioner_ids))
 
 
 def lock_appointment_write_rows(
@@ -99,7 +117,8 @@ def lock_appointment_write_rows(
         .filter(
             Q(pk__in=appointment_ids)
             | (
-                Q(status=Appointment.Status.SCHEDULED)
+                Q(status__in=Appointment.OCCUPYING_STATUSES)
+                & ~due_hold()
                 & appointment_overlap
                 & (
                     Q(patient_id=target.patient_id)

@@ -28,6 +28,7 @@ import rfc8785
 from django.db import migrations, models
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import AddConstraint, SeparateDatabaseAndState
 from apps.tenancy.migrations._protected_migration import (
     add_constraint_sql,
     drop_constraint_sql,
@@ -482,7 +483,7 @@ class Migration(migrations.Migration):
     ]
 
     operations: ClassVar[list[Operation]] = [
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_SCHEMA_SQL, reverse_sql=None),
             ],
@@ -575,7 +576,7 @@ class Migration(migrations.Migration):
         migrations.RunPython(code=_backfill, reverse_code=irreversible),
         migrations.RunSQL(sql=_GUARD_SQL, reverse_sql=None),
         migrations.RunPython(code=_seal, reverse_code=irreversible),
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_DROP_SQL, reverse_sql=None),
             ],
@@ -609,7 +610,7 @@ class Migration(migrations.Migration):
                     model_name="clinicaldocumentversion",
                     name="ehr_version_amendment_check",
                 ),
-                migrations.AddConstraint(
+                AddConstraint(
                     model_name="clinicaldocumentversion",
                     constraint=models.CheckConstraint(
                         condition=(
@@ -624,7 +625,7 @@ class Migration(migrations.Migration):
                         name="ehr_version_amendment_check",
                     ),
                 ),
-                migrations.AddConstraint(
+                AddConstraint(
                     model_name="clinicaldocumentversion",
                     constraint=models.CheckConstraint(
                         condition=(
@@ -641,7 +642,7 @@ class Migration(migrations.Migration):
                     model_name="problem",
                     name="problem_description_required",
                 ),
-                migrations.AddConstraint(
+                AddConstraint(
                     model_name="problem",
                     constraint=models.CheckConstraint(
                         condition=models.expressions.RawSQL(
@@ -656,7 +657,7 @@ class Migration(migrations.Migration):
                     model_name="allergy",
                     name="allergy_description_required",
                 ),
-                migrations.AddConstraint(
+                AddConstraint(
                     model_name="allergy",
                     constraint=models.CheckConstraint(
                         condition=models.expressions.RawSQL(

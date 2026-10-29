@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from queue import Queue
 from threading import Barrier
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from apps.identity.models import UserClinicRole
+from apps.scheduling import appointment_creation
 from apps.scheduling.locks import (
     acquire_advisory_locks,
     clinic_lock_key,
+    patient_lock_key,
     user_lock_keys,
 )
-from apps.scheduling.models import Appointment, AvailabilityBlock
+from apps.scheduling.models import Appointment
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentPractitionerError,
@@ -19,12 +22,12 @@ from apps.scheduling.services import (
 )
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from scheduling.appointment_concurrency_support import (
     start_appointment_creator,
     wait_for_advisory_waiter,
-    wait_for_row_waiter,
 )
 from scheduling.appointment_service_support import (
     seed_appointment_setup,
@@ -32,12 +35,19 @@ from scheduling.appointment_service_support import (
 )
 
 if TYPE_CHECKING:
+    from apps.identity.models import Clinic
+    from apps.scheduling.appointment_locking import AppointmentWriteRows
+    from apps.scheduling.appointment_values import (
+        CreateAppointmentRequest,
+        PreparedAppointment,
+    )
+
     from conftest import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def test_create_takes_patient_gate_before_practitioner_gate(
+def test_create_takes_practitioner_gate_before_patient_gate(
     rbac_graph: RbacGraph,
 ) -> None:
     setup = seed_appointment_setup(rbac_graph)
@@ -48,16 +58,25 @@ def test_create_takes_patient_gate_before_practitioner_gate(
         wait_for_advisory_waiter(backend_pid, outcomes)
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT count(*) FILTER (WHERE granted), "
-                "count(*) FILTER (WHERE NOT granted) FROM pg_locks "
-                "WHERE pid = %s AND locktype = 'advisory'",
-                [backend_pid],
+                "SELECT gates.name, locks.granted "
+                "FROM (VALUES ('clinic', %s), ('practitioner', %s), "
+                "('patient', %s)) AS gates(name, key) "
+                "JOIN pg_locks AS locks "
+                "ON (locks.classid::bigint << 32 | locks.objid::bigint) = "
+                "hashtextextended(gates.key, 0) "
+                "WHERE locks.pid = %s AND locks.locktype = 'advisory'",
+                [
+                    clinic_lock_key(setup.clinic_id),
+                    user_lock_keys((setup.practitioner_id,))[0],
+                    patient_lock_key(setup.organization_id, setup.patient_id),
+                    backend_pid,
+                ],
             )
-            lock_state = cursor.fetchone()
+            lock_state = set(cursor.fetchall())
     thread.join(timeout=10)
 
     assert not thread.is_alive()
-    assert lock_state == (2, 1)
+    assert lock_state == {("clinic", True), ("practitioner", False)}
     assert isinstance(outcomes.get_nowait(), Appointment)
 
 
@@ -109,37 +128,53 @@ def test_cross_clinic_same_patient_creates_terminate_without_orphans(
 
 def test_post_row_lock_revalidation_observes_physician_revocation(
     rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     setup = seed_appointment_setup(rbac_graph)
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
-            [str(setup.organization_id)],
-        )
-        _ = AvailabilityBlock.objects.select_for_update().get(
-            organization_id=setup.organization_id,
-            clinic_id=setup.clinic_id,
-            practitioner_id=setup.practitioner_id,
-        )
-        thread, backend_pids, outcomes = start_appointment_creator(setup, uuid4())
-        backend_pid = backend_pids.get(timeout=5)
-        wait_for_row_waiter(backend_pid, outcomes)
-        cursor.execute(
-            "SELECT count(*) FILTER (WHERE granted), "
-            "count(*) FILTER (WHERE NOT granted) FROM pg_locks "
-            "WHERE pid = %s AND locktype = 'advisory'",
-            [backend_pid],
-        )
-        advisory_state = cursor.fetchone()
-        UserClinicRole.objects.filter(
-            organization_id=setup.organization_id,
-            clinic_id=setup.clinic_id,
-            user_id=setup.practitioner_id,
-            role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+    observed: Queue[tuple[int, int]] = Queue()
+    original = appointment_creation._post_lock_revalidate
+
+    def revoke_after_row_locks(
+        request: CreateAppointmentRequest,
+        expected: PreparedAppointment,
+        rows: AppointmentWriteRows,
+    ) -> tuple[Clinic, PreparedAppointment, Appointment | None]:
+        # Ordinary revocation now shares the booking's user advisory lock.
+        # Inject a real maintenance write on the same test-superuser connection
+        # after every row lock, preserving both that guard and the recheck.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FILTER (WHERE granted), "
+                "count(*) FILTER (WHERE NOT granted) FROM pg_locks "
+                "WHERE pid = pg_backend_pid() AND locktype = 'advisory'"
+            )
+            state = cursor.fetchone()
+            assert state is not None
+            observed.put((int(state[0]), int(state[1])))
+            cursor.execute("SET LOCAL ROLE clinic_owner")
+            cursor.execute("SELECT set_config('app.current_user_id', '', true)")
+            UserClinicRole.objects.filter(
+                organization_id=setup.organization_id,
+                clinic_id=setup.clinic_id,
+                user_id=setup.practitioner_id,
+                role=UserClinicRole.Role.PHYSICIAN,
+            ).update(revoked_at=Now())
+            cursor.execute("SET LOCAL ROLE clinic_app")
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)",
+                [str(setup.actor_id)],
+            )
+        return original(request, expected, rows)
+
+    monkeypatch.setattr(
+        appointment_creation, "_post_lock_revalidate", revoke_after_row_locks
+    )
+    thread, backend_pids, outcomes = start_appointment_creator(setup, uuid4())
+    backend_pids.get(timeout=5)
     thread.join(timeout=10)
 
     assert not thread.is_alive()
+    advisory_state = observed.get_nowait()
     assert advisory_state == (3, 0)
     assert isinstance(outcomes.get_nowait(), AppointmentPractitionerError)
     with (
@@ -221,7 +256,7 @@ def test_manager_revocation_winner_denies_waiting_create_without_residue(
             clinic_id=setup.clinic_id,
             user_id=setup.actor_id,
             role=UserClinicRole.Role.RECEPTIONIST,
-        ).delete()
+        ).update(revoked_at=Now())
     thread.join(timeout=10)
 
     assert not thread.is_alive()

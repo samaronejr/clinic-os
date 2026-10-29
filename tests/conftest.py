@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -21,7 +22,6 @@ from workspace_refusal_support import GUARD_STATS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
-    from pathlib import Path
 
     from _pytest.terminal import TerminalReporter
 
@@ -29,6 +29,26 @@ SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
 AUDIT_ROW_TRIGGER = "audit_event_immutable_row"
 AUDIT_TRUNCATE_TRIGGER = "audit_event_immutable_truncate"
+PASSKEY_TRUNCATE_TRIGGER = "identity_passkey_no_truncate"
+RECEPTION_TABLES = (
+    "scheduling_queueentry",
+    "scheduling_roomstatus",
+    "scheduling_cliniciandelay",
+    "scheduling_displaydevice",
+)
+TRUNCATE_GUARDS = (
+    *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
+    ("ehr_specialtypack", "specialty_no_truncate"),
+    ("ehr_specialtyentry", "specialty_no_truncate"),
+    (
+        "prescription_prescriptionissuance",
+        "prescription_prescriptionissuance_no_truncate",
+    ),
+    (
+        "prescription_sncrnumberallocation",
+        "prescription_sncrnumberallocation_no_truncate",
+    ),
+)
 __all__: Final = (
     "RbacGraph",
     "rbac_graph",
@@ -42,6 +62,7 @@ REFUSAL_INTEGRITY: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
 REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[..., list[str]]] = pytest.StashKey()
 REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_COUNTS: pytest.StashKey[tuple[int, int, int]] = pytest.StashKey()
+REFUSAL_DEFER_EXITS: pytest.StashKey[bool] = pytest.StashKey()
 REFUSAL_SEAL: pytest.StashKey[tuple[tuple[str, object, str, object], ...]] = (
     pytest.StashKey()
 )
@@ -85,6 +106,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     observer = RefusalObserver()
+    # Only startup intent may defer an aggregate census to the hosted merger.
+    # A fixture changing public options after collection must not disable it.
+    session.config.stash[REFUSAL_DEFER_EXITS] = (
+        session.config.getoption("--ci-pytest-shard", default=None) is not None
+    )
     session.config.stash[REFUSAL_OBSERVER] = observer
     session.config.stash[REFUSAL_RECEIPTS] = []
     session.config.stash[GUARD_STATS] = observer.stats
@@ -172,7 +198,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     worker = hasattr(config, "workerinput")
     if config.pluginmanager.hasplugin("dsession"):
         # xdist drops a worker's session exit status: merge every receipt here.
-        observer.tampering.extend(observer.merge(config.stash[REFUSAL_RECEIPTS]))
+        observer.tampering.extend(
+            observer.merge(
+                config.stash[REFUSAL_RECEIPTS],
+                require_exits=not config.stash[REFUSAL_DEFER_EXITS],
+            )
+        )
     errors = config.stash[REFUSAL_SESSION_ERRORS](totals=not worker)
     observer.tampering.extend(errors)
     if errors:
@@ -184,6 +215,24 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         gate = any(item.name == EXIT_GATE for item in session.items)
         cast("_XdistWorker", config).workeroutput[WORKER_RECEIPT] = observer.receipt(
             errors, gate_selected=gate
+        )
+    elif config.getoption("--ci-pytest-phase", default=None) is not None:
+        phase = config.getoption("--ci-pytest-phase")
+        gate = any(item.name == EXIT_GATE for item in session.items) or any(
+            isinstance(receipt, dict) and receipt.get("gate") is True
+            for receipt in config.stash[REFUSAL_RECEIPTS]
+        )
+        receipt = observer.receipt(errors, gate_selected=gate)
+        prefix = f"{Path(__file__).resolve().parents[1]}/"
+        receipt["seen"] = sorted(
+            site.location.removeprefix(prefix) for site in observer.trace.seen
+        )
+        receipt["exits"] = sorted(
+            site.location.removeprefix(prefix) for site in observer.trace.exits
+        )
+        record = Path(config.getoption("--ci-pytest-record"))
+        (record / f"{phase}-refusal.json").write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
 
 
@@ -312,7 +361,39 @@ def pytest_runtest_teardown(
     database_url = _test_superuser_database_url()
     triggers_present = False
     started_enabled = True
+    passkey_trigger_present = False
+    passkey_started_enabled = True
+    truncate_triggers: list[tuple[str, str, str]] = []
     with psycopg.connect(database_url) as raw_connection:
+        for table, trigger in TRUNCATE_GUARDS:
+            truncate_trigger = raw_connection.execute(
+                "SELECT tgenabled FROM pg_trigger "
+                "WHERE tgrelid = to_regclass(%s) "
+                "AND tgname = %s",
+                ["clinic_app." + table, trigger],
+            ).fetchone()
+            if truncate_trigger is not None:
+                truncate_triggers.append((table, trigger, truncate_trigger[0]))
+                raw_connection.execute(
+                    psycopg.sql.SQL(
+                        "ALTER TABLE clinic_app.{} DISABLE TRIGGER {}"
+                    ).format(
+                        psycopg.sql.Identifier(table), psycopg.sql.Identifier(trigger)
+                    )
+                )
+        passkey_trigger = raw_connection.execute(
+            "SELECT tgenabled FROM pg_trigger "
+            "WHERE tgrelid = to_regclass('clinic_app.identity_passkey') "
+            "AND tgname = %s",
+            [PASSKEY_TRUNCATE_TRIGGER],
+        ).fetchone()
+        if passkey_trigger is not None:
+            passkey_trigger_present = True
+            passkey_started_enabled = passkey_trigger == ("O",)
+            raw_connection.execute(
+                "ALTER TABLE clinic_app.identity_passkey DISABLE TRIGGER "
+                f"{PASSKEY_TRUNCATE_TRIGGER}"
+            )
         rows = raw_connection.execute(
             "SELECT tgname, tgenabled FROM pg_trigger "
             "WHERE tgrelid = to_regclass('clinic_app.audit_event') "
@@ -340,6 +421,35 @@ def pytest_runtest_teardown(
     try:
         yield
     finally:
+        with psycopg.connect(database_url) as raw_connection:
+            for table, trigger, started in truncate_triggers:
+                raw_connection.execute(
+                    psycopg.sql.SQL(
+                        "ALTER TABLE clinic_app.{} ENABLE TRIGGER {}"
+                    ).format(
+                        psycopg.sql.Identifier(table), psycopg.sql.Identifier(trigger)
+                    )
+                )
+                assert raw_connection.execute(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgrelid = to_regclass(%s) "
+                    "AND tgname = %s",
+                    ["clinic_app." + table, trigger],
+                ).fetchone() == ("O",)
+                assert started == "O"
+        if passkey_trigger_present:
+            with psycopg.connect(database_url) as raw_connection:
+                raw_connection.execute(
+                    "ALTER TABLE clinic_app.identity_passkey ENABLE TRIGGER "
+                    f"{PASSKEY_TRUNCATE_TRIGGER}"
+                )
+                assert raw_connection.execute(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgrelid = 'clinic_app.identity_passkey'::regclass "
+                    "AND tgname = %s",
+                    [PASSKEY_TRUNCATE_TRIGGER],
+                ).fetchone() == ("O",)
+            assert passkey_started_enabled is True
         if triggers_present:
             with psycopg.connect(database_url) as raw_connection:
                 raw_connection.execute(

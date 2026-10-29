@@ -6,6 +6,73 @@ info:
     travel only in request bodies. Session authentication with the X-CSRFToken header;
     errors are {code, message_key}.
 paths:
+  /api/ui/v1/agenda/board/:
+    post:
+      operationId: agenda_board_query
+      description: |-
+        Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics match.
+
+        Deviation from the todo 24 plan wording, accepted provisionally pending gate review: the plan widens ``agenda/query`` to the multi-view board. ``agenda/query`` keeps its pinned response keys and required ``clinic_id``, so the day, week, month and list board is this separate endpoint instead.
+      tags:
+      - agenda
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendaBoardQueryRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaBoard'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/ui/v1/agenda/query/:
     post:
       operationId: agenda_query
@@ -137,8 +204,501 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/ehr/addendum/autosave/:
+    post:
+      operationId: ehr_addendum_autosave
+      description: Adapt ``ehr.addenda.autosave_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/ehr/addendum/open/:
+    post:
+      operationId: ehr_addendum_open
+      description: Adapt ``ehr.addenda.open_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumOpenRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumOpened'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/ehr/autosave/:
+    post:
+      operationId: ehr_draft_autosave
+      description: Adapt ``ehr.autosave_draft``; unknown and foreign drafts match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '423':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/inbox/query/:
+    post:
+      operationId: inbox_query
+      description: Adapt ``workflows.query_inbox``. An actor without inbox permission,
+        and an unknown or foreign clinic, receive the same empty page as a clinician
+        with nothing to do.
+      tags:
+      - inbox
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxQueryRequest'
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxPage'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
+    AddendumAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/addendum/autosave``; same contract as the main
+        draft.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        addendum_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        text:
+          type: string
+          maxLength: 20000
+      required:
+      - addendum_id
+      - clinic_id
+      - editor_command_id
+      - expected_revision
+      - text
+    AddendumOpenRequest:
+      type: object
+      description: POST body of ``ehr/addendum/open``; the encounter stays in the
+        body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        encounter_id:
+          type: string
+          format: uuid
+      required:
+      - clinic_id
+      - encounter_id
+    AddendumOpened:
+      type: object
+      description: The caller's own addendum draft on that encounter.
+      properties:
+        addendum_id:
+          type: string
+          format: uuid
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+      required:
+      - addendum_id
+      - revision
+    AddendumSaved:
+      type: object
+      description: The acknowledged addendum save.
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+      required:
+      - revision
+      - saved_at
+    AgendaBoard:
+      type: object
+      description: 'Adapt ``scheduling.AgendaBoard``: slots and appointments of one
+        view.'
+      properties:
+        view:
+          allOf:
+          - $ref: '#/components/schemas/AgendaBoardViewEnum'
+          readOnly: true
+        anchor:
+          type: string
+          format: date
+          readOnly: true
+        first_day:
+          type: string
+          format: date
+          readOnly: true
+        last_day:
+          type: string
+          format: date
+          readOnly: true
+        lanes:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardLane'
+          readOnly: true
+        slots:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        appointments:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardAppointment'
+          readOnly: true
+        occupancy:
+          type: array
+          items:
+            $ref: '#/components/schemas/Occupancy'
+          readOnly: true
+        counts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayCount'
+          readOnly: true
+        can_move:
+          type: boolean
+          readOnly: true
+        can_book:
+          type: boolean
+          readOnly: true
+        truncated:
+          type: boolean
+          readOnly: true
+      required:
+      - anchor
+      - appointments
+      - can_book
+      - can_move
+      - counts
+      - first_day
+      - lanes
+      - last_day
+      - occupancy
+      - slots
+      - truncated
+      - view
+    AgendaBoardFilters:
+      type: object
+      description: Optional board filters; unknown catalog entries answer ``invalid_input``.
+      properties:
+        professional_id:
+          type: string
+          format: uuid
+        resource_id:
+          type: string
+          format: uuid
+        service_type_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+    AgendaBoardQueryRequest:
+      type: object
+      description: |-
+        POST body of ``agenda/board``: the range is the view containing ``date``.
+
+        ``clinic_id`` is optional: without it the shell's current clinic is used.
+        Record selectors never appear here; filters name only catalog entries.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        view:
+          $ref: '#/components/schemas/AgendaBoardViewEnum'
+        date:
+          type: string
+          format: date
+          description: Clinic-local civil date from 2000-01-01 to 2199-12-31; the
+            day, ISO week or month containing it.
+        filters:
+          $ref: '#/components/schemas/AgendaBoardFilters'
+      required:
+      - date
+      - view
+    AgendaBoardViewEnum:
+      enum:
+      - day
+      - week
+      - month
+      - list
+      type: string
+      description: |-
+        * `day` - day
+        * `week` - week
+        * `month` - month
+        * `list` - list
     AgendaItem:
       type: object
       description: 'Adapt ``scheduling.AgendaItem``: one clinic-local appointment
@@ -175,6 +735,14 @@ components:
       - practitioner_id
       - start_local
       - status
+    AgendaLedgerViewEnum:
+      enum:
+      - day
+      - week
+      type: string
+      description: |-
+        * `day` - day
+        * `week` - week
     AgendaPage:
       type: object
       description: 'Adapt ``scheduling.AgendaPage``: one bounded agenda page.'
@@ -186,7 +754,7 @@ components:
           readOnly: true
         view:
           allOf:
-          - $ref: '#/components/schemas/ViewEnum'
+          - $ref: '#/components/schemas/AgendaLedgerViewEnum'
           readOnly: true
         date:
           type: string
@@ -227,7 +795,7 @@ components:
           type: string
           format: uuid
         view:
-          $ref: '#/components/schemas/ViewEnum'
+          $ref: '#/components/schemas/AgendaLedgerViewEnum'
         date:
           type: string
           format: date
@@ -241,6 +809,92 @@ components:
       - clinic_id
       - date
       - view
+    BoardAppointment:
+      type: object
+      description: Adapt ``scheduling.BoardAppointment``; no birth date or contact
+        data.
+      properties:
+        appointment_id:
+          type: string
+          format: uuid
+          readOnly: true
+        patient_display_name:
+          type: string
+          readOnly: true
+        practitioner_id:
+          type: string
+          format: uuid
+          readOnly: true
+        resource_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+        service_type_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        start_local:
+          type: string
+          readOnly: true
+        end_local:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+        movable:
+          type: boolean
+          readOnly: true
+        actions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        hold_until:
+          type: string
+          readOnly: true
+        hold_expiring:
+          type: boolean
+          readOnly: true
+      required:
+      - actions
+      - appointment_id
+      - end_local
+      - hold_expiring
+      - hold_until
+      - movable
+      - patient_display_name
+      - practitioner_id
+      - resource_ids
+      - revision
+      - service_type_id
+      - start_local
+      - status
+    BoardLane:
+      type: object
+      description: 'Adapt ``scheduling.BoardLane``: a professional, room or equipment
+        lane.'
+      properties:
+        kind:
+          type: string
+          readOnly: true
+        lane_id:
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          type: string
+          readOnly: true
+      required:
+      - kind
+      - label
+      - lane_id
     CodeEnum:
       enum:
       - access_denied
@@ -253,6 +907,10 @@ components:
       - unsupported_media_type
       - throttled
       - not_found
+      - precondition_failed
+      - locked_by_other
+      - handover_requested
+      - idempotency_mismatch
       - internal_error
       type: string
       description: |-
@@ -266,6 +924,10 @@ components:
         * `unsupported_media_type` - unsupported_media_type
         * `throttled` - throttled
         * `not_found` - not_found
+        * `precondition_failed` - precondition_failed
+        * `locked_by_other` - locked_by_other
+        * `handover_requested` - handover_requested
+        * `idempotency_mismatch` - idempotency_mismatch
         * `internal_error` - internal_error
     CommandResult:
       type: object
@@ -279,7 +941,7 @@ components:
       properties:
         kind:
           allOf:
-          - $ref: '#/components/schemas/KindEnum'
+          - $ref: '#/components/schemas/CommandResultKindEnum'
           readOnly: true
         meta:
           type: string
@@ -310,6 +972,24 @@ components:
       - label
       - meta
       - token
+    CommandResultKindEnum:
+      enum:
+      - destination
+      - action
+      - saved_view
+      - save_view
+      - archive_view
+      - patient
+      - notice
+      type: string
+      description: |-
+        * `destination` - destination
+        * `action` - action
+        * `saved_view` - saved_view
+        * `save_view` - save_view
+        * `archive_view` - archive_view
+        * `patient` - patient
+        * `notice` - notice
     CommandSearchRequest:
       type: object
       description: |-
@@ -331,6 +1011,143 @@ components:
           pattern: ^/[A-Za-z0-9/_.-]*$
       required:
       - q
+    DayCount:
+      type: object
+      description: 'Adapt ``scheduling.DayCount``: appointments starting on one date.'
+      properties:
+        day:
+          type: string
+          format: date
+          readOnly: true
+        total:
+          type: integer
+          readOnly: true
+      required:
+      - day
+      - total
+    DraftAutosaveConflict:
+      type: object
+      description: 'A stale revision: nothing was written; merge explicitly.'
+      properties:
+        current_revision:
+          type: integer
+          readOnly: true
+        diff:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftSectionDiff'
+          readOnly: true
+      required:
+      - current_revision
+      - diff
+    DraftAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/autosave``; record selectors stay in the body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        editor_session:
+          type: string
+          format: uuid
+          description: The editing tab; one tab holds the draft lock at a time.
+        sections:
+          $ref: '#/components/schemas/SoapSections'
+        handover:
+          type: boolean
+          default: false
+          description: Ask the tab holding the lock to hand it over after its next
+            save.
+      required:
+      - clinic_id
+      - editor_command_id
+      - editor_session
+      - expected_revision
+      - sections
+      - version_id
+    DraftAutosaveSaved:
+      type: object
+      description: 'The acknowledged save: shown as saved only after this response.'
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+        lock:
+          allOf:
+          - $ref: '#/components/schemas/LockEnum'
+          readOnly: true
+      required:
+      - lock
+      - revision
+      - saved_at
+    DraftDiffLine:
+      type: object
+      description: One compared line; ``removed`` exists only in the saved text.
+      properties:
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/DraftDiffLineKindEnum'
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+      required:
+      - kind
+      - text
+    DraftDiffLineKindEnum:
+      enum:
+      - same
+      - added
+      - removed
+      type: string
+      description: |-
+        * `same` - same
+        * `added` - added
+        * `removed` - removed
+    DraftSectionDiff:
+      type: object
+      description: The saved text of one changed section and its comparison.
+      properties:
+        section:
+          type: string
+          readOnly: true
+        theirs:
+          type: string
+          readOnly: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftDiffLine'
+          readOnly: true
+      required:
+      - lines
+      - section
+      - theirs
+    DueEnum:
+      enum:
+      - all
+      - overdue
+      - today
+      type: string
+      description: |-
+        * `all` - all
+        * `overdue` - overdue
+        * `today` - today
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
@@ -342,32 +1159,265 @@ components:
       required:
       - code
       - message_key
-    KindEnum:
-      enum:
-      - destination
+    InboxItem:
+      type: object
+      description: 'Adapt ``workflows.InboxItem``: one typed, owned and due inbox
+        row.'
+      properties:
+        key:
+          type: string
+          readOnly: true
+        kind:
+          type: string
+          readOnly: true
+        record_id:
+          type: string
+          format: uuid
+          readOnly: true
+        target_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        revision:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        patient_label:
+          type: string
+          readOnly: true
+        owner:
+          type: string
+          readOnly: true
+        owner_label:
+          type: string
+          readOnly: true
+        due_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        overdue:
+          type: boolean
+          readOnly: true
+        priority:
+          type: string
+          readOnly: true
+        critical:
+          type: boolean
+          readOnly: true
+        action:
+          type: string
+          readOnly: true
+        bulk_eligible:
+          type: boolean
+          readOnly: true
+        preview:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxObservation'
+          readOnly: true
+      required:
       - action
-      - saved_view
-      - save_view
-      - archive_view
-      - patient
-      - notice
-      type: string
+      - bulk_eligible
+      - critical
+      - due_at
+      - key
+      - kind
+      - overdue
+      - owner
+      - owner_label
+      - patient_label
+      - preview
+      - priority
+      - record_id
+      - revision
+      - target_id
+      - title
+    InboxObservation:
+      type: object
+      description: 'Adapt ``workflows.InboxObservation``: exact source strings only.'
+      properties:
+        code:
+          type: string
+          readOnly: true
+        examination:
+          type: string
+          readOnly: true
+        value:
+          type: string
+          readOnly: true
+        unit:
+          type: string
+          readOnly: true
+        reference_interval:
+          type: string
+          readOnly: true
+        flag:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - examination
+      - flag
+      - reference_interval
+      - unit
+      - value
+    InboxPage:
+      type: object
+      description: Adapt ``workflows.InboxPage``; unauthorized callers get it empty.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxItem'
+          readOnly: true
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+          readOnly: true
+        total:
+          type: integer
+          readOnly: true
+        overdue:
+          type: integer
+          readOnly: true
+        critical:
+          type: integer
+          readOnly: true
+        removed:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        truncated:
+          type: boolean
+          readOnly: true
+        counts_complete:
+          type: boolean
+          readOnly: true
+      required:
+      - counts
+      - counts_complete
+      - critical
+      - items
+      - overdue
+      - removed
+      - total
+      - truncated
+    InboxQueryRequest:
+      type: object
       description: |-
-        * `destination` - destination
-        * `action` - action
-        * `saved_view` - saved_view
-        * `save_view` - save_view
-        * `archive_view` - archive_view
-        * `patient` - patient
-        * `notice` - notice
-    ViewEnum:
+        POST body of ``inbox/query``; selectors and filters stay in the body.
+
+        ``known`` lists the item keys the caller is showing; keys that are no
+        longer visible come back in ``removed`` so the client can say so.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        kinds:
+          type: array
+          items:
+            type: string
+            maxLength: 24
+          maxItems: 16
+        owner:
+          allOf:
+          - $ref: '#/components/schemas/OwnerEnum'
+          default: all
+        due:
+          allOf:
+          - $ref: '#/components/schemas/DueEnum'
+          default: all
+        known:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          maxItems: 400
+    LockEnum:
       enum:
-      - day
-      - week
+      - held
+      - handed_over
       type: string
       description: |-
-        * `day` - day
-        * `week` - week
+        * `held` - held
+        * `handed_over` - handed_over
+    Occupancy:
+      type: object
+      description: 'Adapt ``scheduling.Occupancy``: a busy interval, other units unnamed.'
+      properties:
+        lane_id:
+          type: string
+          format: uuid
+          readOnly: true
+        start_local:
+          type: string
+          readOnly: true
+        end_local:
+          type: string
+          readOnly: true
+        other_unit:
+          type: boolean
+          readOnly: true
+      required:
+      - end_local
+      - lane_id
+      - other_unit
+      - start_local
+    OwnerEnum:
+      enum:
+      - all
+      - mine
+      type: string
+      description: |-
+        * `all` - all
+        * `mine` - mine
+    SoapSections:
+      type: object
+      description: Exactly the four SOAP sections as plain text; never trimmed.
+      properties:
+        subjective:
+          type: string
+          maxLength: 20000
+        objective:
+          type: string
+          maxLength: 20000
+        assessment:
+          type: string
+          maxLength: 20000
+        plan:
+          type: string
+          maxLength: 20000
+      required:
+      - assessment
+      - objective
+      - plan
+      - subjective
+    StatusEnum:
+      enum:
+      - scheduled
+      - cancelled
+      - requested
+      - held
+      - arrived
+      - in_progress
+      - completed
+      - no_show
+      type: string
+      description: |-
+        * `scheduled` - scheduled
+        * `cancelled` - cancelled
+        * `requested` - requested
+        * `held` - held
+        * `arrived` - arrived
+        * `in_progress` - in_progress
+        * `completed` - completed
+        * `no_show` - no_show
   securitySchemes:
     csrfHeader:
       type: apiKey

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load i18n static tz %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-workflows.css' %}">
+{% endblock %}
+{% block title %}{% if exceptions %}{% trans "Workflow exceptions" %}{% else %}{% trans "Workflow runs" %}{% endif %}{% endblock %}
+{% block content %}
+<div id="workflow-runs">
+  <header class="page-header"><h1>{% if exceptions %}{% trans "Workflow exceptions" %}{% else %}{% trans "Workflow runs" %}{% endif %}</h1><p>{% trans "Each run keeps its published version. Failed steps require an explicit, safe retry." %}</p></header>
+  <nav class="task-filters" aria-label="{% trans 'Workflow navigation' %}">
+    <a href="{% url 'workflows:tasks' clinic.pk %}">{% trans "Tasks" %}</a>
+    <a href="{% url 'workflows:runs' clinic.pk %}">{% trans "Runs" %}</a>
+    <a href="{% url 'workflows:run-exceptions' clinic.pk %}">{% trans "Exceptions" %}</a>
+    {% if manager %}<a href="{% url 'workflows:designer' clinic.pk %}">{% trans "Designer" %}</a>{% endif %}
+  </nav>
+  {% if workflow_error %}<p class="notice notice--error" role="alert">{{ workflow_error }}</p>{% endif %}
+  {% if manager and not exceptions %}
+  <section aria-labelledby="start-run"><h2 id="start-run">{% trans "Start a workflow" %}</h2>
+    {% if published %}<form method="post" class="task-create-form">{% csrf_token %}
+      <input type="hidden" name="action" value="start">
+      {{ run_form.as_p }}<button class="button button--primary" type="submit">{% trans "Start pinned run" %}</button>
+    </form>{% else %}<p>{% trans "Publish a workflow version before starting a run." %}</p>{% endif %}
+  </section>{% endif %}
+  <section aria-labelledby="run-history"><h2 id="run-history">{% trans "Run history" %}</h2>
+  {% for item in runs %}{% with run=item.run %}
+    <article class="task-row" data-run="{{ run.pk }}" data-run-state="{{ run.state }}" data-revision="{{ run.revision }}"><header><h3>{{ run.definition_version.key }} · {% trans "Version" %} {{ run.definition_version.version }}</h3><p>{% include "workflows/partials/run_state.html" with state=run.state only %} · {% trans "Revision" %} {{ run.revision }}</p></header>
+      <ol>{% for step_item in item.steps %}{% with step=step_item.record %}<li data-step="{{ step.pk }}" data-step-state="{{ step.state }}">{% trans "Step" %} {{ step.position|add:1 }} · {% if step_item.handler == "task" %}{% trans "Task" %}{% elif step_item.handler == "timer" %}{% trans "Timer" %}{% elif step_item.handler == "external" %}{% trans "Synthetic external action" %}{% endif %} · {% include "workflows/partials/run_state.html" with state=step.state only %}{% if step.error_code == "operation_unknown" %} · {% trans "Delivery outcome is unknown. Reconcile the existing operation before continuing." %}{% elif step.error_code == "operation_failed" %} · {% trans "Delivery failed. Review the existing operation; a retry cannot resend it." %}{% elif step.error_code == "handler_rejected" %} · {% trans "The step was rejected without an effect." %}{% elif step.error_code == "task_cancelled" %} · {% trans "The assigned task was cancelled." %}{% endif %}{% if step.wake_at and step.state == "waiting" %} · {% trans "Next check" %} {% timezone clinic.timezone %}{{ step.wake_at|date:"d/m/Y H:i" }}{% endtimezone %}{% endif %}</li>{% endwith %}{% endfor %}</ol>
+      {% if manager %}<div class="task-actions">
+        {% if item.retryable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="retry"><input type="hidden" name="run_id" value="{{ run.pk }}"><input type="hidden" name="expected_revision" value="{{ run.revision }}"><input type="hidden" name="idempotency_key" value="{{ item.command_key }}"><button class="button button--primary" type="submit">{% trans "Retry safely" %}</button></form>{% endif %}
+        {% if run.state == "pending" or run.state == "running" or run.state == "waiting" %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="run_id" value="{{ run.pk }}"><input type="hidden" name="expected_revision" value="{{ run.revision }}"><button class="button button--secondary" type="submit">{% trans "Cancel run" %}</button></form>{% endif %}
+      </div>{% endif %}
+    </article>{% endwith %}
+  {% empty %}<p class="empty-state">{% if exceptions %}{% trans "No workflow exceptions." %}{% else %}{% trans "No workflow runs yet." %}{% endif %}</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

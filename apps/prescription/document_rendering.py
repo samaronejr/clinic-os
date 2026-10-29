@@ -19,6 +19,8 @@ from typing import Protocol
 
 from django.conf import settings
 
+from apps.prescription.document_templates import TEMPLATE_VERSION, TEMPLATES
+
 RENDERER_ID = "synthetic-pdf-v1"
 RENDER_PROFILE = "clinic-synthetic-document-v1"
 DOCUMENT_INPUT_VERSION = "clinic-prescription-document-v1"
@@ -391,51 +393,79 @@ def _qr_matrix(payload: str) -> list[list[bool]]:
     return [[bool(cell) for cell in row] for row in matrix]
 
 
+def _item_paragraphs(item: object, position: int) -> list[str]:
+    """Project one exact item, including the explicit structured unit conventions."""
+    if not isinstance(item, Mapping):
+        raise DocumentRenderError
+    paragraphs = [f"Item {position}"]
+    for field in (
+        "medication_description",
+        "strength_form",
+        "dose",
+        "route",
+        "frequency",
+        "duration",
+        "quantity",
+    ):
+        value = item.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise DocumentRenderError
+        paragraphs.append(_wrap(f"  {field}", value))
+    if item.get("dose_unit"):
+        paragraphs.append(_wrap("  Unidade", _require_text(item, "dose_unit_label")))
+        paragraphs.append(_require_text(item, "directions_label"))
+    instructions = item.get("instructions")
+    if not isinstance(instructions, str):
+        raise DocumentRenderError
+    if instructions.strip():
+        paragraphs.append(_wrap("  instructions", instructions))
+    return paragraphs
+
+
 def _paragraphs(frozen_input: Mapping[str, object]) -> list[str]:
     """Lay out the required visible fields in a fixed, deterministic order.
 
     Each entry is one unwrapped paragraph; ``_layout_lines`` wraps it to the
     width available at its final vertical position.
     """
-    items = frozen_input.get("items")
-    if not isinstance(items, Sequence) or isinstance(items, str | bytes) or not items:
+    kind = frozen_input.get("kind", "prescription")
+    if not isinstance(kind, str) or kind not in TEMPLATES:
         raise DocumentRenderError
+    template = TEMPLATES[kind]
     document_version = frozen_input.get("document_version")
     contract_version = _require_text(frozen_input, "contract_version")
     if type(document_version) is not int or document_version < 1:
         raise DocumentRenderError
     paragraphs = [
-        "Prescrição — documento sintético",
+        f"{template.title} — documento sintético",
         f"Versão do documento: {document_version} · Contrato: {contract_version}",
         _wrap("Emitente", _require_text(frozen_input, "issuer_label")),
         _wrap("Paciente", _require_text(frozen_input, "patient_label")),
         _wrap("Clínica", _require_text(frozen_input, "clinic_label")),
         _wrap("Emitido em", _require_text(frozen_input, "issued_at")),
-        "",
-        "Itens",
     ]
+    if frozen_input.get("preparation_mode") == "paper":
+        paragraphs[2:2] = [
+            _wrap("Classe de receita", _require_text(frozen_input, "class_label")),
+            _require_text(frozen_input, "preparation_label"),
+        ]
+    paragraphs.extend(_branding_paragraphs(frozen_input))
+    if kind != "prescription":
+        paragraphs.extend(_clinical_content(frozen_input, template.content_label))
+        paragraphs.extend(_document_footer(frozen_input))
+        return paragraphs
+    paragraphs.extend(_prescription_content(frozen_input))
+    return paragraphs
+
+
+def _prescription_content(frozen_input: Mapping[str, object]) -> list[str]:
+    """Keep the legacy medication template and disclosure unchanged."""
+    items = frozen_input.get("items")
+    if not isinstance(items, Sequence) or isinstance(items, str | bytes) or not items:
+        raise DocumentRenderError
+    paragraphs = ["", "Itens"]
     for position, item in enumerate(items, start=1):
-        if not isinstance(item, Mapping):
-            raise DocumentRenderError
-        paragraphs.append(f"Item {position}")
-        for field in (
-            "medication_description",
-            "strength_form",
-            "dose",
-            "route",
-            "frequency",
-            "duration",
-            "quantity",
-        ):
-            value = item.get(field)
-            if not isinstance(value, str) or not value.strip():
-                raise DocumentRenderError
-            paragraphs.append(_wrap(f"  {field}", value))
-        instructions = item.get("instructions")
-        if not isinstance(instructions, str):
-            raise DocumentRenderError
-        if instructions.strip():
-            paragraphs.append(_wrap("  instructions", instructions))
+        paragraphs.extend(_item_paragraphs(item, position))
     paragraphs.extend(
         [
             "",
@@ -445,6 +475,58 @@ def _paragraphs(frozen_input: Mapping[str, object]) -> list[str]:
         ]
     )
     return paragraphs
+
+
+def _branding_paragraphs(frozen_input: Mapping[str, object]) -> list[str]:
+    branding = frozen_input.get("branding", {})
+    if not isinstance(branding, Mapping):
+        raise DocumentRenderError
+    paragraphs = []
+    for key, label in (("contact_email", "E-mail"), ("contact_phone", "Telefone")):
+        value = branding.get(key, "")
+        if not isinstance(value, str):
+            raise DocumentRenderError
+        if value:
+            paragraphs.append(_wrap(label, value))
+    return paragraphs
+
+
+def _clinical_content(
+    frozen_input: Mapping[str, object], content_label: str
+) -> list[str]:
+    """Show only the frozen, authored body and versioned catalog labels."""
+    content = frozen_input.get("content")
+    if not isinstance(content, Mapping):
+        raise DocumentRenderError
+    paragraphs = ["", content_label]
+    paragraphs.extend(
+        _display_text(line) for line in _require_text(content, "body").splitlines()
+    )
+    recipient = content.get("recipient", "")
+    if not isinstance(recipient, str):
+        raise DocumentRenderError
+    if recipient:
+        paragraphs.append(_wrap("Destinatário", recipient))
+    exams = content.get("exam_labels", [])
+    if not isinstance(exams, list) or any(not isinstance(item, str) for item in exams):
+        raise DocumentRenderError
+    if frozen_input.get("kind") == "exam_request" and not exams:
+        raise DocumentRenderError
+    if exams:
+        paragraphs.extend(["", "Exames solicitados", *exams])
+    # A source has not passed EG-13; forged frozen content cannot bypass the gate.
+    if content.get("cid10_code") or content.get("cid10_source_version"):
+        raise DocumentRenderError
+    return paragraphs
+
+
+def _document_footer(frozen_input: Mapping[str, object]) -> list[str]:
+    return [
+        "",
+        "Documento sintético de ensaio. Sem validade para uso clínico.",
+        _wrap("Verificação", _require_text(frozen_input, "verification_url")),
+        _wrap("Resumo do conteúdo", _require_text(frozen_input, "input_digest")),
+    ]
 
 
 def _text_width(text: str) -> float:
@@ -1088,6 +1170,8 @@ class SyntheticPdfRenderer:
         if settings.CLINIC_DATA_MODE != "synthetic":
             raise RenderingUnavailableError
         if frozen_input.get("v") != DOCUMENT_INPUT_VERSION:
+            raise DocumentRenderError
+        if frozen_input.get("template_version", TEMPLATE_VERSION) != TEMPLATE_VERSION:
             raise DocumentRenderError
         matrix = _qr_matrix(_require_text(frozen_input, "verification_url"))
         lines = _layout_lines(_paragraphs(frozen_input), len(matrix))

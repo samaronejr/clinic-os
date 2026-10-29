@@ -16,8 +16,9 @@ HTMX_SHA384 = "H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
 def test_todo18_and_todo19_dependencies_are_exact_and_isolated() -> None:
     document = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
 
-    assert document["project"]["dependencies"][-2:] == [
+    assert document["project"]["dependencies"][-3:] == [
         "tzdata==2026.3",
+        "webauthn==3.0.1",
         "whitenoise==6.12.0",
     ]
     assert document["dependency-groups"]["browser"] == [
@@ -25,9 +26,15 @@ def test_todo18_and_todo19_dependencies_are_exact_and_isolated() -> None:
         "pytest-playwright==0.8.0",
     ]
     assert document["dependency-groups"]["dev"][-2:] == [
+        "ruff",
         "basedpyright==1.39.9",
-        "jsonschema>=4.26.0",
     ]
+    assert document["project"]["dependencies"].count("jsonschema>=4.26.0") == 1
+    assert not any(
+        dependency.startswith("jsonschema")
+        for dependencies in document["dependency-groups"].values()
+        for dependency in dependencies
+    )
 
 
 def test_production_static_is_manifested_and_self_hosted() -> None:

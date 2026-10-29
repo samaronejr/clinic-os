@@ -5,6 +5,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Extend the preference purpose without upgrading existing consent."""
@@ -31,7 +33,7 @@ class Migration(migrations.Migration):
                 max_length=32,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientchannelpreference",
             constraint=models.CheckConstraint(
                 condition=models.Q(

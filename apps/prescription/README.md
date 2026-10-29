@@ -1,5 +1,15 @@
 # Prescription drafts
 
+Todo 33 adds clinical documents alongside the original prescription path:
+`DocumentKind` supports prescriptions, medical certificates, attendance
+attestations, referrals, exam requests and patient instructions. The binding
+extension contract is
+[`docs/clinical/clinical-documents.md`](../../docs/clinical/clinical-documents.md).
+It defines encrypted per-kind version snapshots, textual clinic branding,
+stale-approval rejection, verified-issuance exam orders and the closed EG-13
+diagnosis-source gate. Completed signed history keeps its existing release
+behavior after later draft edits or discard.
+
 Task 32 provides an assigned-physician-only, synthetic draft workspace reached
 from the encounter. Encounter, patient, clinic, organization and issuer bindings
 are immutable and checked by services and FORCE RLS. Current role/assignment is
@@ -8,8 +18,10 @@ or patient cannot read drafts.
 
 Each explicit save compares `expected_version`, increments `version` atomically,
 and appends immutable item snapshots. Failed or stale saves preserve both stored
-content and bound browser input. Clinician-entered text is never trimmed,
-calculated, classified or used to generate treatment advice. Items capture
+content and bound browser input. Clinician-entered doses are never suggested,
+classified or used to generate treatment advice. Free text is retained exactly;
+the optional structured mode calculates only the total quantity explicitly
+defined by the entered dose, administrations/day and days. Items capture
 medication description (240), strength/form (160), dose (160), route (80),
 frequency (160), duration (160), quantity (80) and instructions (2000 characters),
 with at most 20 items. Metadata-only audit events track creation, viewing, saving
@@ -19,23 +31,174 @@ hides content, and is terminal; live drafts block encounter closure.
 ## Category boundary
 
 Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger):
-SD-6 replaces the synthetic-only category with a prescription-class taxonomy
-(todo 34); the rules in this section still hold in code today.
+SD-6 replaces the synthetic-only category with the todo-34 prescription-class
+taxonomy. Every new draft starts with `category=NULL`: there is no selected or
+persisted default, including on renewal. Only the assigned physician can choose,
+change or clear the class through a versioned save. A catalog selection never
+classifies medication.
 
 The [2026-09-24-v2 register](../../docs/integrations/capabilities.md) has no
 confirmed real issuance contract. Consequently **no real document category is
-supported**, including ordinary non-controlled prescriptions. Controlled,
-notification, antimicrobial and unknown categories fail closed server-side.
+supported for electronic issuance**, including ordinary non-controlled
+prescriptions. Known classes may be prepared manually; unknown values fail at
+the form, service and database boundaries. `PrescriptionClassPolicy` is an
+immutable, migration-seeded D-21 reference, not an approval toggle. Notifications
+A/B/B2, systemic retinoids and thalidomide require SNCR from the recorded
+30/09/2026 boundary. White control-special, antimicrobial and GLP-1 retention
+classes require it from 30/10/2026. Electronic requests refuse with
+`class_electronic_unavailable` before the recorded boundary and `sncr_required`
+from it onward; both remain BLOCKED-ON-EG-6. Simple electronic issuance remains
+BLOCKED-ON-EG-5 and the later issuance contract.
 The separate `synthetic_non_controlled` / `synthetic-draft-v1` contract is solely
 for the plan's synthetic rehearsal. It is not a legal approval or a claim that
 entered medication text is non-controlled or safe. This classification is never
 inferred from drug text.
 
-`issue_prescription()` and the signing adapter remain deferred. Task 31's fresh
+`require_issuance_class` runs at signing initiation, preparation, dispatch and
+completion. Unset classes refuse with `class_required` before an operation is
+created. An immutable `SignatureOperation.category` snapshots the explicit
+rendered-version choice; the issued-row CHECK independently requires a known,
+non-synthetic, non-null class. A separate database guard keeps every real
+electronic class closed until a later gate-backed migration. Paper preparation
+is allowed and labeled **not issued**. The only renderer remains synthetic;
+its paper preparation output is not a legally issued paper prescription.
+
+## Catalog, favorites and structured directions
+
+`load_medication_catalog --source <file> --sha256 <lowercase-sha256>` is the
+owner-only offline refresh job. It never downloads files or uses owner
+credentials in a runtime worker. Re-running the command is idempotent; a new
+snapshot becomes searchable by retrieval date and load time without changing
+historical entries or favorites. Stage an explicitly normalized UTF-8 JSON
+snapshot of Anvisa/CMED public terminology:
+
+```json
+{
+  "schema_version": 1,
+  "source_url": "https://www.gov.br/anvisa/pt-br/synthetic-example.json",
+  "retrieved_on": "2026-10-20",
+  "entries": [
+    {
+      "code": "SYNTHETIC-001",
+      "description": "Synthetic medicine",
+      "strength_form": "Synthetic tablet"
+    }
+  ]
+}
+```
+
+This example is synthetic, not a downloaded or licensed catalog. Raw CMED
+spreadsheets must first be normalized to this closed schema outside the loader.
+The loader validates schema, unique source codes, official HTTPS origin,
+retrieval date, size and the exact file checksum before inserting any rows.
+It retains URL/date/checksum in an immutable import receipt. Classification
+fields are rejected. No real dataset or EG-13 approval ships with this task;
+regulatory classification remains manual regardless of catalog provenance.
+
+Reference tables hold public data and have runtime SELECT only. Favorites are
+clinic/issuer scoped under FORCE RLS, require current physician authority, and
+are removed through audited deactivation, never DELETE. Native POST search,
+selection and favorite actions preserve the entered draft without saving it.
+
+Structured mode is explicit: a unit plus numeric dose, administrations/day and
+duration in days. Decimal-string multiplication computes quantity in the
+**same unit**, with no inferred conversion, packaging rule or rounding.
+Free-text mode performs no calculation. The structured payload is encrypted
+from its first schema version, alongside the existing encrypted item text.
+An optional `MedicationStatement` link must belong to the draft's clinic and
+patient; linking never confirms, reconciles or mutates the statement.
+
+Renewal explicitly copies a completed, non-revoked source artifact into a new
+assigned encounter for the same patient. It retains the source link and copies
+only its frozen item snapshot, never its class, signature or issuance
+authority. The source bytes and prior snapshots remain untouched.
+
+Live issuance and live qualified signing remain externally gated. Task 31's fresh
 professional verification and step-up apply at signing, not ordinary draft
 entry. Drafts confer no signing authority, patient release, signature,
 RNDS/SNCR exchange or live readiness. Later issuance must separately require the
 approved category contract and fresh physician/signer verification.
+
+## Issuance command and recorded SNCR allocation
+
+`issue_prescription(*, clinic_id, document_id, command_id)` derives the current
+assigned physician from database context. It accepts an explicit UUID command,
+locks the current draft version, verifies the rendered and signed digests, and
+requires a completed verified signature. One immutable `PrescriptionIssuance`
+receipt exists per document and command. Replaying the same command returns the
+same receipt without another audit append; a second command for that document
+refuses. A refused command rolls back its whole savepoint, including denial
+audit writes. It never implicitly signs or releases a document.
+
+`PRESCRIPTION_SYNTHETIC_ISSUANCE` defaults off. Its only runnable path is the
+retained `synthetic_non_controlled` class, producing `rehearsal_complete`, never
+`issued`. Real `simple` remains `class_not_enabled`. Every regulated class
+requires an activated `sncr` lifecycle record before any write; a missing or
+non-activated record returns `sncr_required`. Even an activated record cannot
+authorize use in a synthetic runtime. Qualified trust, per-class approval,
+approved official templates and external registration remain BLOCKED-ON-EG.
+The existing database guards against real and synthetic `issued` are unchanged.
+
+`SncrAdapter` describes allocation and emission registration separately.
+`RecordedSncrAdapter` is the only supplied implementation, with
+`real_enabled=False`, no network client and no credential loading. It binds an
+explicit recording to the exact prescriber/council/UF/class request, validates
+the closed documented response and returns only the recorded number or block.
+It never generates, extends or allocates numbers itself. Exhaustion returns
+`sncr_numbering_unavailable`; a timeout returns `sncr_reconcile`; malformed,
+wrong-prescriber and undocumented responses fail closed. Fixture provenance is
+in `tests/prescription/fixtures/sncr-documentation.json`.
+
+The v5 notification request asks for 10-50 numbers. Its HTTP 200 example has
+`numeracoesReceita` as a bracketed list encoded in a string, `saldoReceitas`
+and `mensagem`; a partial allocation is allowed. Retained requests require the
+platform CNPJ and return HTTP 201 with `inicio`, `fim`, `quantidade=1000` and
+`mensagem`. HTTP 400 is a numbering-unavailable refusal, never a successful
+allocation; 404/422 are not treated as documented exhaustion. Recordings are
+bound to their exact request: the response does not echo prescriber identity,
+and this offline adapter does not claim to perform Gov.br authentication.
+
+`SncrNumberAllocation` retains encrypted owner-imported request/response
+recordings per issuer. Runtime may only read its own recordings, never insert,
+update, delete or truncate them. The same immutable protections apply to
+issuance receipts. All new tables use FORCE RLS; audit contains metadata only.
+The protected-field migration is irreversible; rollback = restore.
+
+The inspected Anvisa September 2026 manual documents number requests, not an
+emission-registration endpoint. Registration explicitly refuses rather than
+inventing an API or acknowledgment. Its historical 14-digit examples are not
+claimed to match the subsequently announced 16-digit schema. No real or
+training-environment request was made. Official electronic models and SNCR QR
+rendering remain unavailable; the current PDF is synthetic and its random QR
+handle grants status lookup only. No legal issuance or EG satisfaction is
+claimed by any local receipt.
+
+## Independent signing verification rehearsal
+
+Todo 35 adds the prepare/sign/status/verify `SignatureProvider` protocol
+alongside the compatible `CallbackSignatureProvider` contract. The existing
+synthetic signer remains the default. An explicitly supplied
+`RecordedSignatureProvider` takes explicit synthetic certificate material and
+a separate `SignatureVerificationAPIAdapter`. The latter uses locked
+cryptography to verify exact-byte RSA-PSS signatures, the certificate path to
+a configured synthetic root, a separately signed timestamp proof, certificate
+validity/purpose/identity and issuer-signed CRLs. Recorded verdict strings are
+never verification evidence. The selected mechanism, fixed fixtures and
+restricted synthetic anchor policy are recorded in ADR-010.
+
+An authenticated candidate first commits as `signed_unverified`, retaining
+encrypted, immutable bytes. It grants no release, download or delivery.
+`reconcile_signature` verifies outside the transaction and revalidates current
+document, authority and approval before completion. Unsigned/tampered bytes,
+wrong/broken chains, revoked or expired certificates and invalid timestamp
+proofs fail closed. An unavailable revocation source returns `reconcile` and preserves
+the same candidate for that worker command, never re-signing it. Negative
+verification quarantines the candidate in `failed`; it never exposes bytes.
+Recorded fixtures reach only `rehearsal_complete`, never `issued`. Neither
+the existing synthetic envelope check nor this synthetic PKI establishes
+qualified ICP-Brasil/PAdES interoperability. Live signing and
+verification both require activated lifecycle records and live-runtime
+approval; a real partner/API/trust policy remains BLOCKED-ON-EG-1/EG-5.
 
 ## Rendered document artifacts
 
@@ -90,6 +253,13 @@ which re-validate the live `records` session on every call. Downloads append a
 `prescription_document_viewed`. `revoke_document_release` restores denial and
 `revoke_document` records an insert-only revocation row; neither rewrites the
 signed artifact.
+
+Patient releases default to `restricted_from_delegates=True`. The issuer may
+explicitly choose a shareable release when creating it; that classification is
+immutable. All three patient resolvers, including the keyed list and direct byte
+export, recheck the active delegate grant and omit restricted releases. Unknown
+and restricted document selectors both return the same denial. The patient's
+own access and public status-only verification retain their existing boundaries.
 
 Delivery uses the shared outbox: `deliver_document` enqueues a
 `prescription.document.delivery` operation that the registered

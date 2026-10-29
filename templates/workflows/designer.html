@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-workflows.css' %}">
+{% endblock %}
+{% block title %}{% trans "Workflow designer" %}{% endblock %}
+{% block content %}
+<div id="workflow-designer">
+  <header class="page-header">
+    <h1>{% trans "Workflow designer" %}</h1>
+    <p>{% trans "Build a checklist, validate it, then publish a version. Running workflows keep the version they started with." %}</p>
+  </header>
+  <nav aria-label="{% trans 'Workflow navigation' %}" class="task-filters">
+    <a href="{% url 'workflows:tasks' clinic.pk %}">{% trans "Tasks" %}</a>
+    <a href="{% url 'workflows:runs' clinic.pk %}">{% trans "Runs" %}</a>
+    <a href="{% url 'workflows:designer' clinic.pk %}" aria-current="page">{% trans "Designer" %}</a>
+  </nav>
+  {% if workflow_error %}<p class="notice notice--error" role="alert">{{ workflow_error }}</p>{% endif %}
+  <section aria-labelledby="new-definition">
+    <h2 id="new-definition">{% trans "New workflow" %}</h2>
+    <form method="post" class="task-create-form">
+      {% csrf_token %}<input type="hidden" name="action" value="create">
+      {{ definition_form.as_p }}
+      <button class="button button--primary" type="submit">{% trans "Create draft" %}</button>
+    </form>
+  </section>
+  <section aria-labelledby="versions">
+    <h2 id="versions">{% trans "Versions" %}</h2>
+    {% for item in definitions %}{% with definition=item.definition %}
+    <article class="task-row" data-definition="{{ definition.pk }}" data-definition-state="{{ definition.state }}" data-revision="{{ definition.revision }}">
+      <header><h3>{{ definition.key }} · {% trans "Version" %} {{ definition.version }}</h3><p>{{ item.state_label }} · {% trans "Revision" %} {{ definition.revision }}</p></header>
+      <ol>{% for step in item.steps %}<li>{% if step.handler == "task" %}{% trans "Task" %}: {% if step.kind == "checklist" %}{% trans "Checklist" %}{% elif step.kind == "review" %}{% trans "Review" %}{% else %}{% trans "Follow-up" %}{% endif %} · {{ step.owner_label }}{% elif step.handler == "timer" %}{% trans "Timer" %}: {{ step.seconds }} {% trans "seconds" %}{% else %}{% trans "Synthetic external action" %}{% endif %}</li>{% endfor %}</ol>
+      {% if definition.state == "draft" %}
+      <details><summary>{% trans "Add step" %}</summary>
+        <form method="post" class="task-create-form">{% csrf_token %}
+          <input type="hidden" name="action" value="add-step">
+          {% include "workflows/partials/version_fields.html" %}
+          {{ item.step_form.as_p }}<button class="button button--secondary" type="submit">{% trans "Save step" %}</button>
+        </form>
+      </details>
+      {% endif %}
+      <div class="task-actions">
+        {% if definition.state == "draft" %}
+        {% if definition.steps|length > 1 %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="remove-step">{% include "workflows/partials/version_fields.html" %}<button class="button button--secondary" type="submit">{% trans "Remove last step" %}</button></form>{% endif %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="validate">{% include "workflows/partials/version_fields.html" %}<button class="button button--primary" type="submit">{% trans "Validate version" %}</button></form>
+        {% elif definition.state == "validated" %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="publish">{% include "workflows/partials/version_fields.html" %}<button class="button button--primary" type="submit">{% trans "Publish version" %}</button></form>
+        {% elif definition.state == "published" %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="retire">{% include "workflows/partials/version_fields.html" %}<button class="button button--secondary" type="submit">{% trans "Retire version" %}</button></form>
+        {% endif %}
+      </div>
+    </article>{% endwith %}
+    {% empty %}<p class="empty-state">{% trans "No workflow versions yet. Create a draft to begin." %}</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

@@ -9,13 +9,14 @@ from uuid import uuid4
 
 import pytest
 from apps.ehr import views as ehr_views
-from apps.ehr.services import ClinicalConflictError
+from apps.ehr.services import ClinicalConflictError, view_version
 from apps.prescription import views as prescription_views
 from apps.prescription.services import DocumentStorageError, discard_draft
 from apps.prescription.signing import initiate_signature
 from apps.tenancy.db import tenant_context
 from django.urls import reverse
 
+from ehr.test_write_ordering import audit_mark, audit_since
 from otp_test_support import runtime_role
 from renewal.test_document_artifacts import seed_rendered
 from renewal.test_encounters import draft as clinical_draft
@@ -23,6 +24,9 @@ from renewal.test_encounters import physician_client, seed
 from renewal.test_prescribing_workflow import _provision
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
+    from apps.ehr.models import ClinicalDocumentVersion
     from django.http import HttpResponseBase
     from pytest_django.fixtures import SettingsWrapper
 
@@ -144,11 +148,18 @@ def test_ehr_review_rejects_an_inconsistent_authorized_version(
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         version = clinical_draft(graph, appointment, template)
     encounter_id = version.document.encounter_id
-    other = copy(version.document)
-    other.encounter_id = uuid4()
-    version.document = other
+
+    def inconsistent(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersion:
+        # The real audited read, answering with a version bound elsewhere.
+        found = view_version(clinic_id=clinic_id, version_id=version_id)
+        other = copy(found.document)
+        other.encounter_id = uuid4()
+        found.document = other
+        return found
+
+    before = audit_mark(graph)
     with monkeypatch.context() as patch:
-        patch.setattr(ehr_views, "view_version", Mock(return_value=version))
+        patch.setattr(ehr_views, "view_version", inconsistent)
         with physician_client(graph) as client:
             response = client.post(
                 reverse("ehr:encounter", kwargs={"clinic_id": graph.clinic_a}),
@@ -159,6 +170,8 @@ def test_ehr_review_rejects_an_inconsistent_authorized_version(
                 },
             )
     _refused(response)
+    # The audited read rolled back with the refusal that followed it.
+    assert [e for e in audit_since(graph, before) if e.startswith("ehr.")] == []
     # No prescription draft exists on this otherwise authorized encounter.
     with physician_client(graph) as client:
         _refused(

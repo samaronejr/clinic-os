@@ -5,13 +5,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from ops.testing import isolation_reconcile, isolation_refresh
+from ops.testing import (
+    isolation_docker_metadata,
+    isolation_host_inventory,
+    isolation_reconcile,
+    isolation_refresh,
+)
 from ops.testing.isolation_candidate_publication import publish_candidate_envelope
 from ops.testing.isolation_common import (
     IsolationError,
     JsonObject,
     load_json,
 )
+from ops.testing.isolation_docker_attestation import MOUNT_TEMPLATE, NETWORK_TEMPLATE
 from ops.testing.isolation_host_state import require_known_host_state
 from ops.testing.isolation_reconcile import reconcile_same_boot
 from ops.testing.isolation_refresh import verify_claim
@@ -62,6 +68,71 @@ def test_reconcile_adopts_a_complete_reserved_stack_from_live_identity(
     claims = cast("list[JsonObject]", ledger["claims"])
     assert claims[0]["status"] == "active"
     assert claims[0]["observed"] == observed
+
+
+@pytest.mark.parametrize(
+    ("raw_command", "accepted"),
+    [
+        ("null", False),
+        ('["postgres", "--synthetic-drift"]', False),
+        ('["postgres"]', True),
+    ],
+)
+def test_reconcile_requires_exact_command_after_docker_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raw_command: str,
+    accepted: bool,
+) -> None:
+    # Given: a reserved stack and scripted Docker/listener read boundaries only.
+    ledger_path = snapshot(tmp_path)
+    spec = stack_spec(CLAIM_ID, "clinic_command_capture", 18086)
+    claim_transitions().reserve_claim(ledger_path, write_spec(tmp_path, spec))
+    observed = stack_observation(spec)
+    inventory = _inventory_with_stack(ledger_path, observed, "clinic_command_capture")
+    before_inventory = copy.deepcopy(inventory)
+    before_ledger = ledger_path.read_bytes()
+    ledger, _ = load_json(ledger_path)
+    claim_root = Path(str(ledger["attempt_root"])) / "claims" / CLAIM_ID
+
+    def run(arguments: tuple[str, ...]) -> str:
+        assert arguments[:3] == ("container", "inspect", "--format")
+        assert arguments[4] == cast("list[str]", observed["container_ids"])[0]
+        if arguments[3] == "{{json .Config.Cmd}}":
+            return raw_command
+        assert arguments[3] in {MOUNT_TEMPLATE, NETWORK_TEMPLATE}
+        return ""
+
+    monkeypatch.setattr(isolation_docker_metadata, "run_docker_command", run)
+    monkeypatch.setattr(
+        isolation_docker_metadata, "capture_docker_metadata", lambda _run: inventory
+    )
+    monkeypatch.setattr(
+        isolation_host_inventory,
+        "capture_loopback_listeners",
+        lambda _proc, _containers: copy.deepcopy(observed["listeners"]),
+    )
+    monkeypatch.setattr(
+        isolation_reconcile, "utc_now", lambda: "2099-01-01T00:00:00.000000Z"
+    )
+
+    # When: native reconciliation captures and validates the real rich inventory.
+    if accepted:
+        reconcile_same_boot(ledger_path)
+    else:
+        with pytest.raises(IsolationError, match="command"):
+            reconcile_same_boot(ledger_path)
+
+    # Then: only an exact command activates; refusals leave canonical authority intact.
+    assert inventory == before_inventory
+    assert claim_root.is_dir()
+    if accepted:
+        reconciled, _ = load_json(ledger_path)
+        claim = cast("list[JsonObject]", reconciled["claims"])[0]
+        assert claim["status"] == "active"
+        assert claim["observed"] == observed
+    else:
+        assert ledger_path.read_bytes() == before_ledger
 
 
 def test_reconcile_separates_live_attestation_from_the_ledger_projection(

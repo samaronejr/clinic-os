@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
@@ -19,12 +19,13 @@ from apps.core.patient_context import bind_encounter_context
 from apps.ehr.history import (
     HistoryChange,
     authorize_history,
+    entry_encounter,
     read_history,
     save_history,
 )
 from apps.ehr.history_forms import HistoryForm
 from apps.ehr.models import HistoryAssessment
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, decided
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -39,6 +40,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 OK = 200
+WRITE_ACTIONS: Final = ("save", "edit", "new")
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset({"open", *WRITE_ACTIONS})
 
 
 def continuation(clinic_id: UUID) -> str:
@@ -46,10 +50,23 @@ def continuation(clinic_id: UUID) -> str:
     return reverse("ehr:history", kwargs={"clinic_id": clinic_id})
 
 
-def _editor(request: HttpRequest, encounter: Encounter) -> HistoryForm:
+def _editor_kind(request: HttpRequest, encounter: Encounter) -> str:
+    """Decide the editor's kind and an edit's write authority, unaudited."""
     kind = request.POST.get("kind", "")
     if kind not in HistoryAssessment.Kind.values:
         raise ClinicalAccessDeniedError
+    if request.POST.get("action") == "edit":
+        # The entry may belong to another encounter of the patient: decide
+        # write authority there before any audited read.
+        owner = entry_encounter(encounter, kind, UUID(request.POST.get("entry_id", "")))
+        if owner is None:
+            raise ClinicalAccessDeniedError
+        authorize_history(encounter.clinic_id, owner, write=True)
+    return kind
+
+
+def _editor(request: HttpRequest, encounter: Encounter, kind: str) -> HistoryForm:
+    """Read the editor's history; runs inside the workspace's read savepoint."""
     context = read_history(
         clinic_id=encounter.clinic_id, encounter_id=encounter.pk, kind=kind
     )
@@ -65,11 +82,10 @@ def _editor(request: HttpRequest, encounter: Encounter) -> HistoryForm:
         entry = next((e for e in context.entries if e.entry_id == entry_id), None)
         if entry is None:
             raise ClinicalAccessDeniedError
-        authorize_history(
-            encounter.clinic_id, entry.assessment.encounter_id, write=True
-        )
         initial.update(
-            entry_id=entry.entry_id, description=entry.description, status=entry.status
+            entry_id=entry.entry_id,
+            description=entry.description,
+            status=entry.status,
         )
     return HistoryForm(initial=initial)
 
@@ -130,29 +146,48 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     encounter = authorize_history(clinic_id, UUID(str(selected)))
     bind_encounter_context(request, encounter)
     form = None
+    editing: str | None = None
     status = OK
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "open":
             request.session[key] = str(encounter.pk)
             return redirect(continuation(clinic_id))
-        if action not in ("save", "edit", "new"):
+        if action not in WRITE_ACTIONS:
             raise ClinicalAccessDeniedError
         authorize_history(clinic_id, encounter.pk, write=True)
         if action in ("new", "edit"):
-            form = _editor(request, encounter)
+            editing = _editor_kind(request, encounter)
         else:
-            form, status = _save(request, encounter)
+            # A refusal inside the save after the checks above is late; deciding
+            # them again leaves exactly an early refusal's record.
+            with decided(
+                lambda: (
+                    require_current_actor_clinic_roles(
+                        clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                    ),
+                    authorize_history(clinic_id, encounter.pk, write=True),
+                )
+            ):
+                form, status = _save(request, encounter)
             if status == OK:
                 request.session[key] = str(encounter.pk)
                 messages.success(
                     request, "Histórico salvo.", extra_tags="ehr.history.saved"
                 )
                 return redirect(continuation(clinic_id))
-    sections = [
-        read_history(clinic_id=clinic_id, encounter_id=encounter.pk, kind=kind)
-        for kind in HistoryAssessment.Kind.values
-    ]
+    # One savepoint holds every audited read this response renders. Authority
+    # committed away after an earlier check (a physician-role revocation)
+    # refuses a later read, or hides the edited entry from it, under RLS. That
+    # late refusal rolls back every view audit before it, so it leaves what an
+    # early refusal leaves; refusals before this point keep their evidence.
+    with transaction.atomic():
+        if editing is not None:
+            form = _editor(request, encounter, editing)
+        sections = [
+            read_history(clinic_id=clinic_id, encounter_id=encounter.pk, kind=kind)
+            for kind in HistoryAssessment.Kind.values
+        ]
     return render(
         request,
         "ehr/history.html",

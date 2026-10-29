@@ -1,0 +1,145 @@
+{% load i18n %}
+<div id="reception-board">
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }} <a href="{{ action_url }}">{% trans "Refresh" %}</a></div>{% endif %}
+  <form class="reception-date" method="post" action="{{ action_url }}">
+    {% csrf_token %}<input type="hidden" name="intent" value="view">
+    <label for="reception-day">{% trans "Date" %}</label>
+    <input id="reception-day" type="date" name="day" value="{{ screen.day|date:'Y-m-d' }}" required>
+    <button type="submit" class="button--secondary">{% trans "Open day" %}</button>
+  </form>
+  <p class="reception-summary">
+    {% blocktrans with late=screen.late_count conflicts=screen.conflict_count %}{{ late }} late arrivals · {{ conflicts }} room conflicts{% endblocktrans %}
+    {% if screen.pending_tasks != None %} · {% blocktrans with count=screen.pending_tasks %}{{ count }} pending tasks{% endblocktrans %}{% endif %}
+  </p>
+  {% if screen.limited %}<p class="feedback feedback--warning" role="status">{% trans "This day exceeds the reception limit. Use the agenda to review all appointments." %}</p>{% endif %}
+  {% if issued_token %}
+  <div class="feedback feedback--warning" role="status">
+    <details>
+      <summary>{% trans "Show device token" %}</summary>
+      <label for="issued-display-token">{% trans "Device token — shown only once" %}</label>
+      <input id="issued-display-token" type="text" value="{{ issued_token }}" readonly autocomplete="off">
+    </details>
+    <p>{% trans "Copy this token to the waiting display. It permits only ticket and room codes." %}</p>
+  </div>
+  {% endif %}
+  <div class="reception-layout">
+    <div class="reception-main">
+      <section class="reception-section" aria-labelledby="arrivals-title">
+        <h2 id="arrivals-title">{% trans "Arrivals and readiness" %}</h2>
+        <p class="hint">{% trans "Readiness is informational. Optional consent, documents and payment never prevent arrival." %}</p>
+        {% for row in screen.arrivals %}
+        <article class="reception-arrival">
+          <header><h3>{{ row.time }} · {{ row.appointment.patient.full_name }}</h3>
+            {% if row.late %}<span class="badge badge--warning">{% trans "Late" %}</span>{% endif %}
+            {% if row.room_conflict %}<span class="badge badge--warning">{% trans "Room unavailable" %}</span>{% endif %}
+          </header>
+          <ul class="reception-readiness">
+            <li>{% blocktrans with count=row.readiness.forms_pending %}Pending questionnaires: {{ count }}{% endblocktrans %}</li>
+            <li>{% blocktrans with count=row.readiness.consents_pending %}Optional consents to review: {{ count }}{% endblocktrans %}</li>
+            <li>{% if row.readiness.payment_pending == None %}{% trans "Payment status unavailable for this role" %}{% elif row.readiness.payment_pending %}{% trans "Payment pending" %}{% else %}{% trans "No issued payment pending" %}{% endif %}</li>
+            <li>{% if row.readiness.identity_document_recorded %}{% trans "Identity document recorded" %}{% else %}{% trans "Identity document not recorded" %}{% endif %}</li>
+          </ul>
+          {% if row.can_arrive %}
+          {% if screen.locations %}
+          <form class="reception-inline" method="post" action="{{ action_url }}">
+            {% csrf_token %}
+            <input type="hidden" name="intent" value="arrive">
+            <input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}">
+            <input type="hidden" name="appointment_id" value="{{ row.appointment.pk }}">
+            <input type="hidden" name="expected_revision" value="{{ row.appointment.revision }}">
+            <input type="hidden" name="command_id" value="{{ row.command_id }}">
+            <label for="arrival-location-{{ forloop.counter }}">{% trans "Arrival location" %}</label>
+            <select id="arrival-location-{{ forloop.counter }}" name="location_id">{% for location in screen.locations %}<option value="{{ location.pk }}">{{ location.name }}</option>{% endfor %}</select>
+            <button type="submit">{% if row.appointment.status == "arrived" %}{% trans "Add to arrival queue" %}{% else %}{% trans "Register arrival" %}{% endif %}</button>
+          </form>
+          {% else %}<p class="feedback feedback--warning">{% trans "Configure an arrival location in Scheduling settings before registering arrivals." %}</p>{% endif %}
+          {% elif row.appointment.status == "arrived" %}<p class="hint">{% trans "Arrival registered" %}</p>
+          {% elif row.appointment.status == "in_progress" %}<p class="hint">{% trans "Care in progress" %}</p>
+          {% else %}<p class="hint">{% trans "Arrival is unavailable for this state or role." %}</p>{% endif %}
+        </article>
+        {% empty %}<p class="reception-empty">{% trans "No arrivals to manage for this day." %}</p>{% endfor %}
+      </section>
+      <section class="reception-section" aria-labelledby="queue-title">
+        <h2 id="queue-title">{% trans "Location queues" %}</h2>
+        {% for entry in screen.queue %}
+        <article class="reception-queue-row">
+          <div>
+            <h3><span class="reception-ticket">{{ entry.ticket_code }}</span> · {{ entry.appointment.patient.full_name }}</h3>
+            <p class="hint">{{ entry.location.name }} · {% blocktrans with position=entry.position %}Position {{ position }}{% endblocktrans %}</p>
+            <p>{% if entry.state == "waiting" %}{% trans "Waiting" %}{% elif entry.state == "called" %}{% trans "Called" %}{% elif entry.state == "in_room" %}{% trans "In room" %}{% else %}{% trans "Done" %}{% endif %}{% if entry.room %} · {{ entry.room.name }} · {% blocktrans with unit=entry.room_unit %}Unit {{ unit }}{% endblocktrans %}{% endif %}</p>
+          </div>
+          {% if entry.state == "waiting" %}
+          <form class="reception-call" method="post" action="{{ action_url }}">
+            {% csrf_token %}
+            <input type="hidden" name="intent" value="call">
+            <input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}">
+            <input type="hidden" name="queue_entry_id" value="{{ entry.pk }}">
+            <input type="hidden" name="expected_revision" value="{{ entry.revision }}">
+            <label for="queue-room-{{ forloop.counter }}">{% trans "Room" %}</label>
+            <select id="queue-room-{{ forloop.counter }}" name="room_id" required>
+              {% for item in screen.rooms %}{% if item.unit == 1 %}<option value="{{ item.room.pk }}">{{ item.room.name }}</option>{% endif %}{% endfor %}
+            </select>
+            <label for="queue-unit-{{ forloop.counter }}">{% trans "Unit" %}</label>
+            <input id="queue-unit-{{ forloop.counter }}" type="number" name="unit" min="1" max="64" value="1" required>
+            <button type="submit"{% if not screen.rooms %} disabled{% endif %}>{% trans "Call to room" %}</button>
+          </form>
+          {% endif %}
+        </article>
+        {% empty %}<p class="reception-empty">{% trans "The arrival queue is empty." %}</p>{% endfor %}
+      </section>
+    </div>
+    <aside class="reception-rooms" aria-labelledby="rooms-title">
+      <h2 id="rooms-title">{% trans "Room status" %}</h2>
+      {% for item in screen.rooms %}
+      <section class="reception-room" aria-labelledby="room-title-{{ forloop.counter }}">
+        <h3 id="room-title-{{ forloop.counter }}">{{ item.room.name }} · {{ item.unit }}</h3>
+        <p class="hint">{% if item.code %}{% trans "Display code" %}: {{ item.code }}{% else %}{% trans "The display code is assigned when this room unit is first used." %}{% endif %}</p>
+        {% if item.state == "occupied" %}
+        <p class="badge badge--info">{% trans "Occupied" %} · {{ item.ticket }}</p>
+        {% else %}
+        <form method="post" action="{{ action_url }}">
+          {% csrf_token %}
+          <input type="hidden" name="intent" value="room">
+          <input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}">
+          <input type="hidden" name="room_id" value="{{ item.room.pk }}">
+          <input type="hidden" name="unit" value="{{ item.unit }}">
+          <input type="hidden" name="expected_revision" value="{{ item.revision }}">
+          <label for="room-state-{{ forloop.counter }}">{% trans "Condition" %}</label>
+          <select id="room-state-{{ forloop.counter }}" name="state">
+            <option value="available"{% if item.state == "available" %} selected{% endif %}>{% trans "Available" %}</option>
+            <option value="cleaning"{% if item.state == "cleaning" %} selected{% endif %}>{% trans "Cleaning" %}</option>
+            <option value="unavailable"{% if item.state == "unavailable" %} selected{% endif %}>{% trans "Unavailable" %}</option>
+          </select>
+          <button type="submit" class="button--secondary">{% trans "Update room" %}</button>
+        </form>
+        {% endif %}
+      </section>
+      {% empty %}<p class="reception-empty">{% trans "No active room configured." %}</p>{% endfor %}
+    </aside>
+  </div>
+  {% if can_manage_reception %}
+  <section class="reception-section" aria-labelledby="delays-title">
+    <h2 id="delays-title">{% trans "Clinician delays" %}</h2>
+    {% for item in delay_rows %}
+    <form class="reception-inline" method="post" action="{{ action_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="intent" value="delay">
+      <input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}">
+      <input type="hidden" name="practitioner_id" value="{{ item.id }}">
+      <input type="hidden" name="expected_revision" value="{{ item.revision }}">
+      <label for="delay-{{ forloop.counter }}">{% blocktrans with name=item.label %}{{ name }} — delay in minutes{% endblocktrans %}</label>
+      <input id="delay-{{ forloop.counter }}" type="number" name="minutes" value="{{ item.minutes }}" min="0" max="720" required>
+      <button type="submit" class="button--secondary">{% trans "Broadcast delay" %}</button>
+    </form>
+    {% empty %}<p class="reception-empty">{% trans "No active clinician configured." %}</p>{% endfor %}
+  </section>
+  <details class="reception-section">
+    <summary>{% trans "Waiting display devices" %}</summary>
+    <p>{% trans "Public screens show ticket and room codes only, never patient names or service details." %}</p>
+    <form method="post" action="{{ action_url }}">{% csrf_token %}<input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}"><input type="hidden" name="intent" value="issue_device"><button type="submit" class="button--secondary">{% trans "Issue display token" %}</button></form>
+    {% for device in screen.devices %}
+    <form class="reception-inline" method="post" action="{{ action_url }}">{% csrf_token %}<input type="hidden" name="day" value="{{ screen.day|date:'Y-m-d' }}"><input type="hidden" name="intent" value="revoke_device"><input type="hidden" name="device_id" value="{{ device.pk }}"><span>{% trans "Display device" %} {{ forloop.counter }}</span><button type="submit" class="button--secondary">{% trans "Revoke device" %}</button></form>
+    {% empty %}<p class="hint">{% trans "No connected display device." %}</p>{% endfor %}
+  </details>
+  {% endif %}
+</div>

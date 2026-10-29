@@ -74,7 +74,20 @@ INSTALLED_APPS: list[str] = [
     "apps.interop.apps.InteropConfig",
     "apps.providers.apps.ProvidersConfig",
     "apps.realtime.apps.RealtimeConfig",
+    "apps.workflows.apps.WorkflowsConfig",
+    "apps.orders.apps.OrdersConfig",
 ]
+
+# Rehearsal is explicit and cannot activate a real provider.
+WORKFLOWS_SYNTHETIC_ENABLED: bool = env.bool(
+    "WORKFLOWS_SYNTHETIC_ENABLED", default=False
+)
+ORDERS_SYNTHETIC_LAB_ENABLED: bool = env.bool(
+    "ORDERS_SYNTHETIC_LAB_ENABLED", default=False
+)
+PRESCRIPTION_SYNTHETIC_ISSUANCE: bool = env.bool(
+    "PRESCRIPTION_SYNTHETIC_ISSUANCE", default=False
+)
 
 AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [
@@ -84,6 +97,10 @@ LOGIN_URL: str = "/auth/login/"
 OTP_LOGIN_URL: str = "/auth/verify/"
 OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
+WEBAUTHN_RP_ID: str = env("CLINIC_WEBAUTHN_RP_ID", default="localhost")
+# Synthetic loopback environments can bind their ephemeral port at begin;
+# every non-loopback environment supplies its exact origin explicitly.
+WEBAUTHN_ORIGIN: str = env("CLINIC_WEBAUTHN_ORIGIN", default="")
 
 MIDDLEWARE: list[str] = [
     # Request id binding, latency SLI and access log; outermost so every
@@ -191,6 +208,11 @@ SPECTACULAR_SETTINGS: dict[str, object] = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/ui/v1",
     "PREPROCESSING_HOOKS": ["apps.core.api.schema.ui_api_endpoints_only"],
+    # Two endpoints name a "view" choice: the ledger page and the agenda board.
+    "ENUM_NAME_OVERRIDES": {
+        "AgendaLedgerViewEnum": ["day", "week"],
+        "AgendaBoardViewEnum": ["day", "week", "month", "list"],
+    },
 }
 
 AUTH_PASSWORD_VALIDATORS = [

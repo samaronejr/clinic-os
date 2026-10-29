@@ -5,6 +5,8 @@ from typing import ClassVar
 import django.db.models.deletion
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Extend the version row; transition authority lands in 0008."""
@@ -38,7 +40,7 @@ class Migration(migrations.Migration):
             name="finalized_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(content_digest="")
@@ -46,7 +48,7 @@ class Migration(migrations.Migration):
                 name="ehr_version_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.CheckConstraint(
                 condition=(
@@ -66,7 +68,7 @@ class Migration(migrations.Migration):
                 name="ehr_version_finalized_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.CheckConstraint(
                 condition=(models.Q(amendment_of__isnull=True, amendment_reason=""))

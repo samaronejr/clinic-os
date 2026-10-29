@@ -59,7 +59,9 @@ def test_final_and_ci_suite_selectors_are_distinct_closed_inputs() -> None:
     assert FINAL_SUITES.read_bytes() == (
         b"availability\npatient\nruntime-https\nscheduling\n"
     )
-    assert CI_SUITES.read_bytes() == b"availability\npatient\nscheduling\n"
+    assert CI_SUITES.read_bytes() == (
+        b"availability\nclinical-inbox\npatient\nscheduling\n"
+    )
 
     sources = [
         ("100644", "0" * 40, source_path)

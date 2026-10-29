@@ -14,6 +14,7 @@ from django.contrib.auth import logout
 from django.db import connection, transaction
 from django.http import HttpRequest
 from django.test import Client
+from django.utils import timezone
 
 from patient_service_support import runtime_role
 from realtime.test_authorization import session_key
@@ -71,9 +72,11 @@ def test_role_revocation_emits_only_after_commit(rbac_graph: RbacGraph) -> None:
                 "SELECT set_config('app.current_tenant', %s, true)",
                 [str(rbac_graph.organization_a)],
             )
-            UserClinicRole.objects.filter(
+            membership = UserClinicRole.objects.get(
                 user_id=rbac_graph.shared_user, clinic_id=rbac_graph.clinic_a
-            ).delete()
+            )
+            membership.revoked_at = timezone.now()
+            membership.save(update_fields=("revoked_at",))
         message = listener.get_message(timeout=3)
         assert message is not None
         assert isinstance(message["data"], bytes)

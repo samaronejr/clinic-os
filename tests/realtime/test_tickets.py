@@ -18,6 +18,7 @@ from apps.realtime.transport import redis_client
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.test import Client
 from redis import Redis
 
@@ -185,7 +186,7 @@ def test_inactive_or_revoked_actor_cannot_obtain_a_ticket(
         else:
             UserClinicRole.objects.filter(
                 user_id=rbac_graph.shared_user, clinic_id=rbac_graph.clinic_a
-            ).delete()
+            ).update(revoked_at=Now())
     stored = Session.objects.values_list("session_data", "expire_date").get(pk=key)
     # Start the refusal from an empty private keyspace: no earlier key (and no
     # TTL) can move under the exact comparison below.

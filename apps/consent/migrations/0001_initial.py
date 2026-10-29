@@ -9,6 +9,8 @@ from django.conf import settings
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Store versioned consent without destructive lifecycle fields."""
@@ -175,14 +177,14 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.PROTECT, to="consent.consenttext"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consenttext",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "purpose", "version"),
                 name="consent_text_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consenttext",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -193,13 +195,13 @@ class Migration(migrations.Migration):
                 name="consent_text_scope_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consentacceptance",
             constraint=models.UniqueConstraint(
                 fields=("enrollment", "text"), name="consent_acceptance_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consentacceptance",
             constraint=models.CheckConstraint(
                 condition=models.Q(("authority", "patient_explicit_action")),

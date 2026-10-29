@@ -14,7 +14,8 @@ import sys
 import textwrap
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from ops.testing import renewal_runner as runner
@@ -35,6 +36,8 @@ from renewal.browser import a11y_support, engines
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from playwright.sync_api import Browser, Playwright
+
 REPOSITORY = Path(__file__).resolve().parents[2]
 
 
@@ -45,8 +48,12 @@ def _private(path: Path) -> Path:
 
 def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert set(runner.SUITES) == {
+        "onboarding",
         "agenda",
+        "agenda-slice",
+        "agenda-grid",
         "realtime",
+        "reception",
         "amendments",
         "attachments",
         "availability",
@@ -61,6 +68,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "video-recovery",
         "locale",
         "patient-access",
+        "patient-workspace",
         "patient-video",
         "questionnaires",
         "retention",
@@ -75,12 +83,35 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "smoke",
         "staff-intake",
         "workspace",
+        "results",
+        "clinical-inbox",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
+    assert {
+        "realtime",
+        "agenda-slice",
+        "agenda-grid",
+        "reception",
+    } == runner.REALTIME_SUITES
+    assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
     assert set(runner.SUITES) >= runner.FIXTURE_SUITES
     assert "video-recovery" in runner.FIXTURE_SUITES & runner.VIDEO_SUITES
+    # The realtime suite also drives teleconsult hints through a real room.
+    assert (
+        frozenset(
+            {
+                "realtime",
+                "teleconsult",
+                "patient-video",
+                "clinician-video",
+                "video-recovery",
+                "end-to-end",
+            }
+        )
+        == runner.VIDEO_SUITES
+    )
     # The rehearsal drives every synthetic adapter slice in one runtime.
     assert "end-to-end" in (
         runner.FIXTURE_SUITES
@@ -391,6 +422,9 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         "go_back_settled": "the helper: go_back between two settles",
         "go_forward_settled": "the helper: go_forward between two settles",
         "wait_for_signed_in": "the helper: sign-in landing, then a settle",
+        "wait_for_document": (
+            "the helper: a document the suite did not navigate to, then a settle"
+        ),
     },
     BROWSER_SUITES / "engines.py": {
         "browser_zoom_200": (
@@ -408,6 +442,21 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
             "asserts the session cookie between the press and the URL wait"
         ),
     },
+    BROWSER_SUITES / "test_agenda_slice.py": {
+        "press": (
+            "records the keyboard-only move script; its one Enter submits the"
+            " hx-post move form, which swaps the grid; no document"
+        ),
+        "_cancel": (
+            "Enter on the move dialog's type=button Cancel closes it; no document"
+        ),
+    },
+    BROWSER_SUITES / "test_agenda_grid.py": {
+        "press": (
+            "records the keyboard-only board move; its one Enter submits the"
+            " hx-post move form, which swaps the board; no document"
+        ),
+    },
     BROWSER_SUITES / "test_billing.py": {
         "test_preferences_keyboard_and_reflow_hold_on_the_payment_screen": (
             "Enter on the copy button copies the code; no document"
@@ -415,6 +464,17 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
     },
     BROWSER_SUITES / "test_clinical_history.py": {
         "zoom_journey": "Enter on a <summary> toggles <details>; no document",
+    },
+    BROWSER_SUITES / "specialty_accessibility.py": {
+        "_toggle_calculator_disclosure": (
+            "Enter on the calculator summary toggles its native details; no document"
+        ),
+    },
+    BROWSER_SUITES / "specialty_packs_scenario.py": {
+        "submit_pack": (
+            "Enter submits the hx-post pack form; exact POST response and "
+            "main-content afterSettle are subscribed before submission; no document"
+        ),
     },
     BROWSER_SUITES / "test_primitives.py": dict.fromkeys(
         (
@@ -1192,6 +1252,91 @@ def test_mobile_profiles_are_the_touch_phones_of_the_device_matrix() -> None:
             assert descriptor["has_touch"] is True
 
 
+def test_every_firefox_the_suites_start_turns_coop_processing_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # engines.py, Cross-origin opener policy: a COOP browsing-context
+    # replacement loses a Juggler event, so launch and both throwaway
+    # Firefox profiles keep COOP processing off; other engines are unchanged.
+    launched: dict[str, list[dict[str, object]]] = {}
+
+    def browser_type(name: str) -> SimpleNamespace:
+        def start(*_profile: object, **options: object) -> SimpleNamespace:
+            launched.setdefault(name, []).append(options)
+            return SimpleNamespace(
+                on=lambda *_: None,
+                set_storage_state=lambda _state: None,
+                pages=[None],
+                close=lambda: None,
+            )
+
+        return SimpleNamespace(name=name, launch=start, launch_persistent_context=start)
+
+    driver = SimpleNamespace(**{name: browser_type(name) for name in engines.ENGINES})
+    for engine in engines.ENGINES:
+        engines.launch(cast("Playwright", driver), engine, f"/{engine}")
+    monkeypatch.setenv("CLINIC_RENEWAL_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "/firefox")
+    firefox = SimpleNamespace(browser_type=driver.firefox)
+    engines.new_context(cast("Browser", firefox), device_scale_factor=2)
+    signed_in = SimpleNamespace(
+        context=SimpleNamespace(browser=firefox, storage_state=dict)
+    )
+    with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
+        pass
+
+    off = {"browser.tabs.remote.useCrossOriginOpenerPolicy": False}
+    assert off == engines.FIREFOX_USER_PREFS
+    scaled = {**off, "layout.css.devPixelsPerPx": "2.0"}
+    assert [o.get("firefox_user_prefs") for o in launched["firefox"]] == [
+        off,
+        scaled,
+        scaled,
+    ]
+    assert [o.get("firefox_user_prefs") for o in launched["chromium"]] == [None]
+    assert [o.get("firefox_user_prefs") for o in launched["webkit"]] == [None]
+
+
+def test_firefox_zoom_profiles_request_the_scale_their_pref_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Playwright 1.61.0 sends every Firefox viewport with ``deviceScaleFactor
+    # || 1`` (FFBrowserContext.doUpdateDefaultViewport), an override that
+    # hides ``layout.css.devPixelsPerPx``. Only a COOP browsing-context swap
+    # dropped it, and COOP processing is off, so a profile that names its
+    # scale only in the pref measures devicePixelRatio 1 (hosted run
+    # 38505173758: ten Firefox suites at 200% zoom).
+    profiles: list[dict[str, object]] = []
+
+    def start(*_profile: object, **options: object) -> SimpleNamespace:
+        profiles.append(options)
+        return SimpleNamespace(
+            on=lambda *_: None,
+            set_storage_state=lambda _state: None,
+            pages=[None],
+            close=lambda: None,
+        )
+
+    firefox = SimpleNamespace(
+        browser_type=SimpleNamespace(name="firefox", launch_persistent_context=start)
+    )
+    monkeypatch.setenv("CLINIC_RENEWAL_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "/firefox")
+    engines.new_context(cast("Browser", firefox), device_scale_factor=3)
+    signed_in = SimpleNamespace(
+        context=SimpleNamespace(browser=firefox, storage_state=dict)
+    )
+    with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
+        pass
+
+    assert [o.get("device_scale_factor") for o in profiles] == [3, 2]
+    for options in profiles:
+        prefs = cast("dict[str, object]", options["firefox_user_prefs"])
+        assert prefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] is False
+        scale = float(str(prefs["layout.css.devPixelsPerPx"]))
+        assert scale == options["device_scale_factor"]
+
+
 def test_artifact_root_must_be_excluded_or_external(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1271,6 +1416,7 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         engine="webkit",
         username="renewal-owner-x",
         password="secret-password",  # noqa: S106 - synthetic fixture value.
+        secret_key=secrets.token_urlsafe(48),
     )
     assert environment["CLINIC_BROWSER_ENGINE"] == "webkit"
     assert environment["CLINIC_RENEWAL_BASE_URL"] == "http://127.0.0.1:48000"
@@ -1350,6 +1496,81 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     assert environment["MIGRATION_DATABASE_URL"] == database.owner_dsn
     assert environment["TEST_SUPERUSER_DATABASE_URL"] == database.super_dsn
     assert "CELERY_RESULT_BACKEND" not in environment
+
+
+def test_browser_children_preserve_owned_runtime_paths_and_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owned = {
+        "TMPDIR": str(tmp_path / "tmp"),
+        "PLAYWRIGHT_BROWSERS_PATH": str(tmp_path / "browsers"),
+        "REALTIME_REDIS_URL": "redis://127.0.0.1:65431/1",
+    }
+    for name, value in owned.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("CLINIC_UNRELATED_SECRET", "must-not-inherit")
+    environments = (
+        runner._server_environment(
+            "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic"
+        ),
+        runner._pytest_environment(
+            base_url="http://127.0.0.1:48000",
+            artifact_root=tmp_path,
+            browser=str(tmp_path / "browser"),
+            engine="chromium",
+            username="synthetic-staff",
+            password=tmp_path.name,
+            secret_key=secrets.token_urlsafe(48),
+        ),
+    )
+    for environment in environments:
+        assert {name: environment[name] for name in owned} == owned
+        assert "CLINIC_UNRELATED_SECRET" not in environment
+
+
+def test_realtime_suites_lend_workers_the_served_broker_only() -> None:
+    key = "CLINIC_RENEWAL_REALTIME_REDIS_URL"
+    tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
+    lent = [
+        (node, value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.IfExp) and isinstance(node.body, ast.Dict)
+        for name, value in zip(node.body.keys, node.body.values, strict=True)
+        if isinstance(name, ast.Constant) and name.value == key
+    ]
+    assert len(lent) == 1
+    guard, value = lent[0]
+    # The URL realtime_broker gave the served stream, for realtime suites only.
+    assert ast.unparse(value) == "server_environment['REALTIME_REDIS_URL']"
+    assert ast.unparse(guard.test) == "suite in REALTIME_SUITES"
+    assert key not in fixture_secrets.SECRET_ENVIRONMENT
+
+
+def test_browser_failure_tracebacks_never_include_fixture_arguments() -> None:
+    tree = ast.parse(
+        (REPOSITORY / "ops/testing/renewal_runner.py").read_text(encoding="utf-8")
+    )
+    suite = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_browser_suite"
+    )
+    commands = [
+        {
+            argument.value
+            for argument in call.args[0].elts
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        }
+        for call in ast.walk(suite)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "_run_bounded"
+        and call.args
+        and isinstance(call.args[0], ast.List)
+    ]
+    pytest_commands = [arguments for arguments in commands if "pytest" in arguments]
+    assert pytest_commands
+    assert all("--tb=short" in arguments for arguments in pytest_commands)
 
 
 def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
@@ -1674,6 +1895,44 @@ def test_renewal_settings_reject_an_owner_role_dsn(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr.decode()[-500:]
 
 
+def test_renewal_passkey_challenge_uses_a_browser_valid_loopback_origin() -> None:
+    # Given the actual renewal serving environment, without opening its database.
+    environment = runner._server_environment(
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+    )
+    # When a browser on localhost starts a ceremony at the ephemeral server port.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json\n"
+            "import django\n"
+            "django.setup()\n"
+            "from django.test import RequestFactory\n"
+            "from apps.identity.passkey_challenges import new_challenge\n"
+            "request = RequestFactory().post(\n"
+            "    '/auth/passkey/register/begin/', HTTP_HOST='localhost:49152'\n"
+            ")\n"
+            "challenge = new_challenge(request, purpose='register')\n"
+            "print(json.dumps({\n"
+            "    'rp_id': challenge.rp_id, 'origin': challenge.origin\n"
+            "}))\n",
+        ],
+        check=False,
+        cwd=REPOSITORY,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    # Then the RP is a domain, not an IP address, and the actual port stays bound.
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "rp_id": "localhost",
+        "origin": "http://localhost:49152",
+    }
+
+
 def test_excluded_predicate_matches_the_snapshot_contract() -> None:
     for path in (
         ".omo/evidence/x.json",
@@ -1883,6 +2142,7 @@ def test_secret_runner_inputs_are_the_redacted_environment() -> None:
         engine="chromium",
         username="user",
         password=sentinel,
+        secret_key=sentinel,
     )
     derived = {name for name, value in exported.items() if value == sentinel}
     tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
@@ -1913,3 +2173,67 @@ def test_secret_runner_inputs_are_the_redacted_environment() -> None:
         for path, lines in readers.items()
         if lines and path not in SECRET_READER_EXEMPTIONS
     } == {}
+
+
+def test_server_signing_key_reaches_only_synthetic_fixture_environment(
+    tmp_path: Path,
+) -> None:
+    # Given the key minted by the actual server environment constructor.
+    server = runner._server_environment(
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+    )
+    key = fixture_secrets.FixtureSecret(server["SECRET_KEY"])
+    server["SECRET_KEY"] = key
+    root = _private(tmp_path / "signing-key")
+    (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (root / "test_signing_key.py").write_text(
+        "import os\n"
+        "def test_failure():\n"
+        "    print(os.environ['SECRET_KEY'])\n"
+        "    raise RuntimeError(os.environ['SECRET_KEY'])\n",
+        encoding="utf-8",
+    )
+    environment = runner._pytest_environment(
+        base_url="http://127.0.0.1:1",
+        artifact_root=root,
+        browser="/usr/bin/true",
+        engine="chromium",
+        username="user",
+        password=fixture_secrets.new_password(),
+        secret_key=key,
+    )
+    environment["PYTHONPATH"] = f"{REPOSITORY / 'tests'}{os.pathsep}{REPOSITORY}"
+    assert environment["SECRET_KEY"] == key
+    assert environment["CLINIC_DATA_MODE"] == "synthetic"
+    # When a fixture failure tries to print and raise with that same key.
+    code = runner._run_bounded(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(root / "pytest.ini"),
+            "--rootdir",
+            str(root),
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "renewal.browser._fixture_secrets",
+            "--showlocals",
+            f"--junitxml={root / 'junit.xml'}",
+            str(root / "test_signing_key.py"),
+        ],
+        environment,
+        root / "pytest.log",
+        cwd=root,
+        timeout=120,
+    )
+    # Then it remains an actual failure, but every emitted artifact is scrubbed.
+    assert code == 1
+    leaking_paths = [
+        path.name
+        for path in root.rglob("*")
+        if path.is_file() and key.encode() in path.read_bytes()
+    ]
+    assert leaking_paths == []
+    assert fixture_secrets.REDACTED in (root / "pytest.log").read_text()

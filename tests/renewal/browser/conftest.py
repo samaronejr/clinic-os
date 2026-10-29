@@ -85,6 +85,11 @@ class _WebKitArtifacts:
         # Only navigations have a frame; service-worker requests raise on it.
         if not response.request.is_navigation_request():
             return
+        # A popup's first navigation is issued before its frame is bound to a
+        # page, and Request.frame raises for it (WebKit). That document gets
+        # no absorption budget, so any refusal there still counts.
+        if response.request._impl_obj._safe_page() is None:
+            return
         frame = response.frame
         if frame.parent_frame is not None:
             return

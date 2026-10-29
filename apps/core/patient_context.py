@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Final, Protocol
 from uuid import UUID
 
@@ -30,7 +30,10 @@ from apps.ehr.history import read_history
 from apps.ehr.models import Encounter
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError, require_permission
+from apps.intake.alias_access import patient_alias_set
+from apps.intake.demographics import demographics_profile
 from apps.intake.models import PatientClinicEnrollment
+from apps.intake.services import PatientAccessDeniedError
 from apps.scheduling.agenda_presenter import clinic_local_today
 
 if TYPE_CHECKING:
@@ -40,16 +43,20 @@ logger = logging.getLogger(__name__)
 
 SESSION_PREFIX: Final = "workspace.patient."
 BOUND_ATTRIBUTE: Final = "_clinic_workspace_bound_patient"
+AUDIT_ATTRIBUTE: Final = "_clinic_workspace_patient_audit"
 DEMOGRAPHICS_READ: Final = "demographics.read"
 # Every staff view that renders one patient's record. A view listed here
 # shows the banner only for the patient it bound in the same request.
 PATIENT_BOUND_VIEWS: Final = frozenset(
     {
         "ehr:encounter",
+        "ehr:patient-workspace",
         "ehr:history",
         "ehr:attachments",
         "intake:patient-contacts",
         "intake:patient-access",
+        "intake:patient-demographics",
+        "intake:patient-timeline",
         "intake:questionnaire-staff",
         "prescription:draft",
         "prescription:draft-encounter",
@@ -161,6 +168,7 @@ def bind_patient_context(
     clinic_id: UUID,
     enrollment_id: UUID,
     encounter_id: UUID | None = None,
+    record_view: bool = True,
 ) -> None:
     """Record the patient a record page is rendering, after its own authorization.
 
@@ -168,10 +176,13 @@ def bind_patient_context(
     the banner then names exactly this patient on this response. Persistence
     waits until the tenant middleware has the completed, non-refused response:
     authorizing the encounter does not authorize every subsequent action.
+    ``record_view`` decides whether the banner's own profile read writes the
+    viewed audit event; a view re-rendering a rejected write passes ``False``.
     """
     if not patient_context_allowed(clinic_id=clinic_id, enrollment_id=enrollment_id):
         return
     setattr(request, BOUND_ATTRIBUTE, (clinic_id, enrollment_id, encounter_id))
+    setattr(request, AUDIT_ATTRIBUTE, record_view)
 
 
 def persist_bound_patient_context(request: HttpRequest) -> None:
@@ -248,10 +259,13 @@ class PatientBanner:
     restricted: bool
     actions: tuple[Destination, ...]
     bound: bool
+    unified_at: datetime | None = None
 
 
-def age_label(birth_date: date, today: date) -> str:
+def age_label(birth_date: date | None, today: date) -> str:
     """Return the completed years at the clinic-local date, in words."""
+    if birth_date is None:
+        return gettext("Age not informed")
     years = today.year - birth_date.year
     if (today.month, today.day) < (birth_date.month, birth_date.day):
         years -= 1
@@ -319,15 +333,15 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
             clear_patient_context(request, clinic_id=clinic_id)
             return None
         enrollment_id = remembered
-    enrollment = (
-        PatientClinicEnrollment.objects.select_related("patient")
-        .filter(pk=enrollment_id, clinic_id=clinic_id)
-        .first()
-    )
-    if enrollment is None:
+    try:
+        profile = demographics_profile(
+            clinic_id=clinic_id,
+            enrollment_id=enrollment_id,
+            record_view=bool(getattr(request, AUDIT_ATTRIBUTE, True)),
+        )
+    except PatientAccessDeniedError:
         clear_patient_context(request, clinic_id=clinic_id)
         return None
-    patient = enrollment.patient
     today = date.fromisoformat(clinic_local_today(timezone))
     allergy_state, allergy_text = _allergy_flag(clinic_id, encounter_id)
     active_encounter = (
@@ -336,15 +350,24 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
         ).exists()
         if encounter_id is not None
         else Encounter.objects.filter(
-            clinic_id=clinic_id, patient_id=patient.pk, state=Encounter.State.OPEN
+            clinic_id=clinic_id,
+            patient_id=profile.patient_id,
+            state=Encounter.State.OPEN,
         ).exists()
     )
     return PatientBanner(
-        enrollment_id=enrollment.pk,
-        name=str(patient.full_name),
-        social_name="",
-        age_label=age_label(patient.birth_date, today),
-        identifiers=(),
+        enrollment_id=profile.enrollment_id,
+        name=(
+            profile.values.get("legal_name") or profile.display_name
+            if profile.values.get("social_name")
+            else profile.display_name
+        ),
+        social_name=profile.values.get("social_name", ""),
+        age_label=age_label(profile.birth_date, today),
+        identifiers=tuple(
+            MaskedIdentifier(kind=identifier.kind, masked=identifier.masked_value)
+            for identifier in profile.identifiers
+        ),
         allergy_state=allergy_state,
         allergy_label=allergy_text,
         active_encounter=active_encounter,
@@ -356,4 +379,7 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
             if allows(action, roles=roles, granted=granted)
         ),
         bound=bound is not None,
+        unified_at=patient_alias_set(
+            clinic_id=clinic_id, patient_id=profile.patient_id
+        ).unified_at,
     )

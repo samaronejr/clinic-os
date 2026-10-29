@@ -11,9 +11,11 @@ from apps.core.navigation import DESTINATIONS
 from apps.core.patient_context import PATIENT_BOUND_VIEWS
 from apps.identity.models import UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
+from django.conf import settings
+from django.test import Client
 from django.urls import URLResolver, get_resolver
 
-from core.test_navigation import _client_for, _get, _post
+from core.test_navigation import PRIVILEGED, _client_for, _get, _post
 from core.test_workspace_boundaries import (
     _normalized_denial,
     _pin_patient,
@@ -21,12 +23,20 @@ from core.test_workspace_boundaries import (
     remove_permission,
 )
 from identity.permission_support import owner_context
+from otp_test_support import (
+    create_totp_device,
+    fixed_otp_time,
+    login,
+    runtime_role,
+    token_for,
+)
+from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from workspace_refusal_support import WorkspaceRoute, workspace_routes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from django.test import Client
+    from apps.identity.models import User
     from django.test.client import _MonkeyPatchedWSGIResponse
 
     from rbac_fixtures import RbacGraph
@@ -53,6 +63,31 @@ def _clinic_routes(resolver: URLResolver) -> Iterator[WorkspaceRoute]:
             yield route
 
 
+def _refresh_authentication(client: Client, user: User, role: str) -> None:
+    """Probe domain refusal after real relogin, not a revoked auth cookie."""
+    state = dict(client.session)
+    fresh = Client()
+    with runtime_role():
+        login(fresh, user.username, password=RBAC_RAW_CREDENTIAL)
+        if role in PRIVILEGED:
+            device = create_totp_device(user.pk, confirmed=True)
+            with fixed_otp_time():
+                response = fresh.post(
+                    "/auth/verify/",
+                    {
+                        "otp_device": device.persistent_id,
+                        "otp_token": token_for(device),
+                        "next": "/auth/protected/",
+                    },
+                )
+            assert response.status_code == 302
+    state.update(fresh.session)
+    client.cookies[settings.SESSION_COOKIE_NAME] = fresh.cookies[
+        settings.SESSION_COOKIE_NAME
+    ].value
+    _restore_session(client, state)
+
+
 def _prepared_client(graph: RbacGraph, role: str, state: str) -> Client:
     client, user = _client_for(graph, role)
     assert (
@@ -68,6 +103,7 @@ def _prepared_client(graph: RbacGraph, role: str, state: str) -> Client:
                 user_id=user.pk,
                 role=role,
             )
+        _refresh_authentication(client, user, role)
         assert (
             _get(client, f"/scheduling/clinics/{graph.clinic_b}/agenda/").status_code
             == 200
@@ -75,6 +111,7 @@ def _prepared_client(graph: RbacGraph, role: str, state: str) -> Client:
     if state != "wrong-clinic":
         for permission in BUNDLES_V1[role]:
             remove_permission(graph, role, permission)
+        _refresh_authentication(client, user, role)
     return client
 
 

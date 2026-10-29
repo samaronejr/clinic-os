@@ -47,6 +47,7 @@ from apps.identity.otp import (
     is_privileged_user,
     privileged_totp_required,
 )
+from apps.identity.passkey_sessions import is_passkey_verified
 from apps.identity.saved_views import SavedViewError, archive_saved_view, save_view
 from apps.intake.models import PatientClinicEnrollment
 
@@ -150,7 +151,11 @@ def command_options(request: HttpRequest) -> HttpResponseBase:
     user = request.user
     if not isinstance(user, User) or not user.is_authenticated:
         return HttpResponse(status=FORBIDDEN)
-    if is_privileged_user(user) and not is_confirmed_verified_user(user):
+    if (
+        is_privileged_user(user)
+        and not is_confirmed_verified_user(user)
+        and not is_passkey_verified(session=request.session)
+    ):
         return HttpResponse(status=FORBIDDEN)
     clinic = _require_clinic(request)
     return render(request, OPTIONS_TEMPLATE, _search(request, clinic))

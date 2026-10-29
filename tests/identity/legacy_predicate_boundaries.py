@@ -11,7 +11,13 @@ from apps.identity import current_context, otp, preferences, saved_views
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1, PROFESSIONAL_PERMISSIONS_V1
-from apps.intake import contacts, patient_access, patient_search, questionnaire_views
+from apps.intake import (
+    contacts,
+    demographics,
+    patient_access,
+    patient_search,
+    questionnaire_views,
+)
 from apps.retention import services as retention
 from apps.teleconsult import services as teleconsult
 from django.contrib.auth.models import AnonymousUser
@@ -30,6 +36,8 @@ from identity.legacy_parity_support import (
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from identity.legacy_parity_support import LegacyWorld
 
 
@@ -48,13 +56,13 @@ def _actor_context(w: LegacyWorld, valid: bool) -> object:
     return result
 
 
-def _label(w: LegacyWorld, valid: bool, *, contact: bool) -> str:
+def _label(w: LegacyWorld, valid: bool, *, getter: Callable[[], str]) -> str:
     if not valid:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
             )
-    return contacts._actor_label() if contact else patient_access._actor_label()
+    return getter()
 
 
 def _unverified(w: LegacyWorld, valid: bool) -> object:
@@ -118,6 +126,9 @@ def _granted_permissions(w: LegacyWorld, valid: bool) -> object:
         if valid
         else frozenset()
     )
+    if valid and w.role == "receptionist":
+        # Reception adds the operational queue permission without rewriting v1.
+        expected |= frozenset({"reception.queue"})
     assert granted == expected, (granted, expected)
     return valid
 
@@ -133,6 +144,17 @@ def _search_exact(w: LegacyWorld, valid: bool) -> object:
     )
 
 
+def _identifier_search(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    return demographics.search_patient_identifiers(
+        clinic_id=w.clinic, kind="passport", value="SYNTHETICPARITY123"
+    )
+
+
 # Two gates decide the exact search: the manager roles, then demographics.read.
 # The owner passes the first and lacks the second; the physician the reverse.
 EXACT_SEARCH = tuple(
@@ -141,6 +163,20 @@ EXACT_SEARCH = tuple(
 
 
 BOUNDARIES = (
+    Boundary(
+        "apps.intake.demographics.search_patient_identifiers",
+        "demographics",
+        ("physician", "receptionist", "clinic_admin"),
+        _identifier_search,
+    ),
+    Boundary(
+        "apps.intake.demographics.set_intake_policy",
+        "demographics",
+        ADMINS,
+        lambda w, ok: demographics.set_intake_policy(
+            clinic_id=w.clinic_for(ok), required_fields=[]
+        ),
+    ),
     Boundary(
         "apps.identity.preferences.save_ui_preferences", "actor", LEGACY, _preferences
     ),
@@ -224,13 +260,19 @@ BOUNDARIES = (
         "apps.intake.contacts._actor_label",
         "actor",
         LEGACY,
-        lambda w, ok: _label(w, ok, contact=True),
+        lambda w, ok: _label(w, ok, getter=contacts._actor_label),
     ),
     Boundary(
         "apps.intake.patient_access._actor_label",
         "actor",
         LEGACY,
-        lambda w, ok: _label(w, ok, contact=False),
+        lambda w, ok: _label(w, ok, getter=patient_access._actor_label),
+    ),
+    Boundary(
+        "apps.intake.demographics._actor_label",
+        "actor",
+        LEGACY,
+        lambda w, ok: _label(w, ok, getter=demographics._actor_label),
     ),
     # These functions are terminal denial sinks: fabricating an ALLOW oracle
     # would invert their contract. Their paired success paths are the real

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
+from django.db import connection
 from sqlparse import lexer, tokens
 
 if TYPE_CHECKING:
@@ -12,37 +13,7 @@ if TYPE_CHECKING:
 
 Token = tuple[object, str]
 _tokenize = cast("Callable[[str], Iterable[Token]]", lexer.tokenize)
-SYNTAX_CALLS = frozenset(
-    {
-        "all",
-        "and",
-        "any",
-        "array",
-        "as",
-        "case",
-        "cast",
-        "check",
-        "coalesce",
-        "exists",
-        "extract",
-        "filter",
-        "if",
-        "in",
-        "not",
-        "nullif",
-        "only",
-        "operator",
-        "or",
-        "over",
-        "return",
-        "row",
-        "select",
-        "some",
-        "values",
-        "when",
-        "with",
-    }
-)
+OPERATOR_CHARACTERS = frozenset("+-*/<>=~!@#%^&|`?")
 DYNAMIC = frozenset({"execute", "prepare", "do", "call"})
 # A SET statement starts a statement; UPDATE ... SET follows a table name.
 STATEMENT_STARTS = frozenset({";", "begin", "then", "else", "loop", ">>"})
@@ -111,12 +82,51 @@ def _qualified(items: Sequence[Token]) -> Iterator[tuple[tuple[str, ...], int, b
         index = end
 
 
-def references(text: str) -> SqlReferences:
+def non_callable_keywords() -> frozenset[str]:
+    """Use the installed server grammar, not the lexer dialect or a name list."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT word FROM pg_catalog.pg_get_keywords() WHERE catcode IN ('R', 'C')"
+        )
+        return frozenset(str(row[0]) for row in cursor.fetchall())
+
+
+def _syntax_call(
+    items: Sequence[Token], name: str, end: int, keywords: frozenset[str]
+) -> bool:
+    if name in keywords:
+        # R and C cannot be unqualified function names. Quoted and qualified
+        # names never enter this branch, even when they spell reserved words.
+        return True
+    previous = items[end - 2][1].lower() if end > 1 else ""
+    if name in {"filter", "over"} and previous == ")":
+        return True
+    if name in {"if", "return"} and (end == 1 or previous in STATEMENT_STARTS):
+        return True
+    if name == "operator":
+        inner = items[end + 1 :]
+        close = next(
+            (i for i, (_kind, value) in enumerate(inner) if value == ")"), len(inner)
+        )
+        inner = inner[:close]
+        if len(inner) > 2 and _identifier(*inner[0]) and inner[1][1] == ".":
+            inner = inner[2:]
+        # OPERATOR(schema.symbol) is grammar; operator(args) is a real call.
+        return bool(inner) and all(
+            value and set(value) <= OPERATOR_CHARACTERS for _kind, value in inner
+        )
+    return False
+
+
+def references(
+    text: str, *, syntax_keywords: frozenset[str] | None = None
+) -> SqlReferences:
     """Combine lexical references with separate catalog/counter enforcement.
 
     This is not an arbitrary server-language parser. Dynamic execution,
     prepared statements and DDL explicitly fail closed, never disappear.
     """
+    keywords = non_callable_keywords() if syntax_keywords is None else syntax_keywords
     raw = list(_tokenize(text))
     items = [
         (kind, value)
@@ -131,10 +141,11 @@ def references(text: str) -> SqlReferences:
         result.names.add(name)
         if end >= len(items) or items[end][1] != "(":
             continue
-        if quoted or len(name) > 1 or name[-1] not in SYNTAX_CALLS:
+        called = name[-1]
+        if quoted or len(name) > 1 or not _syntax_call(items, called, end, keywords):
             result.calls.add(name)
         # set_config returns the effective setting value, not just a write count.
-        if name[-1] in {"current_setting", "set_config"}:
+        if called in {"current_setting", "set_config"}:
             _setting(items, end + 1, result)
     return result
 
@@ -185,11 +196,10 @@ def _set_setting(items: Sequence[Token], index: int, result: SqlReferences) -> N
 def _operators(items: Sequence[Token]) -> set[str]:
     # sqlparse tokenizes '?' as a placeholder even inside a PostgreSQL operator.
     # Reconstruct contiguous operator characters before discarding whitespace.
-    allowed = frozenset("+-*/<>=~!@#%^&|`?")
     result = set()
     pending = ""
     for kind, value in [*items, (None, " ")]:
-        if kind not in tokens.Comment and value and set(value) <= allowed:
+        if kind not in tokens.Comment and value and set(value) <= OPERATOR_CHARACTERS:
             pending += value
         else:
             if pending:

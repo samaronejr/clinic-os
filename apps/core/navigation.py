@@ -31,6 +31,7 @@ from django.utils.translation import gettext, gettext_noop
 
 from apps.identity.models import UserClinicRole
 from apps.scheduling.agenda_presenter import clinic_local_today
+from apps.workflows.inbox import INBOX_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -45,8 +46,18 @@ _ROLE = UserClinicRole.Role
 STAFF_ROUTE: Final = frozenset(
     {_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST, _ROLE.PHYSICIAN}
 )
+TASK_ROUTE: Final = STAFF_ROUTE | {
+    _ROLE.NURSE,
+    _ROLE.ALLIED_PROFESSIONAL,
+    _ROLE.SCHEDULER,
+    _ROLE.CLINIC_MANAGER,
+    _ROLE.FINANCE,
+}
 MANAGER_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST})
 ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
+# Result/order observation is patient-scoped, so the inbox route admits the
+# clinical roles whose bundle carries it; every item is rechecked per patient.
+INBOX_ROUTE: Final = frozenset(INBOX_ROLES)
 
 _AGENDA_READ: Final = ("appointment.read", "appointment.read_own")
 _CONFIGURATION: Final = ("configuration.clinic", "configuration.organization")
@@ -97,9 +108,22 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "today",
         gettext_noop("Today"),
-        None,
-        _AGENDA_READ,
-        owner_todo=32,
+        "scheduling:reception",
+        ("reception.queue",),
+        route_roles=frozenset({_ROLE.RECEPTIONIST, _ROLE.NURSE}),
+        views=frozenset({"scheduling:reception"}),
+        owner_todo=25,
+        entries=(
+            Destination(
+                "clinician-today",
+                gettext_noop("My day"),
+                "workflows:today",
+                ("appointment.read_own",),
+                route_roles=frozenset({_ROLE.PHYSICIAN}),
+                views=frozenset({"workflows:today"}),
+                owner_todo=32,
+            ),
+        ),
     ),
     Destination(
         "agenda",
@@ -111,6 +135,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
             {
                 "scheduling:agenda",
                 "scheduling:agenda-at",
+                "scheduling:agenda-grid",
+                "scheduling:agenda-board",
+                "scheduling:agenda-grid-move",
+                "scheduling:agenda-grid-action",
                 "scheduling:appointment-create",
                 "scheduling:appointment-reschedule",
                 "scheduling:appointment-cancel",
@@ -157,9 +185,22 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "inbox",
         gettext_noop("Clinical Inbox"),
-        None,
-        ("result.read", "order.observe"),
+        "workflows:inbox",
+        ("demographics.read",),
+        route_roles=INBOX_ROUTE,
+        views=frozenset({"workflows:inbox"}),
         owner_todo=32,
+        entries=(
+            Destination(
+                "results",
+                gettext_noop("Orders and results"),
+                "orders:results",
+                ("demographics.read",),
+                route_roles=None,
+                views=frozenset({"orders:results", "orders:source"}),
+                owner_todo=31,
+            ),
+        ),
     ),
     Destination(
         "messages",
@@ -190,6 +231,30 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("demographics.read", *_CONFIGURATION),
                 views=frozenset({"retention:status"}),
             ),
+            Destination(
+                "tasks",
+                gettext_noop("Tasks"),
+                "workflows:tasks",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:tasks", "workflows:exceptions"}),
+            ),
+            Destination(
+                "workflow-runs",
+                gettext_noop("Workflow runs"),
+                "workflows:runs",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:runs", "workflows:run-exceptions"}),
+            ),
+            Destination(
+                "workflow-designer",
+                gettext_noop("Workflow designer"),
+                "workflows:designer",
+                ("tasks.reassign",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:designer"}),
+            ),
         ),
     ),
     Destination(
@@ -213,6 +278,16 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         _CONFIGURATION,
         route_roles=ADMIN_ROUTE,
         views=frozenset({"identity:clinic-settings"}),
+        entries=(
+            Destination(
+                "scheduling-settings",
+                gettext_noop("Scheduling settings"),
+                "scheduling:resource-settings",
+                ("appointment.book", "configuration.organization"),
+                route_roles=None,
+                views=frozenset({"scheduling:resource-settings"}),
+            ),
+        ),
     ),
 )
 

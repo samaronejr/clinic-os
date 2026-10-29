@@ -5,6 +5,11 @@
   min-width: 0;
 }
 
+/* Retained record digests stay readable without widening the timeline. */
+.intake-shell .patient-details code {
+  overflow-wrap: anywhere;
+}
+
 /* Questionnaire headings also reflow at narrow, zoomed patient/staff widths. */
 #questionnaire-title {
   overflow-wrap: anywhere;

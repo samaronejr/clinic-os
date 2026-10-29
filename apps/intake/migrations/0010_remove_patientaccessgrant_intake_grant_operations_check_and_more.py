@@ -6,6 +6,8 @@ import django.db.models.expressions
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Extend only the closed operation vocabulary, leaving all prior rows intact."""
@@ -25,7 +27,7 @@ class Migration(migrations.Migration):
             model_name="patientsession",
             name="intake_session_operations_check",
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientaccessgrant",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(
@@ -47,7 +49,7 @@ class Migration(migrations.Migration):
                 name="intake_grant_operations_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientsession",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(

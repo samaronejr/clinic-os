@@ -8,6 +8,7 @@ from apps.identity.identifiers import canonicalize_email, canonicalize_username
 from apps.identity.models import User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 
 from identity.identity_acl_migration_support import (
     FOUNDATION_TARGETS,
@@ -65,6 +66,11 @@ def test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role(
             cursor.execute("SET ROLE clinic_owner")
         try:
             migrate([("identity", MIGRATION_NAME)])
+            role_model = (
+                MigrationExecutor(connection)
+                .loader.project_state([("identity", MIGRATION_NAME)])
+                .apps.get_model("identity", "UserClinicRole")
+            )
             users = {
                 row.id: (row.username, row.email, row.password)
                 for row in User.objects.filter(id__in=originals).order_by("id")
@@ -80,7 +86,7 @@ def test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role(
             with transaction.atomic():
                 set_tenant(ORG_A)
                 retained = list(
-                    UserClinicRole.objects.filter(
+                    role_model.objects.filter(
                         user_id=SINGLE_USER,
                         role=UserClinicRole.Role.OWNER,
                     ).values_list("id", flat=True)

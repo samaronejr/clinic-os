@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
 
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
 
     from rbac_fixtures import RbacGraph
 
-pytestmark = pytest.mark.django_db(transaction=True)
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ("owner", "physician", "receptionist", "clinic_admin")
 
@@ -61,24 +61,54 @@ def _roles(guard: Guard) -> ClinicRoles:
 
 def test_inventory_enumerates_every_current_actor_guard() -> None:
     observed: list[tuple[str, str, str]] = []
+    contract = signature(require_current_actor_clinic_roles)
     for path in sorted((ROOT / "apps").rglob("*.py")):
         if "migrations" in path.parts:
             continue
         for function in ast.walk(ast.parse(path.read_text())):
             if not isinstance(function, ast.FunctionDef):
                 continue
-            observed.extend(
-                (str(path.relative_to(ROOT)), function.name, ast.unparse(node.args[1]))
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "require_current_actor_clinic_roles"
-            )
+            for node in ast.walk(function):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "require_current_actor_clinic_roles"
+                ):
+                    assert all(keyword.arg is not None for keyword in node.keywords)
+                    bound = contract.bind(
+                        *node.args,
+                        **{
+                            str(keyword.arg): keyword.value for keyword in node.keywords
+                        },
+                    )
+                    roles = bound.arguments["roles"]
+                    if isinstance(roles, ast.Name):
+                        assignments = [
+                            statement.value
+                            for statement in function.body
+                            if isinstance(statement, ast.Assign)
+                            and any(
+                                isinstance(target, ast.Name) and target.id == roles.id
+                                for target in statement.targets
+                            )
+                        ]
+                        if assignments:
+                            assert len(assignments) == 1
+                            assert isinstance(assignments[0], ast.Tuple)
+                            roles = assignments[0]
+                    observed.append(
+                        (
+                            str(path.relative_to(ROOT)),
+                            function.name,
+                            ast.unparse(roles),
+                        )
+                    )
     assert observed == [(g["path"], g["function"], g["roles"]) for g in GUARDS]
-    assert len(observed) == 47
+    assert len(observed) == len(GUARDS)
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)
+@pytest.mark.django_db(transaction=True)
 def test_all_47_guards_keep_legacy_role_decisions(
     rbac_graph: RbacGraph, legacy_role: str
 ) -> None:

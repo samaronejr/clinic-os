@@ -67,6 +67,12 @@ is satisfied by this implementation.
   binding. Operations are `enrollment_view`, `questionnaires`, `booking`,
   `records`, `consent`, `teleconsult`, and `billing`. No staff GUC is installed,
   and patient sessions cannot subscribe to clinic-wide or staff job topics.
+- `teleconsult:<opaque room name>` (todo 37) admits only the room's bound
+  physician holding `clinical.write` for the session patient's enrollment
+  (`apps.teleconsult.participants.authorize_room_topic`), rerun per frame.
+  The room name is `tc-` plus 32 random hex and spells no stored identifier;
+  the patient side uses `patient:<enrollment>:teleconsult`. Their hints use
+  the `teleconsult` kind.
 - `authz:user:<uuid>` is an internal control channel, not client-selectable.
   `authz:halt` is the process-wide internal live-halt channel.
 
@@ -84,10 +90,15 @@ encounter changes, session saves/deletes, patient-access revocation and logout
 publish user invalidations. Raw SQL and bulk changes cannot bypass the fresh
 per-frame permission check; they are not falsely claimed as Python signals.
 
-Inbox/message consumers and durable AI-job producers belong to todos 32/51 and
-38 onward. Their authorization, subscription and commit-bound publish seams are
-implemented and exercised now, not reserved or unconditional denials. Those
-producers must issue the appropriate explicit scope and call `publish_on_commit`;
+The Clinical Inbox (todo 32) is the first inbox producer and consumer: task,
+result-version, acknowledgment, SOAP-draft and appointment commits publish the
+clinic inbox hint, and the inbox and clinician Today pages subscribe to it
+under the operator-issued clinic inbox lease; without a lease they refresh
+through the polling fallback. Message consumers and durable AI-job producers
+belong to todos 51 and 38 onward. Their authorization, subscription and
+commit-bound publish seams are implemented and exercised now, not reserved or
+unconditional denials. Those producers must issue the appropriate explicit
+scope and call `publish_on_commit`;
 this transport does not fabricate message/job domain records. Portal integrations
 beyond the existing booking publisher can use the operation-scoped patient seam.
 All bindings remain private Redis metadata; the app owns no database tables.

@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from apps.identity.models import UserClinicRole
 from apps.identity.saved_views import (
+    MAX_PARAMS,
     SavedViewError,
     archive_saved_view,
     list_saved_views,
@@ -146,8 +147,11 @@ def test_saved_views_are_private_to_their_user(rbac_graph: RbacGraph) -> None:
     [
         ("agenda", {"view": "Sintetico Paciente"}),
         ("agenda", {"patient": "3f0c5b1e-0000-4000-8000-000000000000"}),
+        ("agenda", {"appointment": "3f0c5b1e-0000-4000-8000-000000000000"}),
+        ("agenda", {"professional": "Sintetico Profissional"}),
+        ("agenda", {"service": "3F0C5B1E-0000-4000-8000-000000000000"}),
         ("Agenda", {"view": "week"}),
-        ("agenda", {f"k{index}": "v" for index in range(5)}),
+        ("agenda", {f"k{index}": "v" for index in range(MAX_PARAMS + 1)}),
     ],
 )
 def test_free_text_and_identifiers_never_become_parameters(
@@ -170,7 +174,9 @@ def test_revoked_role_hides_saved_views(rbac_graph: RbacGraph) -> None:
         )
     with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
         cursor.execute(
-            "DELETE FROM clinic_app.identity_userclinicrole WHERE user_id = %s",
+            "UPDATE clinic_app.identity_userclinicrole "
+            "SET revoked_at = statement_timestamp() "
+            "WHERE user_id = %s AND revoked_at IS NULL",
             [str(user.pk)],
         )
     with permission_context(rbac_graph, user.pk):

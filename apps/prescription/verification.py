@@ -283,7 +283,7 @@ def _completed_operation(document: PrescriptionDocument) -> SignatureOperation:
 
 
 def release_document(
-    *, clinic_id: UUID, document_id: UUID
+    *, clinic_id: UUID, document_id: UUID, restricted_from_delegates: bool = True
 ) -> PrescriptionDocumentRelease:
     """Release one completed document to its patient; repeats return it.
 
@@ -291,6 +291,8 @@ def release_document(
     signature completed. The release is the sole authority for the
     patient download surface; the QR handle never is.
     """
+    if type(restricted_from_delegates) is not bool:
+        raise ClinicalAccessDeniedError
     document = _issuer_document(clinic_id=clinic_id, document_id=document_id)
     _completed_operation(document)
     actor = current_actor_id()
@@ -310,6 +312,7 @@ def release_document(
                     patient_id=document.patient_id,
                     issuer_id=document.issuer_id,
                     released_by_id=actor,
+                    restricted_from_delegates=restricted_from_delegates,
                 )
         except IntegrityError:
             return PrescriptionDocumentRelease.objects.get(

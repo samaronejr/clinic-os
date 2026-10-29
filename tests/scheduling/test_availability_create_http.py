@@ -13,6 +13,7 @@ from patient_http_support import (
     audit_event_types,
     audit_payloads,
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -130,6 +131,7 @@ def test_ambiguous_local_minute_is_refused_without_partial_state(
 ) -> None:
     client, actor, _url = _manager(rbac_graph)
     clinic_id = create_dst_clinic(rbac_graph, actor, rbac_graph.physician)
+    relogin(client, actor)
 
     with runtime_role():
         response = client.post(

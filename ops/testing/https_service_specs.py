@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from ops.testing.https_contract import application_filesystem_contract
@@ -91,6 +92,8 @@ def application_environment(
         "ALLOWED_HOSTS": WEB_HOST,
         "CLINIC_DATA_MODE": "synthetic",
         "CLINIC_PROCESS_PURPOSE": purpose,
+        "CLINIC_SECRET_BACKEND": "synthetic-file",
+        "CLINIC_SECRET_DIR": PurePosixPath("/", "tmp").as_posix(),
         "DJANGO_SETTINGS_MODULE": settings,
         key: _database_url(role, password, database, database_host),
         "PYTHONTZPATH": "",

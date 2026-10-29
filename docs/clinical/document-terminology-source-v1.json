@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "record_id": "clinical-documents-source-v1",
+  "reviewed_on": "2026-10-22",
+  "terminology": "CID-10",
+  "candidate_source": {
+    "authority": "World Health Organization",
+    "release": "2019",
+    "language": "en",
+    "reference": "https://icd.who.int/browse10/2019/en/"
+  },
+  "installed_dataset_version": null,
+  "installed_codes": [],
+  "status": "not_installed_pending_eg13",
+  "redistribution_and_pt_br_translation_rights": "not_established_for_this_product",
+  "licensing_reference": "https://cdn.who.int/media/docs/default-source/publishing-policies/copyright/who-faq-licensing-icd-10.pdf",
+  "eg13_approved": false,
+  "cid11_review": {
+    "authority": "Ministerio da Saude",
+    "document": "Nota Tecnica 91/2024-CGIAE/DAENT/SVSA/MS",
+    "reference": "https://www.gov.br/saude/pt-br/centrais-de-conteudo/publicacoes/notas-tecnicas/2024/nota-tecnica-no-91-2024-cgiae-daent-svsa-ms.pdf/@@download/file",
+    "reported_start": "2027-01",
+    "reported_scope": "health_surveillance_systems",
+    "not_a_verified_general_clinical_document_mandate": true,
+    "activation_requires_fresh_eg13_review": true
+  }
+}

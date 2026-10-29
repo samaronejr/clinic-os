@@ -8,12 +8,15 @@ them. This module declares the remaining identity tables.
 
 from typing import Final
 
-RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
+RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
+    {("identity_passkey", "organization_id")}
+)
 # Clinic configuration, preferences, physician verification, authorization
 # scope rows and saved views carry bespoke policies in migrations 0007, 0009,
 # 0011, 0013 and 0015.
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
+        "identity_patientdelegategrant",
         "identity_clinicconfiguration",
         "identity_rolegrant",
         "identity_serviceprincipal",
@@ -24,12 +27,22 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "identity_physicianevidence",
         "identity_userpreference",
         "identity_savedview",
+        "identity_signupregistration",
+        "identity_onboardingprogress",
+        "identity_staffinvitation",
+        "identity_authenticatorreset",
+        "identity_authenticatorretirement",
+        "identity_recoverybatch",
+        "identity_recoverycode",
+        "identity_sessionrecord",
     }
 )
 # identity_user is reachable only through resolver-owned functions; the
 # runtime role holds no grants on it.
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"identity_user"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "identity_patientdelegategrant": frozenset({"SELECT"}),
+    "identity_passkey": frozenset({"SELECT", "INSERT"}),
     "identity_user": frozenset(),
     "identity_serviceprincipal": frozenset(),
     "identity_serviceprincipalgrant": frozenset(),
@@ -41,12 +54,21 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_physicianevidence": frozenset({"SELECT", "INSERT"}),
     "identity_userpreference": frozenset({"SELECT", "INSERT"}),
     "identity_savedview": frozenset({"SELECT", "INSERT"}),
+    "identity_signupregistration": frozenset(),
+    "identity_onboardingprogress": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_staffinvitation": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_authenticatorreset": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_authenticatorretirement": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_recoverybatch": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_recoverycode": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_sessionrecord": frozenset({"SELECT", "UPDATE"}),
 }
 # New authorization tables have no runtime column writes: provisioning remains
 # owner-controlled. Column grants below belong to physician checks and preferences.
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        ("identity_passkey", "removed_at", "UPDATE"),
         ("identity_physicianprofile", "expires_at", "UPDATE"),
         ("identity_physicianprofile", "last_checked_at", "UPDATE"),
         ("identity_physicianprofile", "recheck_at", "UPDATE"),

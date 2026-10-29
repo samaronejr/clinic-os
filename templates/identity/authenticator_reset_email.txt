@@ -1,0 +1,1 @@
+{% load i18n %}{% blocktrans %}A clinic administrator requested a reset of your authenticator. The reset can be performed only after a full 24 hours following delivery of this notification. Contact your clinic administrator if you did not request this change.{% endblocktrans %}

@@ -15,6 +15,7 @@ from apps.scheduling.services import (
 )
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.utils import timezone
 
 from patient_service_support import runtime_role
@@ -55,7 +56,7 @@ def test_equal_replay_returns_current_row_after_transition_and_role_removal(
             clinic_id=setup.clinic_id,
             user_id=setup.practitioner_id,
             role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         runtime_role(),
         tenant_context(setup.actor_id, setup.organization_id),

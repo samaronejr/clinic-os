@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from functools import partial
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -21,11 +22,9 @@ from apps.realtime.transport import publish_on_commit, redis_client, topic_hash
 from apps.realtime.views import stream_view, ticket_view
 from apps.tenancy.db import tenant_context
 from asgiref.sync import async_to_sync, sync_to_async
-from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
-from django.contrib.sessions.backends.db import SessionStore
 from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
-from django.test import RequestFactory
+from django.test import Client, RequestFactory
 from django.utils import timezone
 from django_otp import DEVICE_ID_SESSION_KEY
 
@@ -41,7 +40,7 @@ from scheduling.appointment_service_support import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Callable
     from uuid import UUID
 
     from rbac_fixtures import RbacGraph
@@ -55,10 +54,10 @@ pytestmark = [
 def actor_session(graph: RbacGraph, actor: UUID) -> str:
     user = User.objects.get(pk=actor)
     device = create_totp_device(actor, confirmed=True)
-    session = SessionStore()
-    session[SESSION_KEY] = str(actor)
-    session[BACKEND_SESSION_KEY] = "apps.identity.auth_backends.ClinicBackend"
-    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    client = Client()
+    with runtime_role():
+        client.force_login(user)
+    session = client.session
     session["active_org_id"] = str(graph.organization_a)
     session[DEVICE_ID_SESSION_KEY] = device.persistent_id
     session.save()
@@ -66,7 +65,14 @@ def actor_session(graph: RbacGraph, actor: UUID) -> str:
     return session.session_key
 
 
-def roundtrip(key: str, topic: str, kind: str) -> None:
+def roundtrip(
+    key: str,
+    topic: str,
+    kind: str,
+    *,
+    publish: Callable[[], object] | None = None,
+    version: int = 71,
+) -> None:
     factory = RequestFactory()
     request = factory.post(
         "/rt/stream", {"topics": [topic]}, content_type="application/json"
@@ -87,14 +93,17 @@ def roundtrip(key: str, topic: str, kind: str) -> None:
             try:
                 async with asyncio.timeout(5):
                     assert (await anext(events)).startswith(b"event: ready")
-                    await sync_to_async(publish_on_commit)(
-                        topic=topic, kind=kind, version=71
-                    )
+                    await sync_to_async(
+                        publish
+                        or partial(
+                            publish_on_commit, topic=topic, kind=kind, version=version
+                        )
+                    )()
                     frame = await anext(events)
                     assert json.loads(frame.removeprefix(b"data: ")) == {
                         "topic_hash": topic_hash(topic),
                         "kind": kind,
-                        "version": 71,
+                        "version": version,
                     }
                     assert topic.encode() not in frame
                     await sync_to_async(publish_on_commit)(
@@ -149,6 +158,38 @@ def test_clinic_topics_need_explicit_scoped_lease_and_current_permission(
         )
     with runtime_role(), pytest.raises(TopicDeniedError):
         authorize_topics_sync(session_key=key, topics=(topic,))
+
+
+def test_appointment_change_refreshes_a_connected_clinician_today(
+    rbac_graph: RbacGraph,
+) -> None:
+    setup = seed_appointment_setup(rbac_graph)
+    topic = f"clinic:{rbac_graph.clinic_a}:inbox"
+    operator, _ = permission_actor(rbac_graph, "org_admin")
+    # Given: the physician's Today board holds the clinic inbox lease under
+    # their own-appointment permission, not a clinic-wide agenda grant.
+    with runtime_role(), tenant_context(operator, rbac_graph.organization_a):
+        assert (
+            grant_clinic_topic(
+                clinic_id=rbac_graph.clinic_a,
+                user_id=rbac_graph.physician,
+                kind="inbox",
+                permission="appointment.read_own",
+            )
+            == topic
+        )
+    key = actor_session(rbac_graph, rbac_graph.physician)
+
+    def book() -> None:
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+        ):
+            create_synthetic_appointment(setup)
+
+    # When: reception books into that day while the stream is connected.
+    # Then: the committed booking reaches the stream as the inbox refetch hint.
+    roundtrip(key, topic, "inbox", publish=book, version=1)
 
 
 def test_job_topic_binds_owner_and_originating_permission(

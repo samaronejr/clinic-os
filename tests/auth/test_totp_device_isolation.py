@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, Final
 import psycopg
 import pytest
 from django.db import DatabaseError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
+from database_urls import database_url_for_name
 from otp_test_support import create_totp_device, current_user_guc, runtime_role
+from patients.test_intake_migrations import _default_connection, _scratch_database
 
 if TYPE_CHECKING:
     from conftest import TenantGraph
@@ -51,7 +54,30 @@ def test_totp_table_is_force_rls_owned_by_non_runtime_role() -> None:
         policies = cursor.fetchall()
 
     assert posture == (True, True, "clinic_owner", False, False)
-    assert policies == [EXPECTED_POLICY]
+    retirement = (
+        "(NOT (EXISTS ( SELECT 1\n"
+        "   FROM identity_authenticatorretirement retirement\n"
+        "  WHERE (retirement.device_id = otp_totp_totpdevice.id))))"
+    )
+    assert policies == [
+        (
+            "identity_totp_retirement",
+            "ALL",
+            ["clinic_app"],
+            "RESTRICTIVE",
+            retirement,
+            retirement,
+        ),
+        (
+            "invitation_owner",
+            "ALL",
+            ["clinic_owner"],
+            "PERMISSIVE",
+            POLICY_EXPRESSION,
+            POLICY_EXPRESSION,
+        ),
+        EXPECTED_POLICY,
+    ]
 
 
 def test_totp_seed_acl_is_limited_to_owner_and_runtime_role() -> None:
@@ -231,18 +257,30 @@ def test_totp_rls_migration_reverse_and_reapply_restore_exact_catalogs(
         "'clinic_app.otp_totp_totpdevice_id_seq'::pg_catalog.regclass)"
     )
 
-    with psycopg.connect(superuser_database_url) as raw_connection:
-        try:
-            raw_connection.execute(migration.REVERSE_SQL)
-            reversed_posture = raw_connection.execute(posture_sql).fetchone()
-            reversed_policies = raw_connection.execute(policies_sql).fetchall()
-            reversed_acl = set(raw_connection.execute(acl_sql).fetchall())
-            raw_connection.execute(migration.FORWARD_SQL)
-            reapplied_posture = raw_connection.execute(posture_sql).fetchone()
-            reapplied_policies = raw_connection.execute(policies_sql).fetchall()
-            reapplied_acl = set(raw_connection.execute(acl_sql).fetchall())
-        finally:
-            raw_connection.rollback()
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        MigrationExecutor(connection).migrate(
+            [
+                ("identity", "0003_totp_device_rls"),
+                ("tenancy", "0002_rls_and_resolvers"),
+            ]
+        )
+        with psycopg.connect(
+            database_url_for_name(superuser_database_url, wrapper.settings_dict["NAME"])
+        ) as raw_connection:
+            try:
+                raw_connection.execute(migration.REVERSE_SQL)
+                reversed_posture = raw_connection.execute(posture_sql).fetchone()
+                reversed_policies = raw_connection.execute(policies_sql).fetchall()
+                reversed_acl = set(raw_connection.execute(acl_sql).fetchall())
+                raw_connection.execute(migration.FORWARD_SQL)
+                reapplied_posture = raw_connection.execute(posture_sql).fetchone()
+                reapplied_policies = raw_connection.execute(policies_sql).fetchall()
+                reapplied_acl = set(raw_connection.execute(acl_sql).fetchall())
+            finally:
+                raw_connection.rollback()
 
     table = "otp_totp_totpdevice"
     sequence = "otp_totp_totpdevice_id_seq"

@@ -176,6 +176,11 @@ retained as evidence.
 
 ### Hosted RC gates
 
+The SHA-256-pinned `ops/testing/ci-required-browser-suites.txt` also requires
+`clinical-inbox`. Local `make ci-browser-contract` sends the three legacy
+image suites to `browser_runner.sh` and the inbox to `renewal_runner`.
+The final image-runner selector remains a separate input.
+
 `.github/workflows/ci.yml` adds, alongside the frozen three-suite
 `contracts` selector and the `test` matrix: `renewal-browser` (all
 registered suites sharded across six Chromium jobs, plus Firefox and WebKit

@@ -10,11 +10,14 @@ PATIENT_PATTERN: Final = (
     r"(enrollment_view|questionnaires|booking|records|consent|teleconsult|billing)"
 )
 JOB_PATTERN: Final = r"ai_job:[A-Za-z0-9_-]{22,64}"
+# One teleconsult room's physician hints; the opaque room name is no identifier.
+TELECONSULT_PATTERN: Final = r"teleconsult:(tc-[0-9a-f]{32})"
 CLINIC_TOPIC: Final = re.compile(CLINIC_PATTERN)
 PATIENT_TOPIC: Final = re.compile(PATIENT_PATTERN)
 JOB_TOPIC: Final = re.compile(JOB_PATTERN)
+TELECONSULT_TOPIC: Final = re.compile(TELECONSULT_PATTERN)
 TOPIC_PATTERN: Final = re.compile(
-    rf"(?:{CLINIC_PATTERN}|{PATIENT_PATTERN}|{JOB_PATTERN}|"
+    rf"(?:{CLINIC_PATTERN}|{PATIENT_PATTERN}|{JOB_PATTERN}|{TELECONSULT_PATTERN}|"
     rf"authz:user:{UUID_PATTERN}|authz:halt)"
 )
 TOPIC_PERMISSIONS: Final = {

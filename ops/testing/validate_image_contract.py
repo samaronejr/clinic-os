@@ -88,7 +88,7 @@ def validate_image_contract(inputs_path: Path, sha: str) -> None:
         if raw_sha256(ci_path.read_bytes()) != inputs.get(
             "ci_required_browser_suites_sha256"
         ):
-            _fail("three-suite CI input hash drifted")
+            _fail("CI suite input hash drifted")
     if inputs.get("runner_filesystem_contract") != filesystem_contract():
         _fail("runner filesystem confinement differs")
     references = _strings(

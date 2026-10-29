@@ -26,7 +26,20 @@ from psycopg.types.json import Jsonb
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
-from renewal.browser._protected import encrypt
+from renewal.browser._room_join import (
+    refresh_room_state,
+    room_action_finished,
+    room_join_readiness,
+    room_media_settled,
+    room_offline,
+)
+from renewal.browser._teleconsult import (
+    device_checks,
+    register_physician,
+    session_events,
+    stored_room_name,
+)
+from renewal.browser.a11y_support import AXE_RUN_JS, check_page
 from renewal.browser.engines import (
     full_page_screenshot,
     install_media,
@@ -63,7 +76,14 @@ from renewal.browser.test_teleconsult import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Browser, BrowserContext, Dialog, Page, Route
+    from playwright.sync_api import (
+        Browser,
+        BrowserContext,
+        Dialog,
+        Page,
+        Response,
+        Route,
+    )
 
 __all__ = ("availability_staff",)
 DAYS = {1280: "2035-08-06", 768: "2035-08-07", 375: "2035-08-08"}
@@ -119,19 +139,7 @@ def _capture(page: Page, case: _Case, state: str) -> None:
 
 
 def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
-    data = _seed(case.staff, case.day, hour)
-    with psycopg.connect(case.staff["dsn"]) as conn:
-        conn.execute(
-            "SELECT set_config('app.current_tenant',%s,true)",
-            [case.staff["organization"]],
-        )
-        conn.execute(
-            "UPDATE clinic_app.intake_patient SET full_name=%s WHERE id=%s",
-            [
-                encrypt(conn, "intake.patient.full_name", name.encode()),
-                data["patient"],
-            ],
-        )
+    data = _seed(case.staff, case.day, hour, name=name)
     data["name"] = name
     return data
 
@@ -212,6 +220,8 @@ def _fail_room(case: _Case, session_id: str) -> None:
 
 
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
+    # The v2 participant controls decide clinical.write (todo 6 bundles).
+    register_physician(case.staff)
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
     goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
@@ -220,29 +230,40 @@ def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
 
 
 def _htmx(page: Page, selector: str, status: int = OK) -> None:
-    """Click one htmx action and require the partial response status."""
-    with page.expect_response(
-        lambda r: (
-            r.request.method == "POST" and r.request.headers.get("hx-request") == "true"
+    """Click one htmx action and require its complete partial response."""
+    url = page.url
+    with page.expect_request_finished(
+        lambda request: (
+            request.method == "POST"
+            and request.url == url
+            and request.headers.get("hx-request") == "true"
         )
-    ) as response:
+    ) as finished:
         page.locator(selector).click()
-    assert response.value.status == status
+    response = finished.value.existing_response
+    assert response is not None
+    assert response.status == status
 
 
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
     goto_settled(physician, case.staff_url)
-    click_to_navigate(
-        physician.locator(f'[data-session="{session_id}"] button[value="join"]')
-    )
+    with (
+        room_join_readiness(physician, case.staff_url, case.root),
+        room_media_settled(physician),
+    ):
+        click_to_navigate(
+            physician.locator(f'[data-session="{session_id}"] button[value="join"]')
+        )
     assert physician.url == case.staff_url
     root = physician.locator("[data-teleconsult='clinician']")
     expect(root).to_have_attribute("data-session", session_id)
     expect(physician.locator("h1")).to_have_text(name)
     panel = physician.locator("#room-panel")
     expect(panel).to_have_attribute("data-role", "physician")
-    expect(physician.locator("#room-name")).to_contain_text(f"tc-{session_id}")
+    expect(physician.locator("#room-name")).to_have_text(
+        stored_room_name(case.staff, session_id)
+    )
     expect(panel).to_have_attribute("data-media", "ready")
     expect(panel).to_have_attribute("data-connection", "connected")
     assert physician.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
@@ -474,7 +495,8 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
     """Going offline keeps the edits; a save fails honestly, then succeeds."""
     physician.locator("#id_subjective").fill("Relato retificado offline")
     panel = physician.locator("#room-panel")
-    physician.context.set_offline(offline=True)
+    with room_offline(physician):
+        physician.context.set_offline(offline=True)
     _show(physician, case, "video")
     expect(panel).to_have_attribute("data-connection", "offline")
     expect(physician.locator("[data-room-error]")).to_have_attribute(
@@ -495,7 +517,11 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
     )
     assert stored(case.staff, version) == (1, FIRST["subjective"])
     _capture(physician, case, "offline-unsaved")
-    physician.context.set_offline(offline=False)
+    with (
+        room_action_finished(physician, case.staff_url),
+        room_action_finished(physician, case.staff_url, action="resume"),
+    ):
+        physician.context.set_offline(offline=False)
     _show(physician, case, "video")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(physician.locator("[data-room-error]")).to_be_hidden()
@@ -513,7 +539,7 @@ def _provider_failure(
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     _fail_room(case, session_id)
     _show(physician, case, "video")
-    physician.locator("[data-refresh-status]").click()
+    refresh_room_state(physician, "failed")
     panel = physician.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "failed")
     expect(panel).to_have_attribute("data-media", "off")
@@ -689,9 +715,10 @@ def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) 
     """The clinician room connects and follows the session while the prompt is open."""
     _sign_in_physician(prompted, case.base, case.staff)
     goto_settled(prompted, case.staff_url)
-    click_to_navigate(
-        prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
-    )
+    with room_join_readiness(prompted, case.staff_url, case.root):
+        click_to_navigate(
+            prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
+        )
     expect(prompted.locator("[data-teleconsult='clinician']")).to_have_attribute(
         "data-session", session_id
     )
@@ -704,7 +731,8 @@ def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) 
     )
     # Answering the prompt later brings the devices into the same room.
     wait_for_js(prompted, "() => window.__lateMedia.release !== null")
-    prompted.evaluate("() => window.__lateMedia.release()")
+    with room_media_settled(prompted):
+        prompted.evaluate("() => window.__lateMedia.release()")
     expect(panel).to_have_attribute("data-media", "ready")
     expect(panel).to_have_attribute("data-connection", "connected")
     assert prompted.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
@@ -725,9 +753,10 @@ def _journey(  # noqa: PLR0913 - the journey needs its full context
     first_encounter = _encounter_of(case, first_session)
     second_encounter = _encounter_of(case, second_session)
     goto_settled(patient, case.patient_url)
-    click_to_navigate(
-        patient.locator(f'[data-session="{first_session}"] button[value="join"]')
-    )
+    with room_join_readiness(patient, case.patient_url, case.root):
+        click_to_navigate(
+            patient.locator(f'[data-session="{first_session}"] button[value="join"]')
+        )
     expect(patient.locator("#room-panel")).to_have_attribute("data-role", "patient")
     _enter(physician, case, first_session, first["name"])
     _capture(physician, case, "joined")
@@ -1265,6 +1294,379 @@ def test_clinician_video_preservation(
             # browser may log that and nothing else.
             unexpected = [m for m in console if "status of 503" not in m]
             assert not unexpected, unexpected
+        finally:
+            for context in contexts:
+                context.close()
+            browser.close()
+
+
+# --------------------------------------------------------------------------
+# Teleconsult v2 (todo 37): device checks, audio only, removal and re-entry,
+# the fallback poll that replaced the 5 s timer, recorded end to end. Hints
+# over the realtime stack are proven in the realtime suite.
+# --------------------------------------------------------------------------
+
+V2_DAY = "2035-08-10"
+V2_NAME = "Paciente Sintético Tele V2"
+FALLBACK_POLL_MS = 30_000
+FALLBACK_WINDOWS = 3
+V2_TARGETS = (
+    "[data-audio-only]",
+    '[data-toggle="microphone"]',
+    '[data-toggle="camera"]',
+    "[data-refresh-status]",
+)
+CAMERA_OBSERVER_JS = """() => {
+  const stream = document.querySelector('[data-self-video]').srcObject;
+  const audio = stream.getAudioTracks()[0];
+  const camera = stream.getVideoTracks()[0];
+  const observation = window.__clinicCameraLoss = {
+    stream, audio, camera, audioEnded: 0, cameraEnded: 0, cameraTrusted: false,
+  };
+  audio.addEventListener('ended', () => { observation.audioEnded += 1; });
+  camera.addEventListener('ended', (event) => {
+    observation.cameraEnded += 1;
+    observation.cameraTrusted = event.isTrusted;
+  });
+}"""
+CAMERA_END_JS = """() =>
+  window.__clinicSyntheticMedia.end(window.__clinicCameraLoss.camera)"""
+CAMERA_SURVIVAL_JS = """() => {
+  const before = window.__clinicCameraLoss;
+  const stream = document.querySelector('[data-self-video]').srcObject;
+  return {
+    same_stream: stream === before.stream,
+    same_audio: Boolean(stream) && stream.getAudioTracks()[0] === before.audio,
+    audio_live: before.audio.readyState === 'live',
+    audio_enabled: before.audio.enabled,
+    camera_ended: before.camera.readyState === 'ended',
+    camera_removed: Boolean(stream) && stream.getVideoTracks().length === 0,
+    audio_ended_events: before.audioEnded,
+    camera_ended_events: before.cameraEnded,
+    camera_event_trusted: before.cameraTrusted,
+  };
+}"""
+MIN_TARGET = 44.0
+TARGET_JS = """(selectors) => selectors.flatMap((selector) =>
+  Array.from(document.querySelectorAll(selector))
+    .filter((el) => el.getClientRects().length > 0)
+    .map((el) => { const box = el.getBoundingClientRect();
+      return [selector, box.width, box.height]; }))"""
+
+
+def status_response(response: Response) -> bool:
+    """A metadata status refetch: POST answered with JSON to the room page."""
+    return (
+        response.request.method == "POST"
+        and response.request.headers.get("accept") == "application/json"
+    )
+
+
+def refresh_status(page: Page) -> None:
+    with room_action_finished(page, page.url):
+        page.locator("[data-refresh-status]").click()
+
+
+def _targets(page: Page, selectors: tuple[str, ...], label: str) -> None:
+    """Every visible v2 control keeps a 44x44 target at this viewport."""
+    boxes = page.evaluate(TARGET_JS, list(selectors))
+    assert boxes, label
+    small = [box for box in boxes if box[1] < MIN_TARGET or box[2] < MIN_TARGET]
+    assert small == [], (label, small)
+
+
+def _axe(page: Page, case: _Case, state: str) -> None:
+    """Zero axe violations of any impact on the surfaces this todo owns.
+
+    A document already carrying axe reruns it in place: a second injection
+    is served from cache without the response event the loader waits for.
+    """
+    if page.evaluate("() => typeof window.axe === 'undefined'"):
+        report = check_page(page, case.base, case.root, f"v2-{state}")
+        assert report["violations"] == 0, report
+        return
+    violations = page.evaluate(AXE_RUN_JS)
+    destination = case.root / "axe" / f"v2-{state}.json"
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination.write_text(json.dumps(violations, sort_keys=True, indent=2) + "\n")
+    assert violations == [], (state, violations)
+
+
+def v2_waiting_room(patient: Page, case: _Case, session_id: str) -> None:
+    """The patient checks camera, microphone, speaker and network, then enters."""
+    goto_settled(patient, case.patient_url)
+    patient.locator("[data-device-test]").click()
+    expect(patient.locator("[data-device-check]")).to_have_attribute(
+        "data-device-state", "ready"
+    )
+    expect(patient.locator("[data-device-report]")).to_have_attribute(
+        "data-report-state", "sent"
+    )
+    patient.locator("[data-speaker-test]").click()
+    patient.locator('[data-speaker-answer="ok"]').click()
+    expect(patient.locator('[data-result="speaker"]')).to_have_attribute(
+        "data-result-state", "ok"
+    )
+    expect(patient.locator("[data-device-report]")).to_have_attribute(
+        "data-report-state", "sent"
+    )
+    _targets(
+        patient,
+        ("[data-device-test]", "[data-speaker-test]", 'button[value="join"]'),
+        "waiting",
+    )
+    _axe(patient, case, "waiting-device-check")
+    _capture(patient, case, "v2-waiting-devices")
+    assert device_checks(case.staff, session_id)[-1][:4] == (
+        "patient",
+        "ok",
+        "ok",
+        "ok",
+    )
+    patient.locator("[data-device-stop]").click()
+
+
+def _v2_fallback_poll(physician: Page) -> None:
+    """Without realtime the room refetches every 30 s, not on the old 5 s timer.
+
+    The clock was installed before the workspace loaded, so realtime.js's
+    fallback interval is a controlled timer. Paused, every 30 s of page time
+    holds exactly one tick whatever the interval's phase: three windows give
+    exactly three refetches (the removed 5 s timer would give eighteen).
+    """
+    polls: list[str] = []
+    physician.clock.pause_at(int(physician.evaluate("() => Date.now()")) + 1)
+    # Requests are emitted when a fetch starts, so a refetch begun before the
+    # pause can never be counted inside the windows.
+    physician.on(
+        "request",
+        lambda request: (
+            polls.append(request.url)
+            if request.method == "POST"
+            and request.headers.get("accept") == "application/json"
+            else None
+        ),
+    )
+    for _ in range(FALLBACK_WINDOWS):
+        with physician.expect_response(status_response) as polled:
+            physician.clock.run_for(FALLBACK_POLL_MS)
+        assert polled.value.status == OK
+    assert len(polls) == FALLBACK_WINDOWS
+
+
+def _v2_patient_joins(physician: Page, patient: Page, case: _Case) -> None:
+    with (
+        room_join_readiness(patient, case.patient_url, case.root),
+        room_media_settled(patient),
+    ):
+        click_to_navigate(patient.locator('button[value="join"]'))
+    refresh_status(physician)
+    expect(physician.locator("[data-patient-presence]")).to_have_text("Na sala")
+    expect(physician.locator('[data-summary="speaker"]')).to_have_attribute(
+        "data-summary-state", "ok"
+    )
+
+
+def _v2_audio_only(physician: Page, patient: Page, case: _Case) -> None:
+    """Each side's audio-only switch is stored and shown to the other side."""
+    patient.locator("[data-audio-only]").click()
+    expect(patient.locator("[data-audio-only]")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    refresh_status(physician)
+    expect(physician.locator("[data-patient-media]")).to_have_text("Somente áudio")
+    physician.locator("[data-audio-only]").click()
+    expect(physician.locator("[data-audio-only]")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    assert physician.evaluate(TRACK_JS, "video") == {
+        "enabled": False,
+        "state": "live",
+    }
+    refresh_status(patient)
+    expect(patient.locator("[data-physician-media]")).to_have_text("Somente áudio")
+    _capture(physician, case, "v2-audio-only")
+    _axe(physician, case, "workspace-audio-only")
+    _axe(patient, case, "room-audio-only")
+
+
+def automatic_audio_response(response: Response) -> bool:
+    """Select the mode write itself, not a concurrent status refetch."""
+    body = response.request.post_data or ""
+    return (
+        response.request.method == "POST"
+        and 'name="action"\r\n\r\naudio_only\r\n' in body
+        and 'name="enabled"\r\n\r\ntrue\r\n' in body
+    )
+
+
+def _v2_camera_loss(
+    physician: Page, patient: Page, case: _Case, session_id: str
+) -> None:
+    """Lose only the camera; both participants retain their original audio."""
+    for page, peer, role in (
+        (physician, patient, "physician"),
+        (patient, physician, "patient"),
+    ):
+        page.locator("[data-audio-only]").click()
+        expect(page.locator("[data-audio-only]")).to_have_attribute(
+            "aria-pressed", "false"
+        )
+        assert page.evaluate(TRACK_JS, "video") == {"enabled": True, "state": "live"}
+        before = session_events(case.staff, session_id).count(("audio_only", role))
+        evaluate_js(page, CAMERA_OBSERVER_JS)
+        try:
+            with page.expect_response(automatic_audio_response) as changed:
+                evaluate_js(page, CAMERA_END_JS)
+            assert changed.value.status == OK
+            expect(page.locator("[data-audio-only]")).to_have_attribute(
+                "aria-pressed", "true"
+            )
+        finally:
+            observation = evaluate_js(page, CAMERA_SURVIVAL_JS)
+            (case.root / f"camera-loss-{role}.json").write_text(
+                json.dumps(observation, sort_keys=True, indent=2) + "\n"
+            )
+            _capture(page, case, f"camera-loss-{role}")
+        assert observation == {
+            "same_stream": True,
+            "same_audio": True,
+            "audio_live": True,
+            "audio_enabled": True,
+            "camera_ended": True,
+            "camera_removed": True,
+            "audio_ended_events": 0,
+            "camera_ended_events": 1,
+            "camera_event_trusted": True,
+        }
+        expect(page.locator('[data-toggle="camera"]')).to_be_disabled()
+        for width in (375, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            _targets(page, V2_TARGETS[:3], f"camera-loss-{role}-{width}")
+            assert evaluate_js(
+                page, "document.documentElement.scrollWidth <= innerWidth"
+            )
+            full_page_screenshot(page, case.root / f"camera-loss-{role}-{width}.png")
+        page.set_viewport_size({"width": case.width, "height": 900})
+        refresh_status(peer)
+        expect(peer.locator(f"[data-{role}-media]")).to_have_text("Somente áudio")
+        assert (
+            session_events(case.staff, session_id).count(("audio_only", role))
+            == before + 1
+        )
+
+
+def v2_remove_and_return(
+    physician: Page, patient: Page, case: _Case, session_id: str
+) -> None:
+    """Removal disconnects the patient; re-entry goes through the waiting room."""
+    _htmx(physician, 'button[value="remove"]')
+    expect(physician.locator("[data-patient-presence]")).to_have_text(
+        "Retirado da sala"
+    )
+    panel = patient.locator("#room-panel")
+    refresh_room_state(patient, "removed")
+    expect(panel).to_have_attribute("data-connection", "removed")
+    expect(patient.locator("[data-room-error]")).to_have_attribute(
+        "data-failure", "removed"
+    )
+    expect(patient.locator("[data-back]")).to_be_visible()
+    assert patient.evaluate(TRACK_JS, "audio") is None
+    _capture(patient, case, "v2-patient-removed")
+    click_to_navigate(patient.locator("[data-back]"))
+    with (
+        room_join_readiness(patient, case.patient_url, case.root),
+        room_media_settled(patient),
+    ):
+        click_to_navigate(patient.locator('button[value="join"]'))
+    events = session_events(case.staff, session_id)
+    assert ("removed", "physician") in events
+    assert events.count(("joined", "patient")) == 2
+
+
+def test_clinician_video_v2_devices_audio_only_and_removal(
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    """Todo 37 end to end on fake devices without preauthentication capture."""
+    base = renewal_base_url
+    case = _Case(
+        base=base,
+        staff=availability_staff,
+        day=V2_DAY,
+        root=renewal_artifact_root / "clinician-video",
+        width=1280,
+        staff_url=f"{base}/teleconsult/clinics/{availability_staff['clinic_a']}/",
+        patient_url=f"{base}/patient/teleconsult/",
+    )
+    case.root.mkdir(exist_ok=True)
+    errors: list[str] = []
+    console: list[str] = []
+    data = _seed_patient(case, 10, V2_NAME)
+    with sync_playwright() as driver:
+        browser = launch_selected(driver, media=True)
+        contexts = [
+            browser.new_context(
+                locale="pt-BR",
+                viewport={"width": case.width, "height": 900},
+                service_workers="block",
+            )
+            for _ in range(2)
+        ]
+        for context in contexts:
+            install_media(context, base, granted=True, scripted=True)
+        contexts.append(_context(browser, case, media=False))
+        physician, patient, admin = [
+            _page(context, errors, console) for context in contexts
+        ]
+        try:
+            _sign_in_physician(physician, base, case.staff)
+            sign_in_manager(admin, base, case.staff, seed_manager(case.staff))
+            _publish_consent(admin, f"{base}/clinics/{case.staff['clinic_a']}/consent/")
+            _redeem(patient, base, case.staff["clinic_a"], data["code"])
+            _accept_consent(patient, base)
+            session_id = _provision(physician, case, data)
+            v2_waiting_room(patient, case, session_id)
+            physician.clock.install()
+            _enter(physician, case, session_id, V2_NAME)
+            _targets(physician, V2_TARGETS, "workspace-1280")
+            _axe(physician, case, "workspace")
+            _v2_patient_joins(physician, patient, case)
+            _v2_audio_only(physician, patient, case)
+            _v2_camera_loss(physician, patient, case, session_id)
+            v2_remove_and_return(physician, patient, case, session_id)
+            for width in (375, 320):
+                physician.set_viewport_size({"width": width, "height": 900})
+                patient.set_viewport_size({"width": width, "height": 900})
+                _targets(physician, V2_TARGETS, f"workspace-{width}")
+                _targets(patient, V2_TARGETS[:3], f"room-{width}")
+                for page in (physician, patient):
+                    assert evaluate_js(
+                        page, "document.documentElement.scrollWidth <= innerWidth"
+                    )
+            physician.set_viewport_size({"width": case.width, "height": 900})
+            _v2_fallback_poll(physician)
+            assert not errors, errors
+            assert not console, console
+            (case.root / "v2-report.json").write_text(
+                json.dumps(
+                    {
+                        "mode": "synthetic",
+                        "provider": "teleconsult-synthetic-v1",
+                        "real_provider": "BLOCKED-ON-EG",
+                        "media": media_source(physician.context),
+                        "fallback_poll_ms": FALLBACK_POLL_MS,
+                        "events": session_events(case.staff, session_id),
+                        "device_checks": device_checks(case.staff, session_id),
+                        "room_name": "opaque"
+                        if stored_room_name(case.staff, session_id)
+                        else "",
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
         finally:
             for context in contexts:
                 context.close()

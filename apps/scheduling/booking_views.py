@@ -1,8 +1,8 @@
-"""Body-only appointment booking screen for authorized clinic managers.
+"""Body-only legacy manager and RP-authorized service booking screen.
 
 Both booking modes are POST. Neither the enrollment nor any demographic value
-ever reaches a URL, so an unverified privileged challenge can only resume at the
-blank clinic patient list.
+ever reaches a URL, so an unverified privileged challenge resumes at a blank,
+authorized entry screen.
 """
 
 from __future__ import annotations
@@ -10,18 +10,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
+from django import forms
 from django.contrib import messages
+from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
+from apps.intake.alias_access import PatientAliasedError
+from apps.scheduling.access import authorized_agenda_scope, authorized_view_scope
 from apps.scheduling.agenda_presenter import (
     DAY_VIEW,
     agenda_screen,
     agenda_url,
     booking_window_rows,
+)
+from apps.scheduling.appointment_creation import (
+    ServiceBooking,
+    create_service_appointment,
 )
 from apps.scheduling.appointment_forms import (
     BOOKED_MESSAGE,
@@ -34,6 +43,13 @@ from apps.scheduling.appointment_forms import (
     AppointmentPrepareForm,
 )
 from apps.scheduling.availability_presenter import manager_choices
+from apps.scheduling.booking_entry import _configure_resources
+from apps.scheduling.resource_booking import (
+    authorized_service_clinic,
+    service_practitioners,
+)
+from apps.scheduling.resource_definitions import configuration_clinic
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
@@ -62,7 +78,20 @@ BOOKED_TAG: Final = "scheduling.appointment.booked"
 
 
 def appointment_create_continuation(clinic_id: UUID) -> str:
-    """Resume an unsafe booking challenge at the blank clinic patient list."""
+    """Keep legacy returns while giving RP staff their scoped booking entry."""
+    try:
+        with transaction.atomic():
+            try:
+                authorized_view_scope(clinic_id)
+            except AvailabilityAccessDeniedError as error:
+                if error.__cause__ is not None:
+                    raise
+                configuration_clinic(clinic_id)
+                return reverse("scheduling:resource-settings", args=(clinic_id,))
+    except (AppointmentAccessDeniedError, AvailabilityAccessDeniedError):
+        # A safe continuation never grants authority. The savepoint also
+        # leaves malformed GUC refusal to the view without an aborted txn.
+        pass
     return reverse("intake:patient-list", args=(clinic_id,))
 
 
@@ -82,11 +111,14 @@ def _booking_context(
     preparation: BookingPreparation,
     form: AppointmentCreateForm,
 ) -> dict[str, object]:
+    list_url = appointment_create_continuation(clinic_id)
     return {
         "book_url": reverse("scheduling:appointment-create", args=(clinic_id,)),
         "clinic_id": clinic_id,
         "form": form,
-        "list_url": appointment_create_continuation(clinic_id),
+        "list_url": list_url,
+        "list_is_settings": list_url
+        == reverse("scheduling:resource-settings", args=(clinic_id,)),
         "patient_display_name": preparation.patient_display_name,
         "practitioners": preparation.practitioners,
         "timezone_key": agenda_screen(clinic_id).timezone_key,
@@ -103,34 +135,79 @@ def _render_booking(
     return render(request, template, context)
 
 
-def _body_enrollment(raw: object) -> UUID:
+def _authorize_service_practitioner(request: HttpRequest, clinic_id: UUID) -> None:
     try:
-        return UUID(str(raw))
-    except ValueError as error:
+        practitioner_id = forms.UUIDField(required=False).clean(
+            request.POST.get("practitioner")
+        )
+    except forms.ValidationError as error:
         raise Http404 from error
+    authorized_service_clinic(clinic_id, practitioner_id)
 
 
-def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+def _preparation(request: HttpRequest, clinic_id: UUID) -> BookingPreparation:
     form = AppointmentPrepareForm(data=request.POST)
     if not form.is_valid():
         raise Http404
-    enrollment_id = form.selected_enrollment()
-    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    service_id = form.cleaned_data["service_type_id"]
+    resource_ids: tuple[UUID, ...] = ()
+    if service_id is not None:
+        _authorize_service_practitioner(request, clinic_id)
+        try:
+            resource_ids = tuple(
+                UUID(pk) for pk in request.POST.getlist("resource_ids")
+            )
+        except ValueError as error:
+            raise Http404 from error
+    return prepare_booking(
+        clinic_id=clinic_id,
+        enrollment_id=form.selected_enrollment(),
+        service_type_id=service_id,
+        resource_ids=resource_ids,
+    )
+
+
+def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+    preparation = _preparation(request, clinic_id)
     blank = AppointmentCreateForm(_choices(preparation))
-    blank.initial["enrollment_id"] = str(enrollment_id)
+    _configure_resources(blank, clinic_id)
+    blank.initial["enrollment_id"] = str(preparation.enrollment_id)
+    if preparation.service_type_id is not None:
+        blank.initial["service_type_id"] = str(preparation.service_type_id)
+        blank.initial["resource_ids"] = [str(pk) for pk in preparation.resource_ids]
     blank.initial["idempotency_key"] = str(uuid4())
     return _render_booking(request, _booking_context(clinic_id, preparation, blank))
 
 
 def _booked(form: AppointmentCreateForm, clinic_id: UUID) -> bool:
+    service_id = form.cleaned_data["service_type_id"]
+    if service_id is None and form.cleaned_data["resource_ids"]:
+        form.add_error(None, INVALID_BOOKING_MESSAGE)
+        return False
     try:
-        create_appointment(
-            clinic_id=clinic_id,
-            enrollment_id=form.selected_enrollment(),
-            practitioner_id=form.selected_practitioner(),
-            local_range=form.local_range(),
-            idempotency_key=form.cleaned_data["idempotency_key"],
-        )
+        if service_id is not None:
+            create_service_appointment(
+                clinic_id=clinic_id,
+                enrollment_id=form.selected_enrollment(),
+                practitioner_id=form.selected_practitioner(),
+                booking=ServiceBooking(
+                    form.local_range(),
+                    service_id,
+                    tuple(UUID(pk) for pk in form.cleaned_data["resource_ids"]),
+                ),
+                idempotency_key=form.cleaned_data["idempotency_key"],
+            )
+        else:
+            create_appointment(
+                clinic_id=clinic_id,
+                enrollment_id=form.selected_enrollment(),
+                practitioner_id=form.selected_practitioner(),
+                local_range=form.local_range(),
+                idempotency_key=form.cleaned_data["idempotency_key"],
+            )
+    except SchedulingRuleError as error:
+        form.rule_code = error.code
+        form.add_error(None, str(error.message))
     except AppointmentIdempotencyConflictError:
         form.add_error(None, CONFLICTING_BOOKING_KEY_MESSAGE)
     except SlotConflict:
@@ -171,11 +248,21 @@ def _booked_response(
 
 
 def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
-    form = AppointmentCreateForm(manager_choices(clinic_id), request.POST)
+    if request.POST.get("service_type_id"):
+        _authorize_service_practitioner(request, clinic_id)
+        choices = tuple(
+            (str(pk), label) for pk, label in service_practitioners(clinic_id)
+        )
+    else:
+        choices = manager_choices(clinic_id)
+    form = AppointmentCreateForm(choices, request.POST)
+    _configure_resources(form, clinic_id)
     if form.is_valid() and _booked(form, clinic_id):
         return _booked_response(request, clinic_id, form.local_range().start_local[:10])
-    enrollment_id = _body_enrollment(form.data.get("enrollment_id", ""))
-    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    with transaction.atomic():
+        preparation = _preparation(request, clinic_id)
+        if form.rule_code:
+            transaction.set_rollback(True)
     return _render_booking(request, _booking_context(clinic_id, preparation, form))
 
 
@@ -190,8 +277,23 @@ def appointment_create_view(
     if mode not in {PREPARE_MODE, CREATE_MODE}:
         raise Http404
     try:
+        # The RP service screen and its agenda destination share booking scope.
+        # Legacy booking keeps its narrower role guard. Decide both scopes
+        # before preparation can append a viewed event or creation can write.
+        if request.POST.get("service_type_id"):
+            _authorize_service_practitioner(request, clinic_id)
+            authorized_agenda_scope(clinic_id)
+        else:
+            authorized_view_scope(clinic_id)
         if mode == PREPARE_MODE:
             return _prepared(request, clinic_id)
         return _created(request, clinic_id)
     except (AppointmentAccessDeniedError, AvailabilityAccessDeniedError) as error:
         raise Http404 from error
+    except PatientAliasedError:
+        return HttpResponse(
+            _("Choose the surviving registration to create a new appointment."),
+            status=409,
+        )
+    except SchedulingRuleError as error:
+        return HttpResponse(str(error.message), status=409)

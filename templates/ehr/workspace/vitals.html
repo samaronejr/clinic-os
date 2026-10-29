@@ -1,0 +1,38 @@
+{% load i18n ehr_ui %}
+<section class="patient-workspace-section" aria-labelledby="vitals-title">
+  <h2 id="vitals-title">{% trans "Vitals and observations" %}</h2>
+  <form novalidate data-auth-form method="post" class="patient-workspace-filter">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="{{ tab }}">
+    <div class="field"><label for="trend-kind">{% trans "Trend" %}</label><select id="trend-kind" name="trend_kind">{% for code,label in trend_choices %}<option value="{{ code }}"{% if code == trend_kind %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <button class="button button--secondary" name="action" value="filter" type="submit">{% trans "Show trend" %}</button>
+  </form>
+  {% include "includes/components/chart.html" with id="vitals-trend" title=chart_title labels=chart_labels series=chart_series ref_low=None ref_high=None summary=_("Recorded measurements in clinic time. The table contains the same values as the chart.") state=chart_state only %}
+  {% if observations %}
+  <div class="table-scroll" role="region" aria-labelledby="observations-caption" tabindex="0">
+  <table class="table"><caption id="observations-caption">{% trans "Recorded observations" %}</caption>
+    <thead><tr><th scope="col">{% trans "Measurement" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Date" %}</th><th scope="col">{% trans "Origin and review" %}</th>{% if can_write %}<th scope="col">{% trans "Review" %}</th>{% endif %}</tr></thead>
+    <tbody>{% for item in observations %}<tr data-observation-kind="{{ item.kind }}">
+      <th scope="row">{{ item.kind|observation_label }}</th><td>{{ item.value.value|clinical_decimal }} {{ item.unit }}{% if item.value.reference_low or item.value.reference_high %}<p class="help-text">{% trans "Reference range" %}: {{ item.value.reference_low|default:"—"|clinical_decimal }}–{{ item.value.reference_high|default:"—"|clinical_decimal }}</p>{% endif %}</td><td><time>{{ item.effective_at|date:"d/m/Y H:i" }}</time></td>
+      <td>{% include "includes/components/provenance.html" with kind=item.provenance|provenance_style only %}<p class="help-text">{% trans "Origin" %}: {{ item.get_origin_display }}</p>{% if item.confirmed_at %}<p class="help-text">{{ item.confirmed_at|date:"d/m/Y H:i" }}</p>{% endif %}</td>
+      {% if can_write %}<td>{% if item.provenance != "clinician_confirmed" %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+        <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="vitals">
+        <input type="hidden" name="observation_id" value="{{ item.pk }}"><input type="hidden" name="revision" value="{{ item.revision }}">
+        <label class="patient-workspace-check"><input type="checkbox" name="reviewed" value="yes" required>{% trans "I reviewed this observation" %}</label>
+        <button class="button button--secondary" name="action" value="confirm_observation" type="submit">{% trans "Confirm observation" %}</button>
+      </form>{% else %}{% trans "Reviewed" %}{% endif %}</td>{% endif %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="table-empty">{% trans "No observations recorded. Add measurements below; absence is not a normal finding." %}</p>{% endif %}
+</section>
+{% if can_observe %}
+<section class="patient-workspace-section" aria-labelledby="vitals-form-title">
+  <h2 id="vitals-form-title">{% trans "Record vitals" %}</h2>
+  <p class="help-text">{% trans "Use a decimal comma or point. Enter only measured values. BMI is calculated from weight and height recorded together." %}</p>
+  <form method="post" novalidate data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="vitals">
+    {% if forms.vitals.errors %}<div class="feedback feedback--error" role="alert" data-focus-error tabindex="-1" autofocus>{{ forms.vitals.non_field_errors }}</div>{% endif %}
+    <div class="patient-workspace-fields">{% for field in forms.vitals %}{% include "includes/field.html" with field=field %}{% endfor %}</div>
+    <div class="actions"><button class="button" name="action" value="vitals" type="submit">{% trans "Save vitals" %}</button><span class="htmx-indicator">{% trans "Saving…" %}</span></div>
+  </form>
+</section>
+{% endif %}

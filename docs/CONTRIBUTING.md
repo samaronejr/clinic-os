@@ -54,7 +54,7 @@ format, strict mypy, full test/coverage, and dependency-audit gates. Its
 image contract builds committed source, so it requires a clean Git tree.
 
 The test/coverage gate is `python -m ops.testing.ci_pytest`, shared by `make ci`,
-the hosted Python job and the renewal runner. It runs the default collection as a
+the hosted Python jobs and the renewal runner. It runs the default collection as a
 `pytest-xdist` phase (one cloned test database per worker) plus a
 single-process phase for the tests classified in
 `ops/testing/ci-serial-tests.txt`, combines coverage for the unchanged
@@ -64,6 +64,24 @@ the collected one. A test that commits cluster-global PostgreSQL state (roles,
 role or database settings, databases, `ALTER SYSTEM`, migrations through
 `tenancy.0006`) belongs in that file: the parallel phase's server-state guard
 fails the run otherwise.
+
+Hosted CI divides both phases into two deterministic, file-atomic shards per
+Python version. Each shard collects the complete reference independently and
+retains its raw line coverage, exactly-once execution reports, refusal census
+and shared-catalog certificate. The `python-coverage` jobs require both shards,
+prove their disjoint union equals that reference, require every derived refusal
+exit across the union, revalidate every catalog certificate, and combine raw
+coverage before enforcing the same 90% floor. `Renewal RC acceptance` requires
+the shard and merge jobs and revalidates all their bound artifacts. Local
+`make ci` and renewal-runner coverage remain unsharded.
+
+Every execution process records its complete collection before shard
+deselection. Additions or missing reference nodes fail the job, with serial
+collection checked against all reference items in its selected files. Bound
+live unions and per-process count/digest certificates let the combined gate
+compare actual reported node lifecycles with the full live collection, not
+just the saved reference. Accounted nodes include existing skips; they are
+not a count of passing test bodies.
 
 For uncommitted work, the renewal runner is the verified current-source
 route:

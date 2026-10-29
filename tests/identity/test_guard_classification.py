@@ -12,6 +12,7 @@ from django.db import connection, transaction
 
 from auth.stepup_test_support import create_role_actor
 from identity import legacy_guard_inventory as discovery
+from identity.cut1_authority_census import ExecutedProofs
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.permission_support import permission_context
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
@@ -38,6 +39,7 @@ ORM = """def require_future_owner(*, clinic_id):
     actor = current_actor_id()
     if not Clinic.objects.filter(
         pk=clinic_id, userclinicrole__user_id=actor, userclinicrole__role="owner",
+        userclinicrole__revoked_at__isnull=True,
     ).exists():
         raise CurrentActorError
     return actor
@@ -47,7 +49,8 @@ RAW_SQL = """def require_future_owner(*, clinic_id):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT EXISTS (SELECT 1 FROM clinic_app.identity_userclinicrole "
-            "WHERE user_id=%s AND clinic_id=%s AND role='owner')",
+            "WHERE user_id=%s AND clinic_id=%s AND role='owner' "
+            "AND revoked_at IS NULL)",
             [actor, clinic_id],
         )
         if not cursor.fetchone()[0]:
@@ -101,6 +104,64 @@ SOURCES = {
     "related_manager": RELATED,
     "aliased_helper": HELPER_ALIAS,
 }
+
+
+def test_merged_authority_probe_requires_actual_callable_execution() -> None:
+    proofs = ExecutedProofs({"apps.identity.current_context.current_actor_id"})
+    proofs.run("unrelated passing oracle", lambda: None)
+    with pytest.raises(AssertionError):
+        proofs.executed()
+
+
+def test_failed_authority_oracle_cannot_issue_an_executed_probe(
+    rbac_graph: RbacGraph,
+) -> None:
+    symbol = "apps.identity.current_context.current_actor_id"
+    proofs = ExecutedProofs({symbol})
+
+    def failed_oracle() -> None:
+        assert current_actor_id() == rbac_graph.physician
+        pytest.fail("the authority assertion failed after entering the callable")
+
+    with (
+        permission_context(rbac_graph, rbac_graph.physician),
+        pytest.raises(pytest.fail.Exception),
+    ):
+        proofs.run("failed real authority oracle", failed_oracle)
+    with pytest.raises(AssertionError):
+        proofs.executed()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from apps.identity.current_context import require_permission\n"
+        "def admitted(clinic_id):\n"
+        "    require_permission('demographics.billing_read', clinic_id=clinic_id)\n",
+        "from apps.identity import current_context\n"
+        "def admitted(clinic_id):\n"
+        "    return current_context.has_permission('demographics.read', "
+        "clinic_id=clinic_id)\n",
+        "from apps.identity.current_context import require_permission as permitted\n"
+        "def admitted(clinic_id):\n"
+        "    permitted('demographics.billing_read', clinic_id=clinic_id)\n",
+    ],
+    ids=["direct-permission", "qualified-predicate", "aliased-permission"],
+)
+def test_permission_call_admissions_are_automatically_discovered(
+    source: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "apps/example/admission.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(source)
+    monkeypatch.setattr(discovery, "ROOT", tmp_path)
+
+    found = discovery.discover()
+
+    assert "apps.example.admission.admitted" in found
+    assert "permission" in found["apps.example.admission.admitted"]
 
 
 @pytest.mark.parametrize("spelling", SOURCES)

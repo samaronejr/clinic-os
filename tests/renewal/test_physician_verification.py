@@ -29,13 +29,14 @@ from apps.identity.physician_verification import (
 from apps.identity.stepup import STEP_UP_SESSION_KEY, StepUpRequired
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
+from django.db.models.functions import Now
 from django.test import override_settings
 
 from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
 from provider_gate_support import assert_capability_gate_closed
 from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
     seed_appointment_setup,
 )
 
@@ -91,7 +92,7 @@ def setup(
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
     ):
-        appointment = create_synthetic_appointment(appointment_setup)
+        appointment = arrived_synthetic_appointment(appointment_setup)
     with (
         runtime_role(),
         tenant_context(rbac_graph.physician, rbac_graph.organization_a),
@@ -304,9 +305,9 @@ def test_canonical_role_removal_overrides_regular_registration(
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         setup.verify()
     with owner_scope(graph.organization_a):
-        UserClinicRole.objects.filter(
-            user_id=graph.physician, role="physician"
-        ).delete()
+        UserClinicRole.objects.filter(user_id=graph.physician, role="physician").update(
+            revoked_at=Now()
+        )
         UserClinicRole.objects.create(
             user_id=graph.physician,
             clinic_id=graph.clinic_a,

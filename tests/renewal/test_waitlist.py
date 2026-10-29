@@ -581,7 +581,11 @@ def test_exact_waitlist_database_posture_and_immutable_history(
                 "waitlist_insert",
                 "waitlist_update",
             )
-        }
+        } | {
+            (table, policy)
+            for table in tables
+            for policy in ("waitlist_merge_read", "waitlist_merge_update")
+        } | {("scheduling_waitlistentry", "waitlist_merge_insert")}
         cursor.execute(
             "SELECT table_name, privilege_type "
             "FROM information_schema.role_table_grants "

@@ -5,6 +5,13 @@ runner's coverage gate::
 
     python -m ops.testing.ci_pytest --workers 4 --work-root DIR [--cov-xml PATH]
 
+Hosted jobs add ``--shard 1|2 --artifact-root DIR``. Both phases select that
+shard; raw coverage and detector receipts are retained for the per-version
+``ops.testing.ci_pytest_artifacts`` gate. Only that gate enforces the combined
+population, refusal-exit union and coverage floor. Local invocations remain
+unsharded. ``--partition-only --artifact-root DIR`` collects without any
+database work and retains the complete partition proof.
+
 1. ``collect``: an independent ``pytest --collect-only tests`` records the
    reference population (the node IDs the single-process form would run) and
    resolves ``ci-serial-tests.txt``; every classification must match a test.
@@ -44,6 +51,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
@@ -51,8 +59,26 @@ import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
+from ops.testing.ci_pytest_collection import (
+    MAX_WORKERS,
+    validate_execution_collections,
+    validate_execution_union,
+    write_execution_collections,
+)
+from ops.testing.ci_pytest_partition import (
+    NODE_ID_ENCODING,
+    PHASES,
+    SHARDS,
+    partition,
+    population_failures,
+    public_nodeid,
+)
 from ops.testing.ci_pytest_plugin import Counters, catalog_writes, read_counters
-from ops.testing.isolation_common import ensure_private_directory
+from ops.testing.isolation_common import (
+    IsolationError,
+    ensure_private_directory,
+    load_json,
+)
 from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
@@ -63,8 +89,6 @@ COVERAGE_TARGETS_FILE: Final = REPOSITORY / "ops/testing/coverage-targets.txt"
 PLUGIN: Final = ("-p", "ops.testing.ci_pytest_plugin")
 COVERAGE_FLOOR: Final = "--cov-fail-under=90"
 PYTEST_ENVIRONMENT: Final = {"COVERAGE_CORE": "sysmon"}
-MAX_WORKERS: Final = 32
-PHASES: Final = ("parallel", "serial")
 # PostgreSQL publishes a backend's pending counts when it closes, and while it
 # is connected within 10 s (PGSTAT_IDLE_INTERVAL) of going idle.
 COUNTER_LAG_SECONDS: Final = 10.0
@@ -120,6 +144,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         expected_serial = {
             nodeid for nodeids in manifest.values() for nodeid in nodeids
         }
+        selections = partition(reference, expected_serial)
+        if arguments.partition_only:
+            _partition_proof(Path(arguments.artifact_root), reference, selections)
+            return 0
+        shard_options = (
+            [] if arguments.shard is None else [f"--ci-pytest-shard={arguments.shard}"]
+        )
+        coverage_file = None if arguments.shard is None else work / "coverage.data"
         with _worker_databases(arguments.workers) as window:
             parallel = _run(
                 [
@@ -127,6 +159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "--ci-pytest-phase=parallel",
                     f"--ci-pytest-record={work}",
                     "--ci-pytest-guard",
+                    *shard_options,
                     f"--numprocesses={arguments.workers}",
                     "--dist=loadfile",
                     "--reuse-db",
@@ -134,28 +167,53 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "--cov-report=",
                     *arguments.pytest_args,
                     "tests",
-                ]
+                ],
+                coverage_file=coverage_file,
             )
             catalog_failures = window.check(work)
-        reports = ["--cov-report=term-missing"]
-        if arguments.cov_xml is not None:
+        reports = (
+            ["--cov-report=term-missing"]
+            if arguments.shard is None
+            else ["--cov-report="]
+        )
+        if arguments.cov_xml is not None and arguments.shard is None:
             reports.append(f"--cov-report=xml:{arguments.cov_xml}")
         serial = _run(
             [
                 *PLUGIN,
                 "--ci-pytest-phase=serial",
                 f"--ci-pytest-record={work}",
+                *shard_options,
                 "--reuse-db",
                 *coverage_targets(),
                 "--cov-append",
                 *reports,
-                COVERAGE_FLOOR,
+                *([COVERAGE_FLOOR] if arguments.shard is None else []),
                 *arguments.pytest_args,
-                *_serial_paths(expected_serial),
-            ]
+                *_serial_paths(
+                    expected_serial
+                    if arguments.shard is None
+                    else set(selections[arguments.shard]["serial"])
+                ),
+            ],
+            coverage_file=coverage_file,
         )
-        failures = [*verify(work, reference, expected_serial), *catalog_failures]
+        write_execution_collections(work, arguments.workers)
+        failures = [
+            *verify(work, reference, expected_serial, shard=arguments.shard),
+            *catalog_failures,
+        ]
         executed = {phase: len(_executed(work, phase)) for phase in PHASES}
+        if arguments.shard is not None:
+            from ops.testing.ci_pytest_artifacts import publish  # noqa: PLC0415
+
+            publish(
+                work,
+                Path(arguments.artifact_root),
+                shard=arguments.shard,
+                exits={"parallel": parallel, "serial": serial},
+                failures=failures,
+            )
     for failure in failures:
         _say(f"FAIL {failure}")
     _say(
@@ -173,26 +231,48 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def verify(
-    work: Path, reference: Sequence[str], expected_serial: set[str]
+    work: Path,
+    reference: Sequence[str],
+    expected_serial: set[str],
+    *,
+    shard: int | None = None,
 ) -> list[str]:
-    """Compare the executed populations with the reference collection."""
+    """Compare phase execution with the independent and live collections."""
     failures: list[str] = []
     if len(set(reference)) != len(reference):
         failures.append("reference collection repeats a node ID")
     universe = set(reference)
-    executed = {phase: _executed(work, phase) for phase in PHASES}
-    expected = {"parallel": universe - expected_serial, "serial": expected_serial}
-    for phase, nodeids in executed.items():
-        missing = sorted(expected[phase] - nodeids)
-        extra = sorted(nodeids - expected[phase])
-        if missing:
-            failures.append(f"{phase} phase did not run {len(missing)}: {missing[:20]}")
-        if extra:
-            failures.append(f"{phase} phase ran {len(extra)} unexpected: {extra[:20]}")
-    if executed["parallel"] & executed["serial"]:
-        failures.append("a node ID ran in both phases")
-    if executed["parallel"] | executed["serial"] != universe:
-        failures.append("executed population differs from the reference collection")
+    expected = (
+        {
+            "parallel": sorted(universe - expected_serial),
+            "serial": sorted(expected_serial),
+        }
+        if shard is None
+        else partition(reference, expected_serial)[shard]
+    )
+    reports = {
+        phase: json.loads((work / f"{phase}-reports.json").read_text("utf-8"))
+        if (work / f"{phase}-reports.json").is_file()
+        else {}
+        for phase in PHASES
+    }
+    try:
+        collections, _ = load_json(work / "execution-collections.json")
+        live = validate_execution_collections(
+            collections, [public_nodeid(node) for node in reference], expected
+        )
+        failures.extend(population_failures(expected, reports))
+        if shard is None:
+            validate_execution_union(
+                [
+                    public_nodeid(nodeid)
+                    for phase in PHASES
+                    for nodeid in reports[phase]
+                ],
+                live,
+            )
+    except (IsolationError, OSError, ValueError) as error:
+        return [*failures, str(error), *_guard_violations(work)]
     failures.extend(_guard_violations(work))
     return failures
 
@@ -244,6 +324,7 @@ class CatalogWindow:
         self.admin = admin
         self.since = since
         self.baseline: Counters | None = None
+        self.final: Counters | None = None
 
     def start(self) -> None:
         """Take the baseline reading once earlier backends have published."""
@@ -262,6 +343,18 @@ class CatalogWindow:
 
     def check(self, work: Path) -> list[str]:
         """Return the failures for committed writes since the baseline."""
+        failures = self._check(work)
+        certificate = {
+            "before": None if self.baseline is None else asdict(self.baseline),
+            "after": None if self.final is None else asdict(self.final),
+            "failures": failures,
+        }
+        (work / "catalog.json").write_text(
+            json.dumps(certificate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return failures
+
+    def _check(self, work: Path) -> list[str]:
         if self.baseline is None:
             return ["shared-catalog counters have no baseline reading"]
         try:
@@ -269,6 +362,7 @@ class CatalogWindow:
             if busy is not None:
                 return [busy]
             final = read_counters(self.admin)
+            self.final = final
         except psycopg.Error as error:
             return [f"shared-catalog counters are unreadable: {error}"]
         writes, problems = catalog_writes(self.baseline, final)
@@ -510,10 +604,18 @@ def _rebind(url: str, database: str) -> str:
     return urlunsplit(parsed._replace(path=f"/{quote(database, safe='')}"))
 
 
-def _run(pytest_args: list[str], *, quiet: bool = False) -> int:
+def _run(
+    pytest_args: list[str],
+    *,
+    quiet: bool = False,
+    coverage_file: Path | None = None,
+) -> int:
     return _run_command(
         [sys.executable, "-m", "pytest", *pytest_args],
-        PYTEST_ENVIRONMENT,
+        {
+            **PYTEST_ENVIRONMENT,
+            **({} if coverage_file is None else {"COVERAGE_FILE": str(coverage_file)}),
+        },
         quiet=quiet,
     )
 
@@ -538,11 +640,58 @@ def _parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--workers", type=int, required=True)
     parser.add_argument("--work-root", required=True)
     parser.add_argument("--cov-xml")
+    parser.add_argument("--shard", type=int, choices=SHARDS)
+    parser.add_argument("--artifact-root")
+    parser.add_argument("--partition-only", action="store_true")
     parser.add_argument("pytest_args", nargs="*")
     arguments = parser.parse_args(argv)
     if not 1 <= arguments.workers <= MAX_WORKERS:
         _fail(f"--workers must be between 1 and {MAX_WORKERS}")
+    if (arguments.shard is not None or arguments.partition_only) != (
+        arguments.artifact_root is not None
+    ):
+        _fail("--shard/--partition-only require --artifact-root, and vice versa")
+    if arguments.shard is not None and arguments.cov_xml is not None:
+        _fail("shard coverage must be combined before reporting")
     return arguments
+
+
+def _partition_proof(
+    destination: Path,
+    reference: list[str],
+    selections: dict[int, dict[str, list[str]]],
+) -> None:
+    destination.mkdir(parents=True, exist_ok=False)
+    flattened = [
+        nodeid
+        for phases in selections.values()
+        for nodes in phases.values()
+        for nodeid in nodes
+    ]
+    if sorted(flattened) != sorted(reference):
+        _fail("shard union differs from reference population")
+    public_reference = [public_nodeid(nodeid) for nodeid in reference]
+    if len(set(public_reference)) != len(reference):
+        _fail("public node ID encoding repeats an identity")
+    proof = {
+        "reference": public_reference,
+        "node_id_encoding": NODE_ID_ENCODING,
+        "shards": {
+            shard: {
+                phase: [public_nodeid(nodeid) for nodeid in nodes]
+                for phase, nodes in phases.items()
+            }
+            for shard, phases in selections.items()
+        },
+        "counts": {
+            shard: {phase: len(nodes) for phase, nodes in phases.items()}
+            for shard, phases in selections.items()
+        },
+        "union_equals_reference": True,
+    }
+    (destination / "partition.json").write_text(
+        json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _say(message: str) -> None:

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load i18n clinic_locale %}
+{% block title %}{% trans "Move appointment" %} · Clinic OS{% endblock %}
+{% block content %}{% comment %}
+Native move form (JavaScript off): the selector, the rendered revision and the
+civil view travel in the POST body. The slot finder posts the same selector to
+the board action route and comes back here with that day's free times.
+{% endcomment %}
+<section class="scheduling-task transition-shell" aria-labelledby="agenda-move-title">
+  <h1 id="agenda-move-title">{% trans "Move appointment" %}</h1>
+  <div class="panel transition-panel">
+    <p><strong>{% trans "Patient" %}:</strong> {{ appointment.patient_display_name }}</p>
+    <p><strong>{% trans "Time" %}:</strong> {{ appointment.start_local|clinic_minute }} – {{ appointment.end_local|clinic_minute }}</p>
+    <form method="post" action="{{ move_url }}" data-native-move-form>
+      {% csrf_token %}
+      <input type="hidden" name="appointment_id" value="{{ appointment_id }}">
+      <input type="hidden" name="expected_revision" value="{{ expected_revision }}">
+      <input type="hidden" name="day" value="{{ day }}">
+      <input type="hidden" name="view" value="{{ view|default:'day' }}">
+      <input type="hidden" name="duration" value="{{ duration }}">
+      {% if found %}<div class="field">
+        <label for="agenda-move-start">{% blocktrans with day=found.day|date:"SHORT_DATE_FORMAT" %}New start time on {{ day }}{% endblocktrans %}</label>
+        {% if found.starts %}<select id="agenda-move-start" name="start">{% for start in found.starts %}<option value="{{ start }}">{{ start }}</option>{% endfor %}</select>{% else %}<p class="hint" id="agenda-move-start">{% trans "No free time on that day. Try another day." %}</p>{% endif %}
+      </div>{% else %}<div class="field">
+        <label for="agenda-move-start">{% trans "New start time" %}</label>
+        <input id="agenda-move-start" name="start" type="time" value="{{ start }}" required>
+      </div>{% endif %}
+      <div class="actions">
+        {% if not found or found.starts %}<button type="submit">{% trans "Move" %}</button>{% endif %}
+        <a class="button button--quiet" href="{{ grid_url }}">{% trans "Back to the day's agenda" %}</a>
+      </div>
+    </form>
+    {% if action_url %}<form class="agenda-move-find" method="post" action="{{ action_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="intent" value="find">
+      <input type="hidden" name="view" value="{{ view|default:'day' }}">
+      <input type="hidden" name="appointment_id" value="{{ appointment_id }}">
+      <input type="hidden" name="expected_revision" value="{{ expected_revision }}">
+      <input type="hidden" name="duration" value="{{ duration }}">
+      <div class="field">
+        <label for="agenda-move-find-day">{% trans "Find free times on another day" %}</label>
+        <input id="agenda-move-find-day" name="day" type="date" value="{{ day }}" required>
+      </div>
+      <div class="actions"><button type="submit" class="button--secondary">{% trans "Find free times" %}</button></div>
+    </form>{% endif %}
+  </div>
+</section>
+{% endblock %}

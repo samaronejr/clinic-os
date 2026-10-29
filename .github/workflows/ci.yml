@@ -9,13 +9,14 @@ permissions:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }}
+    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/2
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+        shard: [1, 2]
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -58,14 +59,59 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy .
-          CLINIC_PDF_TOOLS=required uv run python -m ops.testing.ci_pytest --workers 4 --work-root "$RUNNER_TEMP/clinic-ci-pytest" --cov-xml "$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml"
+          CLINIC_PDF_TOOLS=required uv run python -m ops.testing.ci_pytest --workers 4 --work-root "$RUNNER_TEMP/clinic-ci-pytest" --shard "${{ matrix.shard }}" --artifact-root "$RUNNER_TEMP/python-shard"
           uv run pip-audit --local
+      - name: Publish Python shard evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-python-py${{ matrix.python-version }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/python-shard/
+          retention-days: 3
+
+  python-coverage:
+    name: Python ${{ matrix.python-version }} combined coverage and census
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs: [test]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Download Python shard evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: renewal-python-py${{ matrix.python-version }}-shard-*
+          path: ${{ runner.temp }}/python-shards
+      - name: Prove partition and combine coverage and detectors
+        run: |
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m ops.testing.ci_pytest_artifacts \
+            --python-version "${{ matrix.python-version }}" \
+            --artifacts "$RUNNER_TEMP/python-shards" \
+            --output "$RUNNER_TEMP/python-combined"
       - name: Publish machine-readable coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: renewal-coverage-py${{ matrix.python-version }}
-          path: ${{ runner.temp }}/coverage-${{ matrix.python-version }}.xml
+          path: ${{ runner.temp }}/python-combined/
           retention-days: 3
 
   contracts:
@@ -114,18 +160,20 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - "clinic-settings,billing,prescription-draft,prescribing,document-verification"
+          - "clinic-settings,billing,prescription-draft,prescribing,document-verification,onboarding"
           - "consent,amendments,attachments,clinical-history,clinician-video"
-          - "video-recovery,encounter,end-to-end"
-          - "agenda,availability,contacts,locale,patient-access,realtime"
+          - "video-recovery,encounter,end-to-end,patient-workspace"
+          - "agenda,agenda-slice,agenda-grid,reception,availability,contacts,locale,patient-access,realtime"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
           - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox,amendments@firefox,document-verification@firefox,prescribing@firefox,prescription-draft@firefox,reminders@firefox,teleconsult@firefox,waitlist@firefox"
-          - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox"
-          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox,realtime@firefox"
+          - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox,onboarding@firefox,patient-workspace@firefox"
+          - "agenda@firefox,agenda-slice@firefox,agenda-grid@firefox,reception@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox,realtime@firefox"
           - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
-          - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit"
-          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
+          - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit,onboarding@webkit,patient-workspace@webkit"
+          - "agenda@webkit,agenda-slice@webkit,agenda-grid@webkit,reception@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
+          - "results,results@firefox,results@webkit"
+          - "clinical-inbox,clinical-inbox@firefox,clinical-inbox@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -284,7 +332,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: always()
-    needs: [test, contracts, renewal-browser, worker-integration, migration-upgrade, actionlint]
+    needs: [test, python-coverage, contracts, renewal-browser, worker-integration, migration-upgrade, actionlint]
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

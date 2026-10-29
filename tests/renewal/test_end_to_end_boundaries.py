@@ -104,6 +104,7 @@ from apps.teleconsult.services import (
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.db.utils import DatabaseError
 from django.test.utils import CaptureQueriesContext
 from psycopg.errors import InsufficientPrivilege
@@ -113,6 +114,8 @@ from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import setup_context
+from scheduling.appointment_service_support import arrive_appointment
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -314,6 +317,7 @@ def dispatched(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def room_adapter(settings: SettingsWrapper) -> Iterator[SyntheticRoomAdapter]:
     """Enable the synthetic room gate and re-register the boundary adapter."""
     settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    seed_video_versions()
     adapter = SyntheticRoomAdapter()
     register_send_adapter(adapter)
     try:
@@ -408,6 +412,7 @@ def _seed_org_b(graph: BoundaryGraph) -> tuple[UUID, UUID, UUID, UUID, UUID, UUI
             local_range=AppointmentLocalRange("2035-07-07T09:00", "2035-07-07T09:30"),
             idempotency_key=uuid4(),
         )
+        appointment_b = arrive_appointment(appointment_b)
         invoice_b = create_invoice(
             clinic_id=graph.clinic_c,
             patient_id=registration.patient.pk,
@@ -569,6 +574,7 @@ def workflow(
             local_range=AppointmentLocalRange("2035-06-02T09:00", "2035-06-02T09:30"),
             idempotency_key=uuid4(),
         )
+        appointment = arrive_appointment(appointment)
     with runtime_role(), tenant_context(graph.owner_a, graph.organization_a):
         text = publish_text(
             clinic_id=graph.clinic_a,
@@ -590,6 +596,9 @@ def workflow(
         slots = patient_slots(date(2035, 6, 2))
         assert slots
         booked = book_patient_slot(token=slots[0].token, idempotency_key=uuid4())
+    # Lifecycle v2 (D-9): reception records arrival before any encounter opens.
+    with runtime_role(), tenant_context(graph.receptionist_a, graph.organization_a):
+        booked = arrive_appointment(booked)
     session_id, operation_id = _teleconsult_round_trip(
         graph, encounter_id, patient_session
     )
@@ -876,7 +885,9 @@ def _revoke(user_id: UUID, organization_id: UUID, clinic_id: UUID) -> None:
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(organization_id)],
         )
-        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).delete()
+        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).update(
+            revoked_at=Now()
+        )
 
 
 def test_revoked_role_denies_mid_operation_across_domains(
@@ -1127,7 +1138,8 @@ def test_queue_dispatch_failure_leaves_committed_recoverable_operation(
         operation = IntegrationOperation.objects.get(pk=operation.pk)
         assert operation.status == IntegrationOperation.Status.SUCCEEDED
         assert operation.attempt_count == 1
-        assert operation.provider_reference == f"synthetic:room:tc-{session.pk}"
+        room = TeleconsultRoom.objects.get(session_id=session.pk)
+        assert operation.provider_reference == f"synthetic:room:{room.room_name}"
     # The recovered session still admits its physician; the issued credential
     # is itself a canary that must never reach the logs.
     with runtime_role(), tenant_context(graph.physician_a, graph.organization_a):

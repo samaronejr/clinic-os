@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static tz %}
+{% load static tz i18n %}
 {% block title %}Prescrição · autoria · Clinic OS{% endblock %}
 {% block meta_description %}Autoria de um documento de prescrição sintético com revisão, identidade e assinatura explícitas.{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}"><script src="{% static 'js/prescription-workflow.js' %}" defer></script>{% endblock %}
@@ -32,19 +32,23 @@
         <h2 id="author-title">Conteúdo do rascunho</h2>
         <p class="meta" data-draft="{{ draft.pk }}" data-version="{{ draft.version }}">Versão salva {{ draft.version }} · sem assinatura ou emissão</p>
         <p class="feedback {% if unsaved %}feedback--error{% endif %}" role="status" id="save-state" data-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}Versão salva carregada. Novas alterações precisam ser salvas.{% endif %}</p>
-        <form method="post" id="prescription-form">{% csrf_token %}
+        <p class="hint" data-class-gate="{{ eligibility.reason_code }}">{{ eligibility.label }}</p>
+        <p class="hint">{% trans "The class starts unset. Only you choose it; neither the catalog nor a renewal classifies medication." %}</p>
+        <form method="post" id="prescription-form" novalidate>{% csrf_token %}
           {% for field in form.hidden_fields %}{{ field }}{% endfor %}
           {% if form.errors or items.total_error_count %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h3>Revise os campos</h3><p>Nada foi salvo.</p>{{ form.non_field_errors }}{% for field in form.hidden_fields %}{{ field.errors }}{% endfor %}{{ items.non_form_errors }}</div>{% endif %}
           <div class="field"><label for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>{{ form.category }}{{ form.category.errors }}</div>
+          {% include "prescription/partials/catalog.html" %}
           {{ items.management_form }}
           {% for item in items %}
           <fieldset class="rx-fieldset">
             <legend>Medicamento {{ forloop.counter }}</legend>
             {% if not forloop.first %}<p class="hint">Deixe todos os campos vazios se não houver outro item.</p>{% endif %}
-            {% for field in item %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+            {% for field in item.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}
+            {% for field in item.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<p class="hint" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}
           </fieldset>
           {% endfor %}
-          <p class="hint">Até 20 itens. Ao salvar, um campo adicional fica disponível. Nenhuma dose ou orientação é sugerida ou corrigida automaticamente.</p>
+          <p class="hint">{% trans "Up to 20 items. Save to add a field. Doses are never suggested. Structured quantity uses only the numbers you enter." %}</p>
           <div class="actions">
             <button class="button" name="action" value="save" type="submit">Salvar rascunho</button>
             <a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id encounter.pk %}">Reabrir versão salva</a>
@@ -115,11 +119,23 @@
         {% endif %}
       </section>
     {% else %}
-      <section class="panel"><h2>Nenhum rascunho criado</h2><p>Somente documentos sintéticos não controlados. Categorias controladas, notificações e categorias sem contrato confirmado não estão disponíveis.</p>
+      <section class="panel"><h2>Nenhum rascunho criado</h2><p>{% trans "Create a draft without a selected class. Regulated electronic issuance remains unavailable; paper preparation and synthetic rehearsal are separate paths." %}</p>
       <form method="post">{% csrf_token %}
-        <input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="patient_id" value="{{ encounter.patient_id }}"><input type="hidden" name="issuer_id" value="{{ encounter.physician_id }}"><input type="hidden" name="category" value="{{ category }}">
+        <input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="patient_id" value="{{ encounter.patient_id }}"><input type="hidden" name="issuer_id" value="{{ encounter.physician_id }}">
         <button class="button" name="action" value="create" type="submit">Criar rascunho sintético</button>
-      </form></section>
+      </form>
+      {% if renewal_sources %}
+      <h3>{% trans "Renew for review" %}</h3>
+      <p class="hint">{% trans "Renewal copies the previous directions for review. It never copies the class or issues a document." %}</p>
+      {% for source in renewal_sources %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+        <input type="hidden" name="source_document_id" value="{{ source.pk }}">
+        <button class="button button--secondary" name="action" value="renew" type="submit">{% trans "Renew for review" %} · {{ source.created_at|date:"d/m/Y H:i" }} · {{ source.document_version }}</button>
+      </form>
+      {% endfor %}
+      {% endif %}
+      </section>
     {% endif %}
     {% endtimezone %}
   {% else %}<section class="panel"><h2>Abra um atendimento</h2><p>Selecione a prescrição pelo atendimento da consulta na agenda.</p></section>{% endif %}

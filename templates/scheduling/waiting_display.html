@@ -1,0 +1,38 @@
+{% load i18n static %}
+{% get_current_language as LANGUAGE_CODE %}
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% trans "Waiting display · Clinic OS" %}</title>
+  <link rel="stylesheet" href="{% static 'css/clinic-os.css' %}">
+  <link rel="stylesheet" href="{% static 'css/clinic-os-reception.css' %}">
+  {% if connected %}<script src="{% static 'js/waiting-display.js' %}" defer></script>{% endif %}
+</head>
+<body class="waiting-display">
+<main id="waiting-display" aria-labelledby="display-title">
+  {% if connected %}
+  <h1 id="display-title">{% trans "Now calling" %}</h1>
+  <p>{% trans "Please follow your ticket and room code." %}</p>
+  <div class="reception-inline">
+    <a class="button button--secondary" href="{% url 'scheduling:waiting-display' %}">{% trans "Refresh" %}</a>
+    <button type="button" class="button--secondary" data-display-pause aria-pressed="false" hidden>{% trans "Pause automatic updates" %}</button>
+  </div>
+  <p class="feedback feedback--warning" data-display-offline role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  <ol class="waiting-tickets" aria-live="polite">
+    {% for ticket in tickets %}<li><strong>{{ ticket.ticket }}</strong><span>{% trans "Room" %} {{ ticket.room }}</span></li>
+    {% empty %}<li class="waiting-empty">{% trans "Please wait for your ticket to be called." %}</li>{% endfor %}
+  </ol>
+  {% else %}
+  <h1 id="display-title">{% trans "Device disconnected" %}</h1>
+  <p>{% trans "Ask reception to connect this display with a new device token." %}</p>
+  <form method="post" action="{% url 'scheduling:waiting-display' %}" autocomplete="off">
+    <label for="display-token">{% trans "Device token" %}</label>
+    <input id="display-token" type="password" name="device_token" minlength="43" maxlength="43" autocomplete="off" required>
+    <button type="submit">{% trans "Connect display" %}</button>
+  </form>
+  {% endif %}
+</main>
+</body>
+</html>

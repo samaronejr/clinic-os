@@ -55,19 +55,48 @@ FORBIDDEN: Final = 403
 NOT_FOUND: Final = 404
 ENCOUNTER_DAY: Final = "2035-07-03"
 AXE_URL: Final = "/static/vendor/axe/axe.min.js"
-PRIVILEGED: Final = frozenset({"physician", "clinic_admin", "owner"})
+PRIVILEGED: Final = frozenset(
+    {"physician", "clinic_admin", "owner", "clinic_manager", "org_admin"}
+)
+COMMAND_TRIGGER_ROLES: Final = frozenset(
+    {
+        "owner",
+        "clinic_admin",
+        "receptionist",
+        "physician",
+        "nurse",
+        "allied_professional",
+        "scheduler",
+        "clinic_manager",
+    }
+)
 # Plan annex IA x RP bundles v1 x the route guards the destinations lead to.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
-    "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations"],
-    "physician": ["agenda", "patients", "operations"],
-    "nurse": [],
-    "allied_professional": [],
-    "scheduler": [],
-    "clinic_manager": [],
+    "clinic_admin": [
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "physician": ["today", "agenda", "patients", "inbox", "operations"],
+    "nurse": ["today", "inbox"],
+    "allied_professional": ["inbox"],
+    "scheduler": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "settings"],
     "finance": [],
-    "org_admin": [],
+    "org_admin": ["settings"],
 }
 AXE_RUN_JS: Final = """async (include) => {
   const result = await axe.run(include ? {include} : document, {
@@ -162,8 +191,8 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
             )
             connection.execute(
                 "INSERT INTO clinic_app.identity_userclinicrole "
-                "(id, user_id, organization_id, clinic_id, role) "
-                "VALUES (%s, %s, %s, %s, %s)",
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [
                     str(uuid4()),
                     user_id,
@@ -361,9 +390,16 @@ def test_every_role_sees_exactly_its_destinations(
             _sign_in(page, renewal_base_url, nav_staff, role)
             observed[role] = _modules(page)
             assert observed[role] == expected, role
-            expect(page.locator(".nav-command")).to_have_count(1 if expected else 0)
+            expect(page.locator(".nav-command")).to_have_count(
+                1 if role in COMMAND_TRIGGER_ROLES else 0
+            )
+            expect(page.locator("#command-palette")).to_have_count(
+                1 if role in COMMAND_TRIGGER_ROLES else 0
+            )
             for key in ("today", "inbox", "messages", "automations", "reports"):
-                expect(page.locator(f'[data-module="{key}"]')).to_have_count(0)
+                expect(page.locator(f'[data-module="{key}"]')).to_have_count(
+                    int(key in expected)
+                )
             violations = _axe(page, renewal_base_url)
             axe_results[role] = violations
             assert violations == [], (role, violations)

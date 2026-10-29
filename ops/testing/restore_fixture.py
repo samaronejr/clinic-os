@@ -15,7 +15,7 @@ import json
 import os
 import time
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never, Protocol
@@ -32,6 +32,7 @@ MIN_PRIVATE_FD: Final = 3
 MAX_PASSWORD_BYTES: Final = 1024
 PROBE_PLAINTEXT: Final = b"synthetic restore rehearsal probe payload"
 PROBE_PURPOSE: Final = "restore-probe"
+CLINICAL_DOCUMENT_BODY: Final = "Synthetic recovery certificate content."
 PDF_BYTES: Final = b"%PDF-1.4\n%synthetic clinical attachment\n%%EOF\n"
 # Non-default on purpose: a restore that dropped the row reads the defaults.
 RESTORED_PREFERENCES: Final = ("dark", "compact")
@@ -236,6 +237,12 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     )
     from apps.identity.models import PhysicianProfile, User, UserClinicRole
     from apps.identity.preferences import save_ui_preferences
+    from apps.identity.scope_provisioning import (
+        CareTeamAssignment,
+        ProfessionalIdentity,
+        assign_care_team,
+        register_professional,
+    )
     from apps.intake.contacts import (
         save_contact_destination,
         set_purpose_channel,
@@ -252,15 +259,18 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         publish_template,
         submit_intake,
     )
-    from apps.prescription.models import PrescriptionDocumentRevocation
+    from apps.prescription.documents import DocumentContentInput
+    from apps.prescription.models import DocumentKind, PrescriptionDocumentRevocation
     from apps.prescription.policy import SYNTHETIC_CATEGORY
+    from apps.prescription.services import (
+        create_document_draft,
+        render_document,
+        save_document_draft,
+        save_draft,
+    )
     from apps.prescription.services import create_draft as create_rx_draft
     from apps.prescription.services import (
         discard_draft as discard_rx_draft,
-    )
-    from apps.prescription.services import (
-        render_document,
-        save_draft,
     )
     from apps.prescription.signature_provider import (
         SYNTHETIC_PROVIDER,
@@ -284,6 +294,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         record_disposition,
         release_version,
     )
+    from apps.scheduling.appointment_lifecycle import arrive
     from apps.scheduling.availability_creation import create_availability
     from apps.scheduling.patient_booking import book_patient_slot, patient_slots
     from apps.scheduling.waitlist import add_waitlist_entry, issue_waitlist_offer
@@ -298,6 +309,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     from apps.tenancy.db import tenant_context
     from apps.tenancy.envelope import encrypt, issue_tenant_key
     from django.contrib.auth.hashers import make_password
+    from django.utils import timezone
 
     User.objects.create(
         id=PHYSICIAN_ID,
@@ -418,6 +430,32 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
             end_local="2035-06-02T11:00",
         )
 
+    with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
+        now = timezone.now()
+        register_professional(
+            clinic_id=CLINIC_ID,
+            identity=ProfessionalIdentity(
+                user_id=PHYSICIAN_ID,
+                role="physician",
+                council="CRM",
+                number="SYNTHETIC-CRM-43",
+                jurisdiction="SP",
+                specialty="Synthetic",
+                status="regular",
+            ),
+            valid_from=now - timedelta(days=1),
+            valid_to=now + timedelta(days=1),
+        )
+        assign_care_team(
+            clinic_id=CLINIC_ID,
+            assignment=CareTeamAssignment(
+                user_id=PHYSICIAN_ID,
+                patient_enrollment_id=enrollment_id,
+                role="physician",
+            ),
+            valid_from=now - timedelta(days=1),
+        )
+
     with _runtime_role(), tenant_context(PHYSICIAN_ID, ORGANIZATION_ID):
         save_ui_preferences(
             theme=RESTORED_PREFERENCES[0], density=RESTORED_PREFERENCES[1]
@@ -447,6 +485,13 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
 
     request = _verified_request(PHYSICIAN_ID)
     with _runtime_role(), tenant_context(PHYSICIAN_ID, ORGANIZATION_ID):
+        # Lifecycle v2 (D-9): the booked physician records arrival first.
+        appointment = arrive(
+            clinic_id=CLINIC_ID,
+            appointment_id=appointment.pk,
+            expected_revision=appointment.revision,
+            command_id=uuid4(),
+        )
         encounter = open_encounter(clinic_id=CLINIC_ID, appointment_id=appointment.pk)
         from apps.ehr.models import SpecialtyTemplate
 
@@ -513,6 +558,43 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
             ),
         )
         scan_attachment(clinic_id=CLINIC_ID, attachment_id=attachment.pk)
+        from apps.orders.services import (
+            IdentityEvidence,
+            ResultInput,
+            acknowledge_result,
+            ingest_result,
+            place_order,
+            release_result,
+        )
+
+        order = place_order(
+            clinic_id=CLINIC_ID,
+            enrollment_id=enrollment_id,
+            exam_codes=("cbc",),
+            command_id=uuid4(),
+        )
+        result = ingest_result(
+            clinic_id=CLINIC_ID,
+            submission=ResultInput(
+                order_id=order.pk,
+                identity=IdentityEvidence(
+                    birth_date=date(2000, 1, 2), name="Synthetic Recovery Persona"
+                ),
+                content_type="application/pdf",
+                data=PDF_BYTES,
+                event_id=uuid4(),
+            ),
+        )
+        acknowledge_result(
+            clinic_id=CLINIC_ID,
+            version_id=result.version_id,
+            disposition="no_action",
+        )
+        release_result(
+            clinic_id=CLINIC_ID,
+            version_id=result.version_id,
+            audience="patient",
+        )
         session = create_session(clinic_id=CLINIC_ID, encounter_id=encounter.pk)
 
     # The committed outbox row is executed through the real worker boundary;
@@ -559,6 +641,33 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
                     "instructions": "Instruções sintéticas.",
                 }
             ],
+        )
+        clinical_draft = create_document_draft(
+            clinic_id=CLINIC_ID,
+            encounter_id=encounter.pk,
+            kind=DocumentKind.CERTIFICATE,
+        )
+        clinical_draft = save_document_draft(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            expected_version=clinical_draft.version,
+            content=DocumentContentInput(body=CLINICAL_DOCUMENT_BODY),
+        )
+        clinical_document = render_document(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            encounter_id=encounter.pk,
+            patient_id=patient_id,
+            issuer_id=PHYSICIAN_ID,
+            expected_version=clinical_draft.version,
+        )
+        discard_rx_draft(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            encounter_id=encounter.pk,
+            patient_id=patient_id,
+            issuer_id=PHYSICIAN_ID,
+            expected_version=clinical_draft.version,
         )
         document = render_document(
             clinic_id=CLINIC_ID,
@@ -681,6 +790,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     probe = {
         "attachment_id": str(attachment.pk),
         "clinic_id": str(CLINIC_ID),
+        "clinical_document_id": str(clinical_document.pk),
         "envelope_hex": envelope.hex(),
         "expected_sha256": hashlib.sha256(PROBE_PLAINTEXT).hexdigest(),
         "invoice_id": str(invoice.pk),
@@ -690,6 +800,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         "patient_name": "Synthetic Recovery Persona",
         "patient_session_id": str(session_id),
         "physician_id": str(PHYSICIAN_ID),
+        "result_version_id": str(result.version_id),
         "version_id": str(finalized.pk),
     }
     descriptor = os.open(probe_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -723,6 +834,8 @@ def verify(probe_path: Path) -> None:
         patient_session_overview,
     )
     from apps.intake.patient_search import search_patients
+    from apps.orders.queries import patient_sources
+    from apps.orders.storage import source_bytes
     from apps.tenancy.db import tenant_context
 
     probe = _read_probe(probe_path)
@@ -753,6 +866,7 @@ def verify(probe_path: Path) -> None:
         preferences = load_ui_preferences()
         if (preferences.theme, preferences.density) != RESTORED_PREFERENCES:
             _fail("restored display preferences did not load")
+        _verify_clinical_document(clinic_id, UUID(probe["clinical_document_id"]))
     session_id = UUID(probe["patient_session_id"])
     with _runtime_role(), patient_session_context(session_id):
         overview = patient_session_overview()
@@ -765,10 +879,32 @@ def verify(probe_path: Path) -> None:
             "SYNTHETIC-NOT-PAYABLE|"
         ):
             _fail("restored payment instructions did not decrypt")
+        sources = patient_sources(version_id=UUID(probe["result_version_id"]))
+        if len(sources) != 1 or source_bytes(sources[0]) != PDF_BYTES:
+            _fail("restored released result source did not decrypt")
     with _runtime_role(), tenant_context(physician_id, organization_id):
         result = verify_chain_on_connection(connection, organization_id)
         if result.row_count < 1:
             _fail("restored audit chain is empty")
+
+
+def _verify_clinical_document(clinic_id: UUID, document_id: UUID) -> None:
+    """Read the recovered artifact under the caller's runtime tenant context."""
+    from apps.prescription.models import DocumentKind, PrescriptionDocument
+    from apps.prescription.services import download_document, verify_document_integrity
+
+    document = PrescriptionDocument.objects.get(pk=document_id, clinic_id=clinic_id)
+    frozen = document.frozen_input
+    content = frozen.get("content")
+    if (
+        frozen.get("kind") != DocumentKind.CERTIFICATE
+        or not isinstance(content, dict)
+        or content.get("body") != CLINICAL_DOCUMENT_BODY
+        or not verify_document_integrity(document).ok
+        or download_document(clinic_id=clinic_id, document_id=document.pk).data
+        != bytes(document.pdf_bytes)
+    ):
+        _fail("restored clinical document did not decrypt intact")
 
 
 def _read_probe(path: Path) -> dict[str, str]:
@@ -789,6 +925,7 @@ def _read_probe(path: Path) -> dict[str, str]:
     required = {
         "attachment_id",
         "clinic_id",
+        "clinical_document_id",
         "envelope_hex",
         "expected_sha256",
         "invoice_id",
@@ -798,6 +935,7 @@ def _read_probe(path: Path) -> dict[str, str]:
         "patient_name",
         "patient_session_id",
         "physician_id",
+        "result_version_id",
         "version_id",
     }
     if not required <= set(fields):

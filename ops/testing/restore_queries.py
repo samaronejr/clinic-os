@@ -22,7 +22,14 @@ RLS_RELATIONS: Final = tuple(
             *(
                 relation
                 for relation in DOMAIN_RELATIONS
-                if relation not in ("audit_event", "identity_user")
+                if relation
+                not in (
+                    "audit_event",
+                    "identity_user",
+                    # Public reference snapshots carry SELECT-only ACLs, not RLS.
+                    "prescription_medicationcatalogimport",
+                    "prescription_medicationcatalogentry",
+                )
             ),
             "tenancy_tenantprobe",
         )
@@ -69,6 +76,7 @@ ORDER BY rule_number
 CLOSED_TO_APP_RELATIONS: Final = (
     "audit_event",
     "ehr_discarded_content",
+    "identity_signupregistration",
     "tenancy_tenantdatakey",
 )
 POSTURE_SQL: Final = f"""
@@ -227,6 +235,9 @@ FROM (
     FROM clinic_app.providers_capabilityversion AS v
     JOIN clinic_app.providers_providercapability AS c
       ON c.id = v.capability_id
+    UNION ALL
+    SELECT 'prescription-class ' || to_jsonb(p)::text
+    FROM clinic_app.prescription_prescriptionclasspolicy AS p
 ) AS registry
 """
 TENANT_KEY_STATUS_SQL: Final = """
@@ -238,7 +249,11 @@ ATTACHMENT_MANIFEST_SQL: Final = """
 SELECT storage_key || '|' || organization_id || '|' || sha256 || '|' ||
   size_bytes
 FROM clinic_app.ehr_clinicalattachment
-ORDER BY storage_key
+UNION ALL
+SELECT 'orders/' || storage_key || '|' || organization_id || '|' ||
+  sha256 || '|' || size_bytes
+FROM clinic_app.orders_resultversion
+ORDER BY 1
 """
 SOURCE_SCOPE_SQL: Final = f"""
 

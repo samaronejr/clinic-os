@@ -51,6 +51,8 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
+from renewal.browser._room_join import room_join_readiness, room_media_settled
+from renewal.browser._teleconsult import register_physician, stored_room_name
 from renewal.browser.engines import (
     element_box,
     full_page_screenshot,
@@ -764,6 +766,13 @@ def physician_reads_answers(case: Day, physician: Page) -> None:
     capture(case, physician, "physician-answers")
 
 
+def reception_records_arrival(case: Day, reception: Page) -> None:
+    """Reception records arrival from the agenda (lifecycle v2, D-9)."""
+    row = agenda_row(case, reception)
+    click_to_navigate(row.locator('button[value="arrive"]'))
+    expect(agenda_row(case, reception)).to_contain_text("Paciente chegou")
+
+
 def write_notes(case: Day, physician: Page) -> str:
     """Open the encounter from the agenda, pick the template and save notes."""
     row = agenda_row(case, physician)
@@ -802,6 +811,8 @@ def write_notes(case: Day, physician: Page) -> str:
 
 def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> None:
     """Create, provision, join, start and end the teleconsult session."""
+    # The v2 participant controls decide clinical.write (todo 6 bundles).
+    register_physician(case.staff)
     staff_url = case.url(f"/teleconsult/clinics/{case.clinic}/")
     patient_url = case.url("/patient/teleconsult/")
     goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
@@ -833,9 +844,14 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     if case.recovery:
         connection_recovers(case, patient, panel)
 
-    for action in ("join", "start"):
-        goto_settled(physician, staff_url)
-        click_to_navigate(card.locator(f'button[value="{action}"]'))
+    goto_settled(physician, staff_url)
+    with (
+        room_join_readiness(physician, staff_url, case.root),
+        room_media_settled(physician),
+    ):
+        click_to_navigate(card.locator('button[value="join"]'))
+    goto_settled(physician, staff_url)
+    click_to_navigate(card.locator('button[value="start"]'))
     goto_settled(physician, staff_url)
     expect(card).to_have_attribute("data-state", "active")
     patient.locator("[data-refresh-status]").click()
@@ -877,7 +893,9 @@ def patient_enters_room(case: Day, patient: Page, session_id: str) -> Locator:
     click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "connected")
-    expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
+    expect(patient.locator("#room-name")).to_have_text(
+        stored_room_name(case.staff, session_id)
+    )
     expect(patient.locator("[data-synthetic-room]")).to_be_visible()
     capture(case, patient, "patient-room")
     return panel
@@ -917,6 +935,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
     click_to_navigate(physician.get_by_role("button", name="Prescrição sintética"))
     press(physician, "create")
+    physician.locator("#id_category").select_option("synthetic_non_controlled")
     for name, value in ITEM.items():
         physician.locator(f"#id_items-0-{name}").fill(value)
     press(physician, "save")
@@ -1275,6 +1294,7 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
             assign_questionnaire(case, physician)
             patient_arrives(case, patient, code)
             physician_reads_answers(case, physician)
+            reception_records_arrival(case, reception)
             encounter = write_notes(case, physician)
             video_visit(case, physician, patient, encounter)
             finalize_notes(case, physician)

@@ -7,8 +7,386 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Open linked consent document"
+msgstr "Abrir documento de consentimento vinculado"
+
+msgid "Open linked image"
+msgstr "Abrir imagem vinculada"
+
+msgid "No images linked."
+msgstr "Nenhuma imagem vinculada."
+
+msgid "Move up"
+msgstr "Mover para cima"
+
+msgid "Move down"
+msgstr "Mover para baixo"
+
+msgid "Choose each installed pack exactly once."
+msgstr "Escolha cada pacote instalado exatamente uma vez."
+
+msgid "Pack order saved."
+msgstr "Ordem dos pacotes salva."
+
+msgid "Specialty packs"
+msgstr "Pacotes de especialidade"
+
+msgid "Specialty packs · Clinic OS"
+msgstr "Pacotes de especialidade · Clinic OS"
+
+msgid "Versioned clinical templates and sourced calculations. Installing a pack does not authorize live clinical use."
+msgstr "Modelos clínicos versionados e cálculos com fonte. Instalar um pacote não autoriza uso clínico real."
+
+msgid "Open patient registry"
+msgstr "Abrir cadastro de pacientes"
+
+msgid "Clinic settings"
+msgstr "Configurações da clínica"
+
+msgid "Only clinic administrators can install or uninstall packs."
+msgstr "Somente administradores da clínica podem instalar ou desinstalar pacotes."
+
+msgid "Installed"
+msgstr "Instalado"
+
+msgid "Uninstalled; history preserved"
+msgstr "Desinstalado; histórico preservado"
+
+msgid "Not installed"
+msgstr "Não instalado"
+
+msgid "Record growth in vitals and immunization history in the patient workspace. Growth percentiles require authorized reference data under EG-13."
+msgstr "Registre crescimento em sinais vitais e histórico vacinal no prontuário do paciente. Percentis exigem dados de referência autorizados pelo EG-13."
+
+msgid "Mental status notes are restricted from creation. Other clinicians need an explicit, revocable note grant in addition to ordinary care access."
+msgstr "Notas de exame do estado mental são restritas desde a criação. Outros profissionais precisam de concessão explícita e revogável, além do acesso assistencial habitual."
+
+msgid "Record the plan and link an available consent document and encounter images in the patient workspace. Materials linkage is unavailable until the inventory release."
+msgstr "Registre o plano e vincule um documento de consentimento disponível e imagens do atendimento no prontuário. O vínculo com materiais fica indisponível até a entrega de estoque."
+
+msgid "Uninstall pack"
+msgstr "Desinstalar pacote"
+
+msgid "Install pack"
+msgstr "Instalar pacote"
+
+msgid "Unavailable: license pending"
+msgstr "Indisponível: licença pendente"
+
+msgid "The exact reference data or validated instrument version is not authorized in this release. No score or percentile is computed."
+msgstr "Os dados de referência ou a versão validada do instrumento não estão autorizados nesta versão. Nenhuma pontuação ou percentil é calculado."
+
+msgid "Check the marked fields. No result was calculated."
+msgstr "Confira os campos marcados. Nenhum resultado foi calculado."
+
+msgid "Calculate"
+msgstr "Calcular"
+
+msgid "Calculating…"
+msgstr "Calculando…"
+
+msgid "Calculator results are not saved automatically and never diagnose, prescribe or populate normal findings."
+msgstr "Resultados não são salvos automaticamente e nunca diagnosticam, prescrevem ou preenchem achados normais."
+
+msgid "Specialty pack installed."
+msgstr "Pacote de especialidade instalado."
+
+msgid "Pack uninstalled. Existing records are preserved."
+msgstr "Pacote desinstalado. Registros existentes foram preservados."
+
+msgid "Choose a published specialty pack version."
+msgstr "Escolha uma versão publicada do pacote de especialidade."
+
+msgid "The pack changed. Reload and review its current version."
+msgstr "O pacote mudou. Recarregue e confira a versão atual."
+
+msgid "Enter valid values with a decimal point and explicit units."
+msgstr "Informe valores válidos com ponto decimal e unidades explícitas."
+
+msgid "Use a decimal point, without thousands separators."
+msgstr "Use ponto decimal, sem separadores de milhares."
+
+msgid "Choose an option"
+msgstr "Escolha uma opção"
+
+msgid "kg or g"
+msgstr "kg ou g"
+
+msgid "cm or m"
+msgstr "cm ou m"
+
+msgid "mg/dL or umol/L"
+msgstr "mg/dL ou umol/L"
+
+msgid "General practice"
+msgstr "Clínica geral"
+
+msgid "Pediatrics"
+msgstr "Pediatria"
+
+msgid "Psychiatry"
+msgstr "Psiquiatria"
+
+msgid "Procedures"
+msgstr "Procedimentos"
+
+msgid "Reason for consultation"
+msgstr "Motivo da consulta"
+
+msgid "Relevant history"
+msgstr "História relevante"
+
+msgid "Observed findings"
+msgstr "Achados observados"
+
+msgid "Information you want the clinician to review"
+msgstr "Informações que deseja que o profissional revise"
+
+msgid "Growth measurements and their source"
+msgstr "Medidas de crescimento e sua fonte"
+
+msgid "Reported immunization history"
+msgstr "Histórico vacinal relatado"
+
+msgid "Immunizations and dates documented in your vaccination record"
+msgstr "Vacinas e datas documentadas na sua caderneta de vacinação"
+
+msgid "Appearance and behavior"
+msgstr "Aparência e comportamento"
+
+msgid "Speech"
+msgstr "Fala"
+
+msgid "Mood and affect"
+msgstr "Humor e afeto"
+
+msgid "Thought form and content"
+msgstr "Forma e conteúdo do pensamento"
+
+msgid "Perception"
+msgstr "Percepção"
+
+msgid "Cognition"
+msgstr "Cognição"
+
+msgid "Insight and judgment"
+msgstr "Consciência e juízo crítico"
+
+msgid "Concerns you want to discuss privately"
+msgstr "Questões que deseja discutir em particular"
+
+msgid "Procedure plan"
+msgstr "Plano do procedimento"
+
+msgid "Consent document and discussion"
+msgstr "Documento de consentimento e discussão"
+
+msgid "Images attached to this encounter"
+msgstr "Imagens anexadas a este atendimento"
+
+msgid "Questions about the planned procedure"
+msgstr "Dúvidas sobre o procedimento planejado"
+
+msgid "Weight unit"
+msgstr "Unidade do peso"
+
+msgid "Height unit"
+msgstr "Unidade da altura"
+
+msgid "Estimated glomerular filtration rate"
+msgstr "Taxa de filtração glomerular estimada"
+
+msgid "Completed age"
+msgstr "Idade em anos completos"
+
+msgid "Sex used by the published equation"
+msgstr "Sexo usado pela fórmula publicada"
+
+msgid "Serum creatinine"
+msgstr "Creatinina sérica"
+
+msgid "Creatinine unit"
+msgstr "Unidade da creatinina"
+
+msgid "Corrected age"
+msgstr "Idade corrigida"
+
+msgid "Chronological age"
+msgstr "Idade cronológica"
+
+msgid "Gestational age at birth"
+msgstr "Idade gestacional ao nascer"
+
+msgid "Growth percentiles"
+msgstr "Percentis de crescimento"
+
+msgid "Item score"
+msgstr "Pontuação do item"
+
+msgid "female"
+msgstr "feminino"
+
+msgid "male"
+msgstr "masculino"
+
+msgid "Specialty records"
+msgstr "Registros de especialidade"
+
+msgid "Growth measurements remain in vitals. Entries below retain their source and never infer a vaccine schedule, consent or normal finding."
+msgstr "As medidas de crescimento ficam em sinais vitais. Os registros abaixo preservam a fonte e nunca inferem calendário vacinal, consentimento ou achado normal."
+
+msgid "Specialty packs and calculators"
+msgstr "Pacotes de especialidade e calculadoras"
+
+msgid "Record immunization history"
+msgstr "Registrar histórico vacinal"
+
+msgid "Save immunization record"
+msgstr "Salvar registro vacinal"
+
+msgid "Record a procedure plan"
+msgstr "Registrar plano de procedimento"
+
+msgid "Attach and scan the consent document and images in the encounter attachment workspace first."
+msgstr "Primeiro anexe e verifique o documento de consentimento e as imagens na área de anexos do atendimento."
+
+msgid "Save procedure plan"
+msgstr "Salvar plano de procedimento"
+
+msgid "No specialty pack is installed. Existing records below remain available."
+msgstr "Nenhum pacote de especialidade está instalado. Os registros existentes abaixo permanecem disponíveis."
+
+msgid "Recorded history"
+msgstr "Histórico registrado"
+
+msgid "Immunization history"
+msgstr "Histórico vacinal"
+
+msgid "Unconfirmed source"
+msgstr "Fonte não confirmada"
+
+msgid "Consent source and images remain linked to this encounter."
+msgstr "A fonte do consentimento e as imagens permanecem vinculadas a este atendimento."
+
+msgid "No specialty records have been recorded."
+msgstr "Nenhum registro de especialidade foi incluído."
+
+msgid "Vaccine as documented"
+msgstr "Vacina conforme documentada"
+
+msgid "Administration date"
+msgstr "Data da aplicação"
+
+msgid "Use DD/MM/YYYY as recorded in the source."
+msgstr "Use DD/MM/AAAA conforme registrado na fonte."
+
+msgid "Dose as documented"
+msgstr "Dose conforme documentada"
+
+msgid "Consent document"
+msgstr "Documento de consentimento"
+
+msgid "Encounter images"
+msgstr "Imagens do atendimento"
+
+msgid "Check the immunization record and its source."
+msgstr "Confira o registro vacinal e sua fonte."
+
+msgid "Check the procedure plan and source documents."
+msgstr "Confira o plano do procedimento e os documentos de origem."
+
+msgid "Invalid template definition."
+msgstr "Definição de modelo inválida."
+
+msgid "Invalid questionnaire branching rule."
+msgstr "Regra de ramificação do questionário inválida."
+
+msgid "Complete all visible required questions."
+msgstr "Preencha todas as perguntas obrigatórias visíveis."
+
+msgid "Invalid answer confirmation."
+msgstr "Confirmação de resposta inválida."
+
+msgid "Review carried-forward answers before submitting."
+msgstr "Revise as respostas reaproveitadas antes de enviar."
+
+msgid "Carry-forward requires an empty current draft."
+msgstr "O reaproveitamento exige um rascunho atual vazio."
+
+msgid "Carried-forward answers are unverified. Review each answer."
+msgstr "As respostas reaproveitadas não foram verificadas. Revise cada resposta."
+
+msgid "Carried-forward answer: unverified."
+msgstr "Resposta reaproveitada: não verificada."
+
+msgid "I reviewed this carried-forward answer."
+msgstr "Revisei esta resposta reaproveitada."
+
+msgid "Previous submission"
+msgstr "Envio anterior"
+
+msgid "Carry forward for review"
+msgstr "Reaproveitar para revisão"
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Show only after question"
+msgstr "Mostrar somente após a pergunta"
+
+msgid "Always visible"
+msgstr "Sempre visível"
+
+msgid "Comparison"
+msgstr "Comparação"
+
+msgid "Equals"
+msgstr "Igual a"
+
+msgid "One of"
+msgstr "Uma destas opções"
+
+msgid "Greater than"
+msgstr "Maior que"
+
+msgid "Less than"
+msgstr "Menor que"
+
+msgid "Comparison value"
+msgstr "Valor de comparação"
+
+msgid "Use yes or no for booleans. For One of, use one value per line."
+msgstr "Use sim ou não para respostas booleanas. Para Uma destas opções, use um valor por linha."
+
+msgid "Choose an earlier filled question."
+msgstr "Escolha uma pergunta anterior preenchida."
+
+msgid "Use yes or no for this comparison."
+msgstr "Use sim ou não nesta comparação."
+
+msgid "Enter a finite number."
+msgstr "Informe um número finito."
+
+msgid "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version."
+msgstr "As perguntas são configurações, não orientação médica. As ramificações usam somente uma resposta anterior e uma comparação fixa, sem expressões nem respostas calculadas. Os questionários atribuídos mantêm a versão original."
+
 msgid "Clinic OS secure clinical workspace."
 msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
+
+msgid "Representation access expired"
+msgstr "Acesso de representação expirado"
+
+msgid "This representation grant expired. Ask the clinic to verify a renewal before acting for this patient again."
+msgstr "Esta autorização de representação expirou. Solicite à clínica a verificação da renovação antes de voltar a agir por este paciente."
+
+msgid "Request representation renewal"
+msgstr "Solicitar renovação da representação"
+
+msgid "Renewal requested"
+msgstr "Renovação solicitada"
+
+msgid "The clinic must verify and activate the new grant. This request does not restore representation access."
+msgstr "A clínica precisa verificar e ativar a nova autorização. Esta solicitação não restabelece o acesso de representação."
 
 msgid "Skip to main content"
 msgstr "Ir para o conteúdo principal"
@@ -237,6 +615,9 @@ msgstr "Buscar pacientes"
 
 msgid "Search this clinic by name. Search terms stay in the request body and never reach the address bar or server logs."
 msgstr "Busque pelo nome do paciente nesta clínica. Se necessário, refine pela data de nascimento."
+
+msgid "Search this clinic by name, with an optional birth date, or by an exact document number."
+msgstr "Busque nesta clínica pelo nome, com a data de nascimento opcional, ou pelo número completo de um documento."
 
 msgid "We could not run that search"
 msgstr "Não foi possível realizar a busca"
@@ -2517,3 +2898,3628 @@ msgstr "Remover visão salva: %(name)s"
 
 msgid "Save this view: %(name)s"
 msgstr "Salvar esta visão: %(name)s"
+
+msgid "Teleconsultation"
+msgstr "Teleconsulta"
+
+msgid "Consultation recording"
+msgstr "Gravação da consulta"
+
+msgid "AI assistance"
+msgstr "Apoio de IA"
+
+msgid "Research and model improvement"
+msgstr "Pesquisa e melhoria de modelos"
+
+msgid "Transactional messaging"
+msgstr "Mensagens transacionais"
+
+msgid "Care data processing"
+msgstr "Tratamento de dados no atendimento"
+
+msgid "Use of AI in care"
+msgstr "Uso de IA no atendimento"
+
+msgid "Caregiver"
+msgstr "Cuidador"
+
+msgid "Companion"
+msgstr "Acompanhante"
+
+msgid "Interpreter"
+msgstr "Intérprete"
+
+msgid "Full text (pt-BR)"
+msgstr "Texto integral (pt-BR)"
+
+msgid "Look up receipts"
+msgstr "Consultar comprovantes"
+
+msgid "Clinic enrollment identifier"
+msgstr "Identificador do vínculo com a clínica"
+
+msgid "No consent recorded. Read the text and select the checkbox only if you wish to accept."
+msgstr "Nenhum consentimento registrado. Leia o texto e marque a opção somente se desejar aceitar."
+
+msgid "Consent revoked. Clinical history and the receipt were preserved."
+msgstr "Consentimento revogado. O histórico clínico e o comprovante foram preservados."
+
+msgid "Version %(version)s published. Previous texts were preserved."
+msgstr "Versão %(version)s publicada. Os textos anteriores foram preservados."
+
+msgid "Notice topic"
+msgstr "Tema do aviso"
+
+msgid "Notice text"
+msgstr "Texto do aviso"
+
+msgid "Encounter"
+msgstr "Atendimento"
+
+msgid "Teleconsultation session"
+msgstr "Sessão de teleconsulta"
+
+msgid "Participant kind"
+msgstr "Tipo de participante"
+
+msgid "I have read this version and consent to this purpose."
+msgstr "Li esta versão e autorizo esta finalidade."
+
+msgid "I informed the patient about AI assistance."
+msgstr "Informei o paciente sobre o apoio de IA."
+
+msgid "The patient refused AI assistance."
+msgstr "O paciente recusou o apoio de IA."
+
+msgid "Your consent choices"
+msgstr "Suas escolhas de consentimento"
+
+msgid "Decide separately for each purpose. Recording, AI assistance, messages, marketing, and research are independent choices."
+msgstr "Decida separadamente sobre cada finalidade. Gravação, apoio de IA, mensagens, marketing e pesquisa são escolhas independentes."
+
+msgid "Refusing optional uses does not prevent care or manual clinical notes. Revocation blocks future uses without erasing clinical records or receipts."
+msgstr "Recusar usos opcionais não impede o atendimento nem as anotações clínicas manuais. A revogação bloqueia usos futuros sem apagar registros clínicos ou comprovantes."
+
+msgid "Read the current text again before making a decision."
+msgstr "Leia o texto atual novamente antes de decidir."
+
+msgid "Information notices"
+msgstr "Avisos informativos"
+
+msgid "These notices explain care and AI use. Reading them is not consent to any optional purpose."
+msgstr "Estes avisos explicam o atendimento e o uso de IA. A leitura não autoriza nenhuma finalidade opcional."
+
+msgid "Available texts"
+msgstr "Textos disponíveis"
+
+msgid "Read the current text"
+msgstr "Ler o texto atual"
+
+msgid "No current text is available."
+msgstr "Nenhum texto atual disponível."
+
+msgid "To accept, select the checkbox. To refuse, leave it clear. Neither choice grants permission for another purpose."
+msgstr "Para aceitar, marque a opção. Para recusar, deixe-a desmarcada. Nenhuma escolha autoriza outra finalidade."
+
+msgid "Accept this purpose"
+msgstr "Aceitar esta finalidade"
+
+msgid "Refuse this purpose"
+msgstr "Recusar esta finalidade"
+
+msgid "Refusals"
+msgstr "Recusas"
+
+msgid "A refusal is retained separately from an acceptance. It does not block care."
+msgstr "A recusa é preservada separadamente de uma aceitação. Ela não bloqueia o atendimento."
+
+msgid "Refused"
+msgstr "Recusado"
+
+msgid "Read the refused text"
+msgstr "Ler o texto recusado"
+
+msgid "AI-use disclosures"
+msgstr "Informações sobre o uso de IA"
+
+msgid "These clinician records describe one encounter. They are not your consent to AI assistance."
+msgstr "Estes registros do profissional descrevem um atendimento. Eles não representam seu consentimento para o apoio de IA."
+
+msgid "Patient informed"
+msgstr "Paciente informado"
+
+msgid "Patient refused AI assistance"
+msgstr "Paciente recusou o apoio de IA"
+
+msgid "Back to the portal"
+msgstr "Voltar ao portal"
+
+msgid "Consent choices and notices"
+msgstr "Escolhas de consentimento e avisos"
+
+msgid "Publish versioned texts without changing patient decisions. Previous texts and receipts remain available."
+msgstr "Publique textos versionados sem alterar as decisões do paciente. Textos anteriores e comprovantes permanecem disponíveis."
+
+msgid "Publish consent text"
+msgstr "Publicar texto de consentimento"
+
+msgid "Publish a new version"
+msgstr "Publicar nova versão"
+
+msgid "Publish an information notice"
+msgstr "Publicar aviso informativo"
+
+msgid "A notice explains care or AI use. It is not an optional consent choice."
+msgstr "O aviso explica o atendimento ou o uso de IA. Ele não é uma escolha de consentimento opcional."
+
+msgid "Publish notice"
+msgstr "Publicar aviso"
+
+msgid "Record an AI-use disclosure"
+msgstr "Registrar informação sobre o uso de IA"
+
+msgid "Only an authorized clinician can record this encounter-specific disclosure. It never substitutes for the patient's consent."
+msgstr "Somente um profissional autorizado pode registrar esta informação do atendimento. Ela nunca substitui o consentimento do paciente."
+
+msgid "Record disclosure"
+msgstr "Registrar informação"
+
+msgid "Record a participant acknowledgment"
+msgstr "Registrar ciência de participante"
+
+msgid "Notify caregivers, companions, and interpreters without creating a patient or recording their name. This does not authorize recording or AI assistance."
+msgstr "Informe cuidadores, acompanhantes e intérpretes sem criar um paciente nem registrar seus nomes. Isso não autoriza a gravação nem o apoio de IA."
+
+msgid "Record acknowledgment"
+msgstr "Registrar ciência"
+
+msgid "Back to the workspace"
+msgstr "Voltar ao espaço de trabalho"
+
+msgid "Consent receipts"
+msgstr "Comprovantes de consentimento"
+
+msgid "Accepted by explicit patient action"
+msgstr "Aceito por ação explícita do paciente"
+
+msgid "Inspect text and provenance"
+msgstr "Inspecionar texto e proveniência"
+
+msgid "Text SHA-256"
+msgstr "SHA-256 do texto"
+
+msgid "Proof SHA-256"
+msgstr "SHA-256 da prova"
+
+msgid "Receipt"
+msgstr "Comprovante"
+
+msgid "Terms read"
+msgstr "Leitura dos termos"
+
+msgid "Revocation blocks future uses without erasing clinical records or this receipt."
+msgstr "A revogação bloqueia usos futuros sem apagar registros clínicos nem este comprovante."
+
+msgid "Revoke consent"
+msgstr "Revogar consentimento"
+
+msgid "No consent has been recorded for this appointment."
+msgstr "Nenhum consentimento registrado para esta consulta."
+
+msgid "Consent refusal recorded."
+msgstr "Recusa de consentimento registrada."
+
+msgid "Information notice published."
+msgstr "Aviso informativo publicado."
+
+msgid "AI-use disclosure recorded."
+msgstr "Informação sobre o uso de IA registrada."
+
+msgid "Participant acknowledgment recorded."
+msgstr "Ciência de participante registrada."
+
+msgid "Yes,No"
+msgstr "Sim,Não"
+
+msgid "Organization"
+msgstr "Organização"
+
+msgid "Enrollment"
+msgstr "Vínculo do paciente"
+
+msgid "Actor"
+msgstr "Responsável pela ação"
+
+msgid "A newer version requires a new reading and acceptance for future use."
+msgstr "Uma versão mais recente exige nova leitura e aceitação para uso futuro."
+
+msgid "Explicit patient action in the portal"
+msgstr "Ação explícita do paciente no portal"
+
+msgid "Revocation event"
+msgstr "Evento de revogação"
+
+msgid "Staff"
+msgstr "Equipe"
+
+msgid "Authority"
+msgstr "Autoridade"
+
+msgid "A disclosure is already recorded for this encounter."
+msgstr "Já existe um registro sobre o uso de IA neste atendimento."
+
+msgid "Check the box only if you wish to consent."
+msgstr "Marque a opção somente se desejar consentir."
+
+msgid "Consent recorded. Your receipt remains available below."
+msgstr "Consentimento registrado. Seu comprovante permanece disponível abaixo."
+
+msgid "Invalid AI-use disclosure."
+msgstr "Registro sobre o uso de IA inválido."
+
+msgid "Invalid participant kind."
+msgstr "Tipo de participante inválido."
+
+msgid "Invalid text, purpose or language."
+msgstr "Texto, finalidade ou idioma inválido."
+
+msgid "Invalid text, topic or language."
+msgstr "Texto, tema ou idioma inválido."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Marketing"
+msgstr "Marketing"
+
+msgid "Non-patient participant notice recorded."
+msgstr "Ciência do participante não paciente registrada."
+
+msgid "Purpose outside the consent taxonomy."
+msgstr "Finalidade fora da taxonomia de consentimento."
+
+msgid "Refusal recorded. Your care remains available."
+msgstr "Recusa registrada. Seu atendimento permanece disponível."
+
+msgid "Select the checkbox to accept; leave it clear to refuse."
+msgstr "Marque a opção para aceitar; deixe-a desmarcada para recusar."
+
+msgid "The text changed. Read the current version before consenting."
+msgstr "O texto mudou. Leia a versão atual antes de consentir."
+
+msgid "This consent is already accepted. Revoke it instead of recording a refusal."
+msgstr "Este consentimento já foi aceito. Revogue-o em vez de registrar uma recusa."
+
+msgid "This consent was revoked. The receipt remains available."
+msgstr "Este consentimento foi revogado. O comprovante permanece disponível."
+
+msgid "Back to scheduling settings"
+msgstr "Voltar às configurações da agenda"
+
+msgid "Return to scheduling settings and start this booking again."
+msgstr "Volte às configurações da agenda e inicie este agendamento novamente."
+
+msgid "Scheduling settings"
+msgstr "Configurações de agendamento"
+
+msgid "Room"
+msgstr "Sala"
+
+msgid "Equipment"
+msgstr "Equipamento"
+
+msgid "Location"
+msgstr "Local"
+
+msgid "Resource"
+msgstr "Recurso"
+
+msgid "Resources"
+msgstr "Recursos"
+
+msgid "Resource kind"
+msgstr "Tipo de recurso"
+
+msgid "Name"
+msgstr "Nome"
+
+msgid "Capacity"
+msgstr "Capacidade"
+
+msgid "Service types"
+msgstr "Tipos de atendimento"
+
+msgid "Service type (optional)"
+msgstr "Tipo de atendimento (opcional)"
+
+msgid "Duration (minutes)"
+msgstr "Duração (minutos)"
+
+msgid "Buffer before (minutes)"
+msgstr "Intervalo antes (minutos)"
+
+msgid "Buffer after (minutes)"
+msgstr "Intervalo depois (minutos)"
+
+msgid "Required professional roles"
+msgstr "Categorias profissionais exigidas"
+
+msgid "Required resource kinds"
+msgstr "Tipos de recurso exigidos"
+
+msgid "Nurse"
+msgstr "Enfermeiro"
+
+msgid "Allied professional"
+msgstr "Profissional de saúde"
+
+msgid "Insurer billable"
+msgstr "Faturável ao convênio"
+
+msgid "Price reference"
+msgstr "Referência de preço"
+
+msgid "Not selected"
+msgstr "Não selecionado"
+
+msgid "Availability template"
+msgstr "Modelo de disponibilidade"
+
+msgid "Availability templates"
+msgstr "Modelos de disponibilidade"
+
+msgid "Weekdays"
+msgstr "Dias da semana"
+
+msgid "Valid from"
+msgstr "Válido a partir de"
+
+msgid "Valid to"
+msgstr "Válido até"
+
+msgid "Holiday"
+msgstr "Feriado"
+
+msgid "Holidays"
+msgstr "Feriados"
+
+msgid "Clinic closure"
+msgstr "Fechamento da clínica"
+
+msgid "Maintenance"
+msgstr "Manutenção"
+
+msgid "Absences"
+msgstr "Ausências"
+
+msgid "Holidays and absences"
+msgstr "Feriados e ausências"
+
+msgid "Generate from"
+msgstr "Gerar a partir de"
+
+msgid "Generate through"
+msgstr "Gerar até"
+
+msgid "Generate availability"
+msgstr "Gerar disponibilidade"
+
+msgid "Publish definition"
+msgstr "Publicar definição"
+
+msgid "Published definitions"
+msgstr "Definições publicadas"
+
+msgid "Retire"
+msgstr "Desativar"
+
+msgid "Retired"
+msgstr "Desativado"
+
+msgid "minutes"
+msgstr "minutos"
+
+msgid "No definitions published yet."
+msgstr "Nenhuma definição publicada ainda."
+
+msgid "Scheduling settings saved."
+msgstr "Configurações de agendamento salvas."
+
+msgid "Saving scheduling settings..."
+msgstr "Salvando configurações de agendamento..."
+
+msgid "Definitions are immutable. Retire a definition and publish a replacement; existing bookings keep their history."
+msgstr "As definições são imutáveis. Desative uma definição e publique sua substituta; os agendamentos existentes mantêm o histórico."
+
+msgid "A resource is bookable only inside generated availability. Buffers reserve both the professional and every selected resource."
+msgstr "Um recurso só pode ser reservado dentro da disponibilidade gerada. Os intervalos reservam tanto o profissional quanto cada recurso selecionado."
+
+msgid "The scheduling change could not be applied. Review the form below."
+msgstr "Não foi possível aplicar a alteração de agendamento. Confira o formulário abaixo."
+
+msgid "Select a professional or a resource, never both. For a clinic holiday, leave both empty."
+msgstr "Selecione um profissional ou um recurso, nunca ambos. Para um feriado da clínica, deixe ambos vazios."
+
+msgid "Review the highlighted fields."
+msgstr "Confira os campos destacados."
+
+msgid "Choose an unambiguous clinic-local time."
+msgstr "Escolha um horário local da clínica que não seja ambíguo."
+
+msgid "A required resource is unavailable for this window."
+msgstr "Um recurso necessário está indisponível neste período."
+
+msgid "Choose a window inside the resource availability template."
+msgstr "Escolha um período dentro do modelo de disponibilidade do recurso."
+
+msgid "This window overlaps a holiday or absence."
+msgstr "Este período coincide com um feriado ou uma ausência."
+
+msgid "The service duration and buffers must fit the available window."
+msgstr "A duração do atendimento e seus intervalos devem caber no período disponível."
+
+msgid "Enter a plain scheduling name of at most 120 characters."
+msgstr "Informe um nome de agendamento em texto simples com até 120 caracteres."
+
+msgid "Choose a resource kind and capacity from 1 to 64."
+msgstr "Escolha um tipo de recurso e uma capacidade de 1 a 64."
+
+msgid "Enter valid service duration, buffers and requirements."
+msgstr "Informe duração, intervalos e requisitos válidos para o atendimento."
+
+msgid "Choose one template subject and a valid local weekly interval."
+msgstr "Escolha um médico ou recurso e um intervalo semanal local válido."
+
+msgid "Choose a positive closure interval and a listed reason."
+msgstr "Escolha um período de fechamento com duração positiva e um motivo da lista."
+
+msgid "Generate at most one year of availability at a time."
+msgstr "Gere no máximo um ano de disponibilidade por vez."
+
+msgid "Professional"
+msgstr "Profissional"
+
+msgid "Service bookings require an eligible professional. Without a service, choose a physician."
+msgstr "Agendamentos com tipo de atendimento exigem um profissional habilitado. Sem um tipo de atendimento, escolha um médico."
+
+msgid "Service type"
+msgstr "Tipo de atendimento"
+
+msgid "Service bookings require an eligible professional."
+msgstr "Agendamentos com tipo de atendimento exigem um profissional habilitado."
+
+msgid "Reported by the patient; not verified by staff."
+msgstr "Informado pelo paciente; não verificado pela equipe."
+
+msgid "Source"
+msgstr "Origem"
+
+msgid "Patient-reported"
+msgstr "Informado pelo paciente"
+
+msgid "Staff-recorded"
+msgstr "Registrado pela equipe"
+
+msgid "Add comment"
+msgstr "Adicionar comentário"
+
+msgid "Add step"
+msgstr "Adicionar etapa"
+
+msgid "All kinds"
+msgstr "Todos os tipos"
+
+msgid "All priorities"
+msgstr "Todas as prioridades"
+
+msgid "All statuses"
+msgstr "Todas as situações"
+
+msgid "Apply reassignment"
+msgstr "Aplicar reatribuição"
+
+msgid "Appointment"
+msgstr "Consulta"
+
+msgid "Appointment and discharge checklist"
+msgstr "Lista de verificação de consulta e alta"
+
+msgid "Assign to me"
+msgstr "Atribuir a mim"
+
+msgid "Assigned"
+msgstr "Atribuída"
+
+msgid "Build a checklist, validate it, then publish a version. Running workflows keep the version they started with."
+msgstr "Monte uma lista de verificação, valide e publique uma versão. Os fluxos em andamento mantêm a versão inicial."
+
+msgid "Cancel run"
+msgstr "Cancelar execução"
+
+msgid "Cancel task"
+msgstr "Cancelar tarefa"
+
+msgid "Check the workflow details."
+msgstr "Confira os detalhes do fluxo."
+
+msgid "Checklist"
+msgstr "Lista de verificação"
+
+msgid "Clinic time zone"
+msgstr "Fuso da clínica"
+
+msgid "Comments"
+msgstr "Comentários"
+
+msgid "Complete with evidence"
+msgstr "Concluir com evidência"
+
+msgid "Connection unavailable. Your task has not been saved. Try again when connected."
+msgstr "Conexão indisponível. A tarefa não foi salva. Tente novamente quando estiver conectado."
+
+msgid "Create draft"
+msgstr "Criar rascunho"
+
+msgid "Create task"
+msgstr "Criar tarefa"
+
+msgid "Custom task workflow"
+msgstr "Fluxo de tarefas personalizado"
+
+msgid "Delivery failed. Review the existing operation; a retry cannot resend it."
+msgstr "A entrega falhou. Revise a operação existente; uma nova tentativa não pode reenviá-la."
+
+msgid "Delivery outcome is unknown. Reconcile the existing operation before continuing."
+msgstr "O resultado da entrega é desconhecido. Reconcilie a operação existente antes de continuar."
+
+msgid "Depends on task"
+msgstr "Depende da tarefa"
+
+msgid "Designer"
+msgstr "Editor de fluxos"
+
+msgid "Do not include clinical information."
+msgstr "Não inclua informações clínicas."
+
+msgid "Done"
+msgstr "Concluída"
+
+msgid "Due"
+msgstr "Prazo"
+
+msgid "Due date and time"
+msgstr "Data e hora do prazo"
+
+msgid "Each run keeps its published version. Failed steps require an explicit, safe retry."
+msgstr "Cada execução mantém sua versão publicada. Etapas com falha exigem uma nova tentativa explícita e segura."
+
+msgid "Escalated"
+msgstr "Encaminhada"
+
+msgid "Escalated for manager review"
+msgstr "Encaminhada para revisão do gestor"
+
+msgid "Evidence reference"
+msgstr "Referência da evidência"
+
+msgid "Evidence type"
+msgstr "Tipo de evidência"
+
+msgid "Exception queue"
+msgstr "Fila de exceções"
+
+msgid "Exceptions"
+msgstr "Exceções"
+
+msgid "Failed"
+msgstr "Falhou"
+
+msgid "Failed or delayed runs require review. Active runs keep their published version."
+msgstr "Execuções com falha ou atraso exigem revisão. As execuções ativas mantêm sua versão publicada."
+
+msgid "Filter tasks"
+msgstr "Filtrar tarefas"
+
+msgid "Follow-up"
+msgstr "Acompanhamento"
+
+msgid "High"
+msgstr "Alta"
+
+msgid "I checked the task requirements."
+msgstr "Verifiquei os requisitos da tarefa."
+
+msgid "In progress"
+msgstr "Em andamento"
+
+msgid "Low"
+msgstr "Baixa"
+
+msgid "New owner"
+msgstr "Novo responsável"
+
+msgid "New workflow"
+msgstr "Novo fluxo"
+
+msgid "Next check"
+msgstr "Próxima verificação"
+
+msgid "No comments yet."
+msgstr "Ainda não há comentários."
+
+msgid "No tasks in this queue."
+msgstr "Nenhuma tarefa nesta fila."
+
+msgid "No workflow exceptions."
+msgstr "Nenhuma exceção de fluxo."
+
+msgid "No workflow runs yet."
+msgstr "Ainda não há execuções de fluxo."
+
+msgid "No workflow versions yet. Create a draft to begin."
+msgstr "Ainda não há versões de fluxo. Crie um rascunho para começar."
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Open"
+msgstr "Aberta"
+
+msgid "Operational comment"
+msgstr "Comentário operacional"
+
+msgid "Outcome"
+msgstr "Resultado"
+
+msgctxt "account owner"
+msgid "Owner"
+msgstr "Titular"
+
+msgctxt "task owner"
+msgid "Owner"
+msgstr "Responsável"
+
+msgid "Patient enrollment"
+msgstr "Vínculo do paciente"
+
+msgid "Organization name"
+msgstr "Nome da organização"
+
+msgid "Legal responsible"
+msgstr "Responsável legal"
+
+msgid "First administrator username"
+msgstr "Usuário do primeiro administrador"
+
+msgid "First administrator email"
+msgstr "E-mail do primeiro administrador"
+
+msgid "Professional registration"
+msgstr "Registro profissional"
+
+msgid "Confirm password"
+msgstr "Confirmar senha"
+
+msgid "Pending activation"
+msgstr "Aguardando ativação"
+
+msgid "Enter the organization's CNPJ, with or without punctuation."
+msgstr "Informe o CNPJ da organização, com ou sem pontuação."
+
+msgid "If applicable, enter the council, registration number and state. This does not verify a credential."
+msgstr "Se aplicável, informe o conselho, o número do registro e a UF. O registro ainda precisará ser verificado."
+
+msgid "The passwords do not match. Enter them again."
+msgstr "As senhas não coincidem. Informe-as novamente."
+
+msgid "We could not register this request. Check the details and try again."
+msgstr "Não foi possível registrar a solicitação. Confira os dados e tente novamente."
+
+msgid "Register organization · Clinic OS"
+msgstr "Cadastrar organização · Clinic OS"
+
+msgid "Register an organization for protected subscription activation."
+msgstr "Cadastre uma organização para a ativação protegida da assinatura."
+
+msgid "Register your organization"
+msgstr "Cadastre sua organização"
+
+msgid "Send the organization and first administrator details. Clinical access starts only after subscription activation."
+msgstr "Informe os dados da organização e do primeiro administrador. O acesso clínico começa somente após a ativação da assinatura."
+
+msgid "Registration received"
+msgstr "Cadastro recebido"
+
+msgid "Your organization is pending activation. This request has not started a trial or opened the clinical workspace."
+msgstr "Sua organização aguarda ativação. Esta solicitação não iniciou um período de teste nem liberou o ambiente clínico."
+
+msgid "Check the registration details"
+msgstr "Confira os dados do cadastro"
+
+msgid "Register organization"
+msgstr "Cadastrar organização"
+
+msgid "Return to sign in"
+msgstr "Voltar para entrar"
+
+msgid "Register an organization"
+msgstr "Cadastrar uma organização"
+
+msgid "First steps · Clinic OS"
+msgstr "Primeiros passos · Clinic OS"
+
+msgid "First steps"
+msgstr "Primeiros passos"
+
+msgid "Prepare your clinic, protect your account and open your first agenda. Your progress stays on the server."
+msgstr "Prepare sua clínica, proteja sua conta e abra sua primeira agenda. Seu progresso fica salvo no servidor."
+
+msgid "Progress refreshed."
+msgstr "Progresso atualizado."
+
+msgid "Complete"
+msgstr "Concluído"
+
+msgid "To do"
+msgstr "A fazer"
+
+msgid "Review only. This screen does not activate a provider or authorize live use."
+msgstr "Apenas consulta. Esta tela não ativa um provedor nem autoriza o uso real."
+
+msgid "Live eligible"
+msgstr "Apto para uso real"
+
+msgid "Not live eligible"
+msgstr "Não apto para uso real"
+
+msgid "No provider connection is configured."
+msgstr "Nenhuma conexão com provedor está configurada."
+
+msgid "Confirm status review"
+msgstr "Confirmar consulta de status"
+
+msgid "Refresh progress"
+msgstr "Atualizar progresso"
+
+msgid "Back to clinic settings"
+msgstr "Voltar às configurações da clínica"
+
+msgid "Your sessions · Clinic OS"
+msgstr "Suas sessões · Clinic OS"
+
+msgid "Your sessions"
+msgstr "Suas sessões"
+
+msgid "Revoke a session you no longer use. Its next request will require a new login."
+msgstr "Revogue uma sessão que você não usa mais. O próximo acesso exigirá uma nova entrada."
+
+msgid "Session revoked."
+msgstr "Sessão revogada."
+
+msgid "Revoke session"
+msgstr "Revogar sessão"
+
+msgid "No sessions are available."
+msgstr "Nenhuma sessão disponível."
+
+msgid "Account recovery · Clinic OS"
+msgstr "Recuperação da conta · Clinic OS"
+
+msgid "Account recovery"
+msgstr "Recuperação da conta"
+
+msgid "Keep your recovery codes offline. Each code works once and retires your old authenticators and sessions."
+msgstr "Guarde seus códigos de recuperação fora do sistema. Cada código funciona uma vez e desativa seus autenticadores e sessões antigos."
+
+msgid "Recovery codes"
+msgstr "Códigos de recuperação"
+
+msgid "Your codes were already shown once. They cannot be displayed again."
+msgstr "Seus códigos já foram exibidos uma vez. Não é possível exibi-los novamente."
+
+msgid "Confirm your authenticator before generating your codes. They will be shown only in the next response."
+msgstr "Confirme seu autenticador antes de gerar os códigos. Eles serão exibidos somente na próxima tela."
+
+msgid "Generate recovery codes"
+msgstr "Gerar códigos de recuperação"
+
+msgid "Lost your authenticator?"
+msgstr "Perdeu seu autenticador?"
+
+msgid "Use recovery code"
+msgstr "Usar código de recuperação"
+
+msgid "Without a code, ask your clinic administrator for a notified reset. The full 24-hour delay starts after delivery, not after the request."
+msgstr "Sem um código, solicite uma redefinição ao administrador da clínica. O prazo completo de 24 horas começa após a entrega da notificação, não após a solicitação."
+
+msgid "Save your recovery codes · Clinic OS"
+msgstr "Guarde seus códigos de recuperação · Clinic OS"
+
+msgid "Save your recovery codes"
+msgstr "Guarde seus códigos de recuperação"
+
+msgid "Shown once. Save these codes offline before leaving this page. Do not share them."
+msgstr "Exibidos uma única vez. Guarde estes códigos fora do sistema antes de sair desta página. Não os compartilhe."
+
+msgid "I saved my codes"
+msgstr "Guardei meus códigos"
+
+msgid "Staff and account security · Clinic OS"
+msgstr "Equipe e segurança das contas · Clinic OS"
+
+msgid "Staff and account security"
+msgstr "Equipe e segurança das contas"
+
+msgid "Invite your team and manage account recovery within this clinic."
+msgstr "Convide sua equipe e gerencie a recuperação das contas desta clínica."
+
+msgid "Invitation queued. Access starts after password and authenticator confirmation."
+msgstr "Convite na fila de envio. O acesso começa após a confirmação da senha e do autenticador."
+
+msgid "Invite staff"
+msgstr "Convidar profissional"
+
+msgid "Send invitation"
+msgstr "Enviar convite"
+
+msgid "Notifications are synthetic simulations; no live provider is activated here."
+msgstr "As notificações são simulações sintéticas; nenhum provedor real é ativado nesta tela."
+
+msgid "Revoke invitation"
+msgstr "Revogar convite"
+
+msgid "No invitations yet."
+msgstr "Nenhum convite até o momento."
+
+msgid "For an expired or unavailable invitation, send a new invitation with the same email and role."
+msgstr "Se o convite expirou ou não está disponível, envie um novo convite com o mesmo e-mail e perfil."
+
+msgid "Current staff"
+msgstr "Equipe atual"
+
+msgid "Request notified authenticator reset"
+msgstr "Solicitar redefinição com notificação"
+
+msgid "Deactivate login and revoke access. Keep all history."
+msgstr "Desativar a entrada e revogar o acesso. Manter todo o histórico."
+
+msgid "Offboard staff"
+msgstr "Desligar profissional"
+
+msgid "No staff are available."
+msgstr "Nenhum profissional disponível."
+
+msgid "Authenticator reset requests"
+msgstr "Solicitações de redefinição do autenticador"
+
+msgid "Only delivered notification starts the full 24-hour delay. A fresh authenticator confirmation is required for execution."
+msgstr "Somente a entrega da notificação inicia o prazo completo de 24 horas. A execução exige uma nova confirmação do autenticador."
+
+msgid "Reset completed"
+msgstr "Redefinição concluída"
+
+msgid "Available after"
+msgstr "Disponível após"
+
+msgid "Waiting for notification delivery"
+msgstr "Aguardando a entrega da notificação"
+
+msgid "Execute delayed reset"
+msgstr "Executar redefinição após o prazo"
+
+msgid "No reset requests."
+msgstr "Nenhuma solicitação de redefinição."
+
+msgid "Reset not available · Clinic OS"
+msgstr "Redefinição indisponível · Clinic OS"
+
+msgid "Reset not available"
+msgstr "Redefinição indisponível"
+
+msgid "The user must receive the notification and the full 24-hour delay must finish. No authenticator was changed."
+msgstr "O usuário precisa receber a notificação e aguardar o prazo completo de 24 horas. Nenhum autenticador foi alterado."
+
+msgid "Back to staff"
+msgstr "Voltar à equipe"
+
+msgid "Organization and clinic"
+msgstr "Organização e unidade"
+
+msgid "Invite your staff"
+msgstr "Convide sua equipe"
+
+msgid "Review provider status"
+msgstr "Consulte o status dos provedores"
+
+msgid "Open your first agenda"
+msgstr "Abra sua primeira agenda"
+
+msgid "Additional setup step"
+msgstr "Etapa adicional de configuração"
+
+msgid "We could not send this invitation. Check the email and role."
+msgstr "Não foi possível enviar este convite. Confira o e-mail e o perfil."
+
+msgid "That recovery code is unavailable. Use another code or ask your clinic administrator."
+msgstr "Este código de recuperação não está disponível. Use outro código ou procure o administrador da clínica."
+
+msgid "Staff email"
+msgstr "E-mail do profissional"
+
+msgid "Role bundle"
+msgstr "Perfil de acesso"
+
+msgid "Private invitation code"
+msgstr "Código privado do convite"
+
+msgid "Username"
+msgstr "Usuário"
+
+msgid "Password"
+msgstr "Senha"
+
+msgid "Authenticator code"
+msgstr "Código do autenticador"
+
+msgid "The passwords do not match."
+msgstr "As senhas não coincidem."
+
+msgid "Recovery code"
+msgstr "Código de recuperação"
+
+msgid "Staff invitation · Clinic OS"
+msgstr "Convite para a equipe · Clinic OS"
+
+msgid "Join your clinic"
+msgstr "Entre na equipe da sua clínica"
+
+msgid "Use the private code from your invitation email. Your clinic access starts only after your password and authenticator are confirmed."
+msgstr "Use o código privado do e-mail de convite. Seu acesso à clínica começa somente após a confirmação da senha e do autenticador."
+
+msgid "Check the invitation details"
+msgstr "Confira os dados do convite"
+
+msgid "Scan with your authenticator"
+msgstr "Leia o código com seu autenticador"
+
+msgid "Scan this private QR code, then enter your invitation code, password and current authenticator code below. An interrupted enrollment resumes the same authenticator."
+msgstr "Leia este QR code privado e informe abaixo o código do convite, a senha e o código atual do autenticador. Uma configuração interrompida retoma o mesmo autenticador."
+
+msgid "Confirm authenticator and join"
+msgstr "Confirmar autenticador e entrar"
+
+msgid "Set password and start enrollment"
+msgstr "Definir senha e configurar autenticador"
+
+msgid "Pending"
+msgstr "Pendente"
+
+msgid "Preview reassignment"
+msgstr "Prévia da reatribuição"
+
+msgid "Priority"
+msgstr "Prioridade"
+
+msgid "Publish a workflow version before starting a run."
+msgstr "Publique uma versão de fluxo antes de iniciar uma execução."
+
+msgid "Publish version"
+msgstr "Publicar versão"
+
+msgid "Published version"
+msgstr "Versão publicada"
+
+msgid "Reassignment preview"
+msgstr "Prévia da reatribuição"
+
+msgid "Reference"
+msgstr "Referência"
+
+msgid "Reference identifier"
+msgstr "Identificador da referência"
+
+msgid "Reference index"
+msgstr "Índice da referência"
+
+msgid "Reference type"
+msgstr "Tipo de referência"
+
+msgid "Remove last step"
+msgstr "Remover última etapa"
+
+msgid "Resolved"
+msgstr "Resolvida"
+
+msgid "Responsible role"
+msgstr "Papel responsável"
+
+msgid "Retire version"
+msgstr "Encerrar versão"
+
+msgid "Retry safely"
+msgstr "Tentar novamente com segurança"
+
+msgid "Review"
+msgstr "Revisão"
+
+msgid "Reviewed"
+msgstr "Revisada"
+
+msgid "Revision"
+msgstr "Revisão"
+
+msgid "Role"
+msgstr "Papel"
+
+msgid "Run history"
+msgstr "Histórico de execuções"
+
+msgid "Running"
+msgstr "Em execução"
+
+msgid "Runs"
+msgstr "Execuções"
+
+msgid "Save step"
+msgstr "Salvar etapa"
+
+msgid "Saving task changes..."
+msgstr "Salvando alterações da tarefa..."
+
+msgid "Select for reassignment"
+msgstr "Selecionar para reatribuição"
+
+msgid "Start a workflow"
+msgstr "Iniciar um fluxo"
+
+msgid "Start pinned run"
+msgstr "Iniciar execução nesta versão"
+
+msgid "Start task"
+msgstr "Iniciar tarefa"
+
+msgid "Starting point"
+msgstr "Ponto de partida"
+
+msgid "Step"
+msgstr "Etapa"
+
+msgid "Step type"
+msgstr "Tipo de etapa"
+
+msgid "Synthetic external action"
+msgstr "Ação externa em simulação"
+
+msgid "Task"
+msgstr "Tarefa"
+
+msgid "Task changes saved."
+msgstr "Alterações da tarefa salvas."
+
+msgid "Task due in seconds"
+msgstr "Prazo da tarefa em segundos"
+
+msgid "Task kind"
+msgstr "Tipo de tarefa"
+
+msgid "Task queues"
+msgstr "Filas de tarefas"
+
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgid "The assigned task was cancelled."
+msgstr "A tarefa atribuída foi cancelada."
+
+msgid "The step was rejected without an effect."
+msgstr "A etapa foi recusada sem produzir efeito."
+
+msgid "The task changed. Review the current version and try again."
+msgstr "A tarefa mudou. Revise a versão atual e tente novamente."
+
+msgid "This run changed or cannot be retried safely. Review its steps."
+msgstr "Esta execução mudou ou não permite uma nova tentativa segura. Revise as etapas."
+
+msgid "This version changed. Review it before continuing."
+msgstr "Esta versão mudou. Revise antes de continuar."
+
+msgid "Timer"
+msgstr "Temporizador"
+
+msgid "Timer seconds"
+msgstr "Segundos do temporizador"
+
+msgid "Unassigned"
+msgstr "Sem responsável"
+
+msgid "Urgent"
+msgstr "Urgente"
+
+msgid "Use references only. Do not enter clinical information here."
+msgstr "Use apenas referências. Não inclua informações clínicas aqui."
+
+msgid "Validate version"
+msgstr "Validar versão"
+
+msgid "Versions"
+msgstr "Versões"
+
+msgid "Waiting"
+msgstr "Aguardando"
+
+msgid "Waiting for an authorized worker or reconciliation"
+msgstr "Aguardando execução autorizada ou reconciliação"
+
+msgid "Workflow designer"
+msgstr "Editor de fluxos"
+
+msgid "Workflow exceptions"
+msgstr "Exceções de fluxo"
+
+msgid "Workflow key"
+msgstr "Chave do fluxo"
+
+msgid "Workflow navigation"
+msgstr "Navegação de fluxos"
+
+msgid "Workflow runs"
+msgstr "Execuções de fluxo"
+
+msgid "Workflow version"
+msgstr "Versão do fluxo"
+
+msgid "seconds"
+msgstr "segundos"
+
+msgid "Draft"
+msgstr "Rascunho"
+
+msgid "Validated"
+msgstr "Validada"
+
+msgid "Published"
+msgstr "Publicada"
+
+msgid "Accepted"
+msgstr "Aceito"
+
+msgid "Chromium"
+msgstr "Chromium"
+
+msgid "Firefox"
+msgstr "Firefox"
+
+msgid "Safari"
+msgstr "Safari"
+
+msgid "Other browser"
+msgstr "Outro navegador"
+
+msgid "Receptionist"
+msgstr "Recepcionista"
+
+msgid "Clinic admin"
+msgstr "Administrador da clínica"
+
+msgid "Scheduler"
+msgstr "Agendador"
+
+msgid "Clinic manager"
+msgstr "Gestor da clínica"
+
+msgid "Organization admin"
+msgstr "Administrador da organização"
+
+msgid "One task will be reassigned."
+msgid_plural "%(count)s tasks will be reassigned."
+msgstr[0] "Uma tarefa será reatribuída."
+msgstr[1] "%(count)s tarefas serão reatribuídas."
+
+msgid "Or search by exact document number."
+msgstr "Ou busque pelo número completo do documento."
+
+msgid "Document type"
+msgstr "Tipo de documento"
+
+msgid "Document number"
+msgstr "Número do documento"
+
+msgid "Choose the document type."
+msgstr "Selecione o tipo de documento."
+
+msgid "Enter the complete document number. This search uses an exact match."
+msgstr "Informe o número completo do documento. Esta busca exige uma correspondência exata."
+
+msgid "Passport"
+msgstr "Passaporte"
+
+msgid "Other document"
+msgstr "Outro documento"
+
+msgid "Search by name or by document, not both."
+msgstr "Busque pelo nome ou pelo documento, não pelos dois."
+
+msgid "Waiting for external setup"
+msgstr "Aguardando configuração externa"
+
+msgid "Researched"
+msgstr "Pesquisado"
+
+msgid "Selected in plan"
+msgstr "Selecionado no plano"
+
+msgid "Approved to test"
+msgstr "Aprovado para testes"
+
+msgid "Sandbox"
+msgstr "Ambiente de testes"
+
+msgid "Production authorized"
+msgstr "Produção autorizada"
+
+msgid "Activated"
+msgstr "Ativado"
+
+msgid "Degraded"
+msgstr "Degradado"
+
+msgid "We could not accept this invitation. Check the private details."
+msgstr "Não foi possível aceitar este convite. Confira os dados privados."
+
+msgid "For an expired or unavailable invitation, ask your clinic administrator for a new invitation."
+msgstr "Para um convite vencido ou indisponível, peça um novo convite ao administrador da clínica."
+
+msgid "Enter a valid CNPJ."
+msgstr "Informe um CNPJ válido."
+
+msgctxt "appointment status"
+msgid "Requested"
+msgstr "Solicitada"
+
+msgctxt "appointment status"
+msgid "Held"
+msgstr "Reservada"
+
+msgctxt "appointment status"
+msgid "Arrived"
+msgstr "Paciente chegou"
+
+msgctxt "appointment status"
+msgid "In progress"
+msgstr "Em atendimento"
+
+msgctxt "appointment status"
+msgid "Completed"
+msgstr "Concluída"
+
+msgctxt "appointment status"
+msgid "Expired"
+msgstr "Expirada"
+
+msgctxt "appointment status"
+msgid "No-show"
+msgstr "Não compareceu"
+
+msgid "Start visit"
+msgstr "Iniciar atendimento"
+
+msgid "Complete visit"
+msgstr "Concluir atendimento"
+
+msgid "Appointment not changed"
+msgstr "Consulta não alterada"
+
+msgid "The appointment state changed before this action."
+msgstr "A situação da consulta mudou antes desta ação."
+
+msgid "This request was already used for another change. Reload the agenda."
+msgstr "Esta solicitação já foi usada para outra alteração. Recarregue a agenda."
+
+msgid "This appointment cannot move to that state."
+msgstr "Esta consulta não pode passar para essa situação."
+
+msgid "The hold on this time expired. Choose the time again."
+msgstr "A reserva deste horário expirou. Escolha o horário novamente."
+
+msgid "This appointment changed meanwhile. Reload before trying again."
+msgstr "Esta consulta mudou enquanto isso. Recarregue antes de tentar novamente."
+
+msgid "Agenda grid · Clinic OS"
+msgstr "Grade da agenda · Clinic OS"
+
+msgid "Grid"
+msgstr "Grade"
+
+msgid "Move appointment"
+msgstr "Reagendar consulta"
+
+msgid "New start time"
+msgstr "Novo horário de início"
+
+msgid "Only this practitioner's free times are listed. The room is checked when you confirm."
+msgstr "Só aparecem os horários livres deste profissional. A sala é conferida quando você confirmar."
+
+msgid "Moving…"
+msgstr "Reagendando…"
+
+msgid "Move"
+msgstr "Reagendar"
+
+msgid "Busy"
+msgstr "Ocupado"
+
+msgid "To move an appointment, drag it to a free time, or select it and press M."
+msgstr "Para reagendar uma consulta, arraste-a até um horário livre ou selecione-a e pressione M."
+
+#, python-format
+msgid "Appointment moved to %(start)s."
+msgstr "Consulta reagendada para %(start)s."
+
+msgid "Someone else changed this appointment first. The grid shows their change; yours was not saved."
+msgstr "Outra pessoa alterou esta consulta antes. A grade mostra essa alteração; a sua não foi salva."
+
+msgid "Unified registration since %(date)s"
+msgstr "Registro unificado de %(date)s"
+
+msgid "Reason for the decision"
+msgstr "Motivo da decisão"
+
+msgid "Surviving registration"
+msgstr "Cadastro principal"
+
+msgid "Choose a registration"
+msgstr "Escolha um cadastro"
+
+msgid "Registrations separated. Later survivor records remain there and require review."
+msgstr "Cadastros separados. Os registros posteriores permanecem no cadastro principal e precisam de revisão."
+
+msgid "Decision recorded. Historical records keep their original registration."
+msgstr "Decisão registrada. Os registros históricos mantêm o cadastro de origem."
+
+msgid "This pair changed. Open the current registrations before deciding."
+msgstr "Este par mudou. Abra os cadastros atuais antes de decidir."
+
+msgid "Enter a reason and review each demographic choice."
+msgstr "Informe um motivo e revise a escolha de cada dado cadastral."
+
+msgid "Duplicate review · Clinic OS"
+msgstr "Revisão de duplicidades · Clinic OS"
+
+msgid "Review possible duplicate registrations without rewriting historical records."
+msgstr "Revise possíveis cadastros duplicados sem alterar os registros históricos."
+
+msgid "Review possible duplicates"
+msgstr "Revisar possíveis duplicidades"
+
+msgid "Matching signals are hints. Confirm the identity, choose a surviving registration and review every field before merging."
+msgstr "Os sinais de correspondência são apenas indícios. Confirme a identidade, escolha o cadastro principal e revise cada campo antes de unificar."
+
+msgid "The decision was not saved"
+msgstr "A decisão não foi salva"
+
+msgid "Only a new demographics version on the survivor receives your choices. Signed documents, finalized notes, charges and consent receipts keep their original identity."
+msgstr "Suas escolhas são aplicadas somente a uma nova versão dos dados do cadastro principal. Documentos assinados, registros finalizados, cobranças e comprovantes de consentimento mantêm a identidade de origem."
+
+msgid "Confirm reviewed merge"
+msgstr "Confirmar a unificação revisada"
+
+msgid "Dismiss this hint"
+msgstr "Descartar este indício"
+
+msgid "Retained decision and later survivor records"
+msgstr "Decisão preservada e registros posteriores do cadastro principal"
+
+msgid "Decision recorded on %(date)s."
+msgstr "Decisão registrada em %(date)s."
+
+msgid "These later records stay on the survivor after reversal. Review them individually; reversal does not move them."
+msgstr "Estes registros posteriores permanecem no cadastro principal após a separação. Revise cada um; a separação não os transfere."
+
+msgid "Retained forward links and rows for review"
+msgstr "Vínculos preservados e registros para revisão"
+
+msgid "Separate registrations"
+msgstr "Separar cadastros"
+
+msgid "Fresh access invitations"
+msgstr "Novos convites de acesso"
+
+msgid "Old access was revoked. Give these new codes to the patient now; they are shown only once."
+msgstr "O acesso anterior foi revogado. Entregue agora estes novos códigos ao paciente; eles são exibidos apenas uma vez."
+
+msgid "Latest possible duplicate pairs in this clinic"
+msgstr "Pares recentes de possíveis duplicidades nesta clínica"
+
+msgid "Registrations"
+msgstr "Cadastros"
+
+msgid "Signals"
+msgstr "Sinais"
+
+msgid "Review pair"
+msgstr "Revisar este par"
+
+msgid "Exact document match"
+msgstr "Documento idêntico"
+
+msgid "Contact match"
+msgstr "Contato idêntico"
+
+msgid "Birth date and name prefix match"
+msgstr "Data de nascimento e início do nome coincidem"
+
+msgid "No possible duplicates are waiting for review."
+msgstr "Não há possíveis duplicidades aguardando revisão."
+
+msgid "Patient timeline · Clinic OS"
+msgstr "Linha do tempo do paciente · Clinic OS"
+
+msgid "Patient timeline"
+msgstr "Linha do tempo do paciente"
+
+msgid "Each record retains its original patient, encounter and finalized digest."
+msgstr "Cada registro mantém o paciente, o atendimento e o resumo criptográfico de finalização de origem."
+
+msgid "Original registration"
+msgstr "Cadastro de origem"
+
+msgid "Finalized digest"
+msgstr "Resumo criptográfico de finalização"
+
+msgid "No finalized records are available under your current permissions."
+msgstr "Não há registros finalizados disponíveis com suas permissões atuais."
+
+msgid "Choose the surviving registration to create a new appointment."
+msgstr "Escolha o cadastro principal para criar uma nova consulta."
+
+msgctxt "duplicate candidate state"
+msgid "Open"
+msgstr "Em aberto"
+
+msgctxt "duplicate candidate state"
+msgid "Dismissed"
+msgstr "Descartado"
+
+msgctxt "duplicate candidate state"
+msgid "Merged"
+msgstr "Unificado"
+
+msgid "Not informed"
+msgstr "Não informado"
+
+msgid "Female"
+msgstr "Feminino"
+
+msgid "Intersex"
+msgstr "Intersexo"
+
+msgid "Male"
+msgstr "Masculino"
+
+msgid "Declined to answer"
+msgstr "Prefere não informar"
+
+msgid "Woman"
+msgstr "Mulher"
+
+msgid "Man"
+msgstr "Homem"
+
+msgid "Non-binary"
+msgstr "Não binário"
+
+msgid "Legal name"
+msgstr "Nome civil"
+
+msgid "Social name"
+msgstr "Nome social"
+
+msgid "Preferred name"
+msgstr "Nome de preferência"
+
+msgid "Sex at birth"
+msgstr "Sexo atribuído ao nascer"
+
+msgid "Gender identity"
+msgstr "Identidade de gênero"
+
+msgid "Pronouns"
+msgstr "Pronomes"
+
+msgid "Preferred language"
+msgstr "Idioma de preferência"
+
+msgid "Accessibility needs"
+msgstr "Necessidades de acessibilidade"
+
+msgid "Occupation"
+msgstr "Ocupação"
+
+msgid "Appointments"
+msgstr "Consultas"
+
+msgid "Encounters"
+msgstr "Atendimentos"
+
+msgid "Charges"
+msgstr "Cobranças"
+
+msgid "Waitlist"
+msgstr "Lista de espera"
+
+msgid "Contact"
+msgstr "Contato"
+
+msgid "Preference"
+msgstr "Preferência"
+
+msgid "Access invitation"
+msgstr "Convite de acesso"
+
+msgid "Charge"
+msgstr "Cobrança"
+
+#, python-format
+msgid "Reviewing retained rows in %(clinic)s."
+msgstr "Revisando registros preservados em %(clinic)s."
+
+#, python-format
+msgid "Review retained rows in %(clinic)s"
+msgstr "Revisar registros preservados em %(clinic)s"
+
+msgctxt "gender identity"
+msgid "Other"
+msgstr "Outra"
+# Plan item 27: EHR autosave, conflict compare, episodes and unscheduled encounters.
+msgid "__ADDED__ added · __REMOVED__ removed"
+msgstr "__ADDED__ adicionada(s) · __REMOVED__ removida(s)"
+
+msgid "Add to this episode"
+msgstr "Incluir neste episódio"
+
+msgid "Another tab is editing this draft. Changes here are not saved."
+msgstr "Outra aba está editando este rascunho. As alterações feitas aqui não foram salvas."
+
+msgid "Another tab saved this draft after you started editing. Nothing was overwritten. Removed lines exist only in the saved revision; added lines exist only in your text. Keep or replace each section, then save the combined version."
+msgstr "Outra aba salvou este rascunho depois que você começou a editar. Nada foi sobrescrito. Linhas removidas existem só na revisão salva; linhas adicionadas existem só no seu texto. Mantenha ou substitua cada seção e salve a versão combinada."
+
+msgid "Changed in another tab. Nothing was overwritten: compare below."
+msgstr "Alterado em outra aba. Nada foi sobrescrito: compare abaixo."
+
+msgid "Changes not confirmed. Reopen the saved version to check."
+msgstr "Alterações não confirmadas. Reabra a versão salva para conferir."
+
+msgid "Close episode"
+msgstr "Encerrar episódio"
+
+msgid "Compare before saving"
+msgstr "Compare antes de salvar"
+
+msgid "Editing moved to another tab. Reload this page to continue here."
+msgstr "A edição passou para outra aba. Recarregue esta página para continuar aqui."
+
+msgid "Editing requested. The other tab hands over on its next save, or within two minutes."
+msgstr "Edição solicitada. A outra aba libera no próximo salvamento ou em até dois minutos."
+
+msgid "Encounter without an appointment"
+msgstr "Atendimento sem agendamento"
+
+msgid "Episode"
+msgstr "Episódio"
+
+msgid "For a walk-in visit, a phone follow-up or documentation only. The reason is recorded with the encounter."
+msgstr "Para atendimento sem hora marcada, retorno por telefone ou somente registro. O motivo fica registrado no atendimento."
+
+msgid "Group this encounter with the patient's related visits."
+msgstr "Agrupe este atendimento com os atendimentos relacionados do paciente."
+
+msgid "New episode title"
+msgstr "Título do novo episódio"
+
+msgid "No enrolled patient is available in this clinic."
+msgstr "Nenhum paciente matriculado nesta clínica."
+
+msgid "Not saved. Reload the page to continue."
+msgstr "Não salvo. Recarregue a página para continuar."
+
+msgid "Not saved - retrying"
+msgstr "Não salvo - tentando novamente"
+
+msgid "Not saved. This draft can no longer be edited."
+msgstr "Não salvo. Este rascunho não pode mais ser editado."
+
+msgid "Open an episode with this encounter"
+msgstr "Abrir episódio com este atendimento"
+
+msgid "Open episode"
+msgstr "Episódio aberto"
+
+msgid "Record the visit at your own pace. With JavaScript on, the draft is saved to the server while you type; the status says it is saved only after the server confirms."
+msgstr "Registre a consulta no seu ritmo. Com JavaScript ativo, o rascunho é salvo no servidor enquanto você escreve; o status só indica salvo depois da confirmação do servidor."
+
+msgid "Request editing in this tab"
+msgstr "Solicitar edição nesta aba"
+
+msgid "Saved at __TIME__ (revision __N__)"
+msgstr "Salvo às __TIME__ (revisão __N__)"
+
+msgid "Save the combined version"
+msgstr "Salvar a versão combinada"
+
+msgid "Saving… Changes are not confirmed until the server acknowledges them."
+msgstr "Salvando… As alterações só ficam confirmadas quando o servidor responder."
+
+msgid "__SECTION__: saved revision __N__ compared with your text"
+msgstr "__SECTION__: revisão salva __N__ comparada ao seu texto"
+
+msgid "Select a patient"
+msgstr "Selecione um paciente"
+
+msgid "Start encounter"
+msgstr "Iniciar atendimento"
+
+msgid "The draft is not a finalized document. Nothing is kept in this browser: without a server confirmation the text is not saved."
+msgstr "O rascunho não é um documento finalizado. Nada fica guardado neste navegador: sem confirmação do servidor, o texto não está salvo."
+
+msgid "The episode is closed."
+msgstr "O episódio está encerrado."
+
+msgid "This encounter is not part of an episode."
+msgstr "Este atendimento não pertence a um episódio."
+
+msgid "Unsaved changes."
+msgstr "Alterações não salvas."
+
+msgid "Use the saved text in __SECTION__"
+msgstr "Usar o texto salvo em __SECTION__"
+
+msgid "Saved version loaded (revision %(revision)s)."
+msgstr "Versão salva carregada (revisão %(revision)s)."
+
+msgid "Use the saved text in %(section)s"
+msgstr "Usar o texto salvo em %(section)s"
+
+msgid "%(section)s: saved revision %(revision)s compared with your text"
+msgstr "%(section)s: revisão salva %(revision)s comparada ao seu texto"
+
+msgid "This encounter belongs to the episode “%(title)s”."
+msgstr "Este atendimento pertence ao episódio “%(title)s”."
+
+msgid "Walk-in visit"
+msgstr "Sem hora marcada"
+
+msgid "Phone follow-up"
+msgstr "Retorno por telefone"
+
+msgid "Documentation only"
+msgstr "Somente registro"
+
+msgid "Enter an episode title in plain text."
+msgstr "Informe um título de episódio em texto simples."
+
+msgid "The episode is closed and accepts no encounters."
+msgstr "O episódio está encerrado e não aceita atendimentos."
+
+msgid "This encounter already belongs to another episode."
+msgstr "Este atendimento já pertence a outro episódio."
+
+msgid "The saved version changed. Your changes were not saved. Compare below and save the combined version."
+msgstr "A versão salva mudou. Suas alterações não foram salvas. Compare abaixo e salve a versão combinada."
+
+msgid "Objective"
+msgstr "Objetivo"
+
+msgid "Assessment"
+msgstr "Avaliação"
+
+msgid "Your passkeys · Clinic OS"
+msgstr "Suas chaves de acesso · Clinic OS"
+
+msgid "Your passkeys"
+msgstr "Suas chaves de acesso"
+
+msgid "Sign in with your device PIN or biometric verification. Your private key stays on your device."
+msgstr "Entre com o PIN ou a biometria do seu dispositivo. Sua chave privada fica no dispositivo."
+
+msgid "Add a passkey"
+msgstr "Adicionar chave de acesso"
+
+msgid "Register this device"
+msgstr "Cadastrar este dispositivo"
+
+msgid "Device nickname"
+msgstr "Nome do dispositivo"
+
+msgid "Choose a short name so you can recognize this device later."
+msgstr "Escolha um nome curto para reconhecer este dispositivo depois."
+
+msgid "Waiting for your device verification…"
+msgstr "Aguardando a verificação no dispositivo…"
+
+msgid "We could not verify the passkey. Try again or use your authenticator code."
+msgstr "Não foi possível verificar a chave de acesso. Tente novamente ou use o código do autenticador."
+
+msgid "Passkey verification cancelled. Try again or use your authenticator code."
+msgstr "Verificação cancelada. Tente novamente ou use o código do autenticador."
+
+msgid "You are offline. Reconnect before verifying your identity."
+msgstr "Você está sem conexão. Conecte-se novamente para verificar sua identidade."
+
+msgid "Start passkey verification again. The previous request is no longer current."
+msgstr "Inicie a verificação novamente. A solicitação anterior não está mais válida."
+
+msgid "Cancel verification"
+msgstr "Cancelar verificação"
+
+msgid "Without a compatible device or JavaScript, use your password and authenticator code."
+msgstr "Sem um dispositivo compatível ou JavaScript, use sua senha e o código do autenticador."
+
+msgid "Use an authenticator code"
+msgstr "Usar código do autenticador"
+
+msgid "Registered devices"
+msgstr "Dispositivos cadastrados"
+
+msgid "Passkey"
+msgstr "Chave de acesso"
+
+msgid "Removed"
+msgstr "Removida"
+
+msgid "Last verified"
+msgstr "Última verificação"
+
+msgid "Remove passkey"
+msgstr "Remover chave de acesso"
+
+msgid "No passkeys yet. Register a device or keep using your authenticator code."
+msgstr "Nenhuma chave de acesso cadastrada. Cadastre um dispositivo ou continue usando o código do autenticador."
+
+msgid "Organization verification policy"
+msgstr "Política de verificação da organização"
+
+msgid "Passkeys can confirm privileged sign-in and sensitive actions in this organization."
+msgstr "As chaves de acesso podem confirmar o acesso privilegiado e as ações sensíveis nesta organização."
+
+msgid "Privileged accounts still require the authenticator code. An organization administrator must explicitly enable passkey verification."
+msgstr "As contas privilegiadas ainda exigem o código do autenticador. Um administrador da organização precisa habilitar o uso de chaves de acesso."
+
+msgid "Allow passkeys for privileged sign-in and sensitive actions"
+msgstr "Permitir chaves de acesso para contas privilegiadas e ações sensíveis"
+
+msgid "Choose whether passkey verification is allowed."
+msgstr "Escolha se a verificação por chave de acesso é permitida."
+
+msgid "This changes every unit in the organization and requires recent verification."
+msgstr "A alteração vale para todas as unidades da organização e exige verificação recente."
+
+msgid "Save verification policy"
+msgstr "Salvar política de verificação"
+
+msgid "Sign in with a passkey"
+msgstr "Entrar com chave de acesso"
+
+msgid "Confirm with a passkey"
+msgstr "Confirmar com chave de acesso"
+
+msgid "See the clinic-local day, week or month by professional, room and equipment, and book or move appointments without exposing patient identifiers in the address bar."
+msgstr "Veja o dia, a semana ou o mês da clínica por profissional, sala e equipamento, e agende ou reagende consultas sem expor identificadores de pacientes na barra de endereço."
+
+msgid "Agenda updated"
+msgstr "Agenda atualizada"
+
+msgid "Someone else changed this agenda. It now shows their change."
+msgstr "Outra pessoa alterou esta agenda. Ela já mostra a alteração."
+
+msgid "Dismiss"
+msgstr "Fechar aviso"
+
+msgid "Agenda filters"
+msgstr "Filtros da agenda"
+
+msgid "Reported by patient"
+msgstr "Relatado pelo paciente"
+
+msgid "Clinician confirmed"
+msgstr "Confirmado pelo médico"
+
+msgid "Enter a decimal number without thousands separators."
+msgstr "Informe um número decimal sem separadores de milhar."
+
+msgid "Choose a valid unit for this observation."
+msgstr "Escolha uma unidade válida para esta observação."
+
+msgid "Enter a valid value for this observation."
+msgstr "Informe um valor válido para esta observação."
+
+msgid "Systolic blood pressure"
+msgstr "Pressão arterial sistólica"
+
+msgid "Diastolic blood pressure"
+msgstr "Pressão arterial diastólica"
+
+msgid "Heart rate"
+msgstr "Frequência cardíaca"
+
+msgid "Respiratory rate"
+msgstr "Frequência respiratória"
+
+msgid "Temperature"
+msgstr "Temperatura"
+
+msgid "Oxygen saturation"
+msgstr "Saturação de oxigênio"
+
+msgid "Weight"
+msgstr "Peso"
+
+msgid "Height"
+msgstr "Altura"
+
+msgid "Body mass index"
+msgstr "Índice de massa corporal"
+
+msgid "Pain reported"
+msgstr "Dor relatada"
+
+msgid "Stopped"
+msgstr "Interrompido"
+
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgid "Check the observation, origin and measurement time."
+msgstr "Revise a observação, a origem e o horário da medição."
+
+msgid "Record weight and height together to calculate BMI."
+msgstr "Registre peso e altura juntos para calcular o IMC."
+
+msgid "Check the medication, dose, route, frequency and origin."
+msgstr "Revise o medicamento, a dose, a via, a frequência e a origem."
+
+msgid "Copied from %(date)s"
+msgstr "Copiado de %(date)s"
+
+msgid "Review every copied block at the current revision before finalizing."
+msgstr "Revise todos os blocos copiados na revisão atual antes de finalizar."
+
+msgid "Choose a valid timeline period and type."
+msgstr "Escolha um período e um tipo válidos para a linha do tempo."
+
+msgid "Oral"
+msgstr "Oral"
+
+msgid "Inhaled"
+msgstr "Inalatória"
+
+msgid "Topical"
+msgstr "Tópica"
+
+msgid "Subcutaneous"
+msgstr "Subcutânea"
+
+msgid "Intramuscular"
+msgstr "Intramuscular"
+
+msgid "Intravenous"
+msgstr "Intravenosa"
+
+msgid "Observation"
+msgstr "Observação"
+
+msgid "Value"
+msgstr "Valor"
+
+msgid "Unit"
+msgstr "Unidade"
+
+msgid "All professionals"
+msgstr "Todos os profissionais"
+
+msgid "Room or equipment"
+msgstr "Sala ou equipamento"
+
+msgid "All rooms and equipment"
+msgstr "Todas as salas e equipamentos"
+
+msgid "All service types"
+msgstr "Todos os tipos de atendimento"
+
+msgid "Apply filters"
+msgstr "Aplicar filtros"
+
+msgid "Open unit"
+msgstr "Abrir unidade"
+
+msgid "Clear filters"
+msgstr "Limpar filtros"
+
+msgid "Classic agenda"
+msgstr "Agenda clássica"
+
+msgid "Remove"
+msgstr "Remover"
+
+msgid "No saved view yet. Save this view to open it again later with its filters."
+msgstr "Nenhuma visão salva ainda. Salve esta visão para abri-la depois com os mesmos filtros."
+
+msgid "Save this view"
+msgstr "Salvar esta visão"
+
+msgid "To book without scripts, find the patient in the registry and press “Book appointment”."
+msgstr "Sem JavaScript, encontre o paciente no cadastro e pressione “Agendar consulta”."
+
+msgid "Only the first 400 appointments are shown. Narrow the filters to see the rest."
+msgstr "Apenas as primeiras 400 consultas são exibidas. Refine os filtros para ver as demais."
+
+msgid "To book, select a free time and press Enter."
+msgstr "Para agendar, selecione um horário livre e pressione Enter."
+
+#, python-format
+msgid "Professionals, rooms and equipment on %(day)s"
+msgstr "Profissionais, salas e equipamentos em %(day)s"
+
+#, python-format
+msgid "%(name)s: week of %(start)s to %(end)s"
+msgstr "%(name)s: semana de %(start)s a %(end)s"
+
+msgid "Busy (other unit)"
+msgstr "Ocupado (outra unidade)"
+
+msgid "Nothing to show"
+msgstr "Nada para mostrar"
+
+msgid "No professional, room or equipment matches these filters. Clear the filters to see the whole clinic."
+msgstr "Nenhum profissional, sala ou equipamento corresponde a estes filtros. Limpe os filtros para ver toda a clínica."
+
+#, python-format
+msgid "held until %(time)s"
+msgstr "reservado até %(time)s"
+
+msgid "Hold expiring"
+msgstr "Reserva expirando"
+
+msgid "Reserved times awaiting confirmation"
+msgstr "Horários reservados aguardando confirmação"
+
+msgid "Confirm booking"
+msgstr "Confirmar agendamento"
+
+msgid "Release time"
+msgstr "Liberar horário"
+
+#, python-format
+msgid "Appointments per day in %(month)s"
+msgstr "Consultas por dia em %(month)s"
+
+msgid "No appointment"
+msgstr "Nenhuma consulta"
+
+msgid "Rooms and equipment"
+msgstr "Salas e equipamentos"
+
+msgid "None"
+msgstr "Nenhum"
+
+msgid "Mark arrived"
+msgstr "Registrar chegada"
+
+msgid "Mark no-show"
+msgstr "Registrar falta"
+
+msgid "No appointment matches these filters in this week."
+msgstr "Nenhuma consulta corresponde a estes filtros nesta semana."
+
+msgid "Appointment actions"
+msgstr "Ações da consulta"
+
+msgid "__N__ free times on that day."
+msgstr "__N__ horários livres nesse dia."
+
+msgid "No free time on that day. Try another day."
+msgstr "Nenhum horário livre nesse dia. Tente outro dia."
+
+msgid "Someone else changed this appointment while this dialog was open. Close it and select the appointment again."
+msgstr "Outra pessoa alterou esta consulta enquanto esta janela estava aberta. Feche-a e selecione a consulta novamente."
+
+msgid "Find free times on another day"
+msgstr "Buscar horários livres em outro dia"
+
+msgid "Find free times"
+msgstr "Buscar horários livres"
+
+msgid "Other actions"
+msgstr "Outras ações"
+
+#, python-format
+msgid "Patient in context: %(name)s"
+msgstr "Paciente em contexto: %(name)s"
+
+msgid "No patient is in context. Search for the patient with Search (Ctrl K), then choose this time again."
+msgstr "Nenhum paciente em contexto. Busque o paciente em Buscar (Ctrl K) e escolha este horário de novo."
+
+msgid "Duration"
+msgstr "Duração"
+
+#, python-format
+msgid "%(minutes)s minutes"
+msgstr "%(minutes)s minutos"
+
+msgid "A service type books its own duration."
+msgstr "Um tipo de atendimento usa a própria duração."
+
+msgid "No service type"
+msgstr "Sem tipo de atendimento"
+
+msgid "Rooms and equipment are reserved only together with a service type."
+msgstr "Salas e equipamentos só são reservados junto com um tipo de atendimento."
+
+msgid "Reserving…"
+msgstr "Reservando…"
+
+msgid "Reserve time"
+msgstr "Reservar horário"
+
+#, python-format
+msgid "New start time on %(day)s"
+msgstr "Novo horário de início em %(day)s"
+
+msgid "Open the resource grid"
+msgstr "Abrir a grade de recursos"
+
+msgid "This time was just taken. Choose another time."
+msgstr "Horário acabou de ser ocupado. Escolha outro horário."
+
+msgid "Choose the patient first: search for them with Search (Ctrl K), then come back to this time."
+msgstr "Escolha o paciente primeiro: busque-o em Buscar (Ctrl K) e volte a este horário."
+
+msgid "This view could not be saved. Remove a saved view you no longer use."
+msgstr "Não foi possível salvar esta visão. Remova uma visão salva que você não usa mais."
+
+msgid "View saved. Open it again from Saved views."
+msgstr "Visão salva. Abra-a de novo em Visões salvas."
+
+#, python-format
+msgid "Time reserved until %(time)s. Confirm it to book the appointment."
+msgstr "Horário reservado até %(time)s. Confirme para agendar a consulta."
+
+msgid "Appointment booked."
+msgstr "Consulta agendada."
+
+msgid "Appointment cancelled. The time is free again."
+msgstr "Consulta cancelada. O horário está livre novamente."
+
+msgid "Arrival recorded."
+msgstr "Chegada registrada."
+
+msgid "No-show recorded."
+msgstr "Falta registrada."
+
+msgid "List"
+msgstr "Lista"
+
+#, python-format
+msgid "%(total)s saved view"
+msgid_plural "%(total)s saved views"
+msgstr[0] "%(total)s visão salva"
+msgstr[1] "%(total)s visões salvas"
+
+#, python-format
+msgid "%(total)s appointment in this month."
+msgid_plural "%(total)s appointments in this month."
+msgstr[0] "%(total)s consulta neste mês."
+msgstr[1] "%(total)s consultas neste mês."
+
+#, python-format
+msgid "%(total)s appointment"
+msgid_plural "%(total)s appointments"
+msgstr[0] "%(total)s consulta"
+msgstr[1] "%(total)s consultas"
+
+msgid "Recording notice recorded for the participant."
+msgstr "Aviso de gravação registrado para o participante."
+
+msgid "Audio only"
+msgstr "Somente áudio"
+
+msgid "Audio only: off"
+msgstr "Somente áudio: desligado"
+
+msgid "Audio only: on"
+msgstr "Somente áudio: ligado"
+
+msgid "Automatic updates are unavailable. Use “Check status now” to update the video state."
+msgstr "Atualizações automáticas indisponíveis. Use “Verificar estado agora” para atualizar o estado do vídeo."
+
+msgid "Automatic updates are unavailable. Use “Check status now” to update this page."
+msgstr "Atualizações automáticas indisponíveis. Use “Verificar estado agora” para atualizar esta página."
+
+msgid "Camera"
+msgstr "Câmera"
+
+msgid "Camera and microphone come from this room; test the speaker and see the connection here. Only whether each item worked is recorded."
+msgstr "Câmera e microfone vêm desta sala; aqui você testa o alto-falante e vê a conexão. Só fica registrado o resultado de cada item."
+
+msgid "Connection"
+msgstr "Conexão"
+
+msgid "Device check"
+msgstr "Verificação de dispositivos"
+
+msgid "Device check saved. Only whether each item worked was sent to the clinic."
+msgstr "Verificação registrada. Só foi enviado à clínica o resultado de cada item."
+
+msgid "Good"
+msgstr "Boa"
+
+msgid "Microphone"
+msgstr "Microfone"
+
+msgid "No, I did not hear it"
+msgstr "Não, não ouvi"
+
+msgid "Not checked yet"
+msgstr "Ainda não verificados"
+
+msgid "Not heard"
+msgstr "Não ouvido"
+
+msgid "Not supported"
+msgstr "Sem suporte"
+
+msgid "Not tested"
+msgstr "Não testado"
+
+msgid "Not working"
+msgstr "Não funcionou"
+
+msgid "Patient's devices"
+msgstr "Dispositivos do paciente"
+
+msgid "Patient's media"
+msgstr "Mídia do paciente"
+
+msgid "Physician's media"
+msgstr "Mídia do médico"
+
+msgid "Play test sound"
+msgstr "Tocar som de teste"
+
+msgid "Reconnected"
+msgstr "Reconectado"
+
+msgid "Remove the patient from the room"
+msgstr "Retirar o paciente da sala"
+
+msgid "Removed from the room"
+msgstr "Retirado da sala"
+
+msgid "Removing disconnects the patient and revokes their access to this room; they can return only through the waiting room."
+msgstr "Retirar desconecta o paciente e revoga o acesso dele a esta sala; ele só volta pela sala de espera."
+
+msgid "Removing…"
+msgstr "Retirando…"
+
+msgid "Report how your devices worked"
+msgstr "Informe como seus dispositivos funcionaram"
+
+msgid "Result sent to the clinic. Only whether each item worked was sent."
+msgstr "Resultado enviado à clínica. Só enviamos o resultado de cada item."
+
+msgid "Save device check"
+msgstr "Registrar verificação"
+
+msgid "Sending the result to the clinic…"
+msgstr "Enviando o resultado à clínica…"
+
+msgid "Speaker"
+msgstr "Alto-falante"
+
+msgid "Switching…"
+msgstr "Alternando…"
+
+msgid "Test your camera, microphone, speaker and connection before entering. The test runs on your device: only whether each item worked is sent to the clinic, never an image or a sound."
+msgstr "Teste câmera, microfone, alto-falante e conexão antes de entrar. O teste acontece no seu aparelho: a clínica recebe só o resultado de cada item, nunca imagem ou som."
+
+msgid "The audio-only switch was not confirmed by the clinic. Try again."
+msgstr "A clínica não confirmou a troca para somente áudio. Tente de novo."
+
+msgid "The result could not be sent. You can still enter the room."
+msgstr "Não foi possível enviar o resultado. Você ainda pode entrar na sala."
+
+msgid "Unstable"
+msgstr "Instável"
+
+msgid "Video and audio"
+msgstr "Vídeo e áudio"
+
+msgid "Video restored"
+msgstr "Vídeo restabelecido"
+
+msgid "We played a short test sound. Did you hear it?"
+msgstr "Tocamos um som curto de teste. Você ouviu?"
+
+msgid "Working"
+msgstr "Funcionando"
+
+msgid "Yes, I heard it"
+msgstr "Sim, ouvi"
+
+msgid "Your camera is unavailable, so the consultation continues with audio only."
+msgstr "Sua câmera está indisponível; a consulta continua somente com áudio."
+
+msgid "Your camera or connection is limited. You can continue with audio only inside the room."
+msgstr "Sua câmera ou conexão está limitada. Dentro da sala, você pode continuar somente com áudio."
+
+msgid "Your device check"
+msgstr "Sua verificação de dispositivos"
+
+msgid "good"
+msgstr "boa"
+
+msgid "in use by another app"
+msgstr "em uso por outro aplicativo"
+
+msgid "no connection"
+msgstr "sem conexão"
+
+msgid "not found"
+msgstr "não encontrado"
+
+msgid "not supported"
+msgstr "sem suporte"
+
+msgid "not tested"
+msgstr "não testado"
+
+msgid "not working"
+msgstr "não funcionou"
+
+msgid "permission denied"
+msgstr "permissão negada"
+
+msgid "unstable"
+msgstr "instável"
+
+msgid "working"
+msgstr "funcionando"
+
+msgid "Connection lost. Nothing was recorded."
+msgstr "Conexão perdida. Nada foi gravado."
+
+msgid "Connection lost. Nothing was recorded; your notes remain on this page."
+msgstr "Conexão perdida. Nada foi gravado; as anotações continuam nesta página."
+
+msgid "Outside the room"
+msgstr "Fora da sala"
+
+msgid "Reconnecting to the room…"
+msgstr "Reconectando à sala…"
+
+msgid "Return to the waiting room to enter again if the physician asks."
+msgstr "Volte à sala de espera para entrar de novo, se o médico pedir."
+
+msgid "The physician removed you from the room or your room access ended. Camera and microphone were turned off."
+msgstr "O médico retirou você da sala ou seu acesso a ela terminou. Câmera e microfone foram desligados."
+
+msgid "The video provider is unavailable. No room was created and no alternative provider was used."
+msgstr "O provedor de vídeo não está disponível. Nenhuma sala foi criada e nenhum outro provedor foi usado no lugar."
+
+msgid "This participant is not in the room. Return to the waiting room to enter again."
+msgstr "Este participante não está na sala. Volte à sala de espera para entrar de novo."
+
+msgid "You left the room"
+msgstr "Você saiu da sala"
+
+msgid "You left the room."
+msgstr "Você saiu da sala."
+
+msgid "You are no longer in the room"
+msgstr "Você não está mais na sala"
+
+msgid "Your access to this room ended."
+msgstr "Seu acesso a esta sala terminou."
+
+msgid "Return to the session list and enter again. Your notes remain on this page."
+msgstr "Volte à lista de sessões e entre de novo. As anotações continuam nesta página."
+
+msgid "Reception Today · Clinic OS"
+msgstr "Recepção hoje · Clinic OS"
+
+msgid "Reception Today"
+msgstr "Recepção hoje"
+
+msgid "Arrivals, readiness and rooms in one place."
+msgstr "Chegadas, pendências e salas no mesmo lugar."
+
+msgid "The queue changed. Finish this form, then refresh."
+msgstr "A fila mudou. Termine este formulário e atualize a página."
+
+msgid "Open day"
+msgstr "Abrir dia"
+
+msgid "This day exceeds the reception limit. Use the agenda to review all appointments."
+msgstr "Este dia ultrapassa o limite da recepção. Use a agenda para consultar todos os agendamentos."
+
+msgid "Device token — shown only once"
+msgstr "Código do dispositivo — exibido uma única vez"
+
+msgid "Copy this token to the waiting display. It permits only ticket and room codes."
+msgstr "Copie este código para o painel de espera. Ele permite consultar somente senhas e códigos de sala."
+
+msgid "Arrivals and readiness"
+msgstr "Chegadas e pendências"
+
+msgid "Readiness is informational. Optional consent, documents and payment never prevent arrival."
+msgstr "As pendências são informativas. Consentimentos opcionais, documentos e pagamentos nunca impedem o registro da chegada."
+
+msgid "Late"
+msgstr "Atrasado"
+
+msgid "Room unavailable"
+msgstr "Sala indisponível"
+
+msgid "Payment status unavailable for this role"
+msgstr "Situação do pagamento indisponível para este perfil"
+
+msgid "Payment pending"
+msgstr "Pagamento pendente"
+
+msgid "No issued payment pending"
+msgstr "Nenhuma cobrança emitida pendente"
+
+msgid "Identity document recorded"
+msgstr "Documento de identificação registrado"
+
+msgid "Identity document not recorded"
+msgstr "Documento de identificação não registrado"
+
+msgid "Arrival location"
+msgstr "Local de chegada"
+
+msgid "Register arrival"
+msgstr "Registrar chegada"
+
+msgid "Configure an arrival location in Scheduling settings before registering arrivals."
+msgstr "Configure um local de chegada nas configurações da agenda antes de registrar chegadas."
+
+msgid "Arrival registered"
+msgstr "Chegada registrada"
+
+msgid "Care in progress"
+msgstr "Atendimento em andamento"
+
+msgid "Arrival is unavailable for this state or role."
+msgstr "O registro da chegada não está disponível para este estado ou perfil."
+
+msgid "No arrivals to manage for this day."
+msgstr "Nenhuma chegada para acompanhar neste dia."
+
+msgid "Location queues"
+msgstr "Filas por local"
+
+msgid "Called"
+msgstr "Chamado"
+
+msgid "In room"
+msgstr "Em sala"
+
+msgid "Call to room"
+msgstr "Chamar para a sala"
+
+msgid "The arrival queue is empty."
+msgstr "A fila de chegadas está vazia."
+
+msgid "Room status"
+msgstr "Situação das salas"
+
+msgid "Display code"
+msgstr "Código no painel"
+
+msgid "Occupied"
+msgstr "Ocupada"
+
+msgid "Condition"
+msgstr "Condição"
+
+msgid "Available"
+msgstr "Disponível"
+
+msgid "Cleaning"
+msgstr "Em limpeza"
+
+msgid "Update room"
+msgstr "Atualizar sala"
+
+msgid "No active room configured."
+msgstr "Nenhuma sala ativa configurada."
+
+msgid "Clinician delays"
+msgstr "Atrasos dos profissionais"
+
+msgid "Broadcast delay"
+msgstr "Informar atraso"
+
+msgid "No active clinician configured."
+msgstr "Nenhum profissional ativo configurado."
+
+msgid "Waiting display devices"
+msgstr "Dispositivos do painel de espera"
+
+msgid "Public screens show ticket and room codes only, never patient names or service details."
+msgstr "As telas públicas mostram somente senhas e códigos de sala, nunca nomes de pacientes ou detalhes dos serviços."
+
+msgid "Issue display token"
+msgstr "Gerar código do painel"
+
+msgid "Display device"
+msgstr "Dispositivo do painel"
+
+msgid "Revoke device"
+msgstr "Revogar dispositivo"
+
+msgid "No connected display device."
+msgstr "Nenhum dispositivo do painel conectado."
+
+msgid "%(late)s late arrivals · %(conflicts)s room conflicts"
+msgstr "%(late)s chegadas em atraso · %(conflicts)s conflitos de sala"
+
+msgid "%(count)s pending tasks"
+msgstr "%(count)s tarefas pendentes"
+
+msgid "Pending questionnaires: %(count)s"
+msgstr "Questionários pendentes: %(count)s"
+
+msgid "Optional consents to review: %(count)s"
+msgstr "Consentimentos opcionais para revisar: %(count)s"
+
+msgid "Position %(position)s"
+msgstr "Posição %(position)s"
+
+msgid "Unit %(unit)s"
+msgstr "Unidade %(unit)s"
+
+msgid "%(name)s — delay in minutes"
+msgstr "%(name)s — atraso em minutos"
+
+msgid "Waiting display · Clinic OS"
+msgstr "Painel de espera · Clinic OS"
+
+msgid "Now calling"
+msgstr "Chamando agora"
+
+msgid "Please follow your ticket and room code."
+msgstr "Acompanhe sua senha e o código da sala."
+
+msgid "Please wait for your ticket to be called."
+msgstr "Aguarde a chamada da sua senha."
+
+msgid "Device disconnected"
+msgstr "Dispositivo desconectado"
+
+msgid "Ask reception to connect this display with a new device token."
+msgstr "Peça à recepção para conectar este painel com um novo código do dispositivo."
+
+msgid "Device token"
+msgstr "Código do dispositivo"
+
+msgid "Pause automatic updates"
+msgstr "Pausar atualizações automáticas"
+
+msgid "Show device token"
+msgstr "Mostrar código do dispositivo"
+
+msgid "Connect display"
+msgstr "Conectar painel"
+
+msgid "The queue or room changed meanwhile. Reload before trying again."
+msgstr "A fila ou a sala mudou. Atualize a página antes de tentar novamente."
+
+msgid "Reception updated."
+msgstr "Recepção atualizada."
+
+msgid "Add to arrival queue"
+msgstr "Adicionar à fila de chegadas"
+
+msgid "The display code is assigned when this room unit is first used."
+msgstr "O código do painel é atribuído no primeiro uso desta unidade da sala."
+
+msgid "Updating reception..."
+msgstr "Atualizando a recepção..."
+
+msgid "Connection unavailable. No update has been confirmed. Refresh when you reconnect."
+msgstr "Conexão indisponível. Nenhuma atualização foi confirmada. Atualize a página quando a conexão voltar."
+msgid "Origin"
+msgstr "Origem"
+
+msgid "Reference minimum"
+msgstr "Mínimo de referência"
+
+msgid "Reference maximum"
+msgstr "Máximo de referência"
+
+msgid "Systolic blood pressure (mmHg)"
+msgstr "Pressão arterial sistólica (mmHg)"
+
+msgid "Diastolic blood pressure (mmHg)"
+msgstr "Pressão arterial diastólica (mmHg)"
+
+msgid "Heart rate (/min)"
+msgstr "Frequência cardíaca (/min)"
+
+msgid "Respiratory rate (/min)"
+msgstr "Frequência respiratória (/min)"
+
+msgid "Temperature (Cel)"
+msgstr "Temperatura (°C)"
+
+msgid "Oxygen saturation (%)"
+msgstr "Saturação de oxigênio (%)"
+
+msgid "Weight (kg)"
+msgstr "Peso (kg)"
+
+msgid "Height (cm)"
+msgstr "Altura (cm)"
+
+msgid "Medication"
+msgstr "Medicamento"
+
+msgid "Dose"
+msgstr "Dose"
+
+msgid "Dose unit"
+msgstr "Unidade da dose"
+
+msgid "Route"
+msgstr "Via"
+
+msgid "Times per day"
+msgstr "Vezes ao dia"
+
+msgid "Confirm that you reviewed the selected medication."
+msgstr "Confirme que revisou o medicamento selecionado."
+
+msgid "Confirm that you reviewed this observation."
+msgstr "Confirme que revisou esta observação."
+
+msgid "Confirm that you reviewed the copied block."
+msgstr "Confirme que revisou o bloco copiado."
+
+msgid "Saved to the clinical record. The origin is preserved."
+msgstr "Salvo no prontuário. A origem foi preservada."
+
+msgid "Vitals and observations"
+msgstr "Sinais vitais e observações"
+
+msgid "Medications"
+msgstr "Medicamentos"
+
+msgid "Notes and documents"
+msgstr "Notas e documentos"
+
+msgid "Restrict the destination note before copying a restricted source."
+msgstr "Restrinja a nota de destino antes de copiar uma fonte restrita."
+
+msgid "The record changed. Reload and review before saving."
+msgstr "O registro mudou. Recarregue e revise antes de salvar."
+
+msgid "Clinical note"
+msgstr "Nota clínica"
+
+msgid "Addendum"
+msgstr "Complemento"
+
+msgid "Clinical record"
+msgstr "Prontuário"
+
+msgid "Yes"
+msgstr "Sim"
+
+msgid "No"
+msgstr "Não"
+
+msgid "Patient workspace · Clinic OS"
+msgstr "Prontuário do paciente · Clinic OS"
+
+msgid "Patient workspace"
+msgstr "Prontuário do paciente"
+
+msgid "A longitudinal record with the origin and review of each item."
+msgstr "Um prontuário longitudinal com a origem e a revisão de cada registro."
+
+msgid "Back to patients"
+msgstr "Voltar aos pacientes"
+
+msgid "Offline. Nothing is saved without a server confirmation. Keep this page open and try again when connected."
+msgstr "Sem conexão. Nada é salvo sem a confirmação do servidor. Mantenha esta página aberta e tente novamente quando a conexão voltar."
+
+msgid "Current record"
+msgstr "Registro atual"
+
+msgid "Reported, imported and AI-drafted information stays unconfirmed until a clinician explicitly reviews it."
+msgstr "Informações relatadas, importadas ou redigidas por IA permanecem sem confirmação até a revisão explícita do médico."
+
+msgid "The timeline refreshes after a change commits. Use the sections to review the saved source records."
+msgstr "A linha do tempo é atualizada depois que a alteração é salva. Use as seções para revisar os registros originais."
+
+msgid "Record an observation"
+msgstr "Registrar uma observação"
+
+msgid "Save observation"
+msgstr "Salvar observação"
+
+msgid "Select a patient to open the record"
+msgstr "Selecione um paciente para abrir o prontuário"
+
+msgid "Open the patient workspace from the patient registry or an encounter."
+msgstr "Abra o prontuário pelo cadastro de pacientes ou por um atendimento."
+
+msgid "Trend"
+msgstr "Evolução"
+
+msgid "Show trend"
+msgstr "Ver evolução"
+
+msgid "Recorded measurements in clinic time. The table contains the same values as the chart."
+msgstr "Medições registradas no horário da clínica. A tabela contém os mesmos valores do gráfico."
+
+msgid "Recorded observations"
+msgstr "Observações registradas"
+
+msgid "Measurement"
+msgstr "Medição"
+
+msgid "Origin and review"
+msgstr "Origem e revisão"
+
+msgid "Reference range"
+msgstr "Faixa de referência"
+
+msgid "I reviewed this observation"
+msgstr "Revisei esta observação"
+
+msgid "Confirm observation"
+msgstr "Confirmar observação"
+
+msgid "No observations recorded. Add measurements below; absence is not a normal finding."
+msgstr "Nenhuma observação registrada. Adicione medições abaixo; a ausência de registros não indica um resultado normal."
+
+msgid "Record vitals"
+msgstr "Registrar sinais vitais"
+
+msgid "Use a decimal comma or point. Enter only measured values. BMI is calculated from weight and height recorded together."
+msgstr "Use vírgula ou ponto decimal. Informe somente valores medidos. O IMC é calculado com peso e altura registrados juntos."
+
+msgid "Save vitals"
+msgstr "Salvar sinais vitais"
+
+msgid "Medication statements"
+msgstr "Medicamentos relatados"
+
+msgid "Reported use is not a prescription. Confirmation requires an explicit reconciliation."
+msgstr "O uso relatado não é uma prescrição. A confirmação exige conciliação explícita."
+
+msgid "times per day"
+msgstr "vezes ao dia"
+
+msgid "Reconciled"
+msgstr "Conciliado"
+
+msgid "Reviewed status"
+msgstr "Estado revisado"
+
+msgid "I reviewed this medication"
+msgstr "Revisei este medicamento"
+
+msgid "Reconcile medication"
+msgstr "Conciliar medicamento"
+
+msgid "No medication statements recorded. This does not mean the patient takes no medication."
+msgstr "Nenhum medicamento relatado registrado. Isso não significa que o paciente não use medicamentos."
+
+msgid "Record reported medication"
+msgstr "Registrar medicamento relatado"
+
+msgid "Save medication statement"
+msgstr "Salvar medicamento relatado"
+
+msgid "Only records you may currently read appear here. Updates appear after the refresh completes."
+msgstr "Aqui aparecem apenas os registros que você pode ler agora. As alterações aparecem após a atualização."
+
+msgid "Record type"
+msgstr "Tipo de registro"
+
+msgid "All available types"
+msgstr "Todos os tipos disponíveis"
+
+msgid "From date"
+msgstr "Data inicial"
+
+msgid "Through date"
+msgstr "Data final"
+
+msgid "All episodes"
+msgstr "Todos os episódios"
+
+msgid "Filter timeline"
+msgstr "Filtrar linha do tempo"
+
+msgid "Visible records: %(count)s"
+msgstr "Registros visíveis: %(count)s"
+
+msgid "Open encounter"
+msgstr "Abrir atendimento"
+
+msgid "No available records in this period."
+msgstr "Nenhum registro disponível neste período."
+
+msgid "More records are available. Narrow the period or type to find earlier items."
+msgstr "Há mais registros disponíveis. Refine o período ou o tipo para encontrar os anteriores."
+
+msgid "Restricted note"
+msgstr "Nota restrita"
+
+msgid "Restrict note access"
+msgstr "Restringir acesso à nota"
+
+msgid "Section to copy into the current draft"
+msgstr "Seção para copiar no rascunho atual"
+
+msgid "Copy marked block"
+msgstr "Copiar bloco identificado"
+
+msgid "I reviewed the copied block in the current draft"
+msgstr "Revisei o bloco copiado no rascunho atual"
+
+msgid "Mark block reviewed"
+msgstr "Marcar bloco como revisado"
+
+msgid "Reviewed at this revision"
+msgstr "Revisado nesta revisão"
+
+msgid "No notes available to your current access."
+msgstr "Nenhuma nota disponível para o seu acesso atual."
+
+msgid "Clinical contributions"
+msgstr "Contribuições clínicas"
+
+msgid "A contribution is a separate draft. It never changes another clinician's note."
+msgstr "Uma contribuição é um rascunho separado. Ela nunca altera a nota de outro médico."
+
+msgid "Open contribution"
+msgstr "Abrir contribuição"
+
+msgid "Your contribution draft"
+msgstr "Seu rascunho de contribuição"
+
+msgid "Save contribution draft"
+msgstr "Salvar rascunho de contribuição"
+
+msgid "Open clinical record"
+msgstr "Abrir prontuário"
+
+msgid "Open longitudinal record"
+msgstr "Abrir prontuário longitudinal"
+
+msgid "Your current access permits observation entry only."
+msgstr "Seu acesso atual permite apenas registrar observações."
+
+msgid "Your current access allows reading this record, not editing it."
+msgstr "Seu acesso atual permite ler este prontuário, mas não editá-lo."
+
+msgid "Plans"
+msgstr "Planos de cuidado"
+
+msgid "Forms"
+msgstr "Formulários"
+
+msgid "Disabled sections are unavailable in this release."
+msgstr "As seções desabilitadas não estão disponíveis nesta versão."
+
+msgid "Clinical notes"
+msgstr "Notas clínicas"
+
+msgid "Documents are grouped by encounter. Open an encounter to review its attachments."
+msgstr "Os documentos estão agrupados por atendimento. Abra um atendimento para revisar seus anexos."
+
+msgid "Review encounter documents"
+msgstr "Revisar documentos do atendimento"
+
+msgid "No encounters available for document review."
+msgstr "Nenhum atendimento disponível para revisar documentos."
+
+msgid "Review this patient's questionnaire status and submitted responses in the existing forms workspace."
+msgstr "Revise a situação dos questionários e as respostas enviadas deste paciente na área de formulários."
+
+msgid "Open patient questionnaires"
+msgstr "Abrir questionários do paciente"
+
+msgid "No encounters available to your current access."
+msgstr "Nenhum atendimento disponível para o seu acesso atual."
+
+msgid "Timeline pages"
+msgstr "Páginas da linha do tempo"
+
+#. Todo 31: identity-safe orders and results.
+msgid "A correction requires the exact predecessor and new identity verification; previous acknowledgment and release do not carry forward."
+msgstr "Uma correção exige a versão anterior exata e nova verificação de identidade; a revisão e a liberação anteriores não são transferidas."
+
+msgid "Abnormal flag from source"
+msgstr "Sinalizador de alteração da fonte"
+
+msgid "Acknowledge this version"
+msgstr "Confirmar revisão desta versão"
+
+msgid "Acknowledged; not released"
+msgstr "Revisado; não liberado"
+
+msgid "Check the result source, identity factors and observations."
+msgstr "Confira a fonte do resultado, os fatores de identidade e as observações."
+
+msgid "Choose a verified order"
+msgstr "Escolha uma solicitação verificada"
+
+msgid "Choose after reviewing the source"
+msgstr "Escolha após revisar a fonte"
+
+msgid "Choose the patient and requested examinations."
+msgstr "Escolha o paciente e os exames solicitados."
+
+msgid "Clinical acknowledgment recorded for this version."
+msgstr "Revisão clínica registrada para esta versão."
+
+msgid "Clinical disposition"
+msgstr "Conduta registrada"
+
+msgid "Complete blood count"
+msgstr "Hemograma completo"
+
+msgid "Copy identity factors from the report. Uploading never marks a result reviewed."
+msgstr "Transcreva os fatores de identidade do laudo. O envio nunca marca um resultado como revisado."
+
+msgid "Critical"
+msgstr "Crítico"
+
+msgid "Critical flag from source. An urgent task is assigned to the ordering clinician."
+msgstr "Sinalizador crítico da fonte. Uma tarefa urgente foi atribuída ao médico solicitante."
+
+msgid "Date of birth on the result"
+msgstr "Data de nascimento no resultado"
+
+msgid "Download original source"
+msgstr "Baixar fonte original"
+
+msgid "Examination"
+msgstr "Exame"
+
+msgid "Follow-up required"
+msgstr "Acompanhamento necessário"
+
+msgid "Identifier kind on the result"
+msgstr "Tipo de identificador no resultado"
+
+msgid "Identifier on the result"
+msgstr "Identificador no resultado"
+
+msgid "Identity exception queue"
+msgstr "Fila de exceções de identidade"
+
+msgid "Identity mismatch"
+msgstr "Identidade divergente"
+
+msgid "Insufficient or ambiguous identity factors"
+msgstr "Fatores de identidade insuficientes ou ambíguos"
+
+msgid "Matched results awaiting accountable review"
+msgstr "Resultados vinculados para revisão responsável"
+
+msgid "Name on the result"
+msgstr "Nome no resultado"
+
+msgid "No current matched results are visible in your scope."
+msgstr "Nenhum resultado atual vinculado está visível no seu escopo."
+
+msgid "No further action"
+msgstr "Sem ação adicional"
+
+msgid "No orders are available in your current scope."
+msgstr "Nenhuma solicitação está disponível no seu escopo atual."
+
+msgid "Not provided"
+msgstr "Não informado"
+
+msgid "Not yet acknowledged or released"
+msgstr "Ainda não revisado nem liberado"
+
+msgid "Order placed."
+msgstr "Solicitação emitida."
+
+msgid "Orders and results"
+msgstr "Solicitações e resultados"
+
+msgid "Original PDF or image"
+msgstr "PDF ou imagem original"
+
+msgid "Original result sources"
+msgstr "Fontes originais dos resultados"
+
+msgid "Place an order"
+msgstr "Solicitar exames"
+
+msgid "Place order"
+msgstr "Emitir solicitação"
+
+msgid "Quarantined source"
+msgstr "Fonte em quarentena"
+
+msgid "Quarantined source rejected; original bytes retained."
+msgstr "Fonte em quarentena rejeitada; arquivo original preservado."
+
+msgid "Quarantined sources are not in any patient chart. Verify the original identity; never guess a patient."
+msgstr "Fontes em quarentena não constam em nenhum prontuário. Verifique a identidade original; nunca presuma o paciente."
+
+msgid "Reference interval"
+msgstr "Intervalo de referência"
+
+msgid "Reference interval exactly as printed"
+msgstr "Intervalo de referência exatamente como impresso"
+
+msgid "Reject confirmed wrong-patient source"
+msgstr "Rejeitar fonte confirmada de outro paciente"
+
+msgid "Release this version to patient"
+msgstr "Liberar esta versão ao paciente"
+
+msgid "Released"
+msgstr "Liberado"
+
+msgid "Requested examinations"
+msgstr "Exames solicitados"
+
+msgid "Result action not completed"
+msgstr "Ação sobre o resultado não concluída"
+
+msgid "Result matched. Clinical acknowledgment is still required."
+msgstr "Resultado vinculado. A revisão clínica ainda é necessária."
+
+msgid "Result quarantined. The chart is unchanged; an operator task was created."
+msgstr "Resultado em quarentena. O prontuário não mudou; uma tarefa foi criada para a equipe operacional."
+
+msgid "Result trends · exact source values"
+msgstr "Evolução dos resultados · valores exatos da fonte"
+
+msgid "Review the result source and identity fields."
+msgstr "Revise a fonte do resultado e os campos de identidade."
+
+msgid "Source explicitly marks this result critical"
+msgstr "A fonte marca explicitamente este resultado como crítico"
+
+msgid "Source flag"
+msgstr "Sinalizador da fonte"
+
+msgid "Source identity verified."
+msgstr "Identidade da fonte verificada."
+
+msgid "Source identity, clinical review and patient release are separate decisions."
+msgstr "Identidade da fonte, revisão clínica e liberação ao paciente são decisões separadas."
+
+msgid "Source version"
+msgstr "Versão da fonte"
+
+msgid "Source version time"
+msgstr "Data e hora da versão da fonte"
+
+msgid "The source changed or requires review. Refresh before continuing."
+msgstr "A fonte mudou ou exige revisão. Atualize antes de continuar."
+
+msgid "This version was released to the selected audience."
+msgstr "Esta versão foi liberada ao público selecionado."
+
+msgid "Unit exactly as printed"
+msgstr "Unidade exatamente como impressa"
+
+msgid "Unknown order"
+msgstr "Solicitação desconhecida"
+
+msgid "Upload a corrected source"
+msgstr "Enviar uma fonte corrigida"
+
+msgid "Upload corrected source"
+msgstr "Enviar fonte corrigida"
+
+msgid "Upload original result"
+msgstr "Enviar resultado original"
+
+msgid "Urgent review required"
+msgstr "Revisão urgente necessária"
+
+msgid "Urinalysis"
+msgstr "Urina tipo I"
+
+msgid "Value exactly as printed"
+msgstr "Valor exatamente como impresso"
+
+msgid "Verified order"
+msgstr "Solicitação verificada"
+
+msgid "Verify exact source identity"
+msgstr "Verificar a identidade exata da fonte"
+
+msgid "Acknowledged; not released to patient"
+msgstr "Revisado; não liberado ao paciente"
+
+msgid "Choose a patient"
+msgstr "Escolha um paciente"
+
+msgid "Choose the examination printed on the source"
+msgstr "Escolha o exame impresso na fonte"
+
+msgid "Choose the requested examination for the transcribed value."
+msgstr "Escolha o exame solicitado para o valor transcrito."
+
+msgid "Clinical acknowledgment and release require the corresponding clinician permission."
+msgstr "A revisão clínica e a liberação exigem a permissão clínica correspondente."
+
+msgid "Connection unavailable or outcome unconfirmed. Keep your source and verify the result before trying again."
+msgstr "Conexão indisponível ou resultado não confirmado. Preserve a fonte e confira o resultado antes de tentar novamente."
+
+msgid "Date of birth"
+msgstr "Data de nascimento"
+
+msgid "Date of birth unavailable"
+msgstr "Data de nascimento não informada"
+
+msgid "Examination for this source value"
+msgstr "Exame referente a este valor da fonte"
+
+msgid "Laboratory intake uses a deterministic simulation; no real laboratory is connected."
+msgstr "O recebimento de laudos usa uma simulação determinística; nenhum laboratório real está conectado."
+
+msgid "Laboratory integration is unavailable. Original sources can be uploaded manually."
+msgstr "A integração com o laboratório está indisponível. As fontes originais podem ser enviadas manualmente."
+
+msgid "No orders are available for source upload in your current scope."
+msgstr "Nenhuma solicitação está disponível para envio de fontes no seu escopo atual."
+
+msgid "Provide a source value or leave the observation fields blank."
+msgstr "Informe um valor da fonte ou deixe os campos de observação em branco."
+
+msgid "Released to patient"
+msgstr "Liberado ao paciente"
+
+msgid "Saving the result action. Wait for confirmation."
+msgstr "Registrando a ação sobre o resultado. Aguarde a confirmação."
+
+msgid "Your access changed. This result view is no longer available."
+msgstr "Seu acesso mudou. Esta visualização de resultados não está mais disponível."
+
+msgid "Results, notes and tasks that need you, most urgent first."
+msgstr "Resultados, evoluções e tarefas que dependem de você, os mais urgentes primeiro."
+
+msgid "The inbox changed. Finish what you are doing, then refresh."
+msgstr "A caixa clínica mudou. Conclua o que está fazendo e depois atualize."
+
+msgid "Updating the inbox…"
+msgstr "Atualizando a caixa clínica…"
+
+msgid "Connection unavailable. Nothing was confirmed. Refresh when you reconnect."
+msgstr "Conexão indisponível. Nada foi confirmado. Atualize quando a conexão voltar."
+
+msgid "Keyboard: J and K move between items, Enter runs the item's action, X selects a normal result."
+msgstr "Teclado: J e K movem entre os itens, Enter executa a ação do item e X seleciona um resultado normal."
+
+msgid "Your day changed. Finish what you are doing, then refresh."
+msgstr "Seu dia mudou. Conclua o que está fazendo e depois atualize."
+
+msgid "Keyboard: J and K move between appointments, Enter starts the selected encounter."
+msgstr "Teclado: J e K movem entre as consultas e Enter inicia o atendimento selecionado."
+
+msgid "Overdue"
+msgstr "Em atraso"
+
+msgid "Show"
+msgstr "Mostrar"
+
+msgid "Any owner"
+msgstr "Qualquer responsável"
+
+msgid "Assigned to me"
+msgstr "Atribuídos a mim"
+
+msgid "Any due date"
+msgstr "Qualquer prazo"
+
+msgid "Due by today"
+msgstr "Prazo até hoje"
+
+msgid "Review before acknowledging"
+msgstr "Revise antes de confirmar"
+
+msgid "Preview selected normal results"
+msgstr "Pré-visualizar resultados normais selecionados"
+
+msgid "Only non-critical results with every value flagged normal can be acknowledged together. Results are never released in bulk."
+msgstr "Somente resultados não críticos com todos os valores sinalizados como normais podem ter a revisão confirmada em conjunto. Resultados nunca são liberados em lote."
+
+msgid "Only the most urgent items are shown. Narrow the filters to see the rest."
+msgstr "Somente os itens mais urgentes são exibidos. Refine os filtros para ver os demais."
+
+msgid "All values normal"
+msgstr "Todos os valores normais"
+
+msgid "No due date"
+msgstr "Sem prazo"
+
+msgid "Acknowledge"
+msgstr "Confirmar revisão"
+
+msgid "Select for bulk acknowledgment"
+msgstr "Selecionar para confirmação em lote"
+
+msgid "Open note"
+msgstr "Abrir evolução"
+
+msgid "Open in Tasks"
+msgstr "Abrir em Tarefas"
+
+msgid "Nothing is waiting for you"
+msgstr "Nada aguardando você"
+
+msgid "New results, notes to finalize and tasks you own appear here."
+msgstr "Novos resultados, evoluções a finalizar e tarefas sob sua responsabilidade aparecem aqui."
+
+msgid "Inbox summary"
+msgstr "Resumo da caixa clínica"
+
+msgid "This normal result will be acknowledged with no further action. Release to the patient stays a separate decision."
+msgid_plural "These %(count)s normal results will be acknowledged with no further action. Release to the patient stays a separate decision."
+msgstr[0] "Este resultado normal terá a revisão confirmada sem ação adicional. A liberação ao paciente continua sendo uma decisão separada."
+msgstr[1] "Estes %(count)s resultados normais terão a revisão confirmada sem ação adicional. A liberação ao paciente continua sendo uma decisão separada."
+
+msgid "Acknowledge this result"
+msgid_plural "Acknowledge these %(count)s results"
+msgstr[0] "Confirmar revisão deste resultado"
+msgstr[1] "Confirmar revisão destes %(count)s resultados"
+
+msgid "%(count)s item"
+msgid_plural "%(count)s items"
+msgstr[0] "%(count)s item"
+msgstr[1] "%(count)s itens"
+
+msgid "Source value (%(count)s)"
+msgid_plural "Source values (%(count)s)"
+msgstr[0] "Valor da fonte (%(count)s)"
+msgstr[1] "Valores da fonte (%(count)s)"
+
+msgid "Next patient"
+msgstr "Próximo paciente"
+
+msgid "Continue encounter"
+msgstr "Continuar atendimento"
+
+msgid "Available after reception registers the arrival."
+msgstr "Disponível depois que a recepção registrar a chegada."
+
+msgid "No more patients today"
+msgstr "Nenhum outro paciente hoje"
+
+msgid "Appointments booked for you today appear here."
+msgstr "As consultas agendadas para você hoje aparecem aqui."
+
+msgid "Pre-visit brief"
+msgstr "Resumo pré-consulta"
+
+msgid "Brief unavailable"
+msgstr "Resumo indisponível"
+
+msgid "AI assistance is off for this clinic. Review the record before the visit."
+msgstr "A assistência de IA está desligada nesta clínica. Revise o prontuário antes da consulta."
+
+msgid "This day exceeds the list limit. Use the agenda to review every appointment."
+msgstr "Este dia excede o limite da lista. Use a agenda para revisar todas as consultas."
+
+msgid "No appointments today"
+msgstr "Nenhuma consulta hoje"
+
+msgid "Your agenda for today is empty."
+msgstr "Sua agenda de hoje está vazia."
+
+msgid "Open Clinical Inbox"
+msgstr "Abrir caixa clínica"
+
+msgid "No patient has arrived yet."
+msgstr "Nenhum paciente chegou ainda."
+
+msgid "Today summary"
+msgstr "Resumo de hoje"
+
+msgid "%(count)s appointment today"
+msgid_plural "%(count)s appointments today"
+msgstr[0] "%(count)s consulta hoje"
+msgstr[1] "%(count)s consultas hoje"
+
+msgid "%(count)s patient waiting"
+msgid_plural "%(count)s patients waiting"
+msgstr[0] "%(count)s paciente aguardando"
+msgstr[1] "%(count)s pacientes aguardando"
+
+msgid "%(count)s more appointment later today."
+msgid_plural "%(count)s more appointments later today."
+msgstr[0] "%(count)s consulta restante hoje."
+msgstr[1] "%(count)s consultas restantes hoje."
+
+msgid "Exact source values"
+msgstr "Valores exatos da fonte"
+
+msgid "You"
+msgstr "Você"
+
+msgid "Your role"
+msgstr "Seu papel"
+
+msgid "Care team"
+msgstr "Equipe assistencial"
+
+msgid "Task: %(kind)s"
+msgstr "Tarefa: %(kind)s"
+
+msgid "Acknowledgment recorded for this result version."
+msgstr "Revisão clínica registrada para esta versão do resultado."
+
+msgid "Review the inbox filters and try again."
+msgstr "Revise os filtros da caixa clínica e tente novamente."
+
+msgid "Choose the results and a clinical disposition, then try again."
+msgstr "Escolha os resultados e uma conduta clínica e tente novamente."
+
+msgid "One item was removed or is no longer available to you."
+msgid_plural "%(count)d items were removed or are no longer available to you."
+msgstr[0] "Um item foi removido ou não está mais disponível para você."
+msgstr[1] "%(count)d itens foram removidos ou não estão mais disponíveis para você."
+
+msgid "One normal result was acknowledged with no further action."
+msgid_plural "%(count)d normal results were acknowledged with no further action."
+msgstr[0] "Um resultado normal teve a revisão confirmada sem ação adicional."
+msgstr[1] "%(count)d resultados normais tiveram a revisão confirmada sem ação adicional."
+
+msgid "A selected result changed or is no longer eligible. Nothing was acknowledged. Review the current inbox and try again."
+msgstr "Um resultado selecionado mudou ou não é mais elegível. Nenhuma revisão foi confirmada. Revise a caixa clínica atual e tente novamente."
+
+msgid "Result to review: %(exams)s"
+msgstr "Resultado para revisar: %(exams)s"
+
+msgid "Results to review"
+msgstr "Resultados para revisar"
+
+msgid "Amendment awaiting finalization"
+msgstr "Retificação aguardando finalização"
+
+msgid "Note awaiting finalization"
+msgstr "Evolução aguardando finalização"
+
+msgid "Notes to finalize"
+msgstr "Evoluções a finalizar"
+
+msgid "My day"
+msgstr "Meu dia"
+
+msgid "Inbox counts are not available for your current access."
+msgstr "As contagens da caixa clínica não estão disponíveis para o seu acesso atual."
+
+msgid "No more appointments later today."
+msgstr "Nenhuma outra consulta mais tarde hoje."
+
+msgid "Prescription"
+msgstr "Prescrição"
+
+msgid "Medical certificate"
+msgstr "Atestado médico"
+
+msgid "Attendance attestation"
+msgstr "Declaração de comparecimento"
+
+msgid "Referral"
+msgstr "Encaminhamento"
+
+msgid "Exam request"
+msgstr "Solicitação de exames"
+
+msgid "Patient instructions"
+msgstr "Orientações ao paciente"
+
+msgid "Clinical documents"
+msgstr "Documentos clínicos"
+
+msgid "Clinical document kind"
+msgstr "Tipo de documento clínico"
+
+msgid "Open clinical document"
+msgstr "Abrir documento clínico"
+
+msgid "Document text"
+msgstr "Texto do documento"
+
+msgid "Recipient (optional)"
+msgstr "Destinatário (opcional)"
+
+msgid "CID-10 (optional)"
+msgstr "CID-10 (opcional)"
+
+msgid "CID-10 source version"
+msgstr "Versão da fonte de CID-10"
+
+msgid "Unavailable: no versioned terminology source has passed EG-13."
+msgstr "Indisponível: nenhuma fonte versionada de terminologia passou pelo EG-13."
+
+msgid "CID-10 is unavailable until a versioned source passes EG-13."
+msgstr "CID-10 indisponível até que uma fonte versionada passe pelo EG-13."
+
+msgid "Check the clinical document fields."
+msgstr "Revise os campos do documento clínico."
+
+msgid "Choose examinations from the current catalog."
+msgstr "Escolha exames do catálogo atual."
+
+msgid "Only exam requests may contain examinations."
+msgstr "Somente solicitações de exames podem conter exames."
+
+msgid "Choose a document kind."
+msgstr "Escolha um tipo de documento."
+
+msgid "Document draft saved."
+msgstr "Rascunho do documento salvo."
+
+msgid "The saved version changed. Reopen it before continuing."
+msgstr "A versão salva mudou. Reabra-a antes de continuar."
+
+msgid "Rendering is unavailable. No document or order was created."
+msgstr "A renderização está indisponível. Nenhum documento ou pedido de exame foi criado."
+
+msgid "The document could not be opened. Check the encounter and kind."
+msgstr "Não foi possível abrir o documento. Confira o atendimento e o tipo."
+
+msgid "Synthetic rehearsal - no clinical validity"
+msgstr "Ensaio sintético - sem validade clínica"
+
+msgid "Write, save and review the exact PDF before signing. Release to the patient is a separate action."
+msgstr "Escreva, salve e revise o PDF exato antes de assinar. A liberação ao paciente é uma ação separada."
+
+msgid "Changes were not saved. Your text remains below."
+msgstr "As alterações não foram salvas. Seu texto permanece abaixo."
+
+msgid "Saved version %(version)s loaded."
+msgstr "Versão salva %(version)s carregada."
+
+msgid "Verified signing creates an order from local catalog version 1. It does not acknowledge or release results."
+msgstr "A assinatura verificada cria um pedido de exame a partir da versão 1 do catálogo local. Ela não revisa nem libera resultados."
+
+msgid "Optional diagnosis coding"
+msgstr "Codificação opcional de diagnóstico"
+
+msgid "Save document draft"
+msgstr "Salvar rascunho do documento"
+
+msgid "Reopen saved version"
+msgstr "Reabrir versão salva"
+
+msgid "Only the server saves this text. Offline or interrupted submissions are not confirmed saves."
+msgstr "Somente o servidor salva este texto. Envios sem conexão ou interrompidos não são gravações confirmadas."
+
+msgid "Render saved version for review"
+msgstr "Renderizar versão salva para revisão"
+
+msgid "Discard document draft"
+msgstr "Descartar rascunho do documento"
+
+msgid "Waiting for the server..."
+msgstr "Aguardando o servidor..."
+
+msgid "This draft was discarded. Retained artifacts remain in the history."
+msgstr "Este rascunho foi descartado. Os artefatos preservados permanecem no histórico."
+
+msgid "Document history"
+msgstr "Histórico do documento"
+
+msgid "Version %(version)s"
+msgstr "Versão %(version)s"
+
+msgid "Review frozen content"
+msgstr "Revisar conteúdo congelado"
+
+msgid "Signature status"
+msgstr "Estado da assinatura"
+
+msgid "Revoke patient release"
+msgstr "Revogar liberação ao paciente"
+
+msgid "Send verification link"
+msgstr "Enviar link de verificação"
+
+msgid "Release to patient"
+msgstr "Liberar ao paciente"
+
+msgid "Revoke document"
+msgstr "Revogar documento"
+
+msgid "No rendered document yet. Save your text before rendering."
+msgstr "Nenhum documento renderizado. Salve seu texto antes de renderizar."
+
+msgid "Open clinical documents from an assigned encounter."
+msgstr "Abra os documentos clínicos a partir de um atendimento sob sua responsabilidade."
+
+msgid "Clinical document review"
+msgstr "Revisão do documento clínico"
+
+msgid "Return to document draft"
+msgstr "Voltar ao rascunho do documento"
+
+msgid "The draft changed after review"
+msgstr "O rascunho mudou após a revisão"
+
+msgid "This review cannot authorize signing. Render and review the saved version again."
+msgstr "Esta revisão não pode autorizar uma assinatura. Renderize e revise novamente a versão salva."
+
+msgid "Document kind"
+msgstr "Tipo de documento"
+
+msgid "Verified signing places exactly one order for these frozen examinations."
+msgstr "A assinatura verificada cria exatamente um pedido para estes exames congelados."
+
+msgid "The draft changed after review. Render and review the saved version again."
+msgstr "O rascunho mudou após a revisão. Renderize e revise novamente a versão salva."
+
+msgid "Your professional authority changed. No document was issued."
+msgstr "Sua autorização profissional mudou. Nenhum documento foi emitido."
+
+msgid "Confirm your current clinical scope before trying again."
+msgstr "Confirme seu escopo clínico atual antes de tentar novamente."
+msgid "Simple prescription"
+msgstr "Receita simples"
+
+msgid "Special-control prescription"
+msgstr "Receita de controle especial"
+
+msgid "Antimicrobial retention"
+msgstr "Antimicrobiano com retenção"
+
+msgid "GLP-1 retention"
+msgstr "GLP-1 com retenção"
+
+msgid "Notification A"
+msgstr "Notificação A"
+
+msgid "Notification B"
+msgstr "Notificação B"
+
+msgid "Notification B2"
+msgstr "Notificação B2"
+
+msgid "Systemic retinoid"
+msgstr "Retinoide sistêmico"
+
+msgid "Thalidomide"
+msgstr "Talidomida"
+
+msgid "Synthetic rehearsal; no real issuance"
+msgstr "Ensaio sintético; sem emissão real"
+
+msgid "Choose a prescription class before issuance."
+msgstr "Escolha uma classe de receita antes de emitir."
+
+msgid "Prescription class unavailable."
+msgstr "Classe de receita indisponível."
+
+msgid "Paper preparation only; not issued."
+msgstr "Somente preparo em papel; não emitido."
+
+msgid "Electronic issuance unavailable: SNCR integration pending. Prepare paper instead."
+msgstr "Emissão eletrônica indisponível: integração SNCR pendente. Prepare a via em papel."
+
+msgid "Electronic issuance unavailable. Prepare paper instead."
+msgstr "Emissão eletrônica indisponível. Prepare a via em papel."
+
+msgid "Choose a valid prescription class."
+msgstr "Escolha uma classe de receita válida."
+
+msgid "Enter at most 80 characters."
+msgstr "Informe até 80 caracteres."
+
+msgid "Choose a valid dose unit."
+msgstr "Escolha uma unidade de dose válida."
+
+msgid "Check the structured directions."
+msgstr "Revise a posologia estruturada."
+
+msgid "Prescription class"
+msgstr "Classe de receita"
+
+msgid "Choose a class"
+msgstr "Escolha uma classe"
+
+msgid "Dose unit for structured directions"
+msgstr "Unidade da dose para posologia estruturada"
+
+msgid "Free-text directions"
+msgstr "Posologia em texto livre"
+
+msgid "Tablet"
+msgstr "Comprimido"
+
+msgid "Capsule"
+msgstr "Cápsula"
+
+msgid "Drop"
+msgstr "Gota"
+
+msgid "With a unit, enter numeric dose, administrations per day and days. Quantity is their exact product in that unit; no conversion or rounding."
+msgstr "Ao escolher uma unidade, informe dose numérica, administrações por dia e dias. A quantidade é o produto exato desses valores nessa unidade; sem conversão ou arredondamento."
+
+msgid "Link to medication reconciliation"
+msgstr "Vínculo com a conciliação de medicamentos"
+
+msgid "No reconciliation link"
+msgstr "Sem vínculo com a conciliação"
+
+msgid "Enter a quantity or choose structured directions."
+msgstr "Informe uma quantidade ou escolha a posologia estruturada."
+
+msgid "The draft already has 20 items."
+msgstr "O rascunho já tem 20 itens."
+
+msgid "The class starts unset. Only you choose it; neither the catalog nor a renewal classifies medication."
+msgstr "A classe começa sem seleção. Só você a escolhe; o catálogo e a renovação não classificam medicamentos."
+
+msgid "Up to 20 items. Save to add a field. Doses are never suggested. Structured quantity uses only the numbers you enter."
+msgstr "Até 20 itens. Salve para adicionar um campo. Nenhuma dose é sugerida. A quantidade estruturada usa somente os números que você informa."
+
+msgid "Create a draft without a selected class. Regulated electronic issuance remains unavailable; paper preparation and synthetic rehearsal are separate paths."
+msgstr "Crie um rascunho sem classe selecionada. A emissão eletrônica regulada continua indisponível; o preparo em papel e o ensaio sintético são caminhos separados."
+
+msgid "Renew for review"
+msgstr "Renovar para revisão"
+
+msgid "Renewal copies the previous directions for review. It never copies the class or issues a document."
+msgstr "A renovação copia a posologia anterior para revisão. Não copia a classe nem emite um documento."
+
+msgid "Medication catalog and favorites"
+msgstr "Catálogo de medicamentos e favoritos"
+
+msgid "Terminology only: no dose, treatment advice or regulatory class is inferred. Manual entry remains available."
+msgstr "Somente terminologia: nenhuma dose, orientação de tratamento ou classe regulatória é inferida. O preenchimento manual continua disponível."
+
+msgid "Search the medication catalog"
+msgstr "Buscar no catálogo de medicamentos"
+
+msgid "Search catalog"
+msgstr "Buscar no catálogo"
+
+msgid "Catalog results"
+msgstr "Resultados do catálogo"
+
+msgid "Source retrieved"
+msgstr "Fonte obtida em"
+
+msgid "Use catalog entry"
+msgstr "Usar item do catálogo"
+
+msgid "Add favorite"
+msgstr "Adicionar aos favoritos"
+
+msgid "No catalog results. Enter medication manually or search a loaded snapshot."
+msgstr "Nenhum resultado no catálogo. Preencha o medicamento manualmente ou busque uma versão carregada."
+
+msgid "Your favorites in this clinic"
+msgstr "Seus favoritos nesta clínica"
+
+msgid "Remove favorite"
+msgstr "Remover dos favoritos"
+
+msgid "No favorites yet. Favorites never select a class or directions."
+msgstr "Nenhum favorito ainda. Os favoritos não selecionam classe nem posologia."
+
+msgid "No class selected"
+msgstr "Nenhuma classe selecionada"
+
+msgid "Frequency is administrations per day; duration is days."
+msgstr "A frequência está em administrações por dia; a duração, em dias."

@@ -51,6 +51,7 @@ SECRET_ENVIRONMENT: Final = (
     "CLINIC_RENEWAL_FIXTURE_DATABASE_URL",
     "CLINIC_RENEWAL_WORKER_DATABASE_URL",
     OWNER_PASSWORD,
+    "SECRET_KEY",
 )
 # Shorter values could collide with ordinary report text; no fixture secret
 # is this short (token_urlsafe(24) is 32 characters, a TOTP seed 40).

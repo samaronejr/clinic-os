@@ -1,0 +1,49 @@
+{
+  "definition": {
+    "schema_version": 2,
+    "state": "published",
+    "questions": [
+      {"id": "q_bool", "label": "Synthetic boolean", "type": "boolean", "required": false, "max_length": 5, "options": []},
+      {"id": "q_detail", "label": "Synthetic detail", "type": "text", "required": true, "max_length": 100, "options": []},
+      {"id": "q_number", "label": "Synthetic number", "type": "number", "required": false, "max_length": 20, "options": []},
+      {"id": "q_high", "label": "Synthetic high", "type": "text", "required": false, "max_length": 100, "options": []},
+      {"id": "q_choice", "label": "Synthetic choice", "type": "selection", "required": false, "max_length": 20, "options": ["A", "B"]},
+      {"id": "q_nested", "label": "Synthetic descendant", "type": "text", "required": false, "max_length": 100, "options": []},
+      {"id": "q_low", "label": "Synthetic low", "type": "text", "required": false, "max_length": 100, "options": []},
+      {"id": "q_in", "label": "Synthetic membership", "type": "text", "required": false, "max_length": 100, "options": []}
+    ],
+    "rules": [
+      {"when": {"question": "q_bool", "op": "eq", "value": true}, "show": ["q_detail"]},
+      {"when": {"question": "q_number", "op": "gt", "value": 5}, "show": ["q_high"]},
+      {"when": {"question": "q_detail", "op": "eq", "value": "literal"}, "show": ["q_nested"]},
+      {"when": {"question": "q_number", "op": "lt", "value": -2}, "show": ["q_low"]},
+      {"when": {"question": "q_choice", "op": "in", "value": ["A"]}, "show": ["q_in"]},
+      {"when": {"question": "q_number", "op": "eq", "value": 10}, "show": ["q_in"]},
+      {"when": {"question": "q_detail", "op": "eq", "value": ""}, "show": ["q_nested"]},
+      {"when": {"question": "q_detail", "op": "in", "value": [""]}, "show": ["q_nested"]}
+    ]
+  },
+  "cases": [
+    {"name": "missing", "answers": {}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "false-and-zero", "answers": {"q_bool": false, "q_number": 0}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "boolean-true", "answers": {"q_bool": true}, "visible": ["q_bool", "q_detail", "q_number", "q_choice"]},
+    {"name": "boolean-not-integer", "answers": {"q_bool": 1}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "boolean-not-string", "answers": {"q_bool": "true"}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "greater-than", "answers": {"q_number": 5.5}, "visible": ["q_bool", "q_number", "q_high", "q_choice"]},
+    {"name": "strict-boundary", "answers": {"q_number": 5}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "numeric-string", "answers": {"q_number": "6"}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "less-than", "answers": {"q_number": -2.5}, "visible": ["q_bool", "q_number", "q_choice", "q_low"]},
+    {"name": "less-boundary", "answers": {"q_number": -2}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "membership", "answers": {"q_choice": "A"}, "visible": ["q_bool", "q_number", "q_choice", "q_in"]},
+    {"name": "not-member", "answers": {"q_choice": "B"}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "hidden-source-forgery", "answers": {"q_bool": false, "q_detail": "literal"}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "visible-descendant", "answers": {"q_bool": true, "q_detail": "literal"}, "visible": ["q_bool", "q_detail", "q_number", "q_choice", "q_nested"]},
+    {"name": "alternative-rule", "answers": {"q_number": 10.0, "q_detail": "literal"}, "visible": ["q_bool", "q_number", "q_high", "q_choice", "q_in"]},
+    {"name": "null", "answers": {"q_bool": null, "q_number": null}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "numeric-boolean", "answers": {"q_number": true}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "safe-number-limit", "answers": {"q_number": 9007199254740991}, "visible": ["q_bool", "q_number", "q_high", "q_choice"]},
+    {"name": "unsafe-number", "answers": {"q_number": 9007199254740992}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "array-no-coercion", "answers": {"q_choice": ["A"]}, "visible": ["q_bool", "q_number", "q_choice"]},
+    {"name": "blank-text-is-unanswered", "answers": {"q_bool": true, "q_detail": ""}, "visible": ["q_bool", "q_detail", "q_number", "q_choice"]}
+  ]
+}

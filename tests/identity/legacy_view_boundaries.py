@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from apps.ehr import attachment_views, history_views
 from apps.ehr import views as ehr_views
+from apps.prescription import document_views as clinical_document_views
 from apps.prescription import views as prescription_views
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
@@ -56,6 +57,12 @@ VIEWS = {
     "apps.intake.views.patient_create_view": MANAGERS,
     "apps.intake.views.patient_contacts_view": MANAGERS,
     "apps.intake.views.patient_access_view": MANAGERS,
+    "apps.intake.views.patient_demographics_view": (
+        "physician",
+        "receptionist",
+        "clinic_admin",
+    ),
+    "apps.prescription.document_views.clinical_documents_view": PHYSICIAN,
     "apps.prescription.views.draft_workspace": PHYSICIAN,
     "apps.prescription.views.review_view": PHYSICIAN,
     "apps.prescription.views.signing_status_view": PHYSICIAN,
@@ -98,6 +105,13 @@ def _view(
         request.POST = (
             RequestFactory()
             .post("/", {"action": "inspect", "response_id": str(subjects.response.pk)})
+            .POST
+        )
+    if symbol == "apps.intake.views.patient_demographics_view":
+        request.method = "POST"
+        request.POST = (
+            RequestFactory()
+            .post("/", {"enrollment_id": str(subjects.enrollment), "action": "manage"})
             .POST
         )
     if symbol == "apps.scheduling.booking_views.appointment_create_view":
@@ -166,6 +180,15 @@ def boundaries(
         ),
         Boundary(
             "apps.ehr.views._show", "http_private", PHYSICIAN, _show, http_allowed
+        ),
+        Boundary(
+            "apps.prescription.document_views._workspace",
+            "http_private",
+            PHYSICIAN,
+            lambda w, ok: clinical_document_views._workspace(
+                w.request, w.clinic_for(ok)
+            ),
+            http_allowed,
         ),
         Boundary(
             "apps.prescription.views._workspace",

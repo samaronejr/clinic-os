@@ -199,6 +199,7 @@ class RecordRelease(TenantScopedModel):
         related_name="record_releases_revoked",
     )
     revoked_at = models.DateTimeField(null=True, blank=True)
+    restricted_from_delegates = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

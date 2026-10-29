@@ -1,0 +1,40 @@
+{% load i18n %}
+<fieldset class="rx-fieldset">
+  <legend>{% trans "Medication catalog and favorites" %}</legend>
+  <p class="hint">{% trans "Terminology only: no dose, treatment advice or regulatory class is inferred. Manual entry remains available." %}</p>
+  <div class="field">
+    <label for="id_catalog_query">{% trans "Search the medication catalog" %}</label>
+    <input id="id_catalog_query" name="catalog_query" maxlength="80" value="{{ catalog_query }}" type="search">
+  </div>
+  <button class="button button--secondary" name="action" value="catalog_search" type="submit" formnovalidate>{% trans "Search catalog" %}</button>
+  {% if catalog_error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ catalog_error }}</p>{% endif %}
+  {% if catalog_rows %}
+  <ul class="rx-items" aria-label="{% trans 'Catalog results' %}">
+    {% for entry in catalog_rows %}
+    <li class="rx-item">
+      <p>{{ entry.description }} · {{ entry.strength_form }}</p>
+      <p class="meta">{{ entry.code }} · {% trans "Source retrieved" %} {{ entry.source.retrieved_on|date:"d/m/Y" }} · SHA-256 <code class="rx-digest">{{ entry.source.checksum }}</code></p>
+      <div class="actions">
+        <button class="button button--secondary" type="submit" name="use_catalog_id" value="{{ entry.pk }}" formnovalidate>{% trans "Use catalog entry" %}<span class="visually-hidden"> · {{ entry.description }}</span></button>
+        <button class="button button--quiet" type="submit" name="favorite_add_id" value="{{ entry.pk }}" formnovalidate>{% trans "Add favorite" %}<span class="visually-hidden"> · {{ entry.description }}</span></button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="hint" role="status">{% trans "No catalog results. Enter medication manually or search a loaded snapshot." %}</p>{% endif %}
+  <h3>{% trans "Your favorites in this clinic" %}</h3>
+  {% if favorites %}
+  <ul class="rx-items" aria-label="{% trans 'Your favorites in this clinic' %}">
+    {% for favorite in favorites %}
+    <li class="rx-item">
+      <p>{{ favorite.entry.description }} · {{ favorite.entry.strength_form }}</p>
+      <p class="meta">{% trans "Source retrieved" %} {{ favorite.entry.source.retrieved_on|date:"d/m/Y" }}</p>
+      <div class="actions">
+        <button class="button button--secondary" type="submit" name="use_catalog_id" value="{{ favorite.entry_id }}" formnovalidate>{% trans "Use catalog entry" %}<span class="visually-hidden"> · {{ favorite.entry.description }}</span></button>
+        <button class="button button--quiet" type="submit" name="favorite_remove_id" value="{{ favorite.entry_id }}" formnovalidate>{% trans "Remove favorite" %}<span class="visually-hidden"> · {{ favorite.entry.description }}</span></button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="hint">{% trans "No favorites yet. Favorites never select a class or directions." %}</p>{% endif %}
+</fieldset>

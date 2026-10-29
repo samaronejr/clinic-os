@@ -67,6 +67,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 SUITES: Final = {
+    "onboarding": (
+        "tests/renewal/browser/test_onboarding.py",
+        "tests/renewal/browser/test_onboarding_security.py",
+        "tests/renewal/browser/test_passkeys.py",
+    ),
     "clinic-settings": ("tests/renewal/browser/test_clinic_settings.py",),
     "billing": ("tests/renewal/browser/test_billing.py",),
     "prescription-draft": ("tests/renewal/browser/test_prescription_draft.py",),
@@ -79,8 +84,12 @@ SUITES: Final = {
     "clinician-video": ("tests/renewal/browser/test_clinician_video.py",),
     "video-recovery": ("tests/renewal/browser/test_video_recovery.py",),
     "encounter": ("tests/renewal/browser/test_encounter.py",),
+    "patient-workspace": ("tests/renewal/browser/test_patient_workspace.py",),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
+    "agenda-slice": ("tests/renewal/browser/test_agenda_slice.py",),
+    "agenda-grid": ("tests/renewal/browser/test_agenda_grid.py",),
+    "reception": ("tests/renewal/browser/test_reception.py",),
     "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
@@ -100,11 +109,19 @@ SUITES: Final = {
         "tests/renewal/browser/test_workspace.py",
         "tests/renewal/browser/test_workspace_navigation.py",
     ),
+    # Task 31: keep this registration block separate from active lanes.
+    "results": ("tests/renewal/browser/test_results.py",),
+    # Task 32: Clinical Inbox and clinician Today.
+    "clinical-inbox": ("tests/renewal/browser/test_clinical_inbox.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
+        "onboarding",
         "agenda",
+        "agenda-slice",
+        "agenda-grid",
+        "reception",
         "realtime",
         "clinic-settings",
         "billing",
@@ -114,6 +131,7 @@ FIXTURE_SUITES: Final = frozenset(
         "amendments",
         "attachments",
         "encounter",
+        "patient-workspace",
         "end-to-end",
         "clinical-history",
         "clinician-video",
@@ -132,11 +150,19 @@ FIXTURE_SUITES: Final = frozenset(
         "retention",
         "staff-intake",
         "workspace",
+        "results",
+        "clinical-inbox",
     }
 )
+# Suites served through the task-owned Redis, SSE process and same-origin proxy.
+REALTIME_SUITES: Final = frozenset(
+    {"realtime", "agenda-slice", "agenda-grid", "reception"}
+)
 # Suites that exercise the synthetic room provider through the real outbox.
+# ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
 VIDEO_SUITES: Final = frozenset(
     {
+        "realtime",
         "teleconsult",
         "patient-video",
         "clinician-video",
@@ -613,6 +639,9 @@ def _child_env(extra: dict[str, str]) -> dict[str, str]:
         "PYTHONPATH": str(_repository()),
         "PYTHONTZPATH": "",
     }
+    for name in ("TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "REALTIME_REDIS_URL"):
+        if name in os.environ:
+            environment[name] = os.environ[name]
     environment.update(extra)
     return environment
 
@@ -760,6 +789,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
             else {}
         ),
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
+        **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
     }
 
 
@@ -789,18 +819,21 @@ def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     engine: str,
     username: str,
     password: str,
+    secret_key: str,
 ) -> dict[str, str]:
     """Export only the private runner-to-fixture inputs to the suite child."""
     return _child_env(
         {
             # Suite fixtures and worker subprocesses never reach a host Redis.
             "CELERY_BROKER_URL": "memory://",
+            "CLINIC_DATA_MODE": "synthetic",
             "CLINIC_BROWSER_ENGINE": engine,
             "CLINIC_RENEWAL_ARTIFACT_ROOT": str(artifact_root),
             "CLINIC_RENEWAL_BASE_URL": base_url,
             "CLINIC_RENEWAL_BROWSER_EXECUTABLE": browser,
             "CLINIC_RENEWAL_PASSWORD": password,
             "CLINIC_RENEWAL_USERNAME": username,
+            "SECRET_KEY": secret_key,
         }
     )
 
@@ -928,7 +961,10 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         }
         extra_processes.enter_context(
             realtime_broker(
-                repository, server_environment, run_root, enabled=suite == "realtime"
+                repository,
+                server_environment,
+                run_root,
+                enabled=suite in REALTIME_SUITES,
             )
         )
         try:
@@ -947,7 +983,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     server_environment,
                     run_root,
                     port,
-                    enabled=suite == "realtime",
+                    enabled=suite in REALTIME_SUITES,
                 )
             )
             base_url = f"http://127.0.0.1:{port_for_browser}"
@@ -960,6 +996,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     engine=engine,
                     username=fixture["username"],
                     password=fixture["password"],
+                    secret_key=server_environment["SECRET_KEY"],
                 ),
                 **secret_environment,
             }
@@ -971,9 +1008,19 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite == "reminders"
+                        if suite in {"agenda", "reminders"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
+                        else {}
+                    ),
+                    # Realtime workers store leases on the served stream's broker.
+                    **(
+                        {
+                            "CLINIC_RENEWAL_REALTIME_REDIS_URL": server_environment[
+                                "REALTIME_REDIS_URL"
+                            ]
+                        }
+                        if suite in REALTIME_SUITES
                         else {}
                     ),
                 }
@@ -986,6 +1033,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "-m",
                     "pytest",
                     "-q",
+                    "--tb=short",
                     "-p",
                     "no:cacheprovider",
                     f"--junitxml={junit}",

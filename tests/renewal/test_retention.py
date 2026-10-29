@@ -766,6 +766,7 @@ def test_retention_tables_rls_acl_and_immutability(rbac_graph: RbacGraph) -> Non
             ("retention_recordrelease", "release_read"),
             ("retention_recordrelease", "release_insert"),
             ("retention_recordrelease", "release_revoke"),
+            ("retention_recordrelease", "delegate_confidentiality"),
             ("retention_recordexport", "setup_tenant"),
             ("retention_recordexport", "export_read"),
             ("retention_recordexport", "export_insert_staff"),

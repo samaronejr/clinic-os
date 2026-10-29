@@ -28,14 +28,17 @@ from apps.prescription.services import (
     save_draft,
     view_draft,
 )
+from apps.prescription.sncr import SncrUnavailableError
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
+from prescription.policy_support import seed_class_policies
 from renewal.test_encounters import physician_client, setup_context
 from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
     seed_appointment_setup,
 )
 
@@ -63,9 +66,10 @@ class Scope(TypedDict):
 
 
 def seed(graph: RbacGraph) -> Scope:
+    seed_class_policies()
     setup = seed_appointment_setup(graph)
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
-        appointment = create_synthetic_appointment(setup)
+        appointment = arrived_synthetic_appointment(setup)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         encounter = open_encounter(
             clinic_id=graph.clinic_a, appointment_id=appointment.pk
@@ -370,6 +374,9 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "draft_update",
                 )
             } | {
+                ("prescription_documentdraftcontent", policy)
+                for policy in ("setup_tenant", "content_read", "content_insert")
+            } | {
                 ("prescription_prescriptionitem", policy)
                 for policy in ("setup_tenant", "item_read", "item_insert")
             } | {
@@ -391,12 +398,21 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "signature_callback_insert",
                 )
             } | {
+                ("prescription_medicationfavorite", policy)
+                for policy in (
+                    "setup_tenant",
+                    "favorite_read",
+                    "favorite_insert",
+                    "favorite_update",
+                )
+            } | {
                 ("prescription_prescriptiondocumentrelease", policy)
                 for policy in (
                     "setup_tenant",
                     "release_read",
                     "release_insert",
                     "release_revoke",
+                    "delegate_confidentiality",
                 )
             } | {
                 ("prescription_prescriptiondocumentrevocation", policy)
@@ -405,6 +421,12 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "revocation_read",
                     "revocation_insert",
                 )
+            } | {
+                ("prescription_prescriptionissuance", policy)
+                for policy in ("setup_tenant", "issuer_read", "issuer_insert")
+            } | {
+                ("prescription_sncrnumberallocation", policy)
+                for policy in ("setup_tenant", "issuer_read")
             }
             cursor.execute(
                 "SELECT table_name,privilege_type "
@@ -415,6 +437,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
             assert set(cursor.fetchall()) == {
                 (table, privilege)
                 for table in (
+                    "prescription_documentdraftcontent",
                     "prescription_prescriptiondraft",
                     "prescription_prescriptionitem",
                     "prescription_prescriptiondocument",
@@ -422,7 +445,19 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "prescription_signaturecallback",
                     "prescription_prescriptiondocumentrevocation",
                     "prescription_prescriptiondocumentrelease",
+                    "prescription_prescriptionissuance",
                 )
+                for privilege in ("SELECT", "INSERT")
+            } | {
+                (table, "SELECT")
+                for table in (
+                    "prescription_prescriptionclasspolicy",
+                    "prescription_medicationcatalogimport",
+                    "prescription_medicationcatalogentry",
+                    "prescription_sncrnumberallocation",
+                )
+            } | {
+                ("prescription_medicationfavorite", privilege)
                 for privilege in ("SELECT", "INSERT")
             }
             cursor.execute(
@@ -433,7 +468,13 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
             )
             assert set(cursor.fetchall()) == {
                 ("prescription_prescriptiondraft", column)
-                for column in ("version", "state", "updated_at")
+                for column in (
+                    "version",
+                    "state",
+                    "updated_at",
+                    "category",
+                    "contract_version",
+                )
             } | {
                 ("prescription_signatureoperation", column)
                 for column in (
@@ -447,7 +488,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "failure_reason",
                     "completed_at",
                 )
-            } | {
+            } | {("prescription_medicationfavorite", "active")} | {
                 ("prescription_prescriptiondocumentrelease", column)
                 for column in ("revoked_by_id", "revoked_at")
             }
@@ -506,10 +547,30 @@ def test_concurrent_saves_have_one_winner(rbac_graph: RbacGraph) -> None:
         assert view_draft(**scope, draft_id=draft.pk).version == 2
 
 
-def test_category_never_implies_real_issuance() -> None:
+def test_category_never_implies_real_issuance(rbac_graph: RbacGraph) -> None:
     assert validate_category(SYNTHETIC_CATEGORY) == "synthetic-draft-v1"
-    with pytest.raises(NotImplementedError):
-        services.issue_prescription()
+    scope = seed(rbac_graph)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        draft = create_draft(**scope, category=SYNTHETIC_CATEGORY)
+        draft = save_draft(
+            **scope,
+            draft_id=draft.pk,
+            category=SYNTHETIC_CATEGORY,
+            expected_version=1,
+            items=[ITEM],
+        )
+        document = services.render_document(
+            **scope, draft_id=draft.pk, expected_version=draft.version
+        )
+        with pytest.raises(SncrUnavailableError):
+            services.issue_prescription(
+                clinic_id=scope["clinic_id"],
+                document_id=document.pk,
+                command_id=uuid4(),
+            )
 
 
 def payload(scope: Scope, draft: PrescriptionDraft) -> dict[str, str]:
@@ -648,7 +709,7 @@ def test_peer_physician_and_cross_tenant_are_denied(rbac_graph: RbacGraph) -> No
     with setup_context(rbac_graph.organization_a):
         UserClinicRole.objects.filter(
             user_id=rbac_graph.physician, role="physician"
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         pytest.raises(TenantAccessDeniedError),
         runtime_role(),

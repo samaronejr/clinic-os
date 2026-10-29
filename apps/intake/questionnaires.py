@@ -13,10 +13,18 @@ from typing import TYPE_CHECKING, cast
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
+from apps.audit.services import record_phase1_event
 from apps.identity.current_context import require_current_actor_clinic_roles
 from apps.identity.models import Clinic, UserClinicRole
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.branching import (
+    definition_parts,
+    is_number,
+    validate_definition,
+    visible_questions,
+)
 from apps.intake.models import (
     PatientClinicEnrollment,
     QuestionnaireResponse,
@@ -61,7 +69,7 @@ def validate_questions(questions: object) -> list[dict[str, object]]:
             raise ValidationError(msg)
         kind = question["type"]
         if (
-            kind not in ("text", "selection", "boolean")
+            kind not in ("text", "selection", "boolean", "number")
             or type(question["required"]) is not bool
         ):
             msg = "Tipo ou obrigatoriedade inválidos."
@@ -97,34 +105,50 @@ def _validate_options(kind: str, options: object, length: int) -> None:
 
 
 def validate_answers(
-    questions: list[dict[str, object]], answers: object, *, submitting: bool
+    questions: object, answers: object, *, submitting: bool
 ) -> dict[str, object]:
-    """Validate supplied draft values; require all required values on submission."""
-    if not isinstance(answers, dict) or set(answers) - {q["id"] for q in questions}:
+    """Validate types first, discard hidden answers and require only visible fields."""
+    definition = questions
+    rows, _rules = definition_parts(definition)
+    if not isinstance(answers, dict) or set(answers) - {q["id"] for q in rows}:
         msg = "Respostas desconhecidas ou inválidas."
         raise ValidationError(msg)
-    for question in questions:
+    for question in rows:
         value = answers.get(question["id"])
         missing = value is None or value == ""
         if missing:
-            if submitting and question["required"]:
-                msg = "Preencha todas as perguntas obrigatórias."
-                raise ValidationError(msg)
             continue
         if question["type"] == "boolean":
             valid = type(value) is bool
+        elif question["type"] == "number":
+            valid = is_number(value)
         else:
-            valid = isinstance(value, str) and len(value) <= cast(
-                "int", question["max_length"]
-            )
+            valid = isinstance(value, str) and len(value) <= question["max_length"]
             if question["type"] == "selection":
-                valid = valid and value in cast("list[str]", question["options"])
-            if submitting and question["required"] and isinstance(value, str):
-                valid = valid and bool(value.strip())
+                valid = valid and value in question["options"]
         if not valid:
             msg = "Resposta inválida ou acima do limite de caracteres."
             raise ValidationError(msg)
-    return cast("dict[str, object]", answers)
+    visible = visible_questions(definition, answers)
+    if submitting and any(
+        q["required"]
+        and (
+            answers.get(q["id"]) is None
+            or (
+                isinstance(answers.get(q["id"]), str)
+                and not cast("str", answers[q["id"]]).strip()
+            )
+        )
+        for q in rows
+        if q["id"] in visible
+    ):
+        raise ValidationError(_("Complete all visible required questions."))
+    return {
+        key: value
+        for key, value in answers.items()
+        if key in visible
+        and (isinstance(definition, list) or (value is not None and value != ""))
+    }
 
 
 def publish_template(
@@ -132,9 +156,20 @@ def publish_template(
 ) -> QuestionnaireTemplate:
     """Publish a new immutable version; serialize version allocation per clinic."""
     require_current_actor_clinic_roles(
-        clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
+        clinic_id,
+        (
+            UserClinicRole.Role.OWNER,
+            UserClinicRole.Role.CLINIC_ADMIN,
+            UserClinicRole.Role.PHYSICIAN,
+        ),
     )
-    validated = validate_questions(questions)
+    if isinstance(questions, dict):
+        validate_definition(questions)
+        rows, _rules = definition_parts(questions)
+        validate_questions(rows)
+        validated: object = questions
+    else:
+        validated = validate_questions(questions)
     if (
         not re.fullmatch(r"[a-z0-9_-]{1,64}", key)
         or not title.strip()
@@ -153,7 +188,7 @@ def publish_template(
             .order_by("-version")
             .first()
         )
-        return QuestionnaireTemplate.objects.create(
+        template = QuestionnaireTemplate.objects.create(
             organization_id=clinic.organization_id,
             clinic=clinic,
             key=key,
@@ -161,6 +196,16 @@ def publish_template(
             title=title,
             questions=validated,
         )
+        state = validated["state"] if isinstance(validated, dict) else "published"
+        event_type = {
+            "draft": "intake.questionnaire_template.draft_created",
+            "published": "intake.questionnaire_template.published",
+            "retired": "intake.questionnaire_template.retired",
+        }[state]
+        record_phase1_event(
+            event_type, clinic_id=clinic_id, affected_record_id=template.pk
+        )
+        return template
 
 
 def assign_questionnaire(
@@ -169,8 +214,11 @@ def assign_questionnaire(
     enrollment_id: UUID,
     template_id: UUID,
     appointment_id: UUID | None = None,
+    restricted_from_delegates: bool = True,
 ) -> QuestionnaireResponse:
     """Assign an exact version to an enrollment as its clinic physician."""
+    if type(restricted_from_delegates) is not bool:
+        raise PatientAccessDeniedError
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     with transaction.atomic():
         enrollment = PatientClinicEnrollment.objects.filter(
@@ -179,7 +227,14 @@ def assign_questionnaire(
         template = QuestionnaireTemplate.objects.filter(
             pk=template_id, clinic_id=clinic_id
         ).first()
-        if enrollment is None or template is None:
+        if (
+            enrollment is None
+            or template is None
+            or (
+                isinstance(template.questions, dict)
+                and template.questions["state"] != "published"
+            )
+        ):
             raise PatientAccessDeniedError
         if appointment_id is not None:
             appointment: Appointment | None = Appointment.objects.filter(
@@ -194,17 +249,31 @@ def assign_questionnaire(
             enrollment=enrollment,
             template=template,
             appointment_id=appointment_id,
+            restricted_from_delegates=restricted_from_delegates,
         )
 
 
 def published_templates(*, clinic_id: UUID) -> list[QuestionnaireTemplate]:
     """List the newest version of each configuration for a clinic physician."""
+    from apps.ehr.pack_models import SpecialtyPack  # noqa: PLC0415
+
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
-    return list(
+    latest = list(
         QuestionnaireTemplate.objects.filter(clinic_id=clinic_id)
+        .exclude(
+            pk__in=SpecialtyPack.objects.filter(
+                clinic_id=clinic_id, uninstalled_at__isnull=False
+            ).values("questionnaire_id")
+        )
         .order_by("key", "-version")
         .distinct("key")
     )
+    return [
+        template
+        for template in latest
+        if isinstance(template.questions, list)
+        or template.questions["state"] == "published"
+    ]
 
 
 def appointment_enrollment(*, clinic_id: UUID, appointment_id: UUID) -> UUID:
@@ -287,9 +356,35 @@ def save_response(
         if response.state != "draft" or response.revision != expected_revision:
             msg = "Este formulário mudou. Reabra a versão salva antes de continuar."
             raise ValidationError(msg)
-        response.answers = validate_answers(
-            response.template.questions, answers, submitting=submit
-        )
+        if isinstance(response.template.questions, dict):
+            if (
+                not isinstance(answers, dict)
+                or set(answers) != {"values", "confirmed"}
+                or not isinstance(answers["confirmed"], list)
+                or any(not isinstance(key, str) for key in answers["confirmed"])
+                or set(answers["confirmed"]) - set(unverified_answers(response))
+            ):
+                raise ValidationError(_("Invalid answer confirmation."))
+            values = validate_answers(
+                response.template.questions, answers["values"], submitting=submit
+            )
+            previous = answer_values(response)
+            unverified = [
+                key
+                for key in unverified_answers(response)
+                if key in values
+                and values[key] == previous.get(key)
+                and key not in answers["confirmed"]
+            ]
+            if submit and unverified:
+                raise ValidationError(
+                    _("Review carried-forward answers before submitting.")
+                )
+            response.answers = {"values": values, "unverified": unverified}
+        else:
+            response.answers = validate_answers(
+                response.template.questions, answers, submitting=submit
+            )
         response.revision += 1
         if submit:
             response.state = "submitted"
@@ -298,6 +393,56 @@ def save_response(
             update_fields=("answers", "revision", "state", "submitted_at", "updated_at")
         )
         return response
+
+
+def answer_values(response: QuestionnaireResponse) -> dict[str, object]:
+    """Return clinical values separately from carried-forward provenance."""
+    if isinstance(response.template.questions, dict):
+        return cast("dict[str, object]", response.answers.get("values", {}))
+    return cast("dict[str, object]", response.answers)
+
+
+def unverified_answers(response: QuestionnaireResponse) -> list[str]:
+    """Retain explicit unverified flags inside the existing encrypted envelope."""
+    if isinstance(response.template.questions, dict):
+        return cast("list[str]", response.answers.get("unverified", []))
+    return []
+
+
+def carry_forward_response(
+    *,
+    clinic_id: UUID,
+    response_id: UUID,
+    source_response_id: UUID,
+    expected_revision: int,
+) -> QuestionnaireResponse:
+    """Copy only the patient's own submitted exact template, explicitly unverified."""
+    authorized = patient_response(response_id)
+    source = patient_response(source_response_id)
+    if (
+        authorized.clinic_id != clinic_id
+        or source.clinic_id != clinic_id
+        or authorized.enrollment_id != source.enrollment_id
+        or authorized.template_id != source.template_id
+        or not isinstance(authorized.template.questions, dict)
+        or source.state != "submitted"
+    ):
+        raise PatientAccessDeniedError
+    with transaction.atomic():
+        target = QuestionnaireResponse.objects.select_for_update().get(pk=authorized.pk)
+        if (
+            target.state != "draft"
+            or target.revision != expected_revision
+            or answer_values(target)
+        ):
+            raise ValidationError(_("Carry-forward requires an empty current draft."))
+        values = validate_answers(
+            target.template.questions, answer_values(source), submitting=False
+        )
+        target.answers = {"values": values, "unverified": list(values)}
+        target.revision += 1
+        target.save(update_fields=("answers", "revision", "updated_at"))
+        return target
 
 
 def submit_intake(

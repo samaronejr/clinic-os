@@ -33,11 +33,15 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Derived from live tables minus exact exclusions; keep this pin aligned
-    # with the full catalog set checked by tests/infra/test_recovery_manifest.py.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 70
+    # Derived from the migrated todo-36 PostgreSQL catalog; the live census in
+    # tests/infra/test_recovery_manifest.py independently proves completeness.
+    assert len(restore_contract.DOMAIN_RELATIONS) == 150
+    assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
+    assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
+    assert "clinic_app.identity_patientdelegategrant" in restore_contract.TABLE_DATA
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {
+        "prescription_prescriptionclasspolicy",
         "providers_capabilityversion",
         "providers_providercapability",
     }
@@ -59,6 +63,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     assert "clinic_app.billing_paymentevent" in restore_contract.TABLE_DATA
     assert restore_contract.SEQUENCE_SET == (
         "clinic_app.audit_event_seq_seq",
+        "clinic_app.otp_static_staticdevice_id_seq",
         "clinic_app.otp_totp_totpdevice_id_seq",
         "clinic_app.scheduling_waitlistentry_id_seq",
         "clinic_app.teleconsult_teleconsultevent_id_seq",

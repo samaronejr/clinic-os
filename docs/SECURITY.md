@@ -135,10 +135,12 @@ It requires all of the following:
   configured non-negative integer maximum age.
 
 Missing, boolean, non-integer, malformed, future, or stale freshness fails
-closed. Invalid user/device state also clears the device binding. A malformed
-maximum-age argument fails closed. Successful enrollment, ordinary TOTP
-verification, and re-verification rotate the session key, bind the confirmed
-device, and stamp fresh verification time.
+closed. Invalid user/device state also clears the device binding. A stale,
+non-negative integer timestamp is refused but left in place: it can only age
+further, the challenge replaces it, and the refused request therefore writes no
+session and sets no cookie. A malformed maximum-age argument fails closed.
+Successful enrollment, ordinary TOTP verification, and re-verification rotate
+the session key, bind the confirmed device, and stamp fresh verification time.
 
 The `/auth/step-up/` challenge accepts GET/POST, uses CSRF protection, applies
 the existing OTP throttling/replay checks, rejects users without a confirmed
@@ -193,6 +195,28 @@ under `/api/ui/v1/` returns `not_found`. The 500 is logged on `django.request`
 as the exception type, route name and traceback frame locations only: never
 the exception message, its arguments, chained exceptions, locals or request
 data.
+
+## Patient representation authority
+
+Guardian, curator and adult-delegate grants are retained in
+`identity_patientdelegategrant`, separately from staff roles, service principals
+and patient contact records. Runtime roles cannot insert, update or delete that
+table or change a patient session's representation columns. Fixed
+`SECURITY DEFINER` commands enforce evidence scope, authorized verification,
+immutable purposes and operations, lifecycle revisions, revocation and expiry.
+An unknown selector and a wrong-clinic selector receive the same denial.
+
+The authenticated session identity is never rewritten. Its selected
+representation is checked by `clinic_app.current_patient_authority` at every
+use, including existing sessions after revocation. Every patient surface uses
+the resulting enrollment and operation intersection. Confidential record
+releases and questionnaires default to deny for delegates, and consent is
+further limited to the exact verified purpose. An expired grant permits only a
+pending renewal request or an explicit reset to the original identity; it
+cannot restore clinical access. Selectors remain in POST bodies and transition
+audits contain no document bytes, patient selectors or contact information.
+EG-2 human review of legal authority and clinic confidentiality policy remains
+required before live-data use.
 
 ## Audit ledger
 

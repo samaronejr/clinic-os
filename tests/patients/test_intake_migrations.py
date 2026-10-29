@@ -67,15 +67,12 @@ def _assert_intake_unapply_is_closed() -> None:
     Once applied, intake can never be unapplied back to plaintext storage;
     the tables stay exactly where the sealed migration left them.
     """
-    with pytest.raises(IrreversibleError):
-        _migrate(
-            [
-                (
-                    "intake",
-                    "0010_remove_patientaccessgrant_intake_grant_operations_check_and_more",
-                )
-            ]
-        )
+    executor = MigrationExecutor(connection)
+    target = ("intake", "0011_protected_fields")
+    migration = executor.loader.get_migration(*target)
+    state = executor.loader.project_state([target])
+    with connection.schema_editor() as editor, pytest.raises(IrreversibleError):
+        migration.unapply(state, editor)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT to_regclass('clinic_app.intake_patient'), "
@@ -328,8 +325,8 @@ def _seed_protected_probe() -> None:
                 [str(organization_id)],
             )
             cursor.execute(
-                "INSERT INTO clinic_app.identity_organization (id, name, cnpj) "
-                "VALUES (%s, %s, %s)",
+                "INSERT INTO clinic_app.identity_organization (id, name, cnpj, status) "
+                "VALUES (%s, %s, %s, 'active')",
                 [
                     str(organization_id),
                     f"Synthetic Legacy Organization {organization_id.int}",

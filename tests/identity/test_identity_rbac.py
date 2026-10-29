@@ -51,6 +51,8 @@ def _runtime_role() -> Iterator[None]:
 
 def _seed_session(client: Client, graph: RbacGraph, user_id: UUID) -> None:
     user = User.objects.get(pk=user_id)
+    with _runtime_role():
+        client.force_login(user, backend=BACKEND_PATH)
     session = client.session
     session[SESSION_KEY] = str(user_id)
     session[BACKEND_SESSION_KEY] = BACKEND_PATH

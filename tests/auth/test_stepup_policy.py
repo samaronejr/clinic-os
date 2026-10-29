@@ -65,22 +65,20 @@ def test_assert_step_up_accepts_fresh_exact_device_at_inclusive_boundary(
 
 
 @override_settings(ROOT_URLCONF="auth.stepup_urls")
-def test_assert_step_up_rejects_max_age_plus_one_and_clears_freshness(
+def test_assert_step_up_rejects_max_age_plus_one_without_session_write(
     rbac_graph: RbacGraph,
 ) -> None:
     device = create_totp_device(rbac_graph.physician, confirmed=True)
     client = logged_in_client(rbac_graph.physician)
-    seed_freshness(
-        client,
-        device,
-        verified_at=STEP_UP_NOW - STEP_UP_MAX_AGE - 1,
-    )
+    stale = STEP_UP_NOW - STEP_UP_MAX_AGE - 1
+    seed_freshness(client, device, verified_at=stale)
 
     with runtime_role():
         response = client.get("/__test__/raw-issuance/")
 
+    # The refusal leaves the stale stamp in place instead of writing the session.
     assert response.status_code == 403
-    assert STEP_UP_SESSION_KEY not in client.session
+    assert client.session[STEP_UP_SESSION_KEY] == stale
     assert DEVICE_ID_SESSION_KEY in client.session
 
 

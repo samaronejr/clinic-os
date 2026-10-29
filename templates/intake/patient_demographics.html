@@ -1,0 +1,122 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% trans "Patient registration · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="demographics-title">
+  <h1 id="demographics-title">{% trans "Patient registration" %}</h1>
+  <p class="lede">{{ profile.display_name }}</p>
+  {% if profile.source == "patient_reported" %}
+  <p class="contacts-status contacts-status--pending">{% trans "Reported by the patient; not verified by staff." %}</p>
+  {% endif %}
+  <p class="hint">{% trans "Leave optional fields blank or record why they are unanswered. Corrections preserve earlier versions." %}</p>
+  {% for message in messages %}
+  <div class="feedback{% if 'error' in message.tags %} feedback--error{% endif %}" role="status">{{ message }}</div>
+  {% endfor %}
+  {% if rejected_form %}
+  <div class="panel">
+    <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h2>{% trans "Check the entered values and try again." %}</h2></div>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="{{ rejected_action }}">
+      {% include "intake/partials/demographic_fields.html" with form=rejected_form %}
+      <button type="submit">{% trans "Try again" %}</button>
+    </form>
+  </div>
+  {% endif %}
+  <section class="panel" aria-labelledby="demographic-fields-title">
+    <h2 id="demographic-fields-title">{% trans "Demographics" %}</h2>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="save">
+      {% include "intake/partials/demographic_fields.html" with form=demographics_form %}
+      <button type="submit">{% trans "Save correction" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="identifiers-title">
+    <h2 id="identifiers-title">{% trans "Documents" %}</h2>
+    {% for row in identifier_rows %}
+    <p>{{ row.label }}: {{ row.record.masked_value }}</p>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="retire_identifier">
+      <input type="hidden" name="enrollment_id" value="{{ profile.enrollment_id }}">
+      <input type="hidden" name="kind" value="{{ row.record.kind }}">
+      <input type="hidden" name="expected_version" value="{{ row.record.version }}">
+      <button class="button button--quiet" type="submit">{% trans "Remove document" %}</button>
+    </form>
+    {% empty %}<p class="hint">{% trans "No documents recorded." %}</p>{% endfor %}
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="add_identifier">
+      {% include "intake/partials/demographic_fields.html" with form=identifier_form %}
+      <button type="submit">{% trans "Add document" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="addresses-title">
+    <h2 id="addresses-title">{% trans "Addresses" %}</h2>
+    {% for row in addresses %}
+    <h3>{{ row.label }}</h3>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      {% include "intake/partials/demographic_fields.html" with form=row.form %}
+      <div class="actions">
+        <button type="submit" name="action" value="save_address">{% trans "Save address" %}</button>
+        <button class="button button--quiet" type="submit" name="action" value="retire_address" formnovalidate>{% trans "Remove address" %}</button>
+      </div>
+    </form>
+    {% endfor %}
+    {% if profile.free_address_kinds %}
+    <h3>{% trans "New address" %}</h3>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="save_address"><input type="hidden" name="slot" value="new">
+      {% include "intake/partials/demographic_fields.html" with form=new_address %}
+      <button type="submit">{% trans "Add address" %}</button>
+    </form>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="emergency-contacts-title">
+    <h2 id="emergency-contacts-title">{% trans "Emergency contacts" %}</h2>
+    {% for row in contacts %}
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      {% include "intake/partials/demographic_fields.html" with form=row.form %}
+      <div class="actions">
+        <button type="submit" name="action" value="save_contact">{% trans "Save contact" %}</button>
+        <button class="button button--quiet" type="submit" name="action" value="retire_contact" formnovalidate>{% trans "Remove contact" %}</button>
+      </div>
+    </form>
+    {% endfor %}
+    {% if profile.free_contact_slots %}
+    <h3>{% trans "New emergency contact" %}</h3>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="save_contact"><input type="hidden" name="slot" value="new">
+      {% include "intake/partials/demographic_fields.html" with form=new_contact %}
+      <button type="submit">{% trans "Add contact" %}</button>
+    </form>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="memberships-title">
+    <h2 id="memberships-title">{% trans "Insurance memberships" %}</h2>
+    {% for row in memberships %}
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      {% include "intake/partials/demographic_fields.html" with form=row.form %}
+      <div class="actions">
+        <button type="submit" name="action" value="save_membership">{% trans "Save membership" %}</button>
+        <button class="button button--quiet" type="submit" name="action" value="retire_membership" formnovalidate>{% trans "Remove membership" %}</button>
+      </div>
+    </form>
+    {% endfor %}
+    {% if profile.free_membership_slots %}
+    <h3>{% trans "New insurance membership" %}</h3>
+    <form method="post" action="{{ manage_url }}">{% csrf_token %}
+      <input type="hidden" name="action" value="save_membership"><input type="hidden" name="slot" value="new">
+      {% include "intake/partials/demographic_fields.html" with form=new_membership %}
+      <button type="submit">{% trans "Add membership" %}</button>
+    </form>
+    {% endif %}
+  </section>
+  <section class="panel" id="patient-correction-history" aria-labelledby="corrections-caption">
+    <h2 id="corrections-caption">{% trans "Correction history" %}</h2>
+    <div class="table-scroll" role="region" aria-labelledby="corrections-caption" tabindex="0">
+      <table class="table">
+        <thead><tr><th scope="col">{% trans "Version" %}</th><th scope="col">{% trans "Recorded by" %}</th><th scope="col">{% trans "Date" %}</th><th scope="col">{% trans "Changed fields" %}</th><th scope="col">{% trans "Source" %}</th><th scope="col">{% trans "Reason" %}</th></tr></thead>
+        <tbody>{% for row in corrections %}<tr><td>{{ row.record.version }}</td><td>{{ row.record.actor_label }}</td><td>{{ row.record.created_at }}</td><td>{{ row.fields|join:", " }}</td><td>{% if row.record.source == "patient_reported" %}{% trans "Patient-reported" %}{% else %}{% trans "Staff-recorded" %}{% endif %}</td><td>{{ row.record.reason }}</td></tr>{% empty %}<tr><td colspan="6">{% trans "No corrections recorded." %}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+  <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+</section>
+{% endblock %}

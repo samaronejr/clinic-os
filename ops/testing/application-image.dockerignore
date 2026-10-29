@@ -3,6 +3,8 @@
 !application-source-manifest.json
 !apps/**
 !config/**
+!docs/clinical/questionnaire-branching-schema.json
+!docs/clinical/template-schema-v2.json
 !manage.py
 !ops/container/**
 !ops/release/**

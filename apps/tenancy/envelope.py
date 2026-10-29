@@ -17,7 +17,7 @@ the functions re-validate it in-database.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Never
 
 from django.db import DatabaseError, connection
 
@@ -55,6 +55,14 @@ class TenantKeyStatus:
     retired_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class VersionedBlindIndex:
+    """One exact-match digest bound to its actual tenant DEK version."""
+
+    blind_index: bytes
+    key_version: int
+
+
 _SQLSTATE_MAP = {
     "22023": EnvelopeContextError,
     "39000": EnvelopeUnavailableError,
@@ -73,7 +81,7 @@ def _sqlstate(error: DatabaseError) -> str | None:
     return None
 
 
-def _raise_mapped(error: DatabaseError) -> None:
+def _raise_mapped(error: DatabaseError) -> Never:
     """Map database failures onto the closed envelope error vocabulary."""
     mapped = _SQLSTATE_MAP.get(_sqlstate(error) or "")
     if mapped is not None:
@@ -89,6 +97,7 @@ def _kek() -> str:
 _PURPOSE_MAX_LENGTH: Final = 128
 _PURPOSE_MIN_CODEPOINT: Final = 0x20
 _PURPOSE_DELETE_CODEPOINT: Final = 0x7F
+_BLIND_INDEX_BYTES: Final = 32
 
 
 def _validate_purpose(purpose: str) -> None:
@@ -229,6 +238,40 @@ def blind_indexes(*, purpose: str, plaintext: bytes) -> tuple[bytes, ...]:
     if not rows:
         raise EnvelopeUnavailableError
     return tuple(bytes(row[0]) for row in rows)
+
+
+def blind_indexes_with_versions(
+    *, purpose: str, plaintext: bytes
+) -> tuple[VersionedBlindIndex, ...]:
+    """Read validated versioned digests from the installed HMAC boundary."""
+    _validate_purpose(purpose)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT blind_index, key_version "
+                "FROM clinic_app.protected_blind_index(%s, %s, %s)",
+                (_kek(), purpose, plaintext),
+            )
+            rows = cursor.fetchall()
+    except DatabaseError as error:
+        _raise_mapped(error)
+    if not rows:
+        raise EnvelopeUnavailableError
+    result: list[VersionedBlindIndex] = []
+    previous_version = 0
+    for digest, key_version in rows:
+        if (
+            type(key_version) is not int
+            or key_version <= previous_version
+            or not isinstance(digest, (bytes, memoryview))
+            or len(digest) != _BLIND_INDEX_BYTES
+        ):
+            raise EnvelopeUnavailableError
+        result.append(
+            VersionedBlindIndex(blind_index=bytes(digest), key_version=key_version)
+        )
+        previous_version = key_version
+    return tuple(result)
 
 
 def rewrap_tenant_keys(*, new_kek: str) -> int:

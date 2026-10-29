@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from collections.abc import Callable
 from typing import Never
 
@@ -36,6 +37,8 @@ def enrich_docker_attestation(
     containers = _objects(result.get("containers"), "containers")
     for container in containers:
         identifier = _text(container.get("id"), "container ID")
+        if re.fullmatch(r"[0-9a-f]{64}", identifier) is None:
+            _fail("container ID is invalid")
         container["command"] = _command(
             run(
                 (
@@ -45,7 +48,8 @@ def enrich_docker_attestation(
                     "{{json .Config.Cmd}}",
                     identifier,
                 )
-            )
+            ),
+            identifier,
         )
         container["mounts"] = _mounts(
             run(("container", "inspect", "--format", MOUNT_TEMPLATE, identifier))
@@ -68,25 +72,47 @@ def enrich_docker_attestation(
     return result
 
 
-def _command(raw: str) -> list[JsonValue]:
+def _command(raw: str, identifier: str) -> list[JsonValue]:
     try:
-        return _command_value(JSON_LOADER(raw))
+        return _command_value(JSON_LOADER(raw), identifier)
     except json.JSONDecodeError as error:
-        message = "invalid container command JSON"
-        raise IsolationError(message) from error
+        raise _command_error(
+            identifier, "invalid-json", "invalid container command JSON"
+        ) from error
 
 
-def _command_value(value: object) -> list[JsonValue]:
+def _command_value(value: object, identifier: str) -> list[JsonValue]:
     if not _is_object_list(value):
-        _fail("container command must be a string array")
+        categories: dict[type[object], str] = {
+            type(None): "null",
+            bool: "boolean",
+            int: "number",
+            float: "number",
+            str: "string",
+            dict: "object",
+        }
+        category = categories.get(type(value), "non-array")
+        raise _command_error(
+            identifier, category, "container command must be a string array"
+        )
     result: list[JsonValue] = []
     for item in value:
         if not isinstance(item, str):
-            _fail("container command must be a string array")
+            raise _command_error(
+                identifier,
+                "array-non-string",
+                "container command must be a string array",
+            )
         result.append(item)
-    if not result or any(not item for item in result):
-        _fail("container command is empty")
+    if not result:
+        raise _command_error(identifier, "array-empty", "container command is empty")
     return result
+
+
+def _command_error(identifier: str, category: str, message: str) -> IsolationError:
+    error = IsolationError(message)
+    error.add_note(f"container_id={identifier} field=Config.Cmd category={category}")
+    return error
 
 
 def _mounts(raw: str) -> list[JsonValue]:

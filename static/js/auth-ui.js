@@ -89,3 +89,15 @@ document.addEventListener("htmx:afterSwap", (event) => {
   const root = event.detail.target;
   focusAuthError(root instanceof Element ? root : document);
 });
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const form = authFormFor(event.detail.requestConfig?.elt);
+  if (
+    form instanceof HTMLFormElement &&
+    form.hasAttribute("data-auth-errors") &&
+    [400, 403, 409].includes(event.detail.xhr.status)
+  ) {
+    event.detail.shouldSwap = true;
+    event.detail.isError = false;
+  }
+});

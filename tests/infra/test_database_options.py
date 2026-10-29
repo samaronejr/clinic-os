@@ -127,6 +127,7 @@ def test_production_database_has_runtime_and_session_lock_aliases(
     ca = _ca(tmp_path)
     database_url = _url(ca)
     environment = os.environ.copy()
+    environment.pop("AGENT_DATABASE_URL", None)
     environment.update(
         {
             "ALLOWED_HOSTS": VALID_HOSTS,

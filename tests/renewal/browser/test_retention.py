@@ -324,8 +324,8 @@ def seed_manager(staff: dict[str, str]) -> dict[str, str]:
         )
         conn.execute(
             "INSERT INTO clinic_app.identity_userclinicrole "
-            "(id, user_id, organization_id, clinic_id, role) "
-            "VALUES (%s, %s, %s, %s, 'clinic_admin')",
+            "(id, user_id, organization_id, clinic_id, role, "
+            "workflow_bundle_version) VALUES (%s, %s, %s, %s, 'clinic_admin', 1)",
             [str(uuid4()), manager["id"], staff["organization"], staff["clinic_a"]],
         )
         conn.execute("SET ROLE clinic_app")

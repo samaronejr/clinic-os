@@ -3,9 +3,27 @@ from typing import Final
 import pytest
 from django.db import connection
 
+from infra import (
+    duplicate_catalog,
+    identity_lifecycle_catalog,
+    longitudinal_catalog,
+    orders_catalog,
+)
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *duplicate_catalog.TABLE_GRANTS,
+    ("intake_patientidentifier", "SELECT"),
+    ("scheduling_cliniciandelay", "SELECT"),
+    ("scheduling_displaydevice", "SELECT"),
+    ("scheduling_queueentry", "SELECT"),
+    ("scheduling_roomstatus", "SELECT"),
+    ("identity_passkey", "SELECT"),
+    *longitudinal_catalog.TABLE_GRANTS,
+    *identity_lifecycle_catalog.TABLE_GRANTS,
+    ("identity_patientdelegategrant", "SELECT"),
+    ("identity_patientdelegategrant", "INSERT"),
     ("billing_invoice", "SELECT"),
     ("billing_invoicerevision", "INSERT"),
     ("billing_invoicerevision", "SELECT"),
@@ -22,6 +40,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("consent_consentacceptance", "SELECT"),
     ("consent_consentrevocation", "SELECT"),
     ("consent_consenttext", "SELECT"),
+    ("consent_noticeversion", "SELECT"),
+    ("consent_refusalrecord", "SELECT"),
     ("ehr_allergy", "SELECT"),
     ("ehr_clinicalattachment", "SELECT"),
     ("ehr_clinicaldocument", "SELECT"),
@@ -29,6 +49,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ehr_discarded_content", "INSERT"),
     ("ehr_encounter", "SELECT"),
     ("ehr_encounterintakereference", "SELECT"),
+    ("ehr_encounteraddendum", "SELECT"),
+    ("ehr_episode", "SELECT"),
     ("ehr_historyassessment", "SELECT"),
     ("ehr_problem", "SELECT"),
     ("ehr_specialtytemplate", "SELECT"),
@@ -48,6 +70,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("intake_patientchannelpreference", "SELECT"),
     ("intake_patientclinicenrollment", "SELECT"),
     ("intake_patientcontact", "SELECT"),
+    ("intake_patientdemographics", "SELECT"),
     ("intake_patientsession", "INSERT"),
     ("intake_patientsession", "SELECT"),
     ("intake_questionnaireevent", "INSERT"),
@@ -68,28 +91,76 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("retention_recordexport", "SELECT"),
     ("retention_recordrelease", "SELECT"),
     ("retention_retentionpolicy", "SELECT"),
+    ("scheduling_absence", "SELECT"),
     ("scheduling_appointment", "SELECT"),
+    ("scheduling_appointmentresource", "INSERT"),
+    ("scheduling_appointmentresource", "SELECT"),
     ("scheduling_availabilityblock", "SELECT"),
+    ("scheduling_availabilitytemplate", "SELECT"),
+    ("scheduling_holiday", "SELECT"),
+    # Lifecycle v2 (D-9): series reads and DB-owned transition receipts.
+    ("scheduling_appointmentseries", "SELECT"),
+    ("scheduling_seriesexception", "SELECT"),
+    ("scheduling_appointmenttransition", "SELECT"),
+    ("scheduling_appointmenttransition", "INSERT"),
     ("scheduling_patientbookingevent", "INSERT"),
+    ("scheduling_resource", "SELECT"),
+    ("scheduling_servicetype", "SELECT"),
     ("scheduling_waitlistentry", "SELECT"),
     ("scheduling_waitlistoffer", "SELECT"),
+    ("providers_capabilityversion", "SELECT"),
+    ("providers_providercapability", "SELECT"),
     ("teleconsult_teleconsultcredential", "SELECT"),
     ("teleconsult_teleconsultevent", "INSERT"),
     ("teleconsult_teleconsultevent", "SELECT"),
     ("teleconsult_teleconsultroom", "SELECT"),
     ("teleconsult_teleconsultsession", "SELECT"),
+    ("workflows_task", "SELECT"),
+    ("workflows_workflowdefinitionversion", "SELECT"),
+    ("workflows_workflowrun", "SELECT"),
+    ("workflows_workflowstep", "SELECT"),
+    # Plan item 30.
+    ("ehr_specialtypack", "SELECT"),
+    ("ehr_specialtyentry", "SELECT"),
+    *orders_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *duplicate_catalog.COLUMN_GRANTS,
+    ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
+    ("identity_passkey", "last_used", "UPDATE"),
+    ("identity_passkey", "removed_at", "UPDATE"),
+    ("identity_passkey", "sign_count", "UPDATE"),
+    *longitudinal_catalog.COLUMN_GRANTS,
+    *identity_lifecycle_catalog.COLUMN_GRANTS,
+    ("identity_patientdelegategrant", "state", "UPDATE"),
+    ("identity_patientdelegategrant", "revision", "UPDATE"),
+    ("identity_patientdelegategrant", "verified_by_id", "UPDATE"),
+    ("identity_patientdelegategrant", "verified_at", "UPDATE"),
+    ("identity_patientdelegategrant", "activated_at", "UPDATE"),
+    ("identity_patientdelegategrant", "revoked_at", "UPDATE"),
+    ("intake_patientsession", "acting_for_enrollment_id", "UPDATE"),
+    ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
     ("identity_user", "id", "SELECT"),
     ("identity_user", "username", "SELECT"),
+    ("identity_clinic", "id", "UPDATE"),
     ("intake_patientaccessgrant", "consumed_at", "UPDATE"),
     ("intake_patientsession", "idle_expires_at", "UPDATE"),
     ("intake_patientsession", "revoked_at", "UPDATE"),
+    ("scheduling_appointmentresource", "end_at", "UPDATE"),
+    ("scheduling_appointmentresource", "occupied", "UPDATE"),
+    ("scheduling_appointmentresource", "start_at", "UPDATE"),
+    ("scheduling_appointmentresource", "unit", "UPDATE"),
     ("scheduling_availabilityblock", "id", "UPDATE"),
+    ("scheduling_availabilityblock", "retired_at", "UPDATE"),
+    ("scheduling_availabilityblock", "updated_at", "UPDATE"),
+    ("scheduling_resource", "id", "UPDATE"),
+    # Lifecycle v2: machine hold expiry (status + command id) as the resolver.
+    ("scheduling_appointment", "status", "UPDATE"),
+    ("scheduling_appointment", "last_command_id", "UPDATE"),
     ("teleconsult_teleconsultsession", "ended_at", "UPDATE"),
     ("teleconsult_teleconsultsession", "failure_reason", "UPDATE"),
     ("teleconsult_teleconsultsession", "revision", "UPDATE"),
@@ -97,8 +168,56 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "reception_guard": ("v", False, ["clinic_resolver"]),
+    "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "reception_practitioners": ("s", True, ["clinic_app", "clinic_resolver"]),
+    **longitudinal_catalog.POSTURE,
+    "delegate_now": ("s", False, ["clinic_resolver"]),
+    "patient_identity": ("s", False, ["clinic_resolver"]),
+    "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "delegate_grantor": ("s", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "delegate_guard": ("v", False, ["clinic_resolver"]),
+    "request_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "transition_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "patient_authority": ("s", False, ["clinic_resolver"]),
+    "current_patient_authority": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "switch_patient_delegate": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "renew_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "delegate_session_guard": ("v", False, ["clinic_resolver"]),
+    "delegate_confidentiality_guard": ("v", False, ["clinic_resolver"]),
+    "consent_delegate_guard": ("v", False, ["clinic_resolver"]),
+    "delegate_purpose_allowed": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "patient_is_delegate": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "delegate_audit_scope": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    **duplicate_catalog.POSTURE,
+    "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
+    **identity_lifecycle_catalog.POSTURE,
     "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "scheduling_lifecycle_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_lifecycle_receipt": ("v", False, ["clinic_resolver"]),
+    "scheduling_history_immutable": ("v", False, ["clinic_resolver"]),
+    "scheduling_release_due_holds": ("v", False, ["clinic_resolver"]),
+    "scheduling_expire_hold": ("v", True, ["clinic_app", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -111,12 +230,16 @@ POSTURE_OVERRIDES: Final = {
     "consent_guard": ("v", False, ["clinic_resolver"]),
     "consent_immutable": ("v", False, ["clinic_resolver"]),
     "consent_session": ("s", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ehr_addendum_guard": ("v", False, ["clinic_resolver"]),
     "ehr_attachment_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_autosave_guard": ("v", False, ["clinic_resolver"]),
     "ehr_binding_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_template_guard": ("v", False, ["clinic_resolver"]),
+    "questionnaire_template_state_guard": ("v", False, ["clinic_resolver"]),
     "ehr_encounter_close_guard": ("v", False, ["clinic_resolver"]),
     "ehr_history_guard": ("v", False, ["clinic_resolver"]),
     "end_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "has_permission": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "has_permission": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "identity_scope_guard": ("v", False, ["clinic_resolver"]),
     "overlay_plain_text_guard": ("v", False, ["clinic_resolver"]),
     "patient_booking_event_immutable": ("v", False, ["clinic_resolver"]),
@@ -128,10 +251,15 @@ POSTURE_OVERRIDES: Final = {
     ),
     "patient_booking_receipt": ("v", False, ["clinic_resolver"]),
     "prescription_close_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_content_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_current_document_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_issuance_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_open": ("s", False, ["clinic_resolver"]),
     "prescription_draft_guard": ("v", False, ["clinic_resolver"]),
     "prescription_item_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_favorite_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_signature_class_guard": ("v", False, ["clinic_resolver"]),
     "prescription_patient_document_bytes": (
         "s",
         True,
@@ -176,6 +304,11 @@ POSTURE_OVERRIDES: Final = {
         ["clinic_app", "clinic_owner", "clinic_resolver"],
     ),
     "teleconsult_binding_guard": ("v", False, ["clinic_resolver"]),
+    "teleconsult_clinician": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
     "teleconsult_credential_guard": ("v", False, ["clinic_resolver"]),
     "teleconsult_fail": (
         "v",
@@ -183,6 +316,11 @@ POSTURE_OVERRIDES: Final = {
         ["clinic_app", "clinic_owner", "clinic_resolver"],
     ),
     "teleconsult_immutable": ("v", False, ["clinic_resolver"]),
+    "teleconsult_mode_transition_scope": (
+        "v",
+        False,
+        ["clinic_owner", "clinic_resolver"],
+    ),
     "teleconsult_patient_match": (
         "s",
         True,
@@ -201,8 +339,77 @@ POSTURE_OVERRIDES: Final = {
     ),
     "touch_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
     "waitlist_binding": ("v", False, ["clinic_resolver"]),
+    "workflows_bundle_selection_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_owner_valid": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_predecessor_ready": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_reference_valid": ("s", False, ["clinic_resolver"]),
+    "workflows_staff_catalog": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
+    # Plan item 30.
+    "ehr_pack_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_pack_use_guard": ("v", False, ["clinic_resolver"]),
+    **orders_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
+    ("reception_guard", ""),
+    ("reception_display", "token_digest text"),
+    ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
+    ("reception_practitioners", "requested_clinic uuid"),
+    *longitudinal_catalog.RESULTS,
+    ("delegate_now", ""),
+    ("patient_identity", "requested_session uuid"),
+    ("delegate_staff", "requested_clinic uuid"),
+    ("delegate_grantor", "requested_clinic uuid, requested_enrollment uuid"),
+    ("delegate_guard", ""),
+    (
+        "request_delegate_grant",
+        "requested_clinic uuid, represented uuid, recipient uuid, kind text, "
+        "evidence uuid, requested_purposes text[], requested_operations "
+        "text[], deadline timestamp with time zone, request_key uuid",
+    ),
+    (
+        "transition_delegate_grant",
+        "requested_clinic uuid, requested_grant uuid, expected_revision "
+        "integer, next_state text",
+    ),
+    ("patient_authority", "requested_session uuid, requested_operation text"),
+    ("current_patient_authority", "requested_operation text"),
+    ("switch_patient_delegate", "requested_clinic uuid, requested_grant uuid"),
+    ("delegate_session_status", "requested_session uuid"),
+    ("delegate_recovery_identity", ""),
+    (
+        "renew_delegate_grant",
+        "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+    ),
+    ("delegate_session_guard", ""),
+    ("delegate_confidentiality_guard", ""),
+    ("consent_delegate_guard", ""),
+    ("delegate_purpose_allowed", "requested_purpose text"),
+    ("patient_is_delegate", ""),
+    ("delegate_audit_scope", "record_id uuid, event_name text"),
+    *duplicate_catalog.RESULTS,
+    ("scheduling_capacity_guard", ""),
+    ("scheduling_definition_guard", ""),
+    ("scheduling_generated_block_guard", ""),
+    ("scheduling_service_practitioners", "requested_clinic uuid"),
+    *identity_lifecycle_catalog.RESULTS,
+    ("patient_booking_requires_approval", ""),
+    ("scheduling_due_holds", "batch integer"),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ),
+    ("scheduling_history_immutable", ""),
+    ("scheduling_lifecycle_guard", ""),
+    ("scheduling_lifecycle_receipt", ""),
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ),
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -246,8 +453,12 @@ FUNCTION_SIGNATURES: Final = {
     ("consent_immutable", ""),
     ("consent_session", ""),
     ("ehr_assigned", "requested_encounter uuid"),
+    ("ehr_addendum_guard", ""),
     ("ehr_attachment_guard", ""),
+    ("ehr_autosave_guard", ""),
     ("ehr_binding_guard", ""),
+    ("ehr_template_guard", ""),
+    ("questionnaire_template_state_guard", ""),
     ("ehr_care", "requested_encounter uuid"),
     ("ehr_encounter_close_guard", ""),
     ("ehr_history_care", "requested_encounter uuid"),
@@ -277,12 +488,17 @@ FUNCTION_SIGNATURES: Final = {
     ("patient_session_overview", "kek text"),
     ("prescription_close_guard", ""),
     ("prescription_document_guard", ""),
+    ("prescription_issuance_guard", ""),
     (
         "prescription_document_open",
         "kek text, organization_id uuid, purpose text, envelope bytea",
     ),
     ("prescription_draft_guard", ""),
+    ("prescription_content_guard", ""),
+    ("prescription_current_document_guard", ""),
     ("prescription_item_guard", ""),
+    ("prescription_favorite_guard", ""),
+    ("prescription_signature_class_guard", ""),
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"),
     ("prescription_patient_documents", ""),
     ("prescription_patient_documents", "kek text"),
@@ -329,9 +545,14 @@ FUNCTION_SIGNATURES: Final = {
     ("retention_records_session", ""),
     ("teleconsult_assigned", "requested_session uuid"),
     ("teleconsult_binding_guard", ""),
+    ("teleconsult_clinician", "requested_session uuid"),
     ("teleconsult_credential_guard", ""),
     ("teleconsult_fail", "requested_session uuid, reason text"),
     ("teleconsult_immutable", ""),
+    (
+        "teleconsult_mode_transition_scope",
+        "requested_session uuid, requested_role text",
+    ),
     ("teleconsult_patient_match", "requested_session uuid"),
     ("teleconsult_room_state", "requested_session uuid"),
     ("teleconsult_session_guard", ""),
@@ -341,8 +562,121 @@ FUNCTION_SIGNATURES: Final = {
     ("user_organizations", ""),
     ("waitlist_binding", ""),
     ("waitlist_staff", "requested_clinic uuid"),
+    ("workflows_bundle_selection_guard", ""),
+    ("workflows_due_steps", "due_at timestamp with time zone"),
+    ("workflows_due_tasks", "due_at timestamp with time zone"),
+    ("workflows_guard", ""),
+    ("workflows_now", ""),
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_owner_valid", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_predecessor_ready", "clinic uuid, requested_task uuid"),
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"),
+    ("workflows_staff_catalog", "clinic uuid"),
+    ("workflows_step_scope", "requested_step uuid"),
+    ("workflows_steps_valid", "steps jsonb"),
+    ("workflows_task_scope", "requested_task uuid"),
+    # Plan item 30.
+    ("ehr_pack_guard", ""),
+    ("ehr_pack_use_guard", ""),
+    *orders_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    ("reception_guard", ""): "trigger",
+    ("reception_display", "token_digest text"): "jsonb",
+    (
+        "reception_practitioners",
+        "requested_clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
+    (
+        "reception_readiness",
+        "requested_clinic uuid, requested_appointment uuid",
+    ): (
+        "TABLE(forms_pending bigint, consents_pending bigint, "
+        "payment_pending boolean, identity_document_recorded boolean)"
+    ),
+    **longitudinal_catalog.RESULTS,
+    ("delegate_now", ""): "timestamp with time zone",
+    (
+        "patient_identity",
+        "requested_session uuid",
+    ): "SETOF intake_patientsession",
+    ("delegate_staff", "requested_clinic uuid"): "boolean",
+    ("delegate_grantor", "requested_clinic uuid, requested_enrollment uuid"): "boolean",
+    ("delegate_guard", ""): "trigger",
+    (
+        "request_delegate_grant",
+        "requested_clinic uuid, represented uuid, recipient uuid, kind text, "
+        "evidence uuid, requested_purposes text[], requested_operations "
+        "text[], deadline timestamp with time zone, request_key uuid",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    (
+        "transition_delegate_grant",
+        "requested_clinic uuid, requested_grant uuid, expected_revision "
+        "integer, next_state text",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    (
+        "patient_authority",
+        "requested_session uuid, requested_operation text",
+    ): (
+        "TABLE(session_id uuid, organization_id uuid, clinic_id uuid, "
+        "patient_id uuid, enrollment_id uuid, operations text[], expires_at "
+        "timestamp with time zone, idle_expires_at timestamp with time zone, "
+        "acting_for_enrollment_id uuid, delegate_grant_id uuid)"
+    ),
+    (
+        "current_patient_authority",
+        "requested_operation text",
+    ): (
+        "TABLE(session_id uuid, organization_id uuid, clinic_id uuid, "
+        "patient_id uuid, enrollment_id uuid, operations text[], expires_at "
+        "timestamp with time zone, idle_expires_at timestamp with time zone, "
+        "acting_for_enrollment_id uuid, delegate_grant_id uuid)"
+    ),
+    (
+        "switch_patient_delegate",
+        "requested_clinic uuid, requested_grant uuid",
+    ): "boolean",
+    ("delegate_session_status", "requested_session uuid"): "text",
+    ("delegate_recovery_identity", ""): "TABLE(session_id uuid, clinic_id uuid)",
+    (
+        "renew_delegate_grant",
+        "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    ("delegate_session_guard", ""): "trigger",
+    ("delegate_confidentiality_guard", ""): "trigger",
+    ("consent_delegate_guard", ""): "trigger",
+    ("delegate_purpose_allowed", "requested_purpose text"): "boolean",
+    ("patient_is_delegate", ""): "boolean",
+    (
+        "delegate_audit_scope",
+        "record_id uuid, event_name text",
+    ): "TABLE(session_id uuid, organization_id uuid, clinic_id uuid)",
+    **duplicate_catalog.RESULTS,
+    ("scheduling_capacity_guard", ""): "trigger",
+    ("scheduling_definition_guard", ""): "trigger",
+    ("scheduling_generated_block_guard", ""): "trigger",
+    ("scheduling_service_practitioners", "requested_clinic uuid"): (
+        "TABLE(user_id uuid, display_label text)"
+    ),
+    **identity_lifecycle_catalog.RESULTS,
+    ("patient_booking_requires_approval", ""): "boolean",
+    ("scheduling_due_holds", "batch integer"): (
+        "TABLE(clinic_id uuid, appointment_id uuid, revision integer)"
+    ),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ): "integer",
+    ("scheduling_history_immutable", ""): "trigger",
+    ("scheduling_lifecycle_guard", ""): "trigger",
+    ("scheduling_lifecycle_receipt", ""): "trigger",
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ): "void",
     ("auth_lookup", "requested_username text"): (
         "TABLE(id uuid, username character varying, "
         "password character varying, is_active boolean)"
@@ -421,8 +755,12 @@ FUNCTION_RESULTS: Final = {
         "patient_id uuid, enrollment_id uuid)"
     ),
     ("ehr_assigned", "requested_encounter uuid"): "boolean",
+    ("ehr_addendum_guard", ""): "trigger",
     ("ehr_attachment_guard", ""): "trigger",
+    ("ehr_autosave_guard", ""): "trigger",
     ("ehr_binding_guard", ""): "trigger",
+    ("ehr_template_guard", ""): "trigger",
+    ("questionnaire_template_state_guard", ""): "trigger",
     ("ehr_care", "requested_encounter uuid"): "boolean",
     ("ehr_encounter_close_guard", ""): "trigger",
     ("ehr_history_care", "requested_encounter uuid"): "boolean",
@@ -466,12 +804,17 @@ FUNCTION_RESULTS: Final = {
     ),
     ("prescription_close_guard", ""): "trigger",
     ("prescription_document_guard", ""): "trigger",
+    ("prescription_issuance_guard", ""): "trigger",
     (
         "prescription_document_open",
         "kek text, organization_id uuid, purpose text, envelope bytea",
     ): "bytea",
     ("prescription_draft_guard", ""): "trigger",
+    ("prescription_content_guard", ""): "trigger",
+    ("prescription_current_document_guard", ""): "trigger",
     ("prescription_item_guard", ""): "trigger",
+    ("prescription_favorite_guard", ""): "trigger",
+    ("prescription_signature_class_guard", ""): "trigger",
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"): (
         "bytea"
     ),
@@ -548,9 +891,14 @@ FUNCTION_RESULTS: Final = {
     ),
     ("teleconsult_assigned", "requested_session uuid"): "boolean",
     ("teleconsult_binding_guard", ""): "trigger",
+    ("teleconsult_clinician", "requested_session uuid"): "boolean",
     ("teleconsult_credential_guard", ""): "trigger",
     ("teleconsult_fail", "requested_session uuid, reason text"): "boolean",
     ("teleconsult_immutable", ""): "trigger",
+    (
+        "teleconsult_mode_transition_scope",
+        "requested_session uuid, requested_role text",
+    ): ("TABLE(actor_id uuid, organization_id uuid, clinic_id uuid, latest_kind text)"),
     ("teleconsult_patient_match", "requested_session uuid"): "boolean",
     ("teleconsult_room_state", "requested_session uuid"): "text",
     ("teleconsult_session_guard", ""): "trigger",
@@ -569,6 +917,32 @@ FUNCTION_RESULTS: Final = {
     ("user_organizations", ""): "SETOF uuid",
     ("waitlist_binding", ""): "trigger",
     ("waitlist_staff", "requested_clinic uuid"): "boolean",
+    ("workflows_bundle_selection_guard", ""): "trigger",
+    ("workflows_due_steps", "due_at timestamp with time zone"): "TABLE(step_id uuid)",
+    ("workflows_due_tasks", "due_at timestamp with time zone"): "TABLE(task_id uuid)",
+    ("workflows_guard", ""): "trigger",
+    ("workflows_now", ""): "timestamp with time zone",
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"): "boolean",
+    ("workflows_owner_valid", "clinic uuid, owner_user uuid, owner_role text"): (
+        "boolean"
+    ),
+    ("workflows_predecessor_ready", "clinic uuid, requested_task uuid"): "boolean",
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"): "boolean",
+    (
+        "workflows_staff_catalog",
+        "clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
+    ("workflows_step_scope", "requested_step uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
+    ("workflows_steps_valid", "steps jsonb"): "boolean",
+    ("workflows_task_scope", "requested_task uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
+    # Plan item 30.
+    ("ehr_pack_guard", ""): "trigger",
+    ("ehr_pack_use_guard", ""): "trigger",
+    **orders_catalog.RESULTS,
 }
 
 
@@ -664,7 +1038,12 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             True,
             volatility,
             "u",
-            ["search_path=pg_catalog, clinic_app, pg_temp"],
+            [
+                "search_path=pg_catalog, pg_temp"
+                if name in identity_lifecycle_catalog.POSTURE
+                or name in duplicate_catalog.POSTURE
+                else "search_path=pg_catalog, clinic_app, pg_temp"
+            ],
             True,
             app_execute,
         )

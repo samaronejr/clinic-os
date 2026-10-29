@@ -1,0 +1,124 @@
+.tasks-heading,
+.tasks-panel,
+.task-list,
+.task-row,
+.task-create,
+.task-preview,
+.task-exceptions,
+.task-completion {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.tasks-heading {
+  margin-block-end: var(--space-5);
+}
+
+.tasks-heading nav,
+.task-row header,
+.task-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.task-row,
+.task-create,
+.task-preview,
+.task-exceptions {
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+  padding: var(--density-panel-pad);
+}
+
+.task-row header {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-row h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+}
+
+.task-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.task-facts dt {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+}
+
+.task-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+
+.task-select input {
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  margin: 0;
+}
+
+.tasks-panel input,
+.tasks-panel select,
+.tasks-panel button,
+.tasks-panel a {
+  max-width: 100%;
+  min-height: var(--control-height);
+  min-width: var(--control-height);
+}
+
+.tasks-panel .field {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.task-create form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.tasks-panel [hidden] {
+  display: none;
+}
+
+.tasks-panel[aria-busy="true"] {
+  cursor: progress;
+}
+
+.site-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  min-width: var(--control-height);
+}
+
+@media (max-width: 40rem) {
+  .task-filters > *,
+  .tasks-heading nav > * {
+    flex: 1 1 100%;
+  }
+
+  .task-row,
+  .task-create,
+  .task-preview,
+  .task-exceptions {
+    padding: var(--space-3);
+  }
+}

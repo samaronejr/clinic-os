@@ -317,6 +317,9 @@ def assert_behavioral_classifications(
             # Observation wins even if a plant catches a denial and returns True.
             if required[symbol]["kind"] in EXEMPT_KINDS:
                 observer.assert_nonstaff(symbol)
+            if required[symbol]["kind"] in EXEMPT_KINDS or required[symbol].get(
+                "differential", False
+            ):
                 backstop.append(probe)
             assert decision is probe.expected, (symbol, "invalid_control", decision)
             touches.update(observer.touches)

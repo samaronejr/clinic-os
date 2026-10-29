@@ -60,11 +60,14 @@ _CONFTEST_KEYS = (
     ("GUARD_STATS", 0, 3),
     ("REFUSAL_BEFORE", 1, 2),
     ("REFUSAL_COUNTS", 1, 2),
+    # Shard deferral is bound once before fixtures, never read from late options.
+    ("REFUSAL_DEFER_EXITS", 1, 2),
     ("REFUSAL_FAILED", 1, 3),
     ("REFUSAL_INTEGRITY", 1, 2),
     ("REFUSAL_ISSUES", 1, 3),
     ("REFUSAL_OBSERVER", 1, 6),
-    ("REFUSAL_RECEIPTS", 1, 3),
+    # The additional read binds the exported controller census to its workers.
+    ("REFUSAL_RECEIPTS", 1, 4),
     ("REFUSAL_SEAL", 1, 2),
     ("REFUSAL_SESSION_ERRORS", 1, 2),
     ("TAMPERING_BEFORE", 1, 2),
@@ -114,6 +117,15 @@ ALLOWED = Counter(
         ("identity/test_nonstaff_differential.py", "mutates __dict__"): 1,
         # Records every current_context function it wraps (todo 6 census).
         ("identity/authority_observer.py", "setattr with dynamic name"): 1,
+        # Redirect the consent scope census to planted test source.
+        ("consent/test_record_scope.py", "setattr with dynamic target"): 1,
+        # Assign only the scheduling model timestamp selected by the field.
+        ("scheduling/conftest.py", "setattr with dynamic name"): 1,
+        # Rewrite workflow decisions and restore their code after each probe.
+        ("workflows/decision_sites.py", "assigns __code__"): 2,
+        ("workflows/decision_sites.py", "setattr with dynamic name"): 4,
+        # Wrap aliases of the permission function only for the target mutant.
+        ("workflows/test_authority.py", "setattr with dynamic name"): 1,
         # Patch a module attribute named by the test parameter or module name.
         ("core/test_workspace_late_refusals.py", "setattr with dynamic name"): 2,
         ("renewal/test_runtime_paths.py", "setattr with dynamic name"): 1,

@@ -308,7 +308,7 @@ def test_raw_mutation_deletion_and_binding_forgery_fail_closed(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("purpose", "marketing"),
+        ("purpose", "forged_purpose"),
         ("language", "en-US"),
         ("text", " "),
         ("text", "x" * 20001),
@@ -538,6 +538,7 @@ def test_consent_resolvers_have_exact_hardened_catalog_posture() -> None:
         "consent_session": ("clinic_resolver", "s", True),
         "consent_immutable": ("clinic_resolver", "v", False),
         "consent_guard": ("clinic_resolver", "v", False),
+        "consent_delegate_guard": ("clinic_resolver", "v", False),
         "consent_audit_scope": ("clinic_resolver", "s", False),
         "consent_audit": ("clinic_owner", "v", True),
     }

@@ -29,6 +29,7 @@ from apps.intake.patient_access import PATIENT_SESSION_KEY
 from apps.realtime.transport import publish_on_commit
 from apps.scheduling.models import Appointment
 from apps.scheduling.patient_authority import patient_booking_scope
+from apps.workflows.models import Task
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -65,6 +66,15 @@ def appointment_changed(
     if enrollment is not None:
         publish_on_commit(
             topic=f"patient:{enrollment}:booking", kind="agenda", version=1
+        )
+
+
+def task_changed(sender: type[Task], instance: Task, **kwargs: object) -> None:
+    """Refresh the permission-filtered reception pending-task count after commit."""
+    del sender, kwargs
+    if settings.REALTIME_ENABLED:
+        publish_on_commit(
+            topic=f"clinic:{instance.clinic_id}:queue", kind="queue", version=1
         )
 
 
@@ -172,6 +182,7 @@ def connect_hooks() -> None:
     post_save.connect(
         appointment_changed, sender=Appointment, dispatch_uid="realtime.appointment"
     )
+    post_save.connect(task_changed, sender=Task, dispatch_uid="realtime.reception.task")
     pre_save.connect(
         remember_membership,
         sender=UserClinicRole,

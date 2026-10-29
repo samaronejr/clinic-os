@@ -1,0 +1,132 @@
+{% load i18n tz inbox_labels %}
+<div id="inbox-board" class="worklist-board" data-inbox-total="{{ page.total }}">
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>
+  {% elif outcome %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-inbox-outcome>{{ outcome }}</p>{% endif %}
+  {% if removed_notice %}<p class="feedback feedback--warning" role="status" data-inbox-removed="{{ page.removed|length }}">{{ removed_notice }}</p>{% endif %}
+  <div class="worklist-toolbar">
+    <dl class="worklist-counts" aria-label="{% trans 'Inbox summary' %}">
+      {% for kind, label in kinds %}<div data-inbox-count="{{ kind }}"><dt>{{ label }}</dt><dd>{{ page.counts|count_of:kind }}{% if kind in page.overflowed %}+{% endif %}</dd></div>{% endfor %}
+      <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ page.overdue }}{% if not page.counts_complete %}+{% endif %}</dd></div>
+      <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ page.critical }}{% if not page.counts_complete %}+{% endif %}</dd></div>
+    </dl>
+    <form method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML" data-worklist-refresh>
+      {% csrf_token %}<input type="hidden" name="action" value="refresh">
+      {% include "workflows/partials/inbox_filters_state.html" %}
+      {% for item in page.items %}<input type="hidden" name="known" value="{{ item.key }}">{% endfor %}
+      <button type="submit" class="button--secondary">{% trans "Refresh" %}</button>
+    </form>
+  </div>
+  <form class="worklist-filters" method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML" novalidate>
+    {% csrf_token %}<input type="hidden" name="action" value="filter">
+    {% for item in page.items %}<input type="hidden" name="known" value="{{ item.key }}">{% endfor %}
+    <fieldset class="worklist-kinds">
+      <legend>{% trans "Show" %}</legend>
+      {% for kind, label in kinds %}<label class="worklist-check"><input type="checkbox" name="kind" value="{{ kind }}"{% if kind in filters.kinds %} checked{% endif %}>{{ label }}</label>{% endfor %}
+    </fieldset>
+    <div class="field">
+      <label for="inbox-owner">{% trans "Owner" context "task owner" %}</label>
+      <select id="inbox-owner" name="owner">
+        <option value="all"{% if filters.owner == "all" %} selected{% endif %}>{% trans "Any owner" %}</option>
+        <option value="mine"{% if filters.owner == "mine" %} selected{% endif %}>{% trans "Assigned to me" %}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="inbox-due">{% trans "Due" %}</label>
+      <select id="inbox-due" name="due">
+        <option value="all"{% if filters.due == "all" %} selected{% endif %}>{% trans "Any due date" %}</option>
+        <option value="overdue"{% if filters.due == "overdue" %} selected{% endif %}>{% trans "Overdue" %}</option>
+        <option value="today"{% if filters.due == "today" %} selected{% endif %}>{% trans "Due by today" %}</option>
+      </select>
+    </div>
+    <button type="submit" class="button--secondary">{% trans "Apply filters" %}</button>
+  </form>
+  {% if preview %}
+  <section class="worklist-preview" aria-labelledby="bulk-preview-title" data-bulk-preview="{{ preview.items|length }}">
+    <h2 id="bulk-preview-title" tabindex="-1" autofocus>{% trans "Review before acknowledging" %}</h2>
+    <p>{% blocktrans count count=preview.items|length %}This normal result will be acknowledged with no further action. Release to the patient stays a separate decision.{% plural %}These {{ count }} normal results will be acknowledged with no further action. Release to the patient stays a separate decision.{% endblocktrans %}</p>
+    {% for item in preview.items %}
+    <article class="worklist-preview-item" data-preview-key="{{ item.key }}" aria-labelledby="preview-{{ forloop.counter }}">
+      <h3 id="preview-{{ forloop.counter }}">{{ item.title }} · {{ item.patient_label }}</h3>
+      {% include "workflows/partials/inbox_observations.html" with observations=item.preview caption_id="preview-values-"|add:item.key caption_index=forloop.counter caption_title=item.title %}
+    </article>
+    {% endfor %}
+    <div class="actions">
+      <form method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="action" value="bulk_confirm"><input type="hidden" name="preview_token" value="{{ preview.token }}">
+        {% include "workflows/partials/inbox_filters_state.html" %}
+        <button type="submit">{% blocktrans count count=preview.items|length %}Acknowledge this result{% plural %}Acknowledge these {{ count }} results{% endblocktrans %}</button>
+      </form>
+      <form method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="action" value="refresh">
+        {% include "workflows/partials/inbox_filters_state.html" %}
+        <button type="submit" class="button--quiet">{% trans "Cancel" %}</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+  <section class="worklist-section" aria-labelledby="inbox-items-title">
+    <h2 id="inbox-items-title">{% blocktrans count count=page.items|length %}{{ count }} item{% plural %}{{ count }} items{% endblocktrans %}</h2>
+    {% if bulk_available %}
+      <form id="inbox-bulk" class="worklist-bulk" method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="action" value="bulk_preview">
+        {% include "workflows/partials/inbox_filters_state.html" %}
+        <button type="submit" class="button--secondary" aria-describedby="inbox-bulk-hint">{% trans "Preview selected normal results" %}</button>
+        <p class="hint" id="inbox-bulk-hint">{% trans "Only non-critical results with every value flagged normal can be acknowledged together. Results are never released in bulk." %}</p>
+      </form>
+    {% endif %}
+    {% if page.truncated %}<p class="feedback feedback--warning" role="status">{% trans "Only the most urgent items are shown. Narrow the filters to see the rest." %}</p>{% endif %}
+    <ol class="worklist-items" aria-labelledby="inbox-items-title" aria-describedby="inbox-keys">
+      {% for item in page.items %}
+      <li class="worklist-item{% if item.critical %} worklist-item--critical{% elif item.overdue %} worklist-item--overdue{% endif %}" data-worklist-item data-inbox-key="{{ item.key }}" data-inbox-kind="{{ item.kind }}" tabindex="-1" aria-labelledby="item-{{ forloop.counter }}-title">
+        <div class="worklist-item-head">
+          <h3 id="item-{{ forloop.counter }}-title">{{ item.title }}{% if item.patient_label %}<span class="worklist-patient"> · {{ item.patient_label }}</span>{% endif %}</h3>
+          <p class="worklist-badges">
+            {% if item.critical %}<span class="badge badge--error">{% trans "Critical" %}</span>{% endif %}
+            {% if item.overdue %}<span class="badge badge--warning">{% trans "Overdue" %}</span>{% endif %}
+            {% if item.priority == "urgent" and not item.critical %}<span class="badge badge--error">{% trans "Urgent" %}</span>{% elif item.priority == "high" %}<span class="badge badge--warning">{% trans "High" %}</span>{% endif %}
+            {% if item.bulk_eligible %}<span class="badge badge--success">{% trans "All values normal" %}</span>{% endif %}
+          </p>
+        </div>
+        <dl class="worklist-facts">
+          <div><dt>{% trans "Owner" context "task owner" %}</dt><dd>{{ item|inbox_owner }}</dd></div>
+          <div><dt>{% trans "Due" %}</dt><dd>{% if item.due_at %}<time datetime="{{ item.due_at|date:'c' }}">{% timezone clinic.timezone %}{{ item.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</time>{% else %}{% trans "No due date" %}{% endif %}</dd></div>
+        </dl>
+        {% if item.preview %}
+        <details class="worklist-values">
+          <summary>{% blocktrans count count=item.preview|length %}Source value ({{ count }}){% plural %}Source values ({{ count }}){% endblocktrans %}</summary>
+          {% include "workflows/partials/inbox_observations.html" with observations=item.preview caption_id="values-"|add:item.key caption_index=forloop.counter caption_title=item.title %}
+        </details>
+        {% endif %}
+        <div class="worklist-item-actions">
+          {% if item.action == "acknowledge" %}
+          <form class="worklist-acknowledge" method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML" novalidate>
+            {% csrf_token %}<input type="hidden" name="action" value="acknowledge"><input type="hidden" name="version_id" value="{{ item.target_id }}">
+            {% include "workflows/partials/inbox_filters_state.html" %}
+            <div class="field">
+              <label for="disposition-{{ forloop.counter }}">{% trans "Clinical disposition" %}</label>
+              <select id="disposition-{{ forloop.counter }}" name="disposition" required>
+                <option value="">{% trans "Choose after reviewing the source" %}</option>
+                <option value="no_action">{% trans "No further action" %}</option>
+                <option value="follow_up">{% trans "Follow-up required" %}</option>
+                <option value="urgent_review">{% trans "Urgent review required" %}</option>
+              </select>
+            </div>
+            <button type="submit" data-worklist-primary>{% trans "Acknowledge" %}<span class="visually-hidden"> · {{ item.title }}</span></button>
+          </form>
+          {% if item.bulk_eligible %}<label class="worklist-check worklist-select"><input type="checkbox" name="version_id" value="{{ item.target_id }}" form="inbox-bulk" data-worklist-select>{% trans "Select for bulk acknowledgment" %}<span class="visually-hidden"> · {{ item.title }}</span></label>{% endif %}
+          {% elif item.action == "open_encounter" %}
+          <form method="post" action="{% url 'ehr:encounter' clinic_id %}" hx-boost="false">
+            {% csrf_token %}<input type="hidden" name="action" value="show"><input type="hidden" name="encounter_id" value="{{ item.target_id }}">
+            <button type="submit" data-worklist-primary>{% trans "Open note" %}<span class="visually-hidden"> · {{ item.title }}</span></button>
+          </form>
+          {% elif item.action == "open_task" %}
+          <a class="button button--secondary" href="{% url 'workflows:tasks' clinic_id %}" data-worklist-primary>{% trans "Open in Tasks" %}<span class="visually-hidden"> · {{ item.title }}</span></a>
+          {% endif %}
+        </div>
+      </li>
+      {% empty %}
+      <li class="worklist-empty">{% trans "Nothing is waiting for you" as empty_title %}{% trans "New results, notes to finalize and tasks you own appear here." as empty_message %}{% include "includes/components/state.html" with state="empty" title=empty_title message=empty_message only %}</li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>

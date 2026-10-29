@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from django.db import connection
 
-from identity.authority_sql import references
+from identity.authority_sql import non_callable_keywords, references
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -39,6 +40,7 @@ CONTEXT_PRIMITIVES = frozenset(
         "gen_random_uuid",
         "jsonb_build_object",
         "jsonb_build_array",
+        "jsonb_agg",
         "to_jsonb",
         "row_to_json",
         "format",
@@ -91,6 +93,7 @@ class Function:
     library: str | None
     native_types: bool
     defaults: str | None
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,22 @@ class Relation:
     kind: str
     columns: frozenset[str]
     opaque_types: frozenset[str]
+    hints: tuple[bool, bool, bool, bool]
+    trigger_oids: frozenset[int]
+    index_states: frozenset[str]
+    rule_oids: frozenset[int]
+    children: frozenset[int]
+
+
+@dataclass(frozen=True)
+class Trigger:
+    oid: int
+    relation: int
+    function: int
+    internal: bool
+    constraint_kind: str | None
+    constraint_relation: int | None
+    referenced_relation: int | None
 
 
 @dataclass
@@ -140,6 +159,7 @@ class Catalog:
     """Snapshot live definitions, dependencies, rewrite rules and RLS expressions."""
 
     def __init__(self) -> None:
+        self.syntax_keywords = non_callable_keywords()
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT p.oid, n.nspname||'.'||p.proname, l.lanname,
@@ -157,7 +177,9 @@ class Catalog:
                          JOIN pg_namespace tn ON tn.oid=t.typnamespace
                          WHERE tn.nspname<>'pg_catalog'
                        ),
-                       pg_get_expr(p.proargdefaults, 0)
+                       pg_get_expr(p.proargdefaults, 0),
+                       n.nspname||'.'||p.proname||'('||
+                         oidvectortypes(p.proargtypes)||')'
                 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 JOIN pg_language l ON l.oid=p.prolang
                 JOIN pg_roles r ON r.oid=p.proowner
@@ -176,7 +198,17 @@ class Catalog:
                              JOIN pg_type t ON t.oid=a.atttypid
                              JOIN pg_namespace tn ON tn.oid=t.typnamespace
                              WHERE a.attrelid=c.oid AND a.attnum>0
-                             AND NOT a.attisdropped AND tn.nspname<>'pg_catalog')
+                             AND NOT a.attisdropped AND tn.nspname<>'pg_catalog'),
+                       ARRAY[c.relhastriggers,c.relhasindex,c.relhasrules,
+                             c.relhassubclass],
+                       ARRAY(SELECT t.oid FROM pg_trigger t WHERE t.tgrelid=c.oid),
+                       ARRAY(SELECT jsonb_build_array(to_jsonb(i),
+                             pg_get_expr(i.indexprs,i.indrelid),
+                             pg_get_expr(i.indpred,i.indrelid))::text
+                             FROM pg_index i WHERE i.indrelid=c.oid),
+                       ARRAY(SELECT r.oid FROM pg_rewrite r WHERE r.ev_class=c.oid),
+                       ARRAY(SELECT i.inhrelid FROM pg_inherits i
+                             WHERE i.inhparent=c.oid)
                 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                 WHERE c.relkind IN ('r','p','v','m','f')
                   AND n.nspname NOT IN ('pg_catalog','information_schema')
@@ -184,7 +216,16 @@ class Catalog:
             """)
             self.relations = {
                 row[0]: Relation(
-                    row[0], row[1], row[2], frozenset(row[3]), frozenset(row[4])
+                    row[0],
+                    row[1],
+                    row[2],
+                    frozenset(row[3]),
+                    frozenset(row[4]),
+                    (row[5][0], row[5][1], row[5][2], row[5][3]),
+                    frozenset(row[6]),
+                    frozenset(row[7]),
+                    frozenset(row[8]),
+                    frozenset(row[9]),
                 )
                 for row in cursor.fetchall()
             }
@@ -234,19 +275,34 @@ class Catalog:
             self.operators: dict[str, set[int]] = {}
             for name, oid in cursor.fetchall():
                 self.operators.setdefault(name, set()).add(oid)
-            cursor.execute(
-                "SELECT tgrelid, tgfoid FROM pg_trigger WHERE NOT tgisinternal"
+            cursor.execute("""
+                SELECT t.oid,t.tgrelid,t.tgfoid,t.tgisinternal,
+                       c.contype,c.conrelid,c.confrelid FROM pg_trigger t
+                LEFT JOIN pg_constraint c ON c.oid=t.tgconstraint
+            """)
+            self.triggers = [Trigger(*row) for row in cursor.fetchall()]
+            cursor.execute("""
+                SELECT i.indrelid,jsonb_build_array(to_jsonb(i),
+                       pg_get_expr(i.indexprs,i.indrelid),
+                       pg_get_expr(i.indpred,i.indrelid))::text,
+                       pg_get_expr(i.indexprs,i.indrelid),
+                       pg_get_expr(i.indpred,i.indrelid) FROM pg_index i
+            """)
+            # Bind every pg_index column, including validity/readiness,
+            # uniqueness, opclasses/collations, expressions and predicates.
+            # Even an invalid or unready index is retained, never filtered out.
+            self.indexes: list[tuple[int, str, str | None, str | None]] = (
+                cursor.fetchall()
             )
-            self.triggers = cursor.fetchall()
+            cursor.execute("SELECT ev_class,oid FROM pg_rewrite")
+            self.rules: list[tuple[int, int]] = cursor.fetchall()
+            cursor.execute("SELECT inhparent,inhrelid FROM pg_inherits")
+            self.children: list[tuple[int, int]] = cursor.fetchall()
             cursor.execute("""
                 SELECT adrelid, pg_get_expr(adbin, adrelid) FROM pg_attrdef
                 UNION ALL
                 SELECT conrelid, pg_get_expr(conbin, conrelid) FROM pg_constraint
                 WHERE conbin IS NOT NULL AND conrelid <> 0
-                UNION ALL
-                SELECT indrelid, concat_ws(' ', pg_get_expr(indexprs, indrelid),
-                    pg_get_expr(indpred, indrelid)) FROM pg_index
-                WHERE indexprs IS NOT NULL OR indpred IS NOT NULL
             """)
             self.write_expressions = cursor.fetchall()
             cursor.execute("""
@@ -267,6 +323,59 @@ class Catalog:
             self.write_edges = cursor.fetchall()
         self.function_names = self._names(self.functions.values())
         self.relation_names = self._names(self.relations.values())
+        self._index_fields: dict[str, tuple[str | None, str | None]] = {}
+        for relation in self.relations.values():
+            for state in relation.index_states:
+                _row, expression, predicate = json.loads(state)
+                assert expression is None or isinstance(expression, str)
+                assert predicate is None or isinstance(predicate, str)
+                self._index_fields[state] = (expression, predicate)
+        self._validate_objects()
+
+    def _validate_objects(self) -> None:
+        """Bind object populations independently of PostgreSQL's lazy hints."""
+        triggers: dict[int, set[int]] = {}
+        indexes: dict[int, set[str]] = {}
+        rules: dict[int, set[int]] = {}
+        children: dict[int, set[int]] = {}
+        for trigger in self.triggers:
+            triggers.setdefault(trigger.relation, set()).add(trigger.oid)
+        for table, state, _expression, _predicate in self.indexes:
+            indexes.setdefault(table, set()).add(state)
+        for table, rule in self.rules:
+            rules.setdefault(table, set()).add(rule)
+        for parent, child in self.children:
+            children.setdefault(parent, set()).add(child)
+        for relation in self.relations.values():
+            actual = (
+                frozenset(triggers.get(relation.oid, set())),
+                frozenset(indexes.get(relation.oid, set())),
+                frozenset(rules.get(relation.oid, set())),
+                frozenset(children.get(relation.oid, set())),
+            )
+            expected = (
+                relation.trigger_oids,
+                relation.index_states,
+                relation.rule_oids,
+                relation.children,
+            )
+            assert actual == expected, (
+                "relation_catalog_inconsistent",
+                relation.name,
+                "object_population",
+            )
+            # True hints can remain after DROP until VACUUM. False with a
+            # live object is unsound and must never certify an omission.
+            assert all(
+                hint or not objects
+                for hint, objects in zip(relation.hints, actual, strict=True)
+            ), ("relation_catalog_inconsistent", relation.name, "false_hint")
+        for table, state, expression, predicate in self.indexes:
+            if table in self.relations:
+                assert (expression, predicate) == self._index_fields[state], (
+                    "index_expression_binding_mismatch",
+                    self.relations[table].name,
+                )
 
     @staticmethod
     def _names(
@@ -283,10 +392,11 @@ class Catalog:
         return result
 
     def statement(self, text: str, *, bypass: bool = False) -> Reads:
+        self._validate_objects()
         return self._statement(text, bypass=bypass, seen=set())
 
     def _statement(self, text: str, *, bypass: bool, seen: set[Node]) -> Reads:
-        parsed = references(text)
+        parsed = references(text, syntax_keywords=self.syntax_keywords)
         result = Reads(settings=parsed.settings, opaque=parsed.opaque)
         functions = self._function_references(parsed, result)
         relations = set()
@@ -342,9 +452,28 @@ class Catalog:
         )
         if relation.kind == "f":
             result.opaque.add("foreign relation " + relation.name)
+        for parent, child in self.children:
+            if parent == oid:
+                result.merge(self._edge("pg_class", child, bypass=bypass, seen=seen))
         for parent, kind, target in self.view_edges:
             if parent == oid:
                 result.merge(self._edge(kind, target, bypass=bypass, seen=seen))
+        result.merge(self._relation_expressions(oid, bypass=bypass, seen=seen))
+        return result
+
+    def _relation_expressions(
+        self, oid: int, *, bypass: bool, seen: set[Node]
+    ) -> Reads:
+        result = Reads()
+        for table, _state, expression, predicate in self.indexes:
+            if table == oid and (expression or predicate):
+                result.merge(
+                    self._statement(
+                        (expression or "") + " " + (predicate or ""),
+                        bypass=bypass,
+                        seen=seen,
+                    )
+                )
         definition = self.view_definitions.get(oid)
         if definition is not None:
             result.merge(self._statement(definition, bypass=bypass, seen=seen))
@@ -372,10 +501,37 @@ class Catalog:
         for table, kind, target in self.write_edges:
             if table == oid:
                 result.merge(self._edge(kind, target, bypass=bypass, seen=seen))
-        for table, trigger in self.triggers:
-            if table == oid:
-                result.merge(self._function(trigger, bypass=bypass, seen=seen))
+        for trigger in self.triggers:
+            if trigger.relation == oid:
+                result.merge(self._trigger(trigger, bypass=bypass, seen=seen))
         return result
+
+    def _trigger(self, trigger: Trigger, *, bypass: bool, seen: set[Node]) -> Reads:
+        function = self.functions[trigger.function]
+        if (
+            trigger.internal
+            and trigger.constraint_kind == "f"
+            and trigger.relation
+            in {trigger.constraint_relation, trigger.referenced_relation}
+            and function.oid < 16384
+            and function.name.startswith("pg_catalog.RI_FKey_")
+            and function.source == function.name.split(".", 1)[1]
+            and function.language in {"c", "internal"}
+            and function.native_types
+            and function.extension is None
+            and function.library is None
+            and not function.security_definer
+        ):
+            # Built-in FK checks inspect both bound relations, bypassing
+            # RLS. This is the native contract, not a name-only exemption.
+            result = Reads(functions={trigger.function})
+            for target in (trigger.constraint_relation, trigger.referenced_relation):
+                if target is not None and target in self.relations:
+                    result.merge(self._relation(target, bypass=True, seen=seen))
+                else:
+                    result.opaque.add("unresolved foreign key relation")
+            return result
+        return self._function(trigger.function, bypass=bypass, seen=seen)
 
     def _edge(self, kind: str, oid: int, *, bypass: bool, seen: set[Node]) -> Reads:
         if kind == "pg_proc" and oid in self.functions:
@@ -415,6 +571,11 @@ class Catalog:
                 and function.library == "$libdir/pgcrypto"
                 and CRYPTO_PRIMITIVES.get(name) == function.source
             )
+            # Data aggregation is trusted only for the deployed built-in
+            # signature. A same-named application or shadow stays opaque.
+            safe &= name != "jsonb_agg" or (
+                builtin and function.signature == "pg_catalog.jsonb_agg(anyelement)"
+            )
             if not safe:
                 result.opaque.add("opaque function " + function.name)
             return result
@@ -434,6 +595,7 @@ class Catalog:
         return result
 
     def derive(self) -> Channels:
+        self._validate_objects()
         roots = {f.oid for f in self.functions.values() if f.name in ROOTS}
         assert {self.functions[oid].name for oid in roots} == ROOTS
         combined = Reads()

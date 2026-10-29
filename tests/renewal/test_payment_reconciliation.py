@@ -50,6 +50,7 @@ from apps.identity.models import UserClinicRole
 from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from psycopg import sql
 
 from patient_service_support import runtime_role
@@ -605,7 +606,7 @@ def test_revoked_actor_records_event_but_cannot_settle(
             user_id=setup.actor_id,
             organization_id=setup.organization_id,
             clinic_id=setup.clinic_id,
-        ).delete()
+        ).update(revoked_at=Now())
 
     headers, body = _signed_event(
         event_id="evt-revoked", provider_reference=charge.provider_reference

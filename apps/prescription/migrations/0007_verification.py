@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Keep verification state separate from immutable signed bytes."""
@@ -186,7 +188,7 @@ class Migration(migrations.Migration):
                 ("lookups", models.PositiveIntegerField()),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocumentrevocation",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -200,7 +202,7 @@ class Migration(migrations.Migration):
                 name="prescription_revocation_reason",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocumentrelease",
             constraint=models.UniqueConstraint(
                 fields=("document",),
@@ -208,7 +210,7 @@ class Migration(migrations.Migration):
                 name="prescription_release_active_unique",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocumentrelease",
             constraint=models.CheckConstraint(
                 condition=(
@@ -218,7 +220,7 @@ class Migration(migrations.Migration):
                 name="prescription_release_revocation_pair",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="verificationprobe",
             constraint=models.CheckConstraint(
                 condition=models.Q(lookups__gte=0),

@@ -426,6 +426,7 @@ def test_sequence_headroom_covers_every_restored_sequence() -> None:
     responses = {
         "audit_event_seq_seq": "5|4\n",
         "otp_totp_totpdevice_id_seq": "3|2\n",
+        "otp_static_staticdevice_id_seq": "11|10\n",
         "scheduling_waitlistentry_id_seq": "7|6\n",
         "teleconsult_teleconsultevent_id_seq": "9|8\n",
     }

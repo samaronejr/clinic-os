@@ -32,6 +32,7 @@ from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from PIL import Image
 
 from auth.stepup_test_support import create_role_actor, verified_request
@@ -164,7 +165,9 @@ def test_physician_receptionist_revoked_and_foreign_roles_cannot_edit(
     g = rbac_graph
     actor = admin(g)
     with setup_context(g.organization_a):
-        UserClinicRole.objects.filter(user=actor, clinic_id=g.clinic_a).delete()
+        UserClinicRole.objects.filter(user=actor, clinic_id=g.clinic_a).update(
+            revoked_at=Now()
+        )
     for actor_id in (g.physician, g.shared_user, actor.pk):
         with (
             pytest.raises((CurrentActorError, TenantAccessDeniedError)),

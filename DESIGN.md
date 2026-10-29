@@ -622,6 +622,18 @@ states, AI drafts awaiting confirmation, held slots and missing citations.
   Dia/Semana switch whose current item carries `aria-current="page"` on
   Selection Tint (underlined in forced colors). Every step is a state-free
   link; the bar wraps to two rows below 48rem.
+- **Agenda board:** the resource grid page uses the same date bar with a
+  Dia/Semana/Mês/Lista switch (Mês steps by month, Lista by week). Under it a
+  filter toolbar (Unidade, Profissional, Sala ou equipamento, Tipo de
+  atendimento, Situação) posts to the server and keeps no state in the URL,
+  beside a "visões salvas" disclosure whose items are Open and Remove buttons.
+  The month view is a seven-column table in the scroll region: each day of the
+  month is a link to its day grid carrying a count badge; days outside the
+  month are sunken paper and today has a 2px Trust Teal border. Holds awaiting
+  confirmation sit above the grid as a dashed Warning panel with Confirm and
+  Release buttons, and one about to lapse adds a "Reserva expirando" warning
+  badge. A remote change refetched by realtime raises a Stale state note with a
+  Dismiss action, outside the refetched region.
 - **Focus:** row actions are links or buttons with the navy ring; the scroll
   region itself shows the ring when focused.
 - **Selected:** `.table-row--selected` takes Selection Tint. **Muted
@@ -717,8 +729,13 @@ name, so a page that repeats one keeps every landmark name unique.
 - **Resource grid:** resources by clinic-local time in CSS grid with the ARIA
   grid pattern and one roving tab stop. Booked slots on Selection Tint, held
   slots dashed Warning, conflicts on Error tint, completed on Success tint,
-  unavailable cells on sunken paper; every slot is a link, so moving is a
-  dialog, never drag-only.
+  unavailable cells on sunken paper. Record selection uses native POST
+  buttons, never identifier-bearing URLs; moving enhances those buttons with
+  a dialog and is never drag-only. A professional's time in another unit is
+  a sunken cell reading "Ocupado (outra unidade)" with no patient, unit or
+  service detail; a free cell the user may book opens the booking dialog
+  (click or Enter), and the move dialog adds a slot finder for other days and
+  only the lifecycle actions that appointment allows.
 - **Command palette:** Ctrl+K / Cmd+K opens a modal combobox of destinations
   and actions grouped under Label headings; keys shown as `<kbd>` on paper.
   In the shell it searches the server (POST, never a URL): destinations,

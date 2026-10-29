@@ -18,17 +18,22 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
+from django.forms import Select
 from django.http import HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import translation
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
 from apps.core.patient_context import bind_encounter_context
+from apps.ehr.longitudinal_models import MedicationStatement
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.clinic_configuration import latest_configuration
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_username,
@@ -45,6 +50,8 @@ from apps.identity.stepup import (
     set_step_up_intent,
 )
 from apps.intake.patient_access import patient_session_overview
+from apps.prescription.authoring import author_data, catalog_context
+from apps.prescription.class_policy import class_eligibility
 from apps.prescription.document_rendering import DocumentRenderingError
 from apps.prescription.forms import (
     PrescriptionDraftForm,
@@ -53,15 +60,18 @@ from apps.prescription.forms import (
 )
 from apps.prescription.models import (
     COMPLETED_SIGNATURE_STATES,
+    DocumentKind,
     PrescriptionDocument,
     PrescriptionDocumentRelease,
     PrescriptionDocumentRevocation,
     PrescriptionDraft,
     SignatureOperation,
 )
-from apps.prescription.policy import SYNTHETIC_CATEGORY
+from apps.prescription.policy import MAX_ITEMS
+from apps.prescription.renewals import renew_draft
 from apps.prescription.services import (
     DocumentStorageError,
+    authorize_document_draft,
     authorize_encounter,
     create_draft,
     discard_draft,
@@ -127,6 +137,17 @@ _ITEM_FIELDS: Final = (
 # each with the recovery it allows. Unknown reasons fall back to a generic
 # line rather than to silence.
 _FAILURE_TEXT: Final[dict[str, tuple[str, str]]] = {
+    "stale_document_approval": (
+        _("The draft changed after review"),
+        _(
+            "This review cannot authorize signing. "
+            "Render and review the saved version again."
+        ),
+    ),
+    "authorization_revoked": (
+        _("Your professional authority changed. No document was issued."),
+        _("Confirm your current clinical scope before trying again."),
+    ),
     "provider_rejected": (
         "O provedor recusou a operação.",
         "O documento não foi alterado. Você pode tentar novamente.",
@@ -273,7 +294,11 @@ def _subject(encounter: Encounter) -> Subject:
         issuer_synthetic=profile.synthetic if profile is not None else True,
         clinic_name=clinic.name,
         clinic_timezone=str(clinic.timezone),
-        encounter_at=encounter.appointment.start_at,
+        encounter_at=(
+            encounter.appointment.start_at
+            if encounter.appointment is not None
+            else encounter.created_at
+        ),
         encounter_id=encounter.pk,
     )
 
@@ -482,8 +507,6 @@ def _save_bound_form(
     items: BaseFormSet[PrescriptionItemForm],
 ) -> tuple[int, str]:
     action = request.POST.get("action")
-    if action not in {"save", "discard"}:
-        raise ClinicalAccessDeniedError
     if not form.is_valid() or (action == "save" and not items.is_valid()):
         return 400, ""
     values = dict(form.cleaned_data)
@@ -620,15 +643,18 @@ def _sign_document(
         return flow_redirect(
             request, "identity:step-up", safe_next_url(request, step_up_target)
         )
-    except PhysicianVerificationRequired as denied:
-        return ActionOutcome(
-            403,
-            "A verificação profissional falhou. "
-            + _VERIFICATION_TEXT.get(
+    except (ValidationError, PhysicianVerificationRequired) as denied:
+        if isinstance(denied, ValidationError):
+            reason = denied.code
+            if reason is None:
+                raise
+            status, message, code = 400, denied.messages[0], reason
+        else:
+            status, code = 403, denied.reason_code
+            message = "A verificação profissional falhou. " + _VERIFICATION_TEXT.get(
                 denied.reason_code, "A verificação profissional não está disponível."
-            ),
-            denied.reason_code,
-        )
+            )
+        return ActionOutcome(status, message, code)
     except SignatureUnavailableError:
         return ActionOutcome(
             503,
@@ -638,7 +664,14 @@ def _sign_document(
     except ClinicalConflictError as conflict:
         return ActionOutcome(
             CONFLICT,
-            "Este documento já foi assinado ou está em assinatura.",
+            (
+                _(
+                    "The draft changed after review. "
+                    "Render and review the saved version again."
+                )
+                if conflict.reason_code == "stale_document_approval"
+                else "Este documento já foi assinado ou está em assinatura."
+            ),
             conflict.reason_code,
         )
     return redirect(signing_continuation(clinic_id, operation.pk))
@@ -653,15 +686,22 @@ def _document_action(
 ) -> HttpResponseBase | ActionOutcome | None:
     """Dispatch document actions; ``None`` means continue the workspace flow."""
     action = request.POST.get("action")
-    if action == "create":
-        # Even creation assertions are checked; they are never used as authority.
-        create_draft(
-            clinic_id=clinic_id,
-            encounter_id=encounter.pk,
-            patient_id=UUID(request.POST.get("patient_id", "")),
-            issuer_id=UUID(request.POST.get("issuer_id", "")),
-            category=request.POST.get("category", ""),
-        )
+    if action in {"create", "renew"}:
+        if action == "create":
+            # Creation assertions are checked, never used as authority.
+            create_draft(
+                clinic_id=clinic_id,
+                encounter_id=encounter.pk,
+                patient_id=UUID(request.POST.get("patient_id", "")),
+                issuer_id=UUID(request.POST.get("issuer_id", "")),
+                category=request.POST.get("category") or None,
+            )
+        else:
+            renew_draft(
+                clinic_id=clinic_id,
+                encounter_id=encounter.pk,
+                source_document_id=UUID(request.POST.get("source_document_id", "")),
+            )
         return redirect(continuation(clinic_id, encounter.pk))
     if action == "download_document":
         return _download_document(request, clinic_id)
@@ -794,14 +834,43 @@ def _draft_forms(
         "expected_version": draft.version,
         "category": draft.category,
     }
-    form = PrescriptionDraftForm(request.POST if bound else None, initial=initial)
+    data = author_data(request, draft) if bound else None
+    saving = bound and request.POST.get("action") in {"save", "discard"}
+    item_initial = draft_items(draft)
+    if data is not None and not saving:
+        total = int(data.get("items-TOTAL_FORMS", "0"))
+        if not 1 <= total <= MAX_ITEMS:
+            raise ClinicalAccessDeniedError
+        initial.update(
+            {name: data.get(name) for name in PrescriptionDraftForm.base_fields}
+        )
+        entered = [
+            {
+                name: data.get(f"items-{index}-{name}", "")
+                for name in PrescriptionItemForm.base_fields
+            }
+            for index in range(total)
+        ]
+        item_initial = [item for item in entered if any(item.values())]
+    form = PrescriptionDraftForm(data if saving else None, initial=initial)
     items = PrescriptionItemFormSet(
-        request.POST if bound else None,
-        initial=draft_items(draft),
+        data if saving else None,
+        initial=item_initial,
         prefix="items",
     )
+    choices = [
+        ("", translation.gettext("No reconciliation link")),
+        *[
+            (str(row.pk), row.details["text"])
+            for row in MedicationStatement.objects.filter(
+                clinic_id=clinic_id, patient_id=draft.patient_id
+            ).order_by("-effective_at", "pk")[:100]
+        ],
+    ]
+    for item in items:
+        item.fields["medication_statement_id"].widget = Select(choices=choices)
     status, error = (
-        _save_bound_form(request, clinic_id, form, items) if bound else (OK, "")
+        _save_bound_form(request, clinic_id, form, items) if saving else (OK, "")
     )
     return form, items, status, error
 
@@ -825,25 +894,37 @@ def _workspace(
         request.session[key] = str(encounter.pk)
         return redirect(continuation(clinic_id, encounter.pk))
     subject = _subject(encounter)
-    draft = PrescriptionDraft.objects.filter(encounter=encounter).first()
+    draft = PrescriptionDraft.objects.filter(
+        encounter=encounter, kind=DocumentKind.PRESCRIPTION
+    ).first()
     outcome: ActionOutcome | None = None
-    if request.method == "POST":
-        result = _document_action(request, clinic_id, encounter, draft, subject)
-        if isinstance(result, ActionOutcome):
-            outcome = result
-        elif result is not None:
-            return result
+    result = (
+        _document_action(request, clinic_id, encounter, draft, subject)
+        if request.method == "POST"
+        else None
+    )
+    if isinstance(result, ActionOutcome):
+        outcome = result
+    elif result is not None:
+        return result
     # A POST that no document action consumed is the explicit save/discard.
     bound = request.method == "POST" and outcome is None
     form = items = None
     status, error = (outcome.status, outcome.error) if outcome else (OK, "")
     code = outcome.code if outcome else ""
     if draft is not None and draft.state == "draft":
-        draft = view_draft(draft_id=draft.pk, **scope)
-        form, items, saved, save_error = _draft_forms(
-            request, clinic_id, draft, scope, bound=bound
-        )
-        if bound and saved == OK:
+        if bound and any(
+            UUID(request.POST.get(name, "")) != expected
+            for name, expected in {**scope, "draft_id": draft.pk}.items()
+            if name != "clinic_id"
+        ):
+            raise ClinicalAccessDeniedError
+        with transaction.atomic():
+            draft = view_draft(draft_id=draft.pk, **scope)
+            form, items, saved, save_error = _draft_forms(
+                request, clinic_id, draft, scope, bound=bound
+            )
+        if bound and saved == OK and request.POST.get("action") in {"save", "discard"}:
             return redirect(continuation(clinic_id, encounter.pk))
         if bound:
             status, error = saved, save_error
@@ -858,10 +939,30 @@ def _workspace(
             "form": form,
             "items": items,
             "documents": _document_rows(draft, clinic_id),
-            "category": SYNTHETIC_CATEGORY,
+            "eligibility": class_eligibility(
+                category=draft.category if draft is not None else None, electronic=True
+            ),
+            **(
+                catalog_context(request, clinic_id=clinic_id)
+                if form is not None
+                else {}
+            ),
+            "renewal_sources": tuple(
+                PrescriptionDocument.objects.filter(
+                    clinic_id=clinic_id,
+                    draft__kind=DocumentKind.PRESCRIPTION,
+                    patient_id=encounter.patient_id,
+                    signature_operations__state__in=("issued", "rehearsal_complete"),
+                    prescriptiondocumentrevocation__isnull=True,
+                )
+                .distinct()
+                .order_by("-created_at", "-pk")[:10]
+            )
+            if draft is None
+            else (),
             "error": error,
             "error_code": code,
-            "unsaved": bound and status != OK,
+            "unsaved": bound,
             "step": "author",
         },
         status=status,
@@ -942,6 +1043,19 @@ def _review_items(document: PrescriptionDocument) -> list[list[dict[str, str]]]:
                 {"key": key, "label": label, "value": str(raw.get(key, ""))}
                 for key, label in _ITEM_FIELDS
             ]
+            + (
+                [
+                    {
+                        "key": "dose_unit",
+                        "label": str(
+                            PrescriptionItemForm.base_fields["dose_unit"].label
+                        ),
+                        "value": str(raw.get("dose_unit_label", raw["dose_unit"])),
+                    }
+                ]
+                if raw.get("dose_unit")
+                else []
+            )
         )
     return items
 
@@ -967,12 +1081,22 @@ def _review(
     live = next((view for view in attempts if view["live"]), None)
     complete = next((view for view in attempts if view["complete"]), None)
     revoked = PrescriptionDocumentRevocation.objects.filter(document=document).exists()
+    if (
+        document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+        != DocumentKind.PRESCRIPTION
+    ):
+        authorize_document_draft(clinic_id=clinic_id, draft_id=document.draft_id)
     draft = document.draft
+    configuration = latest_configuration(clinic_id)
     drift = [
         label
         for label, frozen_value, current in (
             ("paciente", frozen.get("patient_label"), subject.patient_name),
-            ("clínica", frozen.get("clinic_label"), subject.clinic_name),
+            (
+                "clínica",
+                frozen.get("clinic_label"),
+                configuration.display_name if configuration else subject.clinic_name,
+            ),
             ("médico", frozen.get("issuer_label"), subject.issuer_name),
         )
         if frozen_value != current
@@ -988,6 +1112,10 @@ def _review(
             "document": document,
             "draft": draft,
             "frozen": frozen,
+            "is_prescription": draft.kind == DocumentKind.PRESCRIPTION,
+            "eligibility": class_eligibility(
+                category=frozen.get("category"), electronic=True
+            ),
             "items": _review_items(document),
             "attempts": attempts,
             "live": live,
@@ -1160,6 +1288,11 @@ def _signing_page(
     )
     bind_encounter_context(request, encounter)
     document = operation.document
+    if (
+        document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+        != DocumentKind.PRESCRIPTION
+    ):
+        authorize_document_draft(clinic_id=clinic_id, draft_id=document.draft_id)
     view = _operation_view(operation)
     siblings = list(
         SignatureOperation.objects.filter(document=document).order_by("created_at")
@@ -1187,6 +1320,10 @@ def _signing_page(
             "evidence": _evidence_facts(operation),
             "revoked": revoked,
             "release": release,
+            "stale": (
+                document.draft.state != "draft"
+                or document.draft.version != document.document_version
+            ),
             "verify_path": reverse(
                 "prescription:verify-document", kwargs={"handle": document.qr_handle}
             ),

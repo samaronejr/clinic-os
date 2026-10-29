@@ -416,11 +416,13 @@ def _read_probe(path: Path) -> KeyProbe:
     allowed = required | {
         "attachment_id",
         "clinic_id",
+        "clinical_document_id",
         "invoice_id",
         "owner_id",
         "patient_name",
         "patient_session_id",
         "physician_id",
+        "result_version_id",
         "version_id",
     }
     if (

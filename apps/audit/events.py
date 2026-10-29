@@ -46,8 +46,221 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "prescription.issuance.rehearsed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.issuance", "rehearsed"
+        ),
+        "prescription.signature.signed_unverified": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.signature", "signed_unverified"
+        ),
+        "prescription.signature.verification_completed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "prescription.signature",
+            "verification_completed",
+        ),
+        "prescription.signature.verification_failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.signature", "verification_failed"
+        ),
+        "prescription.clinical_draft.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.clinical_draft", "created"
+        ),
+        "prescription.clinical_draft.saved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.clinical_draft", "saved"
+        ),
+        "prescription.clinical_draft.discarded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.clinical_draft", "discarded"
+        ),
+        "prescription.favorite.added": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.favorite", "added"
+        ),
+        "prescription.favorite.removed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.favorite", "removed"
+        ),
+        "prescription.draft.renewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.draft", "renewed"
+        ),
+        "scheduling.queue.arrived": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "arrived"
+        ),
+        "scheduling.queue.called": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "called"
+        ),
+        "scheduling.queue.progressed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "progressed"
+        ),
+        "scheduling.room.updated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.room", "updated"
+        ),
+        "scheduling.delay.updated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.delay", "updated"
+        ),
+        "scheduling.display.issued": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.display", "issued"
+        ),
+        "scheduling.display.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.display", "revoked"
+        ),
+        "ehr.observation.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.observation", "recorded"
+        ),
+        "ehr.observation.confirmed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.observation", "confirmed"
+        ),
+        "ehr.medication.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.medication_statement", "recorded"
+        ),
+        "ehr.medication.reconciled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.medication_statement", "reconciled"
+        ),
+        "ehr.note.restricted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.restricted_note", "restricted"
+        ),
+        "ehr.note.granted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.note_access_grant", "granted"
+        ),
+        "ehr.note.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.note_access_grant", "revoked"
+        ),
+        "ehr.prior_note.copied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.copied_note_block", "copied"
+        ),
+        "ehr.prior_note.reviewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.copied_note_block", "reviewed"
+        ),
+        "ehr.timeline.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.timeline", "viewed"
+        ),
+        "identity.delegate.requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"
+        ),
+        "identity.delegate.verified": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "verified"
+        ),
+        "identity.delegate.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "rejected"
+        ),
+        "identity.delegate.activated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "activated"
+        ),
+        "identity.delegate.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "revoked"
+        ),
+        "identity.delegate.session_switched": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_session", "session_switched"
+        ),
+        "intake.duplicate.detected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.duplicate_candidate", "detected"
+        ),
+        "intake.duplicate.merged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.merge_decision", "merged"
+        ),
+        "intake.duplicate.dismissed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.merge_decision", "dismissed"
+        ),
+        "intake.duplicate.unmerged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_alias", "unmerged"
+        ),
+        "intake.duplicate.forward_transferred": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_merge_transfer", "transferred"
+        ),
+        "identity.passkey.registered": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.passkey", "created"
+        ),
+        "identity.passkey.verified": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.passkey", "verified"
+        ),
+        "identity.passkey.counter_regression": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.passkey", "denied"
+        ),
+        "identity.passkey.removed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.passkey", "revoked"
+        ),
+        "identity.passkey.policy_changed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.organization", "policy_changed"
+        ),
+        "workflows.task.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "created"
+        ),
+        "workflows.task.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "assigned"
+        ),
+        "workflows.task.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "started"
+        ),
+        "workflows.task.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "completed"
+        ),
+        "workflows.task.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "cancelled"
+        ),
+        "workflows.task.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.task", "escalated"
+        ),
+        "workflows.comment.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task_comment", "created"
+        ),
+        "workflows.definition.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "created"
+        ),
+        "workflows.definition.revised": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "revised"
+        ),
+        "workflows.definition.validated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "validated"
+        ),
+        "workflows.definition.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "published"
+        ),
+        "workflows.definition.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "retired"
+        ),
+        "workflows.run.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "started"
+        ),
+        "workflows.run.running": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "running"
+        ),
+        "workflows.run.waiting": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "waiting"
+        ),
+        "workflows.run.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "completed"
+        ),
+        "workflows.run.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "failed"
+        ),
+        "workflows.run.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "cancelled"
+        ),
+        "workflows.run.retried": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "retried"
+        ),
+        "workflows.step.claimed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "claimed"
+        ),
+        "workflows.step.waiting": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "waiting"
+        ),
+        "workflows.step.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "completed"
+        ),
+        "workflows.step.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "failed"
+        ),
+        "workflows.step.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.step", "cancelled"
+        ),
+        "workflows.step.retried": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.step", "retried"
+        ),
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
+        ),
+        "identity.signup.requested": Phase1AuditEventDefinition(
+            "system", "clinic-os-web", "identity.signup_registration", "requested"
+        ),
+        "identity.signup.inspected": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "identity.signup_registration", "inspected"
         ),
         "identity.principal.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.service_principal", "created"
@@ -88,11 +301,41 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.template.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.specialty_template", "published"
         ),
+        "ehr.template.draft_created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_template", "draft_created"
+        ),
+        "ehr.template.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_template", "retired"
+        ),
+        "intake.questionnaire_template.draft_created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "draft_created"
+        ),
+        "intake.questionnaire_template.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "published"
+        ),
+        "intake.questionnaire_template.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "retired"
+        ),
         "consent.text.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "consent.text", "published"
         ),
         "consent.accepted": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "consent.acceptance", "accepted"
+        ),
+        "consent.refused": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.refusal", "refused"
+        ),
+        "consent.notice.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.notice", "published"
+        ),
+        "consent.ai_disclosure.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.ai_disclosure", "recorded"
+        ),
+        "consent.participant.acknowledged": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "consent.participant_acknowledgment",
+            "acknowledged",
         ),
         "consent.revoked": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "consent.revocation", "revoked"
@@ -130,6 +373,27 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.encounter.closed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.encounter", "closed"
         ),
+        "ehr.encounter.opened_unscheduled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter", "opened_unscheduled"
+        ),
+        "ehr.episode.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode", "opened"
+        ),
+        "ehr.episode.closed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode", "closed"
+        ),
+        "ehr.episode.linked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode_encounter", "linked"
+        ),
+        "ehr.draft.handed_over": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "handed_over"
+        ),
+        "ehr.addendum.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter_addendum", "opened"
+        ),
+        "ehr.addendum.saved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter_addendum", "saved"
+        ),
         "ehr.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.record", "denied"
         ),
@@ -160,11 +424,113 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "identity.user_clinic_role",
             "revoked",
         ),
+        "identity.staff.invited": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "created"
+        ),
+        "identity.staff.invitation_accepted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "accepted"
+        ),
+        "identity.staff.invitation_expired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "expired"
+        ),
+        "identity.staff.invitation_revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "revoked"
+        ),
+        "identity.recovery.enrolled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.recovery_batch", "created"
+        ),
+        "identity.recovery.consumed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.recovery_code", "consumed"
+        ),
+        "identity.authenticator.reset_requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.authenticator_reset", "requested"
+        ),
+        "identity.authenticator.reset_executed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.authenticator_reset", "executed"
+        ),
+        "identity.session.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.session", "revoked"
+        ),
+        "identity.staff.offboarded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.user", "offboarded"
+        ),
         "identity.clinic_timezone.changed": Phase1AuditEventDefinition(
             "tenant",
             "clinic-os-ops",
             "identity.clinic",
             "timezone_changed",
+        ),
+        "intake.demographics.viewed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_clinic_enrollment",
+            "viewed",
+        ),
+        "intake.demographics.billing_viewed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_clinic_enrollment",
+            "viewed",
+        ),
+        "intake.demographics.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_demographics",
+            "saved",
+        ),
+        "intake.identifier.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_identifier",
+            "saved",
+        ),
+        "intake.identifier.retired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_identifier",
+            "retired",
+        ),
+        "intake.address.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_address",
+            "saved",
+        ),
+        "intake.address.retired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_address",
+            "retired",
+        ),
+        "intake.emergency_contact.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.emergency_contact",
+            "saved",
+        ),
+        "intake.emergency_contact.retired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.emergency_contact",
+            "retired",
+        ),
+        "intake.membership.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.insurance_membership",
+            "saved",
+        ),
+        "intake.membership.retired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.insurance_membership",
+            "retired",
+        ),
+        "intake.intake_policy.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.clinic_intake_policy",
+            "saved",
         ),
         "intake.patient.created": Phase1AuditEventDefinition(
             "tenant",
@@ -250,6 +616,21 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "intake.patient_clinic_enrollment",
             "viewed",
         ),
+        "scheduling.resource.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.resource", "created"
+        ),
+        "scheduling.service.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.service_type", "created"
+        ),
+        "scheduling.template.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.availability_template", "created"
+        ),
+        "scheduling.closure.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.closure", "created"
+        ),
+        "scheduling.definition.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.definition", "retired"
+        ),
         "scheduling.appointment.created": Phase1AuditEventDefinition(
             "tenant",
             "clinic-os-web",
@@ -267,6 +648,60 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "clinic-os-web",
             "scheduling.appointment",
             "cancelled",
+        ),
+        "scheduling.appointment.requested": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "requested",
+        ),
+        "scheduling.appointment.held": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "held",
+        ),
+        "scheduling.appointment.expired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "scheduling.appointment",
+            "expired",
+        ),
+        "scheduling.appointment.booked": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "booked",
+        ),
+        "scheduling.appointment.arrived": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "arrived",
+        ),
+        "scheduling.appointment.started": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "started",
+        ),
+        "scheduling.appointment.completed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "completed",
+        ),
+        "scheduling.appointment.no_show": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "no_show",
+        ),
+        "scheduling.series.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.appointment_series", "created"
+        ),
+        "scheduling.series.edited": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.appointment_series", "edited"
         ),
         "scheduling.appointment.viewed": Phase1AuditEventDefinition(
             "tenant",
@@ -291,6 +726,15 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         ),
         "teleconsult.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "teleconsult.session", "denied"
+        ),
+        "teleconsult.participant.removed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "removed"
+        ),
+        "teleconsult.audio_only.enabled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "audio_only"
+        ),
+        "teleconsult.audio_only.disabled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "video_restored"
         ),
         "providers.capability.proposed": Phase1AuditEventDefinition(
             "system",
@@ -339,6 +783,53 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "clinic-os-ops",
             "providers.capability_version",
             "revoked",
+        ),
+        # Plan item 30: specialty bundle and retained clinical entry transitions.
+        "ehr.pack.installed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "installed"
+        ),
+        "ehr.pack.uninstalled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "uninstalled"
+        ),
+        "ehr.specialty.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_entry", "recorded"
+        ),
+        "ehr.pack.reordered": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "reordered"
+        ),
+        # Task 31: keep this additive registry block together for lane rebases.
+        "orders.order.draft": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "draft"
+        ),
+        "orders.order.placed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "placed"
+        ),
+        "orders.order.collected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "collected"
+        ),
+        "orders.order.in_process": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "in_process"
+        ),
+        "orders.result.ingested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "ingested"
+        ),
+        "orders.result.matched": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "matched"
+        ),
+        "orders.result.quarantined": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "quarantined"
+        ),
+        "orders.result.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "rejected"
+        ),
+        "orders.result.acknowledged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "acknowledged"
+        ),
+        "orders.result.released": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "released"
+        ),
+        "orders.task.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "created"
         ),
     }
 )

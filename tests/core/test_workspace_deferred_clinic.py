@@ -22,7 +22,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.test import RequestFactory
 from django.urls import resolve
 
-from core.test_navigation import RUN, _client_for, _get, _post
+from core.test_navigation import RUN, _client_for, _get, _post, _reauthenticate
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
 
@@ -58,6 +58,7 @@ def test_fresh_post_refusals_do_not_persist_clinic(
                 clinic_id=graph.clinic_b,
                 role="receptionist",
             )
+        _reauthenticate(client, user.pk, "receptionist")
     # No page, including /auth/protected/, has been loaded on this session.
     session = client.session
     assert ACTIVE_CLINIC_SESSION_KEY not in session

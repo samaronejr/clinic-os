@@ -21,19 +21,35 @@ from ops.testing.renewal_acceptance import (
 )
 from ops.testing.renewal_runner import SUITES
 
+from infra.ci_shard_support import write_python_artifacts
+
 REPOSITORY = Path(__file__).resolve().parents[2]
 
 FIRST_SUITE = sorted(SUITES)[0]
 
 WORKFLOW = """\
 jobs:
+  test:
+    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/2
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+        shard: [1, 2]
+    steps: []
+  python-coverage:
+    name: Python ${{ matrix.python-version }} combined coverage and census
+    needs: [test]
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps: []
   renewal-browser:
     strategy:
       matrix:
         shard:
 %s
   renewal-acceptance:
-    needs: [test, contracts, renewal-browser, worker-integration,
+    needs: [test, python-coverage, contracts, renewal-browser, worker-integration,
             migration-upgrade, actionlint]
 """
 
@@ -121,6 +137,7 @@ def _populate(
 ) -> Path:
     for suite in sorted(SUITES):
         _write_suite(root, suite, digest=digest, revision=revision, tree=tree)
+    write_python_artifacts(root, revision=revision, tree=tree)
     return root
 
 
@@ -420,3 +437,53 @@ def test_tracked_workflow_binds_every_suite_plus_firefox_and_webkit_legs() -> No
         for suite in SUITES
         for engine in ("chromium", "firefox", "webkit")
     }
+
+
+@pytest.mark.parametrize("job", ["test", "python-coverage"])
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
+def test_python_shard_and_merge_jobs_are_required(
+    tmp_path: Path,
+    job: str,
+    result: str,
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    failures = validate(_workflow(), _needs(**{job: {"result": result}}), artifacts)
+    assert any(f"required job {job} did not succeed" in failure for failure in failures)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "shard: [1]",
+        "shard: [1, 1]",
+        "shard: [1, 2, 3]",
+        "shard: [1, 2]\n        exclude: [{shard: 2}]",
+    ],
+)
+def test_rc_rejects_a_shrunken_or_duplicated_python_matrix(replacement: str) -> None:
+    workflow = _workflow().replace("shard: [1, 2]", replacement)
+    failures, _ = _binding_failures(workflow, set(SUITES))
+    assert any("every Python shard exactly once" in failure for failure in failures)
+
+
+@pytest.mark.parametrize("version", ["3.12", "3.13"])
+@pytest.mark.parametrize("number", [1, 2])
+def test_rc_requires_every_python_shard_artifact(
+    tmp_path: Path,
+    version: str,
+    number: int,
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    shard = artifacts / f"renewal-python-py{version}-shard-{number}"
+    shard.rename(shard.with_name("absent"))
+    failures = validate(_workflow(), _needs(), artifacts)
+    assert any(
+        f"Python {version}" in failure and "artifact" in failure for failure in failures
+    )
+
+
+def test_rc_requires_combined_coverage_evidence(tmp_path: Path) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    (artifacts / "renewal-coverage-py3.13/report.json").unlink()
+    failures = validate(_workflow(), _needs(), artifacts)
+    assert any("Python 3.13" in failure for failure in failures)

@@ -32,7 +32,7 @@ from apps.ehr.attachment_storage import (
     default_storage,
 )
 from apps.ehr.models import ClinicalAttachment, Encounter
-from apps.ehr.services import ClinicalAccessDeniedError, _denied
+from apps.ehr.services import ClinicalAccessDeniedError, _denied, decided
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_id,
@@ -202,7 +202,9 @@ def upload_attachment(
             key,
             protect(purpose="ehr.clinicalattachment.bytes", plaintext=data),
         )
-        with transaction.atomic():
+        with decided(
+            lambda: authorize_attachment_encounter(clinic_id, encounter_id, write=True)
+        ):
             attachment = ClinicalAttachment.objects.create(
                 organization_id=encounter.organization_id,
                 clinic_id=clinic_id,
@@ -221,8 +223,9 @@ def upload_attachment(
                 clinic_id=clinic_id,
                 affected_record_id=attachment.pk,
             )
-    except (DatabaseError, OSError, AttachmentStorageError):
-        # A failed delete keeps the receipt, so cleanup stays recoverable.
+    except (ClinicalAccessDeniedError, DatabaseError, OSError, AttachmentStorageError):
+        # A failed delete keeps the receipt, so cleanup stays recoverable; a
+        # refusal decided again by ``decided`` leaves no bytes either.
         backend.delete(key)
         backend.clear_pending(key)
         raise
@@ -286,6 +289,29 @@ def _record_scan_failure(attachment: ClinicalAttachment, reason: str) -> None:
     )
 
 
+def _scan_outcome(
+    locked: ClinicalAttachment, backend: AttachmentStorage, engine: AttachmentScanner
+) -> tuple[str | None, str, str]:
+    """Decrypt and scan the locked row's bytes: (retryable failure, verdict, reason)."""
+    try:
+        data = reveal(
+            purpose="ehr.clinicalattachment.bytes",
+            envelope=backend.get(locked.storage_key),
+        )
+    except AttachmentStorageError:
+        return "storage_unavailable", "", ""
+    except EnvelopeError:
+        # An undecryptable object is a storage-integrity failure.
+        return None, "rejected", "digest_mismatch"
+    if hashlib.sha256(data).hexdigest() != locked.sha256:
+        return None, "rejected", "digest_mismatch"
+    try:
+        verdict, reason = engine.scan(attachment=locked, data=data)
+    except AttachmentScanUnavailableError:
+        return "scan_unavailable", "", ""
+    return None, verdict, reason
+
+
 def scan_attachment(
     *,
     clinic_id: UUID,
@@ -299,16 +325,22 @@ def scan_attachment(
     with incremented attempts and a fixed reason, so the caller can retry or
     clean up without ever serving the bytes.
     """
-    row = ClinicalAttachment.objects.filter(
-        pk=attachment_id, clinic_id=clinic_id
-    ).first()
-    if row is None:
-        raise ClinicalAccessDeniedError
-    authorize_attachment_encounter(clinic_id, row.encounter_id, write=True)
+
+    def authority() -> ClinicalAttachment:
+        # Reads only: the attachment and write authority on its encounter.
+        found = ClinicalAttachment.objects.filter(
+            pk=attachment_id, clinic_id=clinic_id
+        ).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        authorize_attachment_encounter(clinic_id, found.encounter_id, write=True)
+        return found
+
+    row = authority()
     backend = storage if storage is not None else default_storage()
     engine = scanner if scanner is not None else default_scanner()
     failure: str | None = None
-    with transaction.atomic():
+    with decided(authority):
         locked = (
             ClinicalAttachment.objects.select_for_update()
             .filter(pk=row.pk, state="quarantined")
@@ -317,26 +349,7 @@ def scan_attachment(
         if locked is None:
             # A concurrent scan already finished; return its terminal result.
             return ClinicalAttachment.objects.get(pk=row.pk)
-        try:
-            data = reveal(
-                purpose="ehr.clinicalattachment.bytes",
-                envelope=backend.get(locked.storage_key),
-            )
-        except AttachmentStorageError:
-            failure = "storage_unavailable"
-            verdict, reason = "", ""
-        except EnvelopeError:
-            # An undecryptable object is a storage-integrity failure.
-            verdict, reason = "rejected", "digest_mismatch"
-        else:
-            if hashlib.sha256(data).hexdigest() != locked.sha256:
-                verdict, reason = "rejected", "digest_mismatch"
-            else:
-                try:
-                    verdict, reason = engine.scan(attachment=locked, data=data)
-                except AttachmentScanUnavailableError:
-                    failure = "scan_unavailable"
-                    verdict, reason = "", ""
+        failure, verdict, reason = _scan_outcome(locked, backend, engine)
         locked.scan_attempts += 1
         if failure is not None:
             # Retry metadata commits before the failure propagates.

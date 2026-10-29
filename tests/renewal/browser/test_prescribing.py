@@ -31,7 +31,8 @@ from playwright.sync_api import expect
 
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
-from renewal.browser.engines import full_page_screenshot
+from renewal.browser.a11y_support import check_page
+from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     availability_staff,
@@ -54,6 +55,7 @@ __all__ = ("availability_staff",)
 
 DAYS = {1280: "2035-08-11", 768: "2035-08-12", 375: "2035-08-13"}
 RECOVERY_DAY = "2035-08-14"
+CLASS_DAYS = {1280: "2035-08-17", 375: "2035-08-18", 320: "2035-08-19"}
 PATIENT = "Paciente Sintético Questionário"
 ITEM = {
     "medication_description": " Medicamento fictício — não utilizar ",
@@ -94,6 +96,155 @@ def ensure_physician_profile(staff: dict[str, str]) -> None:
                 f"synthetic:physician:{staff['physician_a_id']}",
             ],
         )
+
+
+def seed_catalog_entry(staff: dict[str, str]) -> str:
+    """Install synthetic public terminology through the owner fixture boundary."""
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "INSERT INTO clinic_app.prescription_medicationcatalogimport "
+            "(id,schema_version,source_url,retrieved_on,checksum,loaded_at) "
+            "VALUES (gen_random_uuid(),1,%s,'2026-10-20',%s,statement_timestamp()) "
+            "ON CONFLICT (checksum) DO NOTHING",
+            ["https://www.gov.br/anvisa/pt-br/synthetic-browser.json", "a" * 64],
+        )
+        batch = conn.execute(
+            "SELECT id FROM clinic_app.prescription_medicationcatalogimport "
+            "WHERE checksum=%s",
+            ["a" * 64],
+        ).fetchone()
+        assert batch is not None
+        conn.execute(
+            "INSERT INTO clinic_app.prescription_medicationcatalogentry "
+            "(id,source_id,code,description,strength_form) "
+            "VALUES (gen_random_uuid(),%s,'SYNTHETIC-BROWSER',%s,%s) "
+            "ON CONFLICT (source_id,code) DO NOTHING",
+            [batch[0], "Synthetic catalog medicine", "Synthetic tablet"],
+        )
+        entry = conn.execute(
+            "SELECT id FROM clinic_app.prescription_medicationcatalogentry "
+            "WHERE source_id=%s AND code='SYNTHETIC-BROWSER'",
+            [batch[0]],
+        ).fetchone()
+        assert entry is not None
+        return str(entry[0])
+
+
+def check_saved_accessibility(
+    page: Page, base: str, root: Path, state: str, width: int
+) -> None:
+    """Check the same saved native state with axe in an enhanced context."""
+    browser = page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        storage_state=page.context.storage_state(),
+        locale="pt-BR",
+        viewport={"width": width, "height": 900},
+    )
+    try:
+        enhanced = context.new_page()
+        goto_settled(enhanced, page.url)
+        result = check_page(enhanced, base, root, f"classes-{state}-{width}")
+        assert result["violations"] == 0
+        for control in page.locator(
+            "#prescription-form button, #prescription-form input:not([type=hidden]), "
+            "#prescription-form select, #prescription-form textarea, #sign-form button"
+        ).all():
+            box = element_box(control)
+            assert box["width"] >= 44
+            assert box["height"] >= 44
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("width", [1280, 375, 320])
+def test_manual_class_catalog_and_paper_path_without_javascript(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    width: int,
+) -> None:
+    # Given: synthetic source terminology and the complete native form path.
+    staff, base = availability_staff, renewal_base_url
+    seed(staff, CLASS_DAYS[width])
+    entry = seed_catalog_entry(staff)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        java_script_enabled=False,
+        locale="pt-BR",
+        viewport={"width": width, "height": 900},
+        record_video_dir=renewal_artifact_root / "prescribing" / "videos",
+        record_video_size={"width": width, "height": 900},
+    )
+    try:
+        page = context.new_page()
+        _sign_in_physician(page, base, staff)
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{CLASS_DAYS[width]}/1/",
+        )
+        press(page, "open")
+        click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
+        press(page, "create")
+        expect(page.locator("#id_category")).to_have_value("")
+        page.locator("#id_catalog_query").fill("Synthetic catalog")
+        press(page, "catalog_search")
+        click_to_navigate(
+            page.locator(f'button[name="favorite_add_id"][value="{entry}"]')
+        )
+        click_to_navigate(
+            page.locator(f'button[name="use_catalog_id"][value="{entry}"]').first
+        )
+        expect(page.locator("#id_category")).to_have_value("")
+        for field, value in {
+            "dose": "0.5",
+            "route": "oral",
+            "frequency": "3",
+            "duration": "7",
+            "instructions": "Synthetic explicit addendum",
+        }.items():
+            page.locator(f"#id_items-0-{field}").fill(value)
+        page.locator("#id_items-0-dose_unit").select_option("tablet")
+        # When: a simple class is selected explicitly and numeric directions saved.
+        page.locator("#id_category").select_option("simple")
+        press(page, "save")
+        # Then: the entered directions, exact quantity and selected class survive.
+        expect(page.locator("#id_items-0-quantity")).to_have_value("10.5")
+        expect(page.locator("#id_category")).to_have_value("simple")
+        capture(page, renewal_artifact_root, "catalog-structured-simple", width)
+        check_saved_accessibility(
+            page, base, renewal_artifact_root, "catalog-structured-simple", width
+        )
+        page.locator("#id_category").select_option("notificacao_b")
+        press(page, "save")
+        press_in_view(page, "render_document")
+        expect(
+            page.locator('#sign-form button[value="sign_document"]')
+        ).to_be_disabled()
+        gate = page.locator("[data-class-gate]").get_attribute("data-class-gate")
+        assert gate == "sncr_required"
+        expect(page.locator('[data-preparation-mode="paper"]')).to_be_visible()
+        # A crafted POST cannot turn a disabled electronic action into issuance.
+        response = page.request.post(
+            page.url,
+            form={
+                "csrfmiddlewaretoken": page.locator(
+                    '#sign-form input[name="csrfmiddlewaretoken"]'
+                ).input_value(),
+                "action": "sign_document",
+            },
+        )
+        assert response.status == 400
+        capture(page, renewal_artifact_root, "regulated-paper-only", width)
+        check_saved_accessibility(
+            page, base, renewal_artifact_root, "regulated-paper-only", width
+        )
+    finally:
+        context.close()
+    assert page.video is not None
+    page.video.save_as(renewal_artifact_root / f"rx-{width}.webm")
 
 
 def operations(staff: dict[str, str], document: str) -> list[tuple[str, str]]:
@@ -153,6 +304,8 @@ def author_and_render(page: Page, base: str, staff: dict[str, str], day: str) ->
     press(page, "open")
     click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
     press(page, "create")
+    expect(page.locator("#id_category")).to_have_value("")
+    page.locator("#id_category").select_option("synthetic_non_controlled")
     for field, value in ITEM.items():
         page.locator(f"#id_items-0-{field}").fill(value)
     press(page, "save")

@@ -12,7 +12,13 @@ from apps.scheduling.agenda_queries import (
     view_agenda,
 )
 from apps.scheduling.appointment_cancellation import cancel_appointment
-from apps.scheduling.appointment_creation import create_appointment
+from apps.scheduling.appointment_creation import (
+    ServiceBooking,
+    create_appointment,
+    create_hold,
+    create_service_appointment,
+    create_service_hold,
+)
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentCancellationConflictError,
@@ -24,7 +30,30 @@ from apps.scheduling.appointment_errors import (
     AppointmentTerminalError,
     SlotConflict,
 )
-from apps.scheduling.appointment_rescheduling import reschedule_appointment
+from apps.scheduling.appointment_lifecycle import (
+    AppointmentLifecycleError,
+    AppointmentLifecycleInputError,
+    HoldExpiry,
+    arrive,
+    book,
+    cancel,
+    complete,
+    expire,
+    expire_due_holds,
+    hold,
+    mark_no_show,
+    start,
+)
+from apps.scheduling.appointment_rescheduling import (
+    move_appointment,
+    reschedule_appointment,
+)
+from apps.scheduling.appointment_series import (
+    SeriesBooking,
+    SeriesEdit,
+    create_series,
+    edit_series,
+)
 from apps.scheduling.appointment_values import AppointmentLocalRange
 from apps.scheduling.appointment_view import (
     AppointmentTransitionView,
@@ -48,6 +77,20 @@ from apps.scheduling.booking_queries import (
     BookingPreparation,
     prepare_booking,
 )
+from apps.scheduling.reception import (
+    ArrivalReadiness,
+    ReceptionAccessDeniedError,
+    ReceptionConflictError,
+    ReceptionInputError,
+    arrival_readiness,
+    broadcast_clinician_delay,
+    call_to_room,
+    issue_display_device,
+    mark_arrived,
+    revoke_display_device,
+    update_room_status,
+)
+from apps.scheduling.resource_errors import SchedulingRuleError
 
 __all__ = (
     "AGENDA_PAGE_SIZE",
@@ -60,11 +103,14 @@ __all__ = (
     "AppointmentCancellationInputError",
     "AppointmentCreateInputError",
     "AppointmentIdempotencyConflictError",
+    "AppointmentLifecycleError",
+    "AppointmentLifecycleInputError",
     "AppointmentLocalRange",
     "AppointmentPractitionerError",
     "AppointmentRescheduleInputError",
     "AppointmentTerminalError",
     "AppointmentTransitionView",
+    "ArrivalReadiness",
     "AvailabilityAccessDeniedError",
     "AvailabilityCreateInputError",
     "AvailabilityHasAppointmentsError",
@@ -75,13 +121,43 @@ __all__ = (
     "BookingAvailabilityWindow",
     "BookingPractitioner",
     "BookingPreparation",
+    "HoldExpiry",
+    "ReceptionAccessDeniedError",
+    "ReceptionConflictError",
+    "ReceptionInputError",
+    "SchedulingRuleError",
+    "SeriesBooking",
+    "SeriesEdit",
+    "ServiceBooking",
     "SlotConflict",
+    "arrival_readiness",
+    "arrive",
+    "book",
+    "broadcast_clinician_delay",
+    "call_to_room",
+    "cancel",
     "cancel_appointment",
+    "complete",
     "create_appointment",
     "create_availability",
+    "create_hold",
+    "create_series",
+    "create_service_appointment",
+    "create_service_hold",
+    "edit_series",
+    "expire",
+    "expire_due_holds",
+    "hold",
+    "issue_display_device",
+    "mark_arrived",
+    "mark_no_show",
+    "move_appointment",
     "prepare_booking",
     "reschedule_appointment",
     "retire_availability",
+    "revoke_display_device",
+    "start",
+    "update_room_status",
     "view_agenda",
     "view_appointment_for_transition",
     "view_availability",
