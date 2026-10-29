@@ -22,6 +22,7 @@ class Migration(migrations.Migration):
         ("consent", "0005_delegate_purposes"),
         ("ehr", "0016_later_pack_draft_guard"),
         ("identity", "0040_agent_execution_authority"),
+        ("orders", "0001_identity_safe_results"),
         ("scribe", "0004_purge_state"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
