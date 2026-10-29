@@ -139,9 +139,13 @@ def presentation(page: Page, base: str, root: Path, *, javascript: bool) -> None
     expect(page.locator("#candidate-0")).to_be_in_viewport()
     page.emulate_media(reduced_motion="reduce", forced_colors="active")
     full_page_screenshot(page, root / "forced-colors-reduced-motion.png")
-    page.emulate_media(reduced_motion="no-preference", forced_colors="none")
+    # Retain reduced motion while leaving forced colors so axe never samples an
+    # intermediate navigation color transition (notably in Firefox).
+    page.emulate_media(forced_colors="none")
+    expect(page.locator(".nav-command")).to_have_css("transition-property", "none")
     if javascript:
         check_page(page, base, root, "extraction-candidates")
+    page.emulate_media(reduced_motion="no-preference")
 
 
 @pytest.mark.parametrize("javascript", [False, True], ids=["native", "enhanced"])
