@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
     """Install narrowed runtime grants and guards with the additive schema."""
 
     dependencies: ClassVar = [
+        ("billing", "0001_initial"),
         ("identity", "0038_reception_permission"),
         ("scheduling", "0008_expiry_audit"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
