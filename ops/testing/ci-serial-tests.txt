@@ -47,6 +47,7 @@ server-state tests/ai/test_agent_guards.py
 server-state tests/ai/test_agent_authority.py
 server-state tests/ai/test_agent_isolation.py
 server-state tests/identity/test_scribe_census.py::test_real_nonstaff_census_observes_the_note_reader
+server-state tests/ai/test_extraction_authority.py::test_extraction_census_observes_every_delegated_permission_root
 server-state tests/retention/test_execution.py
 server-state tests/retention/test_principal_migrations.py
 server-state tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action
