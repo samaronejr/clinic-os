@@ -107,6 +107,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_userclinicrole",
     "identity_userpreference",
     "intake_clinicintakepolicy",
+    # LGPD data-subject requests and their SLA task links (todo 50).
+    "intake_datasubjectrequest",
     "intake_demographicscorrection",
     "intake_duplicatecandidate",
     "intake_emergencycontact",

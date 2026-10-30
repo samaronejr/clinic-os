@@ -3490,6 +3490,172 @@
       ]
     },
     {
+      "symbol": "apps.intake.data_request_views._patient_names",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_request_views._patient_names#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this display-only name gate (demographics.read through the SQL evaluator) for permitted and refused staff through the cut1 census; privacy.requests admits the queue and this grants no record access."
+    },
+    {
+      "symbol": "apps.intake.data_request_views.staff_data_requests",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_request_views.staff_data_requests#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._authority",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._authority#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._patient_audit",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._patient_audit#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._receipt",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Type check of the submission resolver's own result row; an unexpected shape fails closed with the shared denial and grants nothing."
+    },
+    {
+      "symbol": "apps.intake.data_requests._require_privacy",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._require_privacy#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._resolver_row",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Runs one fixed resolver command and maps its SQLSTATE (42501 denial, 40001 conflict, 22023 and 23514 input) to the contract; the resolver decides authority."
+    },
+    {
+      "symbol": "apps.intake.data_requests._transition",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._transition#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._withdraw",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._withdraw#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.export_data_subject_copy",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.export_data_subject_copy#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.patient_data_subject_requests",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.patient_data_subject_requests#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.patient_request_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.patient_request_scope#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.sharing_information",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.sharing_information#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.staff_data_subject_requests",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.staff_data_subject_requests#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.submit_data_subject_request",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.submit_data_subject_request#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
       "symbol": "apps.intake.delegate_views.delegate_session_status",
       "signals": [
         "resolver"
@@ -3716,6 +3882,50 @@
       "probes": [
         "apps.intake.patient_search.search_patients_exact"
       ]
+    },
+    {
+      "symbol": "apps.intake.portal._acting_for_patient",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal._acting_for_patient#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal._session_clinic",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal._session_clinic#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal.channel_preferences",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal.channel_preferences#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal.delegate_options",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal.delegate_options#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
     },
     {
       "symbol": "apps.intake.questionnaire_views._denied",
@@ -4101,6 +4311,29 @@
       "probes": [
         "apps.orders.queries.result_rows#cut1"
       ]
+    },
+    {
+      "symbol": "apps.orders.patient_results._audit",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.patient_results._audit#cut1"
+      ],
+      "reason": "Task-50 result-download oracles execute this released-source boundary (unreleased, unknown and staff contexts share one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.orders.patient_results.patient_result_file",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.patient_results.patient_result_file#cut1"
+      ],
+      "reason": "Task-50 result-download oracles execute this released-source boundary (unreleased, unknown and staff contexts share one denial) through the cut1 census."
     },
     {
       "symbol": "apps.orders.review.acknowledge_result",
@@ -6017,6 +6250,7 @@
     {
       "symbol": "apps.scheduling.patient_booking.patient_slots",
       "signals": [
+        "denial",
         "resolver"
       ],
       "kind": "delegated",
@@ -7747,6 +7981,19 @@
     "apps.intake.alias_access.review_actor#cut1",
     "apps.intake.alias_access.verified_review_session#cut1",
     "apps.intake.contacts._actor_label",
+    "apps.intake.data_request_views._patient_names#cut1",
+    "apps.intake.data_request_views.staff_data_requests#cut1",
+    "apps.intake.data_requests._authority#cut1",
+    "apps.intake.data_requests._patient_audit#cut1",
+    "apps.intake.data_requests._require_privacy#cut1",
+    "apps.intake.data_requests._transition#cut1",
+    "apps.intake.data_requests._withdraw#cut1",
+    "apps.intake.data_requests.export_data_subject_copy#cut1",
+    "apps.intake.data_requests.patient_data_subject_requests#cut1",
+    "apps.intake.data_requests.patient_request_scope#cut1",
+    "apps.intake.data_requests.sharing_information#cut1",
+    "apps.intake.data_requests.staff_data_subject_requests#cut1",
+    "apps.intake.data_requests.submit_data_subject_request#cut1",
     "apps.intake.delegate_views.delegate_session_status#cut1",
     "apps.intake.delegate_views.renew_representation#cut1",
     "apps.intake.demographics._actor_label",
@@ -7766,6 +8013,10 @@
     "apps.intake.patient_access.revoke_patient_access",
     "apps.intake.patient_merge.transfer_patient_forward#cut1",
     "apps.intake.patient_search.search_patients_exact",
+    "apps.intake.portal._acting_for_patient#cut1",
+    "apps.intake.portal._session_clinic#cut1",
+    "apps.intake.portal.channel_preferences#cut1",
+    "apps.intake.portal.delegate_options#cut1",
     "apps.intake.questionnaire_views._denied",
     "apps.intake.questionnaire_views.patient_questionnaires#observed",
     "apps.intake.questionnaire_views.staff_questionnaires",
@@ -7799,6 +8050,8 @@
     "apps.orders.lab.receive_lab_result#cut1",
     "apps.orders.ordering.place_order#cut1",
     "apps.orders.ordering.progress_order#cut1",
+    "apps.orders.patient_results._audit#cut1",
+    "apps.orders.patient_results.patient_result_file#cut1",
     "apps.orders.queries.patient_sources#cut1",
     "apps.orders.queries.result_rows#cut1",
     "apps.orders.review.acknowledge_result#cut1",
@@ -10233,15 +10486,21 @@
           "clinic_app.billing_patient_charge",
           "clinic_app.billing_patient_charges",
           "clinic_app.consent_session",
+          "clinic_app.data_request_audit_scope",
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_purpose_allowed",
           "clinic_app.orders_delegate_allowed",
+          "clinic_app.orders_patient_download_scope",
           "clinic_app.orders_patient_sources",
           "clinic_app.patient_alias_overview",
           "clinic_app.patient_alias_set",
           "clinic_app.patient_booking_scope",
+          "clinic_app.patient_channel_preferences",
+          "clinic_app.patient_data_requests",
           "clinic_app.patient_session_overview",
           "clinic_app.questionnaire_patient_enrollment",
           "clinic_app.retention_records_session",
+          "clinic_app.submit_data_request",
           "clinic_app.teleconsult_patient_match"
         ],
         "signatures": [
@@ -10412,6 +10671,7 @@
           "clinic_app.delegate_session_guard",
           "clinic_app.delegate_session_status",
           "clinic_app.patient_authority",
+          "clinic_app.patient_delegate_options",
           "clinic_app.renew_delegate_grant",
           "clinic_app.switch_patient_delegate"
         ],
@@ -10446,7 +10706,8 @@
           "clinic_app.consent_refusalrecord:delegate_purpose"
         ],
         "resolvers": [
-          "clinic_app.consent_delegate_guard"
+          "clinic_app.consent_delegate_guard",
+          "clinic_app.submit_data_request"
         ],
         "signatures": [
           {
@@ -10591,11 +10852,15 @@
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
           "clinic_app.consent_audit",
+          "clinic_app.data_request_audit",
+          "clinic_app.data_request_emit_task",
+          "clinic_app.data_request_task_valid",
           "clinic_app.delegate_audit",
           "clinic_app.identity_signup_register",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_lab_account",
           "clinic_app.orders_lab_audit",
+          "clinic_app.orders_patient_download_audit",
           "clinic_app.orders_resolve_lab",
           "clinic_app.orders_system_task_valid",
           "clinic_app.prescription_document_viewed",
@@ -11369,7 +11634,8 @@
           "clinic_app.retention_failure",
           "clinic_app.retention_schedule",
           "clinic_app.scheduling_capacity_guard",
-          "clinic_app.scheduling_lifecycle_receipt"
+          "clinic_app.scheduling_lifecycle_receipt",
+          "clinic_app.submit_data_request"
         ],
         "signatures": [
           {
@@ -11422,6 +11688,7 @@
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.intake_datasubjectrequest:privacy_staff_read",
           "clinic_app.orders_labaccount:orders_read",
           "clinic_app.orders_order:orders_insert",
           "clinic_app.orders_order:orders_read",
@@ -11452,6 +11719,7 @@
           "clinic_app.ai_staff",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_staff",
           "clinic_app.ehr_patient_permission",
           "clinic_app.identity_invitation_accept",
@@ -11481,6 +11749,7 @@
           "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_guard",
           "clinic_app.teleconsult_clinician",
+          "clinic_app.transition_data_request",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
@@ -13160,7 +13429,8 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.patient_booking_slots"
+          "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots"
         ],
         "signatures": [
           {
@@ -13230,6 +13500,9 @@
           "clinic_app.scheduling_appointment:patient_booking_update",
           "clinic_app.scheduling_appointmenttransition:patient_booking_read",
           "clinic_app.scheduling_availabilityblock:patient_booking_read",
+          "clinic_app.scheduling_availabilitytemplate:patient_booking_read",
+          "clinic_app.scheduling_resource:patient_booking_read",
+          "clinic_app.scheduling_servicetype:patient_booking_read",
           "clinic_app.scheduling_waitlistentry:waitlist_read",
           "clinic_app.scheduling_waitlistentry:waitlist_update",
           "clinic_app.scheduling_waitlistoffer:waitlist_read",
@@ -13242,6 +13515,7 @@
           "clinic_app.patient_booking_receipt",
           "clinic_app.patient_booking_requires_approval",
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_appointment_guard_v1",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_guard"
@@ -13289,13 +13563,16 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_audit_scope",
           "clinic_app.delegate_grantor",
           "clinic_app.delegate_recovery_identity",
           "clinic_app.delegate_session_status",
           "clinic_app.patient_authority",
+          "clinic_app.patient_delegate_options",
           "clinic_app.patient_is_delegate",
           "clinic_app.renew_delegate_grant",
+          "clinic_app.submit_data_request",
           "clinic_app.switch_patient_delegate"
         ],
         "signatures": [
@@ -13994,6 +14271,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.patient_delegate_options",
           "clinic_app.patient_registry_count",
           "clinic_app.patient_registry_page",
           "clinic_app.patient_session_overview"
@@ -14923,6 +15201,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -15033,7 +15312,8 @@
     "clinic_app.scheduling_lifecycle_guard": {
       "discovery": {
         "migrations": [
-          "apps/scheduling/migrations/_lifecycle_sql.py"
+          "apps/scheduling/migrations/_lifecycle_sql.py",
+          "apps/scheduling/migrations/_patient_service_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -15849,6 +16129,7 @@
     "clinic_app.workflows_guard": {
       "discovery": {
         "migrations": [
+          "apps/intake/migrations/_data_request_sql.py",
           "apps/orders/migrations/_task_sql.py",
           "apps/retention/migrations/_purge_task_sql.py",
           "apps/workflows/migrations/0004_task_completion_gate.py",
@@ -16416,7 +16697,9 @@
           "apps/orders/migrations/_patient_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.orders_patient_download_scope"
+        ],
         "signatures": [
           {
             "arguments": "requested_version uuid",
@@ -17780,6 +18063,579 @@
         "test_native_retention_authority_and_restore_keep_independent_subjects"
       ],
       "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.data_request_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_audit_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_close_task": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_emit_task": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_guard": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_now": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_guard",
+          "clinic_app.submit_data_request"
+        ],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_task_close_valid": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "old_row jsonb, new_row jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_task_valid": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_withdrawn": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, requested_enrollment uuid, requested_purpose text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.orders_patient_download_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal result downloads: the released-source resolver decides the audience; the chained event binds the live patient session and refuses unreleased, unknown and staff contexts.",
+      "probes": [
+        "test_released_source_downloads_exact_bytes_with_one_session_bound_event",
+        "test_unreleased_unknown_and_staff_contexts_are_one_denial"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/orders/migrations/_patient_download_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.orders_patient_download_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal result downloads: the released-source resolver decides the audience; the chained event binds the live patient session and refuses unreleased, unknown and staff contexts.",
+      "probes": [
+        "test_released_source_downloads_exact_bytes_with_one_session_bound_event",
+        "test_unreleased_unknown_and_staff_contexts_are_one_denial"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/orders/migrations/_patient_download_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_patient_download_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_channel_preferences": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal channel summary: the live session subject's purpose/channel rows and verification state only, never destinations; staff contexts see none.",
+      "probes": [
+        "test_channel_preferences_summarize_channels_without_destinations"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_data_requests": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_delegate_options": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 delegate switcher: only the original patient identity's active, verified, unexpired grants with available evidence; staff and represented sessions see none.",
+      "probes": [
+        "test_delegate_options_list_only_active_verified_grants_of_the_original_identity"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.submit_data_request": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_kind text, requested_purpose text, details_envelope bytea, request_key uuid, request_fingerprints text[], withdrawn uuid[]",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.transition_data_request": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_request uuid, expected_revision integer, next_state text, reason text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_service_slots": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 service self-booking: only the session clinic's active service types, slots sized by the service duration and buffers with one free resource of every required kind, and no slot at all where the clinic reviews self-bookings.",
+      "probes": [
+        "test_booking_screen_takes_the_service_choice_in_the_post_body",
+        "test_patient_sees_only_active_services_of_the_session_clinic",
+        "test_service_slots_bind_duration_buffers_and_the_free_room",
+        "test_service_without_a_free_required_resource_offers_no_slot",
+        "test_two_patients_racing_for_the_last_room_get_one_booking"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_patient_service_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_day date, requested_service uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
     }
   },
   "sql_method": [

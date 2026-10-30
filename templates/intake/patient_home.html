@@ -1,42 +1,123 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static clinic_locale %}
 {% block title %}{% trans "Your enrollment · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "View the enrollment this access session is bound to." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
 {% block content %}
-<section class="intake-shell" aria-labelledby="patient-home-title">
-  <h1 id="patient-home-title">{% trans "Your enrollment" %}</h1>
-  <p class="lede">{% trans "This session shows only the enrollment your invitation was issued for." %}</p>
-  {% if unified_at %}<p class="feedback">{% blocktrans with date=unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}
-  <section class="panel" aria-labelledby="patient-enrollment">
-    <h2 id="patient-enrollment">{% trans "Enrollment details" %}</h2>
-    <dl class="patient-details">
-      <div class="patient-detail">
+<section class="portal" aria-labelledby="patient-home-title" data-portal-home>
+  <header class="portal-header">
+    <h1 id="patient-home-title">{% trans "Your enrollment" %}</h1>
+    <p class="lede">{% trans "Everything the clinic opened for this access session, in one place." %}</p>
+    <dl class="portal-identity">
+      <div class="portal-identity-item portal-identity-item--name">
         <dt>{% trans "Patient" %}</dt>
         <dd id="patient-name">{{ overview.patient_name }}</dd>
       </div>
-      <div class="patient-detail">
+      <div class="portal-identity-item">
         <dt>{% trans "Clinic" %}</dt>
         <dd id="patient-clinic">{{ overview.clinic_name }}</dd>
       </div>
-      <div class="patient-detail">
+      <div class="portal-identity-item">
         <dt>{% trans "Enrolled" %}</dt>
         <dd>{{ overview.enrolled_at|date:"d/m/Y H:i" }}</dd>
       </div>
-      <div class="patient-detail">
+      <div class="portal-identity-item">
         <dt>{% trans "Session ends" %}</dt>
         <dd>{{ overview.expires_at|date:"d/m/Y H:i" }}</dd>
       </div>
     </dl>
-  </section>
-  {% if 'booking' in overview.operations %}<a class="button" href="{% url 'scheduling:patient-booking' %}">Suas consultas</a>{% endif %}
-  {% if 'questionnaires' in overview.operations %}<a class="button" href="{% url 'intake:questionnaires' %}">Questionários antes da consulta</a>{% endif %}
-  {% if 'records' in overview.operations %}<a class="button" href="{% url 'retention:patient-records' %}" id="records-link">Seus registros</a><a class="button" href="{% url 'prescription:patient-documents' %}" id="documents-link">Seus documentos</a>{% endif %}
-  {% if 'consent' in overview.operations %}<a class="button" href="{% url 'consent:patient' %}">Seus consentimentos</a>{% endif %}
-  {% if 'billing' in overview.operations %}<a class="button" href="{% url 'billing:patient-charges' %}" id="charges-link">Suas cobranças</a>{% endif %}
-  {% if 'teleconsult' in overview.operations %}<a class="button" href="{% url 'teleconsult:patient' %}" id="teleconsult-link">Teleconsulta</a>{% endif %}
-  <form method="post" action="{% url 'intake:patient-logout' %}">
-    {% csrf_token %}
-    <button class="button button--secondary" type="submit">{% trans "Sign out" %}</button>
-  </form>
+    {% if unified_at %}<p class="feedback">{% blocktrans with date=unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}
+    {% if home.acting_for_patient %}
+      <div class="feedback feedback--warning portal-delegate" role="status" data-portal-delegate>
+        <p class="portal-delegate-title">{% include "includes/components/icon.html" with name="lock" only %}<strong>{% trans "You are acting as a representative." %}</strong></p>
+        <p>{% trans "Records the clinic restricted from representatives stay hidden on every screen of this portal." %}</p>
+      </div>
+    {% endif %}
+    {% if home.delegate_options and home.clinic_id %}
+      <form class="portal-switch" method="post" action="{% url 'intake:delegate-switch' %}" novalidate data-portal-switch>
+        {% csrf_token %}
+        <input type="hidden" name="clinic_id" value="{{ home.clinic_id }}">
+        <div class="field">
+          <label for="portal-switch-grant">{% trans "Whose portal are you using?" %}</label>
+          <select id="portal-switch-grant" name="grant_id" aria-describedby="portal-switch-hint">
+            <option value=""{% if not home.acting_for_patient %} selected{% endif %}>{% trans "My own access" %}</option>
+            {% for option in home.delegate_options %}<option value="{{ option.grant_id }}"{% if option.current %} selected{% endif %} data-portal-switch-option>{% blocktrans with name=option.patient_name %}Representing {{ name }}{% endblocktrans %}</option>{% endfor %}
+          </select>
+          <p class="hint" id="portal-switch-hint">{% trans "Only representations the clinic verified and activated are listed. Each one expires on the date the clinic set." %}</p>
+        </div>
+        <button class="button button--secondary" type="submit">{% trans "Switch" %}</button>
+      </form>
+    {% endif %}
+  </header>
+
+  <div class="portal-layout">
+    <div class="portal-main">
+      {% if home.next_appointment %}
+        <section class="panel portal-next" aria-labelledby="portal-next-title" data-portal-next>
+          <h2 id="portal-next-title">{% trans "Next appointment" %}</h2>
+          <p class="portal-next-when"><time datetime="{{ home.next_appointment.local_minute }}">{{ home.next_appointment.local_minute|clinic_minute }}</time></p>
+          <p class="portal-next-status">
+            <span class="badge {% if home.next_appointment.status == 'scheduled' %}badge--success{% else %}badge--warning{% endif %}" data-appointment-status="{{ home.next_appointment.status }}">{{ home.next_appointment.status|appointment_label }}</span>
+            {% if home.next_appointment.status != "scheduled" %}<span class="hint">{% trans "The clinic still has to confirm this time." %}</span>{% endif %}
+          </p>
+          <p class="hint">{% trans "Times are shown in the clinic's time zone." %}</p>
+        </section>
+      {% endif %}
+
+      {% if home.pending_forms or home.open_charges %}
+        <section class="portal-pending" aria-labelledby="portal-pending-title">
+          <h2 id="portal-pending-title">{% trans "Waiting for you" %}</h2>
+          <ul class="portal-pending-list">
+            {% if home.pending_forms %}
+              <li class="portal-pending-item" data-pending="questionnaires">
+                <span class="badge badge--warning">{{ home.pending_forms }}</span>
+                <span class="portal-pending-text">{% blocktrans count counter=home.pending_forms %}form to answer{% plural %}forms to answer{% endblocktrans %}</span>
+                <a class="button button--secondary" href="{% url 'intake:questionnaires' %}">{% trans "Answer now" %}</a>
+              </li>
+            {% endif %}
+            {% if home.open_charges %}
+              <li class="portal-pending-item" data-pending="charges">
+                <span class="badge badge--warning">{{ home.open_charges }}</span>
+                <span class="portal-pending-text">{% blocktrans count counter=home.open_charges %}open charge{% plural %}open charges{% endblocktrans %}</span>
+                <a class="button button--secondary" href="{% url 'billing:patient-charges' %}">{% trans "See payment instructions" %}</a>
+              </li>
+            {% endif %}
+          </ul>
+        </section>
+      {% endif %}
+
+      <nav class="portal-destinations" aria-labelledby="portal-destinations-title">
+        <h2 id="portal-destinations-title">{% trans "What you can do here" %}</h2>
+        {% if home.destinations %}
+          <ul class="portal-destination-list">
+            {% for destination in home.destinations %}
+              <li class="portal-destination" data-portal-destination="{{ destination.key }}">
+                <a id="{{ destination.element_id }}" class="portal-destination-link" href="{% url destination.url_name %}" aria-describedby="{{ destination.element_id }}-hint">{{ destination.label }}</a>
+                <p id="{{ destination.element_id }}-hint" class="hint">{{ destination.hint }}</p>
+                <span class="portal-destination-mark">{% include "includes/components/icon.html" with name="chevron-right" only %}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div data-portal-empty>
+            {% trans "Nothing else is open for this session" as empty_title %}{% trans "The clinic opened only this summary. Ask the clinic for a new invitation if you need to book, answer forms or see documents." as empty_message %}
+            {% include "includes/components/state.html" with state="empty" title=empty_title message=empty_message only %}
+          </div>
+        {% endif %}
+      </nav>
+    </div>
+
+    <aside class="portal-aside" aria-labelledby="portal-help-title">
+      <section class="feedback feedback--info portal-help" data-portal-help>
+        <h2 id="portal-help-title">{% trans "Talk to a person" %}</h2>
+        <p>{% trans "This portal never answers clinical questions on its own. For anything about your care, contact the clinic team through the channels you already use." %}</p>
+        <p><strong>{% trans "In an emergency, call 192." %}</strong></p>
+      </section>
+      <form class="portal-signout" method="post" action="{% url 'intake:patient-logout' %}">
+        {% csrf_token %}
+        <button class="button button--secondary" type="submit">{% trans "Sign out" %}</button>
+      </form>
+    </aside>
+  </div>
 </section>
 {% endblock %}

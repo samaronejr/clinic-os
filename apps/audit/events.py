@@ -822,6 +822,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "intake.patient_access_grant",
             "revoked",
         ),
+        **{
+            f"intake.data_request.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "intake.data_subject_request", verb
+            )
+            for verb in ("received", "started", "fulfilled", "rejected", "exported")
+        },
+        "intake.data_requests.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic", "viewed"
+        ),
+        "orders.result.patient_downloaded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "downloaded"
+        ),
         "scheduling.availability.created": Phase1AuditEventDefinition(
             "tenant",
             "clinic-os-web",

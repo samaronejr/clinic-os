@@ -1254,6 +1254,48 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "intake.patient_access_grant",
         "revoked",
     ),
+    "intake.data_request.received": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "received",
+    ),
+    "intake.data_request.started": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "started",
+    ),
+    "intake.data_request.fulfilled": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "fulfilled",
+    ),
+    "intake.data_request.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "rejected",
+    ),
+    "intake.data_request.exported": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "exported",
+    ),
+    "intake.data_requests.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic",
+        "viewed",
+    ),
+    "orders.result.patient_downloaded": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "downloaded",
+    ),
     "scheduling.availability.created": (
         "tenant",
         "clinic-os-web",

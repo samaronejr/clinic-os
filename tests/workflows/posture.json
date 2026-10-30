@@ -8,6 +8,12 @@
     ],
     [
       "workflows_task",
+      "completion_evidence",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
       "escalated_at",
       "clinic_app",
       "UPDATE"
@@ -44,14 +50,32 @@
     ],
     [
       "workflows_task",
+      "revision",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
       "state",
       "clinic_app",
       "UPDATE"
     ],
     [
       "workflows_task",
+      "state",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
       "updated_at",
       "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
+      "updated_at",
+      "clinic_resolver",
       "UPDATE"
     ],
     [
@@ -1039,7 +1063,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "f73241eb775b918ace3c5aa9d30374dfa2bb1e64b31d302cc1231f4b62b6ff56",
+      "0b57b6504daff963e4c6e61e355d94bbdde11174c55974c66584aee1c5ddeec1",
       [
         "clinic_resolver"
       ]

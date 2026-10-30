@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "Your data rights · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Ask the clinic for a copy, a correction or a portable copy of your data, see who may handle it, or withdraw an optional consent." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
+{% block content %}
+<section class="intake-shell portal-page portal-page--prose" aria-labelledby="data-requests-title" data-data-requests>
+  {% include "intake/partials/portal_back.html" only %}
+  <h1 id="data-requests-title">{% trans "Your data rights" %}</h1>
+  <p class="lede">{% trans "Under the LGPD you can ask the clinic for a copy of your data, a correction, a portable copy, information about who may handle it, or withdraw an optional consent. The clinic answers within 15 days." %}</p>
+  <p class="hint">{% trans "Clinical records stay as the law requires. A correction never erases what was recorded: your clinician adds an amendment when one is needed." %}</p>
+  {% if scope.acting_for_patient %}
+    <div class="feedback feedback--warning" role="status" data-portal-delegate>
+      <p>{% trans "You are acting as a representative. Requests you send here are recorded as made by you for the patient you represent." %}</p>
+    </div>
+  {% endif %}
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><p>{{ error }}</p></div>{% endif %}
+
+  <section class="panel" aria-labelledby="data-requests-new-title">
+    <h2 id="data-requests-new-title">{% trans "Make a request" %}</h2>
+    {% if kinds %}
+      <ul class="portal-request-list">
+        {% for kind in kinds %}
+          <li class="portal-request" data-request-kind="{{ kind.value }}">
+            <form method="post" novalidate data-data-request-form="{{ kind.value }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="submit">
+              <input type="hidden" name="kind" value="{{ kind.value }}">
+              <input type="hidden" name="idempotency_key" value="{{ kind.key }}" data-request-key>
+              <h3 id="request-kind-{{ kind.value }}">{{ kind.label }}</h3>
+              <p class="hint" id="request-kind-{{ kind.value }}-hint">{{ kind.hint }}</p>
+              {% if kind.value == "correction" %}
+                <div class="field">
+                  <label for="request-details">{% trans "What should the clinic correct?" %}</label>
+                  <textarea id="request-details" name="details" rows="4" maxlength="{{ details_max }}" aria-describedby="request-details-hint" required></textarea>
+                  <p class="hint" id="request-details-hint">{% blocktrans with limit=details_max %}Up to {{ limit }} characters. Do not include other people's data.{% endblocktrans %}</p>
+                </div>
+              {% elif kind.value == "objection" %}
+                <div class="field">
+                  <label for="request-purpose">{% trans "Which optional use?" %}</label>
+                  <select id="request-purpose" name="purpose" required>
+                    {% for purpose in purposes %}<option value="{{ purpose.value }}">{{ purpose.label }}</option>{% endfor %}
+                  </select>
+                </div>
+              {% endif %}
+              <button class="button button--secondary" type="submit" aria-describedby="request-kind-{{ kind.value }}-hint">{% trans "Send this request" %}<span class="visually-hidden">: {{ kind.label }}</span></button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {% trans "No request is open for this session" as empty_title %}{% trans "The clinic opened only part of the portal for this access. Ask the clinic team, who can register your request for you." as empty_message %}
+      <div data-data-request-empty>{% include "includes/components/state.html" with state="empty" title=empty_title message=empty_message only %}</div>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="data-requests-mine-title">
+    <h2 id="data-requests-mine-title">{% trans "Your requests" %}</h2>
+    {% if requests %}
+      <ul class="portal-request-list">
+        {% for item in requests %}
+          <li class="portal-request" data-data-request data-data-request-state="{{ item.row.state }}">
+            <h3>{{ item.kind_label }}{% if item.purpose_label %} · {{ item.purpose_label }}{% endif %}</h3>
+            <p><span class="badge{% if item.row.state == 'fulfilled' %} badge--success{% elif item.row.state == 'rejected' %} badge--error{% else %} badge--warning{% endif %}">{{ item.state_label }}</span>
+              {% if item.row.delegate_acted %}<span class="hint">{% trans "Sent by a representative" %}</span>{% endif %}</p>
+            <dl class="portal-request-dates">
+              <div><dt>{% trans "Received" %}</dt><dd><time datetime="{{ item.row.received_at|date:'c' }}">{{ item.row.received_at|date:"d/m/Y H:i" }}</time></dd></div>
+              <div><dt>{% trans "Answer due by" %}</dt><dd><time datetime="{{ item.row.due_at|date:'c' }}">{{ item.row.due_at|date:"d/m/Y" }}</time></dd></div>
+              {% if item.row.closed_at %}<div><dt>{% trans "Closed" %}</dt><dd><time datetime="{{ item.row.closed_at|date:'c' }}">{{ item.row.closed_at|date:"d/m/Y H:i" }}</time></dd></div>{% endif %}
+            </dl>
+            {% if item.rejection_label %}<p data-data-request-reason="{{ item.row.rejection_reason }}">{{ item.rejection_label }}</p>{% endif %}
+            {% if item.exportable %}
+              <form method="post" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="export">
+                <input type="hidden" name="request_id" value="{{ item.row.request_id }}">
+                <button class="button button--secondary" type="submit" data-data-request-export>{% trans "Download the copy" %}</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p data-data-requests-empty>{% trans "You have not made any request yet." %}</p>
+    {% endif %}
+  </section>
+
+  {% if sharing %}
+  <section class="panel" aria-labelledby="data-sharing-title" data-data-sharing>
+    <h2 id="data-sharing-title">{% trans "Who may handle your data" %}</h2>
+    <p>{% trans "These are the kinds of service providers the clinic may use. None of them receives patient data until the clinic authorizes it for real use." %}</p>
+    <div class="table-scroll" role="region" aria-labelledby="data-sharing-caption" tabindex="0">
+      <table class="table">
+        <caption id="data-sharing-caption">{% trans "Service providers and their current status" %}</caption>
+        <thead><tr><th scope="col">{% trans "Service" %}</th><th scope="col">{% trans "Status" %}</th></tr></thead>
+        <tbody>
+          {% for item in sharing %}
+            <tr data-sharing-entry="{{ item.entry.capability_key }}" data-sharing-live="{{ item.entry.live|yesno:'true,false' }}">
+              <th scope="row">{{ item.label }}</th>
+              <td>{{ item.state_label }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+  {% include "intake/partials/portal_help.html" only %}
+</section>
+{% endblock %}

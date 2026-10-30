@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static tz clinic_locale %}
+{% load static tz i18n clinic_locale patient_portal %}
 {% block title %}Sua cobrança · Clinic OS{% endblock %}
 {% block meta_description %}Valor, instruções de pagamento e recibo de uma cobrança liberada para você.{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% endblock %}
-{% block content %}
-<section class="billing-shell billing-shell--patient" aria-labelledby="patient-charge-title">
-  <a class="billing-back" href="{% url 'billing:patient-charges' %}">Voltar às suas cobranças</a>
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% patient_portal_v2 as portal_v2 %}{% if portal_v2 %}{% include "intake/partials/portal_head.html" %}{% endif %}{% endblock %}
+{% block content %}{% patient_portal_v2 as portal_v2 %}
+<section class="billing-shell billing-shell--patient{% if portal_v2 %} portal-page{% endif %}" aria-labelledby="patient-charge-title">
+  {% if portal_v2 %}{% url 'billing:patient-charges' as charges_href %}{% trans "Back to your charges" as charges_label %}{% include "intake/partials/portal_back.html" with back_href=charges_href back_label=charges_label only %}{% else %}<a class="billing-back" href="{% url 'billing:patient-charges' %}">Voltar às suas cobranças</a>{% endif %}
   <h1 id="patient-charge-title">Cobrança de {{ view.amount|brl }}</h1>
   <p class="lede">Instruções de pagamento e recibo desta cobrança. O estado atual fica no painel abaixo.</p>
   {% timezone clinic_timezone %}
@@ -14,5 +14,6 @@
   </section>
   {% endtimezone %}
   <p class="hint">Em caso de dúvida sobre o valor, fale com a clínica. Esta tela não cobra nada por conta própria.</p>
-</section>
+{% if portal_v2 %}  {% include "intake/partials/portal_help.html" only %}
+{% endif %}</section>
 {% endblock %}

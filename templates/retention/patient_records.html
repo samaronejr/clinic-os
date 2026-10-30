@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static patient_portal %}
 {% block title %}{% trans "Your records · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "View and export the records the clinic released to you." %}{% endblock %}
-{% block content %}
-<section class="intake-shell" aria-labelledby="patient-records-title">
-  <p class="eyebrow">{% trans "Patient portal" %}</p>
+{% block extra_head %}{% patient_portal_v2 as portal_v2 %}{% if portal_v2 %}{% include "intake/partials/portal_head.html" %}{% endif %}{% endblock %}
+{% block content %}{% patient_portal_v2 as portal_v2 %}
+<section class="intake-shell{% if portal_v2 %} portal-page portal-page--prose{% endif %}" aria-labelledby="patient-records-title">
+  {% if portal_v2 %}{% include "intake/partials/portal_back.html" only %}{% else %}<p class="eyebrow">{% trans "Patient portal" %}</p>{% endif %}
   <h1 id="patient-records-title">Seus registros</h1>
   <p class="lede">Somente os documentos liberados pela clínica aparecem aqui. A exportação gera um pacote com manifesto e resumos de integridade.</p>
   {% if records %}
@@ -32,6 +33,7 @@
   {% else %}
   <section class="panel"><p id="records-empty">Nenhum documento foi liberado para você ainda.</p></section>
   {% endif %}
-  <p><a href="{% url 'intake:patient-home' %}">Voltar</a></p>
-</section>
+{% if not portal_v2 %}  <p><a href="{% url 'intake:patient-home' %}">Voltar</a></p>
+{% endif %}{% if portal_v2 %}  {% include "intake/partials/portal_help.html" only %}
+{% endif %}</section>
 {% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Your results · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Download the exam results your clinician reviewed and released to you." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
+{% block content %}
+<section class="intake-shell portal-page portal-page--prose" aria-labelledby="patient-results-title" data-patient-results>
+  {% include "intake/partials/portal_back.html" only %}
+  <h1 id="patient-results-title">{% trans "Your results" %}</h1>
+  <p class="lede">{% trans "Only results your clinician reviewed and released to you appear here. A result the clinic is still reviewing stays with the clinic team." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><p>{{ error }}</p></div>{% endif %}
+  {% if results %}
+    <ul class="portal-request-list">
+      {% for result in results %}
+        <li class="portal-request" data-patient-result="{{ result.number }}"{% if result.corrected %} data-result-corrected{% endif %}>
+          <h2 class="portal-request-title">{% blocktrans with number=forloop.revcounter %}Result {{ number }}{% endblocktrans %}</h2>
+          <p>
+            <span class="badge badge--success">{% trans "Released to you" %}</span>
+            {% if result.corrected %}<span class="badge badge--warning">{% trans "Corrected version" %}</span>{% endif %}
+          </p>
+          <p class="hint">{% blocktrans with date=result.created_at|date:"d/m/Y" %}Report dated {{ date }}.{% endblocktrans %}{% if result.corrected %} {% trans "This version replaces an earlier report of the same exam." %}{% endif %}</p>
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="download">
+            <input type="hidden" name="version_id" value="{{ result.version_id }}">
+            <button class="button button--secondary" type="submit" data-result-download>{% trans "Download the report" %}</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <section class="panel"><p id="results-empty">{% trans "No result was released to you yet. When your clinician releases one, it appears here." %}</p></section>
+  {% endif %}
+  <p class="hint">{% trans "Questions about a result are answered by your clinician, never by this portal." %}</p>
+  {% include "intake/partials/portal_help.html" only %}
+</section>
+{% endblock %}

@@ -23,6 +23,23 @@ without fabricating staff audit events. Native forms carry identifiers only in
 POST bodies and reject hidden scope fields. The registered `self-booking`
 browser suite exercises these flows against the `clinic_app` server.
 
+Todo 50 adds booking by service type. `patient_services()` lists the session
+clinic's active service types and `patient_slots(day, service_type_id=...)`
+projects `clinic_app.patient_service_slots`: quarter-hour starts whose buffered
+window fits the practitioner's availability, with one active, available,
+under-capacity resource of every required kind. The signed slot token binds
+the service and those resources, and `book_patient_slot` writes through
+`create_patient_service_booking` and the shared `_create_appointment` path, so
+`booking_selection`, `validate_resource_window` and the capacity guard's unit
+allocation decide the write; a lost race is `resource_conflict`. Patient
+sessions read their clinic's service types, resources and availability
+templates (`patient_booking_read`), and the capacity guard admits the session's
+own patient on a service INSERT. Where `self_booking_requires_approval` is on,
+the lifecycle guard keeps refusing patient service rows (they would be born
+`requested`, which has no service edges), the resolver refuses and the screen
+offers no service. Rescheduling keeps the practitioner slots; a service token
+is never accepted there.
+
 ## Waitlists and offers
 
 `waitlist.py` records an enrolled patient's requested practitioner and UTC window.

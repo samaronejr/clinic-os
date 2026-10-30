@@ -269,6 +269,34 @@ def create_patient_booking(
     )
 
 
+def create_patient_service_booking(
+    *,
+    clinic_id: UUID,
+    enrollment_id: UUID,
+    practitioner_id: UUID,
+    booking: ServiceBooking,
+    idempotency_key: UUID,
+) -> Appointment:
+    """Book (or request) a patient-chosen service slot with its bound resources.
+
+    The shared write path still decides: ``booking_selection``,
+    ``validate_resource_window`` and the capacity guard's per-resource units.
+    """
+    requires_approval = patient_booking_requires_approval()
+    return _create_appointment(
+        CreateAppointmentRequest(
+            clinic_id,
+            enrollment_id,
+            practitioner_id,
+            booking.local_range,
+            idempotency_key,
+            booking.service_type_id,
+            booking.resource_ids,
+            initial_status="requested" if requires_approval else "scheduled",
+        )
+    )
+
+
 def _create_appointment(request: CreateAppointmentRequest) -> Appointment:
     clinic_id = request.clinic_id
     practitioner_id = request.practitioner_id

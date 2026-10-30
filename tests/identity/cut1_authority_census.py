@@ -20,6 +20,7 @@ from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
+from identity.portal_authority_oracle import run_portal_census
 from identity.prescription_authority_oracle import run_prescription_census
 from identity.retention_authority_census import exercise_retention_authority
 from identity.scribe_authority_census import exercise_scribe_authority
@@ -257,13 +258,13 @@ def run_cut1_census(
     with patch.context() as delegate_clock:
         delegate_clock.setattr(time, "time", lambda: STEP_UP_NOW)
         for name, delegate_oracle in DELEGATE_CASES.items():
-            subject = graph()
             proofs.run(
                 f"delegate stored authority, state, scope and response:{name}",
-                partial(delegate_oracle, subject, secret_root.parent),
+                partial(delegate_oracle, graph(), secret_root.parent),
             )
     run_passkey_census(proofs, graph)
     run_orders_census(proofs, graph)
+    run_portal_census(proofs, graph, secret_root.parent)
     run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()

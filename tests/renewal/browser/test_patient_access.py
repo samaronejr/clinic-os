@@ -789,8 +789,11 @@ def _access_forced_colors(
         ".borderBottomStyle"
     )
     assert row_border == "solid"
+    # Portal v2 (todo 50) shows the enrollment in .portal-identity; the
+    # PATIENT_PORTAL_V2=false rollback keeps the v1 .panel.
     panel_border = patient.evaluate(
-        "getComputedStyle(document.querySelector('.panel')).borderTopStyle"
+        "getComputedStyle(document.querySelector('.panel, .portal-identity'))"
+        ".borderTopStyle"
     )
     assert panel_border == "solid"
     page.keyboard.press("Tab")
