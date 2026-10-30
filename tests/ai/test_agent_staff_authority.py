@@ -13,7 +13,7 @@ from apps.tenancy.db import tenant_context
 from django.db import connection
 
 from ai.agent_support import AgentWorld, propose
-from ai.test_agent_execution import agent_password, machine_login, world
+from ai.test_agent_execution import world
 from ai.test_agent_guards import request_for
 from auth.stepup_test_support import create_role_actor
 from identity.permission_support import owner_context
@@ -24,8 +24,10 @@ if TYPE_CHECKING:
 
     from rbac_fixtures import RbacGraph
 
-__all__ = ("agent_password", "machine_login", "world")
-pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
+__all__ = ("world",)
+# No machine login: it commits ALTER ROLE clinic_agent (pg_authid), which would make
+# every test here server-state. Nothing below opens the agent connection.
+pytestmark = pytest.mark.django_db(transaction=True)
 
 OK: Final = 200
 FORBIDDEN: Final = 403
