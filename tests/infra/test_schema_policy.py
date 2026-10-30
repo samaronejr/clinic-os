@@ -240,6 +240,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("identity_organization", "active_organization_runtime"),
         ("scheduling_availabilityblock", "patient_booking_read"),
         ("scheduling_availabilityblock", "agent_grant"),
+        # Task 50: service self-booking reads the session clinic's catalog, so
+        # the shared write path's selection and window checks run unchanged.
+        ("scheduling_servicetype", "patient_booking_read"),
+        ("scheduling_resource", "patient_booking_read"),
+        ("scheduling_availabilitytemplate", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),

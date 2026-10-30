@@ -7986,6 +7986,26 @@ msgstr "A clínica liberou apenas parte do portal para este acesso. Fale com a e
 msgid "The copy is too large to download here. The clinic team will deliver it as part of your request."
 msgstr "A cópia é grande demais para baixar aqui. A equipe da clínica vai entregá-la como parte da sua solicitação."
 
+#, python-format
+msgid "%(name)s · %(minutes)s minutes"
+msgstr "%(name)s · %(minutes)s minutos"
+
+#, python-format
+msgid "%(name)s: %(minutes)s-minute visits. The time is confirmed when you finish booking."
+msgstr "%(name)s: atendimentos de %(minutes)s minutos. O horário é confirmado ao concluir o agendamento."
+
+msgid "Date of the visit"
+msgstr "Data do atendimento"
+
+msgid "See times for this visit"
+msgstr "Ver horários deste atendimento"
+
+msgid "Some visits need a room or equipment; the times shown already reserve them."
+msgstr "Alguns atendimentos precisam de sala ou equipamento; os horários mostrados já os reservam."
+
+msgid "Type of visit"
+msgstr "Tipo de atendimento"
+
 msgid "The law requires the clinic to keep this record."
 msgstr "A lei exige que a clínica mantenha este registro."
 

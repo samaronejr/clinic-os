@@ -6250,6 +6250,7 @@
     {
       "symbol": "apps.scheduling.patient_booking.patient_slots",
       "signals": [
+        "denial",
         "resolver"
       ],
       "kind": "delegated",
@@ -13428,7 +13429,8 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.patient_booking_slots"
+          "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots"
         ],
         "signatures": [
           {
@@ -13498,6 +13500,9 @@
           "clinic_app.scheduling_appointment:patient_booking_update",
           "clinic_app.scheduling_appointmenttransition:patient_booking_read",
           "clinic_app.scheduling_availabilityblock:patient_booking_read",
+          "clinic_app.scheduling_availabilitytemplate:patient_booking_read",
+          "clinic_app.scheduling_resource:patient_booking_read",
+          "clinic_app.scheduling_servicetype:patient_booking_read",
           "clinic_app.scheduling_waitlistentry:waitlist_read",
           "clinic_app.scheduling_waitlistentry:waitlist_update",
           "clinic_app.scheduling_waitlistoffer:waitlist_read",
@@ -13510,6 +13515,7 @@
           "clinic_app.patient_booking_receipt",
           "clinic_app.patient_booking_requires_approval",
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_appointment_guard_v1",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_guard"
@@ -15195,6 +15201,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -15305,7 +15312,8 @@
     "clinic_app.scheduling_lifecycle_guard": {
       "discovery": {
         "migrations": [
-          "apps/scheduling/migrations/_lifecycle_sql.py"
+          "apps/scheduling/migrations/_lifecycle_sql.py",
+          "apps/scheduling/migrations/_patient_service_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -18596,6 +18604,32 @@
         "signatures": [
           {
             "arguments": "requested_clinic uuid, requested_request uuid, expected_revision integer, next_state text, reason text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_service_slots": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 service self-booking: only the session clinic's active service types, slots sized by the service duration and buffers with one free resource of every required kind, and no slot at all where the clinic reviews self-bookings.",
+      "probes": [
+        "test_booking_screen_takes_the_service_choice_in_the_post_body",
+        "test_patient_sees_only_active_services_of_the_session_clinic",
+        "test_service_slots_bind_duration_buffers_and_the_free_room",
+        "test_service_without_a_free_required_resource_offers_no_slot",
+        "test_two_patients_racing_for_the_last_room_get_one_booking"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_patient_service_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_day date, requested_service uuid",
             "returns": "record",
             "security_definer": true,
             "set_returning": true

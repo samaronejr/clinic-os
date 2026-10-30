@@ -57,6 +57,7 @@ from prescription.test_document_kinds import (
 from prescription.test_sncr_adapter import (
     test_issuance_trigger_binds_the_stored_physician_role,
 )
+from renewal import test_patient_service_booking as service_booking
 from retention.sql_oracles import CASES as RETENTION_CASES
 from retention.sql_oracles import SQL_PROTOCOL_ORACLES as RETENTION_PROTOCOLS
 from scheduling.test_appointment_states import (
@@ -91,6 +92,17 @@ from workflows.test_bundle_issuer import (
 )
 from workflows.test_sql_authority import SQL_CASES
 
+# Task 50: patient service booking is executed by its own contract suite.
+SERVICE_BOOKING_CASES = {
+    case.__name__: case
+    for case in (
+        service_booking.test_patient_sees_only_active_services_of_the_session_clinic,
+        service_booking.test_service_slots_bind_duration_buffers_and_the_free_room,
+        service_booking.test_service_without_a_free_required_resource_offers_no_slot,
+        service_booking.test_two_patients_racing_for_the_last_room_get_one_booking,
+        service_booking.test_booking_screen_takes_the_service_choice_in_the_post_body,
+    )
+}
 SCHEDULING_CASES = {
     "clinic_app.scheduling_capacity_guard": [
         "capacity_insert_trigger",
@@ -370,6 +382,7 @@ PROTOCOL_ORACLES = {
         *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
         "test_every_service_booking_status_change_keeps_the_todo_21_guard",
     ],
+    "clinic_app.patient_service_slots": sorted(SERVICE_BOOKING_CASES),
     "clinic_app.scheduling_lifecycle_guard": [
         "test_database_trigger_decides_every_status_pair_by_actor",
         "test_guards_decide_by_the_exact_permission_not_a_sibling",
@@ -420,6 +433,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     )
     assert callable(test_reception_display_device_contract)
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
+    assert all(callable(case) for case in SERVICE_BOOKING_CASES.values())
     assert all(callable(case) for case in SQL_CASES.values())
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)

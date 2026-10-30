@@ -226,8 +226,9 @@ clínica", no record data). Delivery needs a push handler in the service worker,
 patient-session worker serving, a governed push capability (EG-1/EG-5) and
 todo 51's portal message as the trigger.
 
-Booking by service type is not offered to patients yet: patient booking stays
-practitioner-slot based while staff book service types with rooms and
-equipment. Patient service booking needs patient-session reads of service
-types, resource templates and capacity plus the resource write gate under
-patient RLS; its test-first contract is preserved with the todo 50 evidence.
+Patients book by service type on the appointments screen (contract:
+`tests/renewal/test_patient_service_booking.py`; mechanism in
+`apps/scheduling/README.md`). The service choice travels in the POST body
+(`action=slots`), never in a URL. Clinics that review self-bookings offer no
+service choice: their patient rows are born `requested`, which todo 22 gave
+service bookings no edges for.

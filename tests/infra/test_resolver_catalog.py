@@ -704,6 +704,7 @@ FUNCTION_SIGNATURES: Final = {
     ("patient_booking_receipt", ""),
     ("patient_booking_scope", ""),
     ("patient_booking_slots", "requested_day date, ignored_appointment uuid"),
+    ("patient_service_slots", "requested_day date, requested_service uuid"),
     ("patient_session_overview", "kek text"),
     ("prescription_close_guard", ""),
     ("prescription_document_guard", ""),
@@ -1093,6 +1094,11 @@ FUNCTION_RESULTS: Final = {
     ("patient_booking_slots", "requested_day date, ignored_appointment uuid"): (
         "TABLE(practitioner_id uuid, display_label text, "
         "start_at timestamp with time zone, end_at timestamp with time zone)"
+    ),
+    ("patient_service_slots", "requested_day date, requested_service uuid"): (
+        "TABLE(practitioner_id uuid, display_label text, "
+        "start_at timestamp with time zone, end_at timestamp with time zone, "
+        "resource_ids uuid[])"
     ),
     ("patient_session_overview", "kek text"): (
         "TABLE(session_id uuid, patient_name character varying, "

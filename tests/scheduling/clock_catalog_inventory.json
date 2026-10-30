@@ -5762,6 +5762,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -5816,6 +5817,7 @@
       "constraint:scheduling_servicetype.scheduling_servicetype_clinic_fk",
       "constraint:scheduling_servicetype.scheduling_servicetype_clinic_id_08dd1bd3_fk_identity_clinic_id",
       "constraint:scheduling_servicetype.scheduling_servicetype_duration_min_check",
+      "policy:scheduling_servicetype.patient_booking_read",
       "policy:scheduling_servicetype.tenant_isolation",
       "trigger:scheduling_servicetype.scheduling_definition_guard"
     ]
@@ -5972,6 +5974,7 @@
       "constraint:scheduling_servicetype.scheduling_servicetype_clinic_fk",
       "constraint:scheduling_servicetype.scheduling_servicetype_clinic_id_08dd1bd3_fk_identity_clinic_id",
       "constraint:scheduling_servicetype.scheduling_servicetype_duration_min_check",
+      "policy:scheduling_servicetype.patient_booking_read",
       "policy:scheduling_servicetype.tenant_isolation",
       "trigger:scheduling_servicetype.scheduling_definition_guard"
     ]
@@ -6059,6 +6062,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6126,6 +6130,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6391,6 +6396,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6404,6 +6410,7 @@
       "constraint:scheduling_availabilitytemplate.scheduling_availabil_resource_id_32408e54_fk_schedulin",
       "constraint:scheduling_availabilitytemplate.scheduling_availabilitytemplate_clinic_fk",
       "constraint:scheduling_availabilitytemplate.scheduling_template_window",
+      "policy:scheduling_availabilitytemplate.patient_booking_read",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
       "trigger:scheduling_availabilitytemplate.scheduling_definition_guard"
     ]
@@ -6471,6 +6478,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6484,6 +6492,7 @@
       "constraint:scheduling_availabilitytemplate.scheduling_availabil_resource_id_32408e54_fk_schedulin",
       "constraint:scheduling_availabilitytemplate.scheduling_availabilitytemplate_clinic_fk",
       "constraint:scheduling_availabilitytemplate.scheduling_template_window",
+      "policy:scheduling_availabilitytemplate.patient_booking_read",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
       "trigger:scheduling_availabilitytemplate.scheduling_definition_guard"
     ]
@@ -6523,6 +6532,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6778,6 +6788,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6801,6 +6812,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -6908,6 +6920,7 @@
       "constraint:scheduling_resource.scheduling_resource_clinic_id_c79d6ba3_fk_identity_clinic_id",
       "constraint:scheduling_resource.scheduling_resource_kind",
       "constraint:scheduling_resource.scheduling_resource_organization_id_9ba2c665_fk_identity_",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -12379,6 +12392,7 @@
       "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
+      "policy:scheduling_availabilitytemplate.patient_booking_read",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
       "policy:scheduling_holiday.tenant_isolation",
       "trigger:identity_user.agent_send_mutation",
@@ -13100,6 +13114,7 @@
       "policy:scheduling_appointmentresource.tenant_isolation",
       "policy:scheduling_queueentry.reception_scope",
       "policy:scheduling_queueentry.tenant_isolation",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "policy:scheduling_roomstatus.reception_scope",
       "policy:scheduling_roomstatus.tenant_isolation",
@@ -14107,9 +14122,12 @@
       "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
+      "policy:scheduling_availabilitytemplate.patient_booking_read",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
       "policy:scheduling_holiday.tenant_isolation",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
+      "policy:scheduling_servicetype.patient_booking_read",
       "policy:scheduling_servicetype.tenant_isolation",
       "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
@@ -14237,6 +14255,7 @@
       "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
@@ -14473,7 +14492,9 @@
       "policy:scheduling_appointment.patient_booking_read",
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilitytemplate.patient_booking_read",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
+      "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
       "trigger:scheduling_appointment.patient_booking_guard",
@@ -19788,6 +19809,13 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:scheduling_availabilitytemplate.patient_booking_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:scheduling_availabilitytemplate.tenant_isolation": {
     "direct": {},
     "via": [
@@ -19907,6 +19935,13 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:scheduling_resource.patient_booking_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:scheduling_resource.tenant_isolation": {
     "direct": {},
     "via": [
@@ -19937,6 +19972,13 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:scheduling_servicetype.patient_booking_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()",
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
