@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from apps.ai.migrations._state_batch import SchemaStateBatch
-from django.db import connection, migrations, models
+from django.db import DEFAULT_DB_ALIAS, connection, migrations, models
 from django.db.backends.postgresql.schema import DatabaseSchemaEditor
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState, ProjectState
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
     from django.apps.registry import Apps
+    from django.db.backends.base.schema import BaseDatabaseSchemaEditor
     from django.db.backends.ddl_references import Statement
     from django.db.migrations.migration import Migration
 
@@ -24,6 +26,27 @@ class _RecordingEditor(DatabaseSchemaEditor):
         self, sql: Statement | str, params: Sequence[object] | None = ()
     ) -> None:
         self.collected_sql.append(f"{sql} {params!r}")
+
+
+class _ExecutesNothing:
+    """Clean-install editor double: every schema and SQL call executes nothing.
+
+    Its connection is not PostgreSQL, so extension probes skip catalog queries.
+    """
+
+    atomic_migration = True
+    connection = SimpleNamespace(
+        alias=DEFAULT_DB_ALIAS,
+        vendor="render-replay",
+        ops=SimpleNamespace(prepare_sql_script=lambda sql: [sql]),
+    )
+
+    def __getattr__(self, name: str) -> Callable[..., None]:
+        return _ignore
+
+
+def _ignore(*args: object, **kwargs: object) -> None:
+    """Accept a schema or historical data call without touching a database."""
 
 
 @pytest.fixture
@@ -174,6 +197,42 @@ def test_full_migration_state_replay_has_bounded_model_renders(
 
     # Then: repeated tenant-graph renders cannot return unnoticed.
     assert rendered < 25_000
+
+
+def test_full_migrate_path_has_bounded_model_renders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: the clean-install graph with its database operations and callbacks.
+    loader = MigrationLoader(None)
+    plan = list(_migration_plan(loader))
+    for migration in plan:
+        for operation in migration.operations:
+            if isinstance(operation, migrations.RunPython):
+                monkeypatch.setattr(operation, "code", _ignore)
+    state = ProjectState(real_apps=loader.unmigrated_apps)
+    original: Callable[[ModelState, Apps], type[models.Model]] = ModelState.render
+    rendered = 0
+
+    def render(model: ModelState, apps: Apps) -> type[models.Model]:
+        nonlocal rendered
+        rendered += 1
+        return original(model, apps)
+
+    monkeypatch.setattr(ModelState, "render", render)
+
+    # When: migrate applies every migration through Django's state and database
+    # paths, then refreshes the delayed registry for post_migrate receivers.
+    editor = cast("BaseDatabaseSchemaEditor", _ExecutesNothing())
+    for migration in plan:
+        if "apps" not in state.__dict__:
+            _ = state.apps
+        state = migration.apply(state, editor)
+    state.clear_delayed_apps_cache()
+    _ = state.apps
+
+    # Then: separated database operations cannot hide repeated renders, and the
+    # clean release migrate keeps its measured margin under the 30 s probe.
+    assert rendered < 35_000
 
 
 def test_wave_c_batch_renders_changed_models_once(
