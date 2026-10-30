@@ -684,18 +684,50 @@ def test_consent_withdrawal_turns_the_microphone_off_and_retains_manual_care(
         "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
     )
     identifier = page.locator("[data-capture-form] [name=session_id]").input_value()
-    assert (
-        fixture_command(
-            availability_staff,
-            {
-                "SCRIBE_FIXTURE_ACTION": "revoke",
-                "SCRIBE_FIXTURE_SESSION": identifier,
-            },
+    # The next upload's refusal and the authority poll race to observe the
+    # withdrawal. Subscribe before revoking: whichever wins, the first
+    # recovery state is the one consent-revocation state, and one stop follows.
+    page.evaluate("""() => {
+      const panel = document.querySelector('[data-scribe-capture]');
+      window.__scribeRevocation = new Promise(resolve => {
+        const interrupted = event => {
+          if (event.detail.phase !== 'recovery') return;
+          panel.removeEventListener('scribe:state', interrupted);
+          resolve({
+            state: panel.dataset.state,
+            revoked: panel.querySelector('[data-capture-status]').textContent ===
+              panel.getAttribute('data-text-revoked'),
+          });
+        };
+        panel.addEventListener('scribe:state', interrupted);
+      });
+    }""")
+
+    def stop_ack(response: Response) -> bool:
+        payload = response.request.post_data_json
+        return (
+            response.url.endswith("/scribe/control/")
+            and isinstance(payload, dict)
+            and payload.get("action") == "stop"
         )
-        == b"SCRIBE_FIXTURE_REVOKED"
-    )
-    expect(panel).to_have_attribute("data-state", "error", timeout=15000)
+
+    with page.expect_response(stop_ack, timeout=20_000) as stopped:
+        assert (
+            fixture_command(
+                availability_staff,
+                {
+                    "SCRIBE_FIXTURE_ACTION": "revoke",
+                    "SCRIBE_FIXTURE_SESSION": identifier,
+                },
+            )
+            == b"SCRIBE_FIXTURE_REVOKED"
+        )
+        first = evaluate_js(page, "() => window.__scribeRevocation", timeout=20_000)
+    assert first == {"state": "permission-denied", "revoked": True}
+    assert stopped.value.status == 200
+    expect(panel).to_have_attribute("data-state", "permission-denied")
     assert page.evaluate("() => window.__scribeStops") >= 1
+    assert inspect_capture(page, availability_staff)["state"] == "stopped_revoked"
     save_manual_note(page)
 
 

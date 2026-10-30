@@ -94,6 +94,12 @@
       level.value = 0;
     }
 
+    // Consent loss is a withdrawn permission, not a failure: whichever path
+    // observes it paints the one permission-denied state.
+    function stateFor(message) {
+      return message === "revoked" ? "permission-denied" : "error";
+    }
+
     function interrupt(message, state) {
       phase = "recovery";
       if (recorder && recorder.state !== "inactive") recorder.stop();
@@ -101,7 +107,16 @@
       lost += pending.length;
       pending = [];
       clearInterval(polling);
-      paint(message || "failed", state || "error");
+      paint(message || "failed", state || stateFor(message));
+    }
+
+    // The upload refusal and the authority poll race to observe a revocation.
+    // The first one stops the microphone and records the stop; a later one
+    // finds the same state and changes nothing.
+    async function revoke() {
+      if (phase === "recovery" && currentMessage === "revoked") return;
+      interrupt("revoked");
+      await control("stop").catch(function () { paint("revoked", "permission-denied"); });
     }
 
     async function post(url, body, extra) {
@@ -215,10 +230,8 @@
               lost += 1;
               continue;
             }
-            interrupt(result.code === "consent_revoked" ? "revoked" : "failed");
-            if (result.code === "consent_revoked") {
-              await control("stop").catch(function () { paint("revoked", "permission-denied"); });
-            }
+            if (result.code === "consent_revoked") await revoke();
+            else interrupt("failed");
             return;
           }
           pending = pending.filter(function (queued) { return queued !== item; });
@@ -236,8 +249,10 @@
         else if (phase === "offline") paint("offline", "offline");
       } catch (error) {
         if (phase === "done") return;
-        if (error.code) {
-          interrupt(error.code === "consent_revoked" ? "revoked" : "failed");
+        if (error.code === "consent_revoked") {
+          await revoke();
+        } else if (error.code) {
+          interrupt("failed");
         } else {
           paint(autoPaused ? "offline" : "pending", "offline");
           armDeadline();
@@ -314,8 +329,7 @@
         try {
           let result = await control("status");
           if (result.code === "consent_revoked") {
-            interrupt("revoked", "permission-denied");
-            await control("stop").catch(function () { paint("revoked", "permission-denied"); });
+            await revoke();
           } else if (result.code || result.epoch !== epoch ||
             (phase === "recording" && result.state !== "recording") ||
             result.state === "stopped" || result.state === "stopped_revoked") {
@@ -411,7 +425,8 @@
             paint("denied", "permission-denied");
           }
         } else {
-          paint(error.code === "consent_revoked" ? "revoked" : "failed", "error");
+          let message = error.code === "consent_revoked" ? "revoked" : "failed";
+          paint(message, stateFor(message));
         }
       } finally {
         busy = false;
