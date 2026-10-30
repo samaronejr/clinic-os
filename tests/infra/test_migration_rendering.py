@@ -4,15 +4,26 @@ from typing import TYPE_CHECKING
 
 import pytest
 from apps.ai.migrations._state_batch import SchemaStateBatch
-from django.db import migrations, models
+from django.db import connection, migrations, models
+from django.db.backends.postgresql.schema import DatabaseSchemaEditor
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState, ProjectState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
 
     from django.apps.registry import Apps
+    from django.db.backends.ddl_references import Statement
     from django.db.migrations.migration import Migration
+
+
+class _RecordingEditor(DatabaseSchemaEditor):
+    """PostgreSQL schema editor that records each statement instead of running it."""
+
+    def execute(
+        self, sql: Statement | str, params: Sequence[object] | None = ()
+    ) -> None:
+        self.collected_sql.append(f"{sql} {params!r}")
 
 
 @pytest.fixture
@@ -208,3 +219,60 @@ def test_wave_c_batch_renders_changed_models_once(
     assert {relation.related_model for relation in entry._meta.related_objects} == {
         receipt
     }
+
+
+def test_wave_c_batch_database_path_matches_separated_sql(
+    rendered_state: ProjectState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: one batch through Django's separated operation and through the helper.
+    operations = [
+        migrations.AddField(
+            model_name="entry", name="first", field=models.IntegerField(null=True)
+        ),
+        migrations.AddConstraint(
+            model_name="entry",
+            constraint=models.CheckConstraint(
+                condition=models.Q(first__gte=0), name="render_probe_first"
+            ),
+        ),
+        migrations.CreateModel(
+            name="Receipt",
+            fields=[
+                ("id", models.AutoField(primary_key=True)),
+                ("entry", models.ForeignKey("render_probe.Entry", models.CASCADE)),
+            ],
+        ),
+        migrations.AddIndex(
+            model_name="receipt",
+            index=models.Index(fields=["entry", "id"], name="render_probe_receipt"),
+        ),
+    ]
+    original: Callable[[ModelState, Apps], type[models.Model]] = ModelState.render
+    rendered: list[str] = []
+
+    def render(model: ModelState, apps: Apps) -> type[models.Model]:
+        rendered.append(model.name_lower)
+        return original(model, apps)
+
+    monkeypatch.setattr(ModelState, "render", render)
+    statements: dict[type[migrations.SeparateDatabaseAndState], list[str]] = {}
+    renders: dict[type[migrations.SeparateDatabaseAndState], list[str]] = {}
+    for kind in (migrations.SeparateDatabaseAndState, SchemaStateBatch):
+        operation = kind(database_operations=operations, state_operations=operations)
+        before = rendered_state.clone()
+        after = before.clone()
+        operation.state_forwards("render_probe", after)
+        rendered.clear()
+
+        # When: the database path runs forwards and then backwards.
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
+            operation.database_forwards("render_probe", forward, before, after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as backward:
+            operation.database_backwards("render_probe", backward, after, before)
+        statements[kind] = [*forward.collected_sql, *backward.collected_sql]
+        renders[kind] = list(rendered)
+
+    # Then: Django's exact SQL, with one render per database operation.
+    separated = statements[migrations.SeparateDatabaseAndState]
+    assert statements[SchemaStateBatch] == separated
+    assert renders[SchemaStateBatch] == ["entry", "entry", "receipt", "receipt"] * 2
