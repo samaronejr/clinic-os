@@ -77,6 +77,10 @@ _DELEGATE_AUTHORITY = (
 # Executed for an inactive staff actor on the agent login in
 # test_service_principals (the forged-actor-with-domain-history test).
 _MACHINE_ONLY = "machine-only: refuses any non-empty actor setting"
+_INGEST_ONLY = (
+    "machine-only: requires the actor setting to be empty and the provider "
+    "principal or proof; no staff actor reaches it"
+)
 # Actor readers that neither carry an is_active clause nor delegate to a
 # checked helper. Every other actor reader must do one of the two.
 JUSTIFIED = {
@@ -108,6 +112,19 @@ JUSTIFIED = {
         _DELEGATE_AUTHORITY
     ),
     "clinic_app.principal_scope(uuid,uuid)": _MACHINE_ONLY,
+    "clinic_app.comms_audit_scope(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_ingest_account(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_resolve_inbound(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_message_guard_v1()": (
+        "dual boundary: an inbound row requires the provider account and refuses "
+        "any actor; an outbound row only binds sent_by_id to the signed-in actor. "
+        "The role and the active check run first, in the service's _actor"
+    ),
+    "clinic_app.comms_template_guard_v1()": (
+        "requires some signed-in actor to approve an email or SMS template and the "
+        "provider account for WhatsApp; the manager role and the active check run "
+        "first, in set_template_approval's _actor"
+    ),
     "clinic_app.load_current_user()": (
         "loader: returns is_active and every caller refuses an inactive row"
     ),

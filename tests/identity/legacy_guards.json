@@ -744,6 +744,14 @@
       ]
     },
     {
+      "symbol": "apps.audit.services._record_comms_ingest_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Machine ingest audit append for the authenticated provider principal. clinic_app.comms_audit_scope proves the record belongs to the active account of the current principal and tenant and refuses any call that carries a staff user; clinic_app.comms_ingest_audit then appends with the principal as actor. Neither function reads a staff role, membership or permission table, and both have sql_guards entries. The machine-ingest audit tests in tests/comms/test_inbox.py cover the appended rows and the foreign and replayed refusals."
+    },
+    {
       "symbol": "apps.audit.services._record_delegate_event",
       "signals": [
         "resolver"
@@ -9905,6 +9913,104 @@
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
     },
+    "clinic_app.comms_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_ingest_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_account": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_open_window"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, channel_name text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_open_window": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "conversation uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_resolve_inbound": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "account uuid, proof text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
     "clinic_app.comms_operation_callback_scope": {
       "discovery": {
         "migrations": [
@@ -10590,6 +10696,9 @@
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
+          "clinic_app.comms_ingest_account",
+          "clinic_app.comms_ingest_audit",
+          "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
           "clinic_app.delegate_audit",
           "clinic_app.identity_signup_register",

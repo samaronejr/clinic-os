@@ -393,6 +393,45 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "intake.duplicate.forward_transferred": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "intake.patient_merge_transfer", "transferred"
         ),
+        **{
+            f"comms.conversation.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.conversation", verb
+            )
+            for verb in (
+                "opened",
+                "assigned",
+                "state_changed",
+                "patient_linked",
+                "clinician_cleared",
+            )
+        },
+        **{
+            f"comms.message.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.message", verb
+            )
+            for verb in ("queued", "retried")
+        },
+        **{
+            f"comms.template.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.template_version", verb
+            )
+            for verb in ("created", "approval_changed")
+        },
+        "comms.inbound.message_received": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "received"
+        ),
+        "comms.inbound.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.conversation", "escalated"
+        ),
+        "comms.inbound.status_applied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "status_applied"
+        ),
+        "comms.inbound.template_status_applied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.template_version", "status_applied"
+        ),
+        "comms.suggestion.decided": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.suggested_reply", "decided"
+        ),
         "identity.passkey.registered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.passkey", "created"
         ),

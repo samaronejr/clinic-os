@@ -1560,6 +1560,80 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "released",
     ),
     "orders.task.created": ("tenant", "clinic-os-web", "workflows.task", "created"),
+    "comms.conversation.opened": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "opened",
+    ),
+    "comms.conversation.assigned": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "assigned",
+    ),
+    "comms.conversation.state_changed": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "state_changed",
+    ),
+    "comms.conversation.patient_linked": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "patient_linked",
+    ),
+    "comms.conversation.clinician_cleared": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "clinician_cleared",
+    ),
+    "comms.message.queued": ("tenant", "clinic-os-web", "comms.message", "queued"),
+    "comms.message.retried": ("tenant", "clinic-os-web", "comms.message", "retried"),
+    "comms.template.created": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "created",
+    ),
+    "comms.template.approval_changed": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "approval_changed",
+    ),
+    "comms.inbound.message_received": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "received",
+    ),
+    "comms.inbound.escalated": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "escalated",
+    ),
+    "comms.inbound.status_applied": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "status_applied",
+    ),
+    "comms.inbound.template_status_applied": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "status_applied",
+    ),
+    "comms.suggestion.decided": (
+        "tenant",
+        "clinic-os-web",
+        "comms.suggested_reply",
+        "decided",
+    ),
 }
 
 

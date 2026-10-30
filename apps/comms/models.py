@@ -19,6 +19,9 @@ OPERATION_STATUS_VALUES: Final = [
 ]
 
 
+OPERATION_CHANNEL_VALUES: Final = ("sms", "email", "whatsapp", "video", "portal")
+
+
 class OperationKind(models.TextChoices):
     """Routing intent is independent of any communication transport channel."""
 
@@ -43,6 +46,7 @@ class IntegrationOperation(TenantScopedModel):
         EMAIL = "email", "Email"
         WHATSAPP = "whatsapp", "WhatsApp"
         VIDEO = "video", "Video"
+        PORTAL = "portal", "Portal"
 
     class Status(models.TextChoices):
         """Stored operation lifecycle states."""
@@ -120,7 +124,7 @@ class IntegrationOperation(TenantScopedModel):
             models.CheckConstraint(
                 condition=(
                     models.Q(kind="communication", payload_digest="")
-                    & models.Q(channel__in=("sms", "email", "whatsapp", "video"))
+                    & models.Q(channel__in=OPERATION_CHANNEL_VALUES)
                 )
                 | models.Q(
                     kind="action", channel="", payload_digest__regex=r"^[0-9a-f]{64}$"
@@ -153,3 +157,34 @@ class AppointmentReminder(TenantScopedModel):
     end_at = models.DateTimeField()
     timezone = models.CharField(max_length=64)
     template_version = models.PositiveIntegerField(default=1)
+
+
+# Registered last: the inbox records reference the outbox models above.
+from apps.comms.inbox_models import (  # noqa: E402
+    Conversation,
+    InboundEvent,
+    InternalNote,
+    Message,
+    MessageMeter,
+    Participant,
+    ProviderAccount,
+    QuickReply,
+    SuggestedReply,
+    TemplateVersion,
+)
+
+__all__ = (
+    "AppointmentReminder",
+    "Conversation",
+    "InboundEvent",
+    "IntegrationOperation",
+    "InternalNote",
+    "Message",
+    "MessageMeter",
+    "OperationKind",
+    "Participant",
+    "ProviderAccount",
+    "QuickReply",
+    "SuggestedReply",
+    "TemplateVersion",
+)
