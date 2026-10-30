@@ -213,6 +213,17 @@
       ]
     },
     {
+      "symbol": "apps.ai.benchmark.record_selections",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.management.base.assert_owner_database_role"
+      ],
+      "reason": "Owner-connection benchmark lifecycle record, not a staff-role grant. The entry directly checks the executable database-role guard before any write; the owner-only refusal and that selection records never approve are covered by tests/ai/test_benchmark_report.py."
+    },
+    {
       "symbol": "apps.ai.brief.display_brief",
       "signals": [
         "actor",
@@ -580,6 +591,17 @@
         "apps.ai.services.invoke"
       ],
       "reason": "The existing TOTP decorator and the reachable clinic-scoped native command boundary enforce staff access."
+    },
+    {
+      "symbol": "apps.ai.management.commands.ai_benchmark.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.management.base.assert_owner_database_role"
+      ],
+      "reason": "Owner-connection benchmark command, not a staff-role grant. Recording selections directly checks the executable database-role guard; the owner-only refusal is covered by tests/ai/test_benchmark_report.py."
     },
     {
       "symbol": "apps.ai.management.commands.ai_eval.Command.handle",
