@@ -12,6 +12,7 @@ thread with transactional or care content.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -224,3 +225,59 @@ def advance_provider_state(*, current: str, incoming: str) -> str:
         # A failure never overwrites proof of delivery.
         return old if old in (DeliveryState.DELIVERED, DeliveryState.READ) else new
     return new if DELIVERY_RANK[new] > DELIVERY_RANK[old] else old
+
+
+TEMPLATE_TRANSITIONS: Final = {
+    ApprovalStatus.DRAFT: frozenset({ApprovalStatus.PENDING}),
+    ApprovalStatus.PENDING: frozenset(
+        {ApprovalStatus.APPROVED, ApprovalStatus.REJECTED}
+    ),
+    ApprovalStatus.APPROVED: frozenset(
+        {ApprovalStatus.PAUSED, ApprovalStatus.DISABLED}
+    ),
+    ApprovalStatus.PAUSED: frozenset(
+        {ApprovalStatus.APPROVED, ApprovalStatus.DISABLED}
+    ),
+}
+MAX_TEMPLATE_PARAMETER_CHARS: Final = 256
+_PLACEHOLDER = re.compile(r"\{\{(\d{1,2})\}\}")
+
+
+def template_transition_allowed(*, current: str, new: str) -> bool:
+    """Mirror the database guard so a provider event never raises mid-batch."""
+    try:
+        return ApprovalStatus(new) in TEMPLATE_TRANSITIONS.get(
+            ApprovalStatus(current), frozenset()
+        )
+    except ValueError:
+        return False
+
+
+def placeholder_count(body: str) -> int | None:
+    """Return the number of positional parameters, or None for a malformed body."""
+    numbers = [int(match) for match in _PLACEHOLDER.findall(body)]
+    if not numbers:
+        return 0
+    expected = list(range(1, max(numbers) + 1))
+    return max(numbers) if sorted(set(numbers)) == expected else None
+
+
+def render_template(*, body: str, parameters: tuple[str, ...]) -> str | None:
+    """Fill positional ``{{n}}`` parameters; None when the arity or content is wrong.
+
+    A parameter may not carry a newline or tab, matching the provider's own
+    restriction, so a value can never forge a second paragraph of template text.
+    """
+    count = placeholder_count(body)
+    if (
+        count is None
+        or count != len(parameters)
+        or any(
+            not item.strip()
+            or len(item) > MAX_TEMPLATE_PARAMETER_CHARS
+            or any(char in item for char in "\n\r\t")
+            for item in parameters
+        )
+    ):
+        return None
+    return _PLACEHOLDER.sub(lambda match: parameters[int(match[1]) - 1], body)

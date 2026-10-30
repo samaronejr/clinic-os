@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% load i18n static tz %}
+{% block title %}{% trans "Conversation" context "inbox" %} · Clinic OS{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-messages.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+{% with c=view.conversation %}
+{% timezone view.timezone %}
+<section class="messages-shell" aria-labelledby="thread-title" data-conversation="{{ c.pk }}" data-purpose="{{ c.purpose }}" data-revision="{{ c.revision }}"
+  data-realtime-topic="clinic:{{ clinic_id }}:messages"
+  data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}"
+  data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <header>
+    <h1 id="thread-title">{% if view.patient_label %}{{ view.patient_label }}{% else %}{{ view.contact }}{% endif %}</h1>
+    <p class="lede">{{ view.channel_label }} · {{ view.purpose_label }}. {% if c.enrollment_id %}{% trans "Patient linked through a verified contact." %}{% else %}{% trans "Number not linked to a patient yet: no clinical data is shown or sent." %}{% endif %}</p>
+    <a class="button button--secondary" href="{% url 'comms:inbox' clinic_id %}">{% trans "Back to messages" %}</a>
+  </header>
+  <p class="feedback" data-synthetic-disclosure>{% trans "Synthetic integration: messages are simulated and never reach a real provider. Sent, delivered and read states here come from simulated acknowledgements, not from real delivery." %}</p>
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  {% if messages %}{% for message in messages %}
+  <p class="feedback{% if message.tags == 'error' %} feedback--error" role="alert"{% else %} feedback--success" role="status"{% endif %} tabindex="-1">{{ message }}</p>
+  {% endfor %}{% endif %}
+  <div id="thread-region" hx-get="{{ request.path }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#thread-region &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
+  {% if c.needs_clinician %}
+  <section class="feedback feedback--error" role="status" aria-labelledby="clinical-flag">
+    <h2 id="clinical-flag">{% trans "Question forwarded to the clinical team" %}</h2>
+    <p>{% trans "This text seems to involve clinical advice. Do not reply with clinical advice or use an automatic suggestion; wait for a professional." %}</p>
+    {% if clinician %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="clear_clinician"><input type="hidden" name="expected_revision" value="{{ c.revision }}"><button type="submit">{% trans "Take this question" %}</button></form>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section class="panel" aria-labelledby="window-title">
+    <h2 id="window-title">{% trans "Service window" %}</h2>
+    {% if c.channel == 'whatsapp' %}
+      {% if view.window_open %}
+      <p data-window="open">{% blocktrans with until=view.window_closes_at|date:"d/m/Y H:i" %}Open until {{ until }}. Free text allowed.{% endblocktrans %}</p>
+      {% else %}
+      <p data-window="closed">{% trans "Closed. On WhatsApp, only an approved template can be sent until the patient writes again." %}</p>
+      {% endif %}
+    {% else %}
+      <p>{% trans "This channel has no service window." %}</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="history-title">
+    <h2 id="history-title">{% trans "Messages" %}</h2>
+    <ol class="thread" aria-live="polite">
+      {% for row in view.messages %}
+      <li class="thread__item thread__item--{{ row.message.direction }}" data-message="{{ row.message.pk }}"{% if row.message.direction == 'out' %} data-state="{{ row.state }}"{% endif %}>
+        <p class="thread__meta">{% if row.message.direction == 'in' %}{% trans "Patient" %}{% else %}{% trans "Team" context "message sender" %}{% endif %} · {{ row.message.created_at|date:"d/m/Y H:i" }}{% if row.template_name %} · {% blocktrans with name=row.template_name %}template {{ name }}{% endblocktrans %}{% endif %}</p>
+        {% if row.message.supported %}<p class="thread__body">{{ row.message.body }}</p>{% else %}<p class="thread__body">{% trans "Unsupported media message. See it in the provider's app." %}</p>{% endif %}
+        {% if row.message.direction == 'out' %}
+        <p><span class="badge{% if row.state == 'failed' %} badge--error{% elif row.state == 'delivered' or row.state == 'read' %} badge--success{% endif %}">{% if row.state == 'queued' %}{% trans "Queued" context "delivery state" %}{% elif row.state == 'sent' %}{% trans "Sent · awaiting confirmation" context "delivery state" %}{% elif row.state == 'delivered' %}{% trans "Delivered" context "delivery state" %}{% elif row.state == 'read' %}{% trans "Read" context "delivery state" %}{% else %}{% trans "Not sent" context "delivery state" %}{% endif %}</span></p>
+        {% if row.state == 'failed' %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="retry"><input type="hidden" name="message_id" value="{{ row.message.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}"><button class="button--secondary" type="submit">{% trans "Try sending again" %}<span class="visually-hidden"> {% blocktrans with when=row.message.created_at|date:"d/m/Y H:i" %}the message of {{ when }}{% endblocktrans %}</span></button></form>
+        {% endif %}
+        {% endif %}
+      </li>
+      {% empty %}<li><p role="status">{% trans "No messages yet." %}</p></li>{% endfor %}
+    </ol>
+  </section>
+  <section class="panel" aria-labelledby="handling-title">
+    <h2 id="handling-title">{% trans "Handling" context "inbox" %}</h2>
+    <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="assign"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+      <button class="button--secondary" type="submit" name="assignee" value="me">{% trans "Assign to me" %}</button>
+      <button class="button--quiet" type="submit" name="assignee" value="none">{% trans "Remove assignee" %}</button>
+    </form>
+    <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="state"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+      <button class="button--secondary" type="submit" name="state" value="open">{% trans "Reopen" context "inbox" %}</button>
+      <button class="button--secondary" type="submit" name="state" value="pending">{% trans "Mark as pending" %}</button>
+      <button class="button--danger" type="submit" name="state" value="closed">{% trans "Close conversation" %}</button>
+    </form>
+  </section>
+  </div>
+  {% if c.state != 'closed' %}
+  <section class="panel" aria-labelledby="reply-title">
+    <h2 id="reply-title">{% trans "Reply" context "inbox" %}</h2>
+    {% if view.suggestion %}
+    <article class="feedback" aria-labelledby="suggestion-title" data-suggestion="{{ view.suggestion.pk }}">
+      <h3 id="suggestion-title">{% trans "Suggested reply · review required" %}</h3>
+      <p>{% trans "Generated by AI for administrative text. Nothing is sent without your confirmation." %}</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="use_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}">
+        <div class="field"><label for="suggestion-body">{% trans "Text to send (edit if needed)" %}</label><textarea id="suggestion-body" name="body" rows="4" maxlength="4096" required>{{ view.suggestion.body }}</textarea></div>
+        <button type="submit">{% trans "Send reviewed text" %}</button>
+      </form>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="discard_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><button class="button--quiet" type="submit">{% trans "Discard suggestion" %}</button></form>
+    </article>
+    {% elif not c.needs_clinician and c.purpose != 'marketing' %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="suggest"><button class="button--quiet" type="submit">{% trans "Ask for a suggested reply" %}</button></form>
+    {% endif %}
+    {% if view.free_text %}
+    {% if view.quick_replies %}
+    <section aria-labelledby="quick-title" data-quick-replies>
+      <h3 id="quick-title">{% trans "Quick replies" %}</h3>
+      <p class="hint">{% trans "A quick reply only fills the message box. Review and send it yourself." %}</p>
+      <ul class="actions">
+        {% for quick in view.quick_replies %}
+        <li><form method="post">{% csrf_token %}<input type="hidden" name="action" value="quick_reply"><input type="hidden" name="quick_reply_id" value="{{ quick.pk }}"><button class="button--secondary" type="submit">{{ quick.title }}</button></form></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    <form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}">
+      <div class="field"><label for="reply-body">{% trans "Message" context "inbox" %}</label>
+        <textarea id="reply-body" name="body" rows="4" maxlength="4096" required>{{ prefill }}</textarea>
+      </div>
+      <button type="submit">{% trans "Send" context "inbox" %}</button>
+    </form>
+    {% endif %}
+    {% for choice in view.templates %}
+    <form method="post" novalidate data-template="{{ choice.template.pk }}">{% csrf_token %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}"><input type="hidden" name="template_version_id" value="{{ choice.template.pk }}">
+      <h3>{% blocktrans with name=choice.template.name version=choice.template.version %}Template {{ name }} · v{{ version }}{% endblocktrans %}</h3>
+      <p class="hint">{{ choice.template.body }}</p>
+      {% for slot in choice.slots %}
+      <div class="field"><label for="param-{{ choice.template.pk }}-{{ slot }}">{% blocktrans %}Parameter {{ slot }}{% endblocktrans %}</label><input id="param-{{ choice.template.pk }}-{{ slot }}" name="p{{ slot }}" type="text" maxlength="256" required></div>
+      {% endfor %}
+      <button class="button--secondary" type="submit">{% blocktrans with name=choice.template.name %}Send template {{ name }}{% endblocktrans %}</button>
+    </form>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if can_link %}
+  <section class="panel" aria-labelledby="link-title" data-link-panel>
+    <h2 id="link-title">{% trans "Link to a patient" %}</h2>
+    <p class="hint">{% trans "A number is linked only to a patient whose contact for this channel is verified and is this number." %}</p>
+    <form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="find_patient">
+      <div class="field"><label for="patient-query">{% if clinician %}{% trans "Filter your care-team patients by name (optional)" %}{% else %}{% trans "Patient full name" %}{% endif %}</label><input id="patient-query" name="q" type="text" maxlength="100" autocomplete="off"{% if not clinician %} required{% endif %}></div>
+      <button class="button--secondary" type="submit">{% if clinician %}{% trans "Show my patients" %}{% else %}{% trans "Search patients" %}{% endif %}</button>
+    </form>
+    {% if choice_notice %}<p role="status" class="feedback">{{ choice_notice }}</p>{% endif %}
+    {% if choices %}
+    <ul class="candidates">
+      {% for choice in choices %}
+      <li class="candidate">
+        <strong>{{ choice.label }}</strong>
+        <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="link"><input type="hidden" name="enrollment_id" value="{{ choice.enrollment_id }}"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+          {% if clinician %}<label class="check"><input type="checkbox" name="promote" value="1"> {% trans "Move to a care conversation" %}</label>{% endif %}
+          <button type="submit">{% trans "Link to this patient" %}<span class="visually-hidden"> {{ choice.label }}</span></button>
+        </form>
+        {% if not clinician %}
+        <form method="post" action="{{ contacts_url }}" class="actions">{% csrf_token %}<input type="hidden" name="action" value="manage"><input type="hidden" name="enrollment_id" value="{{ choice.enrollment_id }}"><button class="button--quiet" type="submit">{% trans "Check or verify the contact" %}<span class="visually-hidden"> {{ choice.label }}</span></button></form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section class="panel" aria-labelledby="notes-title">
+    <h2 id="notes-title">{% trans "Internal notes" %}</h2>
+    <p class="hint">{% trans "Visible to staff only; never sent to the patient." %}</p>
+    <ul>{% for note in view.notes %}<li>{{ note.created_at|date:"d/m/Y H:i" }} · {{ note.body }}</li>{% empty %}<li>{% trans "No notes." %}</li>{% endfor %}</ul>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="note">
+      <div class="field"><label for="note-body">{% trans "New note" %}</label><textarea id="note-body" name="body" rows="3" maxlength="4000" required></textarea></div>
+      <button class="button--secondary" type="submit">{% trans "Save note" %}</button>
+    </form>
+  </section>
+</section>
+{% endtimezone %}
+{% endwith %}
+{% endblock %}

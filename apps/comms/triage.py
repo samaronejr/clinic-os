@@ -1,5 +1,7 @@
 """Deterministic clinical-advice triage for inbound patient messages.
 
+Terms match whole words; a trailing ``*`` marks a stem (a prefix of a word), so
+"samu" never matches a name such as "Samuel" nor "dor" a word such as "adorei".
 The classifier is a conservative router, never a clinician: any clinical or
 urgent term, or any text it cannot positively recognise as administrative,
 withholds AI drafting and (for clinical/urgent text) routes the thread to the
@@ -21,56 +23,59 @@ URGENT_TERMS: Final = (
     "dor no peito",
     "falta de ar",
     "nao consigo respirar",
-    "desmai",
-    "convuls",
-    "sangramento",
+    "desmai*",
+    "convuls*",
+    "sangramento*",
     "sangrando",
     "overdose",
-    "suicid",
+    "suicid*",
     "me matar",
     "emergencia",
     "samu",
     "avc",
     "infarto",
-    "anafilax",
+    "anafilax*",
     "reacao alergica grave",
 )
 CLINICAL_TERMS: Final = (
     "dor",
+    "dores",
     "febre",
     "tosse",
-    "enjoo",
-    "vomit",
-    "tontura",
-    "sintoma",
+    "enjoo*",
+    "vomit*",
+    "tontura*",
+    "sintoma*",
     "efeito colateral",
-    "alergia",
+    "efeitos colaterais",
+    "alergi*",
     "pressao alta",
     "pressao baixa",
-    "diabet",
-    "remedio",
-    "medicamento",
-    "medicacao",
+    "diabet*",
+    "remedi*",
+    "medicament*",
+    "medicac*",
     "dose",
+    "doses",
     "dosagem",
-    "receita",
+    "receita*",
     "posso tomar",
     "devo tomar",
     "parar de tomar",
-    "exame",
-    "resultado",
-    "laudo",
-    "diagnostico",
-    "tratamento",
+    "exame*",
+    "resultado*",
+    "laudo*",
+    "diagnostic*",
+    "tratamento*",
     "gravidez",
-    "gestante",
-    "ferida",
+    "gestante*",
+    "ferida*",
     "inchaco",
     "piorou",
     "melhorou",
 )
 ADMINISTRATIVE_TERMS: Final = (
-    "horario",
+    "horario*",
     "remarcar",
     "reagendar",
     "agendar",
@@ -78,14 +83,14 @@ ADMINISTRATIVE_TERMS: Final = (
     "confirmar consulta",
     "endereco",
     "estacionamento",
-    "boleto",
-    "pagamento",
-    "fatura",
-    "recibo",
+    "boleto*",
+    "pagamento*",
+    "fatura*",
+    "recibo*",
     "nota fiscal",
     "segunda via",
-    "convenio",
-    "obrigad",
+    "convenio*",
+    "obrigad*",
 )
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 
@@ -110,8 +115,14 @@ def _fold(text: str) -> str:
     return " " + _NON_WORD.sub(" ", plain).strip() + " "
 
 
+def _matches(folded: str, term: str) -> bool:
+    if term.endswith("*"):
+        return f" {term[:-1]}" in folded
+    return f" {term} " in folded
+
+
 def _has(folded: str, terms: tuple[str, ...]) -> bool:
-    return any(term in folded for term in terms)
+    return any(_matches(folded, term) for term in terms)
 
 
 def classify_inbound(text: str) -> TriageVerdict:

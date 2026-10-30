@@ -71,3 +71,15 @@ def test_accents_case_and_punctuation_do_not_hide_terms() -> None:
 def test_a_drifting_draft_is_detected() -> None:
     assert clinical_content_in_reply("Pode tomar a dose dobrada")
     assert not clinical_content_in_reply("Atendemos de segunda a sexta, das 8h às 18h.")
+
+
+def test_terms_match_whole_words_not_substrings() -> None:
+    assert classify_inbound("O Samuel quer remarcar").category == "administrative"
+    assert classify_inbound("Adorei o atendimento, obrigado").category == (
+        "administrative"
+    )
+    assert classify_inbound("Falei com o vendedor sobre o boleto").category == (
+        "administrative"
+    )
+    assert classify_inbound("Estou com dores fortes").category == "clinical"
+    assert classify_inbound("Tomei os remédios hoje").category == "clinical"

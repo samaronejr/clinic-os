@@ -13,7 +13,10 @@ from apps.comms.inbox_rules import (
     channel_allows_purpose,
     decide_send,
     effective_delivery_state,
+    placeholder_count,
+    render_template,
     template_fits_purpose,
+    template_transition_allowed,
     window_closes_at,
     window_open,
 )
@@ -153,3 +156,37 @@ def test_provider_state_is_monotonic_and_keeps_delivery_proof() -> None:
     assert advance_provider_state(current="failed", incoming="delivered") == "delivered"
     assert advance_provider_state(current="sent", incoming="failed") == "failed"
     assert advance_provider_state(current="sent", incoming="unknown") == "sent"
+
+
+def test_template_rendering_is_strict_about_arity_and_content() -> None:
+    body = "Olá {{1}}, sua consulta é às {{2}}."
+    assert placeholder_count(body) == 2
+    assert render_template(body=body, parameters=("Ana", "10:00")) == (
+        "Olá Ana, sua consulta é às 10:00."
+    )
+    assert render_template(body=body, parameters=("Ana",)) is None
+    assert render_template(body=body, parameters=("Ana", "10\n11:00")) is None
+    assert render_template(body=body, parameters=("Ana", " ")) is None
+    assert render_template(body=body, parameters=("Ana", "x" * 257)) is None
+    assert placeholder_count("sem parâmetros") == 0
+    assert placeholder_count("{{2}} sem o primeiro") is None
+
+
+def test_template_approval_transitions_mirror_the_database_guard() -> None:
+    allowed = [
+        ("draft", "pending"),
+        ("pending", "approved"),
+        ("pending", "rejected"),
+        ("approved", "paused"),
+        ("paused", "approved"),
+        ("approved", "disabled"),
+    ]
+    assert all(template_transition_allowed(current=a, new=b) for a, b in allowed)
+    for current, new in [
+        ("draft", "approved"),
+        ("rejected", "approved"),
+        ("disabled", "approved"),
+        ("approved", "pending"),
+        ("approved", "bogus"),
+    ]:
+        assert not template_transition_allowed(current=current, new=new)

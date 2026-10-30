@@ -44,7 +44,7 @@ text. The
 evidence. Physical devices and independent S3/MinIO qualification stay external.
 
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/comms/webhooks/` (per-account raw-body HMAC before stored scope; see `middleware.BYPASS_PREFIXES` for the full set).
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.

@@ -119,6 +119,8 @@ SUITES: Final = {
     "results": ("tests/renewal/browser/test_results.py",),
     # Task 32: Clinical Inbox and clinician Today.
     "clinical-inbox": ("tests/renewal/browser/test_clinical_inbox.py",),
+    # Task 51: the omnichannel inbox, appended as its own registration block.
+    "messages": ("tests/renewal/browser/test_messages.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -159,11 +161,12 @@ FIXTURE_SUITES: Final = frozenset(
         "workspace",
         "results",
         "clinical-inbox",
+        "messages",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
 REALTIME_SUITES: Final = frozenset(
-    {"realtime", "agenda-slice", "agenda-grid", "reception"}
+    {"realtime", "agenda-slice", "agenda-grid", "reception", "messages"}
 )
 # Suites that exercise the synthetic room provider through the real outbox.
 # ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
@@ -782,7 +785,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
     return {
         **(
             {"COMMS_SYNTHETIC_CHANNELS": "email,sms,whatsapp"}
-            if suite == "reminders"
+            if suite in {"reminders", "messages"}
             else {}
         ),
         **({"TELECONSULT_SYNTHETIC_PROVIDER": "true"} if suite in VIDEO_SUITES else {}),
@@ -1028,7 +1031,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite in {"agenda", "reminders"}
+                        if suite in {"agenda", "reminders", "messages"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
                         else {}

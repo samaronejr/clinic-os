@@ -127,11 +127,6 @@ def normalize_address(channel: str, raw: object) -> str:
     raise WebhookRejectedError
 
 
-def address_fingerprint(*, key: bytes, channel: str, address: str) -> str:
-    """Return a keyed, channel-separated hash for equality lookup without plaintext."""
-    return hmac.digest(key, f"{channel}\x00{address}".encode(), hashlib.sha256).hex()
-
-
 def _object(value: object) -> dict[str, Any]:
     if type(value) is not dict:
         raise WebhookRejectedError

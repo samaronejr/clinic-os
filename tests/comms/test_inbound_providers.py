@@ -10,7 +10,6 @@ from apps.comms.inbound_providers import (
     StatusUpdate,
     TemplateStatus,
     WebhookRejectedError,
-    address_fingerprint,
     normalize_address,
     parse_signed_envelope,
     parse_whatsapp,
@@ -243,18 +242,9 @@ def test_signed_envelope_for_email_and_sms() -> None:
         parse_signed_envelope("sms", body)  # an email address is not a phone number
 
 
-def test_address_normalization_and_fingerprint() -> None:
+def test_address_normalization() -> None:
     assert normalize_address("sms", "+55 (11) 99999-0001") == "+5511999990001"
-    first = address_fingerprint(key=b"k" * 32, channel="sms", address="+5511999990001")
-    assert first == address_fingerprint(
-        key=b"k" * 32, channel="sms", address="+5511999990001"
-    )
-    assert first != address_fingerprint(
-        key=b"k" * 32, channel="whatsapp", address="+5511999990001"
-    )
-    assert first != address_fingerprint(
-        key=b"j" * 32, channel="sms", address="+5511999990001"
-    )
+    assert normalize_address("email", " A@B.INVALID ") == "a@b.invalid"
     with pytest.raises(WebhookRejectedError):
         normalize_address("sms", "12")
 
