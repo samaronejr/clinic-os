@@ -99,7 +99,8 @@ EXPECTED: Final = {
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],
-    "clinic_manager": ["inbox", "automations", "settings"],
+    # Task 50: privacy.requests opens Patients > Data-subject requests.
+    "clinic_manager": ["patients", "inbox", "automations", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }
@@ -287,8 +288,9 @@ def test_workflow_candidate_opens_only_delivered_operations(
     _reauthenticate(client, user.pk, role)
     response = _get(client, "/auth/protected/")
     assert response.status_code == OK
+    # Task 50: privacy.requests opens Patients for the clinic manager.
     assert _modules(response) == (
-        ["inbox", "operations", "automations", "settings"]
+        ["patients", "inbox", "operations", "automations", "settings"]
         if role == "clinic_manager"
         else ["inbox", "operations", "settings"]
         if role == "scheduler"

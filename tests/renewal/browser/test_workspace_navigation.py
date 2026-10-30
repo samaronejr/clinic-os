@@ -105,7 +105,8 @@ EXPECTED: Final = {
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],
-    "clinic_manager": ["inbox", "automations", "settings"],
+    # Task 50: privacy.requests opens Patients > Data-subject requests.
+    "clinic_manager": ["patients", "inbox", "automations", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }

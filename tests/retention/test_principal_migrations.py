@@ -6,6 +6,7 @@ from itertools import product
 from uuid import UUID, uuid4
 
 import pytest
+from apps.identity.migrations._privacy_permission_sql import _BRANCH as PRIVACY_BRANCH
 from apps.identity.models import (
     Clinic,
     Organization,
@@ -56,6 +57,20 @@ def _authority_catalog() -> list[tuple[object, ...]]:
             "ORDER BY p.proname"
         )
         return [tuple(row) for row in cursor.fetchall()]
+
+
+def _without_privacy_branch(
+    catalog: list[tuple[object, ...]],
+) -> list[tuple[object, ...]]:
+    """Remove the one staff branch identity 0042 adds after the v2 grant set."""
+    result = []
+    for name, definition, *rest in catalog:
+        text = str(definition)
+        if name == "identity_actor_permission":
+            assert text.count(PRIVACY_BRANCH) == 1
+            text = text.replace(PRIVACY_BRANCH, "", 1)
+        result.append((name, text, *rest))
+    return result
 
 
 def _assert_closed_pairs() -> None:
@@ -134,7 +149,9 @@ def test_full_chain_preserves_existing_v1_v2_and_admits_only_v3_retention(
             cursor.execute(
                 "SELECT set_config('app.current_tenant',%s,true)", [str(ORGANIZATION)]
             )
-            assert _authority_catalog() == before
+            # Task 50 adds only the staff privacy.requests branch to the
+            # evaluator; every machine authority definition is unchanged.
+            assert _without_privacy_branch(_authority_catalog()) == before
             _grant(_principal(3), 3, "retention.execute")
             assert set(
                 ServicePrincipalGrant.objects.values_list(

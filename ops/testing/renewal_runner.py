@@ -119,6 +119,7 @@ SUITES: Final = {
     "results": ("tests/renewal/browser/test_results.py",),
     # Task 32: Clinical Inbox and clinician Today.
     "clinical-inbox": ("tests/renewal/browser/test_clinical_inbox.py",),
+    "portal": ("tests/renewal/browser/test_portal.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -159,6 +160,7 @@ FIXTURE_SUITES: Final = frozenset(
         "workspace",
         "results",
         "clinical-inbox",
+        "portal",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -182,7 +184,7 @@ SIGNING_SUITES: Final = frozenset(
     {"document-verification", "prescribing", "end-to-end"}
 )
 # Suites that exercise the synthetic, explicitly non-payable PIX rehearsal.
-PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end"})
+PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end", "portal"})
 # Browser engines a suite can run on; chromium keeps CI parity as the default.
 ENGINES: Final = ("chromium", "firefox", "webkit")
 DEFAULT_ENGINE: Final = "chromium"

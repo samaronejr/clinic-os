@@ -27,10 +27,12 @@ from apps.identity import (
     service_principals,
 )
 from apps.identity.current_context import require_permission
+from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.orders import services as order_services
+from apps.orders.patient_results import patient_result_file
 from apps.prescription.services import create_document_draft, issue_prescription
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.verification import release_document
@@ -690,6 +692,39 @@ def test_intake_service_boundaries_derive_context_and_keep_search_body_only() ->
     ],
 )
 def test_order_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            data_requests.submit_data_subject_request,
+            ["clinic_id", "kind", "details", "purpose", "idempotency_key"],
+        ),
+        (data_requests.export_data_subject_copy, ["clinic_id", "request_id"]),
+        (data_requests.staff_data_subject_requests, ["clinic_id"]),
+        (
+            data_requests.start_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision"],
+        ),
+        (
+            data_requests.fulfill_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision"],
+        ),
+        (
+            data_requests.reject_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision", "reason_code"],
+        ),
+        (patient_result_file, ["version_id"]),
+    ],
+)
+def test_portal_services_keep_explicit_scope_and_keyword_only_boundaries(
     entrypoint: Callable[..., object], names: list[str]
 ) -> None:
     parameters = signature(entrypoint).parameters

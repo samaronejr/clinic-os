@@ -8,6 +8,7 @@ from infra import (
     identity_lifecycle_catalog,
     longitudinal_catalog,
     orders_catalog,
+    portal_catalog,
     retention_catalog,
 )
 
@@ -157,11 +158,13 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ehr_specialtypack", "SELECT"),
     ("ehr_specialtyentry", "SELECT"),
     *orders_catalog.TABLE_GRANTS,
+    *portal_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_evaluationrun", "status", "UPDATE"),
     ("ai_evaluationrun", "finished_at", "UPDATE"),
     *retention_catalog.COLUMN_GRANTS,
+    *portal_catalog.COLUMN_GRANTS,
     ("ai_extractioncandidate", "status", "UPDATE"),
     ("ai_extractioncandidate", "observation_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
@@ -503,6 +506,7 @@ POSTURE_OVERRIDES: Final = {
     "ehr_pack_guard": ("v", False, ["clinic_resolver"]),
     "ehr_pack_use_guard": ("v", False, ["clinic_resolver"]),
     **orders_catalog.POSTURE,
+    **portal_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
@@ -794,6 +798,7 @@ FUNCTION_SIGNATURES: Final = {
     ("ehr_pack_guard", ""),
     ("ehr_pack_use_guard", ""),
     *orders_catalog.RESULTS,
+    *portal_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
@@ -1236,6 +1241,7 @@ FUNCTION_RESULTS: Final = {
     ("ehr_pack_guard", ""): "trigger",
     ("ehr_pack_use_guard", ""): "trigger",
     **orders_catalog.RESULTS,
+    **portal_catalog.RESULTS,
 }
 
 

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n patient_portal %}
 {% block title %}{% trans "Patient portal · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "Patient portal access state." %}{% endblock %}
-{% block content %}
-<section class="auth-shell" aria-labelledby="patient-gate-title">
-  <p class="eyebrow">{% trans "Patient portal" %}</p>
-  {% if state == "delegate_expired" %}
+{% block content %}{% patient_portal_v2 as portal_v2 %}
+<section class="auth-shell" aria-labelledby="patient-gate-title" data-patient-gate="{% if state %}{{ state }}{% else %}required{% endif %}">
+{% if not portal_v2 %}  <p class="eyebrow">{% trans "Patient portal" %}</p>
+{% endif %}  {% if state == "delegate_expired" %}
     <h1 id="patient-gate-title">{% trans "Representation access expired" %}</h1>
     <p class="lede">{% trans "This representation grant expired. Ask the clinic to verify a renewal before acting for this patient again." %}</p>
     <form method="post" action="{% url 'intake:delegate-renew' %}" novalidate>
@@ -22,6 +22,8 @@
   {% else %}
     <h1 id="patient-gate-title">{% trans "Access required" %}</h1>
     <p class="lede">{% trans "Use the invitation link and access code the clinic gave you. If your code expired or was already used, ask the clinic for a new invitation." %}</p>
+    <p data-gate-drafts>{% trans "If your session ended while you were answering a form, the answers you saved as a draft stay with the clinic. Sign in again with a new code to continue." %}</p>
   {% endif %}
-</section>
+{% if portal_v2 %}  {% include "intake/partials/portal_help.html" only %}
+{% endif %}</section>
 {% endblock %}

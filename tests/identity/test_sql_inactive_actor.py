@@ -47,6 +47,9 @@ from orders.sql_oracles import (
     ACTOR_PROTOCOL_ORACLES as ORDERS_ACTOR_PROTOCOL_ORACLES,
 )
 from patient_service_support import runtime_role
+from patients.dsar_oracles import (
+    ACTOR_PROTOCOL_ORACLES as DATA_REQUEST_ACTOR_PROTOCOL_ORACLES,
+)
 from patients.duplicate_authority_cases import (
     ACTOR_PROTOCOL_ORACLES as MERGE_ACTOR_PROTOCOL_ORACLES,
 )
@@ -101,6 +104,8 @@ JUSTIFIED = {
         _PATIENT_ONLY
     ),
     "clinic_app.switch_patient_delegate(uuid,uuid)": _PATIENT_ONLY,
+    # Task 50: the portal home lists the original identity's grants.
+    "clinic_app.patient_delegate_options(text)": _PATIENT_ONLY,
     "clinic_app.delegate_guard()": _DELEGATE_AUTHORITY,
     "clinic_app.request_delegate_grant(uuid,uuid,uuid,text,uuid,text[],text[],"
     "timestamp with time zone,uuid)": _DELEGATE_AUTHORITY,
@@ -392,6 +397,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | MERGE_ACTOR_PROTOCOL_ORACLES
         | ORDERS_ACTOR_PROTOCOL_ORACLES
         | RETENTION_ACTOR_PROTOCOLS
+        | DATA_REQUEST_ACTOR_PROTOCOL_ORACLES
         | EXTRACTION_ACTOR_PROTOCOL_ORACLES
         | EVALUATION_ACTOR_PROTOCOL_ORACLES
     )

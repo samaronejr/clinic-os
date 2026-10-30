@@ -1,0 +1,25 @@
+/* Patient portal display choice "higher contrast" (todo 50). Semantic tokens
+   only: secondary copy takes the full ink colour, rules and control borders
+   get the strongest line weight, and links stay underlined. Linked only when
+   the session chose it. */
+
+.portal-page,
+.portal {
+  --color-ink-soft: var(--color-ink);
+  --color-line: var(--color-control-border);
+}
+
+.portal-page a,
+.portal a {
+  text-decoration: underline;
+}
+
+.portal-page .panel,
+.portal .panel,
+.portal-identity,
+.portal-pending-list,
+.portal-destination-list,
+.portal-request-list,
+.portal-help {
+  border-width: var(--line-2);
+}

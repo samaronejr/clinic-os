@@ -180,6 +180,15 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("demographics.read", *_CONFIGURATION),
                 views=frozenset({"consent:staff"}),
             ),
+            Destination(
+                "data-requests",
+                gettext_noop("Data-subject requests"),
+                "intake:data-requests",
+                ("privacy.requests",),
+                route_roles=None,
+                views=frozenset({"intake:data-requests"}),
+                owner_todo=50,
+            ),
         ),
     ),
     Destination(

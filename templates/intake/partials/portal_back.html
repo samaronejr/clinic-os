@@ -1,0 +1,10 @@
+{% comment %}
+Portal back link (todo 50): the first element of every patient destination
+under PATIENT_PORTAL_V2, so a phone user never scrolls to find the way back
+or the way to a person (#portal-help, from intake/partials/portal_help.html,
+which every page that includes this row must also include).
+
+Context (always include with `only`):
+  back_href   optional parent URL; omitted = the portal home
+  back_label  visible text for back_href (required with it)
+{% endcomment %}{% load i18n %}<nav class="portal-back" aria-label="{% trans "Patient portal" %}" data-portal-back>{% if back_href %}<a class="portal-back-link" href="{{ back_href }}" data-portal-back-link>{% include "includes/components/icon.html" with name="chevron-left" only %}<span>{{ back_label }}</span></a>{% else %}<a class="portal-back-link" href="{% url 'intake:patient-home' %}" data-portal-back-link>{% include "includes/components/icon.html" with name="chevron-left" only %}<span>{% trans "Back to the portal" %}</span></a>{% endif %}<a class="portal-back-link" href="#portal-help" data-portal-help-link>{% include "includes/components/icon.html" with name="speech" only %}<span>{% trans "Talk to a person" %}</span></a></nav>

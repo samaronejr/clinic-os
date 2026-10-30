@@ -3118,6 +3118,268 @@
       "function:pg_catalog.int24eq(smallint, integer)"
     ]
   },
+  "constraint:intake_datasubjectrequest.data_request_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.data_request_requester_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.data_request_session_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
+      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
+      "constraint:intake_patientsession.intake_session_org_clinic_fk",
+      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
+      "constraint:intake_patientsession.intake_session_org_grant_fk",
+      "constraint:intake_patientsession.intake_session_org_patient_fk",
+      "constraint:intake_patientsession.session_delegate_pair",
+      "policy:intake_patientsession.tenant_isolation",
+      "trigger:intake_patientsession.delegate_session_binding"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.data_request_subject_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.data_request_task_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_closed_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_details_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_due_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_fingerprint_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_kind_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_purpose_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_rejection_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_data_request_state_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_clinic_id_c6d63122_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_delegate_grant_id_54ca8bd9_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_patientdelegategrant.delegate_clinic_fk",
+      "constraint:identity_patientdelegategrant.delegate_operations_check",
+      "constraint:identity_patientdelegategrant.delegate_purposes_check",
+      "constraint:identity_patientdelegategrant.delegate_recipient_fk",
+      "constraint:identity_patientdelegategrant.delegate_represented_fk",
+      "constraint:identity_patientdelegategrant.identity_delegate_distinct_subject",
+      "constraint:identity_patientdelegategrant.identity_delegate_lifecycle",
+      "constraint:identity_patientdelegategrant.identity_patientdele_clinic_id_942910c8_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdele_delegate_enrollment__9acf1ef3_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdele_evidence_attachment__664ab59d_fk_ehr_clini",
+      "constraint:identity_patientdelegategrant.identity_patientdele_grantor_session_id_2a103c22_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdele_organization_id_a881874e_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdele_represented_enrollme_99323f9c_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdele_requested_by_id_c5b23e84_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdele_verified_by_id_85c88804_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdelegategrant_revision_check",
+      "policy:identity_patientdelegategrant.delegate_read",
+      "policy:identity_patientdelegategrant.setup_tenant",
+      "trigger:identity_patientdelegategrant.delegate_binding"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_enrollment_id_1857c435_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_organization_id_fba36f51_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_id_8b60c536_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patient.intake_patient_organization_id_cb286636_fk_identity_",
+      "policy:intake_patient.tenant_isolation",
+      "trigger:intake_patient.intake_patient_mirror_guard"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_session_id_dca84fae_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
+      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
+      "constraint:intake_patientsession.intake_session_org_clinic_fk",
+      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
+      "constraint:intake_patientsession.intake_session_org_grant_fk",
+      "constraint:intake_patientsession.intake_session_org_patient_fk",
+      "constraint:intake_patientsession.session_delegate_pair",
+      "policy:intake_patientsession.tenant_isolation",
+      "trigger:intake_patientsession.delegate_session_binding"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_requester_enrollment_4ef6dd8d_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectre_updated_by_id_f8ccf436_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectrequest_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:intake_datasubjectrequest.intake_datasubjectrequest_task_id_d938f449_fk_workflows_task_id": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
   "constraint:intake_demographicscorrection.intake_correction_org_clinic_fk": {
     "direct": {},
     "via": [
@@ -9026,6 +9288,239 @@
       "function:clinic_app.patient_authority(uuid, text)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)"
+    ]
+  },
+  "function:clinic_app.data_request_close_task()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.set_config(text, text, boolean)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "function:clinic_app.data_request_emit_task()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 2
+    },
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.set_config(text, text, boolean)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "function:clinic_app.data_request_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
+    },
+    "via": [
+      "function:clinic_app.current_patient_authority(text)",
+      "function:clinic_app.data_request_now()",
+      "function:clinic_app.data_request_withdrawn(uuid, uuid, text)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.patient_identity(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.interval(interval, integer)",
+      "function:pg_catalog.interval(time without time zone)"
+    ]
+  },
+  "function:clinic_app.data_request_now()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": []
+  },
+  "function:clinic_app.data_request_task_close_valid(jsonb, jsonb)": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 8,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:intake_datasubjectrequest.data_request_clinic_fk",
+      "constraint:intake_datasubjectrequest.data_request_requester_fk",
+      "constraint:intake_datasubjectrequest.data_request_session_fk",
+      "constraint:intake_datasubjectrequest.data_request_subject_fk",
+      "constraint:intake_datasubjectrequest.data_request_task_scope_fk",
+      "constraint:intake_datasubjectrequest.intake_data_request_closed_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_details_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_due_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_fingerprint_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_kind_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_purpose_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_rejection_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_revision_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_state_check",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_clinic_id_c6d63122_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_delegate_grant_id_54ca8bd9_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_enrollment_id_1857c435_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_organization_id_fba36f51_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_id_8b60c536_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_session_id_dca84fae_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_requester_enrollment_4ef6dd8d_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_updated_by_id_f8ccf436_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectrequest_revision_check",
+      "constraint:intake_datasubjectrequest.intake_datasubjectrequest_task_id_d938f449_fk_workflows_task_id",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.pg_trigger_depth()",
+      "policy:intake_datasubjectrequest.privacy_staff_read",
+      "policy:intake_datasubjectrequest.setup_tenant",
+      "trigger:intake_datasubjectrequest.data_request_binding",
+      "trigger:intake_datasubjectrequest.data_request_task",
+      "trigger:intake_datasubjectrequest.data_request_task_close"
+    ]
+  },
+  "function:clinic_app.data_request_task_valid(jsonb)": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 3
+    },
+    "via": [
+      "constraint:intake_datasubjectrequest.data_request_clinic_fk",
+      "constraint:intake_datasubjectrequest.data_request_requester_fk",
+      "constraint:intake_datasubjectrequest.data_request_session_fk",
+      "constraint:intake_datasubjectrequest.data_request_subject_fk",
+      "constraint:intake_datasubjectrequest.data_request_task_scope_fk",
+      "constraint:intake_datasubjectrequest.intake_data_request_closed_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_details_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_due_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_fingerprint_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_kind_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_purpose_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_rejection_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_revision_check",
+      "constraint:intake_datasubjectrequest.intake_data_request_state_check",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_clinic_id_c6d63122_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_delegate_grant_id_54ca8bd9_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_enrollment_id_1857c435_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_organization_id_fba36f51_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_id_8b60c536_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_patient_session_id_dca84fae_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_requester_enrollment_4ef6dd8d_fk_intake_pa",
+      "constraint:intake_datasubjectrequest.intake_datasubjectre_updated_by_id_f8ccf436_fk_identity_",
+      "constraint:intake_datasubjectrequest.intake_datasubjectrequest_revision_check",
+      "constraint:intake_datasubjectrequest.intake_datasubjectrequest_task_id_d938f449_fk_workflows_task_id",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.pg_trigger_depth()",
+      "policy:intake_datasubjectrequest.privacy_staff_read",
+      "policy:intake_datasubjectrequest.setup_tenant",
+      "trigger:intake_datasubjectrequest.data_request_binding",
+      "trigger:intake_datasubjectrequest.data_request_task",
+      "trigger:intake_datasubjectrequest.data_request_task_close"
+    ]
+  },
+  "function:clinic_app.data_request_withdrawn(uuid, uuid, text)": {
+    "direct": {},
+    "via": [
+      "constraint:consent_consentacceptance.consent_authority_check",
+      "constraint:consent_consentacceptance.consent_consentaccep_clinic_id_c51861d0_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_enrollment_id_dbb0d524_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_organization_id_31410d0b_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_id_ac67e8f9_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_session_id_fc7bcace_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_text_id_a971ac6b_fk_consent_c",
+      "constraint:consent_consentrevocation.consent_consentrevoc_acceptance_id_339c822a_fk_consent_c",
+      "constraint:consent_consentrevocation.consent_consentrevoc_clinic_id_b8fde1cf_fk_identity_",
+      "constraint:consent_consentrevocation.consent_consentrevoc_organization_id_9418faec_fk_identity_",
+      "constraint:consent_consentrevocation.consent_consentrevoc_patient_session_id_d87b1231_fk_intake_pa",
+      "constraint:consent_consenttext.consent_consenttext_clinic_id_c0bc255a_fk_identity_clinic_id",
+      "constraint:consent_consenttext.consent_consenttext_organization_id_b745af1e_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_published_by_id_ee3da737_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_version_check",
+      "constraint:consent_consenttext.consent_text_scope_check",
+      "policy:consent_consentacceptance.consent_acceptance_insert",
+      "policy:consent_consentacceptance.consent_acceptance_read",
+      "policy:consent_consentacceptance.consent_alias_read",
+      "policy:consent_consentacceptance.delegate_purpose",
+      "policy:consent_consentacceptance.setup_tenant",
+      "policy:consent_consentrevocation.consent_alias_read",
+      "policy:consent_consentrevocation.consent_revocation_insert",
+      "policy:consent_consentrevocation.consent_revocation_read",
+      "policy:consent_consentrevocation.delegate_purpose",
+      "policy:consent_consentrevocation.setup_tenant",
+      "policy:consent_consenttext.consent_text_insert",
+      "policy:consent_consenttext.consent_text_read",
+      "policy:consent_consenttext.delegate_purpose",
+      "policy:consent_consenttext.setup_tenant",
+      "trigger:consent_consentacceptance.consent_binding",
+      "trigger:consent_consentacceptance.consent_delegate_binding",
+      "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
+      "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
+      "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
+      "trigger:consent_consenttext.consent_binding",
+      "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
+      "trigger:consent_consenttext.scribe_capture_consent_published",
+      "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
   },
   "function:clinic_app.delegate_grantor(uuid, uuid)": {
@@ -15121,6 +15616,8 @@
       "constraint:workflows_workflowstep.workflows_workflowstep_position_check",
       "default:comms_integrationoperation.kind",
       "default:comms_integrationoperation.payload_digest",
+      "function:clinic_app.data_request_task_close_valid(jsonb, jsonb)",
+      "function:clinic_app.data_request_task_valid(jsonb)",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.orders_system_task_valid(jsonb)",
       "function:clinic_app.retention_system_task_valid(jsonb)",
@@ -18340,6 +18837,25 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:intake_datasubjectrequest.privacy_staff_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:intake_datasubjectrequest.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:intake_demographicscorrection.tenant_isolation": {
     "direct": {},
     "via": [
@@ -20478,6 +20994,24 @@
     "direct": {},
     "via": [
       "function:clinic_app.workflows_bundle_selection_guard()"
+    ]
+  },
+  "trigger:intake_datasubjectrequest.data_request_binding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.data_request_guard()"
+    ]
+  },
+  "trigger:intake_datasubjectrequest.data_request_task": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.data_request_emit_task()"
+    ]
+  },
+  "trigger:intake_datasubjectrequest.data_request_task_close": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.data_request_close_task()"
     ]
   },
   "trigger:intake_demographicscorrection.intake_correction_guard": {

@@ -29,9 +29,10 @@ from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
 from identity.test_reception_sql_principal import test_reception_display_device_contract
+from orders import test_patient_downloads
 from orders.sql_oracles import CASES as ORDERS_CASES
 from orders.sql_oracles import SQL_PROTOCOL_ORACLES as ORDERS_PROTOCOLS
-from patients import test_delegates
+from patients import test_delegates, test_dsar, test_portal_reads
 from patients.duplicate_authority_cases import (
     SQL_PROTOCOL_ORACLES as DUPLICATE_SQL_ORACLES,
 )
@@ -133,6 +134,52 @@ DELEGATE_PROTOCOLS = frozenset(
         "clinic_app.transition_delegate_grant",
     }
 )
+# Task 50: every data-subject request function is executed by the whole
+# native DSAR matrix; portal reads and result downloads by their own cases.
+DATA_REQUEST_CASES = {
+    name: getattr(test_dsar, name)
+    for name in dir(test_dsar)
+    if name.startswith("test_")
+}
+DATA_REQUEST_PROTOCOLS = frozenset(
+    {
+        "clinic_app.data_request_audit",
+        "clinic_app.data_request_audit_scope",
+        "clinic_app.data_request_close_task",
+        "clinic_app.data_request_emit_task",
+        "clinic_app.data_request_guard",
+        "clinic_app.data_request_now",
+        "clinic_app.data_request_task_close_valid",
+        "clinic_app.data_request_task_valid",
+        "clinic_app.data_request_withdrawn",
+        "clinic_app.patient_data_requests",
+        "clinic_app.submit_data_request",
+        "clinic_app.transition_data_request",
+    }
+)
+PORTAL_CASES = {
+    case.__name__: case
+    for case in (
+        test_portal_reads.test_delegate_options_list_only_active_verified_grants_of_the_original_identity,
+        test_portal_reads.test_channel_preferences_summarize_channels_without_destinations,
+        test_patient_downloads.test_released_source_downloads_exact_bytes_with_one_session_bound_event,
+        test_patient_downloads.test_unreleased_unknown_and_staff_contexts_are_one_denial,
+    )
+}
+_DOWNLOAD_CASES = [
+    "test_released_source_downloads_exact_bytes_with_one_session_bound_event",
+    "test_unreleased_unknown_and_staff_contexts_are_one_denial",
+]
+PORTAL_PROTOCOLS = {
+    "clinic_app.patient_delegate_options": [
+        "test_delegate_options_list_only_active_verified_grants_of_the_original_identity"
+    ],
+    "clinic_app.patient_channel_preferences": [
+        "test_channel_preferences_summarize_channels_without_destinations"
+    ],
+    "clinic_app.orders_patient_download_scope": _DOWNLOAD_CASES,
+    "clinic_app.orders_patient_download_audit": _DOWNLOAD_CASES,
+}
 EHR_CASES = {
     case.__name__: case
     for case in (
@@ -336,6 +383,8 @@ PROTOCOL_ORACLES = {
         "test_bundle_issuance_requires_the_owner_login_for_every_role"
     ],
     **{name: list(DELEGATE_CASES) for name in DELEGATE_PROTOCOLS},
+    **{name: sorted(DATA_REQUEST_CASES) for name in DATA_REQUEST_PROTOCOLS},
+    **PORTAL_PROTOCOLS,
     "clinic_app.teleconsult_mode_transition_audit": [
         "test_sql_guards_allow_and_deny_all_staff_roles",
         "test_two_patient_sessions_and_physician_keep_independent_mode_receipts",
@@ -375,6 +424,12 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
+    assert all(callable(case) for case in DATA_REQUEST_CASES.values())
+    assert all(
+        callable(PORTAL_CASES[name])
+        for names in PORTAL_PROTOCOLS.values()
+        for name in names
+    )
     assert all(callable(case) for case in EHR_CASES.values())
     assert all(callable(case) for case in ORDERS_CASES.values())
     assert all(callable(case) for case in EXTRACTION_CASES.values())

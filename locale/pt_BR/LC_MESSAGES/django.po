@@ -7567,3 +7567,510 @@ msgstr "Sotaque simulado"
 
 msgid "Synthetic engineering fixtures and scripted review are not representative clinical validation. Zero observed critical errors is a gate, not a safety claim. Real-world performance and clinical thresholds require EG-3/EG-11. AI-05/AI-06 fixture contracts do not implement their future workflows."
 msgstr "Exemplos sintéticos de engenharia e revisões roteirizadas não representam validação clínica. A ausência de erros críticos observados é um critério de passagem, não uma afirmação de segurança. Desempenho no mundo real e limites clínicos exigem EG-3/EG-11. Os exemplos de AI-05/AI-06 não implementam os fluxos futuros."
+
+msgid "Your appointments"
+msgstr "Suas consultas"
+
+msgid "Book, reschedule or cancel a visit with the clinic."
+msgstr "Agende, remarque ou cancele uma consulta com a clínica."
+
+msgid "Forms before your visit"
+msgstr "Questionários antes da consulta"
+
+msgid "Answer at your own pace; saved drafts stay with the clinic."
+msgstr "Responda no seu ritmo; os rascunhos salvos ficam guardados na clínica."
+
+msgid "Check camera and microphone, then join when the clinic opens the room."
+msgstr "Confira câmera e microfone e entre quando a clínica abrir a sala."
+
+msgid "Your charges"
+msgstr "Suas cobranças"
+
+msgid "Amounts and payment instructions the clinic released to you."
+msgstr "Valores e instruções de pagamento que a clínica liberou para você."
+
+msgid "Your documents"
+msgstr "Seus documentos"
+
+msgid "Prescriptions and documents the clinic released to you."
+msgstr "Receitas e documentos que a clínica liberou para você."
+
+msgid "Your records"
+msgstr "Seus registros"
+
+msgid "Released record versions and a verifiable copy to download."
+msgstr "Versões de registros liberadas e uma cópia verificável para baixar."
+
+msgid "Your consents"
+msgstr "Seus consentimentos"
+
+msgid "Read, accept or withdraw each purpose separately."
+msgstr "Leia, aceite ou retire cada finalidade separadamente."
+
+msgid "Everything the clinic opened for this access session, in one place."
+msgstr "Tudo o que a clínica liberou para esta sessão de acesso, em um só lugar."
+
+msgid "You are acting as a representative."
+msgstr "Você está agindo como representante."
+
+msgid "Records the clinic restricted from representatives stay hidden on every screen of this portal."
+msgstr "Registros que a clínica restringiu a representantes ficam ocultos em todas as telas deste portal."
+
+msgid "Next appointment"
+msgstr "Próxima consulta"
+
+msgid "The clinic still has to confirm this time."
+msgstr "A clínica ainda precisa confirmar este horário."
+
+msgid "Times are shown in the clinic's time zone."
+msgstr "Os horários aparecem no fuso horário da clínica."
+
+msgid "Waiting for you"
+msgstr "Aguardando você"
+
+msgid "form to answer"
+msgid_plural "forms to answer"
+msgstr[0] "formulário para responder"
+msgstr[1] "formulários para responder"
+
+msgid "Answer now"
+msgstr "Responder agora"
+
+msgid "open charge"
+msgid_plural "open charges"
+msgstr[0] "cobrança em aberto"
+msgstr[1] "cobranças em aberto"
+
+msgid "See payment instructions"
+msgstr "Ver instruções de pagamento"
+
+msgid "What you can do here"
+msgstr "O que você pode fazer aqui"
+
+msgid "Nothing else is open for this session"
+msgstr "Nada mais foi liberado para esta sessão"
+
+msgid "The clinic opened only this summary. Ask the clinic for a new invitation if you need to book, answer forms or see documents."
+msgstr "A clínica liberou apenas este resumo. Peça um novo convite à clínica se precisar agendar, responder formulários ou ver documentos."
+
+msgid "Talk to a person"
+msgstr "Fale com uma pessoa"
+
+msgid "This portal never answers clinical questions on its own. For anything about your care, contact the clinic team through the channels you already use."
+msgstr "Este portal nunca responde dúvidas clínicas sozinho. Para qualquer assunto sobre o seu cuidado, fale com a equipe da clínica pelos canais que você já usa."
+
+msgid "In an emergency, call 192."
+msgstr "Em uma emergência, ligue 192."
+
+msgid "If your session ended while you were answering a form, the answers you saved as a draft stay with the clinic. Sign in again with a new code to continue."
+msgstr "Se a sua sessão terminou enquanto você respondia um formulário, as respostas salvas como rascunho continuam guardadas na clínica. Entre de novo com um novo código para continuar."
+
+msgid "Back to your charges"
+msgstr "Voltar às suas cobranças"
+
+msgid "(waiting for the clinic to confirm this contact)"
+msgstr "(aguardando a clínica confirmar este contato)"
+
+msgid "A copy of my data"
+msgstr "Uma cópia dos meus dados"
+
+msgid "AI drafting assistance"
+msgstr "Apoio de IA para rascunhos"
+
+msgid "Accessibility"
+msgstr "Acessibilidade"
+
+msgid "Adjust how the portal looks for this session and see how the clinic contacts you."
+msgstr "Ajuste a aparência do portal nesta sessão e veja como a clínica entra em contato com você."
+
+msgid "Answer due by"
+msgstr "Resposta até"
+
+msgid "Answer the patients' LGPD requests before their due dates."
+msgstr "Responda às solicitações LGPD dos pacientes dentro dos prazos."
+
+msgid "Answered"
+msgstr "Atendida"
+
+msgid "Ask for a copy or a correction, or see who may handle your data."
+msgstr "Peça uma cópia ou uma correção, ou veja quem pode tratar seus dados."
+
+msgid "Ask the clinic for a copy, a correction or a portable copy of your data, see who may handle it, or withdraw an optional consent."
+msgstr "Peça à clínica uma cópia, uma correção ou uma cópia portável dos seus dados, veja quem pode tratá-los ou retire um consentimento opcional."
+
+msgid "Audio and media storage"
+msgstr "Armazenamento de áudio e mídia"
+
+msgid "Authorized by the clinic"
+msgstr "Autorizado pela clínica"
+
+msgid "Authorized, not yet active"
+msgstr "Autorizado, ainda não ativo"
+
+msgid "Card payments"
+msgstr "Pagamentos com cartão"
+
+msgid "Choose larger text or higher contrast and see how the clinic contacts you."
+msgstr "Escolha texto maior ou mais contraste e veja como a clínica entra em contato com você."
+
+msgid "Choose one of the listed options."
+msgstr "Escolha uma das opções listadas."
+
+msgid "Choose one of the listed reasons to decline."
+msgstr "Escolha um dos motivos listados para recusar."
+
+msgid "Choose one request type and fill in only what it asks for. A correction needs a description of up to 2,000 characters."
+msgstr "Escolha um tipo de solicitação e preencha apenas o que ele pede. Uma correção precisa de uma descrição de até 2.000 caracteres."
+
+msgid "Clinical records stay as the law requires. A correction never erases what was recorded: your clinician adds an amendment when one is needed."
+msgstr "Os registros clínicos são mantidos como a lei exige. Uma correção nunca apaga o que foi registrado: seu profissional de saúde acrescenta um adendo quando for necessário."
+
+msgid "Closed"
+msgstr "Encerrada"
+
+msgid "Contrast"
+msgstr "Contraste"
+
+msgid "Controlled prescription registry (SNCR)"
+msgstr "Sistema de receitas controladas (SNCR)"
+
+msgid "Correct my data"
+msgstr "Corrigir meus dados"
+
+msgid "Corrected version"
+msgstr "Versão corrigida"
+
+msgid "Data-subject requests"
+msgstr "Solicitações de titulares"
+
+msgid "Data-subject requests · Clinic OS"
+msgstr "Solicitações de titulares · Clinic OS"
+
+msgid "Database backups"
+msgstr "Cópias de segurança do banco de dados"
+
+msgid "Decline"
+msgstr "Recusar"
+
+msgid "Declined"
+msgstr "Recusada"
+
+msgid "Digital signatures"
+msgstr "Assinaturas digitais"
+
+msgid "Display preferences saved for this session."
+msgstr "Preferências de exibição salvas para esta sessão."
+
+msgid "Document generation"
+msgstr "Geração de documentos"
+
+msgid "Document storage"
+msgstr "Armazenamento de documentos"
+
+msgid "Download the copy"
+msgstr "Baixar a cópia"
+
+msgid "Download the exam results your clinician reviewed and released to you."
+msgstr "Baixe os resultados de exames que seu profissional de saúde revisou e liberou para você."
+
+msgid "Download the records the clinic released to you. The clinic also confirms what else it holds about you."
+msgstr "Baixe os registros que a clínica liberou para você. A clínica também confirma o que mais mantém sobre você."
+
+msgid "Download the report"
+msgstr "Baixar o laudo"
+
+msgid "Email delivery"
+msgstr "Envio de e-mails"
+
+msgid "Encryption keys"
+msgstr "Chaves de criptografia"
+
+msgid "Exam results your clinician reviewed and released to you."
+msgstr "Resultados de exames que seu profissional de saúde revisou e liberou para você."
+
+msgid "File safety scanning"
+msgstr "Verificação de segurança de arquivos"
+
+msgid "Health insurance billing (TISS)"
+msgstr "Faturamento de convênios (TISS)"
+
+msgid "Higher contrast"
+msgstr "Mais contraste"
+
+msgid "How the clinic contacts you"
+msgstr "Como a clínica entra em contato com você"
+
+msgid "In review"
+msgstr "Em análise"
+
+msgid "It repeats another request."
+msgstr "Ela repete outra solicitação."
+
+msgid "Key and secret storage"
+msgstr "Guarda de chaves e segredos"
+
+msgid "Larger text"
+msgstr "Texto maior"
+
+msgid "Make a request"
+msgstr "Fazer uma solicitação"
+
+msgid "Mark as answered"
+msgstr "Marcar como atendida"
+
+msgid "My own access"
+msgstr "Meu próprio acesso"
+
+msgid "National health data network (RNDS)"
+msgstr "Rede Nacional de Dados em Saúde (RNDS)"
+
+msgid "No data-subject request so far."
+msgstr "Nenhuma solicitação de titular até agora."
+
+msgid "No longer in use"
+msgstr "Não é mais usado"
+
+msgid "No request is open for this session"
+msgstr "Nenhuma solicitação está disponível nesta sessão"
+
+msgid "No result was released to you yet. When your clinician releases one, it appears here."
+msgstr "Nenhum resultado foi liberado para você ainda. Quando seu profissional de saúde liberar um, ele aparecerá aqui."
+
+msgid "Not available. The portal never asks your browser for notification permission and keeps no data on this device."
+msgstr "Indisponível. O portal nunca pede permissão de notificação ao seu navegador e não guarda dados neste aparelho."
+
+msgid "Not in use"
+msgstr "Não utilizado"
+
+msgid "Notifications on this device"
+msgstr "Notificações neste aparelho"
+
+msgid "Only representations the clinic verified and activated are listed. Each one expires on the date the clinic set."
+msgstr "Aparecem apenas representações que a clínica verificou e ativou. Cada uma expira na data definida pela clínica."
+
+msgid "Only results your clinician reviewed and released to you appear here. A result the clinic is still reviewing stays with the clinic team."
+msgstr "Aparecem aqui apenas os resultados que seu profissional de saúde revisou e liberou para você. Um resultado ainda em análise fica com a equipe da clínica."
+
+msgid "PIX payments"
+msgstr "Pagamentos por PIX"
+
+msgid "Patients and their verified representatives file these requests in the portal. Each one has a review task due on the same date. Answering never edits a clinical record: corrections to clinical content are made by the clinician as an amendment."
+msgstr "Pacientes e seus representantes verificados fazem estas solicitações no portal. Cada uma tem uma tarefa de análise com o mesmo prazo. Responder nunca altera um registro clínico: correções de conteúdo clínico são feitas pelo profissional como adendo."
+
+msgid "Portal preferences · Clinic OS"
+msgstr "Preferências do portal · Clinic OS"
+
+msgid "Preferences"
+msgstr "Preferências"
+
+msgid "Professional registry checks"
+msgstr "Consulta a conselhos profissionais"
+
+msgid "Questions about a result are answered by your clinician, never by this portal."
+msgstr "Dúvidas sobre um resultado são respondidas pelo seu profissional de saúde, nunca por este portal."
+
+msgid "Reason to decline"
+msgstr "Motivo da recusa"
+
+msgid "Receive the released records in a verifiable package you can share."
+msgstr "Receba os registros liberados em um pacote verificável que você pode compartilhar."
+
+msgid "Received"
+msgstr "Recebida"
+
+msgid "Released to you"
+msgstr "Liberado para você"
+
+#, python-format
+msgid "Report dated %(date)s."
+msgstr "Laudo de %(date)s."
+
+#, python-format
+msgid "Representing %(name)s"
+msgstr "Representando %(name)s"
+
+msgid "Request"
+msgstr "Solicitação"
+
+msgid "Request received. The clinic answers within 15 days and shows the progress here."
+msgstr "Solicitação recebida. A clínica responde em até 15 dias e mostra o andamento aqui."
+
+msgid "Request updated."
+msgstr "Solicitação atualizada."
+
+msgid "Requests by due date"
+msgstr "Solicitações por prazo"
+
+#, python-format
+msgid "Result %(number)s"
+msgstr "Resultado %(number)s"
+
+msgid "Review your consents for messages and other optional uses"
+msgstr "Revise seus consentimentos para mensagens e outros usos opcionais"
+
+msgid "Save display preferences"
+msgstr "Salvar preferências de exibição"
+
+msgid "Secure connections"
+msgstr "Conexões seguras"
+
+msgid "See which kinds of service providers the clinic may use and whether any of them is active."
+msgstr "Veja que tipos de fornecedores a clínica pode usar e se algum deles está ativo."
+
+msgid "Send this request"
+msgstr "Enviar esta solicitação"
+
+msgid "Sent by a representative"
+msgstr "Enviada por um representante"
+
+msgid "Service"
+msgstr "Serviço"
+
+msgid "Service invoices (NFS-e)"
+msgstr "Notas fiscais de serviço (NFS-e)"
+
+msgid "Service providers and their current status"
+msgstr "Fornecedores e sua situação atual"
+
+msgid "Signature verification"
+msgstr "Verificação de assinaturas"
+
+msgid "Speech transcription"
+msgstr "Transcrição de voz"
+
+msgid "Standard contrast"
+msgstr "Contraste padrão"
+
+msgid "Standard text"
+msgstr "Texto padrão"
+
+msgid "Start review"
+msgstr "Iniciar análise"
+
+msgid "Stop an optional use of your data. Care, records and billing continue normally."
+msgstr "Interrompa um uso opcional dos seus dados. Atendimento, registros e cobrança continuam normalmente."
+
+msgid "Storage encryption"
+msgstr "Criptografia do armazenamento"
+
+msgid "Switch"
+msgstr "Trocar"
+
+msgid "Take my data to another provider"
+msgstr "Levar meus dados para outro serviço"
+
+msgid "Tell the clinic what is wrong. Clinical notes change only through an amendment by your clinician."
+msgstr "Conte à clínica o que está errado. Anotações clínicas só mudam por meio de um adendo do seu profissional de saúde."
+
+msgid "Testing without patient data"
+msgstr "Em teste, sem dados de pacientes"
+
+msgid "Text messages (SMS)"
+msgstr "Mensagens de texto (SMS)"
+
+msgid "Text size"
+msgstr "Tamanho do texto"
+
+msgid "Text size, contrast and how the clinic contacts you."
+msgstr "Tamanho do texto, contraste e como a clínica entra em contato com você."
+
+msgid "The clinic could not confirm who made the request."
+msgstr "A clínica não conseguiu confirmar quem fez a solicitação."
+
+msgid "The clinic does not send you automated messages."
+msgstr "A clínica não envia mensagens automáticas para você."
+
+msgid "The clinic opened only part of the portal for this access. Ask the clinic team, who can register your request for you."
+msgstr "A clínica liberou apenas parte do portal para este acesso. Fale com a equipe da clínica, que pode registrar a sua solicitação."
+
+msgid "The copy is too large to download here. The clinic team will deliver it as part of your request."
+msgstr "A cópia é grande demais para baixar aqui. A equipe da clínica vai entregá-la como parte da sua solicitação."
+
+msgid "The law requires the clinic to keep this record."
+msgstr "A lei exige que a clínica mantenha este registro."
+
+msgid "The request does not apply to data this clinic holds."
+msgstr "A solicitação não se aplica a dados que esta clínica mantém."
+
+msgid "These are the kinds of service providers the clinic may use. None of them receives patient data until the clinic authorizes it for real use."
+msgstr "Estes são os tipos de fornecedores que a clínica pode usar. Nenhum deles recebe dados de pacientes até que a clínica autorize o uso real."
+
+msgid "These choices are kept by the clinic system for this session only. Nothing is saved on your device."
+msgstr "Estas escolhas ficam no sistema da clínica apenas durante esta sessão. Nada é salvo no seu aparelho."
+
+msgid "This file is not available right now. Try again later or ask the clinic team for a copy."
+msgstr "Este arquivo não está disponível agora. Tente de novo mais tarde ou peça uma cópia à equipe da clínica."
+
+msgid "This form was already sent with different answers. Review your requests below before sending a new one."
+msgstr "Este formulário já foi enviado com respostas diferentes. Revise suas solicitações abaixo antes de enviar uma nova."
+
+msgid "This request changed since you opened the page. Review its current state and try again."
+msgstr "Esta solicitação mudou desde que você abriu a página. Revise a situação atual e tente de novo."
+
+msgid "This version replaces an earlier report of the same exam."
+msgstr "Esta versão substitui um laudo anterior do mesmo exame."
+
+msgid "To change a contact or a channel, talk to the clinic team. They confirm each contact before using it."
+msgstr "Para mudar um contato ou um canal, fale com a equipe da clínica. Ela confirma cada contato antes de usá-lo."
+
+msgid "Under the LGPD you can ask the clinic for a copy of your data, a correction, a portable copy, information about who may handle it, or withdraw an optional consent. The clinic answers within 15 days."
+msgstr "Pela LGPD, você pode pedir à clínica uma cópia dos seus dados, uma correção, uma cópia portável, informações sobre quem pode tratá-los ou retirar um consentimento opcional. A clínica responde em até 15 dias."
+
+#, python-format
+msgid "Up to %(limit)s characters. Do not include other people's data."
+msgstr "Até %(limit)s caracteres. Não inclua dados de outras pessoas."
+
+msgid "Video consultations"
+msgstr "Teleconsultas"
+
+msgid "Waitlist offers"
+msgstr "Ofertas da lista de espera"
+
+msgid "What should the clinic correct?"
+msgstr "O que a clínica deve corrigir?"
+
+msgid "WhatsApp messages"
+msgstr "Mensagens de WhatsApp"
+
+#, python-format
+msgid "When the clinic turns this on, a notification will only say: “%(notice)s”, with no details about your care."
+msgstr "Quando a clínica ativar este recurso, a notificação dirá apenas: “%(notice)s”, sem detalhes sobre o seu cuidado."
+
+msgid "Which optional use?"
+msgstr "Qual uso opcional?"
+
+msgid "Who may handle my data"
+msgstr "Quem pode tratar meus dados"
+
+msgid "Who may handle your data"
+msgstr "Quem pode tratar seus dados"
+
+msgid "Whose portal are you using?"
+msgstr "De quem é o portal que você está usando?"
+
+msgid "Withdraw an optional consent"
+msgstr "Retirar um consentimento opcional"
+
+msgid "You are acting as a representative. Requests you send here are recorded as made by you for the patient you represent."
+msgstr "Você está agindo como representante. As solicitações enviadas aqui ficam registradas como feitas por você para o paciente que você representa."
+
+msgid "You have a new message from the clinic."
+msgstr "Você tem uma nova mensagem da clínica."
+
+msgid "You have not made any request yet."
+msgstr "Você ainda não fez nenhuma solicitação."
+
+msgid "Your data rights"
+msgstr "Seus direitos sobre os dados"
+
+msgid "Your data rights · Clinic OS"
+msgstr "Seus direitos sobre os dados · Clinic OS"
+
+msgid "Your requests"
+msgstr "Suas solicitações"
+
+msgid "Your results"
+msgstr "Seus resultados"
+
+msgid "Your results · Clinic OS"
+msgstr "Seus resultados · Clinic OS"

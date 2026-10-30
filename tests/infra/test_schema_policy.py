@@ -101,6 +101,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.
         "identity_patientdelegategrant",
+        # Task 50 privacy-staff reads, resolver writes: tests/patients/test_dsar.py.
+        "intake_datasubjectrequest",
         # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
         "identity_savedview",
         # Protected pending captures: tests/identity/test_onboarding.py.
