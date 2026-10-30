@@ -153,6 +153,15 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowdefinitionversion", "SELECT"),
     ("workflows_workflowrun", "SELECT"),
     ("workflows_workflowstep", "SELECT"),
+    # Plan item 52.
+    ("workflows_careplan", "SELECT"),
+    ("workflows_careaction", "SELECT"),
+    ("workflows_referral", "SELECT"),
+    ("workflows_recall", "SELECT"),
+    ("workflows_proassignment", "SELECT"),
+    ("workflows_prooccurrence", "SELECT"),
+    ("workflows_carerefusal", "SELECT"),
+    ("workflows_carerefusal", "INSERT"),
     # Plan item 30.
     ("ehr_specialtypack", "SELECT"),
     ("ehr_specialtyentry", "SELECT"),
@@ -217,6 +226,11 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "revision", "UPDATE"),
     ("teleconsult_teleconsultsession", "started_at", "UPDATE"),
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
+    # Plan item 52: the care scanner's refusal evidence, written by its resolver.
+    ("workflows_carerefusal", "actor_id", "UPDATE"),
+    ("workflows_carerefusal", "attempts", "UPDATE"),
+    ("workflows_carerefusal", "refused_at", "UPDATE"),
+    ("workflows_carerefusal", "retry_at", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
     **retention_catalog.POSTURE,
@@ -493,6 +507,10 @@ POSTURE_OVERRIDES: Final = {
     "touch_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
     "waitlist_binding": ("v", False, ["clinic_resolver"]),
     "workflows_bundle_selection_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_care_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_care_items": ("s", False, ["clinic_resolver"]),
+    "workflows_care_park": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_care_system_task_valid": ("s", False, ["clinic_resolver"]),
     "workflows_guard": ("v", False, ["clinic_resolver"]),
     "workflows_owner_valid": ("v", True, ["clinic_app", "clinic_resolver"]),
     "workflows_predecessor_ready": ("v", True, ["clinic_app", "clinic_resolver"]),
@@ -778,6 +796,15 @@ FUNCTION_SIGNATURES: Final = {
     ("waitlist_binding", ""),
     ("waitlist_staff", "requested_clinic uuid"),
     ("workflows_bundle_selection_guard", ""),
+    ("workflows_care_due", "due_by timestamp with time zone"),
+    ("workflows_care_guard", ""),
+    ("workflows_care_items", "due_by timestamp with time zone, requested uuid"),
+    ("workflows_care_park", "requested_kind text, requested uuid"),
+    ("workflows_care_scope", "requested_kind text, requested uuid"),
+    ("workflows_care_occurrence_scope", "clinic uuid, requested_occurrence uuid"),
+    ("workflows_care_source_current", "requested_action uuid"),
+    ("workflows_care_system_task_valid", "row_data jsonb"),
+    ("workflows_care_version_scope", "clinic uuid, requested_version uuid"),
     ("workflows_due_steps", "due_at timestamp with time zone"),
     ("workflows_due_tasks", "due_at timestamp with time zone"),
     ("workflows_guard", ""),
@@ -1211,6 +1238,26 @@ FUNCTION_RESULTS: Final = {
     ("waitlist_binding", ""): "trigger",
     ("waitlist_staff", "requested_clinic uuid"): "boolean",
     ("workflows_bundle_selection_guard", ""): "trigger",
+    ("workflows_care_due", "due_by timestamp with time zone"): (
+        "TABLE(kind text, record_id uuid)"
+    ),
+    ("workflows_care_guard", ""): "trigger",
+    ("workflows_care_items", "due_by timestamp with time zone, requested uuid"): (
+        "TABLE(kind text, record_id uuid, organization_id uuid, clinic_id uuid, "
+        "actor_id uuid, due timestamp with time zone)"
+    ),
+    ("workflows_care_park", "requested_kind text, requested uuid"): "boolean",
+    ("workflows_care_scope", "requested_kind text, requested uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
+    ("workflows_care_occurrence_scope", "clinic uuid, requested_occurrence uuid"): (
+        "uuid"
+    ),
+    ("workflows_care_source_current", "requested_action uuid"): "boolean",
+    ("workflows_care_system_task_valid", "row_data jsonb"): "boolean",
+    ("workflows_care_version_scope", "clinic uuid, requested_version uuid"): (
+        "TABLE(encounter_id uuid, enrollment_id uuid, state text)"
+    ),
     ("workflows_due_steps", "due_at timestamp with time zone"): "TABLE(step_id uuid)",
     ("workflows_due_tasks", "due_at timestamp with time zone"): "TABLE(task_id uuid)",
     ("workflows_guard", ""): "trigger",

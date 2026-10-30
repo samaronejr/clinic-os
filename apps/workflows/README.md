@@ -1,7 +1,8 @@
 # Tasks and versioned workflows
 
-This app owns the single operational task entity (ADR-008, todo 26). Care-plan
-entities remain a later extension of this app, not a second task store.
+This app owns the single operational task entity (ADR-008, todo 26) and the
+care-plan entities (todo 52, D-16). Care records never become a second task
+store: an administrative care action owns exactly one `Task`.
 
 ## Authority and privacy
 
@@ -198,3 +199,127 @@ Verification belongs to `tests/workflows/`, the identity authority census, exact
 schema/resolver posture and the recovery trio. Owned loopback browser evidence
 is source QA; combined browser-suite registration and all final gates remain
 root-held. Synthetic evidence is not live approval.
+
+## Care plans, referrals, recalls and PROs (todo 52)
+
+Code lives in `apps/workflows/care/` and is exported only by
+`apps.workflows.care.services` (keyword-only, explicit `clinic_id`, never an
+acting user). The authority census (`tests/workflows/guard_discovery.py`,
+`decision_sites.py`) recurses into subpackages, so every care guard has a seeded
+case in `tests/workflows/care_guard_cases.py`, built on the committed fixture in
+`care_world.py` (the guard actor is the plan clinician, so a refused role is
+refused by its permission, never by row visibility). Services check permission
+before any record lookup; unknown and foreign records share one denial.
+
+`create_care_plan_from_version` turns one *finalized* note version into one plan
+(a version has at most one plan) of typed actions: `return_window`, `order`,
+`referral`, `questionnaire`, `monitoring_task`, `patient_instruction`,
+`staff_coordination`. The author needs patient-scoped `clinical.write`. Clinical
+kinds, including every patient-facing instruction, are approved by that
+clinician (`approved_by`) and staff cannot add them; `return_window` and
+`staff_coordination` may also be added by staff with `tasks.assign`. A patient
+instruction is encrypted clinician content with no staff task; every other kind
+owns one follow-up `Task` whose owner and completion the action mirrors. Free
+text exists only in the encrypted instruction and the encrypted referral target.
+
+Action states are open, assigned, overdue, done and cancelled. Overdue is marked
+from the database clock past the window end and is never an execution. When the
+source version leaves `finalized`, the plan becomes superseded and its pending
+actions are flagged `review_state=required`: they refuse assignment and
+completion until the clinician confirms or cancels each one. The clinician may
+cancel only task-less actions; cancelling a staff task is a manager power
+(todo 26).
+
+A `Referral` coordinates a referral action (requested, scheduled, completed,
+cancelled) and carries the nullable one-to-one link to the todo-33 referral
+document (`PrescriptionDraft` of kind referral, same encounter). Runtime code
+creates only planned referrals.
+
+`schedule_recall` stores a due instant computed from the injected clock; the
+scanner turns each due recall into one role-owned follow-up task. `assign_pro`
+accepts only calculator-catalog instruments whose licence status permits use
+(PHQ-9, GAD-7) and creates a bounded series of slots. The first slot is never due
+before the injected clock's now, because such a slot could never be answered; an
+identical replay still returns the existing series. A recorded response always
+creates a review task for the assignment's response role; the instrument's own
+published item (PHQ-9 item 9) only raises that task to urgent. A slot unanswered
+three days after its due instant becomes `no_response`, shown as "Sem resposta".
+Absence is never read as wellness, refusal or a score. `staffing_policy_ref` is an
+opaque reference; the staffing policy content is external gate EG-3.
+
+**Stale source fails closed.** Assigning, starting, completing or reassigning a
+care action is refused in the same transaction when its plan's source version is
+no longer the finalized one, unless the clinician has confirmed the action. The
+SQL guard enforces it for every writer and the services check the same predicate
+before any task effect, so the scanner interval is never a window. Cancelling,
+overdue marking and the review decision itself stay allowed.
+
+**The action follows its task on every path.** Staff work an administrative
+action where they see it: the Tasks and Inbox workspace, bulk reassignment and
+the care services all drive the one `Task`, and `care.mirror` mirrors each task
+transition onto the action in the same transaction (owner; open to assigned;
+done; cancelled; an overdue action stays overdue until its task ends). The task
+services refuse to assign, start or complete a care task whose action awaits
+review or whose source is stale; bulk preview refuses it too. The database
+repeats both rules on `workflows_task`: a BEFORE trigger refuses the transition,
+and a deferred check refuses any commit in which a care task and its action
+disagree. An action never changes owner or state on its own. Every path locks
+the task before its action. A care command derives its key from the action
+revision, so the same command from either surface replays as one.
+
+**Keyed command digests.** Every care command digest and creation fingerprint
+binds the actor and the request terms, which can carry encrypted content from
+small spaces (PHQ-9 answers, instruction text, referral targets). They are
+HMAC-SHA256 under the tenant's data keys through `protected_blind_index`
+(purpose `workflows.care.command.v1`), never a plain hash that could be inverted
+offline. Writes store the newest key version's digest and a replay matches any
+version, so a key rotation never turns an identical retry into a conflict.
+Scanner transitions bind only the record id.
+
+**Referral link.** `Referral.document` points at the `PrescriptionDraft` of kind
+referral, not at a rendered `PrescriptionDocument`: the draft is the stable
+identity for one encounter and kind, while rendered documents are immutable
+per version and re-approval creates new ones, which would orphan the link.
+
+**Clinical content stays with the patient's clinicians (RP matrix).** Managers
+and organization admins see routing metadata only: plans, administrative and
+clinical-kind actions (no text) and their tasks. A patient instruction, a
+planned referral's destination and every PRO assignment and slot are visible
+only with patient-scoped `clinical.read` (PROs also `observation.write`); the
+referral's coordinating task owner also sees, and advances, that one referral.
+
+**Response capture.** A PRO response is recorded by the patient's nurse
+(`observation.write`) or clinician (`clinical.write`), never by routing
+authority, until patient-side capture arrives with todos 50 and 55. The response
+role must be one that can read the response (physician, nurse, allied
+professional). Recording a response makes the guard emit one source-backed
+review task (no staff creator) in that role's queue, admitted by
+`workflows_care_system_task_valid` exactly as orders and retention tasks are;
+concern only raises its priority.
+
+**Clinical confirmation pending (EG-3).** The only concern signal is the
+instrument's own published item (PHQ-9 item 9, any non-zero answer). It raises
+the priority of a review task and nothing else; every response still goes to a
+human queue. The item list and the staffing policy content need clinical-owner
+confirmation under EG-3. This change never marks that gate satisfied.
+
+**The scanner never stalls.** The beat `workflow-care-scanner` lists due records
+by opaque `(kind, record)` ids: due recalls, actions past their window (never a
+flagged one, which waits for its clinician), PRO slots past their grace period
+and stale plans, from one predicate (`workflows_care_items`) that the per-record
+services repeat exactly. It takes at most 25 records per organization and 500 in
+total, oldest first, so one tenant's backlog never starves another. Each record
+is its own job on the bulk queue: the job reopens the record's stored actor
+(creator or plan clinician), rechecks current authority and transitions exactly
+that record. A record the actor cannot process (revoked, narrowed, no longer
+allowed to see it) is not swallowed: `workflows_care_park` records the refusal
+in `workflows_carerefusal` (who, how often, when), readable by clinic managers,
+and the record is listed again only after 60 minutes, so a restored authority
+resumes the work and a stuck record never fills the batch. Seven tables
+(`workflows_careplan`, `careaction`, `referral`, `recall`, `proassignment`,
+`prooccurrence`, `carerefusal`) have FORCE RLS and no DELETE; the six care
+tables have column grants limited to command/state columns and one SECURITY
+DEFINER transition guard, the refusal table only its resolver's writes.
+Migration `0006` is protected-schema style: irreversible, rollback = restore.
+Live legs (real PRO delivery, patient release, staffing policy) stay
+BLOCKED-ON-EG; none is reachable here.

@@ -189,6 +189,15 @@ DOMAIN_RELATIONS: Final = (
     "workflows_workflowdefinitionversion",
     "workflows_workflowrun",
     "workflows_workflowstep",
+    # Task 52: care plans and their coordination history are durable tenant data.
+    "workflows_careplan",
+    "workflows_careaction",
+    "workflows_referral",
+    "workflows_recall",
+    "workflows_proassignment",
+    "workflows_prooccurrence",
+    # The care scanner's refusal evidence is tenant data too.
+    "workflows_carerefusal",
     # Plan item 30: live-catalog durable relations, retained on uninstall.
     "ehr_specialtyentry",
     "ehr_specialtypack",

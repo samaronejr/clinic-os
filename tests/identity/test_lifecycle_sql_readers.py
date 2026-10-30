@@ -195,6 +195,13 @@ ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.identity_reset_guard()": (
         "identity.test_sql_inactive_actor.test_delegating_gates_refuse_inactive_actor",
     ),
+    # The care guard reads the actor for its staff and clinician decisions; the
+    # workflow SQL census runs it as every catalog role, an absent member and an
+    # inactive manager, whose recall insert it refuses while an active one passes.
+    "clinic_app.workflows_care_guard()": (
+        "workflows.test_sql_authority."
+        "test_every_workflow_sql_member_for_every_catalog_role",
+    ),
 }
 SQL_PROTOCOL_ORACLES = (
     {
@@ -216,6 +223,9 @@ SQL_PROTOCOL_ORACLES = (
             # A sealed staff-role oracle already classifies this SQL guard;
             # the actor protocol above adds independent inactive-caller proof.
             "clinic_app.reception_readiness(uuid,uuid)",
+            # The workflow SQL inventory already classifies the care guard
+            # (domain_protocol); its actor protocol adds the inactive caller.
+            "clinic_app.workflows_care_guard()",
         }
     }
     | {

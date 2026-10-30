@@ -76,6 +76,10 @@ app.conf.update(
             "task": "apps.workflows.tasks.scan_due",
             "schedule": 60.0,
         },
+        "workflow-care-scanner": {
+            "task": "apps.workflows.tasks.care_scan",
+            "schedule": 60.0,
+        },
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
             "schedule": 60.0,

@@ -268,3 +268,29 @@ class WorkflowStep(TenantScopedModel):
                 fields=("state", "wake_at", "claim_until"), name="workflows_step_due"
             )
         ]
+
+
+from apps.workflows.care.models import (  # noqa: E402 - models register on import
+    CareAction,
+    CarePlan,
+    CareRefusal,
+    PROAssignment,
+    PROOccurrence,
+    Recall,
+    Referral,
+)
+
+__all__ = (
+    "CareAction",
+    "CarePlan",
+    "CareRefusal",
+    "PROAssignment",
+    "PROOccurrence",
+    "Recall",
+    "Referral",
+    "Task",
+    "TaskComment",
+    "WorkflowDefinitionVersion",
+    "WorkflowRun",
+    "WorkflowStep",
+)

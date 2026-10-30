@@ -7567,3 +7567,6 @@ msgstr "Sotaque simulado"
 
 msgid "Synthetic engineering fixtures and scripted review are not representative clinical validation. Zero observed critical errors is a gate, not a safety claim. Real-world performance and clinical thresholds require EG-3/EG-11. AI-05/AI-06 fixture contracts do not implement their future workflows."
 msgstr "Exemplos sintéticos de engenharia e revisões roteirizadas não representam validação clínica. A ausência de erros críticos observados é um critério de passagem, não uma afirmação de segurança. Desempenho no mundo real e limites clínicos exigem EG-3/EG-11. Os exemplos de AI-05/AI-06 não implementam os fluxos futuros."
+
+msgid "No response"
+msgstr "Sem resposta"

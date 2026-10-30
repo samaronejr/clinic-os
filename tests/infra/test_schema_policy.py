@@ -210,6 +210,16 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "workflows_workflowdefinitionversion",
         "workflows_workflowrun",
         "workflows_workflowstep",
+        # Task 52: exact care policies, ACLs, column grants and triggers are
+        # pinned by tests/workflows/test_posture.py (posture.json); the declared
+        # runtime and column grants by tests/infra/test_new_app_posture.py.
+        "workflows_careplan",
+        "workflows_careaction",
+        "workflows_referral",
+        "workflows_recall",
+        "workflows_proassignment",
+        "workflows_prooccurrence",
+        "workflows_carerefusal",
         # Plan item 30: exact specialty policies are checked in tests/ehr.
         "ehr_specialtypack",
         "ehr_specialtyentry",
