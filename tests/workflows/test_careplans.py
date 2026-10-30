@@ -14,7 +14,7 @@ from apps.ehr.finalization import amend_document, finalize_version
 from apps.ehr.models import ClinicalDocumentVersion
 from apps.ehr.services import record_clinical_note
 from apps.identity.current_context import CurrentActorError
-from apps.prescription.models import DocumentKind
+from apps.prescription.models import DocumentKind, PrescriptionDraft
 from apps.tenancy.db import tenant_context
 from apps.workflows.care import services as care
 from apps.workflows.care import tasks as care_tasks
@@ -42,6 +42,7 @@ from apps.workflows.validation import (
     WorkflowInputError,
 )
 from django.db import DatabaseError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Model
 from django.utils import timezone
 
@@ -528,6 +529,45 @@ def test_referral_links_only_a_same_encounter_referral_document(
                 expected_revision=scheduled.revision,
             )
     assert chart.enrollment
+
+
+def rerun_referral_link_migration() -> None:
+    """Reverse migration 0007 (a no-op that keeps every row) and reapply it."""
+    for target in ("0006_care_plans", "0007_referral_backfill"):
+        MigrationExecutor(connection).migrate([("workflows", target)])
+
+
+def test_migration_links_each_existing_referral_document_once(
+    rbac_graph: RbacGraph,
+) -> None:
+    graph = rbac_graph
+    _chart, version = world(graph)
+    plan = plan_of(graph, version, return_in(6))
+    from apps.prescription.services import create_document_draft  # noqa: PLC0415
+
+    with as_actor(graph, version.author_id):
+        draft = create_document_draft(
+            clinic_id=graph.clinic_a,
+            encounter_id=plan.encounter_id,
+            kind=DocumentKind.REFERRAL,
+        )
+    rerun_referral_link_migration()
+    rerun_referral_link_migration()
+    (document,) = rows(graph, PrescriptionDraft, pk=draft.pk)
+    linked = rows(graph, Referral, document_id=draft.pk)
+    assert [
+        (r.status, r.target_kind, r.plan_id, r.action_id, r.created_by_id)
+        for r in linked
+    ] == [("documented", "unspecified", None, None, document.issuer_id)]
+    # Trusted operator code leaves the guard and the resolver grants as found.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT has_table_privilege('clinic_resolver',"
+            " 'clinic_app.workflows_referral', 'INSERT'), t.tgenabled"
+            " FROM pg_trigger t WHERE t.tgname = 'care_guard'"
+            " AND t.tgrelid = 'clinic_app.workflows_referral'::regclass"
+        )
+        assert cursor.fetchone() == (False, "O")
 
 
 def test_recall_due_date_uses_the_injected_clock_and_materializes_once(

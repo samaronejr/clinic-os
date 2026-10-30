@@ -232,8 +232,13 @@ cancel only task-less actions; cancelling a staff task is a manager power
 
 A `Referral` coordinates a referral action (requested, scheduled, completed,
 cancelled) and carries the nullable one-to-one link to the todo-33 referral
-document (`PrescriptionDraft` of kind referral, same encounter). Runtime code
-creates only planned referrals.
+document (`PrescriptionDraft` of kind referral, same encounter). Referral
+documents that predate care plans are linked once by migration
+`0007_referral_backfill` as `documented` rows with an unspecified target,
+created by the document's issuer; nothing about their destination or progress is
+inferred. The migration is trusted operator code (the care guard is lifted for
+its one statement inside the migration transaction); runtime code creates only
+planned referrals.
 
 `schedule_recall` stores a due instant computed from the injected clock; the
 scanner turns each due recall into one role-owned follow-up task. `assign_pro`
@@ -287,6 +292,7 @@ clinical-kind actions (no text) and their tasks. A patient instruction, a
 planned referral's destination and every PRO assignment and slot are visible
 only with patient-scoped `clinical.read` (PROs also `observation.write`); the
 referral's coordinating task owner also sees, and advances, that one referral.
+A backfilled referral carries no destination and stays staff-visible.
 
 **Response capture.** A PRO response is recorded by the patient's nurse
 (`observation.write`) or clinician (`clinical.write`), never by routing
