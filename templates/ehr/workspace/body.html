@@ -1,4 +1,4 @@
-{% load i18n tz ehr_ui %}
+{% load i18n tz ehr_ui ai_chart %}
 <section id="patient-workspace" class="patient-workspace" data-workspace-render="{{ render_id }}" hx-boost="true" hx-target="#patient-workspace" hx-select="#patient-workspace" hx-swap="outerHTML" aria-labelledby="patient-workspace-title">
   <header class="patient-workspace-header">
     <div><h1 id="patient-workspace-title" tabindex="-1">{% trans "Patient workspace" %}</h1>
@@ -7,6 +7,7 @@
   </header>
   {% if enrollment %}
   {% timezone clinic.timezone %}
+  {% if can_narrative %}{% chart_panel clinic_id enrollment_id=enrollment.pk %}{% endif %}
   <nav class="patient-workspace-tabs" aria-label="{% trans "Patient record sections" %}">
     {% for item in tabs %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
       <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="action" value="tab">

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load static i18n ai_chart %}
+{% block title %}{% trans "Permitted chart assistant" %} · Clinic Ops{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><script src="{% static 'js/components/drawer.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="chart-page-title">
+  <h1 id="chart-page-title">{% trans "Pre-visit brief" %}</h1>
+  {% chart_panel clinic_id enrollment_id=chart_enrollment_id %}
+  <form method="post" action="{% url 'ehr:patient-workspace' clinic_id %}">{% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ chart_enrollment_id }}"><input type="hidden" name="action" value="open"><button class="button button--secondary" type="submit">{% trans "Open longitudinal record" %}</button></form>
+</section>
+{% endblock %}

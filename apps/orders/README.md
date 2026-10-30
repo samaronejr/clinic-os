@@ -103,3 +103,15 @@ version-bound acknowledgment/release, raw mutation refusal and every new
 relation's cross-organization denial. Registered suite `results` drives the
 native upload, acknowledgment and release surfaces with real middleware,
 CSRF, PostgreSQL roles, keyboard/reflow checks and vendored axe.
+
+## Confirmed extraction
+
+Todo 45 adds the AI-owned, source-bound confirmation bridge documented in
+`apps/ai/README.md`. It may append a human-confirmed imported observation only
+to an exact-byte, identity-matched current source before acknowledgment.
+The confirmer needs current patient-scoped clinical write authority.
+Correction and acknowledgment share the existing series lock with confirmation.
+An available EHR attachment is not identity evidence and cannot bypass matching.
+Unconfirmed, ambiguous, wrong-patient and expired candidates never file.
+The immutable observation contains the confirmer, candidate and page-region
+provenance. Extraction and confirmation create no acknowledgment or release.

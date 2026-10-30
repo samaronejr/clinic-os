@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from io import StringIO
 from typing import TYPE_CHECKING
 
@@ -98,15 +99,35 @@ def query_expression(query: tuple[str, ...], oid: int, types: Types) -> str | No
     lower = tuple(part.lower() for part in query)
     if lower[:3] == ("select", "*", "from"):
         end = boundary(query, 3, {"where", "order", "limit", "for"})
-        if types.resolve(" ".join(query[3:end]) + "%ROWTYPE") == oid:
+        relation = query[3:end]
+        if relation and re.fullmatch(r'[^\W\d][\w$]*|"(?:[^"]|"")+"', relation[-1]):
+            aliases = (
+                relation[:-2]
+                if len(relation) > 1 and relation[-2].lower() == "as"
+                else relation[:-1]
+            )
+        else:
+            aliases = ()
+        if any(
+            spelling and types.resolve(" ".join(spelling) + "%ROWTYPE") == oid
+            for spelling in (relation, aliases)
+        ):
             return None  # Identical named row type: no I/O coercion to analyse.
     text = " ".join(query)
     if oid in types.row_types.values():
         # This is program text sent only to the rolled-back analyser, not a
         # LiteralString SQL template or an interpolated query-data value.
         program = StringIO()
-        program.writelines(("SELECT row_value FROM (", text, ") AS row_value"))
-        text = program.getvalue()
+        program.writelines(
+            (
+                "(SELECT ROW(row_value.*)::",
+                types.sql_names[oid],
+                " FROM (",
+                text,
+                ") AS row_value)",
+            )
+        )
+        return program.getvalue()
     return "(" + text + ")::" + types.sql_names[oid]
 
 

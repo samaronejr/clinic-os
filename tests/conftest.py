@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from apps.core import integration
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
@@ -37,9 +38,23 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    ("ai_evaluationprotocol", "evaluation_no_truncate"),
+    ("ai_evaluationrun", "evaluation_no_truncate"),
+    ("ai_evaluationrating", "evaluation_no_truncate"),
+    ("ai_modelchangerequest", "evaluation_no_truncate"),
+    ("ai_extractionjob", "extraction_no_truncate"),
+    ("ai_extractioncandidate", "extraction_no_truncate"),
+    ("scribe_aidraft", "draft_no_truncate"),
+    ("scribe_draftsectionsuggestion", "draft_no_truncate"),
+    ("scribe_draftactionproposal", "draft_no_truncate"),
+    ("scribe_reviewdecision", "draft_no_truncate"),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
+    ("scribe_chunktranscription", "transcript_no_truncate"),
+    ("scribe_transcriptversion", "transcript_no_truncate"),
+    ("scribe_transcriptsegment", "transcript_no_truncate"),
+    ("retention_artifactpurge", "retention_purge_no_truncate"),
     (
         "prescription_prescriptionissuance",
         "prescription_prescriptionissuance_no_truncate",
@@ -74,6 +89,24 @@ EXIT_GATE: Final = "test_all_workspace_refusal_exits_are_executed"
 WORKER_RECEIPT: Final = "workspace_refusal_receipt"
 # The summary-line category for session-level guard failures.
 GUARD_FAILED: Final = "refusal guard failed"
+
+
+@pytest.fixture(autouse=True)
+def isolated_integration_registrations(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Preserve startup adapters when a test clears its temporary registrations."""
+    # Literal names keep each patch visible to the refusal guard's static scan.
+    monkeypatch.setattr(integration, "_SEND_ADAPTERS", dict(integration._SEND_ADAPTERS))
+    monkeypatch.setattr(
+        integration, "_ACTION_ADAPTERS", dict(integration._ACTION_ADAPTERS)
+    )
+    monkeypatch.setattr(
+        integration, "_ACTION_DISPATCHERS", dict(integration._ACTION_DISPATCHERS)
+    )
+    monkeypatch.setattr(
+        integration,
+        "_CALLBACK_AUTHENTICATORS",
+        dict(integration._CALLBACK_AUTHENTICATORS),
+    )
 
 
 @pytest.hookimpl(trylast=True)

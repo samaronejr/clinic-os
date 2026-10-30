@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Document extraction" %} · Clinic Ops{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-extraction.css' %}">
+{% endblock %}
+{% block content %}
+<section aria-labelledby="extraction-heading" class="extraction-workspace">
+  <header>
+    <h1 id="extraction-heading">{% trans "Document extraction" %}</h1>
+    <p>{% trans "Synthetic extraction. Verify each source region; confirmation never acknowledges or releases the result." %}</p>
+    <a href="{% url 'orders:results' clinic_id %}">{% trans "Orders and results" %}</a>
+  </header>
+  {% if error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</p>{% endif %}
+  {% if saved %}<p class="feedback feedback--success" role="status">{% trans "Extraction decision saved." %}</p>{% endif %}
+  {% if job %}
+  <form method="post" class="extraction-toolbar">
+    {% csrf_token %}<input type="hidden" name="action" value="refresh"><input type="hidden" name="job_id" value="{{ job.id }}">
+    <label for="extraction-page">{% trans "Document page" %}</label>
+    <select id="extraction-page" name="page">{% for number in pages %}<option value="{{ number }}"{% if number == page %} selected{% endif %}>{{ number }}</option>{% endfor %}</select>
+    <label for="extraction-zoom">{% trans "Zoom in" %}</label>
+    <select id="extraction-zoom" name="zoom">{% for number in zooms %}<option value="{{ number }}"{% if number == zoom %} selected{% endif %}>{{ number }}%</option>{% endfor %}</select>
+    <button type="submit" class="button--secondary">{% trans "Refresh extraction" %}</button>
+  </form>
+  <div class="extraction-layout">
+    <section class="extraction-document" aria-label="{% trans 'Document page' %}" tabindex="0" data-zoom="{{ zoom }}">
+      <svg class="extraction-page" viewBox="0 0 {{ image_width }} {{ image_height }}" role="img" aria-labelledby="extraction-image-title">
+        <title id="extraction-image-title">{% trans "Source page with extraction regions" %}</title>
+        <image href="{{ page_image }}" width="{{ image_width }}" height="{{ image_height }}"/>
+        {% for row in rows %}{% if row.on_page %}<rect class="extraction-region" x="{{ row.x }}" y="{{ row.y }}" width="{{ row.width }}" height="{{ row.height }}"><title>{{ row.candidate.field }}</title></rect>{% endif %}{% endfor %}
+      </svg>
+      <nav aria-label="{% trans 'Regions in this document' %}"><ol class="extraction-anchors">{% for row in rows %}{% if row.on_page %}<li><a class="button button--secondary" href="#candidate-{{ row.record.position }}">{{ row.candidate.field }}</a></li>{% endif %}{% endfor %}</ol></nav>
+    </section>
+    <section aria-label="{% trans 'Extraction candidates' %}" class="extraction-candidates">
+      {% for row in rows %}
+      <article id="candidate-{{ row.record.position }}" tabindex="-1" class="extraction-candidate">
+        <h2>{{ row.candidate.field }}</h2>
+        <p>{% trans "Document page" %} {{ row.candidate.region.page }}</p>
+        {% if row.candidate.reason == "unreadable" %}<p role="status">{% trans "Unreadable" %}</p>{% else %}<blockquote>{{ row.candidate.raw_text }}</blockquote>{% endif %}
+        <dl><dt>{% trans "Value" %}</dt><dd>{{ row.candidate.value|default:"—" }}</dd><dt>{% trans "Unit" %}</dt><dd>{{ row.candidate.unit|default:"—" }}</dd><dt>{% trans "Reference interval" %}</dt><dd>{{ row.candidate.reference_interval|default:"—" }}</dd></dl>
+        {% if row.record.status == "confirmed" %}
+        <p>{% trans "Imported and confirmed" %} · {{ row.record.reviewed_at }}</p>
+        {% elif row.record.status == "rejected" %}
+        <p>{% trans "Rejected" %}</p>
+        {% else %}
+        {% if row.record.status == "ambiguous" %}<p class="feedback">{% trans "Ambiguous. No value will be filed." %}</p>{% endif %}
+        <form method="post">
+          {% csrf_token %}<input type="hidden" name="job_id" value="{{ job.id }}"><input type="hidden" name="candidate_id" value="{{ row.record.id }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="zoom" value="{{ zoom }}">
+          {% if job.result_version_id %}<input type="hidden" name="result_version_id" value="{{ job.result_version_id }}">
+          {% else %}
+          <label for="target-{{ row.record.position }}">{% trans "Identity-verified result version" %}</label>
+          <select id="target-{{ row.record.position }}" name="result_version_id"><option value="">{% trans "Choose a verified source" %}</option>{% for target in targets %}<option value="{{ target.version_id }}">{{ target.version.number }}</option>{% endfor %}</select>
+          <p>{% trans "The same source bytes must pass result identity verification before filing." %}</p>
+          {% endif %}
+          <div class="extraction-actions">
+            <button type="submit" name="action" value="confirmed"{% if row.record.status != "candidate" %} disabled{% endif %}>{% trans "Confirm source value" %}</button>
+            <button type="submit" name="action" value="rejected" class="button--secondary">{% trans "Reject candidate" %}</button>
+          </div>
+        </form>
+        {% endif %}
+      </article>
+      {% empty %}
+      {% if unavailable %}
+      <p role="status">{% trans "Extraction unavailable or source changed. Continue with manual result entry." %}</p>
+      {% else %}
+      <p role="status">{% trans "No candidates yet. Refresh after the governed extraction job finishes; manual result entry remains available." %}</p>
+      {% endif %}
+      {% endfor %}
+    </section>
+  </div>
+  {% else %}
+  <p>{% trans "Open extraction from a matched result or an available clinical attachment." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

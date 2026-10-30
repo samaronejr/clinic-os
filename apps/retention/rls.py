@@ -15,6 +15,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "retention_legalhold",
         "retention_recordrelease",
         "retention_recordexport",
+        "retention_artifactpurge",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
@@ -23,6 +24,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "retention_legalhold": frozenset({"SELECT", "INSERT"}),
     "retention_recordrelease": frozenset({"SELECT", "INSERT"}),
     "retention_recordexport": frozenset({"SELECT", "INSERT"}),
+    "retention_artifactpurge": frozenset({"SELECT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(

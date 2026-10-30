@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load i18n clinic_locale workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Agent proposals" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="agents-title">
+  <h1 id="agents-title">{% trans "Agent proposals" %}</h1>
+  <p class="lede">{% trans "Review the exact effect before approval. Unknown outcomes need reconciliation, never a blind retry." %}</p>
+  <div class="actions">
+    <a class="button button--secondary" href="{% url 'ai:agent-settings' clinic_id %}">{% trans "Agent policies" %}</a>
+    <a class="button button--quiet" href="{% url 'ai:agents' clinic_id %}">{% trans "Refresh" %}</a>
+  </div>
+  <div class="feedback" role="note"><p>{% trans "Synthetic execution only. No real message is sent and no money is charged." %}</p></div>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error>{{ error }}</div>{% endif %}
+  {% for row in rows %}
+  <article class="panel" data-agent-proposal="{{ row.proposal_id }}" data-agent-state="{{ row.state }}" aria-labelledby="effect-{{ forloop.counter }}">
+    <h2 id="effect-{{ forloop.counter }}">{{ row.effect }}</h2>
+    <p><span class="badge">{{ row.state_label }}</span></p>
+    <dl>
+      <dt>{% trans "Policy version" %}</dt><dd>{{ row.source_version }}</dd>
+      <dt>{% trans "Source revision" %}</dt><dd data-agent-source-revision>{{ row.source_revision }}</dd>
+      {% if row.due_at %}<dt>{% trans "Task due" %}</dt><dd data-agent-task-due>{{ row.due_at|clinic_minute }}</dd>{% endif %}
+      <dt>{% trans "Approval expires" %}</dt><dd>{{ row.expires_at|clinic_minute }}</dd>
+      <dt>{% trans "After a known failure" %}</dt><dd>{{ row.compensation }}</dd>
+      <dt>{% trans "Approved effect digest" %}</dt><dd><code>{% for part in row.digest_parts %}{{ part }}<wbr>{% endfor %}</code></dd>
+    </dl>
+    {% if row.reviewable %}
+    <form method="post" novalidate data-agent-decision-form>
+      {% csrf_token %}
+      <input type="hidden" name="proposal_id" value="{{ row.proposal_id }}">
+      <input type="hidden" name="digest" value="{{ row.digest }}">
+      <div class="actions">
+        <button class="button" type="submit" name="command" value="approve">{% trans "Approve this exact effect" %}<span class="visually-hidden">: {{ row.effect }}</span></button>
+        <button class="button button--danger" type="submit" name="command" value="reject">{% trans "Reject proposal" %}<span class="visually-hidden">: {{ row.effect }}</span></button>
+      </div>
+    </form>
+    {% endif %}
+    {% if row.state == "approved" %}<p role="status">{% trans "Approved. Waiting for the authorized executor." %}</p>{% endif %}
+    {% if row.state == "unknown" or row.state == "manual_required" or row.state == "exception" %}<p role="status">{% trans "Manual follow-up is required in the administrative queue. Do not resend the action." %}</p>{% endif %}
+  </article>
+  {% empty %}
+  <div class="feedback" role="status" data-agent-empty>
+    <h2>{% trans "No proposals to review" %}</h2>
+    <p>{% trans "Published agent policies govern future proposals. You can continue all work manually." %}</p>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

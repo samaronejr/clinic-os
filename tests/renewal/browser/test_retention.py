@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import secrets
 import shutil
 import time
 import zipfile
@@ -17,12 +16,11 @@ from uuid import uuid4
 import psycopg
 import pytest
 import rfc8785
-from django.contrib.auth.hashers import make_password
 from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import new_access_code, new_totp_key
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -35,6 +33,7 @@ from renewal.browser.engines import (
     full_page_screenshot,
     new_context,
 )
+from renewal.browser.support_managers import seed_manager
 from renewal.browser.test_availability import (
     _sign_in,
     _sign_in_physician,
@@ -69,7 +68,7 @@ if TYPE_CHECKING:
         Response,
     )
 
-__all__ = ("availability_staff",)
+__all__ = ("availability_staff", "seed_manager")
 
 FIRST = {
     "subjective": "Relato sintético retenção",
@@ -301,46 +300,6 @@ def post_action(page: Page, url: str, fields: dict[str, str]) -> int:
         max_redirects=0,
     )
     return response.status
-
-
-def seed_manager(staff: dict[str, str]) -> dict[str, str]:
-    """Seed one clinic admin with a confirmed authenticator for this run."""
-    manager = {
-        "username": f"gestora-{secrets.token_hex(4)}",
-        "id": str(uuid4()),
-        "totp_key": new_totp_key(),
-    }
-    with psycopg.connect(staff["dsn"]) as conn:
-        conn.execute(
-            "SELECT set_config('app.current_tenant', %s, true)",
-            [staff["organization"]],
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.identity_user "
-            "(id, username, password, email, first_name, last_name, is_active, "
-            "is_staff, is_superuser, date_joined) "
-            "VALUES (%s, %s, %s, '', '', '', true, false, false, now())",
-            [manager["id"], manager["username"], make_password(staff["password"])],
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.identity_userclinicrole "
-            "(id, user_id, organization_id, clinic_id, role, "
-            "workflow_bundle_version) VALUES (%s, %s, %s, %s, 'clinic_admin', 1)",
-            [str(uuid4()), manager["id"], staff["organization"], staff["clinic_a"]],
-        )
-        conn.execute("SET ROLE clinic_app")
-        conn.execute(
-            "SELECT set_config('app.current_user_id', %s, true)", [manager["id"]]
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [manager["totp_key"], manager["id"]],
-        )
-    return manager
 
 
 def sign_in_manager(

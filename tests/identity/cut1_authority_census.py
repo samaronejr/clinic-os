@@ -15,11 +15,14 @@ from apps.identity.models import UserClinicRole
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from identity.ai_authority_census import exercise_ai_authority
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
 from identity.prescription_authority_oracle import run_prescription_census
+from identity.retention_authority_census import exercise_retention_authority
+from identity.scribe_authority_census import exercise_scribe_authority
 from rbac_fixtures import RbacGraph
 from rbac_fixtures import rbac_graph as seed_graph
 
@@ -214,7 +217,6 @@ def run_cut1_census(
     from workflows.guard_discovery import discover_guards  # noqa: PLC0415
 
     proofs = ExecutedProofs(symbols)
-    database_now = engine.utc_now
 
     def graph(*, workflows: bool = False) -> RbacGraph:
         result = seed_graph._get_wrapped_function()(secret_root)
@@ -250,8 +252,7 @@ def run_cut1_census(
         consent.test_every_guard_refuses_every_catalog_role_without_its_permission,
         consent.test_inactive_foreign_clinic_and_narrowed_bundles_are_refused,
     ):
-        subject = graph()
-        proofs.run(consent_oracle.__name__, partial(consent_oracle, subject))
+        proofs.run(consent_oracle.__name__, partial(consent_oracle, graph()))
     _scheduling_proofs(proofs, graph, patch, database_url)
     with patch.context() as delegate_clock:
         delegate_clock.setattr(time, "time", lambda: STEP_UP_NOW)
@@ -301,10 +302,13 @@ def run_cut1_census(
 
             proofs.run(
                 "workflow scanner publishes exactly the stored due IDs",
-                partial(_scanner, local, database_now),
+                partial(_scanner, local, engine.utc_now),
             )
     finally:
         secret.unlink()
+    exercise_ai_authority(proofs, graph, patch, database_url, secret_root)
+    exercise_scribe_authority(proofs, graph, secret_root)
+    exercise_retention_authority(proofs, graph, patch, secret_root)
     record_property(
         "cut1_authority_certificates",
         {symbol: sorted(labels) for symbol, labels in proofs.certificates.items()},

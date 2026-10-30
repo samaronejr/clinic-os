@@ -85,6 +85,12 @@ SUITES: Final = {
     "video-recovery": ("tests/renewal/browser/test_video_recovery.py",),
     "encounter": ("tests/renewal/browser/test_encounter.py",),
     "patient-workspace": ("tests/renewal/browser/test_patient_workspace.py",),
+    "scribe-capture": (
+        "tests/renewal/browser/test_scribe_capture.py",
+        "tests/renewal/browser/test_scribe_ingress.py",
+        "tests/renewal/browser/test_scribe_privacy.py",
+        "tests/renewal/browser/test_scribe_accessibility.py",
+    ),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
     "agenda-slice": ("tests/renewal/browser/test_agenda_slice.py",),
@@ -117,6 +123,7 @@ SUITES: Final = {
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
+        "scribe-capture",
         "onboarding",
         "agenda",
         "agenda-slice",
@@ -958,6 +965,14 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             **_server_environment(app_dsn),
             **secret_environment,
             **_synthetic_adapters(suite),
+            **(
+                {
+                    "SCRIBE_SYNTHETIC_CAPTURE": "1",
+                    "SCRIBE_MEDIA_ROOT": str(run_root / "scribe-media"),
+                }
+                if suite == "scribe-capture"
+                else {}
+            ),
         }
         extra_processes.enter_context(
             realtime_broker(
@@ -999,6 +1014,11 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     secret_key=server_environment["SECRET_KEY"],
                 ),
                 **secret_environment,
+                **(
+                    {"CLINIC_BROWSER_FAKE_MEDIA": "1"}
+                    if suite == "scribe-capture"
+                    else {}
+                ),
             }
             # Owner access is fixture-only; Gunicorn retains clinic_app.
             suite_environment.update(

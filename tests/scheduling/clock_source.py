@@ -118,11 +118,22 @@ def _framework_query(call: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
 
 
 def _bound_query(
-    call: ast.Call, parents: dict[ast.AST, ast.AST], values: dict[str, str]
+    call: ast.Call,
+    parents: dict[ast.AST, ast.AST],
+    values: dict[str, str],
+    *,
+    query: ast.AST | None = None,
 ) -> list[str]:
-    source = _text(call.args[0], values)
+    query = call.args[0] if query is None else query
+    if isinstance(query, ast.IfExp):
+        return [
+            statement
+            for branch in (query.body, query.orelse)
+            for statement in _bound_query(call, parents, values, query=branch)
+        ]
+    source = _text(query, values)
     if source.lstrip().startswith(DYNAMIC):
-        finite_queries = _names(call.args[0], call, parents)
+        finite_queries = _names(query, call, parents)
         if finite_queries:
             return finite_queries
         return [
@@ -217,6 +228,32 @@ def source_fragments(
     return list(_cached_fragments(tree, bindings))
 
 
+def _membership_data(node: ast.AST) -> tuple[ast.AST, ...]:
+    """Literal membership needles are data, not SQL sent to an execute sink."""
+    if not isinstance(node, ast.GeneratorExp) or len(node.generators) != 1:
+        return ()
+    generator = node.generators[0]
+    comparison = node.elt
+    if (
+        generator.ifs
+        or not isinstance(generator.target, ast.Name)
+        or not isinstance(generator.iter, (ast.Tuple, ast.List))
+        or not isinstance(comparison, ast.Compare)
+        or len(comparison.ops) != 1
+        or not isinstance(comparison.ops[0], ast.In)
+        or not isinstance(comparison.left, ast.Name)
+        or comparison.left.id != generator.target.id
+        or not isinstance(comparison.comparators[0], ast.Name)
+    ):
+        return ()
+    if not all(
+        isinstance(value, ast.Constant) and isinstance(value.value, str)
+        for value in generator.iter.elts
+    ):
+        return ()
+    return tuple(generator.iter.elts)
+
+
 @lru_cache(maxsize=2048)
 def _cached_fragments(
     tree: ast.Module, bindings: tuple[tuple[str, str], ...]
@@ -230,6 +267,34 @@ def _cached_fragments(
     skipped: set[ast.AST] = set()
     result = []
     for node in ast.walk(tree):
+        skipped.update(_membership_data(node))
+        if (
+            isinstance(node, ast.GeneratorExp)
+            and len(node.generators) == 1
+            and isinstance(node.elt, ast.Compare)
+        ):
+            generator, comparison = node.generators[0], node.elt
+            if (
+                not generator.is_async
+                and not generator.ifs
+                and isinstance(generator.target, ast.Name)
+                and isinstance(generator.iter, (ast.Tuple, ast.List, ast.Set))
+                and len(comparison.ops) == 1
+            ):
+                literal_needles = all(
+                    isinstance(item, ast.Constant) and isinstance(item.value, str)
+                    for item in generator.iter.elts
+                )
+                if (
+                    isinstance(comparison.left, ast.Name)
+                    and comparison.left.id == generator.target.id
+                    and isinstance(comparison.ops[0], (ast.In, ast.NotIn))
+                    and isinstance(comparison.comparators[0], ast.Name)
+                    and literal_needles
+                ):
+                    # Literal needles in a pure membership generator produce
+                    # booleans, not SQL; the scoped target cannot escape it.
+                    skipped.update(ast.walk(generator.iter))
         if (
             isinstance(
                 node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)

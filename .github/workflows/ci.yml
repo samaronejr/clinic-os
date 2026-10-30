@@ -36,7 +36,7 @@ jobs:
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Install PDF inspection prerequisites
         run: |
@@ -136,7 +136,7 @@ jobs:
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed migration and contract gates
         run: |
@@ -160,6 +160,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
+          - "scribe-capture,scribe-capture@firefox,scribe-capture@webkit"
           - "clinic-settings,billing,prescription-draft,prescribing,document-verification,onboarding"
           - "consent,amendments,attachments,clinical-history,clinician-video"
           - "video-recovery,encounter,end-to-end,patient-workspace"
@@ -191,7 +192,14 @@ jobs:
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind task-owned evidence root
-        run: ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+        run: ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Install PDF inspection prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          command -v pdftotext
+          command -v pdftoppm
+          pdftotext -v 2>&1 | head -1
       - name: Verify browser prerequisites
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
@@ -254,7 +262,7 @@ jobs:
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Install the broker prerequisite
         run: |
@@ -306,7 +314,7 @@ jobs:
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run fresh install and upgrade verification
         run: |
@@ -388,7 +396,7 @@ jobs:
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
         run: uv run --locked python ops/testing/validate_action_pins.py

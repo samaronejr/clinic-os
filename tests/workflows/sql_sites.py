@@ -388,7 +388,13 @@ def discover_sql_sites() -> dict[str, SqlSite]:
             [tables],
         )
         policies = cursor.fetchall()
-    assert triggers <= {row[0] for row in functions}, "foreign trigger function"
+    # Cross-app mutation locks add no actor decision. Prove their full closure
+    # has no settings or opaque dependency instead of trusting a function name.
+    for oid in triggers - {row[0] for row in functions}:
+        reads = catalog._function(oid, bypass=False, seen=set())
+        signature = catalog.functions[oid].signature
+        assert not reads.settings, ("foreign trigger function", signature)
+        assert not reads.opaque, ("foreign trigger function", signature)
     sites: dict[str, SqlSite] = {}
     for oid, signature, boolean, language, source in functions:
         if oid in triggers:

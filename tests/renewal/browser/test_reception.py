@@ -138,6 +138,29 @@ def _arrival(page: Page, appointment: str) -> None:
     expect(page.locator("#reception-day")).to_have_value(selected_day)
 
 
+def _issued_token(page: Page) -> FixtureSecret:
+    """Read the one-time device token on the page that just issued it.
+
+    The realtime ``ready`` reconciles the new page. With the token shown,
+    reception.js reveals the stale notice above the board and moves the token
+    summary down. A click whose pointerdown lands before that move and whose
+    pointerup lands after it is lost, because Playwright checks only the first
+    event's hit target. So await the handshake, then click a settled page.
+    """
+    expect(page.locator(".reception")).to_have_attribute(
+        "data-realtime-state", "connected"
+    )
+    disclosure = page.get_by_text(gettext("Show device token"), exact=True)
+    disclosure.click()
+    token = FixtureSecret(
+        page.get_by_role(
+            "textbox", name=gettext("Device token — shown only once"), exact=True
+        ).input_value()
+    )
+    disclosure.click()
+    return token
+
+
 def _axe(page: Page, base_url: str, output: Path) -> None:
     page.add_script_tag(url=base_url + AXE_URL)
     violations = evaluate_js(page, AXE_RUN_JS)
@@ -246,13 +269,7 @@ def test_display_has_no_phi_and_revocation_matches_forged_token(
             "button", name=gettext("Issue display token"), exact=True
         )
     )
-    reception_page.get_by_text(gettext("Show device token"), exact=True).click()
-    token = FixtureSecret(
-        reception_page.get_by_role(
-            "textbox", name=gettext("Device token — shown only once"), exact=True
-        ).input_value()
-    )
-    reception_page.get_by_text(gettext("Show device token"), exact=True).click()
+    token = _issued_token(reception_page)
     browser = reception_page.context.browser
     assert browser is not None
     context = browser.new_context(locale="pt-BR")

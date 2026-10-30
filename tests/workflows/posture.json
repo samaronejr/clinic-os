@@ -1039,7 +1039,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "4e8e5a88ef7231516f0968f12e5cb65975505f25d71aa9f23fa5f6ae496821f4",
+      "f73241eb775b918ace3c5aa9d30374dfa2bb1e64b31d302cc1231f4b62b6ff56",
       [
         "clinic_resolver"
       ]
@@ -1660,6 +1660,12 @@
       "workflow_guard",
       "O",
       "CREATE TRIGGER workflow_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_taskcomment FOR EACH ROW EXECUTE FUNCTION workflows_guard()"
+    ],
+    [
+      "workflows_workflowdefinitionversion",
+      "agent_send_mutation",
+      "O",
+      "CREATE TRIGGER agent_send_mutation BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_workflowdefinitionversion FOR EACH ROW EXECUTE FUNCTION agent_mutation_lock()"
     ],
     [
       "workflows_workflowdefinitionversion",

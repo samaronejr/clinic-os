@@ -29,6 +29,12 @@ from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
+from ai.evaluation_oracles import (
+    ACTOR_PROTOCOL_ORACLES as EVALUATION_ACTOR_PROTOCOL_ORACLES,
+)
+from ai.extraction_oracles import (
+    ACTOR_PROTOCOL_ORACLES as EXTRACTION_ACTOR_PROTOCOL_ORACLES,
+)
 from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
@@ -47,6 +53,7 @@ from patients.duplicate_authority_cases import (
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 from renewal.test_teleconsult_sessions import synthetic_provider
+from retention.sql_oracles import ACTOR_PROTOCOL_ORACLES as RETENTION_ACTOR_PROTOCOLS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -123,6 +130,9 @@ class Probe:
 # clinic_admin holds every permission probed here, so one real staff role
 # satisfies each gate and the only change between calls is is_active.
 PROBES = {
+    "clinic_app.agent_snapshot(uuid,text)": Probe(
+        "SELECT clinic_app.agent_snapshot(%(clinic)s, 'tasks.assign') IS NOT NULL"
+    ),
     "clinic_app.has_permission(text,uuid,uuid)": Probe(
         "SELECT clinic_app.has_permission('staff.clinic', %(clinic)s, NULL)"
     ),
@@ -356,9 +366,11 @@ def _delegates(reader: Reader, checked: set[str]) -> bool:
 
 
 def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
-    """Derive own-clause readers, then readers that delegate to them."""
+    """Derive own-clause readers and delegators to proven active boundaries."""
     own = {name for name, reader in readers.items() if reader.own_clause}
-    checked = set(own)
+    # Bound-actor evaluators have no actor GUC and are outside this reader graph.
+    # A protocol seeds propagation only with its retained direct inactive probe.
+    checked = own | (set(readers) & set(PROBES) & set(ACTOR_PROTOCOL_ORACLES))
     grew = True
     while grew:
         grew = False
@@ -379,13 +391,16 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         ACTOR_PROTOCOL_ORACLES
         | MERGE_ACTOR_PROTOCOL_ORACLES
         | ORDERS_ACTOR_PROTOCOL_ORACLES
+        | RETENTION_ACTOR_PROTOCOLS
+        | EXTRACTION_ACTOR_PROTOCOL_ORACLES
+        | EVALUATION_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
     # INSERT of an inactive account. It is not an active-caller proof. Those
     # readers need executable capability/creation/cleanup contracts instead.
     assert protocols <= set(readers)
-    assert own - protocols == set(PROBES) | set(OWN_GUARD_PROBES)
+    assert own - protocols == (set(PROBES) | set(OWN_GUARD_PROBES)) - protocols
     assert set(readers) - own - delegating - protocols == set(JUSTIFIED) | set(
         LIFECYCLE_PROBES
     )

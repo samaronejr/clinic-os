@@ -36,12 +36,18 @@ qualified signing, PIX, attachment storage/scanning, hosted PITR, secrets/KMS)
 runs on a clearly labelled synthetic adapter and stays `waiting_external`
 until its capability record gains an approved provider and sandbox.
 
-Three service entrypoints remain deferred stubs that raise exactly
+Two service entrypoints remain deferred stubs that raise exactly
 `NotImplementedError("Phase >=1")`: `prescription.issue_prescription` (real
-issuance waits on the signing capability), `retention.apply_retention_policy`
-(automatic destruction stays disabled pending an approved disposal policy)
-and `interop.exchange_clinical_record` (RNDS/SNCR preparation only). Their
+issuance waits on the signing capability) and `interop.exchange_clinical_record`
+(RNDS/SNCR preparation only). Their
 presence in the tree means the boundary is reserved, nothing more.
+
+Premium-intelligence todo 43 implements `retention.apply_retention_policy` for
+synthetic `raw_audio`, `ai_artifact` and `transcript_partial` only. Execution uses
+a dedicated retention principal, defaults to dry-run, respects legal holds and
+records receipts only after confirmed absence. Clinical records are excluded;
+live retention stays blocked on EG-2/EG-3. See the
+[retention contract](../../apps/retention/README.md).
 
 ## What the renewal adds
 

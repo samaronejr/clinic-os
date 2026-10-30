@@ -278,6 +278,10 @@ def test_beat_schedule_has_exact_durable_scanners() -> None:
             "task": "apps.workflows.tasks.scan_due",
             "schedule": 60.0,
         },
+        "retention-policy-sweep": {
+            "task": "apps.retention.tasks.scan_due",
+            "schedule": 60.0,
+        },
         # Lifecycle v2 (D-9): the W hold-expiry job.
         "appointment-hold-expiry": {
             "task": "apps.scheduling.tasks.expire_holds",

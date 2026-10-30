@@ -1,10 +1,9 @@
 {% extends "base.html" %}
-{% load static tz i18n components ehr_ui %}
+{% load static tz i18n components ehr_ui ai_chart ai_decision scribe_review %}
 {% block title %}Atendimento · Clinic OS{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-ehr.css' %}"><script src="{% static 'js/ehr-autosave.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-ehr.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-scribe.css' %}"><script src="{% static 'js/ehr-autosave.js' %}" defer></script><script src="{% static 'js/scribe-capture.js' %}" defer></script><script src="{% static 'js/components/drawer.js' %}" defer></script>{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="encounter-title">
-  <p class="eyebrow">Registro clínico</p>
   <h1 id="encounter-title">Atendimento</h1>
   <p class="lede">{% trans "Record the visit at your own pace. With JavaScript on, the draft is saved to the server while you type; the status says it is saved only after the server confirms." %}</p>
   <p><a href="{% url 'scheduling:agenda' clinic_id %}">Voltar à agenda</a></p>
@@ -12,10 +11,14 @@
   {% if encounter %}
   {% timezone encounter.clinic.timezone %}
     <h2>{{ encounter.patient.full_name }}</h2>
+    {% chart_panel clinic_id encounter_id=encounter.pk %}
+    {% decision_panel clinic_id encounter.pk %}
     {% if enrollment_id %}
     {% patient_workspace_allowed clinic_id enrollment_id as clinical_workspace %}
     {% if clinical_workspace %}<form method="post" action="{% url 'ehr:patient-workspace' clinic_id %}">{% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Open longitudinal record" %}</button></form>{% endif %}
     {% endif %}
+    {% if capture.available or capture.recording %}{% include "scribe/capture.html" %}{% endif %}
+    <form method="post" action="{% url 'scribe:transcript' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Review transcript" %}</button></form>
     <form method="post" action="{% url 'ehr:history' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Problemas e alergias</button></form>
     <form method="post" action="{% url 'ehr:attachments' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Anexos</button></form>
     {% if encounter.appointment_id %}
@@ -28,6 +31,8 @@
     {% endif %}
     <p data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">Atendimento {{ encounter.get_state_display|lower }}{% if encounter.closed_at %} em {{ encounter.closed_at|date:"d/m/Y H:i" }}{% endif %} · Iniciado em {{ encounter.created_at|date:"d/m/Y H:i" }}</p>
     {% if version %}
+    {% if version.state == "draft" %}<form method="post" action="{% url 'scribe:review' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="version_id" value="{{ version.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Review source-linked AI suggestions" %}</button></form>{% endif %}
+    {% note_ai_history clinic_id encounter.pk %}
     <section class="panel ehr-autosave" data-version="{{ version.pk }}" data-revision="{{ version.revision }}" data-template-version="{{ version.template.version }}" data-state="{{ version.state }}"{% if version.content_digest %} data-digest="{{ version.content_digest }}"{% endif %}{% if version.amendment_of_id %} data-amendment-of="{{ version.amendment_of_id }}"{% endif %}>
       <h2>{{ version.template.title }}</h2>
       <p>Modelo versão {{ version.template.version }} · Documento versão {{ version.version }} · Revisão salva <span data-saved-revision>{{ version.revision }}</span></p>

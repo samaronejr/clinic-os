@@ -1,0 +1,51 @@
+{% load i18n tz ai_chart %}
+<section id="decision-support-panel" aria-labelledby="decision-support-title" data-cds-state="{{ cds.state }}">
+  <h2 id="decision-support-title">{% trans "Clinician decision support" %}</h2>
+  <p class="help-text">{% trans "Synthetic preview. Not validated for clinical use." %}</p>
+  <p>{% trans "Evidence review only. No diagnosis, prognosis, prescriptions, dose calculations or patient messages. You may accept, modify or reject without affecting care." %}</p>
+  {% if cds.state == "ready" %}
+    {% if cds.decision %}<p class="feedback feedback--success" role="status" data-cds-decision="{{ cds.decision }}">{% trans "AI-use decision recorded. Nothing was added to the chart, prescribed or sent. Make any changes in the clinical record yourself." %}</p>{% endif %}
+    {% timezone clinic_timezone %}
+    {% for item in cds.considerations %}
+    <article class="record-review" data-cds-consideration="{{ item.kind }}">
+      <h3>{% trans "Model hypothesis - clinician review required" %}</h3>
+      <p>{% if item.kind == "review_completeness" %}{% trans "Consider reviewing whether the documented evidence is complete. Missing records do not establish absence." %}{% else %}{% trans "Consider comparing the documented fact with the cited reference and checking its applicability." %}{% endif %}</p>
+      <h4>{% trans "Patient fact" %}</h4>
+      <p data-cds-fact="{{ item.fact.kind }}">{{ item.fact.text }}</p>
+      <p class="help-text">{{ item.fact.kind|citation_kind }} · {% trans "Version" %} {{ item.fact.version }} · {{ item.fact.date|date:"d/m/Y H:i" }}</p>
+      <h4>{% trans "Reference statement" %}</h4>
+      <p data-cds-reference="{{ item.reference.key }}">{{ item.reference.statement }}</p>
+      <p>{{ item.reference.source }} · {% trans "Version" %} {{ item.reference.version }} · {{ item.reference.published_on }}</p>
+      <p>{% trans "Population" %}: {{ item.reference.population }}</p>
+      <p>{% trans "Limitations" %}: {{ item.reference.limitations }}</p>
+      <p class="help-text">{% trans "License" %}: {{ item.reference.license_ref }}</p>
+    </article>
+    {% empty %}<p>{% trans "No considerations with currently resolvable evidence. Continue working manually." %}</p>{% endfor %}
+    {% endtimezone %}
+    {% if cds.considerations %}
+    <form method="post" action="{% url 'ai:decision-support' clinic_id %}" novalidate>
+      {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter_id }}"><input type="hidden" name="invocation_id" value="{{ cds.invocation_id }}">
+      <div class="actions">
+        <button class="button button--secondary" name="command" value="accepted" type="submit">{% trans "Accept consideration" %}</button>
+        <button class="button button--secondary" name="command" value="modified" type="submit">{% trans "Modify in the clinical record" %}</button>
+        <button class="button button--secondary" name="command" value="rejected" type="submit">{% trans "Reject consideration" %}</button>
+      </div>
+    </form>
+    {% endif %}
+  {% elif cds.invocation_id %}
+    <p role="status" data-cds-pending>{% trans "Considerations are not ready. Continue working manually while the request is processed." %}</p>
+    <form method="post" action="{% url 'ai:decision-support' clinic_id %}" novalidate>
+      {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter_id }}"><input type="hidden" name="invocation_id" value="{{ cds.invocation_id }}">
+      <button class="button button--secondary" name="command" value="display" type="submit">{% trans "Refresh considerations" %}</button>
+    </form>
+  {% else %}
+    <p role="status">{% trans "Decision support unavailable. The manual clinical record remains available." %}</p>
+  {% endif %}
+  {% if cds.can_request %}
+  <form method="post" action="{% url 'ai:decision-support' clinic_id %}" novalidate>
+    {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+    <div class="field"><label for="cds-opt-in"><input id="cds-opt-in" name="opt_in" type="checkbox" value="yes"> {% trans "I choose to use decision support for this request only." %}</label></div>
+    <button class="button button--secondary" name="command" value="generate" type="submit">{% trans "Request evidence review" %}</button>
+  </form>
+  {% endif %}
+</section>

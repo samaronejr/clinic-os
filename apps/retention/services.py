@@ -1,8 +1,8 @@
 """Retention policies, legal holds, releases and controlled exports.
 
-The deferred purge entrypoint stays unimplemented: no automatic disposal
-exists until an approved disposal pipeline is built, and even then every
-record class requires an approved policy and zero active holds. Exports are
+Transient purge is synthetic-only, dry-run by default, and machine-authorized.
+Clinical record disposal still requires an approved policy and zero holds,
+and never automatically destroys finalized records. Exports are
 online access-controlled operations that produce a manifest/digest package
 of released versions only; staff secrets, audit internals and other-clinic
 data never enter the package.
@@ -47,6 +47,12 @@ from apps.identity.current_context import (
 )
 from apps.identity.models import Clinic, UserClinicRole
 from apps.intake.alias_access import patient_alias_set
+from apps.retention.execution import (
+    TRANSIENT_CLASSES,
+    RetentionExecutionDeniedError,
+    RetentionRun,
+    schedule_purges,
+)
 from apps.retention.models import (
     RECORD_CLASSES,
     LegalHold,
@@ -136,10 +142,14 @@ class ExportVerification:
     manifest_digest: str
 
 
-def apply_retention_policy() -> NoReturn:
-    """Apply a retention policy when the retention domain is implemented."""
-    message = "Phase >=1"
-    raise NotImplementedError(message)
+def apply_retention_policy(*, clinic_id: UUID, record_class: str) -> RetentionRun:
+    """Schedule only transient artifacts under the current retention principal."""
+    if record_class not in TRANSIENT_CLASSES:
+        raise RetentionAccessDeniedError
+    try:
+        return schedule_purges(clinic_id=clinic_id, record_class=record_class)
+    except RetentionExecutionDeniedError as error:
+        raise RetentionAccessDeniedError from error
 
 
 def _denied(

@@ -877,6 +877,35 @@ def test_unclassified_actor_surface_fails_the_inventory(surface: str, ddl: str) 
     assert set(discover_sql_sites()) == set(CASES), surface
 
 
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "PERFORM current_setting('app.current_user_id', true)",
+        "PERFORM clinic_app.unclassified_workflow_helper()",
+    ],
+)
+def test_foreign_trigger_actor_or_opaque_closure_fails_the_inventory(
+    statement: str,
+) -> None:
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "CREATE FUNCTION clinic_app.planted_workflow_trigger() "
+                "RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN "
+                + statement
+                + "; RETURN NEW; END $f$"
+            )
+            cursor.execute(
+                "CREATE TRIGGER planted_workflow_trigger BEFORE UPDATE "
+                "ON clinic_app.workflows_workflowdefinitionversion "
+                "FOR EACH ROW EXECUTE FUNCTION clinic_app.planted_workflow_trigger()"
+            )
+        with pytest.raises(AssertionError, match="foreign trigger function"):
+            discover_sql_sites()
+        transaction.set_rollback(True)
+    assert set(discover_sql_sites()) == set(CASES)
+
+
 def test_every_nonmanager_role_sees_and_comments_only_on_work_it_owns(
     world: World,
 ) -> None:

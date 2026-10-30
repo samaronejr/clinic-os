@@ -1,0 +1,105 @@
+.extraction-workspace {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.extraction-toolbar,
+.extraction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.extraction-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.extraction-document {
+  min-width: 0;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-raised);
+}
+
+.extraction-page {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.extraction-document[data-zoom="200"],
+.extraction-document[data-zoom="400"] {
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.extraction-document[data-zoom="200"] .extraction-page {
+  width: 200%;
+}
+
+.extraction-document[data-zoom="400"] .extraction-page {
+  width: 400%;
+}
+
+.extraction-region {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: all;
+}
+
+.extraction-anchors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  padding: var(--space-3);
+}
+
+.extraction-candidates {
+  min-width: 0;
+}
+
+.extraction-candidate {
+  border-bottom: 1px solid var(--color-line);
+  padding-block: var(--space-5);
+  overflow-wrap: anywhere;
+  scroll-margin-block: var(--space-6);
+}
+
+.extraction-candidate:target,
+.extraction-candidate:focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+}
+
+.extraction-candidate blockquote {
+  margin-inline: 0;
+  white-space: pre-wrap;
+}
+
+.extraction-candidate dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.extraction-candidate dd {
+  margin: 0;
+}
+
+.extraction-workspace button,
+.extraction-workspace .button,
+.extraction-workspace select {
+  min-height: 2.75rem;
+}
+
+@media (max-width: 56rem) {
+  .extraction-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -38,6 +38,7 @@ from apps.retention.forms import (
 )
 from apps.retention.models import (
     RECORD_CLASSES,
+    ArtifactPurge,
     LegalHold,
     RecordExport,
     RecordRelease,
@@ -103,6 +104,9 @@ def _context(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
         "can_manage": manager,
         "can_release": physician,
         "record_classes": RECORD_CLASSES,
+        "purge_receipts": ArtifactPurge.objects.filter(
+            clinic_id=clinic_id, state="purged"
+        ).order_by("-purged_at")[:20],
         "policies": RetentionPolicy.objects.filter(clinic_id=clinic_id).order_by(
             "record_class", "-version"
         ),

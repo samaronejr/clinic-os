@@ -1097,12 +1097,12 @@ def test_http_staff_export_audits_each_version(rbac_graph: RbacGraph) -> None:
         verify_chain(graph.organization_a)
 
 
-def test_apply_retention_policy_stays_unimplemented() -> None:
-    """The deferred purge entrypoint fails closed until a pipeline exists."""
+def test_apply_retention_policy_never_automatically_destroys_clinical_records() -> None:
+    """The implemented transient pipeline still refuses finalized record classes."""
     from apps.retention.services import apply_retention_policy  # noqa: PLC0415
 
-    with pytest.raises(NotImplementedError, match="Phase"):
-        apply_retention_policy()
+    with pytest.raises(RetentionAccessDeniedError):
+        apply_retention_policy(clinic_id=uuid4(), record_class="ehr.document_version")
 
 
 def test_policy_and_hold_validation_errors(rbac_graph: RbacGraph) -> None:

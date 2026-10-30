@@ -3,6 +3,12 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
+from apps.ai.artifacts import create_input, read_artifact
+from apps.ai.controls import current_policy, set_organization_policy
+from apps.ai.evaluation import services as evaluation_services
+from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
+from apps.ai.owner import reset_circuit
+from apps.ai.services import invoke
 from apps.billing.services import create_invoice
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
@@ -32,6 +38,7 @@ from apps.providers.services import current_version, is_live
 from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy, release_version
 from apps.scheduling import services as scheduling_services
+from apps.scribe import services as scribe_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from django.apps import apps as django_apps
@@ -52,6 +59,8 @@ FOUNDATION_APP_NAMES: Final = frozenset(
 )
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
+        "apps.ai.apps.AiConfig",
+        "apps.scribe.apps.ScribeConfig",
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
@@ -73,9 +82,49 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            evaluation_services.register_protocol,
+            [
+                "clinic_id",
+                "capability",
+                "corpus_version",
+                "thresholds",
+                "clinical_owner_ref",
+            ],
+        ),
+        (
+            evaluation_services.start_run,
+            ["clinic_id", "protocol_id", "configuration_id", "reviewers"],
+        ),
+        (
+            evaluation_services.store_results,
+            ["clinic_id", "run_id", "results"],
+        ),
+        (
+            evaluation_services.rate_case,
+            ["clinic_id", "run_id", "case_id", "labels"],
+        ),
+        (evaluation_services.finish_run, ["clinic_id", "run_id"]),
+        (evaluation_services.request_change, ["clinic_id", "run_id"]),
+        (
+            evaluation_services.decide_change,
+            ["clinic_id", "change_id", "decision", "approval_ref"],
+        ),
+    ],
+)
+def test_evaluation_commands_derive_human_authority_from_current_scope(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_issuance_command_keeps_explicit_scope_and_idempotency() -> None:
@@ -117,6 +166,91 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
 @pytest.mark.parametrize(
     ("entrypoint", "names", "defaults"),
     [
+        (
+            scribe_services.issue_encounter_token,
+            ["clinic_id", "encounter_id", "browser_binding"],
+            {},
+        ),
+        (
+            scribe_services.create_recording,
+            ["clinic_id", "encounter_token", "command_id"],
+            {},
+        ),
+        (
+            scribe_services.control_recording,
+            [
+                "clinic_id",
+                "session_id",
+                "encounter_token",
+                "command_id",
+                "action",
+                "expected_epoch",
+                "last_seq",
+                "reason",
+            ],
+            {"last_seq": -1, "reason": "user"},
+        ),
+        (
+            scribe_services.ingest_chunk,
+            ["clinic_id", "encounter_token", "chunk"],
+            {},
+        ),
+        (
+            scribe_services.read_transcript,
+            ["clinic_id", "session_id"],
+            {},
+        ),
+        (
+            scribe_services.finalize_transcript,
+            ["clinic_id", "session_id", "expected_revision", "acknowledge_incomplete"],
+            {},
+        ),
+        (
+            scribe_services.review_segment,
+            ["clinic_id", "session_id", "expected_revision", "review"],
+            {},
+        ),
+        (
+            scribe_services.request_draft,
+            ["clinic_id", "version_id", "transcript_id", "request_key", "request"],
+            {},
+        ),
+        (scribe_services.read_review, ["clinic_id", "version_id"], {}),
+        (
+            scribe_services.review_suggestion,
+            [
+                "clinic_id",
+                "version_id",
+                "review",
+            ],
+            {},
+        ),
+        (invoke, ["clinic_id", "purpose", "principal", "inputs_ref", "budget"], {}),
+        (
+            create_input,
+            ["clinic_id", "purpose", "content", "patient_enrollment_id", "method"],
+            {"patient_enrollment_id": None, "method": "complete"},
+        ),
+        (read_artifact, ["clinic_id", "artifact_id"], {}),
+        (apply_retention_policy, ["clinic_id", "record_class"], {}),
+        (
+            start_extraction,
+            ["clinic_id", "budget", "result_version_id", "attachment_id"],
+            {"result_version_id": None, "attachment_id": None},
+        ),
+        (collect_extraction, ["clinic_id", "job_id"], {}),
+        (
+            review_extraction,
+            ["clinic_id", "candidate_id", "decision", "result_version_id"],
+            {"result_version_id": None},
+        ),
+        (current_policy, ["clinic_id"], {}),
+        (reset_circuit, ["clinic_id", "configuration_id"], {}),
+        (
+            set_organization_policy,
+            ["clinic_id", "expected_version", "policy"],
+            {},
+        ),
         (authorization.authorize_topics_sync, ["session_key", "topics"], {}),
         (authorization.authorize_topics, ["session_key", "topics"], {}),
         (tickets.issue_ticket, ["session_key", "topics"], {}),
@@ -399,10 +533,7 @@ def test_domain_app_configs_are_registered() -> None:
 @pytest.mark.parametrize(
     "entrypoint",
     DEFERRED_SERVICE_ENTRYPOINTS,
-    ids=(
-        "retention.apply_retention_policy",
-        "interop.exchange_clinical_record",
-    ),
+    ids=("interop.exchange_clinical_record",),
 )
 def test_deferred_service_entrypoint_raises_phase_boundary(
     entrypoint: Callable[[], NoReturn],

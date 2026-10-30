@@ -46,6 +46,28 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        **{
+            f"ai.evaluation.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.evaluation", state
+            )
+            for state in (
+                "registered",
+                "started",
+                "scored",
+                "rated",
+                "passed",
+                "failed",
+                "change_requested",
+                "change_approved",
+                "change_rejected",
+            )
+        },
+        **{
+            f"retention.purge.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-worker", "retention.artifact_purge", state
+            )
+            for state in ("purge_due", "blocked_hold", "purging", "purged", "failure")
+        },
         "prescription.issuance.rehearsed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.issuance", "rehearsed"
         ),
@@ -129,6 +151,214 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         ),
         "ehr.timeline.viewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.timeline", "viewed"
+        ),
+        **{
+            f"ai.action.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.action_proposal",
+                state,
+            )
+            for state in (
+                "proposal",
+                "validated",
+                "rejected",
+                "approved",
+                "executing",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.execution.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.action_execution",
+                state,
+            )
+            for state in (
+                "executing",
+                "sending",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "rejected",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.agent_run.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.agent_run",
+                state,
+            )
+            for state in (
+                "created",
+                "validated",
+                "rejected",
+                "approved",
+                "executing",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.compensation.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.compensation",
+                state,
+            )
+            for state in ("compensating", "compensated", "manual_required")
+        },
+        "ai.agent_policy.published": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.agent_policy_version",
+            "published",
+        ),
+        "ai.approval.recorded": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.approval",
+            "recorded",
+        ),
+        "ai.receipt.recorded": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.action_receipt",
+            "recorded",
+        ),
+        **{
+            f"scribe.session.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.recording_session", state
+            )
+            for state in (
+                "created",
+                "authorized",
+                "recording",
+                "paused",
+                "stopped",
+                "stopped_revoked",
+            )
+        },
+        **{
+            f"scribe.epoch.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.capture_epoch", state
+            )
+            for state in ("created", "closed")
+        },
+        **{
+            f"scribe.chunk.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker" if state == "accepted" else "clinic-os-web",
+                "scribe.audio_chunk",
+                state,
+            )
+            for state in ("received", "accepted", "quarantined", "rejected")
+        },
+        "scribe.transcription.queued": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "scribe.transcription", "queued"
+        ),
+        **{
+            f"scribe.draft.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker" if state == "generated" else "clinic-os-web",
+                "scribe.ai_draft",
+                state,
+            )
+            for state in ("requested", "generated")
+        },
+        **{
+            f"scribe.suggestion.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.review_decision", state
+            )
+            for state in ("accepted", "modified", "rejected")
+        },
+        **{
+            f"scribe.transcript.{mutation}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker" if mutation == "recognized" else "clinic-os-web",
+                "scribe.transcript",
+                mutation,
+            )
+            for mutation in (
+                "recognized",
+                "finalized",
+                "speaker_relabeled",
+                "corrected",
+            )
+        },
+        "ai.model.drafted": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "drafted"
+        ),
+        "ai.model.approved": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "approved"
+        ),
+        "ai.model.active": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "active"
+        ),
+        "ai.model.retired": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "retired"
+        ),
+        "ai.global_switch.changed": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.gateway_switch", "changed"
+        ),
+        "ai.organization_policy.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic_configuration", "published"
+        ),
+        "ai.artifact.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.artifact", "created"
+        ),
+        **{
+            f"ai.decision_support.{decision}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.decision_support", decision
+            )
+            for decision in ("accepted", "modified", "rejected")
+        },
+        "ai.extraction.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_job", "started"
+        ),
+        "ai.extraction.proposed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.extraction_candidate", "proposed"
+        ),
+        "ai.extraction.confirmed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_candidate", "confirmed"
+        ),
+        "ai.extraction.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_candidate", "rejected"
+        ),
+        "ai.invocation.reserved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "reserved"
+        ),
+        "ai.invocation.succeeded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "succeeded"
+        ),
+        "ai.invocation.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "failed"
+        ),
+        "ai.circuit.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.circuit", "opened"
+        ),
+        "ai.circuit.closed": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.circuit", "closed"
         ),
         "identity.delegate.requested": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"

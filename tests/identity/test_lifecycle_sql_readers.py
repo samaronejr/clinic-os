@@ -148,8 +148,44 @@ ACTOR_PROTOCOL_ORACLES = {
     signature: tuple(f"identity.test_lifecycle_sql_readers.{name}" for name in names)
     for signature, names in _ACCOUNT_ORACLES.items()
 } | {
+    "clinic_app.agent_record_guard()": (
+        "ai.test_agent_guards.test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "ai.test_agent_guards.test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "ai.test_agent_execution.test_revoked_approver_blocks_after_approval",
+        "ai.test_agent_execution.test_superseded_source_publication_blocks_execution",
+        "ai.test_agent_guards.test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+    ),
+    "clinic_app.agent_snapshot(uuid,text)": (
+        "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
+    ),
+    "clinic_app.has_permission(text,uuid,uuid)": (
+        "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
+    ),
+    "clinic_app.scribe_assigned(uuid)": (
+        "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
+    ),
+    "clinic_app.scribe_note_author(uuid)": (
+        "scribe.test_draft_authority."
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ),
+    "clinic_app.scribe_note_visible(uuid)": (
+        "scribe.test_draft_authority."
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ),
+    "clinic_app.scribe_guard()": (
+        "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
+        "scribe.test_refusals.test_role_loss_refuses_every_action_without_session_or_domain_mutation",
+    ),
     "clinic_app.reception_readiness(uuid,uuid)": (
         "identity.test_reception_readiness_actor.test_readiness_sql_refuses_inactive_existing_actor",
+    ),
+    # Admission delegates to ai_staff; actor binding also permits retained,
+    # content-free cancellation bookkeeping after the actor becomes inactive.
+    "clinic_app.ai_ledger_guard()": (
+        "ai.test_posture."
+        "test_ledger_guard_refuses_inactive_admission_with_raw_actor_context",
+        "ai.test_cancellation."
+        "test_revoked_actor_cancellation_releases_the_unspent_reservation",
     ),
     "clinic_app.identity_signup_register(uuid,uuid,uuid,uuid,jsonb,text,bytea,text)": (
         "identity.test_onboarding."
@@ -168,6 +204,15 @@ SQL_PROTOCOL_ORACLES = (
         not in {
             "clinic_app.identity_offboarding_clinics(uuid,uuid)",
             "clinic_app.identity_reset_guard()",
+            # Sealed staff/domain oracles already classify these SQL guards;
+            # actor protocols add independent inactive-caller proof.
+            "clinic_app.agent_record_guard()",
+            "clinic_app.agent_snapshot(uuid,text)",
+            "clinic_app.has_permission(text,uuid,uuid)",
+            "clinic_app.scribe_assigned(uuid)",
+            "clinic_app.scribe_note_author(uuid)",
+            "clinic_app.scribe_note_visible(uuid)",
+            "clinic_app.scribe_guard()",
             # A sealed staff-role oracle already classifies this SQL guard;
             # the actor protocol above adds independent inactive-caller proof.
             "clinic_app.reception_readiness(uuid,uuid)",
@@ -220,6 +265,14 @@ SQL_PROTOCOL_ORACLES = (
         ),
     )
     | {
+        "clinic_app.ai_ledger_guard": (
+            *ACTOR_PROTOCOL_ORACLES["clinic_app.ai_ledger_guard()"],
+            "ai.test_posture."
+            "test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
+            "ai.test_gateway."
+            "test_fake_call_is_metered_once_and_all_content_stays_encrypted",
+            "ai.test_posture.test_closed_circuit_can_reopen_without_losing_history",
+        ),
         "clinic_app.identity_pending_authority_guard": (
             "identity.test_lifecycle_sql_readers."
             "test_installed_lifecycle_triggers_are_attached_and_enabled",

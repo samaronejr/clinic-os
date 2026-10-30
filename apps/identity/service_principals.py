@@ -22,6 +22,65 @@ _DENIED = "current actor unauthorized"
 
 
 @transaction.atomic
+def register_execution_principal(
+    *,
+    clinic_id: UUID,
+    name: str,
+    db_identity: str,
+) -> ServicePrincipal:
+    """Provision reviewed v2 agent execution without promoting v1 identities."""
+    clinic = _owner_clinic(clinic_id)
+    principal = ServicePrincipal.objects.create(
+        organization_id=clinic.organization_id,
+        clinic=clinic,
+        name=name,
+        db_identity=db_identity,
+        purpose="agent-execution",
+        grant_set_version=2,
+    )
+    record_phase1_event(
+        "identity.principal.created",
+        clinic_id=clinic_id,
+        affected_record_id=principal.pk,
+    )
+    grant_principal(
+        clinic_id=clinic_id,
+        principal_id=principal.pk,
+        permission="agent.execute",
+        subject_scope="clinic",
+    )
+    return principal
+
+
+@transaction.atomic
+def register_retention_principal(
+    *, clinic_id: UUID, name: str, db_identity: str
+) -> ServicePrincipal:
+    """Provision v3 retention without promoting an existing v1 machine identity."""
+    clinic = _owner_clinic(clinic_id)
+    principal = ServicePrincipal.objects.create(
+        organization_id=clinic.organization_id,
+        clinic=clinic,
+        name=name,
+        db_identity=db_identity,
+        purpose="retention",
+        grant_set_version=3,
+    )
+    record_phase1_event(
+        "identity.principal.created",
+        clinic_id=clinic_id,
+        affected_record_id=principal.pk,
+    )
+    grant_principal(
+        clinic_id=clinic_id,
+        principal_id=principal.pk,
+        permission="retention.execute",
+        subject_scope="clinic",
+    )
+    return principal
+
+
+@transaction.atomic
 def register_principal(
     *, clinic_id: UUID, name: str, db_identity: str, purpose: str
 ) -> ServicePrincipal:
@@ -46,7 +105,7 @@ def register_principal(
 def grant_principal(
     *, clinic_id: UUID, principal_id: UUID, permission: str, subject_scope: str
 ) -> ServicePrincipalGrant:
-    """Append a v1 scope, never reactivating an old grant or a revoked principal."""
+    """Append the principal's pinned grant version without reactivating history."""
     _owner_clinic(clinic_id)
     principal = (
         ServicePrincipal.objects.select_for_update()
@@ -59,6 +118,7 @@ def grant_principal(
         organization_id=principal.organization_id,
         principal=principal,
         permission=permission,
+        grant_set_version=principal.grant_set_version,
         subject_scope=subject_scope,
     )
     record_phase1_event(

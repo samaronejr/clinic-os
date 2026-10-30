@@ -70,6 +70,52 @@ def test_typed_composite_domain_remains_supported(
 
 
 @pytest.mark.parametrize("source_type", ["timestamptz", "text"])
+@pytest.mark.parametrize("alias", ["s", "AS s"])
+def test_aliased_row_assignment_checks_each_temporal_field(
+    source_type: str,
+    alias: str,
+    superuser_database_url: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    body = {
+        "s": (
+            "DECLARE item r8.destination; BEGIN SELECT * INTO item "
+            "FROM r8.source s; RETURN item.at; END"
+        ),
+        "AS s": (
+            "DECLARE item r8.destination; BEGIN SELECT * INTO item "
+            "FROM r8.source AS s; RETURN item.at; END"
+        ),
+    }[alias]
+    ddl = {
+        "timestamptz": (
+            "CREATE TYPE r8.destination AS (at timestamptz); "
+            "CREATE TABLE r8.source(at timestamptz); "
+            "INSERT INTO r8.source VALUES ('2001-01-01'); "
+        ),
+        "text": (
+            "CREATE TYPE r8.destination AS (at timestamptz); "
+            "CREATE TABLE r8.source(at text); "
+            "INSERT INTO r8.source VALUES ('2001-01-01'); "
+        ),
+    }[source_type]
+    probe = expression(
+        body,
+        ddl=ddl,
+        language="plpgsql",
+        result="=TIMESTAMPTZ '2001-01-01'",
+    )
+    with installed_probe(superuser_database_url, probe, request):
+        node = live_clock_inventory().get("function:clinic_app.scheduling_r8_root()")
+        direct = node["direct"] if node is not None else {}
+        assert bool(direct.get("unresolved-temporal-coercion")) is (
+            source_type == "text"
+        )
+        assert not any(key.startswith("unanalysed-plpgsql:") for key in direct)
+        request.node.stash[RESTORATION]["typed_control"] = "true"
+
+
+@pytest.mark.parametrize("source_type", ["timestamptz", "text"])
 def test_select_into_checks_each_positional_temporal_target(
     source_type: str,
     superuser_database_url: str,

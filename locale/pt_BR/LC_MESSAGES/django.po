@@ -7,8 +7,407 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Clinician AI review"
+msgstr "Revisão clínica das sugestões de IA"
+
+msgid "Compare the sources, your note and each AI suggestion. Nothing is applied or finalized automatically."
+msgstr "Compare as fontes, sua anotação e cada sugestão de IA. Nada é aplicado ou finalizado automaticamente."
+
+msgid "Note review is unavailable for this encounter."
+msgstr "A revisão da anotação está indisponível para este atendimento."
+
+msgid "Review command was not accepted. Reopen the saved note and try again."
+msgstr "A ação de revisão não foi aceita. Reabra a anotação salva e tente novamente."
+
+msgid "Your submitted note - not applied"
+msgstr "Sua anotação enviada — não aplicada"
+
+msgid "Offline. Keep this page open; the text is not saved in this browser. Reconnect before submitting."
+msgstr "Sem conexão. Mantenha esta página aberta; o texto não é salvo neste navegador. Reconecte antes de enviar."
+
+msgid "This restored page is unconfirmed. Refresh the review before applying a suggestion."
+msgstr "Esta página restaurada não foi confirmada. Atualize a revisão antes de aplicar uma sugestão."
+
+msgid "Draft generation queued. Continue manually while waiting; refresh to see the result."
+msgstr "Geração de sugestões na fila. Continue manualmente enquanto aguarda; atualize para ver o resultado."
+
+msgid "Your review was recorded. The note is still a draft; finalization is a separate action."
+msgstr "Sua revisão foi registrada. A anotação continua como rascunho; a finalização é uma ação separada."
+
+msgid "AI drafting is unavailable. It requires a final transcript, separate current AI consent, informed disclosure and an enabled organization policy. Manual notes remain available."
+msgstr "As sugestões de IA estão indisponíveis. São necessários uma transcrição final, consentimento vigente específico para IA, informação ao paciente e habilitação pela organização. A anotação manual continua disponível."
+
+msgid "Missing audio was not reconstructed."
+msgstr "O áudio ausente não foi reconstruído."
+
+msgid "Review sections"
+msgstr "Áreas da revisão"
+
+msgid "Sources"
+msgstr "Fontes"
+
+msgid "Your note"
+msgstr "Sua anotação"
+
+msgid "Suggestions"
+msgstr "Sugestões"
+
+msgid "Refresh review"
+msgstr "Atualizar revisão"
+
+msgid "Generate source-linked suggestions"
+msgstr "Gerar sugestões vinculadas às fontes"
+
+msgid "Reported, observed and hypothesis are distinct. Confidence is not a safety guarantee. Uncertain source text never confirms a dose."
+msgstr "Relato, observação e hipótese são distintos. Confiança não é garantia de segurança. Um trecho incerto nunca confirma uma dose."
+
+msgid "Hypothesis - not a confirmed finding"
+msgstr "Hipótese — não é um achado confirmado"
+
+msgid "No source text is available. Continue the note manually."
+msgstr "Nenhum texto de fonte está disponível. Continue a anotação manualmente."
+
+msgid "Save manual note"
+msgstr "Salvar anotação manual"
+
+msgid "Only a server acknowledgement confirms a save. Accepting a suggestion saves through your own note command with revision checking."
+msgstr "Somente a confirmação do servidor garante que a anotação foi salva. Ao aceitar uma sugestão, você salva a anotação com verificação da revisão."
+
+msgid "Within a suggestion, Alt+Shift+A accepts and Alt+Shift+R rejects. Conflicts require an explicit edited replacement."
+msgstr "Dentro de uma sugestão, Alt+Shift+A aceita e Alt+Shift+R rejeita. Em caso de conflito, edite explicitamente o texto de substituição."
+
+msgid "The original source changed or is unavailable."
+msgstr "A fonte original mudou ou está indisponível."
+
+msgid "Compare original with draft"
+msgstr "Comparar original com sugestão"
+
+msgid "Original at generation"
+msgstr "Original no momento da geração"
+
+msgid "AI suggestion"
+msgstr "Sugestão de IA"
+
+msgid "Accepted by clinician"
+msgstr "Aceita pelo médico"
+
+msgid "Modified by clinician"
+msgstr "Modificada pelo médico"
+
+msgid "Rejected by clinician"
+msgstr "Rejeitada pelo médico"
+
+msgid "Stale suggestion. Sources or generation changed; regenerate before applying."
+msgstr "Sugestão desatualizada. As fontes ou a geração mudaram; gere novamente antes de aplicar."
+
+msgid "Regenerate section"
+msgstr "Gerar novamente esta seção"
+
+msgid "Reject suggestion"
+msgstr "Rejeitar sugestão"
+
+msgid "Manual edits are preserved. Compare both versions and type the replacement explicitly; accepting cannot overwrite a touched section, including edit-then-revert."
+msgstr "As edições manuais são preservadas. Compare as duas versões e digite explicitamente a substituição; aceitar não pode sobrescrever uma seção editada, mesmo após desfazer a edição."
+
+msgid "Accept suggestion"
+msgstr "Aceitar sugestão"
+
+msgid "Your edited replacement"
+msgstr "Sua substituição editada"
+
+msgid "Apply my edited replacement"
+msgstr "Aplicar minha substituição editada"
+
+msgid "No supported suggestions are available. Nothing has been added to the note."
+msgstr "Não há sugestões fundamentadas disponíveis. Nada foi acrescentado à anotação."
+
+msgid "Proposed orders and tasks - separate from the note"
+msgstr "Propostas de pedidos e tarefas — separadas da anotação"
+
+msgid "These are source-linked A0 proposals, not orders, tasks or approvals. Review them in their domain workspace. Note review cannot execute an agent tool or approve its payload."
+msgstr "Estas são propostas A0 vinculadas às fontes, não pedidos, tarefas ou aprovações. Revise-as na área correspondente. A revisão da anotação não executa ferramentas de agentes nem aprova seu conteúdo."
+
+msgid "Order proposal"
+msgstr "Proposta de pedido"
+
+msgid "Task proposal"
+msgstr "Proposta de tarefa"
+
+msgid "No separate proposals were generated."
+msgstr "Nenhuma proposta separada foi gerada."
+
+msgid "Open governed proposal queue"
+msgstr "Abrir fila de propostas com aprovação"
+
+msgid "AI use in this encounter"
+msgstr "Uso de IA neste atendimento"
+
+msgid "AI origin remains visible after clinician review and local finalization. It does not imply automated approval or a digital signature."
+msgstr "A origem em IA permanece visível após a revisão médica e a finalização local. Isso não significa aprovação automática nem assinatura digital."
+
+msgid "Model configuration"
+msgstr "Configuração do modelo"
+
+#, python-format
+msgid "Source %(index)s"
+msgstr "Fonte %(index)s"
+
+#, python-format
+msgid "Based on note revision %(revision)s · generation %(generation)s."
+msgstr "Baseada na revisão %(revision)s da anotação · geração %(generation)s."
+
+msgid "Current note compared with AI suggestion"
+msgstr "Anotação atual comparada com a sugestão de IA"
+
+#, python-format
+msgid "Scribe drafting · model configuration version %(version)s · note revision %(revision)s."
+msgstr "Sugestão de anotação · configuração do modelo versão %(version)s · revisão %(revision)s da anotação."
+
+msgid "Review source-linked AI suggestions"
+msgstr "Revisar sugestões de IA vinculadas às fontes"
+
+msgid "Nothing was applied. The note, sources or generation changed. Reopen the review and compare; your submitted text is preserved below."
+msgstr "Nada foi aplicado. A anotação, as fontes ou a geração mudaram. Reabra a revisão e compare; seu texto enviado está preservado abaixo."
+
+msgid "Consultation transcript"
+msgstr "Transcrição da consulta"
+
+msgid "Speaker role"
+msgstr "Papel de quem está falando"
+
+msgid "Synthetic transcription. Review every word and speaker. Nothing is added to the clinical note automatically."
+msgstr "Transcrição sintética. Revise cada palavra e quem está falando. Nada é adicionado ao prontuário automaticamente."
+
+msgid "Continue the note manually"
+msgstr "Continuar a anotação manualmente"
+
+msgid "Transcript unavailable for this encounter."
+msgstr "Transcrição indisponível para este atendimento."
+
+msgid "Transcript command was not accepted. Refresh and try again."
+msgstr "A ação na transcrição não foi aceita. Atualize e tente novamente."
+
+msgid "New transcript version saved. Earlier versions are unchanged."
+msgstr "Nova versão da transcrição salva. As versões anteriores permanecem inalteradas."
+
+msgid "Pending audio queued for transcription. Continue manually while waiting."
+msgstr "Áudio pendente enviado à fila de transcrição. Continue manualmente enquanto aguarda."
+
+msgid "Final transcript"
+msgstr "Transcrição final"
+
+msgid "Transcription pending"
+msgstr "Transcrição pendente"
+
+msgid "Partial transcript"
+msgstr "Transcrição parcial"
+
+msgid "Unknown voices are never assumed to be the patient. Confidence is not a safety guarantee."
+msgstr "Vozes desconhecidas nunca são consideradas automaticamente a pessoa atendida. A confiança do modelo não garante segurança."
+
+msgid "Transcription is unavailable. Separate AI consent and an enabled, approved model are required. Audio is retained according to policy; continue manually."
+msgstr "Transcrição indisponível. É necessário consentimento específico para IA e um modelo aprovado e habilitado. O áudio é mantido conforme a política; continue manualmente."
+
+msgid "Refresh transcript"
+msgstr "Atualizar transcrição"
+
+msgid "Queue pending transcription"
+msgstr "Enviar transcrição pendente à fila"
+
+msgid "Transcript segments"
+msgstr "Trechos da transcrição"
+
+msgid "Uncertain or inaudible span. Verify against the source; do not infer a dose."
+msgstr "Trecho incerto ou inaudível. Confira a fonte; não deduza uma dose."
+
+msgid "Save speaker review"
+msgstr "Salvar revisão de quem está falando"
+
+msgid "Correct this segment"
+msgstr "Corrigir este trecho"
+
+msgid "Reviewed transcript text"
+msgstr "Texto revisado da transcrição"
+
+msgid "Saving confirms your correction and replaces uncertainty marks for this segment in a new version."
+msgstr "Salvar confirma sua correção e substitui as marcações de incerteza deste trecho em uma nova versão."
+
+msgid "Save corrected successor"
+msgstr "Salvar nova versão corrigida"
+
+msgid "No transcript text is available yet. Continue the note manually."
+msgstr "Ainda não há texto transcrito. Continue a anotação manualmente."
+
+msgid "Incomplete coverage"
+msgstr "Cobertura incompleta"
+
+msgid "Missing or pending audio is listed below. No replacement text has been invented."
+msgstr "O áudio ausente ou pendente está listado abaixo. Nenhum texto foi inventado para substituí-lo."
+
+msgid "Audio slice %(sequence)s is missing or pending."
+msgstr "O trecho de áudio %(sequence)s está ausente ou pendente."
+
+msgid "Finalized with clinician-acknowledged incomplete coverage."
+msgstr "Finalizada com cobertura incompleta reconhecida pelo profissional."
+
+msgid "I acknowledge incomplete coverage and will not infer missing content."
+msgstr "Reconheço a cobertura incompleta e não vou deduzir o conteúdo ausente."
+
+msgid "Finalize transcript"
+msgstr "Finalizar transcrição"
+
+msgid "Stop recording before finalizing the transcript."
+msgstr "Pare a gravação antes de finalizar a transcrição."
+
+msgid "Review transcript"
+msgstr "Revisar transcrição"
+
+msgid "Transcript changed. Refresh before reviewing this version."
+msgstr "A transcrição mudou. Atualize antes de revisar esta versão."
+
+msgid "Transcript cannot be finalized until recording stops and coverage is reviewed."
+msgstr "A transcrição só pode ser finalizada após parar a gravação e revisar a cobertura."
+
+msgid "Unknown speaker"
+msgstr "Pessoa não identificada"
+
+msgid "Clinician"
+msgstr "Profissional de saúde"
+
+msgid "Audio discarded according to policy."
+msgstr "Áudio descartado conforme política."
+
+msgid "Artifact discarded according to policy."
+msgstr "Artefato descartado conforme política."
+
+msgid "Backup copy expires at"
+msgstr "A cópia de segurança expira em"
+
+msgid "Clinical records are never automatically destroyed. Transient synthetic artifacts follow their retention policy; active legal holds block destruction."
+msgstr "Registros clínicos nunca são destruídos automaticamente. Artefatos sintéticos transitórios seguem a política de retenção; guardas legais ativas impedem a destruição."
+
+msgid "Clinician decision support"
+msgstr "Apoio à decisão do médico"
+
+msgid "Synthetic preview. Not validated for clinical use."
+msgstr "Prévia sintética. Não validada para uso clínico."
+
+msgid "Evidence review only. No diagnosis, prognosis, prescriptions, dose calculations or patient messages. You may accept, modify or reject without affecting care."
+msgstr "Somente revisão de evidências. Sem diagnóstico, prognóstico, prescrição, cálculo de doses ou mensagens ao paciente. Você pode aceitar, modificar ou rejeitar sem afetar o cuidado."
+
+msgid "AI-use decision recorded. Nothing was added to the chart, prescribed or sent. Make any changes in the clinical record yourself."
+msgstr "Decisão sobre o uso da IA registrada. Nada foi acrescentado ao prontuário, prescrito ou enviado. Faça as alterações no registro clínico por conta própria."
+
+msgid "Model hypothesis - clinician review required"
+msgstr "Hipótese do modelo - exige revisão do médico"
+
+msgid "Consider reviewing whether the documented evidence is complete. Missing records do not establish absence."
+msgstr "Considere revisar se as evidências documentadas estão completas. A falta de registros não comprova ausência."
+
+msgid "Consider comparing the documented fact with the cited reference and checking its applicability."
+msgstr "Considere comparar o fato documentado com a referência citada e verificar sua aplicabilidade."
+
+msgid "Patient fact"
+msgstr "Fato do paciente"
+
+msgid "Reference statement"
+msgstr "Declaração da referência"
+
+msgid "Population"
+msgstr "População"
+
+msgid "Limitations"
+msgstr "Limitações"
+
+msgid "License"
+msgstr "Licença"
+
+msgid "No considerations with currently resolvable evidence. Continue working manually."
+msgstr "Não há considerações com evidências acessíveis no momento. Continue trabalhando manualmente."
+
+msgid "Accept consideration"
+msgstr "Aceitar consideração"
+
+msgid "Modify in the clinical record"
+msgstr "Modificar no registro clínico"
+
+msgid "Reject consideration"
+msgstr "Rejeitar consideração"
+
+msgid "Considerations are not ready. Continue working manually while the request is processed."
+msgstr "As considerações não estão prontas. Continue trabalhando manualmente enquanto a solicitação é processada."
+
+msgid "Refresh considerations"
+msgstr "Atualizar considerações"
+
+msgid "Decision support unavailable. The manual clinical record remains available."
+msgstr "Apoio à decisão indisponível. O registro clínico manual continua disponível."
+
+msgid "I choose to use decision support for this request only."
+msgstr "Escolho usar o apoio à decisão somente nesta solicitação."
+
+msgid "Request evidence review"
+msgstr "Solicitar revisão de evidências"
+
+msgid "Return to the encounter"
+msgstr "Voltar ao atendimento"
+
+msgid "Invalid decision-support request."
+msgstr "Solicitação de apoio à decisão inválida."
+
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
+
+msgid "Synthetic extraction. Verify each source region; confirmation never acknowledges or releases the result."
+msgstr "Extração sintética. Confira cada região da fonte; confirmar nunca registra a revisão clínica nem libera o resultado."
+
+msgid "Extraction decision saved."
+msgstr "Decisão de extração salva."
+
+msgid "Refresh extraction"
+msgstr "Atualizar extração"
+
+msgid "Source page with extraction regions"
+msgstr "Página original com regiões de extração"
+
+msgid "Extraction candidates"
+msgstr "Valores candidatos da extração"
+
+msgid "Unreadable"
+msgstr "Ilegível"
+
+msgid "Imported and confirmed"
+msgstr "Importado e confirmado"
+
+msgid "Ambiguous. No value will be filed."
+msgstr "Ambíguo. Nenhum valor será registrado."
+
+msgid "Identity-verified result version"
+msgstr "Versão do resultado com identidade verificada"
+
+msgid "Choose a verified source"
+msgstr "Escolha uma fonte verificada"
+
+msgid "The same source bytes must pass result identity verification before filing."
+msgstr "O mesmo arquivo original precisa passar pela verificação de identidade do resultado antes do registro."
+
+msgid "Confirm source value"
+msgstr "Confirmar valor da fonte"
+
+msgid "Reject candidate"
+msgstr "Rejeitar candidato"
+
+msgid "No candidates yet. Refresh after the governed extraction job finishes; manual result entry remains available."
+msgstr "Ainda não há candidatos. Atualize após a conclusão da extração controlada; o registro manual de resultados continua disponível."
+
+msgid "Open extraction from a matched result or an available clinical attachment."
+msgstr "Abra a extração a partir de um resultado identificado ou de um anexo clínico disponível."
+
+msgid "Review extraction candidates"
+msgstr "Revisar valores candidatos da extração"
+
+msgid "Extraction unavailable or source changed. Continue with manual result entry."
+msgstr "Extração indisponível ou fonte alterada. Continue com o registro manual do resultado."
 
 msgid "Open linked image"
 msgstr "Abrir imagem vinculada"
@@ -369,6 +768,179 @@ msgstr "Informe um número finito."
 
 msgid "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version."
 msgstr "As perguntas são configurações, não orientação médica. As ramificações usam somente uma resposta anterior e uma comparação fixa, sem expressões nem respostas calculadas. Os questionários atribuídos mantêm a versão original."
+msgid "Consultation audio"
+msgstr "Áudio da consulta"
+
+msgid "Microphone off. Start only when everyone is ready."
+msgstr "Microfone desligado. Inicie apenas quando todos estiverem prontos."
+
+msgid "Recording. Uploads are confirmed only after the server acknowledges them."
+msgstr "Gravando. Os envios só são confirmados após o recebimento pelo servidor."
+
+msgid "Recording paused. Resume explicitly when you are ready."
+msgstr "Gravação pausada. Retome quando estiver pronto."
+
+msgid "Recording paused. Unconfirmed audio is marked as a gap. Resume explicitly or continue manually."
+msgstr "Gravação pausada. O áudio não confirmado está marcado como lacuna. Retome ou continue manualmente."
+
+msgid "Recording paused: uploads were not confirmed. Some audio may be missing. Continue the note manually."
+msgstr "Gravação pausada: os envios não foram confirmados. Parte do áudio pode estar ausente. Continue o registro manualmente."
+
+msgid "Uploads are unconfirmed. Audio stays only in memory for at most 60 seconds."
+msgstr "Envios não confirmados. O áudio fica apenas na memória por até 60 segundos."
+
+msgid "Microphone off. Received audio is retained; missing audio is marked as a gap."
+msgstr "Microfone desligado. O áudio recebido foi mantido; o áudio ausente está marcado como lacuna."
+
+msgid "Capture discarded. The microphone is off; the stored decryption keys were destroyed."
+msgstr "Captura descartada. Microfone desligado; as chaves de descriptografia armazenadas foram destruídas."
+
+msgid "Microphone permission was declined. No audio was captured. Continue the note manually."
+msgstr "O acesso ao microfone foi recusado. Nenhum áudio foi capturado. Continue o registro manualmente."
+
+msgid "Microphone permission was declined. The microphone is off; previously received audio is retained. Continue manually."
+msgstr "O acesso ao microfone foi recusado. Microfone desligado; o áudio recebido anteriormente foi mantido. Continue manualmente."
+
+msgid "This browser cannot capture Opus audio. Continue the note manually."
+msgstr "Este navegador não pode capturar áudio Opus. Continue o registro manualmente."
+
+msgid "Capture interrupted. The microphone is off; unconfirmed audio may be missing. Recover explicitly or continue manually."
+msgstr "Captura interrompida. Microfone desligado; o áudio não confirmado pode estar ausente. Recupere a captura ou continue manualmente."
+
+msgid "A previous capture needs recovery. This browser is not recording. Recover, then resume explicitly."
+msgstr "Uma captura anterior precisa de recuperação. Este navegador não está gravando. Recupere a captura e depois retome."
+
+msgid "Recording consent is no longer active. The microphone is off. Manual care remains available."
+msgstr "O consentimento para gravação não está mais ativo. Microfone desligado. O atendimento manual continua disponível."
+
+msgid "Confirming capture authority. The microphone is still off."
+msgstr "Confirmando autorização para gravar. O microfone ainda está desligado."
+
+msgid "Microphone __N__"
+msgstr "Microfone __N__"
+
+msgid "Synthetic capture. Recording consent does not authorize transcription or AI processing. Unconfirmed audio stays only in memory for at most 60 seconds; it is never saved on this device."
+msgstr "Captura sintética. O consentimento para gravação não autoriza transcrição nem processamento por IA. O áudio não confirmado fica apenas na memória por até 60 segundos; ele não é salvo neste dispositivo."
+
+msgid "Default microphone"
+msgstr "Microfone padrão"
+
+msgid "Microphone level"
+msgstr "Nível do microfone"
+
+msgid "The level meter is active only while recording."
+msgstr "O medidor de nível só fica ativo durante a gravação."
+
+msgid "The input level meter is unavailable. Recording and upload status remain shown above."
+msgstr "O medidor de nível está indisponível. O estado da gravação e dos envios continua exibido acima."
+
+msgid "Start recording"
+msgstr "Iniciar gravação"
+
+msgid "Pause recording"
+msgstr "Pausar gravação"
+
+msgid "Resume recording"
+msgstr "Retomar gravação"
+
+msgid "Stop and keep received audio"
+msgstr "Parar e manter o áudio recebido"
+
+msgid "Discard capture"
+msgstr "Descartar captura"
+
+msgid "Recover capture"
+msgstr "Recuperar captura"
+
+msgid "Audio capture needs JavaScript and a supported browser. Manual notes and the stop/recovery controls remain available."
+msgstr "A captura de áudio precisa de JavaScript e de um navegador compatível. O registro manual e os controles para parar ou recuperar a captura continuam disponíveis."
+
+msgid "Audio capture is active. Open recording controls."
+msgstr "Gravação de áudio ativa. Abrir os controles de gravação."
+
+msgid "Leave this capture?"
+msgstr "Sair desta captura?"
+
+msgid "This audio belongs to the current patient. Stop before leaving; it will never be attached to another patient."
+msgstr "Este áudio pertence ao paciente atual. Pare antes de sair; ele nunca será anexado a outro paciente."
+
+msgid "Stop and discard capture"
+msgstr "Parar e descartar captura"
+
+msgid "Audio capture is unavailable here. Continue the note manually and close the previous capture."
+msgstr "A captura de áudio está indisponível aqui. Continue o registro manualmente e encerre a captura anterior."
+
+msgid "Close the previous capture; keep received audio"
+msgstr "Encerrar a captura anterior e manter o áudio recebido"
+
+msgid "Audio capture belongs to this patient. Keep this patient, or stop and discard capture before switching."
+msgstr "A captura de áudio pertence a este paciente. Mantenha este paciente ou pare e descarte a captura antes de trocar."
+
+msgid "AI settings"
+msgstr "Configurações de IA"
+
+msgid "Scribe transcription"
+msgstr "Transcrição da consulta"
+
+msgid "Scribe drafting"
+msgstr "Rascunho da consulta"
+
+msgid "Document extraction"
+msgstr "Extração de documentos"
+
+msgid "Front desk drafts"
+msgstr "Rascunhos da recepção"
+
+msgid "Operational analysis"
+msgstr "Análise operacional"
+
+msgid "Clinical review aid"
+msgstr "Apoio à revisão clínica"
+
+msgid "Enable synthetic AI for this organization"
+msgstr "Habilitar IA sintética para esta organização"
+
+msgid "Enabled AI capabilities"
+msgstr "Recursos de IA habilitados"
+
+msgid "Monthly AI limit (micro-BRL)"
+msgstr "Limite mensal de IA (micro-BRL)"
+
+msgid "Monthly capability limit in micro-BRL; 1 BRL = 1000000 micro-BRL."
+msgstr "Limite mensal do recurso em micro-BRL; 1 BRL = 1000000 micro-BRL."
+
+msgid "Choose each AI capability only once."
+msgstr "Selecione cada recurso de IA apenas uma vez."
+
+msgid "Synthetic AI only. These controls do not authorize a real provider or live patient data."
+msgstr "Somente IA sintética. Estes controles não autorizam um provedor real nem dados reais de pacientes."
+
+msgid "AI is disabled. Continue working manually."
+msgstr "A IA está desabilitada. Continue trabalhando manualmente."
+
+msgid "AI is degraded. Continue working manually; an approved fallback may be available."
+msgstr "A IA está com funcionamento limitado. Continue trabalhando manualmente; uma alternativa aprovada pode estar disponível."
+
+msgid "Synthetic AI is enabled for the selected capabilities. Every draft needs human review."
+msgstr "A IA sintética está habilitada para os recursos selecionados. Todo rascunho exige revisão humana."
+
+msgid "Review the limits below before saving."
+msgstr "Revise os limites abaixo antes de salvar."
+
+msgid "Save AI controls"
+msgstr "Salvar controles de IA"
+
+msgid "Publish the clinic configuration before changing AI controls."
+msgstr "Publique a configuração da clínica antes de alterar os controles de IA."
+
+msgid "The configuration changed. Reload before saving."
+msgstr "A configuração mudou. Recarregue antes de salvar."
+
+msgid "AI is unavailable. Continue working manually."
+msgstr "A IA está indisponível. Continue trabalhando manualmente."
+
+msgid "AI request queued. You can continue working manually."
+msgstr "Solicitação de IA na fila. Você pode continuar trabalhando manualmente."
 
 msgid "Clinic OS secure clinical workspace."
 msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
@@ -5994,6 +6566,160 @@ msgstr "Registrando a ação sobre o resultado. Aguarde a confirmação."
 msgid "Your access changed. This result view is no longer available."
 msgstr "Seu acesso mudou. Esta visualização de resultados não está mais disponível."
 
+msgid "Enable this synthetic agent"
+msgstr "Habilitar este agente sintético"
+
+msgid "Maximum autonomy"
+msgstr "Autonomia máxima"
+
+msgid "Explain only"
+msgstr "Somente explicar"
+
+msgid "Prepare a review task"
+msgstr "Preparar tarefa para revisão"
+
+msgid "Bounded administrative execution"
+msgstr "Executar ações administrativas delimitadas"
+
+msgid "Specific approval for every effect"
+msgstr "Exigir aprovação específica para cada efeito"
+
+msgid "Allowed domain commands"
+msgstr "Comandos de domínio permitidos"
+
+msgid "Create an operational review checklist"
+msgstr "Criar lista de verificação para revisão operacional"
+
+msgid "Simulate one logistics reminder"
+msgstr "Simular um lembrete operacional"
+
+msgid "Owner-provisioned machine principal"
+msgstr "Identidade de máquina provisionada pelo responsável"
+
+msgid "Required for bounded or specifically approved execution. Never a staff user."
+msgstr "Obrigatória para execução delimitada ou com aprovação específica. Não informe um usuário da equipe."
+
+msgid "Daily action limit"
+msgstr "Limite diário de ações"
+
+msgid "Daily simulated cost limit (micro-BRL)"
+msgstr "Limite diário de custo simulado (micro-BRL)"
+
+msgid "Execution timeout (seconds)"
+msgstr "Prazo de execução (segundos)"
+
+msgid "After a known failure"
+msgstr "Após uma falha confirmada"
+
+msgid "Require manual follow-up"
+msgstr "Exigir acompanhamento manual"
+
+msgid "Simulate the approved cancellation"
+msgstr "Simular o cancelamento aprovado"
+
+msgid "No automatic compensation; require manual follow-up"
+msgstr "Sem compensação automática; exigir acompanhamento manual"
+
+msgid "Proposed"
+msgstr "Proposta"
+
+msgid "Awaiting approval"
+msgstr "Aguardando aprovação"
+
+msgid "Approved"
+msgstr "Aprovada"
+
+msgid "Rejected"
+msgstr "Rejeitada"
+
+msgid "Executing"
+msgstr "Em execução"
+
+msgid "Receipt recorded"
+msgstr "Comprovante registrado"
+
+msgid "Reconciliation required"
+msgstr "Conciliação necessária"
+
+msgctxt "agent proposal state"
+msgid "Reconciled"
+msgstr "Conciliada"
+
+msgid "Manual review required"
+msgstr "Revisão manual necessária"
+
+msgid "Compensating"
+msgstr "Em compensação"
+
+msgid "Compensated"
+msgstr "Compensada"
+
+msgid "Manual follow-up required"
+msgstr "Acompanhamento manual necessário"
+
+msgid "This proposal changed or is no longer eligible. Refresh and review it again."
+msgstr "Esta proposta mudou ou não está mais apta para execução. Atualize e revise novamente."
+
+msgid "Agent approval is unavailable. Ask an administrator to check its managed key."
+msgstr "A aprovação de agentes está indisponível. Peça ao administrador que verifique a chave gerenciada."
+
+msgid "Check the autonomy, registered tools and current policy version."
+msgstr "Confira a autonomia, os comandos cadastrados e a versão atual da política."
+
+msgid "Agent proposals"
+msgstr "Propostas dos agentes"
+
+msgid "Review the exact effect before approval. Unknown outcomes need reconciliation, never a blind retry."
+msgstr "Revise o efeito exato antes de aprovar. Resultados desconhecidos exigem conciliação; não repita a ação sem confirmação."
+
+msgid "Agent policies"
+msgstr "Políticas dos agentes"
+
+msgid "Synthetic execution only. No real message is sent and no money is charged."
+msgstr "Execução somente simulada. Nenhuma mensagem real será enviada e nenhum valor será cobrado."
+
+msgid "Policy version"
+msgstr "Versão da política"
+
+msgid "Approval expires"
+msgstr "Validade da aprovação"
+
+msgid "Approved effect digest"
+msgstr "Resumo criptográfico do efeito aprovado"
+
+msgid "Approve this exact effect"
+msgstr "Aprovar este efeito exato"
+
+msgid "Reject proposal"
+msgstr "Rejeitar proposta"
+
+msgid "Approved. Waiting for the authorized executor."
+msgstr "Aprovada. Aguardando o executor autorizado."
+
+msgid "Manual follow-up is required in the administrative queue. Do not resend the action."
+msgstr "É necessário acompanhamento manual na fila administrativa. Não reenvie a ação."
+
+msgid "No proposals to review"
+msgstr "Nenhuma proposta para revisar"
+
+msgid "Published agent policies govern future proposals. You can continue all work manually."
+msgstr "As políticas publicadas regem as próximas propostas. Todo o trabalho pode continuar manualmente."
+
+msgid "Every save publishes a new version. Disabling a capability invalidates its queued approvals."
+msgstr "Cada gravação publica uma nova versão. Desabilitar uma capacidade invalida suas aprovações pendentes."
+
+msgid "Back to proposals"
+msgstr "Voltar às propostas"
+
+msgid "Publish agent policy"
+msgstr "Publicar política do agente"
+
+msgid "Source revision"
+msgstr "Revisão da fonte"
+
+msgid "Task due"
+msgstr "Prazo da tarefa"
+
 msgid "Results, notes and tasks that need you, most urgent first."
 msgstr "Resultados, evoluções e tarefas que dependem de você, os mais urgentes primeiro."
 
@@ -6523,3 +7249,321 @@ msgstr "Nenhuma classe selecionada"
 
 msgid "Frequency is administrations per day; duration is days."
 msgstr "A frequência está em administrações por dia; a duração, em dias."
+
+msgid "Permitted chart assistant"
+msgstr "Assistente do prontuário permitido"
+
+msgid "Choose one record and a valid chart question."
+msgstr "Selecione um registro e uma pergunta válida sobre o prontuário."
+
+msgid "Chronology"
+msgstr "Cronologia"
+
+msgid "Active problems"
+msgstr "Problemas ativos"
+
+msgid "Allergies"
+msgstr "Alergias"
+
+msgid "Observations"
+msgstr "Observações"
+
+msgid "Recent results"
+msgstr "Resultados recentes"
+
+msgid "Outstanding tasks"
+msgstr "Tarefas pendentes"
+
+msgid "Prior decisions"
+msgstr "Decisões anteriores"
+
+msgid "Problem"
+msgstr "Problema"
+
+msgid "Allergy"
+msgstr "Alergia"
+
+msgid "Result"
+msgstr "Resultado"
+
+msgid "Problem assessment"
+msgstr "Avaliação de problemas"
+
+msgid "Allergy assessment"
+msgstr "Avaliação de alergias"
+
+msgid "Synthetic simulation. Source excerpts only; no diagnosis or action. Each question is an isolated turn, retained for at most one day."
+msgstr "Simulação sintética. Apenas trechos das fontes; sem diagnóstico ou ação. Cada pergunta é uma interação isolada, mantida por no máximo um dia."
+
+msgid "Generating brief. Continue reviewing the chart manually."
+msgstr "Gerando resumo. Continue revisando o prontuário manualmente."
+
+msgid "Refresh brief"
+msgstr "Atualizar resumo"
+
+msgid "This assistant answers only the listed questions about the current permitted chart. It cannot identify or retrieve another patient."
+msgstr "Este assistente responde apenas às perguntas listadas sobre o prontuário atual permitido. Não pode identificar nem buscar outro paciente."
+
+msgid "Not found means not found in available records, never that a condition is absent. Restricted or revoked sources are not shown."
+msgstr "Não encontrado significa não encontrado nos registros disponíveis, nunca que uma condição está ausente. Fontes restritas ou revogadas não são exibidas."
+
+msgid "Coverage is limited to the most recent available records."
+msgstr "A cobertura se limita aos registros disponíveis mais recentes."
+
+msgid "Explicitly recorded: none documented. This is not an inferred absence."
+msgstr "Registro explícito: nenhum registro documentado. Isso não é uma ausência inferida."
+
+msgid "Recheck source access"
+msgstr "Verificar novamente o acesso à fonte"
+
+msgid "This source is unavailable for your current access."
+msgstr "Esta fonte está indisponível para seu acesso atual."
+
+msgid "Not found in available records."
+msgstr "Não encontrado nos registros disponíveis."
+
+msgid "Generate pre-visit brief"
+msgstr "Gerar resumo pré-consulta"
+
+msgid "Question about the current chart"
+msgstr "Pergunta sobre o prontuário atual"
+
+msgid "What problems are recorded?"
+msgstr "Quais problemas estão registrados?"
+
+msgid "What allergies are recorded?"
+msgstr "Quais alergias estão registradas?"
+
+msgid "What medications are recorded?"
+msgstr "Quais medicamentos estão registrados?"
+
+msgid "What observations are recorded?"
+msgstr "Quais observações estão registradas?"
+
+msgid "What results are recorded?"
+msgstr "Quais resultados estão registrados?"
+
+msgid "What tasks are outstanding?"
+msgstr "Quais tarefas estão pendentes?"
+
+msgid "What prior decisions are recorded?"
+msgstr "Quais decisões anteriores estão registradas?"
+
+msgid "What encounters are recorded?"
+msgstr "Qual é a cronologia dos atendimentos?"
+
+msgid "Choose a listed chart question. Names, other patients and instructions are refused without a search."
+msgstr "Escolha uma pergunta listada sobre o prontuário. Nomes, outros pacientes e instruções são recusados sem uma busca."
+
+msgid "Ask the chart"
+msgstr "Perguntar ao prontuário"
+
+msgid "Blinded AI evaluation"
+msgstr "Avaliação cega de IA"
+
+msgid "Synthetic engineering corpus. This is not clinical validation or evidence of real-world performance."
+msgstr "Base sintética de engenharia. Isto não é validação clínica nem evidência de desempenho no mundo real."
+
+msgid "Review independently. Model identity and the other rater's decisions are hidden. An adjudicator resolves disagreements after both reviews."
+msgstr "Revise de forma independente. A identidade do modelo e as decisões do outro revisor ficam ocultas. Um adjudicador resolve as divergências após as duas revisões."
+
+msgid "Evaluation decision saved."
+msgstr "Decisão da avaliação salva."
+
+msgid "The evaluation has not been scored yet."
+msgstr "A avaliação ainda não foi processada."
+
+msgid "Assigned evaluations"
+msgstr "Avaliações atribuídas"
+
+msgid "Open assigned evaluation"
+msgstr "Abrir avaliação atribuída"
+
+msgid "No evaluations are assigned to you."
+msgstr "Nenhuma avaliação foi atribuída a você."
+
+msgid "Evaluation case"
+msgstr "Caso da avaliação"
+
+msgid "Case"
+msgstr "Caso"
+
+msgid "Open case"
+msgstr "Abrir caso"
+
+msgid "Synthetic source"
+msgstr "Fonte sintética"
+
+msgid "Candidate output"
+msgstr "Saída candidata"
+
+msgid "Independent ratings for adjudication"
+msgstr "Revisões independentes para adjudicação"
+
+msgid "Rater"
+msgstr "Revisor"
+
+msgid "Answer every review item before saving."
+msgstr "Responda a todos os itens da revisão antes de salvar."
+
+msgid "Save independent rating"
+msgstr "Salvar revisão independente"
+
+msgid "This case is saved, complete, or waiting for both independent ratings."
+msgstr "Este caso já foi salvo, concluído ou aguarda as duas revisões independentes."
+
+msgid "Synthetic owner approval reference"
+msgstr "Referência da aprovação sintética do responsável"
+
+msgid "Approve evaluated change"
+msgstr "Aprovar alteração avaliada"
+
+msgid "Reject change"
+msgstr "Rejeitar alteração"
+
+msgid "Evaluation changed or review is incomplete. Refresh and review again."
+msgstr "A avaliação mudou ou a revisão está incompleta. Atualize e revise novamente."
+
+msgid "Clinically significant omission"
+msgstr "Omissão clinicamente significativa"
+
+msgid "Unsupported clinical assertion"
+msgstr "Afirmação clínica sem suporte"
+
+msgid "Speaker attribution error"
+msgstr "Erro na atribuição do falante"
+
+msgid "Negation error"
+msgstr "Erro de negação"
+
+msgid "Chronology error"
+msgstr "Erro de cronologia"
+
+msgid "Unit or decimal error"
+msgstr "Erro de unidade ou decimal"
+
+msgid "Medication name or dose error"
+msgstr "Erro no nome ou na dose do medicamento"
+
+msgid "Allergy handling error"
+msgstr "Erro no registro de alergias"
+
+msgid "Unsupported citation"
+msgstr "Citação sem suporte"
+
+msgid "Incorrect action"
+msgstr "Ação incorreta"
+
+msgid "Policy violation"
+msgstr "Violação da política"
+
+msgid "Unauthorized side effect"
+msgstr "Efeito não autorizado"
+
+msgid "Duplicate side effect"
+msgstr "Efeito duplicado"
+
+msgid "Missed escalation"
+msgstr "Encaminhamento necessário não realizado"
+
+msgid "Critical error"
+msgstr "Erro crítico"
+
+msgid "Correction time in milliseconds"
+msgstr "Tempo de correção em milissegundos"
+
+msgid "No error"
+msgstr "Sem erro"
+
+msgid "Error observed"
+msgstr "Erro observado"
+
+msgid "AI evaluation report"
+msgstr "Relatório de avaliação de IA"
+
+msgid "Capability"
+msgstr "Capacidade"
+
+msgid "Evaluation status"
+msgstr "Situação da avaliação"
+
+msgid "Corpus version"
+msgstr "Versão da base de avaliação"
+
+msgid "Thresholds hash"
+msgstr "Hash dos limites registrados"
+
+msgid "Cases"
+msgstr "Casos"
+
+msgid "Encounter clusters"
+msgstr "Grupos por atendimento"
+
+msgid "Cohen's kappa"
+msgstr "Kappa de Cohen"
+
+msgid "Word error rate (descriptive only)"
+msgstr "Taxa de erros de palavras (apenas descritiva)"
+
+msgid "Clinical error encounter bootstrap interval"
+msgstr "Intervalo bootstrap de erro clínico por atendimento"
+
+msgid "Adjudicated rates and Wilson confidence intervals"
+msgstr "Taxas adjudicadas e intervalos de confiança de Wilson"
+
+msgid "Metric"
+msgstr "Métrica"
+
+msgid "Numerator"
+msgstr "Numerador"
+
+msgid "Denominator"
+msgstr "Denominador"
+
+msgid "Rate"
+msgstr "Taxa"
+
+msgid "Wilson interval"
+msgstr "Intervalo de Wilson"
+
+msgid "Stratified engineering observations"
+msgstr "Observações de engenharia estratificadas"
+
+msgid "Tag"
+msgstr "Marcador"
+
+msgid "Errors"
+msgstr "Erros"
+
+msgid "Undefined"
+msgstr "Indefinido"
+
+msgid "Configuration version"
+msgstr "Versão da configuração"
+
+msgid "Passed"
+msgstr "Aprovada"
+
+msgid "Mean correction time of the two independent raters in milliseconds"
+msgstr "Tempo médio de correção dos dois avaliadores independentes em milissegundos"
+
+msgid "Cases with clinical error"
+msgstr "Casos com erro clínico"
+
+msgid "Citation support"
+msgstr "Fundamentação das citações"
+
+msgid "Action correctness"
+msgstr "Correção das ações"
+
+msgid "Specialty"
+msgstr "Especialidade"
+
+msgid "Device"
+msgstr "Dispositivo"
+
+msgid "Simulated accent"
+msgstr "Sotaque simulado"
+
+msgid "Synthetic engineering fixtures and scripted review are not representative clinical validation. Zero observed critical errors is a gate, not a safety claim. Real-world performance and clinical thresholds require EG-3/EG-11. AI-05/AI-06 fixture contracts do not implement their future workflows."
+msgstr "Exemplos sintéticos de engenharia e revisões roteirizadas não representam validação clínica. A ausência de erros críticos observados é um critério de passagem, não uma afirmação de segurança. Desempenho no mundo real e limites clínicos exigem EG-3/EG-11. Os exemplos de AI-05/AI-06 não implementam os fluxos futuros."
