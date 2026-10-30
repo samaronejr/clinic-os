@@ -193,6 +193,13 @@ jobs:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind task-owned evidence root
         run: ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Install PDF inspection prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          command -v pdftotext
+          command -v pdftoppm
+          pdftotext -v 2>&1 | head -1
       - name: Verify browser prerequisites
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
