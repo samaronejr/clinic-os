@@ -7629,6 +7629,247 @@
       ]
     },
     {
+      "symbol": "apps.workflows.care.access.bind_command",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.bind_command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.load_action",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.load_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.load_plan",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.load_plan#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.occurrence_enrollment",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.occurrence_enrollment#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.plan_of",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.plan_of#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_clinician",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_clinician#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_current_source",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_current_source#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_observer",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_observer#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_staff",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_staff#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.version_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.version_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.mirror.follow",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.mirror.follow#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.add_care_action",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.add_care_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.flag_stale_care_plan",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.flag_stale_care_plan#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.mark_care_action_overdue",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.mark_care_action_overdue#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.assign_pro",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.assign_pro#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.close_missed_pro_occurrence",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.close_missed_pro_occurrence#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.record_pro_response",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.record_pro_response#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.recalls.materialize_recall",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.recalls.materialize_recall#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.recalls.schedule_recall",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.recalls.schedule_recall#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.referrals._referral",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.referrals._referral#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.referrals.link_referral_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.referrals.link_referral_document#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.tasks.run_care",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.tasks.run_care#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.tasks.scan_care",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.tasks.scan_care#cut1"
+      ]
+    },
+    {
       "symbol": "apps.scribe.tasks.run_transcription",
       "signals": [
         "tenant_boundary"
@@ -8236,6 +8477,29 @@
     "apps.workflows.access.require_owner_target#cut1",
     "apps.workflows.access.require_reference#cut1",
     "apps.workflows.access.require_task_access#cut1",
+    "apps.workflows.care.access.bind_command#cut1",
+    "apps.workflows.care.access.load_action#cut1",
+    "apps.workflows.care.access.load_plan#cut1",
+    "apps.workflows.care.access.occurrence_enrollment#cut1",
+    "apps.workflows.care.access.plan_of#cut1",
+    "apps.workflows.care.access.require_clinician#cut1",
+    "apps.workflows.care.access.require_current_source#cut1",
+    "apps.workflows.care.access.require_observer#cut1",
+    "apps.workflows.care.access.require_staff#cut1",
+    "apps.workflows.care.access.version_scope#cut1",
+    "apps.workflows.care.mirror.follow#cut1",
+    "apps.workflows.care.plans.add_care_action#cut1",
+    "apps.workflows.care.plans.flag_stale_care_plan#cut1",
+    "apps.workflows.care.plans.mark_care_action_overdue#cut1",
+    "apps.workflows.care.pro.assign_pro#cut1",
+    "apps.workflows.care.pro.close_missed_pro_occurrence#cut1",
+    "apps.workflows.care.pro.record_pro_response#cut1",
+    "apps.workflows.care.recalls.materialize_recall#cut1",
+    "apps.workflows.care.recalls.schedule_recall#cut1",
+    "apps.workflows.care.referrals._referral#cut1",
+    "apps.workflows.care.referrals.link_referral_document#cut1",
+    "apps.workflows.care.tasks.run_care#cut1",
+    "apps.workflows.care.tasks.scan_care#cut1",
     "apps.workflows.chart_sources.read_task_sources#cut1",
     "apps.workflows.definition_services._definition#cut1",
     "apps.workflows.designer._authorized_designer#cut1",
@@ -10871,7 +11135,9 @@
           "clinic_app.retention_emit_task",
           "clinic_app.retention_record_viewed",
           "clinic_app.retention_system_task_valid",
-          "clinic_app.teleconsult_mode_transition_audit"
+          "clinic_app.teleconsult_mode_transition_audit",
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_system_task_valid"
         ],
         "signatures": [
           {
@@ -11635,7 +11901,8 @@
           "clinic_app.retention_schedule",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_receipt",
-          "clinic_app.submit_data_request"
+          "clinic_app.submit_data_request",
+          "clinic_app.workflows_care_park"
         ],
         "signatures": [
           {
@@ -11701,6 +11968,18 @@
           "clinic_app.scheduling_displaydevice:reception_scope",
           "clinic_app.scheduling_queueentry:reception_scope",
           "clinic_app.scheduling_roomstatus:reception_scope",
+          "clinic_app.workflows_careaction:care_read",
+          "clinic_app.workflows_careaction:care_update",
+          "clinic_app.workflows_careplan:care_read",
+          "clinic_app.workflows_careplan:care_update",
+          "clinic_app.workflows_carerefusal:care_read",
+          "clinic_app.workflows_proassignment:care_read",
+          "clinic_app.workflows_proassignment:care_update",
+          "clinic_app.workflows_prooccurrence:care_update",
+          "clinic_app.workflows_recall:care_read",
+          "clinic_app.workflows_recall:care_update",
+          "clinic_app.workflows_referral:care_read",
+          "clinic_app.workflows_referral:care_update",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
@@ -11750,6 +12029,9 @@
           "clinic_app.scribe_guard",
           "clinic_app.teleconsult_clinician",
           "clinic_app.transition_data_request",
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_occurrence_scope",
+          "clinic_app.workflows_care_version_scope",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
@@ -16133,6 +16415,7 @@
           "apps/orders/migrations/_task_sql.py",
           "apps/retention/migrations/_purge_task_sql.py",
           "apps/workflows/migrations/0004_task_completion_gate.py",
+          "apps/workflows/migrations/_care_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -16159,6 +16442,9 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_care_scope",
           "clinic_app.workflows_guard"
         ],
         "signatures": [
@@ -16183,6 +16469,10 @@
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [
+          "clinic_app.workflows_careaction:care_read",
+          "clinic_app.workflows_careaction:care_update",
+          "clinic_app.workflows_referral:care_read",
+          "clinic_app.workflows_referral:care_update",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update"
         ],
@@ -16364,6 +16654,210 @@
       "kind": "domain_protocol",
       "probes": [
         "clinic_app.workflows_task_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_due": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "due_by timestamp with time zone",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_due"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_guard"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_items": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_care_due",
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_care_scope"
+        ],
+        "signatures": [
+          {
+            "arguments": "due_by timestamp with time zone, requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_items"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_occurrence_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_occurrence uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_occurrence_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_park": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_kind text, requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_park"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_kind text, requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_source_current": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_action uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_source_current"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_system_task_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_system_task_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_version_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_version uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_version_scope"
       ],
       "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
     },

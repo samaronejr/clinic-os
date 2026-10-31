@@ -29,6 +29,14 @@ class GuardFunction:
     calls: frozenset[str]
 
 
+def workflow_modules() -> Iterator[tuple[Path, str]]:
+    """Yield every authority-bearing workflow module, subpackages included."""
+    for path in sorted((ROOT / "apps/workflows").rglob("*.py")):
+        relative = path.relative_to(ROOT).with_suffix("")
+        if not {"migrations", "templatetags"} & set(relative.parts):
+            yield path, ".".join(relative.parts)
+
+
 def symbol(function: Callable[..., object]) -> str:
     plain = inspect.unwrap(function)
     return f"{plain.__module__}.{plain.__qualname__}"
@@ -92,8 +100,8 @@ def public_boundaries() -> set[str]:
 
 def discover_guards() -> dict[str, GuardFunction]:
     definitions = {}
-    for path in sorted((ROOT / "apps/workflows").glob("*.py")):
-        module = import_module("apps.workflows." + path.stem)
+    for path, module_name in workflow_modules():
+        module = import_module(module_name)
         for name, node in _nodes(ast.parse(path.read_text()).body):
             value: object = module
             for part in name.split("."):

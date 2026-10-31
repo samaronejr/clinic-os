@@ -43,6 +43,7 @@ from apps.scheduling import services as scheduling_services
 from apps.scribe import services as scribe_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
+from apps.workflows.care import services as care_services
 from django.apps import apps as django_apps
 
 FOUNDATION_APP_NAMES: Final = frozenset(
@@ -731,3 +732,67 @@ def test_portal_services_keep_explicit_scope_and_keyword_only_boundaries(
     assert list(parameters) == names
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
     assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            care_services.create_care_plan_from_version,
+            ["clinic_id", "version_id", "actions", "idempotency_key"],
+        ),
+        (
+            care_services.add_care_action,
+            ["clinic_id", "plan_id", "spec", "idempotency_key"],
+        ),
+        (
+            care_services.assign_care_action,
+            ["clinic_id", "action_id", "owner", "expected_revision"],
+        ),
+        (
+            care_services.complete_care_action,
+            ["clinic_id", "action_id", "outcome", "expected_revision"],
+        ),
+        (
+            care_services.cancel_care_action,
+            ["clinic_id", "action_id", "expected_revision"],
+        ),
+        (
+            care_services.review_care_action,
+            ["clinic_id", "action_id", "decision", "expected_revision"],
+        ),
+        (
+            care_services.link_referral_document,
+            ["clinic_id", "referral_id", "draft_id", "expected_revision"],
+        ),
+        (
+            care_services.advance_referral,
+            ["clinic_id", "referral_id", "status", "expected_revision"],
+        ),
+        (
+            care_services.schedule_recall,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "reason",
+                "interval_days",
+                "owner_role",
+                "idempotency_key",
+            ],
+        ),
+        (
+            care_services.assign_pro,
+            ["clinic_id", "enrollment_id", "spec", "idempotency_key"],
+        ),
+        (
+            care_services.record_pro_response,
+            ["clinic_id", "occurrence_id", "answers", "expected_revision"],
+        ),
+    ],
+)
+def test_care_boundaries_take_scope_not_actor(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())

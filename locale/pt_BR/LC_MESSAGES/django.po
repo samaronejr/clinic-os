@@ -8094,3 +8094,6 @@ msgstr "Seus resultados"
 
 msgid "Your results · Clinic OS"
 msgstr "Seus resultados · Clinic OS"
+
+msgid "No response"
+msgstr "Sem resposta"

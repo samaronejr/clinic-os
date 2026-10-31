@@ -3191,6 +3191,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -3377,6 +3379,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -4998,6 +5002,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -7673,6 +7679,686 @@
       "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
+  "constraint:workflows_careaction.workflows_careaction_approved_by_id_cb67fd01_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_clinic_id_5fa0b7ad_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_created_by_id_dc0ceae2_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_digest": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_kind": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_one_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_organization_id_27cab5d4_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_origin_version_id_41f6d8c1_fk_ehr_clini": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_author_id_1922e31b_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_document_id_3843e7c1_fk_ehr_clini",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_organization_id_61e44471_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_template_id_d785a006_fk_ehr_speci",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_revision_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_version_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_amendment_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_content_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_digest_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_finalized_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_positive",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_state_check",
+      "index:ehr_document_one_current",
+      "index:ehr_document_one_draft",
+      "policy:ehr_clinicaldocumentversion.clinical_insert",
+      "policy:ehr_clinicaldocumentversion.clinical_read",
+      "policy:ehr_clinicaldocumentversion.clinical_update",
+      "policy:ehr_clinicaldocumentversion.restricted_note_visibility",
+      "policy:ehr_clinicaldocumentversion.setup_tenant",
+      "trigger:ehr_clinicaldocumentversion.ehr_binding",
+      "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
+      "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
+      "trigger:ehr_clinicaldocumentversion.template_published"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_owner_user_id_009c5030_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_plan_id_be2e993c_fk_workflows_careplan_id": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_plan_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_review": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_task_id_ceba04b1_fk_workflows_task_id": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_task_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_task_shape": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_text_shape": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_careaction.workflows_careaction_window": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_digest": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.scribe_capture_encounter_ended",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_author_id_1922e31b_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_document_id_3843e7c1_fk_ehr_clini",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_organization_id_61e44471_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_template_id_d785a006_fk_ehr_speci",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_revision_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_version_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_amendment_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_content_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_digest_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_finalized_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_positive",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_state_check",
+      "index:ehr_document_one_current",
+      "index:ehr_document_one_draft",
+      "policy:ehr_clinicaldocumentversion.clinical_insert",
+      "policy:ehr_clinicaldocumentversion.clinical_read",
+      "policy:ehr_clinicaldocumentversion.clinical_update",
+      "policy:ehr_clinicaldocumentversion.restricted_note_visibility",
+      "policy:ehr_clinicaldocumentversion.setup_tenant",
+      "trigger:ehr_clinicaldocumentversion.ehr_binding",
+      "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
+      "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
+      "trigger:ehr_clinicaldocumentversion.template_published"
+    ]
+  },
+  "constraint:workflows_careplan.workflows_careplan_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_digest": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_instrument": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24eq(smallint, integer)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_policy_ref": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_response_role": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_schedule": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)",
+      "function:pg_catalog.int24le(smallint, integer)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_pro_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_interval_days_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_occurrences_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "constraint:workflows_proassignment.workflows_proassignment_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurre_assignment_id_fdf2f5de_fk_workflows": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "trigger:workflows_proassignment.care_guard"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurre_clinic_id_6838237f_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurre_created_by_id_af8a3abb_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurre_organization_id_d932dcad_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurre_response_task_id_daf97838_fk_workflows": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_assignment_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "trigger:workflows_proassignment.care_guard"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_response_task_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_sequence_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_shape": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:workflows_prooccurrence.workflows_prooccurrence_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "constraint:workflows_task.workflows_task_clinic_fk": {
     "direct": {},
     "via": [
@@ -7980,6 +8666,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -9338,6 +10026,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -9377,6 +10067,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -11780,6 +12472,8 @@
       "trigger:orders_order.orders_binding",
       "trigger:orders_resultversion.orders_binding",
       "trigger:orders_resultworkitem.orders_binding",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -13430,6 +14124,8 @@
       "policy:workflows_task.workflow_owner",
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -15573,6 +16269,269 @@
       "function:pg_catalog.session_user()"
     ]
   },
+  "function:clinic_app.workflows_care_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 5,
+      "pg_catalog.statement_timestamp()": 2,
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 13,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 5
+    },
+    "via": [
+      "constraint:ehr_clinicaldocument.ehr_clinicaldocument_encounter_id_f4cb8564_fk_ehr_encounter_id",
+      "constraint:ehr_clinicaldocument.ehr_clinicaldocument_organization_id_497e4b82_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_author_id_1922e31b_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_document_id_3843e7c1_fk_ehr_clini",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_organization_id_61e44471_fk_identity_",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_template_id_d785a006_fk_ehr_speci",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_revision_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocumentversion_version_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_amendment_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_content_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_digest_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_finalized_check",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_positive",
+      "constraint:ehr_clinicaldocumentversion.ehr_version_state_check",
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "constraint:workflows_careaction.workflows_careaction_approved_by_id_cb67fd01_fk_identity_",
+      "constraint:workflows_careaction.workflows_careaction_clinic_fk",
+      "constraint:workflows_careaction.workflows_careaction_clinic_id_5fa0b7ad_fk_identity_clinic_id",
+      "constraint:workflows_careaction.workflows_careaction_created_by_id_dc0ceae2_fk_identity_user_id",
+      "constraint:workflows_careaction.workflows_careaction_digest",
+      "constraint:workflows_careaction.workflows_careaction_kind",
+      "constraint:workflows_careaction.workflows_careaction_one_owner",
+      "constraint:workflows_careaction.workflows_careaction_organization_id_27cab5d4_fk_identity_",
+      "constraint:workflows_careaction.workflows_careaction_origin_version_id_41f6d8c1_fk_ehr_clini",
+      "constraint:workflows_careaction.workflows_careaction_owner_user_id_009c5030_fk_identity_user_id",
+      "constraint:workflows_careaction.workflows_careaction_plan_id_be2e993c_fk_workflows_careplan_id",
+      "constraint:workflows_careaction.workflows_careaction_plan_scope_fk",
+      "constraint:workflows_careaction.workflows_careaction_review",
+      "constraint:workflows_careaction.workflows_careaction_revision_check",
+      "constraint:workflows_careaction.workflows_careaction_state",
+      "constraint:workflows_careaction.workflows_careaction_task_id_ceba04b1_fk_workflows_task_id",
+      "constraint:workflows_careaction.workflows_careaction_task_scope_fk",
+      "constraint:workflows_careaction.workflows_careaction_task_shape",
+      "constraint:workflows_careaction.workflows_careaction_text_shape",
+      "constraint:workflows_careaction.workflows_careaction_window",
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_assignment_id_fdf2f5de_fk_workflows",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_clinic_id_6838237f_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_created_by_id_af8a3abb_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_organization_id_d932dcad_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_response_task_id_daf97838_fk_workflows",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_assignment_scope_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_clinic_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_response_task_scope_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_revision_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_sequence_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_shape",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_state",
+      "constraint:workflows_task.workflows_task_clinic_fk",
+      "constraint:workflows_task.workflows_task_clinic_id_471fdbaa_fk_identity_clinic_id",
+      "constraint:workflows_task.workflows_task_created_by_id_8094d7f2_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_escalation",
+      "constraint:workflows_task.workflows_task_escalation_policy_version_check",
+      "constraint:workflows_task.workflows_task_fingerprint",
+      "constraint:workflows_task.workflows_task_kind",
+      "constraint:workflows_task.workflows_task_one_owner",
+      "constraint:workflows_task.workflows_task_organization_id_6ac330e5_fk_identity_",
+      "constraint:workflows_task.workflows_task_owner_user_id_bee90334_fk_identity_user_id",
+      "constraint:workflows_task.workflows_task_priority",
+      "constraint:workflows_task.workflows_task_revision_check",
+      "constraint:workflows_task.workflows_task_state",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.workflows_now()",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.interval(interval, integer)",
+      "function:pg_catalog.interval(time without time zone)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "index:ehr_document_one_current",
+      "index:ehr_document_one_draft",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_clinicaldocument.clinical_insert",
+      "policy:ehr_clinicaldocument.clinical_read",
+      "policy:ehr_clinicaldocument.setup_tenant",
+      "policy:ehr_clinicaldocumentversion.clinical_insert",
+      "policy:ehr_clinicaldocumentversion.clinical_read",
+      "policy:ehr_clinicaldocumentversion.clinical_update",
+      "policy:ehr_clinicaldocumentversion.restricted_note_visibility",
+      "policy:ehr_clinicaldocumentversion.setup_tenant",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "policy:workflows_careaction.care_insert",
+      "policy:workflows_careaction.care_owner",
+      "policy:workflows_careaction.care_read",
+      "policy:workflows_careaction.care_update",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "policy:workflows_prooccurrence.care_insert",
+      "policy:workflows_prooccurrence.care_owner",
+      "policy:workflows_prooccurrence.care_read",
+      "policy:workflows_prooccurrence.care_update",
+      "policy:workflows_task.workflow_insert",
+      "policy:workflows_task.workflow_owner",
+      "policy:workflows_task.workflow_read",
+      "policy:workflows_task.workflow_update",
+      "trigger:ehr_clinicaldocument.ehr_binding",
+      "trigger:ehr_clinicaldocumentversion.ehr_binding",
+      "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
+      "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
+      "trigger:ehr_clinicaldocumentversion.template_published",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.scribe_capture_encounter_ended",
+      "trigger:ehr_encounter.zz_intake_survivor_binding",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding",
+      "trigger:workflows_careaction.care_guard",
+      "trigger:workflows_careplan.care_guard",
+      "trigger:workflows_proassignment.care_guard",
+      "trigger:workflows_prooccurrence.care_guard",
+      "trigger:workflows_prooccurrence.care_review",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
+      "trigger:workflows_task.workflow_guard"
+    ]
+  },
+  "function:clinic_app.workflows_care_system_task_valid(jsonb)": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 4
+    },
+    "via": [
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_assignment_id_fdf2f5de_fk_workflows",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_clinic_id_6838237f_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_created_by_id_af8a3abb_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_organization_id_d932dcad_fk_identity_",
+      "constraint:workflows_prooccurrence.workflows_prooccurre_response_task_id_daf97838_fk_workflows",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_assignment_scope_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_clinic_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_response_task_scope_fk",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_revision_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_sequence_check",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_shape",
+      "constraint:workflows_prooccurrence.workflows_prooccurrence_state",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "policy:workflows_prooccurrence.care_insert",
+      "policy:workflows_prooccurrence.care_owner",
+      "policy:workflows_prooccurrence.care_read",
+      "policy:workflows_prooccurrence.care_update",
+      "trigger:workflows_proassignment.care_guard",
+      "trigger:workflows_prooccurrence.care_guard",
+      "trigger:workflows_prooccurrence.care_review"
+    ]
+  },
   "function:clinic_app.workflows_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 5,
@@ -15642,6 +16601,7 @@
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.orders_system_task_valid(jsonb)",
       "function:clinic_app.retention_system_task_valid(jsonb)",
+      "function:clinic_app.workflows_care_system_task_valid(jsonb)",
       "function:clinic_app.workflows_now()",
       "function:clinic_app.workflows_owned(uuid, uuid, text)",
       "function:clinic_app.workflows_owner_valid(uuid, uuid, text)",
@@ -15711,6 +16671,8 @@
       "policy:workflows_workflowstep.workflow_read",
       "policy:workflows_workflowstep.workflow_update",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard",
       "trigger:workflows_workflowdefinitionversion.agent_send_mutation",
       "trigger:workflows_workflowdefinitionversion.workflow_guard",
@@ -15840,6 +16802,8 @@
       "trigger:scheduling_appointment.scheduling_capacity_after",
       "trigger:scheduling_appointment.scheduling_capacity_before",
       "trigger:scheduling_appointment.zz_intake_survivor_binding",
+      "trigger:workflows_task.care_task_gate",
+      "trigger:workflows_task.care_task_mirror",
       "trigger:workflows_task.workflow_guard"
     ]
   },
@@ -20346,6 +21310,239 @@
       "function:clinic_app.teleconsult_assigned(uuid)"
     ]
   },
+  "policy:workflows_careaction.care_insert": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_careaction.care_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_careaction.care_read": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.workflows_owned(uuid, uuid, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "policy:workflows_careaction.care_update": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_careplan.workflows_careplan_clinic_fk",
+      "constraint:workflows_careplan.workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "constraint:workflows_careplan.workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "constraint:workflows_careplan.workflows_careplan_digest",
+      "constraint:workflows_careplan.workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "constraint:workflows_careplan.workflows_careplan_enrollment_scope_fk",
+      "constraint:workflows_careplan.workflows_careplan_organization_id_b262842e_fk_identity_",
+      "constraint:workflows_careplan.workflows_careplan_revision_check",
+      "constraint:workflows_careplan.workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "constraint:workflows_careplan.workflows_careplan_state",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.workflows_owned(uuid, uuid, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:workflows_careplan.care_insert",
+      "policy:workflows_careplan.care_owner",
+      "policy:workflows_careplan.care_read",
+      "policy:workflows_careplan.care_update",
+      "trigger:workflows_careplan.care_guard"
+    ]
+  },
+  "policy:workflows_careplan.care_insert": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_careplan.care_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_careplan.care_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_careplan.care_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_proassignment.care_insert": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_proassignment.care_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_proassignment.care_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_proassignment.care_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_prooccurrence.care_insert": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_prooccurrence.care_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:workflows_prooccurrence.care_read": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "trigger:workflows_proassignment.care_guard"
+    ]
+  },
+  "policy:workflows_prooccurrence.care_update": {
+    "direct": {},
+    "via": [
+      "constraint:workflows_proassignment.workflows_pro_digest",
+      "constraint:workflows_proassignment.workflows_pro_instrument",
+      "constraint:workflows_proassignment.workflows_pro_policy_ref",
+      "constraint:workflows_proassignment.workflows_pro_response_role",
+      "constraint:workflows_proassignment.workflows_pro_schedule",
+      "constraint:workflows_proassignment.workflows_pro_state",
+      "constraint:workflows_proassignment.workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "constraint:workflows_proassignment.workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "constraint:workflows_proassignment.workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "constraint:workflows_proassignment.workflows_proassignment_clinic_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_enrollment_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_instrument_version_check",
+      "constraint:workflows_proassignment.workflows_proassignment_interval_days_check",
+      "constraint:workflows_proassignment.workflows_proassignment_occurrences_check",
+      "constraint:workflows_proassignment.workflows_proassignment_plan_scope_fk",
+      "constraint:workflows_proassignment.workflows_proassignment_revision_check",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:workflows_proassignment.care_insert",
+      "policy:workflows_proassignment.care_owner",
+      "policy:workflows_proassignment.care_read",
+      "policy:workflows_proassignment.care_update",
+      "trigger:workflows_proassignment.care_guard"
+    ]
+  },
   "policy:workflows_task.workflow_insert": {
     "direct": {},
     "via": [
@@ -21523,6 +22720,54 @@
     "direct": {},
     "via": [
       "function:clinic_app.teleconsult_session_guard()"
+    ]
+  },
+  "trigger:workflows_careaction.care_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()"
+    ]
+  },
+  "trigger:workflows_careplan.care_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()"
+    ]
+  },
+  "trigger:workflows_proassignment.care_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()"
+    ]
+  },
+  "trigger:workflows_prooccurrence.care_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()"
+    ]
+  },
+  "trigger:workflows_prooccurrence.care_review": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "trigger:workflows_task.care_task_gate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "trigger:workflows_task.care_task_mirror": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.workflows_care_guard()",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
   "trigger:workflows_task.workflow_guard": {

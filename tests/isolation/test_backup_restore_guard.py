@@ -33,10 +33,10 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Re-derived from the task 50 PostgreSQL catalogue (task 47's 180 plus
-    # intake_datasubjectrequest): 181 relations.
+    # Task 47 integrated catalogue: 180 relations, plus
+    # intake_datasubjectrequest (task 50) and seven care tables (task 52): 188.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 181
+    assert len(restore_contract.DOMAIN_RELATIONS) == 188
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(

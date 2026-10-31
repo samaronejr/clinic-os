@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
 from apps.identity.models import UserClinicRole
+from apps.workflows.care.models import Recall
 from apps.workflows.models import WorkflowDefinitionVersion
 from django.db import DatabaseError, connection, transaction
+from django.utils import timezone
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from identity.legacy_sql_inventory import discover_sql
 from identity.permission_support import permission_context
+from workflows.care_world import seed_care_world
 from workflows.guard_cases import GuardWorld, seed_guard_world
 from workflows.test_authority import _set_role
 
@@ -126,7 +131,12 @@ def _due_steps(w: GuardWorld, permitted: bool) -> None:
 
 
 def _due_tasks(w: GuardWorld, permitted: bool) -> None:
-    assert call("workflows_due_tasks", [w.run.created_at]) == [(w.due.pk,)]
+    # The care world's overdue action is an ordinary follow-up task, due just
+    # after the generic one: the escalation scan lists both, oldest first.
+    assert call("workflows_due_tasks", [w.run.created_at]) == [
+        (w.due.pk,),
+        (w.care.overdue_task,),
+    ]
     assert call("workflows_due_tasks", [w.due.due_at - timedelta(microseconds=1)]) == []
 
 
@@ -172,6 +182,98 @@ def _predecessor(w: GuardWorld, permitted: bool) -> None:
     ]
 
 
+def _care_guard(w: GuardWorld, permitted: bool) -> None:
+    # Owner fixture access gets past RLS to execute the private trigger; its
+    # tasks.reassign decision for a new recall remains entirely real.
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_owner")
+    try:
+        now = timezone.now()
+        Recall.objects.create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            enrollment_id=w.enrollment,
+            reason="routine_return",
+            interval_days=30,
+            anchor_at=now,
+            due_at=now + timedelta(days=30),
+            owner_role="receptionist",
+            created_by_id=w.actor,
+            idempotency_key=uuid4(),
+            fingerprint="0" * 64,
+        )
+    finally:
+        if not connection.needs_rollback:
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL ROLE clinic_app")
+
+
+def _care_items(w: GuardWorld, permitted: bool) -> None:
+    rows = call("workflows_care_items", [timezone.now(), w.care.recall], private=True)
+    assert [row[:5] for row in rows] == [
+        ("recall", w.care.recall, w.graph.organization_a, w.clinic, w.actor)
+    ]
+    assert call("workflows_care_items", [timezone.now(), uuid4()], private=True) == []
+
+
+def _care_due(w: GuardWorld, permitted: bool) -> None:
+    rows = call("workflows_care_due", [timezone.now()])
+    # Opaque (kind, record) pairs only: no tenant or user id leaves (N7).
+    assert ("recall", w.care.recall) in rows
+    assert {len(row) for row in rows} == {2}
+
+
+def _care_scope(w: GuardWorld, permitted: bool) -> None:
+    assert call("workflows_care_scope", ["recall", w.care.recall]) == [
+        (w.graph.organization_a, w.clinic, w.actor)
+    ]
+    assert call("workflows_care_scope", ["overdue", w.care.recall]) == []
+
+
+def _care_park(w: GuardWorld, permitted: bool) -> None:
+    assert call("workflows_care_park", ["recall", w.care.recall]) == [(True,)]
+    assert call("workflows_care_park", ["recall", uuid4()]) == [(False,)]
+
+
+def _care_version_scope(w: GuardWorld, permitted: bool) -> None:
+    rows = call("workflows_care_version_scope", [w.clinic, w.care.new_version])
+    assert len(rows) == (1 if permitted else 0)
+    assert (
+        call("workflows_care_version_scope", [w.graph.clinic_b, w.care.new_version])
+        == []
+    )
+
+
+def _care_occurrence_scope(w: GuardWorld, permitted: bool) -> None:
+    (row,) = call("workflows_care_occurrence_scope", [w.clinic, w.care.occurrence])
+    assert (row[0] is not None) is permitted
+    assert call(
+        "workflows_care_occurrence_scope", [w.graph.clinic_b, w.care.occurrence]
+    ) == [(None,)]
+
+
+def _care_source_current(w: GuardWorld, permitted: bool) -> None:
+    assert call("workflows_care_source_current", [w.care.window]) == [(True,)]
+    assert call("workflows_care_source_current", [w.care.flagged]) == [(False,)]
+
+
+def _care_system_task(w: GuardWorld, permitted: bool) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        # As text: the connection's jsonb loader returns undecoded JSON.
+        cursor.execute(
+            "SELECT to_jsonb(t)::text FROM clinic_app.workflows_task t WHERE t.id=%s",
+            [w.care.response_task],
+        )
+        stored = cursor.fetchone()
+        cursor.execute("SET LOCAL ROLE clinic_app")
+    assert stored is not None
+    task = json.loads(stored[0])
+    valid = "workflows_care_system_task_valid"
+    assert call(valid, [Jsonb(task)], private=True) == [(True,)]
+    assert call(valid, [Jsonb({**task, "priority": "low"})], private=True) == [(False,)]
+
+
 SQL_CASES = {
     "clinic_app.workflows_now": _clock,
     "clinic_app.workflows_predecessor_ready": _predecessor,
@@ -185,7 +287,18 @@ SQL_CASES = {
     "clinic_app.workflows_due_steps": _due_steps,
     "clinic_app.workflows_due_tasks": _due_tasks,
     "clinic_app.workflows_guard": _guard,
+    "clinic_app.workflows_care_guard": _care_guard,
+    "clinic_app.workflows_care_items": _care_items,
+    "clinic_app.workflows_care_due": _care_due,
+    "clinic_app.workflows_care_scope": _care_scope,
+    "clinic_app.workflows_care_park": _care_park,
+    "clinic_app.workflows_care_version_scope": _care_version_scope,
+    "clinic_app.workflows_care_occurrence_scope": _care_occurrence_scope,
+    "clinic_app.workflows_care_source_current": _care_source_current,
+    "clinic_app.workflows_care_system_task_valid": _care_system_task,
 }
+# Trigger guards: only a manager's own write passes their staff decision.
+GUARDS = {"clinic_app.workflows_guard", "clinic_app.workflows_care_guard"}
 
 
 def test_every_workflow_sql_member_for_every_catalog_role(
@@ -194,6 +307,7 @@ def test_every_workflow_sql_member_for_every_catalog_role(
 ) -> None:
     assert set(SQL_CASES) == workflow_sql_members()
     world = seed_guard_world(rbac_graph, monkeypatch)
+    world = replace(world, care=seed_care_world(world))
     managers = {"owner", "org_admin", "clinic_admin", "clinic_manager"}
     for role in (*UserClinicRole.Role.values, None, "inactive"):
         _set_role(
@@ -204,7 +318,7 @@ def test_every_workflow_sql_member_for_every_catalog_role(
         member = role is not None and role != "inactive"
         for name, invoke in SQL_CASES.items():
             with permission_context(rbac_graph, world.actor):
-                if name == "clinic_app.workflows_guard" and role not in managers:
+                if name in GUARDS and role not in managers:
                     with pytest.raises(DatabaseError) as caught, transaction.atomic():
                         invoke(world, member)
                     assert getattr(caught.value.__cause__, "sqlstate", None) == "23514"

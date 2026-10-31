@@ -10,12 +10,29 @@ CUSTOM_RLS_TABLES: Final = frozenset(
         "workflows_workflowdefinitionversion",
         "workflows_workflowrun",
         "workflows_workflowstep",
+        "workflows_careplan",
+        "workflows_careaction",
+        "workflows_referral",
+        "workflows_recall",
+        "workflows_proassignment",
+        "workflows_prooccurrence",
+        "workflows_carerefusal",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
+# Scanner refusals are written by their resolver only; staff read them.
+READ_ONLY_TABLES: Final = frozenset({"workflows_carerefusal"})
 RUNTIME_GRANTS: Final = {
-    table: frozenset({"SELECT", "INSERT"}) for table in CUSTOM_RLS_TABLES
+    table: frozenset({"SELECT"} if table in READ_ONLY_TABLES else {"SELECT", "INSERT"})
+    for table in CUSTOM_RLS_TABLES
 }
+_COMMAND: Final = (
+    "revision",
+    "last_command_key",
+    "last_command_digest",
+    "updated_at",
+)
+_COMMAND_STATE: Final = ("state", *_COMMAND)
 COLUMN_GRANTS: Final = frozenset(
     (table, column, "UPDATE")
     for table, columns in {
@@ -58,6 +75,25 @@ COLUMN_GRANTS: Final = frozenset(
             "created_task_id",
             "error_code",
             "updated_at",
+        ),
+        "workflows_careplan": _COMMAND_STATE,
+        "workflows_proassignment": _COMMAND_STATE,
+        "workflows_careaction": (
+            "owner_user_id",
+            "owner_role",
+            "state",
+            "review_state",
+            *_COMMAND,
+        ),
+        "workflows_referral": ("status", "document_id", *_COMMAND),
+        "workflows_recall": ("state", "task_id", *_COMMAND),
+        "workflows_prooccurrence": (
+            "state",
+            "answers",
+            "concerning",
+            "response_task_id",
+            "recorded_at",
+            *_COMMAND,
         ),
     }.items()
     for column in columns

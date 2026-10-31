@@ -259,6 +259,31 @@ def _argument_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+INSERT_TARGET = re.compile(r"(?is)\bINSERT\s+INTO\s+[A-Za-z_][\w.]*\s*\(")
+VALUES_LIST = re.compile(r"(?is)\bVALUES\s*\(")
+NEW_SCOPE = re.compile(r"\bNEW\.(?:clinic_id|organization_id)\b")
+
+
+def _insert_spans(text: str) -> list[tuple[int, int]]:
+    """INSERT target columns are writes; VALUES may forward only NEW's own scope.
+
+    A trigger copying its row's clinic/organization into a new row decides
+    nothing. Any other scope value written by VALUES stays unclassified, so it
+    fails closed instead of being read as a forward.
+    """
+    spans = [
+        (match.end(), _call_end(text, match.end() - 1) - 1)
+        for match in INSERT_TARGET.finditer(text)
+    ]
+    for values in VALUES_LIST.finditer(text):
+        end = _call_end(text, values.end() - 1)
+        spans += [
+            (match.start(), match.end())
+            for match in NEW_SCOPE.finditer(text, values.end(), end)
+        ]
+    return spans
+
+
 def _code_only(source: str) -> str:
     """Blank comments and string literals (same length) so only code is scanned."""
     out = list(source)
@@ -341,6 +366,7 @@ def discover_scope_conditions() -> dict[str, Condition]:
                 "true" if operator in {"=", "IS NOT DISTINCT FROM"} else "false",
             )
         classified += _argument_spans(source)
+        classified += _insert_spans(source)
         classified += _spans(source, r"(?s)\bSELECT\b(?:(?!\bFROM\b).)*?\bFROM\b")
         for use in re.finditer(SCOPE_OPERAND, source):
             name = use.group(0).split(".")[-1]

@@ -1,6 +1,264 @@
 {
   "column_grants": [
     [
+      "workflows_careaction",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "owner_role",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "owner_user_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "review_state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "actor_id",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "attempts",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "refused_at",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "retry_at",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "answers",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "concerning",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "recorded_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "response_task_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "state",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "task_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "document_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "last_command_digest",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "last_command_key",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "status",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "updated_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
       "workflows_task",
       "completion_evidence",
       "clinic_app",
@@ -218,6 +476,720 @@
     ]
   ],
   "column_types": [
+    [
+      "workflows_careaction",
+      "approved_by_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_careaction",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "fingerprint",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "idempotency_key",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "instruction",
+      "bytea",
+      false
+    ],
+    [
+      "workflows_careaction",
+      "kind",
+      "character varying(24)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_careaction",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "origin_version_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "owner_role",
+      "character varying(20)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "owner_user_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_careaction",
+      "plan_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "review_state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "task_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_careaction",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "window_end",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_careaction",
+      "window_start",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "clinician_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "encounter_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "enrollment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "fingerprint",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "idempotency_key",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_careplan",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "source_version_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_careplan",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "actor_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "attempts",
+      "integer",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "kind",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "record_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "refused_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_carerefusal",
+      "retry_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "enrollment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "fingerprint",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "first_due_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "idempotency_key",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "instrument_key",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "instrument_version",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "interval_days",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_proassignment",
+      "occurrences",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "plan_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_proassignment",
+      "response_role",
+      "character varying(20)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "staffing_policy_ref",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_proassignment",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "answers",
+      "bytea",
+      false
+    ],
+    [
+      "workflows_prooccurrence",
+      "assignment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "concerning",
+      "boolean",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "due_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_prooccurrence",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "recorded_at",
+      "timestamp with time zone",
+      false
+    ],
+    [
+      "workflows_prooccurrence",
+      "response_task_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_prooccurrence",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "sequence",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_prooccurrence",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_recall",
+      "anchor_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_recall",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_recall",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "due_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_recall",
+      "enrollment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "fingerprint",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_recall",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "idempotency_key",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "interval_days",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_recall",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_recall",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_recall",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_recall",
+      "owner_role",
+      "character varying(20)",
+      true
+    ],
+    [
+      "workflows_recall",
+      "reason",
+      "character varying(24)",
+      true
+    ],
+    [
+      "workflows_recall",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_recall",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_recall",
+      "task_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_recall",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_referral",
+      "action_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_referral",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_referral",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_referral",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_referral",
+      "document_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_referral",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_referral",
+      "last_command_digest",
+      "character varying(64)",
+      true
+    ],
+    [
+      "workflows_referral",
+      "last_command_key",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_referral",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_referral",
+      "plan_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_referral",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_referral",
+      "status",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_referral",
+      "target_kind",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_referral",
+      "target_label",
+      "bytea",
+      false
+    ],
+    [
+      "workflows_referral",
+      "updated_at",
+      "timestamp with time zone",
+      true
+    ],
     [
       "workflows_task",
       "clinic_id",
@@ -671,6 +1643,596 @@
   ],
   "constraints": [
     [
+      "workflows_careaction",
+      "workflows_careaction_approved_by_id_cb67fd01_fk_identity_",
+      "FOREIGN KEY (approved_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_clinic_id_5fa0b7ad_fk_identity_clinic_id",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_created_by_id_dc0ceae2_fk_identity_user_id",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_digest",
+      "CHECK (((fingerprint)::text ~ '^[0-9a-f]{64}$'::text))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_key",
+      "UNIQUE (clinic_id, idempotency_key)"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_kind",
+      "CHECK (((kind)::text = ANY ((ARRAY['return_window'::character varying, 'order'::character varying, 'referral'::character varying, 'questionnaire'::character varying, 'monitoring_task'::character varying, 'patient_instruction'::character varying, 'staff_coordination'::character varying])::text[])))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_one_owner",
+      "CHECK (((owner_user_id IS NULL) OR ((owner_role)::text = ''::text)))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_organization_id_27cab5d4_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_origin_version_id_41f6d8c1_fk_ehr_clini",
+      "FOREIGN KEY (origin_version_id) REFERENCES ehr_clinicaldocumentversion(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_owner_user_id_009c5030_fk_identity_user_id",
+      "FOREIGN KEY (owner_user_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_plan_id_be2e993c_fk_workflows_careplan_id",
+      "FOREIGN KEY (plan_id) REFERENCES workflows_careplan(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_plan_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, plan_id) REFERENCES workflows_careplan(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_review",
+      "CHECK (((review_state)::text = ANY ((ARRAY['none'::character varying, 'required'::character varying, 'confirmed'::character varying])::text[])))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_state",
+      "CHECK (((state)::text = ANY ((ARRAY['open'::character varying, 'assigned'::character varying, 'overdue'::character varying, 'done'::character varying, 'cancelled'::character varying])::text[])))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_task_id_ceba04b1_fk_workflows_task_id",
+      "FOREIGN KEY (task_id) REFERENCES workflows_task(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_task_id_key",
+      "UNIQUE (task_id)"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_task_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, task_id) REFERENCES workflows_task(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_task_shape",
+      "CHECK (((((kind)::text = 'patient_instruction'::text) AND (task_id IS NULL)) OR ((NOT ((kind)::text = 'patient_instruction'::text)) AND (task_id IS NOT NULL))))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_text_shape",
+      "CHECK ((((instruction IS NOT NULL) AND ((kind)::text = 'patient_instruction'::text)) OR ((NOT ((kind)::text = 'patient_instruction'::text)) AND (instruction IS NULL))))"
+    ],
+    [
+      "workflows_careaction",
+      "workflows_careaction_window",
+      "CHECK ((window_end > window_start))"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_clinic_id_feb5feb0_fk_identity_clinic_id",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_clinician_id_00027839_fk_identity_user_id",
+      "FOREIGN KEY (clinician_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_digest",
+      "CHECK (((fingerprint)::text ~ '^[0-9a-f]{64}$'::text))"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_encounter_id_9f4be360_fk_ehr_encounter_id",
+      "FOREIGN KEY (encounter_id) REFERENCES ehr_encounter(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_enrollment_id_41d745f7_fk_intake_pa",
+      "FOREIGN KEY (enrollment_id) REFERENCES intake_patientclinicenrollment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_enrollment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, enrollment_id) REFERENCES intake_patientclinicenrollment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_key",
+      "UNIQUE (clinic_id, idempotency_key)"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_organization_id_b262842e_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_source_uniq",
+      "UNIQUE (source_version_id)"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_source_version_id_4778ce28_fk_ehr_clini",
+      "FOREIGN KEY (source_version_id) REFERENCES ehr_clinicaldocumentversion(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_careplan",
+      "workflows_careplan_state",
+      "CHECK (((state)::text = ANY ((ARRAY['active'::character varying, 'superseded'::character varying])::text[])))"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusa_organization_id_466b99d8_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_actor_id_cd011fdc_fk_identity_user_id",
+      "FOREIGN KEY (actor_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_attempts_check",
+      "CHECK ((attempts >= 0))"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_clinic_id_2d191e40_fk_identity_clinic_id",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_kind",
+      "CHECK (((kind)::text = ANY ((ARRAY['recall'::character varying, 'overdue'::character varying, 'pro_missed'::character varying, 'stale'::character varying])::text[])))"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_record",
+      "UNIQUE (kind, record_id)"
+    ],
+    [
+      "workflows_carerefusal",
+      "workflows_carerefusal_retry",
+      "CHECK (((retry_at > refused_at) AND (attempts >= 1)))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_digest",
+      "CHECK (((fingerprint)::text ~ '^[0-9a-f]{64}$'::text))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_instrument",
+      "CHECK ((((instrument_key)::text = ANY ((ARRAY['phq9'::character varying, 'gad7'::character varying])::text[])) AND (instrument_version = 1)))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_key",
+      "UNIQUE (clinic_id, idempotency_key)"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_policy_ref",
+      "CHECK (((staffing_policy_ref)::text ~ '^[a-z][a-z0-9-]{2,62}$'::text))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_response_role",
+      "CHECK (((response_role)::text = ANY ((ARRAY['physician'::character varying, 'nurse'::character varying, 'allied_professional'::character varying])::text[])))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_schedule",
+      "CHECK (((interval_days >= 1) AND (interval_days <= 365) AND (occurrences >= 1) AND (occurrences <= 12)))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_pro_state",
+      "CHECK (((state)::text = ANY ((ARRAY['active'::character varying, 'completed'::character varying])::text[])))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignm_clinic_id_c4a1fe49_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignm_created_by_id_c9b54617_fk_identity_",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignm_enrollment_id_a28669e3_fk_intake_pa",
+      "FOREIGN KEY (enrollment_id) REFERENCES intake_patientclinicenrollment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignm_organization_id_5c102c08_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignm_plan_id_f5f2ec71_fk_workflows",
+      "FOREIGN KEY (plan_id) REFERENCES workflows_careplan(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_enrollment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, enrollment_id) REFERENCES intake_patientclinicenrollment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_instrument_version_check",
+      "CHECK ((instrument_version >= 0))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_interval_days_check",
+      "CHECK ((interval_days >= 0))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_occurrences_check",
+      "CHECK ((occurrences >= 0))"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_plan_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, plan_id) REFERENCES workflows_careplan(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_proassignment",
+      "workflows_proassignment_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurre_assignment_id_fdf2f5de_fk_workflows",
+      "FOREIGN KEY (assignment_id) REFERENCES workflows_proassignment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurre_clinic_id_6838237f_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurre_created_by_id_af8a3abb_fk_identity_",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurre_organization_id_d932dcad_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurre_response_task_id_daf97838_fk_workflows",
+      "FOREIGN KEY (response_task_id) REFERENCES workflows_task(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_assignment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, assignment_id) REFERENCES workflows_proassignment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_response_task_id_key",
+      "UNIQUE (response_task_id)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_response_task_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, response_task_id) REFERENCES workflows_task(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_seq",
+      "UNIQUE (assignment_id, sequence)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_sequence_check",
+      "CHECK ((sequence >= 0))"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_shape",
+      "CHECK ((((answers IS NOT NULL) AND (response_task_id IS NOT NULL) AND ((state)::text = 'responded'::text)) OR ((answers IS NULL) AND (NOT concerning) AND (response_task_id IS NULL) AND ((state)::text = ANY ((ARRAY['pending'::character varying, 'no_response'::character varying])::text[])))))"
+    ],
+    [
+      "workflows_prooccurrence",
+      "workflows_prooccurrence_state",
+      "CHECK (((state)::text = ANY ((ARRAY['pending'::character varying, 'responded'::character varying, 'no_response'::character varying])::text[])))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_clinic_id_49f0397c_fk_identity_clinic_id",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_created_by_id_c141aec1_fk_identity_user_id",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_digest",
+      "CHECK (((fingerprint)::text ~ '^[0-9a-f]{64}$'::text))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_enrollment_id_d9252f4c_fk_intake_pa",
+      "FOREIGN KEY (enrollment_id) REFERENCES intake_patientclinicenrollment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_enrollment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, enrollment_id) REFERENCES intake_patientclinicenrollment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_interval",
+      "CHECK (((interval_days >= 1) AND (interval_days <= 730)))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_interval_days_check",
+      "CHECK ((interval_days >= 0))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_key",
+      "UNIQUE (clinic_id, idempotency_key)"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_organization_id_8768448a_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_reason",
+      "CHECK (((reason)::text = ANY ((ARRAY['routine_return'::character varying, 'test_follow_up'::character varying, 'chronic_review'::character varying])::text[])))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_state",
+      "CHECK (((state)::text = ANY ((ARRAY['scheduled'::character varying, 'materialized'::character varying])::text[])))"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_task_id_1bbbbee4_fk_workflows_task_id",
+      "FOREIGN KEY (task_id) REFERENCES workflows_task(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_task_id_key",
+      "UNIQUE (task_id)"
+    ],
+    [
+      "workflows_recall",
+      "workflows_recall_task_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, task_id) REFERENCES workflows_task(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_action_id_73fefd91_fk_workflows",
+      "FOREIGN KEY (action_id) REFERENCES workflows_careaction(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_action_id_key",
+      "UNIQUE (action_id)"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_action_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, action_id) REFERENCES workflows_careaction(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_clinic_id_17d730c4_fk_identity_clinic_id",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_created_by_id_e6090357_fk_identity_user_id",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_document_id_e820cae6_fk_prescript",
+      "FOREIGN KEY (document_id) REFERENCES prescription_prescriptiondraft(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_document_id_key",
+      "UNIQUE (document_id)"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_organization_id_9c90ea89_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_plan_id_b7dddcbd_fk_workflows_careplan_id",
+      "FOREIGN KEY (plan_id) REFERENCES workflows_careplan(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_plan_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, plan_id) REFERENCES workflows_careplan(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_shape",
+      "CHECK ((((action_id IS NOT NULL) AND (plan_id IS NOT NULL)) OR ((action_id IS NULL) AND (plan_id IS NULL))))"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_status",
+      "CHECK (((status)::text = ANY ((ARRAY['requested'::character varying, 'scheduled'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'documented'::character varying])::text[])))"
+    ],
+    [
+      "workflows_referral",
+      "workflows_referral_target",
+      "CHECK (((target_kind)::text = ANY ((ARRAY['specialty'::character varying, 'external'::character varying, 'unspecified'::character varying])::text[])))"
+    ],
+    [
+      "workflows_task",
+      "care_task_mirror",
+      "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
       "workflows_task",
       "workflows_task_clinic_fk",
       "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
@@ -993,6 +2555,48 @@
   ],
   "flags": [
     [
+      "workflows_careaction",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_careplan",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_carerefusal",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_proassignment",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_prooccurrence",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_recall",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_referral",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
       "workflows_task",
       true,
       true,
@@ -1024,6 +2628,138 @@
     ]
   ],
   "functions": [
+    [
+      "clinic_app.workflows_care_due",
+      "due_by timestamp with time zone",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "e7deec3a7507f153ef5288744f90b5197d21553ff11d1259ecb99ea8ce1f3139",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_guard",
+      "",
+      "clinic_resolver",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "9b27d42151cd1ca172fd9e9711b815a0452815303ce9a79b26e4bf92198f9469",
+      [
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_items",
+      "due_by timestamp with time zone, requested uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "70f0d0c4cfeced2d82b03ed97dc2579fb300df5a1cf8fb2663897b743b080bc1",
+      [
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_occurrence_scope",
+      "clinic uuid, requested_occurrence uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "307b570eb00f94fb2c7fee6472b433eb800269891c6291e9f6c2ca2b92855666",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_park",
+      "requested_kind text, requested uuid",
+      "clinic_resolver",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "ee5e135bfac38f0cbf9c5832488699ec15e6f51458ffbc0bb4570a7407950696",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_scope",
+      "requested_kind text, requested uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "cd63ebd0c0ec8b05917905818afeb132e24305d50e7fcd2b628fcd40c0a784a1",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_source_current",
+      "requested_action uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "688e881a2be274c8ecaf6612149229aca14c7e3db6660f5b64d0c70ad048860b",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_system_task_valid",
+      "row_data jsonb",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "2c7ca225bcc49687a6c5c39287a1a356ec546affa1548c7ae928ed3ca32f7a8a",
+      [
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_care_version_scope",
+      "clinic uuid, requested_version uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "38a19f7a5c18231039eb23b54a1d1f3030b6c121ae6795c4fc5a188fa89839ca",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
     [
       "clinic_app.workflows_due_steps",
       "due_at timestamp with time zone",
@@ -1063,7 +2799,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "0b57b6504daff963e4c6e61e355d94bbdde11174c55974c66584aee1c5ddeec1",
+      "44eb7118fccf5c9197dbe2ac260e43ef38ec8ea3ea6a33132dcd9df5a8598435",
       [
         "clinic_resolver"
       ]
@@ -1203,6 +2939,292 @@
     ]
   ],
   "policies": [
+    [
+      "workflows_careaction",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_careaction",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_careaction",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))))",
+      null
+    ],
+    [
+      "workflows_careaction",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
+    [
+      "workflows_careplan",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_careplan",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_careplan",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)))",
+      null
+    ],
+    [
+      "workflows_careplan",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
+    [
+      "workflows_carerefusal",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_carerefusal",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))",
+      null
+    ],
+    [
+      "workflows_proassignment",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_proassignment",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_proassignment",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)))",
+      null
+    ],
+    [
+      "workflows_proassignment",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))))",
+      null
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
+    [
+      "workflows_recall",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_recall",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_recall",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
+      null
+    ],
+    [
+      "workflows_recall",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
+    [
+      "workflows_referral",
+      "care_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_referral",
+      "care_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_referral",
+      "care_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))))",
+      null
+    ],
+    [
+      "workflows_referral",
+      "care_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+    ],
     [
       "workflows_task",
       "workflow_insert",
@@ -1414,6 +3436,356 @@
     ]
   ],
   "table_grants": [
+    [
+      "workflows_careaction",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_careaction",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_careplan",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_resolver",
+      "INSERT"
+    ],
+    [
+      "workflows_carerefusal",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_proassignment",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_prooccurrence",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_recall",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_recall",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_recall",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_recall",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_referral",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_referral",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_referral",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_referral",
+      "clinic_resolver",
+      "SELECT"
+    ],
     [
       "workflows_task",
       "clinic_app",
@@ -1666,6 +4038,13 @@
     ]
   ],
   "tables": [
+    "workflows_careaction",
+    "workflows_careplan",
+    "workflows_carerefusal",
+    "workflows_proassignment",
+    "workflows_prooccurrence",
+    "workflows_recall",
+    "workflows_referral",
     "workflows_task",
     "workflows_taskcomment",
     "workflows_workflowdefinitionversion",
@@ -1673,6 +4052,60 @@
     "workflows_workflowstep"
   ],
   "triggers": [
+    [
+      "workflows_careaction",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_careaction FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_careplan",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_careplan FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_proassignment",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_proassignment FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_prooccurrence FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_prooccurrence",
+      "care_review",
+      "O",
+      "CREATE TRIGGER care_review AFTER UPDATE ON clinic_app.workflows_prooccurrence FOR EACH ROW WHEN ((((old.state)::text = 'pending'::text) AND ((new.state)::text = 'responded'::text))) EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_recall",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_recall FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_referral",
+      "care_guard",
+      "O",
+      "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_referral FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_task",
+      "care_task_gate",
+      "O",
+      "CREATE TRIGGER care_task_gate BEFORE UPDATE ON clinic_app.workflows_task FOR EACH ROW WHEN ((((new.owner_user_id IS DISTINCT FROM old.owner_user_id) OR ((new.owner_role)::text IS DISTINCT FROM (old.owner_role)::text)) OR (((new.state)::text = ANY ((ARRAY['assigned'::character varying, 'in_progress'::character varying, 'done'::character varying])::text[])) AND ((new.state)::text <> (old.state)::text)))) EXECUTE FUNCTION workflows_care_guard()"
+    ],
+    [
+      "workflows_task",
+      "care_task_mirror",
+      "O",
+      "CREATE CONSTRAINT TRIGGER care_task_mirror AFTER UPDATE ON clinic_app.workflows_task DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN ((((new.owner_user_id IS DISTINCT FROM old.owner_user_id) OR ((new.owner_role)::text IS DISTINCT FROM (old.owner_role)::text)) OR ((new.state)::text IS DISTINCT FROM (old.state)::text))) EXECUTE FUNCTION workflows_care_guard()"
+    ],
     [
       "workflows_task",
       "workflow_guard",

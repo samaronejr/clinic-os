@@ -483,6 +483,60 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "workflows.step.retried": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "workflows.step", "retried"
         ),
+        "workflows.care_plan.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_plan", "created"
+        ),
+        "workflows.care_plan.superseded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_plan", "superseded"
+        ),
+        "workflows.care_action.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "created"
+        ),
+        "workflows.care_action.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "assigned"
+        ),
+        "workflows.care_action.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "completed"
+        ),
+        "workflows.care_action.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "cancelled"
+        ),
+        "workflows.care_action.reviewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "reviewed"
+        ),
+        "workflows.care_action.overdue": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_action", "overdue"
+        ),
+        "workflows.care_action.flagged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_action", "flagged"
+        ),
+        "workflows.referral.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "created"
+        ),
+        "workflows.referral.linked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "linked"
+        ),
+        "workflows.referral.advanced": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "advanced"
+        ),
+        "workflows.recall.scheduled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.recall", "scheduled"
+        ),
+        "workflows.recall.materialized": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.recall", "materialized"
+        ),
+        "workflows.pro.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.pro_assignment", "assigned"
+        ),
+        "workflows.pro.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.pro_assignment", "completed"
+        ),
+        "workflows.pro_occurrence.responded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.pro_occurrence", "responded"
+        ),
+        "workflows.pro_occurrence.no_response": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.pro_occurrence", "no_response"
+        ),
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
         ),
