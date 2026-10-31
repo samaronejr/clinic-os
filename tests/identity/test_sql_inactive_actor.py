@@ -121,7 +121,8 @@ JUSTIFIED = {
     "clinic_app.comms_ingest_account(uuid,text)": _INGEST_ONLY,
     "clinic_app.comms_resolve_inbound(uuid,text)": _INGEST_ONLY,
     "clinic_app.comms_message_guard_v1()": (
-        "dual boundary: an inbound row requires the provider account and refuses "
+        "dual boundary: an inbound row requires the provider account, or on a "
+        "portal thread the live patient session of its enrollment, and refuses "
         "any actor; an outbound row only binds sent_by_id to the signed-in actor. "
         "The role and the active check run first, in the service's _actor"
     ),

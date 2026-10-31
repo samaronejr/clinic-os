@@ -8469,3 +8469,95 @@ msgstr "WhatsApp, e-mail, SMS e portal em uma só caixa, cada conversa com uma f
 
 msgid "conversation with %(label)s"
 msgstr "conversa com %(label)s"
+
+msgid "Your messages"
+msgstr "Suas mensagens"
+
+msgid "Read what the clinic team wrote to you and reply here."
+msgstr "Leia o que a equipe da clínica escreveu para você e responda por aqui."
+
+msgctxt "portal conversation state"
+msgid "Open"
+msgstr "Aberta"
+
+msgctxt "portal conversation state"
+msgid "Closed"
+msgstr "Encerrada"
+
+msgid "Message sent to the clinic team."
+msgstr "Mensagem enviada à equipe da clínica."
+
+msgid "Write your message before sending it. It can have up to 4,096 characters."
+msgstr "Escreva sua mensagem antes de enviar. Ela pode ter até 4.096 caracteres."
+
+msgid "The clinic team closed this conversation, so your message was not sent. Its text is below so you can keep a copy."
+msgstr "A equipe da clínica encerrou esta conversa, por isso sua mensagem não foi enviada. O texto está abaixo para você guardar uma cópia."
+
+msgid "This form was already sent with a different text. Check the conversation below before writing again."
+msgstr "Este formulário já foi enviado com outro texto. Confira a conversa abaixo antes de escrever de novo."
+
+msgid "Your messages · Clinic OS"
+msgstr "Suas mensagens · Clinic OS"
+
+msgid "Read the messages the clinic team sent you in this portal and reply to them."
+msgstr "Leia as mensagens que a equipe da clínica enviou para você neste portal e responda a elas."
+
+msgid "Conversations the clinic team opened with you in this portal. A person from the team reads every message you send here."
+msgstr "Conversas que a equipe da clínica abriu com você neste portal. Uma pessoa da equipe lê cada mensagem que você envia por aqui."
+
+msgid "You are acting as a representative. The clinic sees what you send here as a message from this patient's portal."
+msgstr "Você está agindo como representante. A clínica vê o que você envia aqui como uma mensagem do portal deste paciente."
+
+msgid "Conversation started on %(date)s"
+msgstr "Conversa iniciada em %(date)s"
+
+msgid "Last message"
+msgstr "Última mensagem"
+
+msgid "started on %(date)s"
+msgstr "iniciada em %(date)s"
+
+msgid "No conversation yet"
+msgstr "Nenhuma conversa ainda"
+
+msgid "When the clinic team writes to you in this portal, the conversation appears here and you can reply. To talk to the team now, use the options below."
+msgstr "Quando a equipe da clínica escrever para você neste portal, a conversa aparece aqui e você pode responder. Para falar com a equipe agora, use as opções abaixo."
+
+msgid "Conversation with the clinic · Clinic OS"
+msgstr "Conversa com a clínica · Clinic OS"
+
+msgid "Read one conversation with the clinic team and reply to it."
+msgstr "Leia uma conversa com a equipe da clínica e responda a ela."
+
+msgid "Back to your messages"
+msgstr "Voltar às suas mensagens"
+
+msgid "Conversation with the clinic"
+msgstr "Conversa com a clínica"
+
+msgid "Started on %(date)s."
+msgstr "Iniciada em %(date)s."
+
+msgid "Clinic team"
+msgstr "Equipe da clínica"
+
+msgid "Sent from this portal"
+msgstr "Enviada por este portal"
+
+msgid "No message in this conversation yet."
+msgstr "Ainda não há mensagens nesta conversa."
+
+msgid "This conversation is closed. To talk to the clinic team again, use the options below."
+msgstr "Esta conversa foi encerrada. Para falar com a equipe da clínica de novo, use as opções abaixo."
+
+msgid "Your reply"
+msgstr "Sua resposta"
+
+msgid "Message to the clinic team"
+msgstr "Mensagem para a equipe da clínica"
+
+msgid "Up to %(limit)s characters. A person from the team reads it, so it is not the way to get help in an emergency: call 192."
+msgstr "Até %(limit)s caracteres. Uma pessoa da equipe lê a mensagem, então este não é o caminho para pedir ajuda em uma emergência: ligue 192."
+
+msgid "Send reply"
+msgstr "Enviar resposta"

@@ -87,9 +87,11 @@ ALL_OPERATIONS: Final = (
     "consent",
     "teleconsult",
     "billing",
+    "messages",
 )
 DESTINATION_ORDER: Final = (
     "appointments",
+    "messages",
     "questionnaires",
     "teleconsult",
     "results",
@@ -368,7 +370,9 @@ def test_home_lists_only_granted_destinations_and_never_placeholders(
             f"Paciente Sintético Portal {width}"
         )
         assert _destinations(page) == list(DESTINATION_ORDER)
-        expect(page.locator('[data-portal-destination="messages"]')).to_have_count(0)
+        expect(page.locator("#messages-link")).to_have_attribute(
+            "href", "/patient/messages/"
+        )
         expect(page.locator("[data-portal-help]")).to_be_visible()
         expect(page.locator("[data-portal-delegate]")).to_have_count(0)
         assert _small_targets(page) == []

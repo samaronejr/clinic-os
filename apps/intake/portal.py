@@ -4,8 +4,9 @@ Every destination is keyed to one session operation, and an operation the
 session does not hold leaves no trace (never a placeholder). Summaries read
 only through the existing patient-session resolvers; a resolver that refuses
 between the overview read and the summary read hides that summary, failing
-closed. Portal messages (todo 51) and PSP payment links (todo 57) are
-delivered by their own todos and join ``DESTINATIONS`` then.
+closed. The messages destination opens the comms app's patient page over todo
+51's portal threads (operation ``messages``); PSP payment links (todo 57)
+arrive inside the existing charge screens.
 
 Display preferences live in ``portal_display`` (server-side session only).
 """
@@ -61,6 +62,14 @@ DESTINATIONS: Final = (
         "appointments-link",
         _("Your appointments"),
         _("Book, reschedule or cancel a visit with the clinic."),
+    ),
+    PortalDestination(
+        "messages",
+        "messages",
+        "comms:patient-messages",
+        "messages-link",
+        _("Your messages"),
+        _("Read what the clinic team wrote to you and reply here."),
     ),
     PortalDestination(
         "questionnaires",

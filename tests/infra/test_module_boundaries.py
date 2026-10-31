@@ -10,7 +10,7 @@ from apps.ai.extraction import collect_extraction, review_extraction, start_extr
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
 from apps.billing.services import create_invoice
-from apps.comms import inbox_services, suggestions
+from apps.comms import inbox_services, portal_messages, suggestions
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
 from apps.core.integration import (
@@ -724,6 +724,11 @@ def test_order_services_keep_exact_scoped_keyword_only_boundaries(
             ["clinic_id", "request_id", "expected_revision", "reason_code"],
         ),
         (patient_result_file, ["version_id"]),
+        (portal_messages.portal_thread, ["clinic_id", "conversation_id"]),
+        (
+            portal_messages.reply_to_portal_conversation,
+            ["clinic_id", "conversation_id", "body", "idempotency_key"],
+        ),
     ],
 )
 def test_portal_services_keep_explicit_scope_and_keyword_only_boundaries(

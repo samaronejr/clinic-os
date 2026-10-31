@@ -7,6 +7,7 @@ from ai.evaluation_oracles import CASES as EVALUATION_CASES
 from ai.evaluation_oracles import SQL_PROTOCOL_ORACLES as EVALUATION_PROTOCOLS
 from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
+from comms import test_portal_messages
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -167,6 +168,24 @@ DATA_REQUEST_PROTOCOLS = frozenset(
         "clinic_app.patient_data_requests",
         "clinic_app.submit_data_request",
         "clinic_app.transition_data_request",
+    }
+)
+# Task 50 portal messages: every patient-side resolver, the audit binding and the
+# message guard's portal branch are executed by the whole native matrix.
+PORTAL_MESSAGE_CASES = {
+    name: getattr(test_portal_messages, name)
+    for name in dir(test_portal_messages)
+    if name.startswith("test_")
+}
+PORTAL_MESSAGE_PROTOCOLS = frozenset(
+    {
+        "clinic_app.comms_message_guard_v1",
+        "clinic_app.comms_patient_audit",
+        "clinic_app.comms_patient_audit_scope",
+        "clinic_app.comms_patient_conversations",
+        "clinic_app.comms_patient_messages",
+        "clinic_app.comms_patient_reply",
+        "clinic_app.comms_patient_scope",
     }
 )
 PORTAL_CASES = {
@@ -398,6 +417,7 @@ PROTOCOL_ORACLES = {
     **{name: list(DELEGATE_CASES) for name in DELEGATE_PROTOCOLS},
     **{name: sorted(DATA_REQUEST_CASES) for name in DATA_REQUEST_PROTOCOLS},
     **PORTAL_PROTOCOLS,
+    **{name: sorted(PORTAL_MESSAGE_CASES) for name in PORTAL_MESSAGE_PROTOCOLS},
     "clinic_app.teleconsult_mode_transition_audit": [
         "test_sql_guards_allow_and_deny_all_staff_roles",
         "test_two_patient_sessions_and_physician_keep_independent_mode_receipts",
@@ -439,6 +459,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
     assert all(callable(case) for case in DATA_REQUEST_CASES.values())
+    assert all(callable(case) for case in PORTAL_MESSAGE_CASES.values())
     assert all(
         callable(PORTAL_CASES[name])
         for names in PORTAL_PROTOCOLS.values()

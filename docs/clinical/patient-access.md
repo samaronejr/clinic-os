@@ -78,6 +78,10 @@ Task 26 adds `consent` to new invitations: patients can read exact versioned
 texts, explicitly accept and later revoke their own decisions, and inspect retained
 receipts. Existing grants are not upgraded. Consent never grants record access or
 message preferences. See [consent policy](../../apps/consent/README.md).
+Todo 50 adds `messages` to new invitations: patients read the clinic messages the
+outbox accepted in their portal threads and reply in a thread that is not closed;
+starting a thread stays with staff. See
+[communications](../../apps/comms/README.md).
 A session can never exceed the operations it was minted with.
 
 ## Recovery policy
@@ -120,8 +124,8 @@ selector in the request body, not a represented patient or tenant claim.
 `clinic_app.current_patient_authority` intersects the original invitation
 operations with the verified grant, resolves the represented enrollment, and
 checks revocation and expiry at every database statement. Booking, intake,
-consent, released records, prescribing, teleconsult and billing use that
-effective scope. Original patient access and staff roles remain separate.
+consent, released records, prescribing, teleconsult, billing and portal messages
+use that effective scope. Original patient access and staff roles remain separate.
 
 Confidential releases and questionnaire responses default to
 `restricted_from_delegates=True`. An explicit clinical decision is required

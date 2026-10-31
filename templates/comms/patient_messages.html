@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load i18n tz %}
+{% block title %}{% trans "Your messages · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Read the messages the clinic team sent you in this portal and reply to them." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
+{% block content %}{% timezone scope.timezone %}
+<section class="intake-shell portal-page portal-page--prose" aria-labelledby="patient-messages-title" data-patient-messages>
+  {% include "intake/partials/portal_back.html" only %}
+  <h1 id="patient-messages-title">{% trans "Your messages" %}</h1>
+  <p class="lede">{% trans "Conversations the clinic team opened with you in this portal. A person from the team reads every message you send here." %}</p>
+  <p class="hint">{% trans "Times are shown in the clinic's time zone." %}</p>
+  {% if scope.acting_for_patient %}
+    <div class="feedback feedback--warning" role="status" data-portal-delegate>
+      <p>{% trans "You are acting as a representative. The clinic sees what you send here as a message from this patient's portal." %}</p>
+    </div>
+  {% endif %}
+  {% if conversations %}
+    <ul class="portal-request-list" data-portal-conversations>
+      {% for item in conversations %}
+        <li class="portal-request" data-portal-conversation data-portal-conversation-state="{{ item.row.state }}">
+          <h2>{% blocktrans with date=item.row.created_at|date:"d/m/Y" %}Conversation started on {{ date }}{% endblocktrans %}</h2>
+          <p><span class="badge{% if item.row.state == 'closed' %} badge--muted{% else %} badge--success{% endif %}">{{ item.state_label }}</span></p>
+          <dl class="portal-request-dates">
+            <div><dt>{% trans "Messages" %}</dt><dd>{{ item.row.message_count }}</dd></div>
+            {% if item.row.last_message_at %}<div><dt>{% trans "Last message" %}</dt><dd><time datetime="{{ item.row.last_message_at|date:'c' }}">{{ item.row.last_message_at|date:"d/m/Y H:i" }}</time></dd></div>{% endif %}
+          </dl>
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="open">
+            <input type="hidden" name="conversation_id" value="{{ item.row.conversation_id }}">
+            <button class="button button--secondary" type="submit" data-portal-conversation-open>{% trans "Open conversation" %}<span class="visually-hidden">: {% blocktrans with date=item.row.created_at|date:"d/m/Y" %}started on {{ date }}{% endblocktrans %}</span></button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% trans "No conversation yet" as empty_title %}{% trans "When the clinic team writes to you in this portal, the conversation appears here and you can reply. To talk to the team now, use the options below." as empty_message %}
+    <div data-portal-conversations-empty>{% include "includes/components/state.html" with state="empty" title=empty_title message=empty_message only %}</div>
+  {% endif %}
+  {% include "intake/partials/portal_help.html" only %}
+</section>
+{% endtimezone %}{% endblock %}

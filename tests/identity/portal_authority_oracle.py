@@ -1,10 +1,11 @@
-"""Execute the todo 50 portal and data-subject request witnesses in the census."""
+"""Execute the todo 50 portal, messages and data-subject request witnesses."""
 
 from __future__ import annotations
 
 from functools import partial
 from typing import TYPE_CHECKING
 
+from comms import test_portal_messages
 from orders import test_patient_downloads
 from patients import test_dsar, test_portal_reads
 
@@ -39,6 +40,11 @@ def run_portal_census(
         test_portal_reads.test_display_choices_stay_in_the_server_session_and_refusals_change_nothing,
         test_portal_reads.test_home_offers_the_switcher_only_for_verified_active_grants,
         test_portal_reads.test_staff_queue_admits_privacy_staff_and_hides_requests_from_others,
+        test_portal_messages.test_patient_reads_accepted_clinic_messages_and_replies_once,
+        test_portal_messages.test_a_closed_thread_stays_readable_and_refuses_a_new_reply,
+        test_portal_messages.test_other_patients_other_clinics_and_unknown_threads_share_one_denial,
+        test_portal_messages.test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient,
+        test_portal_messages.test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text,
     ):
         proofs.run(oracle.__name__, partial(oracle, graph(), root))
     for simple_oracle in (

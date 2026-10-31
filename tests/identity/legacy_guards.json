@@ -1130,6 +1130,72 @@
       ]
     },
     {
+      "symbol": "apps.comms.portal_messages._audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages._audit#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session audit binding (comms_patient_audit_scope admits only the live session's own portal reply and escalation records; the payload is clinic_id and object_verb) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages._resolver_row",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Runs one fixed portal resolver command and maps its SQLSTATE (42501 denial, 40001 conflict, 55000 closed thread, 22023 input) to the contract; the resolver decides authority."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.patient_conversations",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.patient_conversations#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.portal_message_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.portal_message_scope#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.portal_thread",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.portal_thread#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.reply_to_portal_conversation",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.reply_to_portal_conversation#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session reply boundary (closed threads refuse, a repeated form key returns its receipt, other patients' and other clinics' threads get the one denial) through the cut1 census."
+    },
+    {
       "symbol": "apps.consent.services._patient_audit",
       "signals": [
         "resolver"
@@ -8247,6 +8313,11 @@
     "apps.comms.inbox_queries.is_clinician",
     "apps.comms.inbox_queries.visible_purposes",
     "apps.comms.inbox_services._actor",
+    "apps.comms.portal_messages._audit#cut1",
+    "apps.comms.portal_messages.patient_conversations#cut1",
+    "apps.comms.portal_messages.portal_message_scope#cut1",
+    "apps.comms.portal_messages.portal_thread#cut1",
+    "apps.comms.portal_messages.reply_to_portal_conversation#cut1",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
     "apps.consent.services._patient_lineage#cut1",
@@ -10680,6 +10751,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.comms_message_guard_v1",
           "clinic_app.comms_open_window"
         ],
         "signatures": [
@@ -10699,7 +10771,9 @@
       "discovery": {
         "migrations": [],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.comms_message_guard_v1"
+        ],
         "signatures": [
           {
             "arguments": "conversation uuid",
@@ -10874,6 +10948,225 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.comms_message_guard_v1": {
+      "kind": "domain_protocol",
+      "reason": "Todo 51 message guard with the todo 50 portal branch: an inbound portal row needs the live patient session of the thread's enrollment holding the messages operation and a thread that is not closed, and refuses any staff actor; provider-account inbound and the outbound rules are unchanged. Executed by the portal message matrix.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: chains the patient-session reply and escalation events with the session as actor and a clinic_id/object_verb payload only.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_audit_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: admits only the live session's own inbound portal reply or escalated portal thread as the audited record.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_patient_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_conversations": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: only the session subject's portal threads with the count of messages the patient may read; staff contexts and other patients see none.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_messages": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: the subject's own replies and only outbox-accepted clinic messages of one of its portal threads, decrypted through protected_decrypt for the session tenant; any other thread is empty.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_conversation uuid, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_reply": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: session-bound reply with one denial for unknown and foreign threads, a closed-thread refusal, keyed replay and a plaintext conflict check; triage can only raise the escalation.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_conversation uuid, body_envelope bytea, reply_key uuid, kek text, triage text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: the live session's messages scope through current_patient_authority (operation and verified-delegate intersection); staff and sessionless contexts get none.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
     },
     "clinic_app.configuration_guard": {
       "discovery": {
@@ -11058,6 +11351,12 @@
         "resolvers": [
           "clinic_app.billing_patient_charge",
           "clinic_app.billing_patient_charges",
+          "clinic_app.comms_message_guard_v1",
+          "clinic_app.comms_patient_audit_scope",
+          "clinic_app.comms_patient_conversations",
+          "clinic_app.comms_patient_messages",
+          "clinic_app.comms_patient_reply",
+          "clinic_app.comms_patient_scope",
           "clinic_app.consent_session",
           "clinic_app.data_request_audit_scope",
           "clinic_app.data_request_guard",
@@ -11426,6 +11725,7 @@
           "clinic_app.audit_append_unchecked_v2",
           "clinic_app.comms_ingest_account",
           "clinic_app.comms_ingest_audit",
+          "clinic_app.comms_patient_audit",
           "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
           "clinic_app.data_request_audit",
@@ -12197,6 +12497,7 @@
           "clinic_app.ai_review_extraction",
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
+          "clinic_app.comms_patient_reply",
           "clinic_app.ehr_timeline_enqueue",
           "clinic_app.ehr_timeline_refresh",
           "clinic_app.identity_invitation_accept",
@@ -14865,6 +15166,8 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.comms_patient_messages",
+          "clinic_app.comms_patient_reply",
           "clinic_app.patient_delegate_options",
           "clinic_app.patient_registry_count",
           "clinic_app.patient_registry_page",

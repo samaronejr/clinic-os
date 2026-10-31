@@ -162,7 +162,11 @@ lists keep the prose measure, and digests wrap. With the switch off, each
 template renders its retained v1 bytes. Every id, `data-*` hook, form, action
 name and heading is unchanged in both modes.
 
-Integration boundaries: portal messages join `DESTINATIONS` with todo 51 and
+Integration boundaries: the messages destination (operation `messages`, added to
+new invitations and to the delegate operation vocabulary by todo 50) opens
+`/patient/messages/`, which the comms app owns together with todo 51's portal
+threads; its contract is the Portal section of
+[`apps/comms/README.md`](../comms/README.md). Like results, it is a v2-only page.
 PSP payment links arrive inside the existing charge screens with todo 57. The
 non-AI path to a person is on the home, on every destination and on the access
 gate.
@@ -223,8 +227,8 @@ registers a service worker, asks for notification permission or keeps data in
 browser storage, and `templates/clinic-os-sw.js` is unchanged. The only copy a
 future notification may carry is `PUSH_NOTICE` ("Você tem uma nova mensagem da
 clínica", no record data). Delivery needs a push handler in the service worker,
-patient-session worker serving, a governed push capability (EG-1/EG-5) and
-todo 51's portal message as the trigger.
+patient-session worker serving and a governed push capability (EG-1/EG-5); the
+trigger, an accepted portal message, now exists.
 
 Patients book by service type on the appointments screen (contract:
 `tests/renewal/test_patient_service_booking.py`; mechanism in

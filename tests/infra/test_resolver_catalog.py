@@ -10,6 +10,7 @@ from infra import (
     longitudinal_catalog,
     orders_catalog,
     portal_catalog,
+    portal_messages_catalog,
     retention_catalog,
 )
 
@@ -170,6 +171,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *orders_catalog.TABLE_GRANTS,
     *portal_catalog.TABLE_GRANTS,
     *comms_inbox_catalog.TABLE_GRANTS,
+    *portal_messages_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_evaluationrun", "status", "UPDATE"),
@@ -237,6 +239,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("workflows_carerefusal", "refused_at", "UPDATE"),
     ("workflows_carerefusal", "retry_at", "UPDATE"),
     *comms_inbox_catalog.COLUMN_GRANTS,
+    *portal_messages_catalog.COLUMN_GRANTS,
 }
 POSTURE_OVERRIDES: Final = {
     **retention_catalog.POSTURE,
@@ -529,6 +532,7 @@ POSTURE_OVERRIDES: Final = {
     **orders_catalog.POSTURE,
     **portal_catalog.POSTURE,
     **comms_inbox_catalog.POSTURE,
+    **portal_messages_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
@@ -832,6 +836,7 @@ FUNCTION_SIGNATURES: Final = {
     *orders_catalog.RESULTS,
     *portal_catalog.RESULTS,
     *comms_inbox_catalog.RESULTS,
+    *portal_messages_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
@@ -1301,6 +1306,7 @@ FUNCTION_RESULTS: Final = {
     **orders_catalog.RESULTS,
     **portal_catalog.RESULTS,
     **comms_inbox_catalog.RESULTS,
+    **portal_messages_catalog.RESULTS,
 }
 
 
