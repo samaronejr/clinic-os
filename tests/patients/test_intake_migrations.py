@@ -14,11 +14,7 @@ import pytest
 import rfc8785
 from apps.core.secrets import secret_store
 from apps.identity.models import Clinic, Organization
-from apps.intake.models import (
-    PATIENT_OPERATION_VALUES,
-    Patient,
-    PatientClinicEnrollment,
-)
+from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.tenancy.envelope import reveal
 from apps.tenancy.migrations._protected_migration import (
     ProtectedPlan,
@@ -37,6 +33,17 @@ from database_urls import database_url_for_name
 from tenant_key_support import issue_tenant_key_for
 
 MIGRATION_MODULE = "apps.intake.migrations.0001_patient_and_enrollment"
+# The operation vocabulary of the seeded state (intake 0010); operations added
+# later, such as portal messages (intake 0028), do not exist there yet.
+LEGACY_OPERATIONS = [
+    "enrollment_view",
+    "questionnaires",
+    "booking",
+    "records",
+    "consent",
+    "teleconsult",
+    "billing",
+]
 FOUNDATION_TARGETS = [
     ("identity", "0003_totp_device_rls"),
     ("tenancy", "0002_rls_and_resolvers"),
@@ -731,7 +738,7 @@ def _seed_legacy_clinic(wrapper: DatabaseWrapper) -> None:  # noqa: PLR0915
             issued_by=physician,
             issued_by_label="legacy.physician",
             secret_hash=b"g" * 32,
-            operations=list(PATIENT_OPERATION_VALUES),
+            operations=list(LEGACY_OPERATIONS),
             expires_at=timezone.now() + timedelta(hours=1),
         )
         session_model.objects.using(alias).create(
@@ -741,7 +748,7 @@ def _seed_legacy_clinic(wrapper: DatabaseWrapper) -> None:  # noqa: PLR0915
             patient=patient,
             enrollment=enrollment,
             grant=grant,
-            operations=list(PATIENT_OPERATION_VALUES),
+            operations=list(LEGACY_OPERATIONS),
             expires_at=timezone.now() + timedelta(hours=1),
             idle_expires_at=timezone.now() + timedelta(minutes=30),
         )

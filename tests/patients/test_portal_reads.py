@@ -227,7 +227,8 @@ def test_rollback_flag_serves_the_retained_v1_home_and_destinations(
         *(
             reverse(destination.url_name)
             for destination in DESTINATIONS
-            if destination.key not in {"results", "preferences", "data-requests"}
+            if destination.key
+            not in {"results", "messages", "preferences", "data-requests"}
         ),
     )
     with runtime_role():

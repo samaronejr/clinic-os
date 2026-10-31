@@ -319,10 +319,69 @@
   padding-left: var(--space-5);
 }
 
+/* Messages: the clinic team's messages on the start side, this portal's own on
+   the end side as sunken paper, the mirror of the staff thread; text keeps its
+   line breaks and long words wrap. */
+
+.portal-thread-section {
+  margin-bottom: var(--density-stack);
+}
+
+.portal-thread {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-thread-item {
+  max-width: var(--measure-narrow);
+  padding: var(--space-3) var(--space-4);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.portal-thread-item--clinic {
+  justify-self: start;
+}
+
+.portal-thread-item--patient {
+  justify-self: end;
+  background: var(--color-surface-sunken);
+}
+
+.portal-thread-meta {
+  margin: 0 0 var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.portal-thread-body,
+.portal-thread-draft {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.portal-reply textarea {
+  width: 100%;
+}
+
 .portal-switch {
   display: grid;
   gap: var(--space-2);
   margin: var(--space-3) 0 0;
+}
+
+@media (max-width: 48rem) {
+  .portal-thread-item {
+    max-width: none;
+    justify-self: stretch;
+  }
 }
 
 @media (min-width: 48rem) {

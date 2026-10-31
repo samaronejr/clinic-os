@@ -216,8 +216,50 @@ orphans a live thread.
 
 ### Portal
 
-The portal channel is a valid outbox channel (additive), but patient-originated
-portal messages arrive with todo 50.
+The portal channel is the in-app thread. Staff open one for an enrollment from
+the inbox ("Start a conversation", channel Portal) and send free text; the outbox
+operation succeeds without leaving the system (`PortalInboxAdapter`), and only
+then does the patient see the message. Comms owns both sides: the staff pages
+above and the patient page `/patient/messages/` (`comms:patient-messages`,
+`portal_views.py` over `portal_messages.py` and
+`migrations/_portal_messages_sql.py`). The intake portal only lists it as its
+`messages` destination (todo 50).
+
+- **Who reads and replies.** A patient session that holds the `messages`
+  operation, or a verified, active delegate whose grant names `messages` and the
+  `care_processing` purpose (the effective scope of
+  `clinic_app.current_patient_authority`). New invitations grant `messages`;
+  invitations and sessions issued before it do not, and the patient needs a new
+  invitation. A delegate reads every portal thread of the represented patient:
+  threads carry no confidentiality flag, so staff keep representative-restricted
+  content out of the portal channel.
+- **What the patient sees.** The portal threads of the session's effective
+  enrollment, latest message first (at most 50 threads, and the newest 200
+  messages of a thread): its own side of each thread and the clinic messages
+  whose latest outbox operation succeeded or delivered. Queued, cancelled and
+  failed messages, internal notes, suggestions and every other channel stay out.
+  Times render in the clinic's zone; nothing is cached in the browser.
+- **Replies.** The patient replies in a thread that is not closed, and a pending
+  thread reopens. Starting a thread stays with staff. The thread selector and a
+  per-page form key travel in the POST body: a repeated key returns the original
+  receipt, other text under the same key is a conflict, and a closed thread
+  refuses the reply and shows its text back. `clinic_app.comms_patient_reply`
+  stores it as an inbound message (`event_id` `portal:<key>`, no sender, no
+  command) with the tenant envelope, triaged by `classify_inbound` as provider
+  inbound is (clinical or urgent text sets `needs_clinician`, which only rises),
+  and opens no service window. The message guard repeats the rule: an inbound
+  portal row needs the live patient session of the thread's enrollment and a
+  thread that is not closed, and refuses any staff actor.
+- **Denial and audit.** Unknown, foreign-patient, foreign-clinic and malformed
+  selectors render one access gate. A reply appends
+  `comms.portal.reply_received`, and `comms.portal.escalated` when it first flags
+  the thread, with the patient session as actor and only `clinic_id` and
+  `object_verb` in the payload. Reading is not audited, as on the other portal
+  pages.
+- **Staff side.** The reply shows in the staff thread as the patient's and
+  publishes the `clinic:<id>:messages` hint (and the Clinical Inbox hint when it
+  is clinical). A representative's reply reads the same there; its audit row's
+  session tells them apart. The patient page has no live updates.
 
 ### Staff entry points
 
@@ -262,3 +304,7 @@ Each item is known and not scheduled; none is needed for the acceptance or QA pa
   remove the shared key.
 - **Failed-contract rehearsal.** The rollback rehearsal for migration 0008 is not
   recorded; its rollback is a restore (the migration is irreversible by design).
+- **Portal follow-ups.** Patients cannot start a portal thread, staff see no read
+  receipt for portal messages, a thread cannot be restricted from representatives,
+  and browser notifications stay unavailable (`PUSH_NOTICE` in
+  `apps/intake/portal.py`, BLOCKED-ON-EG).

@@ -3,6 +3,9 @@
 Beyond the reply and delivery paths it covers the staff entry points: live updates
 through the realtime hint, linking a verified number to a patient, starting a care
 thread from the care team and quick replies. ``inbox.webm`` records the happy path.
+The portal journey (todo 50) has reception start a portal thread, the patient read
+the accepted message and reply on a phone-width page while the staff thread updates
+live, then meet the closed thread and a tampered selector.
 """
 
 from __future__ import annotations
@@ -12,10 +15,12 @@ import re
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from django.utils.translation import gettext, pgettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
@@ -42,6 +47,14 @@ from renewal.browser.test_availability import (
 )
 from renewal.browser.test_contacts import _open_contacts, _save_destination, _verify
 from renewal.browser.test_passkeys import _organization_admin
+from renewal.browser.test_patient_access import _redeem, _watch_errors
+from renewal.browser.test_portal import (
+    ALL_OPERATIONS,
+    _context,
+    _grant,
+    _no_browser_storage,
+    _small_targets,
+)
 from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
 
 if TYPE_CHECKING:
@@ -53,6 +66,7 @@ __all__ = ("availability_staff",)
 OK = 200
 FORBIDDEN = 403
 NOT_FOUND = 404
+CONFLICT = 409
 ADMINISTRATIVE = "Qual o horário de funcionamento?"
 CLINICAL = "Posso tomar o remédio com café?"
 
@@ -596,3 +610,157 @@ def test_quick_replies_fill_the_composer_and_send_nothing(
     )
     assert count(provider, "comms_message", "direction='out'") == 0
     _capture(page, root, "quick-reply", 1280)
+
+
+PORTAL_TEXT = "Olá! Sua consulta de amanhã às 9h está confirmada."
+PORTAL_REPLY = "Obrigado, estarei aí às 9h."
+PORTAL_LATE = "Posso levar um acompanhante?"
+
+
+def _portal_access(staff: dict[str, str], enrollment: str) -> str:
+    """Seed one invitation holding every patient operation for the enrollment."""
+    code = new_access_code()
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        row = conn.execute(
+            "SELECT patient_id FROM clinic_app.intake_patientclinicenrollment "
+            "WHERE id=%s",
+            [enrollment],
+        ).fetchone()
+        assert row is not None
+        data = {"patient": str(row[0]), "enrollment": enrollment}
+        _grant(conn, staff, data, ALL_OPERATIONS, code)
+    return code
+
+
+def _portal_inbound(staff: dict[str, str], enrollment: str) -> int:
+    """Count the patient-side messages of the enrollment's portal threads."""
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        row = conn.execute(
+            "SELECT count(*) FROM clinic_app.comms_message m "
+            "JOIN clinic_app.comms_conversation c ON c.id=m.conversation_id "
+            "WHERE c.enrollment_id=%s AND c.channel='portal' AND m.direction='in'",
+            [enrollment],
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def _portal_check(page: Page, base: str, root: Path, state: str) -> None:
+    report = check_page(page, base, root, f"messages-portal-{state}")
+    assert report["violations"] == 0, report
+    assert _small_targets(page) == []
+    _no_browser_storage(page)
+    _capture(page, root, f"portal-{state}", 375)
+
+
+def _start_portal_thread(
+    page: Page, base: str, staff: dict[str, str], name: str, directory: Path
+) -> None:
+    """Reception starts a portal thread and the worker accepts its first message."""
+    goto_settled(page, _inbox(staff, base))
+    page.locator("#start-query").fill(name)
+    click_to_navigate(page.get_by_role("button", name=gettext("Search patients")))
+    candidate = page.locator(".candidate", has_text=name)
+    candidate.locator("select[name=channel]").select_option("portal")
+    candidate.locator("select[name=purpose]").select_option("transactional")
+    click_to_navigate(
+        candidate.get_by_role("button", name=re.compile(gettext("Start conversation")))
+    )
+    expect(
+        page.locator("[data-conversation][data-purpose=transactional]")
+    ).to_be_visible()
+    _reply(page, PORTAL_TEXT)
+    operation, _ = latest_operation(staff)
+    assert run_worker(staff, operation, "sent", directory) == ["succeeded"]
+    reload_settled(page)
+    expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "sent")
+
+
+def _read_and_reply(patient: Page, staff_page: Page, base: str, root: Path) -> None:
+    """The patient reads the accepted message and replies; staff see it live."""
+    click_to_navigate(patient.locator("#messages-link"))
+    expect(patient.locator("[data-portal-conversation]")).to_have_count(1)
+    _portal_check(patient, base, root, "list")
+    click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+    # The thread is a POST response: no selector ever reaches the URL.
+    assert patient.url == f"{base}/patient/messages/"
+    expect(patient.locator('[data-portal-message-from="clinic"]')).to_contain_text(
+        PORTAL_TEXT
+    )
+    _portal_check(patient, base, root, "thread")
+    expect(staff_page.locator("[data-realtime-topic]")).to_have_attribute(
+        "data-realtime-state", "connected"
+    )
+    _settle_live_region(staff_page)
+    staff_page.evaluate("() => { window.sameThread = true; }")
+    patient.locator("#reply-body").fill(PORTAL_REPLY)
+    click_to_navigate(patient.locator("[data-portal-reply-send]"))
+    expect(patient.locator("[data-portal-reply-sent]")).to_be_visible()
+    expect(patient.locator('[data-portal-message-from="patient"]')).to_contain_text(
+        PORTAL_REPLY
+    )
+    _portal_check(patient, base, root, "replied")
+    # The reply reaches the open staff thread through the realtime hint.
+    expect(staff_page.locator(".thread__item--in")).to_contain_text(PORTAL_REPLY)
+    assert staff_page.evaluate("window.sameThread") is True
+
+
+def _closed_then_forged(patient: Page, staff_page: Page, base: str, root: Path) -> None:
+    """A send into a closed thread keeps its text; a forged selector gets the gate."""
+    click_to_navigate(
+        staff_page.get_by_role("button", name=gettext("Close conversation"))
+    )
+    patient.locator("#reply-body").fill(PORTAL_LATE)
+    refused = click_to_navigate(patient.locator("[data-portal-reply-send]"))
+    assert refused is not None
+    assert refused.status == CONFLICT
+    expect(patient.locator("[data-portal-thread-closed]")).to_be_visible()
+    expect(patient.locator("[data-portal-reply-form]")).to_have_count(0)
+    expect(patient.locator("[data-portal-unsent]")).to_contain_text(PORTAL_LATE)
+    _portal_check(patient, base, root, "closed")
+    click_to_navigate(patient.locator("[data-portal-back-link]"))
+    expect(patient.locator('[data-portal-conversation-state="closed"]')).to_have_count(
+        1
+    )
+    patient.locator('input[name="conversation_id"]').evaluate(
+        "(input, forged) => { input.value = forged; }", str(uuid4())
+    )
+    forged = click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+    assert forged is not None
+    assert forged.status == FORBIDDEN
+    expect(patient.locator('[data-patient-gate="required"]')).to_be_visible()
+
+
+def test_a_patient_reads_and_replies_in_a_portal_thread_the_clinic_opened(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    directory = root / "messages"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    operator = _organization_admin(staff)["id"]
+    grant_messages(staff, operator, staff["receptionist_id"], directory)
+    page = renewal_page
+    name = _new_name()
+    _sign_in_receptionist(page, base, staff)
+    enrollment = _register_patient(page, base, staff, name)
+    code = _portal_access(staff, enrollment)
+    _start_portal_thread(page, base, staff, name, directory)
+    browser = page.context.browser
+    assert browser is not None
+    with _context(browser, 375) as patient_context:
+        patient = patient_context.new_page()
+        errors = _watch_errors(patient)
+        _redeem(patient, base, staff["clinic_a"], code)
+        _read_and_reply(patient, page, base, root)
+        assert errors == []
+        _closed_then_forged(patient, page, base, root)
+    assert _portal_inbound(staff, enrollment) == 1

@@ -273,6 +273,7 @@ PATIENT_OPERATION_VALUES: Final = [
     "consent",
     "teleconsult",
     "billing",
+    "messages",
 ]
 
 

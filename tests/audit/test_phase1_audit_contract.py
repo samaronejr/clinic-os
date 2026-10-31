@@ -1778,6 +1778,18 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "comms.template_version",
         "status_applied",
     ),
+    "comms.portal.reply_received": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "received",
+    ),
+    "comms.portal.escalated": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "escalated",
+    ),
     "comms.suggestion.decided": (
         "tenant",
         "clinic-os-web",

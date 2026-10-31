@@ -429,6 +429,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "comms.inbound.template_status_applied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "comms.template_version", "status_applied"
         ),
+        "comms.portal.reply_received": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "received"
+        ),
+        "comms.portal.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.conversation", "escalated"
+        ),
         "comms.suggestion.decided": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "comms.suggested_reply", "decided"
         ),
