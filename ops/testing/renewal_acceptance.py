@@ -223,7 +223,7 @@ def _binding_failures(
 
 
 def _python_bindings(workflow: str) -> list[str]:
-    """Require the closed two-version, two-shard matrix and both merge legs."""
+    """Require the closed version-by-shard matrix and both merge legs."""
     blocks = list(JOB_BLOCK.finditer(workflow))
     jobs = {
         match.group(1): workflow[
@@ -264,7 +264,7 @@ def _python_bindings(workflow: str) -> list[str]:
             )
         if "name: Python ${{ matrix.python-version }}" not in block:
             failures.append(f"workflow {job} Python job name is not machine-parseable")
-    if "shard ${{ matrix.shard }}/2" not in jobs.get("test", ""):
+    if f"shard ${{{{ matrix.shard }}}}/{len(SHARDS)}" not in jobs.get("test", ""):
         failures.append("workflow Python shard job names omit the shard identity")
     if "    needs: [test]" not in jobs.get("python-coverage", ""):
         failures.append("workflow Python coverage does not require every test shard")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from typing import TYPE_CHECKING
 
@@ -45,7 +46,8 @@ def test_partition_is_order_independent_balanced_and_exactly_once() -> None:
     assert sorted(flattened) == sorted(reference)
     assert len(set(flattened)) == len(reference)
     for phase in PHASES:
-        assert not set(selected[1][phase]) & set(selected[2][phase])
+        for first, second in itertools.combinations(SHARDS, 2):
+            assert not set(selected[first][phase]) & set(selected[second][phase])
         largest = max(
             sum(
                 node.startswith(f"tests/{name}.py::") for node in selected[shard][phase]
@@ -53,7 +55,8 @@ def test_partition_is_order_independent_balanced_and_exactly_once() -> None:
             for name in "abcde"
             for shard in SHARDS
         )
-        assert abs(len(selected[1][phase]) - len(selected[2][phase])) <= largest
+        sizes = [len(selected[shard][phase]) for shard in SHARDS]
+        assert max(sizes) - min(sizes) <= largest
         for name in "abcde":
             assert (
                 sum(
@@ -92,10 +95,10 @@ def evidence(tmp_path: Path) -> Path:
 
 def test_complete_shards_prove_population_census_and_catalogs(evidence: Path) -> None:
     shards, proof = artifacts.load_version(evidence, "3.12")
-    assert len(shards) == 2
+    assert [shard.shard for shard in shards] == list(SHARDS)
     assert proof["reference_count"] == len(REFERENCE)
     assert proof["union_equals_reference"] is True
-    assert proof["catalog_certificates"] == 2
+    assert proof["catalog_certificates"] == len(SHARDS)
     refusal = proof["refusal"]
     assert isinstance(refusal, dict)
     assert refusal["exits"] == refusal["seen"] == EXITS
@@ -142,7 +145,7 @@ def test_every_shard_identity_and_artifact_is_required(
     if case == "missing":
         root.rename(root.with_name("absent"))
     elif case == "extra":
-        root.with_name("renewal-python-py3.12-shard-3").mkdir()
+        root.with_name(f"renewal-python-py3.12-shard-{max(SHARDS) + 1}").mkdir()
     else:
         path = root / "manifest.json"
         manifest = json.loads(path.read_text())

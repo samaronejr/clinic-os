@@ -28,11 +28,14 @@ REFERENCE = (
     "tests/a.py::test_two[synthetic-secret-should-not-publish]",
     "tests/b.py::test_three",
     "tests/b.py::test_four",
+    "tests/e.py::test_five",
     "tests/c.py::test_serial",
     "tests/d.py::test_serial",
+    "tests/f.py::test_serial",
 )
-SERIAL: set[str] = set(REFERENCE[-2:])
-EXITS = ["apps/core/workspace.py:1 (raise)", "apps/core/workspace.py:2 (raise)"]
+# Every shard runs both phases and observes exactly one of the derived exits.
+SERIAL: set[str] = {nodeid for nodeid in REFERENCE if nodeid.endswith("::test_serial")}
+EXITS = [f"apps/core/workspace.py:{number} (raise)" for number in SHARDS]
 
 
 def write_json(path: Path, value: JsonObject) -> None:
@@ -78,8 +81,7 @@ def write_python_artifacts(
             collected: JsonObject = {
                 "items": [*REFERENCE],
                 "manifest": {
-                    "tests/c.py": [REFERENCE[-2]],
-                    "tests/d.py": [REFERENCE[-1]],
+                    nodeid.split("::", 1)[0]: [nodeid] for nodeid in sorted(SERIAL)
                 },
             }
             write_json(work / "collected.json", collected)
