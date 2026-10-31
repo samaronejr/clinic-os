@@ -26,6 +26,8 @@ from identity import legacy_view_boundaries as views
 from identity.cut1_authority_census import run_cut1_census
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
+from identity.legacy_comms_boundaries import BOUNDARIES as COMMS_BOUNDARIES
+from identity.legacy_comms_boundaries import seed_comms
 from identity.legacy_guard_inventory import declared_probes, discover
 from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
 from identity.legacy_lifecycle_boundaries import BOUNDARIES as LIFECYCLE_BOUNDARIES
@@ -67,6 +69,7 @@ CORE = (
     *WORKSPACE_BOUNDARIES,
     *LIFECYCLE_BOUNDARIES,
     *RECEPTION_BOUNDARIES,
+    *COMMS_BOUNDARIES,
 )
 
 
@@ -197,6 +200,8 @@ def test_actual_legacy_boundaries(
         subject = reception_world(subject)
     if family == "workspace_admission":
         registration(rbac_graph, rbac_graph.physician, rbac_graph.clinic_a)
+    if family == "comms":
+        seed_comms(subject)
     if family == "lifecycle":
         with override_settings(COMMS_SYNTHETIC_CHANNELS=("email",)):
             subject = lifecycle_world(
@@ -229,16 +234,13 @@ def test_new_permission_admissions_execute_all_remaining_staff_roles(
     record_property: Callable[[str, object], None],
 ) -> None:
     subject = reception_world(world(rbac_graph, role))
-    for boundary in (*WORKSPACE_BOUNDARIES, *RECEPTION_BOUNDARIES):
+    seed_comms(subject)
+    boundaries = (*WORKSPACE_BOUNDARIES, *RECEPTION_BOUNDARIES, *COMMS_BOUNDARIES)
+    for boundary in boundaries:
         exercise(boundary, subject)
     record_property(
         "executed_authority_probes",
-        json.dumps(
-            [
-                boundary.symbol
-                for boundary in (*WORKSPACE_BOUNDARIES, *RECEPTION_BOUNDARIES)
-            ]
-        ),
+        json.dumps([boundary.symbol for boundary in boundaries]),
     )
 
 

@@ -59,6 +59,19 @@ ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
 # clinical roles whose bundle carries it; every item is rechecked per patient.
 INBOX_ROUTE: Final = frozenset(INBOX_ROLES)
 
+# The staff inbox admits the roles that handle a thread's purpose; the thread
+# itself rechecks the exact role and, for care, patient-scoped authority.
+MESSAGES_ROUTE: Final = frozenset(
+    {
+        _ROLE.CLINIC_ADMIN,
+        _ROLE.CLINIC_MANAGER,
+        _ROLE.RECEPTIONIST,
+        _ROLE.SCHEDULER,
+        _ROLE.NURSE,
+        _ROLE.PHYSICIAN,
+    }
+)
+
 _AGENDA_READ: Final = ("appointment.read", "appointment.read_own")
 _CONFIGURATION: Final = ("configuration.clinic", "configuration.organization")
 
@@ -214,9 +227,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "messages",
         gettext_noop("Messages"),
-        None,
+        "comms:inbox",
         ("demographics.read",),
-        owner_todo=51,
+        route_roles=MESSAGES_ROUTE,
+        views=frozenset({"comms:inbox", "comms:conversation"}),
     ),
     Destination(
         "finance",

@@ -744,6 +744,14 @@
       ]
     },
     {
+      "symbol": "apps.audit.services._record_comms_ingest_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Machine ingest audit append for the authenticated provider principal. clinic_app.comms_audit_scope proves the record belongs to the active account of the current principal and tenant and refuses any call that carries a staff user; clinic_app.comms_ingest_audit then appends with the principal as actor. Neither function reads a staff role, membership or permission table, and both have sql_guards entries. The machine-ingest audit tests in tests/comms/test_inbox.py cover the appended rows and the foreign and replayed refusals."
+    },
+    {
       "symbol": "apps.audit.services._record_delegate_event",
       "signals": [
         "resolver"
@@ -923,6 +931,193 @@
       "probes": [
         "apps.billing.views.invoice_status"
       ]
+    },
+    {
+      "symbol": "apps.comms.inbox_feed.question_items",
+      "signals": [
+        "membership",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_feed.question_items"
+      ],
+      "reason": "Clinical inbox feed: returns open clinician-flagged threads only when the actor holds a nurse or physician role in the clinic, and care threads additionally pass require_permission clinical.read for their patient. Executed against a seeded flagged thread for every stored role, in the clinic that holds the role and in a foreign clinic, in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_inbound.inbound_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Resolves the stored scope of a signed provider delivery. The account proof is authenticated before this runs, and clinic_app.comms_resolve_inbound again requires the stored digest to match and refuses any staff user, patient session or already-set principal; it reads no staff table and the context never borrows a staff actor. test_forged_webhook_is_rejected_before_any_scope_query and test_payload_naming_another_account_or_clinic_is_ignored in tests/comms/test_inbox.py cover it."
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.care_team_patients",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Lists the signed-in clinician's own active care-team patients so a care thread can start from a patient they already serve. The role decision is _actor with the clinician roles, which also refuses any other role and a foreign clinic; demographics.read gates the names, and the care-team query is bound to the actor's own user id. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py, and the list itself is executed there too.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.is_clinician",
+      "signals": [
+        "actor",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_queries.is_clinician"
+      ],
+      "reason": "Reports whether the actor holds a nurse or physician role in the clinic, and False without an actor. It only decides which clinician controls the inbox pages show; the commands behind them decide for themselves (clear_clinician_flag calls _actor with the clinician roles). Executed for every stored role in the clinic that holds the role and in a foreign clinic in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.list_conversations",
+      "signals": [
+        "actor",
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "The role decision is visible_purposes, which this function calls first and which yields no purpose, hence the inbox denial, for an actor without a role that opens one; care threads additionally pass require_permission clinical.read per patient before a row is listed. visible_purposes is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_queries.visible_purposes"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.visible_purposes",
+      "signals": [
+        "actor",
+        "denial",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_queries.visible_purposes"
+      ],
+      "reason": "Computes which thread purposes (transactional, care, marketing) the actor's stored roles in the clinic open; an actor with none gets an empty set, which list_conversations turns into the inbox denial. Each purpose is executed for every stored role in the clinic that holds it and in a foreign clinic in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._actor",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_services._actor"
+      ],
+      "reason": "The inbox's single role gate: binds the signed-in actor to the stored clinic roles a purpose allows (managers, clinicians or all inbox staff) through require_current_actor_clinic_roles and maps every refusal to the shared inbox denial. The manager and clinician role sets are executed for every stored role, in the clinic that holds the role and in a foreign clinic, in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._clinic_organization",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Looks up the organization of a clinic id after its callers (create_template_version and create_quick_reply) have passed _actor for that clinic; an unknown clinic raises the shared inbox denial. It reads no staff authority and grants no access."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._conversation",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Loads a thread the actor may handle. Authority is _actor with the thread purpose's roles and, for care threads, require_permission clinical.read for the enrollment; an unknown or foreign thread raises the same inbox denial. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services._terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Resolves a template in the clinic and renders the exact text a send would carry; an unknown or foreign template raises the shared inbox denial. send_message passes _conversation, which decides authority, before calling it, and the function reads no staff authority."
+    },
+    {
+      "symbol": "apps.comms.inbox_services.assign_conversation",
+      "signals": [
+        "denial",
+        "membership"
+      ],
+      "kind": "delegated",
+      "reason": "Authority comes from _conversation (the purpose's roles through _actor, plus clinical.read on care threads). Its own UserClinicRole query only validates the chosen assignee, who must hold a role that may handle the thread's purpose or the inbox denial is raised; that check grants the acting user nothing. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.link_conversation_to_patient",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Authority comes from _conversation on the thread; promoting it to a care thread additionally calls _actor with the clinician roles and require_permission clinical.read for the patient's enrollment. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.open_conversation",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Calls _actor with the requested purpose's roles before it reads the enrollment; care threads additionally pass require_permission clinical.read for the enrollment, and marketing threads need a recorded opt-in. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.retry_message",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Finds the failed message in the clinic, then authority comes from _conversation on its thread (the purpose's roles through _actor, plus clinical.read on care threads); an unknown or foreign message raises the shared inbox denial. The worker rechecks the window and approval before anything is sent. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.set_template_approval",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Manager-only: calls _actor with the manager roles (clinic_admin, clinic_manager) before touching the template, and refuses WhatsApp templates because only the authenticated provider status event approves them. The manager role set of _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_views._assign",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "reason": "View helper that only forwards the POST to assign_conversation, which decides authority through _conversation and _actor; current_actor_id merely names the acting user when the form picks 'me'. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.suggestions._suggestion",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Locks a proposed suggestion in the clinic; unknown, foreign and already-decided suggestions raise the shared inbox denial. Every caller then decides authority through _conversation before any write (use_suggestion through send_message, discard_suggestion directly), inside the same transaction, so the lookup grants nothing."
     },
     {
       "symbol": "apps.comms.views.reminders_view",
@@ -8047,6 +8242,11 @@
     "apps.billing.views.charges_workspace",
     "apps.billing.views.invoice_detail",
     "apps.billing.views.invoice_status",
+    "apps.comms.inbox_feed.question_items",
+    "apps.comms.inbox_queries.care_team_patients",
+    "apps.comms.inbox_queries.is_clinician",
+    "apps.comms.inbox_queries.visible_purposes",
+    "apps.comms.inbox_services._actor",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
     "apps.consent.services._patient_lineage#cut1",
@@ -8582,6 +8782,17 @@
         "clinic_admin",
         "owner",
         "receptionist"
+      ]
+    },
+    {
+      "path": "apps/comms/inbox_services.py",
+      "function": "_actor",
+      "roles": "roles",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
       ]
     },
     {
@@ -10422,6 +10633,104 @@
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
     },
+    "clinic_app.comms_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_ingest_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_account": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_open_window"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, channel_name text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_open_window": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "conversation uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_resolve_inbound": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "account uuid, proof text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
     "clinic_app.comms_operation_callback_scope": {
       "discovery": {
         "migrations": [
@@ -11115,6 +11424,9 @@
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
+          "clinic_app.comms_ingest_account",
+          "clinic_app.comms_ingest_audit",
+          "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
           "clinic_app.data_request_audit",
           "clinic_app.data_request_emit_task",

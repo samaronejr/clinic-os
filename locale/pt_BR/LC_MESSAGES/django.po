@@ -8097,3 +8097,375 @@ msgstr "Seus resultados · Clinic OS"
 
 msgid "No response"
 msgstr "Sem resposta"
+
+msgid "Open conversation"
+msgstr "Abrir conversa"
+
+msgid "Patient question awaiting a clinician"
+msgstr "Pergunta de paciente aguardando um profissional"
+
+msgid "Patient questions"
+msgstr "Perguntas de pacientes"
+
+msgid "Synthetic integration: messages are simulated and never reach a real provider. Sent, delivered and read states here come from simulated acknowledgements, not from real delivery."
+msgstr "Integração sintética: as mensagens são simuladas e nunca chegam a um provedor real. Os estados enviada, entregue e lida aqui vêm de confirmações simuladas, não de entrega real."
+
+msgctxt "conversation purpose"
+msgid "Care"
+msgstr "Cuidado"
+
+msgctxt "conversation state"
+msgid "Closed"
+msgstr "Encerrada"
+
+msgid "Portal"
+msgstr "Portal"
+
+msgctxt "conversation purpose"
+msgid "Transactional"
+msgstr "Transacional"
+
+msgid "Assignment updated."
+msgstr "Atribuição atualizada."
+
+msgid "Conversation opened."
+msgstr "Conversa iniciada."
+
+msgid "Internal note saved."
+msgstr "Nota interna salva."
+
+msgid "Link the patient through a verified contact first."
+msgstr "Vincule o paciente por um contato verificado primeiro."
+
+msgid "Marketing can only be sent with an approved template."
+msgstr "Marketing só pode ser enviado com modelo aprovado."
+
+msgid "Message queued for sending."
+msgstr "Mensagem na fila de envio."
+
+msgid "No marketing consent is on record."
+msgstr "Não há consentimento de marketing registrado."
+
+msgid "No patient found for that name."
+msgstr "Nenhum paciente encontrado com esse nome."
+
+msgid "No provider account is configured for this channel."
+msgstr "Não há conta de provedor configurada para este canal."
+
+msgid "Only a message that failed can be sent again."
+msgstr "Só é possível reenviar uma mensagem que falhou."
+
+msgid "Question taken by the clinical team."
+msgstr "Pergunta assumida pela equipe clínica."
+
+msgid "Resend queued."
+msgstr "Reenvio colocado na fila."
+
+msgid "Review the text or the template parameters."
+msgstr "Revise o texto ou os parâmetros do modelo."
+
+msgid "Reviewed message queued for sending."
+msgstr "Mensagem revisada colocada na fila de envio."
+
+msgid "Status updated."
+msgstr "Situação atualizada."
+
+msgid "Suggestion discarded."
+msgstr "Sugestão descartada."
+
+msgid "Suggestion ready for review. Nothing was sent."
+msgstr "Sugestão pronta para revisão. Nada foi enviado."
+
+msgid "Suggestion unavailable. Continue manually."
+msgstr "Sugestão indisponível. Continue manualmente."
+
+msgid "That conversation state is not valid."
+msgstr "Essa situação de conversa não é válida."
+
+msgid "The WhatsApp 24-hour window has ended. Send an approved template."
+msgstr "A janela de 24 horas do WhatsApp terminou. Envie um modelo aprovado."
+
+msgid "The action could not be completed."
+msgstr "Não foi possível concluir a ação."
+
+msgid "The conversation already exists."
+msgstr "A conversa já existe."
+
+msgid "The conversation changed. Refresh and try again."
+msgstr "A conversa mudou. Atualize e tente novamente."
+
+msgid "The conversation is already linked to a patient."
+msgstr "A conversa já está vinculada a um paciente."
+
+msgid "The conversation is closed."
+msgstr "A conversa está encerrada."
+
+msgid "The patient's contact is not verified."
+msgstr "O contato do paciente não está verificado."
+
+msgid "The suggestion was discarded because it contained clinical advice."
+msgstr "A sugestão foi descartada por conter orientação clínica."
+
+msgid "The template belongs to another channel."
+msgstr "O modelo pertence a outro canal."
+
+msgid "The template does not fit the purpose of the conversation."
+msgstr "O modelo não combina com a finalidade da conversa."
+
+msgid "This channel and purpose cannot start a conversation."
+msgstr "Este canal e esta finalidade não permitem iniciar uma conversa."
+
+msgid "This channel does not accept that purpose."
+msgstr "Este canal não aceita essa finalidade."
+
+msgid "This conversation cannot be linked to a patient."
+msgstr "Esta conversa não pode ser vinculada a um paciente."
+
+msgid "This conversation's number is not the patient's verified contact."
+msgstr "O número desta conversa não é o contato verificado do paciente."
+
+msgid "This message does not allow an automatic suggestion."
+msgstr "Esta mensagem não admite sugestão automática."
+
+msgid "This send was already made with different content."
+msgstr "Este envio já foi feito com outro conteúdo."
+
+msgid "This template is not approved by the provider."
+msgstr "Este modelo não está aprovado pelo provedor."
+
+msgid "Type at least two letters of the patient's full name."
+msgstr "Digite ao menos duas letras do nome completo do paciente."
+
+msgid "Your role cannot search patients here. Ask reception to link this number."
+msgstr "Seu papel não pode buscar pacientes aqui. Peça à recepção para vincular este número."
+
+msgid "A number is linked only to a patient whose contact for this channel is verified and is this number."
+msgstr "Um número só é vinculado a um paciente cujo contato neste canal está verificado e é este número."
+
+msgid "A quick reply only fills the message box. Review and send it yourself."
+msgstr "A resposta rápida só preenche a caixa de mensagem. Revise e envie você mesmo."
+
+msgid "Ask for a suggested reply"
+msgstr "Pedir sugestão de resposta"
+
+msgid "Back to messages"
+msgstr "Voltar às mensagens"
+
+msgid "Check or verify the contact"
+msgstr "Conferir ou verificar o contato"
+
+msgid "Close conversation"
+msgstr "Encerrar"
+
+msgid "Closed. On WhatsApp, only an approved template can be sent until the patient writes again."
+msgstr "Encerrada. No WhatsApp, só é possível enviar um modelo aprovado até o paciente escrever de novo."
+
+msgctxt "inbox"
+msgid "Conversation"
+msgstr "Conversa"
+
+msgctxt "delivery state"
+msgid "Delivered"
+msgstr "Entregue"
+
+msgid "Discard suggestion"
+msgstr "Descartar sugestão"
+
+msgid "Generated by AI for administrative text. Nothing is sent without your confirmation."
+msgstr "Gerada por IA para texto administrativo. Nada é enviado sem a sua confirmação."
+
+msgctxt "inbox"
+msgid "Handling"
+msgstr "Atendimento"
+
+msgid "Internal notes"
+msgstr "Notas internas"
+
+msgid "Link to a patient"
+msgstr "Vincular a um paciente"
+
+msgid "Link to this patient"
+msgstr "Vincular a este paciente"
+
+msgid "Mark as pending"
+msgstr "Marcar pendente"
+
+msgctxt "inbox"
+msgid "Message"
+msgstr "Mensagem"
+
+msgid "Move to a care conversation"
+msgstr "Mover para uma conversa de cuidado"
+
+msgid "New note"
+msgstr "Nova nota"
+
+msgid "No messages yet."
+msgstr "Nenhuma mensagem ainda."
+
+msgid "No notes."
+msgstr "Nenhuma nota."
+
+msgctxt "delivery state"
+msgid "Not sent"
+msgstr "Não enviada"
+
+msgid "Number not linked to a patient yet: no clinical data is shown or sent."
+msgstr "Número ainda não vinculado a um paciente: nenhum dado clínico é exibido ou enviado."
+
+msgid "Open until %(until)s. Free text allowed."
+msgstr "Aberta até %(until)s. Texto livre permitido."
+
+msgid "Parameter %(slot)s"
+msgstr "Parâmetro %(slot)s"
+
+msgid "Patient linked through a verified contact."
+msgstr "Paciente vinculado por contato verificado."
+
+msgid "Question forwarded to the clinical team"
+msgstr "Pergunta encaminhada à equipe clínica"
+
+msgctxt "delivery state"
+msgid "Queued"
+msgstr "Na fila"
+
+msgid "Quick replies"
+msgstr "Respostas rápidas"
+
+msgctxt "delivery state"
+msgid "Read"
+msgstr "Lida"
+
+msgid "Remove assignee"
+msgstr "Remover responsável"
+
+msgctxt "inbox"
+msgid "Reopen"
+msgstr "Reabrir"
+
+msgctxt "inbox"
+msgid "Reply"
+msgstr "Responder"
+
+msgid "Save note"
+msgstr "Salvar nota"
+
+msgctxt "inbox"
+msgid "Send"
+msgstr "Enviar"
+
+msgid "Send reviewed text"
+msgstr "Enviar texto revisado"
+
+msgid "Send template %(name)s"
+msgstr "Enviar modelo %(name)s"
+
+msgctxt "delivery state"
+msgid "Sent · awaiting confirmation"
+msgstr "Enviada · aguardando confirmação"
+
+msgid "Service window"
+msgstr "Janela de atendimento"
+
+msgid "Suggested reply · review required"
+msgstr "Sugestão de resposta · revisão obrigatória"
+
+msgid "Take this question"
+msgstr "Assumir esta pergunta"
+
+msgctxt "message sender"
+msgid "Team"
+msgstr "Equipe"
+
+msgid "Template %(name)s · v%(version)s"
+msgstr "Modelo %(name)s · v%(version)s"
+
+msgid "Text to send (edit if needed)"
+msgstr "Texto a enviar (edite se precisar)"
+
+msgid "This channel has no service window."
+msgstr "Este canal não tem janela de atendimento."
+
+msgid "This text seems to involve clinical advice. Do not reply with clinical advice or use an automatic suggestion; wait for a professional."
+msgstr "Este texto parece envolver orientação clínica. Não responda com orientação clínica nem use sugestão automática; aguarde um profissional."
+
+msgid "Try sending again"
+msgstr "Tentar enviar novamente"
+
+msgid "Unsupported media message. See it in the provider's app."
+msgstr "Mensagem de mídia não suportada. Veja no aplicativo do provedor."
+
+msgid "Visible to staff only; never sent to the patient."
+msgstr "Visíveis só para a equipe; nunca enviadas ao paciente."
+
+msgid "template %(name)s"
+msgstr "modelo %(name)s"
+
+msgid "the message of %(when)s"
+msgstr "a mensagem de %(when)s"
+
+msgctxt "inbox"
+msgid "Assignee"
+msgstr "Responsável"
+
+msgid "Clinical question"
+msgstr "Pergunta clínica"
+
+msgid "Clinical questions"
+msgstr "Perguntas clínicas"
+
+msgctxt "inbox filter"
+msgid "Closed"
+msgstr "Encerradas"
+
+msgid "Conversations · up to the 100 most recent"
+msgstr "Conversas · até 100 mais recentes"
+
+msgid "Filter conversations"
+msgstr "Filtrar conversas"
+
+msgid "Filter your care-team patients by name (optional)"
+msgstr "Filtre os pacientes da sua equipe de cuidado por nome (opcional)"
+
+msgid "Find the patient first. A conversation starts only with a patient contact that is verified for the chosen channel."
+msgstr "Encontre o paciente primeiro. Uma conversa só começa com um contato do paciente verificado no canal escolhido."
+
+msgctxt "inbox filter"
+msgid "Mine"
+msgstr "Minhas"
+
+msgid "No conversation in this filter. Messages received through authorized channels appear here."
+msgstr "Nenhuma conversa neste filtro. Mensagens recebidas pelos canais autorizados aparecem aqui."
+
+msgctxt "inbox filter"
+msgid "Open"
+msgstr "Abertas"
+
+msgctxt "inbox action"
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Patient full name"
+msgstr "Nome completo do paciente"
+
+msgctxt "inbox filter"
+msgid "Pending"
+msgstr "Pendentes"
+
+msgid "Search patients"
+msgstr "Buscar pacientes"
+
+msgid "Show my patients"
+msgstr "Mostrar meus pacientes"
+
+msgid "Start a conversation"
+msgstr "Iniciar uma conversa"
+
+msgid "Start conversation"
+msgstr "Iniciar conversa"
+
+msgid "WhatsApp, email, SMS and portal in one inbox, each conversation with a fixed purpose."
+msgstr "WhatsApp, e-mail, SMS e portal em uma só caixa, cada conversa com uma finalidade fixa."
+
+msgid "conversation with %(label)s"
+msgstr "conversa com %(label)s"

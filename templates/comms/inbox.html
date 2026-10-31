@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Messages" %} · Clinic OS{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-messages.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<section class="messages-shell" aria-labelledby="messages-title" data-messages-inbox
+  data-realtime-topic="clinic:{{ clinic_id }}:messages"
+  data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}"
+  data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <header>
+    <h1 id="messages-title">{% trans "Messages" %}</h1>
+    <p class="lede">{% trans "WhatsApp, email, SMS and portal in one inbox, each conversation with a fixed purpose." %}</p>
+  </header>
+  <p class="feedback" data-synthetic-disclosure>{% trans "Synthetic integration: messages are simulated and never reach a real provider. Sent, delivered and read states here come from simulated acknowledgements, not from real delivery." %}</p>
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  {% if messages %}{% for message in messages %}
+  <p class="feedback{% if message.tags == 'error' %} feedback--error" role="alert"{% else %} feedback--success" role="status"{% endif %}>{{ message }}</p>
+  {% endfor %}{% endif %}
+  <nav class="actions" aria-label="{% trans 'Filter conversations' %}">
+    <a class="button button--secondary" href="?state=open"{% if state == 'open' %} aria-current="page"{% endif %}>{% trans "Open" context "inbox filter" %}</a>
+    <a class="button button--secondary" href="?state=pending"{% if state == 'pending' %} aria-current="page"{% endif %}>{% trans "Pending" context "inbox filter" %}</a>
+    <a class="button button--secondary" href="?state=closed"{% if state == 'closed' %} aria-current="page"{% endif %}>{% trans "Closed" context "inbox filter" %}</a>
+    <a class="button button--quiet" href="?state={{ state }}&amp;mine=1">{% trans "Mine" context "inbox filter" %}</a>
+    {% if clinician %}<a class="button button--quiet" href="?state={{ state }}&amp;clinician=1">{% trans "Clinical questions" %}</a>{% endif %}
+  </nav>
+  <div id="conversation-list" class="table-scroll" role="region" aria-labelledby="messages-caption" tabindex="0" hx-get="{{ request.get_full_path }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#conversation-list &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
+    <table class="table">
+      <caption id="messages-caption">{% trans "Conversations · up to the 100 most recent" %}</caption>
+      <thead><tr><th scope="col">{% trans "Contact" %}</th><th scope="col">{% trans "Channel" %}</th><th scope="col">{% trans "Purpose" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Assignee" context "inbox" %}</th><th scope="col"><span class="visually-hidden">{% trans "Action" %}</span></th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+      <tr data-conversation="{{ row.conversation.pk }}"{% if row.conversation.needs_clinician %} class="table-row--selected"{% endif %}>
+        <th scope="row">{{ row.label }}{% if row.conversation.needs_clinician %} <span class="badge badge--error">{% trans "Clinical question" %}</span>{% endif %}</th>
+        <td>{{ row.channel_label }}</td>
+        <td>{{ row.purpose_label }}</td>
+        <td>{{ row.state_label }}</td>
+        <td>{% if row.conversation.assignee_id %}{% trans "Assigned" %}{% else %}{% trans "Unassigned" %}{% endif %}</td>
+        <td><a class="button button--secondary" href="{% url 'comms:conversation' clinic_id row.conversation.pk %}">{% trans "Open" context "inbox action" %}<span class="visually-hidden"> {% blocktrans with label=row.label %}conversation with {{ label }}{% endblocktrans %}</span></a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="table-empty">{% trans "No conversation in this filter. Messages received through authorized channels appear here." %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if open_purposes %}
+  <section class="panel" aria-labelledby="start-title" data-start-panel>
+    <h2 id="start-title">{% trans "Start a conversation" %}</h2>
+    <p class="hint">{% trans "Find the patient first. A conversation starts only with a patient contact that is verified for the chosen channel." %}</p>
+    <form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="find_patient">
+      <div class="field"><label for="start-query">{% if clinician %}{% trans "Filter your care-team patients by name (optional)" %}{% else %}{% trans "Patient full name" %}{% endif %}</label><input id="start-query" name="q" type="text" maxlength="100" autocomplete="off"{% if not clinician %} required{% endif %}></div>
+      <button class="button--secondary" type="submit">{% if clinician %}{% trans "Show my patients" %}{% else %}{% trans "Search patients" %}{% endif %}</button>
+    </form>
+    {% if choice_notice %}<p role="status" class="feedback">{{ choice_notice }}</p>{% endif %}
+    {% if choices %}
+    <ul class="candidates">
+      {% for choice in choices %}
+      <li class="candidate">
+        <strong>{{ choice.label }}</strong>
+        <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="open"><input type="hidden" name="enrollment_id" value="{{ choice.enrollment_id }}">
+          <div class="field"><label for="channel-{{ choice.enrollment_id }}">{% trans "Channel" %}</label>
+            <select id="channel-{{ choice.enrollment_id }}" name="channel">{% for value, label in open_channels %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="purpose-{{ choice.enrollment_id }}">{% trans "Purpose" %}</label>
+            <select id="purpose-{{ choice.enrollment_id }}" name="purpose">{% for value, label in open_purposes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+          <button type="submit">{% trans "Start conversation" %}<span class="visually-hidden"> {{ choice.label }}</span></button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

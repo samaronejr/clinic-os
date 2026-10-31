@@ -10,6 +10,7 @@ from apps.ai.extraction import collect_extraction, review_extraction, start_extr
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
 from apps.billing.services import create_invoice
+from apps.comms import inbox_services, suggestions
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
 from apps.core.integration import (
@@ -796,3 +797,62 @@ def test_care_boundaries_take_scope_not_actor(
     parameters = signature(entrypoint).parameters
     assert list(parameters) == names
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            inbox_services.send_message,
+            [
+                "clinic_id",
+                "conversation_id",
+                "command_id",
+                "template_version_id",
+                "body",
+                "parameters",
+            ],
+        ),
+        (
+            inbox_services.retry_message,
+            ["clinic_id", "message_id", "command_id"],
+        ),
+        (
+            inbox_services.open_conversation,
+            ["clinic_id", "enrollment_id", "channel", "purpose"],
+        ),
+        (
+            inbox_services.link_conversation_to_patient,
+            [
+                "clinic_id",
+                "conversation_id",
+                "enrollment_id",
+                "expected_revision",
+                "promote_to_care",
+            ],
+        ),
+        (
+            inbox_services.assign_conversation,
+            ["clinic_id", "conversation_id", "assignee_id", "expected_revision"],
+        ),
+        (
+            inbox_services.set_conversation_state,
+            ["clinic_id", "conversation_id", "state", "expected_revision"],
+        ),
+        (
+            inbox_services.add_internal_note,
+            ["clinic_id", "conversation_id", "body"],
+        ),
+        (
+            suggestions.use_suggestion,
+            ["clinic_id", "suggestion_id", "command_id", "body"],
+        ),
+    ],
+)
+def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
