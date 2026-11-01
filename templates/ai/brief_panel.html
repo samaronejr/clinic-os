@@ -1,0 +1,62 @@
+{% load i18n tz ai_chart %}
+<section id="chart-panel" data-chart-state="{{ brief.state }}"{% if surface == "today" %} data-today-brief="{{ brief.state }}"{% endif %}>
+  {% if can_request %}
+  <button class="button button--secondary" type="button" data-drawer-toggle="chart-assistant" aria-controls="chart-assistant" aria-expanded="true">{% trans "Permitted chart assistant" %}</button>
+  <aside class="drawer" id="chart-assistant" data-drawer aria-labelledby="chart-assistant-title">
+    <div class="drawer-header">
+      <h2 class="drawer-title" id="chart-assistant-title">{% trans "Permitted chart assistant" %}</h2>
+      <button class="button--quiet" type="button" data-drawer-close="chart-assistant">{% trans "Close" %}</button>
+    </div>
+    <div class="drawer-body">
+      <p class="hint">{% trans "Synthetic simulation. Source excerpts only; no diagnosis or action. Each question is an isolated turn, retained for at most one day." %}</p>
+      {% if brief.state == "generating" %}
+      <p role="status">{% trans "Generating brief. Continue reviewing the chart manually." %}</p>
+      <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
+        <button type="submit" name="command" value="display">{% trans "Refresh brief" %}</button>
+      </form>
+      {% elif brief.state == "unavailable" %}
+      <p role="status">{% trans "Brief unavailable" %}</p>
+      {% elif brief.answer == "refused" %}
+      <p role="status" data-chart-answer="refused">{% trans "This assistant answers only the listed questions about the current permitted chart. It cannot identify or retrieve another patient." %}</p>
+      {% else %}
+      <p class="hint">{% trans "Not found means not found in available records, never that a condition is absent. Restricted or revoked sources are not shown." %}</p>
+      {% for section in sections %}
+      <section aria-labelledby="brief-section-{{ section.key }}" data-chart-section="{{ section.key }}">
+        <h3 id="brief-section-{{ section.key }}">{{ section.label }}</h3>
+        {% if section.coverage == "limited" %}<p class="hint">{% trans "Coverage is limited to the most recent available records." %}</p>{% endif %}
+        {% for source in section.sources %}
+        <article class="record-review" data-chart-citation="{{ source.kind }}">
+          {% if source.evidence == "documented_none" %}<p>{% trans "Explicitly recorded: none documented. This is not an inferred absence." %}</p>{% else %}<p>{{ source.text }}</p>{% endif %}
+          {% timezone clinic_timezone %}<p class="hint">{% trans "Source" %}: {{ source.kind|citation_kind }} · {% trans "Version" %} {{ source.version }} · <time datetime="{{ source.date|date:'c' }}">{{ source.date|date:"d/m/Y H:i" }}</time></p>{% endtimezone %}
+          <p class="hint"><code>{{ source.id }}</code></p>
+          <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
+            <button class="button--quiet" type="submit" name="command" value="display">{% trans "Recheck source access" %}</button>
+          </form>
+        </article>
+        {% empty %}
+        {% if section.coverage == "unavailable" %}<p>{% trans "This source is unavailable for your current access." %}</p>{% else %}<p data-chart-answer="not_found">{% trans "Not found in available records." %}</p>{% endif %}
+        {% endfor %}
+      </section>
+      {% endfor %}
+      {% endif %}
+      {% if brief.state != "generating" %}
+      <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}">
+        <button type="submit" name="command" value="generate">{% trans "Generate pre-visit brief" %}</button>
+      </form>
+      <form method="post" novalidate data-auth-form action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}">
+        <div class="field"><label for="chart-question">{% trans "Question about the current chart" %}</label><input id="chart-question" name="question" maxlength="500" required list="chart-questions" aria-describedby="chart-question-hint">
+        <datalist id="chart-questions"><option value="{% trans 'What problems are recorded?' %}"><option value="{% trans 'What allergies are recorded?' %}"><option value="{% trans 'What medications are recorded?' %}"><option value="{% trans 'What observations are recorded?' %}"><option value="{% trans 'What results are recorded?' %}"><option value="{% trans 'What tasks are outstanding?' %}"><option value="{% trans 'What prior decisions are recorded?' %}"><option value="{% trans 'What encounters are recorded?' %}"></datalist>
+        <p class="hint" id="chart-question-hint">{% trans "Choose a listed chart question. Names, other patients and instructions are refused without a search." %}</p></div>
+        <button type="submit" name="command" value="ask">{% trans "Ask the chart" %}</button>
+      </form>
+      {% endif %}
+    </div>
+  </aside>
+  {% else %}
+  <p role="status">{% trans "Brief unavailable" %}</p><p class="hint">{% trans "AI assistance is off for this clinic. Review the record before the visit." %}</p>
+  {% endif %}
+</section>

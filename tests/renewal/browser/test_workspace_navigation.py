@@ -71,14 +71,25 @@ COMMAND_TRIGGER_ROLES: Final = frozenset(
     }
 )
 # Plan annex IA x RP bundles v1 x the route guards the destinations lead to.
+# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner). The
+# org admin also holds "org" authority, but is not a workspace shell role: with
+# no landing clinic its navigation is the Settings fallback and has no palette.
 EXPECTED: Final = {
-    "owner": ["agenda", "patients", "finance", "operations", "settings"],
+    "owner": [
+        "agenda",
+        "patients",
+        "finance",
+        "operations",
+        "automations",
+        "settings",
+    ],
     "clinic_admin": [
         "agenda",
         "patients",
         "inbox",
         "finance",
         "operations",
+        "automations",
         "settings",
     ],
     "receptionist": [
@@ -94,7 +105,7 @@ EXPECTED: Final = {
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],
-    "clinic_manager": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "automations", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }

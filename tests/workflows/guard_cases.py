@@ -22,6 +22,7 @@ from apps.identity.models import Clinic, RoleGrant, User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from apps.workflows import (
     access,
+    chart_sources,
     definition_services,
     designer,
     engine,
@@ -63,7 +64,11 @@ from django.urls import resolve, reverse
 from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
-from identity.permission_support import owner_context, permission_context
+from identity.permission_support import (
+    owner_context,
+    permission_actor,
+    permission_context,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -100,6 +105,7 @@ class GuardWorld:
     other_failed_run: WorkflowRun
     alternate: WorkflowDefinitionVersion
     dependent: Task
+    enrollment: UUID
 
     @property
     def clinic(self) -> UUID:
@@ -358,7 +364,8 @@ def _guard_request(actor: UUID, clinic: UUID) -> HttpRequest:
 
 
 def seed_guard_world(graph: RbacGraph, patch: pytest.MonkeyPatch) -> GuardWorld:
-    actor = User.objects.create(username=f"sintetico-workflow-guard-{uuid4().hex}")
+    actor_id, enrollment = permission_actor(graph, "physician")
+    actor = User.objects.get(pk=actor_id)
     other = User.objects.create(username=f"sintetico-workflow-other-{uuid4().hex}")
     with owner_context(graph.organization_a):
         for user, role in (
@@ -558,6 +565,7 @@ def seed_guard_world(graph: RbacGraph, patch: pytest.MonkeyPatch) -> GuardWorld:
         other_failed_run,
         alternate,
         dependent,
+        enrollment,
     )
 
 
@@ -1955,6 +1963,13 @@ def _inbox_cases() -> tuple[GuardCase, ...]:
 
 def _inbox_entrypoints() -> tuple[GuardCase, ...]:
     return (
+        GuardCase(
+            "apps.workflows.chart_sources.read_task_sources",
+            "clinical.read",
+            lambda w: chart_sources.read_task_sources(
+                clinic_id=w.clinic, enrollment_id=w.enrollment
+            ),
+        ),
         GuardCase(
             "apps.workflows.inbox.require_inbox",
             "demographics.read",

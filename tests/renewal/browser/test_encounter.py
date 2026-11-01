@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -13,6 +16,8 @@ from uuid import uuid4
 import psycopg
 import pytest
 from django.contrib.auth.hashers import make_password
+from django.utils.translation import gettext as _
+from ops.testing.process_helpers import run_process
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
@@ -22,6 +27,7 @@ from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box, full_page_screenshot, new_context
+from renewal.browser.support_managers import seed_ai_admin
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -32,7 +38,7 @@ from renewal.browser.test_questionnaires import _seed as seed_patient
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Locator, Page, Response, Route
+    from playwright.sync_api import Browser, Locator, Page, Response, Route
 
 __all__ = ("availability_staff",)
 FIELDS = ("subjective", "objective", "assessment", "plan")
@@ -220,6 +226,185 @@ def press(page: Page, action: str) -> None:
 def press_in_view(page: Page, action: str) -> None:
     """``press`` for a button far outside the viewport (see click_when_hittable)."""
     click_to_navigate(page.locator(f'button[value="{action}"]').first, hittable=True)
+
+
+def cds_fixture(
+    patch: pytest.MonkeyPatch, dsn: str, *arguments: str
+) -> dict[str, object]:
+    """Owner setup and clinic_app execution stay in separate bounded processes."""
+    with patch.context() as local:
+        for name, value in {
+            "APP_DATABASE_URL": dsn,
+            "DJANGO_SETTINGS_MODULE": "config.settings.base",
+            "CLINIC_DATA_MODE": "synthetic",
+            "CELERY_BROKER_URL": "memory://",
+            "PYTHONPATH": os.pathsep.join((".", "tests")),
+        }.items():
+            local.setenv(name, value)
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            result = worker.submit(
+                run_process,
+                (
+                    sys.executable,
+                    "-c",
+                    "import django; django.setup(); "
+                    "from renewal.decision_support_fixture import main; main()",
+                    *arguments,
+                ),
+                timeout_seconds=60,
+            ).result()
+    assert result.returncode == 0, result.stderr
+    data: dict[str, object] = json.loads(result.stdout)
+    return data
+
+
+def cds_operation(staff: dict[str, str], invocation: str) -> str:
+    """Fixture-side lookup only; execution explicitly assumes clinic_app."""
+    with psycopg.connect(staff["dsn"]) as owner:
+        owner.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        row = owner.execute(
+            "SELECT operation_id FROM clinic_app.ai_aiinvocation WHERE id=%s",
+            [invocation],
+        ).fetchone()
+    assert row is not None
+    assert row[0] is not None
+    return str(row[0])
+
+
+def cds_failure_scenes(
+    page: Page,
+    staff: dict[str, str],
+    patch: pytest.MonkeyPatch,
+    *,
+    root: Path,
+    encounter_url: str,
+) -> None:
+    """Reject fabricated citations and unavailable references on the real surface."""
+    page.locator("#cds-opt-in").check()
+    click_to_navigate(page.get_by_role("button", name=_("Request evidence review")))
+    invocation = page.locator('input[name="invocation_id"]').input_value()
+    assert (
+        cds_fixture(patch, staff["dsn"], "fabricate", cds_operation(staff, invocation))[
+            "status"
+        ]
+        == "failed"
+    )
+    click_to_navigate(page.get_by_role("button", name=_("Refresh considerations")))
+    expect(page.locator("#decision-support-panel")).to_have_attribute(
+        "data-cds-state", "unavailable"
+    )
+    expect(page.locator("[data-cds-reference]")).to_have_count(0)
+    capture(page, root, "cds-fabricated-dropped", 320)
+    goto_settled(page, encounter_url)
+    assert (
+        cds_fixture(patch, staff["dsn"], "catalog-down", staff["clinic_a"])["status"]
+        == "unavailable"
+    )
+    page.locator("#cds-opt-in").check()
+    click_to_navigate(page.get_by_role("button", name=_("Request evidence review")))
+    expect(page.locator("#decision-support-panel")).to_have_attribute(
+        "data-cds-state", "unavailable"
+    )
+    expect(page.locator("[data-cds-fact]")).to_have_count(0)
+    capture(page, root, "cds-catalog-unavailable", 320)
+
+
+@pytest.fixture(params=[False, True], ids=["native", "scripted-a11y"])
+def cds_browser(
+    request: pytest.FixtureRequest, renewal_page: Page
+) -> tuple[Browser, bool]:
+    browser = renewal_page.context.browser
+    assert browser is not None
+    return browser, bool(request.param)
+
+
+def test_decision_support_native_opt_in_sources_refusal_and_fabricated_citation(
+    cds_browser: tuple[Browser, bool],
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    browser, javascript = cds_browser
+    staff = availability_staff
+    day = "2042-06-21" if javascript else "2042-06-20"
+    data = seed(staff, day)
+    scene_root = renewal_artifact_root / (
+        "cds-scripted" if javascript else "cds-native"
+    )
+    scene_root.mkdir(mode=0o700)
+    with browser.new_context(locale="pt-BR", java_script_enabled=javascript) as context:
+        page = context.new_page()
+        _sign_in_physician(page, renewal_base_url, staff)
+        goto_settled(
+            page,
+            f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/",
+        )
+        press(page, "open")
+        page.locator("#template-id").select_option(data["specialty"])
+        press(page, "template")
+        encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
+        version = page.locator("[data-version]").get_attribute("data-version")
+        assert encounter
+        assert version
+        original = stored(staff, version)
+        expect(page.locator("#decision-support-panel")).to_have_attribute(
+            "data-cds-state", "unavailable"
+        )
+        expect(page.locator("#cds-opt-in")).to_have_count(0)
+        administrator = seed_ai_admin(staff, "light")
+        assert (
+            cds_fixture(
+                monkeypatch,
+                staff["dsn"],
+                "seed",
+                administrator["id"],
+                staff["physician_a_id"],
+                staff["clinic_a"],
+                staff["organization"],
+                encounter,
+            )["status"]
+            == "seeded"
+        )
+        url = f"{renewal_base_url}/ehr/clinics/{staff['clinic_a']}/encounter/"
+        goto_settled(page, url)
+        expect(page.locator("#cds-opt-in")).not_to_be_checked()
+        page.locator("#cds-opt-in").check()
+        click_to_navigate(page.get_by_role("button", name=_("Request evidence review")))
+        expect(page.locator("[data-cds-pending]")).to_be_visible()
+        invocation = page.locator('input[name="invocation_id"]').input_value()
+        assert (
+            cds_fixture(
+                monkeypatch, staff["dsn"], "execute", cds_operation(staff, invocation)
+            )["status"]
+            == "succeeded"
+        )
+        click_to_navigate(page.get_by_role("button", name=_("Refresh considerations")))
+        expect(page.locator("#decision-support-panel")).to_have_attribute(
+            "data-cds-state", "ready"
+        )
+        expect(
+            page.locator('[data-cds-reference="synthetic-evidence-review"]')
+        ).to_be_visible()
+        expect(page.locator("[data-cds-fact]")).to_be_visible()
+        expect(page.locator("#cds-opt-in")).not_to_be_checked()
+        for width in (1280, 375, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            capture(page, scene_root, "cds-ready", width)
+            if javascript:
+                check_page(page, renewal_base_url, scene_root, f"cds-ready-{width}")
+        full_page_screenshot(page, scene_root / "cds.png")
+        click_to_navigate(page.get_by_role("button", name=_("Reject consideration")))
+        expect(page.locator("[data-cds-decision]")).to_have_attribute(
+            "data-cds-decision", "rejected"
+        )
+        assert stored(staff, version) == original
+        cds_failure_scenes(page, staff, monkeypatch, root=scene_root, encounter_url=url)
+        click_to_navigate(page.get_by_role("link", name=_("Return to the encounter")))
+        expect(page.locator("#soap-form")).to_be_visible()
+        assert stored(staff, version) == original
 
 
 def stored(staff: dict[str, str], version: str) -> tuple[int, str]:

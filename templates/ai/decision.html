@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Clinician decision support" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow">
+  <h1>{% trans "Clinician decision support" %}</h1>
+  {% include "ai/decision_fragment.html" %}
+  <p><a class="button button--secondary" href="{% url 'ehr:encounter' clinic_id %}">{% trans "Return to the encounter" %}</a></p>
+</section>
+{% endblock %}

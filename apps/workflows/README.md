@@ -153,7 +153,9 @@ is never bulk: it remains a per-version decision in the orders workspace.
 Clinician Today reads only the actor's own clinic-local appointments under
 `appointment.read_own`, the next patient (in care, arrived, then the next
 booked), arrivals, and the inbox counts when the inbox itself would open. The
-pre-visit brief slot is reported unavailable until todo 44 supplies it.
+pre-visit brief slot uses todo 44's default-off, source-cited assistant. Its
+patient authority is separate from the own-appointment permission; an
+unavailable assistant never prevents manual chart work.
 Commits that change inbox inputs, and appointment bookings, moves and status
 changes, publish a `clinic:<id>:inbox` refetch hint after commit, so a
 connected Today board refetches its own day without a clinic-wide agenda

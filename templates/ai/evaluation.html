@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Blinded AI evaluation" %} · Clinic Ops{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-evaluation.css' %}">{% endblock %}
+{% block content %}
+<section id="evaluation-workspace" class="shell-narrow evaluation-workspace" aria-labelledby="evaluation-title" hx-boost="true" hx-target="#evaluation-workspace" hx-select="#evaluation-workspace" hx-swap="outerHTML" hx-history="false">
+  <h1 id="evaluation-title" tabindex="-1"{% if not sample %} data-evaluation-focus{% endif %}>{% trans "Blinded AI evaluation" %}</h1>
+  <p class="lede">{% trans "Synthetic engineering corpus. This is not clinical validation or evidence of real-world performance." %}</p>
+  <p>{% trans "Review independently. Model identity and the other rater's decisions are hidden. An adjudicator resolves disagreements after both reviews." %}</p>
+  {% if error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</p>{% endif %}
+  {% if saved %}<p class="feedback feedback--success" role="status" tabindex="-1" data-evaluation-saved>{% trans "Evaluation decision saved." %}</p>{% endif %}
+  {% if pending %}<p class="feedback" role="status">{% trans "The evaluation has not been scored yet." %}</p>{% endif %}
+  {% if not sample %}
+  <h2>{% trans "Assigned evaluations" %}</h2>
+  {% for assignment in runs %}
+  <form method="post" class="evaluation-command" data-auth-form data-auth-errors>
+    {% csrf_token %}<input type="hidden" name="action" value="open"><input type="hidden" name="run_id" value="{{ assignment.id }}">
+    <button type="submit">{% trans "Open assigned evaluation" %} {{ forloop.counter }}</button>
+  </form>
+  {% empty %}<p role="status">{% trans "No evaluations are assigned to you." %}</p>{% endfor %}
+  {% endif %}
+  {% if sample %}
+  <form method="post" class="evaluation-command" data-auth-form data-auth-errors>
+    {% csrf_token %}<input type="hidden" name="action" value="open"><input type="hidden" name="run_id" value="{{ run_id }}">
+    <label for="evaluation-case">{% trans "Evaluation case" %}</label>
+    <select id="evaluation-case" name="case_id">{% for choice in case_choices %}<option value="{{ choice.id }}"{% if choice.id == sample.id %} selected{% endif %}>{% trans "Case" %} {{ choice.number }}</option>{% endfor %}</select>
+    <button type="submit" class="button--secondary">{% trans "Open case" %}</button>
+  </form>
+  <section aria-labelledby="evaluation-source-title">
+    <h2 id="evaluation-source-title" tabindex="-1" data-evaluation-focus>{% trans "Synthetic source" %}</h2>
+    <blockquote class="evaluation-source">{{ sample.script }}</blockquote>
+    <h2>{% trans "Candidate output" %}</h2>
+    <pre class="evaluation-source">{{ sample.output }}</pre>
+  </section>
+  {% if other_votes %}
+  <section aria-labelledby="evaluation-disagreement-title"><h2 id="evaluation-disagreement-title">{% trans "Independent ratings for adjudication" %}</h2>
+    {% for vote in other_votes %}<h3>{% trans "Rater" %} {{ forloop.counter }}</h3><dl>{% for label,value in vote.labels %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endfor %}
+  </section>
+  {% endif %}
+  {% if eligible %}
+  <form method="post" novalidate data-evaluation-rating data-auth-form data-auth-errors>
+    {% csrf_token %}<input type="hidden" name="action" value="rate">
+    {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><p>{% trans "Answer every review item before saving." %}</p>{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}
+      {% if field.is_hidden %}{{ field }}
+      {% elif field.use_fieldset %}
+      <fieldset class="evaluation-question"{% if field.errors %} aria-describedby="{{ field.auto_id }}_error"{% endif %}>
+        <legend>{{ field.label }}</legend>
+        {% for option in field %}<div class="field evaluation-choice">{{ option.tag }}<label for="{{ option.id_for_label }}">{{ option.choice_label }}</label></div>{% endfor %}
+        {{ field.errors }}
+      </fieldset>
+      {% else %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}
+    {% endfor %}
+    <button type="submit">{% trans "Save independent rating" %}</button>
+  </form>
+  {% else %}<p class="feedback" role="status">{% trans "This case is saved, complete, or waiting for both independent ratings." %}</p>{% endif %}
+  {% endif %}
+  {% for change in changes %}
+  <form method="post" class="evaluation-command" novalidate data-auth-form data-auth-errors data-evaluation-change="{{ change.id }}">
+    {% csrf_token %}<input type="hidden" name="change_id" value="{{ change.id }}">
+    <dl>
+      <dt>{% trans "Capability" %}</dt><dd data-evaluation-capability="{{ change.run.protocol.capability }}">{{ change.run.protocol.capability }}</dd>
+      <dt>{% trans "Configuration version" %}</dt><dd data-evaluation-configuration-version="{{ change.run.configuration_version }}">{{ change.run.configuration_version }}</dd>
+      <dt>{% trans "Evaluation status" %}</dt><dd data-evaluation-status="{{ change.run.status }}">{% trans "Passed" %}</dd>
+      <dt>{% trans "Thresholds hash" %}</dt><dd data-evaluation-thresholds-hash="{{ change.run.protocol.thresholds_sha256 }}"><code>{{ change.run.protocol.thresholds_sha256 }}</code></dd>
+    </dl>
+    <label for="approval-{{ forloop.counter }}">{% trans "Synthetic owner approval reference" %}</label>
+    <input id="approval-{{ forloop.counter }}" name="approval_ref" required maxlength="128" pattern="synthetic-[a-z0-9-]+">
+    <button type="submit" name="action" value="approved">{% trans "Approve evaluated change" %}</button>
+    <button type="submit" name="action" value="rejected" class="button--secondary">{% trans "Reject change" %}</button>
+  </form>
+  {% endfor %}
+</section>
+{% endblock %}

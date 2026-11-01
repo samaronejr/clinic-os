@@ -90,6 +90,18 @@ document.addEventListener("htmx:afterSwap", (event) => {
   focusAuthError(root instanceof Element ? root : document);
 });
 
+document.addEventListener("htmx:afterSettle", (event) => {
+  const target = event.detail.target;
+  if (!(target instanceof Element) || target.id !== "evaluation-workspace") return;
+  const panel = document.getElementById("evaluation-workspace");
+  if (!panel) return;
+  const focus =
+    panel.querySelector("[data-focus-error]") ||
+    panel.querySelector("[data-evaluation-saved]") ||
+    panel.querySelector("[data-evaluation-focus]");
+  if (focus instanceof HTMLElement) focus.focus();
+});
+
 document.addEventListener("htmx:beforeSwap", (event) => {
   const form = authFormFor(event.detail.requestConfig?.elt);
   if (

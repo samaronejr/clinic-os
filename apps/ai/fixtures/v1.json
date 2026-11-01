@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "data_class": "synthetic",
+  "model_id": "fixture-v1",
+  "responses": {
+    "complete": {
+      "content": "SINTETICO: Recorded draft. Human review required.",
+      "usage": {
+        "tokens_in": 3,
+        "tokens_out": 5,
+        "tokens_cached": 0,
+        "audio_seconds": 0
+      }
+    },
+    "stream": {
+      "content": "SINTETICO: Recorded stream. Human review required.",
+      "usage": {
+        "tokens_in": 3,
+        "tokens_out": 5,
+        "tokens_cached": 0,
+        "audio_seconds": 0
+      }
+    },
+    "transcribe": {
+      "content": "SINTETICO: Recorded transcript. Human review required.",
+      "usage": {
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "tokens_cached": 0,
+        "audio_seconds": 1
+      }
+    },
+    "extract": {
+      "content": "{\"text\":\"SINTETICO: Recorded extraction\"}",
+      "usage": {
+        "tokens_in": 3,
+        "tokens_out": 5,
+        "tokens_cached": 0,
+        "audio_seconds": 0
+      }
+    }
+  }
+}

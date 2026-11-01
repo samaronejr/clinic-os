@@ -11,6 +11,15 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    **{
+        f"retention.purge.{state}": (
+            "tenant",
+            "clinic-os-worker",
+            "retention.artifact_purge",
+            state,
+        )
+        for state in ("purge_due", "blocked_hold", "purging", "purged", "failure")
+    },
     "prescription.issuance.rehearsed": (
         "tenant",
         "clinic-os-web",
@@ -158,6 +167,395 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "reviewed",
     ),
     "ehr.timeline.viewed": ("tenant", "clinic-os-web", "ehr.timeline", "viewed"),
+    "ai.action.proposal": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "proposal",
+    ),
+    "ai.action.validated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "validated",
+    ),
+    "ai.action.rejected": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "rejected",
+    ),
+    "ai.action.approved": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "approved",
+    ),
+    "ai.action.executing": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "executing",
+    ),
+    "ai.action.receipt": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "receipt",
+    ),
+    "ai.action.unknown": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "unknown",
+    ),
+    "ai.action.reconciled": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "reconciled",
+    ),
+    "ai.action.exception": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "exception",
+    ),
+    "ai.action.failure": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "failure",
+    ),
+    "ai.action.compensating": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "compensating",
+    ),
+    "ai.action.compensated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "compensated",
+    ),
+    "ai.action.manual_required": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_proposal",
+        "manual_required",
+    ),
+    "ai.execution.executing": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "executing",
+    ),
+    "ai.execution.sending": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "sending",
+    ),
+    "ai.execution.receipt": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "receipt",
+    ),
+    "ai.execution.unknown": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "unknown",
+    ),
+    "ai.execution.reconciled": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "reconciled",
+    ),
+    "ai.execution.exception": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "exception",
+    ),
+    "ai.execution.failure": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "failure",
+    ),
+    "ai.execution.rejected": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "rejected",
+    ),
+    "ai.execution.compensating": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "compensating",
+    ),
+    "ai.execution.compensated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "compensated",
+    ),
+    "ai.execution.manual_required": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_execution",
+        "manual_required",
+    ),
+    "ai.agent_run.created": ("tenant", "clinic-os-worker", "ai.agent_run", "created"),
+    "ai.agent_run.validated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "validated",
+    ),
+    "ai.agent_run.rejected": ("tenant", "clinic-os-worker", "ai.agent_run", "rejected"),
+    "ai.agent_run.approved": ("tenant", "clinic-os-worker", "ai.agent_run", "approved"),
+    "ai.agent_run.executing": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "executing",
+    ),
+    "ai.agent_run.receipt": ("tenant", "clinic-os-worker", "ai.agent_run", "receipt"),
+    "ai.agent_run.unknown": ("tenant", "clinic-os-worker", "ai.agent_run", "unknown"),
+    "ai.agent_run.reconciled": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "reconciled",
+    ),
+    "ai.agent_run.exception": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "exception",
+    ),
+    "ai.agent_run.failure": ("tenant", "clinic-os-worker", "ai.agent_run", "failure"),
+    "ai.agent_run.compensating": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "compensating",
+    ),
+    "ai.agent_run.compensated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "compensated",
+    ),
+    "ai.agent_run.manual_required": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_run",
+        "manual_required",
+    ),
+    "ai.compensation.compensating": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.compensation",
+        "compensating",
+    ),
+    "ai.compensation.compensated": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.compensation",
+        "compensated",
+    ),
+    "ai.compensation.manual_required": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.compensation",
+        "manual_required",
+    ),
+    "ai.agent_policy.published": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.agent_policy_version",
+        "published",
+    ),
+    "ai.approval.recorded": ("tenant", "clinic-os-worker", "ai.approval", "recorded"),
+    "ai.receipt.recorded": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.action_receipt",
+        "recorded",
+    ),
+    **{
+        f"scribe.session.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "scribe.recording_session",
+            state,
+        )
+        for state in (
+            "created",
+            "authorized",
+            "recording",
+            "paused",
+            "stopped",
+            "stopped_revoked",
+        )
+    },
+    **{
+        f"scribe.epoch.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "scribe.capture_epoch",
+            state,
+        )
+        for state in ("created", "closed")
+    },
+    **{
+        f"scribe.chunk.{state}": (
+            "tenant",
+            "clinic-os-worker" if state == "accepted" else "clinic-os-web",
+            "scribe.audio_chunk",
+            state,
+        )
+        for state in ("received", "accepted", "quarantined", "rejected")
+    },
+    "scribe.transcription.queued": (
+        "tenant",
+        "clinic-os-worker",
+        "scribe.transcription",
+        "queued",
+    ),
+    **{
+        f"scribe.draft.{state}": (
+            "tenant",
+            "clinic-os-worker" if state == "generated" else "clinic-os-web",
+            "scribe.ai_draft",
+            state,
+        )
+        for state in ("requested", "generated")
+    },
+    **{
+        f"scribe.suggestion.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "scribe.review_decision",
+            state,
+        )
+        for state in ("accepted", "modified", "rejected")
+    },
+    **{
+        f"scribe.transcript.{mutation}": (
+            "tenant",
+            "clinic-os-worker" if mutation == "recognized" else "clinic-os-web",
+            "scribe.transcript",
+            mutation,
+        )
+        for mutation in ("recognized", "finalized", "speaker_relabeled", "corrected")
+    },
+    "ai.model.drafted": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "drafted",
+    ),
+    **{
+        f"ai.evaluation.{state}": ("tenant", "clinic-os-web", "ai.evaluation", state)
+        for state in (
+            "registered",
+            "started",
+            "scored",
+            "rated",
+            "passed",
+            "failed",
+            "change_requested",
+            "change_approved",
+            "change_rejected",
+        )
+    },
+    "ai.model.approved": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "approved",
+    ),
+    "ai.model.active": ("system", "clinic-os-ops", "ai.model_configuration", "active"),
+    "ai.model.retired": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "retired",
+    ),
+    "ai.global_switch.changed": (
+        "system",
+        "clinic-os-ops",
+        "ai.gateway_switch",
+        "changed",
+    ),
+    "ai.organization_policy.published": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic_configuration",
+        "published",
+    ),
+    "ai.artifact.created": ("tenant", "clinic-os-worker", "ai.artifact", "created"),
+    **{
+        f"ai.decision_support.{decision}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.decision_support",
+            decision,
+        )
+        for decision in ("accepted", "modified", "rejected")
+    },
+    "ai.extraction.started": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_job",
+        "started",
+    ),
+    "ai.extraction.proposed": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.extraction_candidate",
+        "proposed",
+    ),
+    "ai.extraction.confirmed": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_candidate",
+        "confirmed",
+    ),
+    "ai.extraction.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_candidate",
+        "rejected",
+    ),
+    "ai.invocation.reserved": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.invocation",
+        "reserved",
+    ),
+    "ai.invocation.succeeded": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.invocation",
+        "succeeded",
+    ),
+    "ai.invocation.failed": ("tenant", "clinic-os-worker", "ai.invocation", "failed"),
+    "ai.circuit.opened": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.circuit",
+        "opened",
+    ),
+    "ai.circuit.closed": ("system", "clinic-os-ops", "ai.circuit", "closed"),
     "identity.delegate.requested": (
         "tenant",
         "clinic-os-web",

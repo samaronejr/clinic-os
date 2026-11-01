@@ -37,6 +37,10 @@
       {% csrf_token %}<input type="hidden" name="version_id" value="{{ row.match.version.id }}">
       <button class="button--secondary" type="submit">{% trans "Download original source" %}</button>
     </form>
+    <form method="post" action="{% url 'ai:extraction' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="action" value="start"><input type="hidden" name="result_version_id" value="{{ row.match.version.id }}">
+      <button class="button--secondary" type="submit">{% trans "Review extraction candidates" %}</button>
+    </form>
     {% if not row.acknowledged %}
     <form method="post" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
       {% csrf_token %}<input type="hidden" name="action" value="acknowledge"><input type="hidden" name="version_id" value="{{ row.match.version.id }}">

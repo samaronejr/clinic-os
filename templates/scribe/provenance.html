@@ -1,0 +1,17 @@
+{% load i18n %}
+{% if ai_use_records %}
+<section aria-labelledby="ai-use-title" data-ai-use-history>
+  <h2 id="ai-use-title">{% trans "AI use in this encounter" %}</h2>
+  <p class="help-text">{% trans "AI origin remains visible after clinician review and local finalization. It does not imply automated approval or a digital signature." %}</p>
+  <ul class="record-review">
+    {% for record in ai_use_records %}
+    <li data-ai-use-record>
+      {% include "includes/components/provenance.html" with kind="ai_drafted" only %}
+      <strong>{{ record.section }}</strong> · {{ record.action }}
+      <p>{% blocktrans with revision=record.revision version=record.configuration_version %}Scribe drafting · model configuration version {{ version }} · note revision {{ revision }}.{% endblocktrans %}</p>
+      <p class="help-text">{% trans "Model configuration" %}: <code>{{ record.configuration }}</code></p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

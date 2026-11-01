@@ -30,11 +30,14 @@ from collections import Counter
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from apps.ai.brief_views import chart_assistant
+from apps.ai.decision_views import decision_support
+from apps.ai.extraction_views import extraction_view
 from apps.core.api.views import (
     AddendumAutosaveView,
     AddendumOpenView,
@@ -67,10 +70,13 @@ from apps.prescription.views import (
     signing_status_view,
 )
 from apps.retention.views import retention_workspace
+from apps.scribe.review_forms import ReviewCommand
+from apps.scribe.review_views import note_review
 from apps.teleconsult.adapters import SyntheticRoomAdapter
 from apps.teleconsult.views import staff_teleconsult
 from apps.teleconsult.workspace import NOTE_ACTIONS, encounter_url, staff_url
 from django.conf import settings
+from django.forms import ChoiceField
 from django.template import Engine, engines
 from django.template.backends.django import DjangoTemplates
 from django.template.base import FilterExpression
@@ -93,7 +99,7 @@ from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
@@ -115,6 +121,7 @@ ATTACHMENTS = "ehr:attachments"
 WORKSPACE = "ehr:patient-workspace"
 # The teleconsult notes panel saves EHR notes in htmx mode.
 TELECONSULT = "teleconsult:staff"
+NOTE_REVIEW = "scribe:review"
 AUTOSAVE = "ui_api:ehr-autosave"
 ADDENDUM_OPEN = "ui_api:ehr-addendum-open"
 ADDENDUM_AUTOSAVE = "ui_api:ehr-addendum-autosave"
@@ -125,6 +132,7 @@ ROUTE_VIEWS: dict[str, object] = {
     ATTACHMENTS: attachment_views.attachment_workspace,
     WORKSPACE: workspace_views.patient_workspace,
     TELECONSULT: staff_teleconsult,
+    NOTE_REVIEW: note_review,
     AUTOSAVE: DraftAutosaveView,
     ADDENDUM_OPEN: AddendumOpenView,
     ADDENDUM_AUTOSAVE: AddendumAutosaveView,
@@ -140,6 +148,9 @@ OUTSIDE_EHR: dict[object, str] = {
     patient_documents_view: "patient prescription downloads",
     patient_timeline: "care-authorized finalized timeline, no clinical writes",
     result_source_download: "immutable result-source download, no EHR writes",
+    chart_assistant: "source-cited chart reader; tests/ai/test_brief.py",
+    decision_support: "AI provenance only; tests/ai/test_decision_support.py",
+    extraction_view: "result candidates; tests/ai/test_extraction_runtime.py",
     retention_workspace: "retention holds and exports",
     # Plan item 30: configuration and transient arithmetic; no patient selector.
     pack_views.specialty_packs: "pack metadata; tested in test_specialty_surfaces.py",
@@ -153,15 +164,36 @@ FORM_ACTIONS: dict[str, frozenset[str]] = {
     ATTACHMENTS: attachment_views.POST_ACTIONS,
     WORKSPACE: WORKSPACE_ACTIONS,
     TELECONSULT: NOTE_ACTIONS,
+    NOTE_REVIEW: frozenset(
+        {
+            "open",
+            "refresh",
+            "generate",
+            "save",
+            *(f"regenerate_{section}" for section in SECTIONS),
+            "accepted",
+            "modified",
+            "rejected",
+        }
+    ),
 }
 TABLED = (ENCOUNTER, HISTORY, ATTACHMENTS, WORKSPACE)
 # The templates each form route renders; every response below is checked
 # against their include/extends closure, so an unlisted page fails.
 ROUTE_TEMPLATES: dict[str, tuple[str, ...]] = {
-    ENCOUNTER: ("ehr/encounter.html",),
+    ENCOUNTER: (
+        "ehr/encounter.html",
+        "ai/brief_panel.html",
+        "ai/decision_fragment.html",
+    ),
     HISTORY: ("ehr/history.html",),
     ATTACHMENTS: ("ehr/attachments.html",),
-    WORKSPACE: ("ehr/patient_workspace.html", "ehr/workspace/body.html"),
+    WORKSPACE: (
+        "ehr/patient_workspace.html",
+        "ehr/workspace/body.html",
+        "ai/brief_panel.html",
+    ),
+    NOTE_REVIEW: ("scribe/review.html",),
     TELECONSULT: (
         "teleconsult/staff.html",
         "teleconsult/clinician.html",
@@ -494,7 +526,14 @@ def ui_actions() -> dict[str, set[str]]:
             posts += [(f"{name}: {value!r}", value, routes) for value in values]
     for where, value, routes in posts:
         for route in routes:
-            if ACTION_VALUE.fullmatch(value):
+            if (
+                route == NOTE_REVIEW
+                and value == "regenerate_{{ row.item.suggestion.section }}"
+            ):
+                found.setdefault(route, set()).update(
+                    f"regenerate_{section}" for section in SECTIONS
+                )
+            elif ACTION_VALUE.fullmatch(value):
                 found.setdefault(route, set()).add(value)
             else:
                 problems.append(f"{where} posted to {route}")
@@ -702,6 +741,27 @@ def send(
             route_path(case.route, clinic), json.dumps(body), "application/json"
         )
     path = route_path(case.route, clinic)
+    if case.route == NOTE_REVIEW:
+        form = {
+            key: value
+            for key, value in built.form.items()
+            if key in ReviewCommand.base_fields or key in SECTIONS
+        }
+        form.update(
+            expected_revision="2",
+            transcript_id=str(uuid4()),
+            request_key=str(uuid4()),
+            command_id=str(uuid4()),
+        )
+        if case.action in {"accepted", "modified", "rejected"}:
+            suggestion = str(uuid4())
+            form.update(action="", decision=f"{case.action}:{suggestion}")
+            if case.action == "modified":
+                form[f"replacement-{suggestion}"] = "Sintetico complemento"
+        else:
+            form["action"] = case.action
+        headers = {"HX-Request": "true"} if case.mode == "htmx" else {}
+        return client.post(path, {**form, **case.overrides}, headers=headers)
     reason = "walk_in" if case.action == "open_unscheduled" else "Sintetico motivo"
     form = dict(built.form)
     if case.route == WORKSPACE:
@@ -733,6 +793,15 @@ def test_matrix_covers_every_ehr_route_and_action() -> None:
     assert set(ui) <= set(FORM_ACTIONS)
     for route in TABLED:
         assert ui.get(route, set()) <= FORM_ACTIONS[route], route
+    action_field = ReviewCommand.base_fields["action"]
+    assert isinstance(action_field, ChoiceField)
+    choices = cast("Iterable[tuple[str, str]]", action_field.choices)
+    assert FORM_ACTIONS[NOTE_REVIEW] == {
+        *(value for value, _label in choices),
+        "accepted",
+        "modified",
+        "rejected",
+    }
     assert {route for _actor, route, _action in PERMITTED} <= set(ROUTE_VIEWS)
 
 

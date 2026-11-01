@@ -646,7 +646,7 @@ def test_activated_real_version_binds_by_equality_not_by_a_hardcoded_key(
         ({"recording": True, "transcription": True}, "both"),
     ],
 )
-def test_capture_flags_are_refused_by_the_unchanged_trigger_line(
+def test_capture_flags_are_refused_without_consented_capture(
     room_world: RoomWorld, flags: dict[str, bool], label: str
 ) -> None:
     refusal = forge(
@@ -655,7 +655,7 @@ def test_capture_flags_are_refused_by_the_unchanged_trigger_line(
         transcription=flags.get("transcription", False),
     )
     # The trigger fires before the CHECK constraint; its own refusal proves
-    # the :117 line, not just the model constraint, still rejects capture.
+    # the binding guard, not just the model constraint, still rejects capture.
     assert refusal is not None, label
     assert ROOM_BINDING in refusal, label
     assert "teleconsult_room_capture_disabled" not in refusal, label
@@ -667,7 +667,9 @@ def test_capture_flags_are_refused_by_the_unchanged_trigger_line(
         row = cursor.fetchone()
     assert row is not None
     assert (
-        CAPTURE_REFUSAL + "\n     RAISE EXCEPTION 'invalid teleconsult room " in row[0]
+        "OR NEW.transcription_enabled OR (NEW.recording_enabled"
+        " AND NOT clinic_app.scribe_room_capture_allowed(s.id)) THEN"
+        "\n     RAISE EXCEPTION 'invalid teleconsult room " in row[0]
     )
     assert CAPTURE_REFUSAL + "\n" in BINDING_GUARD_V1
 

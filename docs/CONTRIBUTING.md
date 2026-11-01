@@ -190,13 +190,20 @@ uv run pytest --reuse-db tests/auth/test_stepup_policy.py tests/auth/test_stepup
 
 ## Deferred domains, live data, and AI-assisted code
 
-The three remaining deferred `services.py` entrypoints
-(`prescription.issue_prescription`, `retention.apply_retention_policy`,
-`interop.exchange_clinical_record`) must continue to raise exactly
+The two remaining deferred `services.py` entrypoints
+(`prescription.issue_prescription`, `interop.exchange_clinical_record`)
+must continue to raise exactly
 `NotImplementedError("Phase >=1")` until their owning renewal task ships. Do
 not describe or expose these stubs as working clinical functionality. The
 [renewal roadmap](plans/clinic-os-renewal-roadmap.md) maps each deferred
 domain to its owning wave.
+
+`retention.apply_retention_policy` implements only synthetic `raw_audio`,
+`ai_artifact` and `transcript_partial` retention. Preserve its exact keyword-only
+`clinic_id, record_class` boundary, dedicated principal authority, default dry-run,
+legal holds and confirmed-absence receipts. Clinical-record destruction and live
+retention remain unavailable; the [retention contract](../apps/retention/README.md)
+defines the execution and restore-tombstone requirements.
 
 **AI-generated or AI-assisted code requires line-by-line human review and
 targeted tests for prescription, consent, audit, RBAC, and RLS behavior before

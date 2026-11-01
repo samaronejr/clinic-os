@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "data_class": "synthetic",
+  "records": [
+    {"text": "sim sim", "confidence": 0.95, "inaudible": false},
+    {"text": "[inaudível]", "confidence": null, "inaudible": true},
+    {"text": "5 ou 15 mg", "confidence": 0.42, "inaudible": false},
+    {"text": "Revisão sintética.", "confidence": 0.9, "inaudible": false}
+  ]
+}

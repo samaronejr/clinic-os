@@ -34,6 +34,7 @@ from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
 )
 from apps.scheduling.reception import ReceptionAccessDeniedError
+from apps.scribe.draft_contracts import DraftAccessDeniedError
 from apps.teleconsult.services import TeleconsultAccessDeniedError
 from apps.tenancy.db import tenant_context
 from django.contrib.messages.middleware import MessageMiddleware
@@ -63,6 +64,7 @@ MANAGERS = ("owner", "receptionist", "clinic_admin")
 ADMINS = ("owner", "clinic_admin")
 PHYSICIAN = ("physician",)
 DENIALS = (
+    DraftAccessDeniedError,
     ReceptionAccessDeniedError,
     CurrentActorError,
     ClinicalAccessDeniedError,

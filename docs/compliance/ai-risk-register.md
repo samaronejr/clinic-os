@@ -181,3 +181,33 @@ Sources, retrieval dates and digests are in
 - **Disable path:** off by default; capability kill switch and entitlement;
   licensed-content access revoked; the panel shows as unavailable, never as
   an empty answer.
+
+### Todo 46 intended-use and classification inputs
+
+The implemented engineering slice is a clinician-only synthetic evidence-review
+panel in an authorized encounter. The clinician opts in on each request and the
+patient's encounter AI-use disclosure must permit use. Patient source excerpts,
+licensed reference statements, and model-selected considerations are separately
+labeled. Source, exact version, date, population, license and limitations are
+retained; permissions and the complete reference digest are rechecked at display.
+
+The output vocabulary permits only reviewing evidence concordance or
+completeness. It cannot express a definitive diagnosis, prognosis, prescription,
+dose calculation, treatment ranking, patient-facing message or executable tool.
+Acceptance, modification intent and rejection are AI-use provenance, not clinical
+record changes. The manual encounter remains complete with the panel unavailable.
+
+Inputs for EG-3/EG-4 assessment include the intended user (physician), intended
+setting (encounter), decision influence (optional review of evidence), autonomy
+(A0/A1 only), possible harm from missing/stale/incorrect evidence, current-source
+rechecks, explicit uncertainty and population limits, patient refusal, default-off
+controls, and the absence of validated real-world performance. These engineering
+constraints are not a classification, regularization decision or legal conclusion.
+The existing high-risk proposal above remains for the clinical safety owner.
+
+Enablement requires current owner-recorded EG-3, EG-4 and EG-13 evidence in the
+provider registry at `production_authorized` or `activated`, in addition to
+organization policy and clinician opt-in. Synthetic fixtures exercise that
+composition only in disposable databases. The shipped catalog is self-authored
+CC0 synthetic review content, not licensed clinical guidance. No external gate is
+satisfied and no real data or provider is authorized by this implementation.

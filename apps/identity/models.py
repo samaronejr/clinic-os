@@ -133,6 +133,7 @@ class ClinicConfiguration(models.Model):
     )
     reminder_hours = models.PositiveSmallIntegerField(default=24)
     queue_quotas = models.JSONField(default=dict, blank=True)
+    ai_policy = models.JSONField(default=dict, db_default={}, blank=True)
     # Scheduling lifecycle policy (todo 22): patient self-booking becomes a
     # non-occupying request only when staff approval is required; holds expire
     # after this many minutes of database time.
@@ -140,6 +141,9 @@ class ClinicConfiguration(models.Model):
         default=False, db_default=False
     )
     hold_ttl_minutes = models.PositiveSmallIntegerField(default=10, db_default=10)
+    raw_audio_retention_days = models.PositiveSmallIntegerField(default=7, db_default=7)
+    retention_dry_run = models.BooleanField(default=True, db_default=True)
+    retention_backup_days = models.PositiveSmallIntegerField(default=35, db_default=35)
     logo_png = models.BinaryField(default=bytes, blank=True)
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -177,6 +181,12 @@ class ClinicConfiguration(models.Model):
                 condition=models.Q(hold_ttl_minutes__gte=1)
                 & models.Q(hold_ttl_minutes__lte=60),
                 name="identity_config_hold_ttl_bounds",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(raw_audio_retention_days__lte=365)
+                & models.Q(retention_backup_days__gte=1)
+                & models.Q(retention_backup_days__lte=3650),
+                name="identity_config_retention_bounds",
             ),
         ]
 
@@ -357,7 +367,7 @@ class ServicePrincipal(TenantScopedModel):
                 fields=("organization", "id"), name="identity_principal_org_id_uniq"
             ),
             models.CheckConstraint(
-                condition=models.Q(grant_set_version=1)
+                condition=models.Q(grant_set_version__in=(1, 2, 3))
                 & models.Q(db_identity__regex=r"^clinic_agent(_[a-z0-9_]+)?$")
                 & models.Q(name__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$")
                 & models.Q(purpose__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$"),
@@ -372,6 +382,7 @@ class ServicePrincipalGrant(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     principal = models.ForeignKey(ServicePrincipal, on_delete=models.PROTECT)
     permission = models.CharField(max_length=64)
+    grant_set_version = models.PositiveSmallIntegerField(default=1)
     subject_scope = models.CharField(max_length=16, default="clinic")
     active = models.BooleanField(default=True)
 
@@ -385,9 +396,12 @@ class ServicePrincipalGrant(TenantScopedModel):
                 name="identity_principal_active_grant",
             ),
             models.CheckConstraint(
-                condition=models.Q(
-                    permission="appointment.read", subject_scope="clinic"
-                ),
+                condition=(
+                    models.Q(grant_set_version=1, permission="appointment.read")
+                    | models.Q(grant_set_version=2, permission="agent.execute")
+                    | models.Q(grant_set_version=3, permission="retention.execute")
+                )
+                & models.Q(subject_scope="clinic"),
                 name="identity_principal_grant_v1_scope",
             ),
         ]

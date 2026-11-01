@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load static i18n scribe_review workspace %}
+{% block workspace_refusal %}{% if denied or invalid or conflict %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Clinician AI review" %} · Clinic OS{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-review.css' %}"><script src="{% static 'js/scribe-review.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="shell-wide scribe-review" aria-labelledby="ai-review-title" data-note-review>
+  <h1 id="ai-review-title">{% trans "Clinician AI review" %}</h1>
+  <p class="lede">{% trans "Compare the sources, your note and each AI suggestion. Nothing is applied or finalized automatically." %}</p>
+  <p><a class="button button--secondary" href="{% url 'ehr:encounter' clinic_id %}">{% trans "Continue the note manually" %}</a></p>
+  {% if denied %}
+  <p class="feedback feedback--error" role="alert" data-review-denied>{% trans "Note review is unavailable for this encounter." %}</p>
+  {% elif invalid %}
+  <p class="feedback feedback--error" role="alert" data-review-invalid>{% trans "Review command was not accepted. Reopen the saved note and try again." %}</p>
+  {% elif conflict %}
+  <p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error data-review-conflict>{{ error }}</p>
+  <h2>{% trans "Your submitted note - not applied" %}</h2>
+  <dl class="record-review">{% for label, text in submitted_note %}<div><dt>{{ label }}</dt><dd class="review-text">{{ text }}</dd></div>{% endfor %}</dl>
+  {% elif panel %}
+  <p class="feedback" role="status" data-review-offline hidden>{% trans "Offline. Keep this page open; the text is not saved in this browser. Reconnect before submitting." %}</p>
+  <p class="feedback" role="status" data-review-unconfirmed hidden>{% trans "This restored page is unconfirmed. Refresh the review before applying a suggestion." %}</p>
+  {% if queued %}<p class="feedback" role="status" data-review-queued>{% trans "Draft generation queued. Continue manually while waiting; refresh to see the result." %}</p>{% endif %}
+  {% if saved %}<p class="feedback feedback--success" role="status" data-review-saved>{% trans "Your review was recorded. The note is still a draft; finalization is a separate action." %}</p>{% endif %}
+  {% if not panel.available %}<p class="feedback" data-review-unavailable>{% trans "AI drafting is unavailable. It requires a final transcript, separate current AI consent, informed disclosure and an enabled organization policy. Manual notes remain available." %}</p>{% endif %}
+  {% if panel.transcript.incomplete_acknowledged %}<p class="feedback">{% trans "Finalized with clinician-acknowledged incomplete coverage." %} {% trans "Missing audio was not reconstructed." %}</p>{% endif %}
+  <nav class="review-jumps" aria-label="{% trans 'Review sections' %}"><a href="#review-sources">{% trans "Sources" %}</a><a href="#review-note">{% trans "Your note" %}</a><a href="#review-suggestions">{% trans "Suggestions" %}</a></nav>
+  <form method="post" action="{% url 'scribe:review' clinic_id %}" id="note-review-form" novalidate>
+    {% csrf_token %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    <div class="actions">
+      <button class="button button--secondary" type="submit" name="action" value="refresh">{% trans "Refresh review" %}</button>
+      <button class="button" type="submit" name="action" value="generate" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Generate source-linked suggestions" %}</button>
+    </div>
+    <div class="review-grid">
+      <aside class="review-column" id="review-sources" aria-labelledby="review-sources-title">
+        <h2 id="review-sources-title" tabindex="-1">{% trans "Sources" %}</h2>
+        <p class="help-text">{% trans "Reported, observed and hypothesis are distinct. Confidence is not a safety guarantee. Uncertain source text never confirms a dose." %}</p>
+        <ol class="review-sources">
+          {% for source in panel.sources %}
+          <li id="review-source-{{ forloop.counter }}">
+            <h3>{% blocktrans with index=forloop.counter %}Source {{ index }}{% endblocktrans %}</h3>
+            {% if source.assertion_class == "observed" %}{% include "includes/components/provenance.html" with kind="observed" only %}{% elif source.assertion_class == "reported" %}{% include "includes/components/provenance.html" with kind="reported" only %}{% else %}<strong>{% trans "Hypothesis - not a confirmed finding" %}</strong>{% endif %}
+            <p class="review-text">{{ source.text }}</p>
+            {% if source.uncertain %}<p class="feedback">{% trans "Uncertain or inaudible span. Verify against the source; do not infer a dose." %}</p>{% endif %}
+          </li>
+          {% empty %}<li>{% trans "No source text is available. Continue the note manually." %}</li>{% endfor %}
+        </ol>
+      </aside>
+      <section class="review-column" id="review-note" aria-labelledby="review-note-title">
+        <h2 id="review-note-title" tabindex="-1">{% trans "Your note" %}</h2>
+        <p class="feedback" role="status" data-review-note-state="{% if unsaved %}unsaved{% else %}saved{% endif %}" data-text-unsaved="{% trans "Unsaved changes." %}">{% if unsaved %}{% trans "Unsaved changes." %}{% else %}{% blocktrans with revision=panel.version.revision %}Saved version loaded (revision {{ revision }}).{% endblocktrans %}{% endif %}</p>
+        {% for field in note_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+        <button class="button" type="submit" name="action" value="save" data-review-write>{% trans "Save manual note" %}</button>
+        <p class="help-text">{% trans "Only a server acknowledgement confirms a save. Accepting a suggestion saves through your own note command with revision checking." %}</p>
+      </section>
+      <section class="review-column" id="review-suggestions" aria-labelledby="review-suggestions-title">
+        <h2 id="review-suggestions-title" tabindex="-1">{% trans "Suggestions" %}</h2>
+        <p class="help-text">{% trans "Within a suggestion, Alt+Shift+A accepts and Alt+Shift+R rejects. Conflicts require an explicit edited replacement." %}</p>
+        {% for row in rows %}
+        <article class="review-suggestion" data-suggestion="{{ row.item.suggestion.pk }}" data-suggestion-state="{{ row.item.state }}" data-merge-state="{{ row.item.comparison.state }}" tabindex="0">
+          <h3>{{ row.label }}</h3>
+          {% include "includes/components/provenance.html" with kind="ai_drafted" only %}
+          {% if row.item.suggestion.assertion_class == "hypothesis" %}<p><strong>{% trans "Hypothesis - not a confirmed finding" %}</strong></p>{% elif row.item.suggestion.assertion_class == "reported" %}{% include "includes/components/provenance.html" with kind="reported" only %}{% else %}{% include "includes/components/provenance.html" with kind="observed" only %}{% endif %}
+          <p class="help-text">{% blocktrans with revision=row.item.suggestion.draft.base_revision generation=row.item.suggestion.draft.generation %}Based on note revision {{ revision }} · generation {{ generation }}.{% endblocktrans %}</p>
+          <p>{% for index in row.links %}<a class="review-citation" href="#review-source-{{ index }}">{% blocktrans %}Source {{ index }}{% endblocktrans %}</a> {% empty %}{% trans "The original source changed or is unavailable." %}{% endfor %}</p>
+          {% include "includes/components/diff.html" with id=row.diff_id title=_("Current note compared with AI suggestion") lines=row.lines state="default" only %}
+          <details><summary>{% trans "Compare original with draft" %}</summary><h4>{% trans "Original at generation" %}</h4><p class="review-text">{{ row.item.base }}</p><h4>{% trans "AI suggestion" %}</h4><p class="review-text">{{ row.item.suggestion.text }}</p></details>
+          {% if row.item.decision %}
+          <p class="feedback feedback--success">{% if row.item.state == "accepted" %}{% trans "Accepted by clinician" %}{% elif row.item.state == "modified" %}{% trans "Modified by clinician" %}{% else %}{% trans "Rejected by clinician" %}{% endif %}</p>
+          {% elif row.item.state == "stale" %}
+          <p class="feedback" role="status">{% trans "Stale suggestion. Sources or generation changed; regenerate before applying." %}</p>
+          <button class="button button--secondary" name="action" value="regenerate_{{ row.item.suggestion.section }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Regenerate section" %}</button>
+          <button class="button button--secondary" name="decision" value="rejected:{{ row.item.suggestion.pk }}" type="submit" data-review-reject data-review-write>{% trans "Reject suggestion" %}</button>
+          {% else %}
+          {% if row.item.comparison.state == "conflict" %}<p class="feedback feedback--error" role="status">{% trans "Manual edits are preserved. Compare both versions and type the replacement explicitly; accepting cannot overwrite a touched section, including edit-then-revert." %}</p>{% endif %}
+          <div class="actions">
+            <button class="button" name="decision" value="accepted:{{ row.item.suggestion.pk }}" type="submit" data-review-accept data-review-write{% if not panel.available or row.item.comparison.state == "conflict" %} disabled{% endif %}>{% trans "Accept suggestion" %}</button>
+            <button class="button button--secondary" name="decision" value="rejected:{{ row.item.suggestion.pk }}" type="submit" data-review-reject data-review-write>{% trans "Reject suggestion" %}</button>
+          </div>
+          <div class="field"><label for="replacement-{{ row.item.suggestion.pk }}">{% trans "Your edited replacement" %} · {{ row.label }}</label><textarea id="replacement-{{ row.item.suggestion.pk }}" name="replacement-{{ row.item.suggestion.pk }}" rows="4" maxlength="20000" autocomplete="off" spellcheck="false">{% if row.item.comparison.state == "conflict" %}{{ row.item.current }}{% else %}{{ row.item.suggestion.text }}{% endif %}</textarea></div>
+          <button class="button button--secondary" name="decision" value="modified:{{ row.item.suggestion.pk }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Apply my edited replacement" %}</button>
+          <button class="button button--secondary" name="action" value="regenerate_{{ row.item.suggestion.section }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Regenerate section" %}</button>
+          {% endif %}
+        </article>
+        {% empty %}<p>{% trans "No supported suggestions are available. Nothing has been added to the note." %}</p>{% endfor %}
+      </section>
+    </div>
+  </form>
+  <section class="review-proposals" aria-labelledby="review-proposals-title" data-separate-proposals>
+    <h2 id="review-proposals-title">{% trans "Proposed orders and tasks - separate from the note" %}</h2>
+    <p>{% trans "These are source-linked A0 proposals, not orders, tasks or approvals. Review them in their domain workspace. Note review cannot execute an agent tool or approve its payload." %}</p>
+    <ul>{% for proposal in panel.proposals %}<li data-draft-proposal>{% if proposal.kind == "order" %}<strong>{% trans "Order proposal" %}</strong>{% else %}<strong>{% trans "Task proposal" %}</strong>{% endif %}<p class="review-text">{{ proposal.text }}</p></li>{% empty %}<li>{% trans "No separate proposals were generated." %}</li>{% endfor %}</ul>
+    {% for link in workspace.links %}{% if link.key == "automations" %}<p><a class="button button--secondary" href="{{ link.url }}">{% trans "Open governed proposal queue" %}</a></p>{% endif %}{% endfor %}
+  </section>
+  {% note_ai_history clinic_id encounter_id %}
+  {% endif %}
+</section>
+{% endblock %}

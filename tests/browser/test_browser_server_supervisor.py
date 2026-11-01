@@ -97,6 +97,9 @@ def test_supervised_argv_is_frozen_and_preloaded(tmp_path: Path) -> None:
     assert argv[0] == sys.executable
     assert argv[1:4] == ["-m", "gunicorn", "--bind"]
     assert "--workers=2" in argv
+    assert "--worker-class=sync" in argv
+    assert "--threads=1" in argv
+    assert "--timeout=30" in argv
     assert "--preload" in argv
     assert argv[-1] == "config.wsgi:application"
     assert not any(item in {"sh", "-c"} for item in argv)

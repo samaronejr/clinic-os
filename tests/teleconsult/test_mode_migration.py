@@ -10,6 +10,7 @@ from apps.audit.services import verify_chain
 from apps.intake.patient_access import patient_session_context
 from apps.teleconsult import participants
 from django.db import connection
+from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 
 from patient_service_support import runtime_role
@@ -27,7 +28,20 @@ if TYPE_CHECKING:
 __all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 OLD = [("teleconsult", "0005_event_authority")]
-NEW = [("teleconsult", "0006_mode_audit")]
+
+
+def mode_migrations(*, backwards: bool) -> None:
+    """Exercise all reversible mode DDL without rolling back protected transcripts."""
+    loader = MigrationExecutor(connection).loader
+    names = ("0006_mode_audit", "0007_consented_capture")
+    with connection.schema_editor() as editor:
+        for name in reversed(names) if backwards else names:
+            migration = loader.get_migration("teleconsult", name)
+            state = loader.project_state(migration.dependencies)
+            if backwards:
+                migration.unapply(state, editor)
+            else:
+                migration.apply(state, editor)
 
 
 def catalog_hash() -> str:
@@ -69,13 +83,24 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
         participants.set_patient_audio_only(session_id=w.session, enabled=True)
     original = history_hash(w.organization)
     new_catalog = catalog_hash()
+    executor = MigrationExecutor(connection)
+    installed = frozenset(executor.loader.applied_migrations)
+    # A graph rollback now crosses protected transcript storage. Prove that it
+    # refuses, then test the exact reversible teleconsult migrations in place.
+    with pytest.raises(IrreversibleError):
+        executor.migrate(OLD)
+    assert catalog_hash() == new_catalog
+    assert history_hash(w.organization) == original
+    reversed_modes = False
     try:
-        MigrationExecutor(connection).migrate(OLD)
+        mode_migrations(backwards=True)
+        reversed_modes = True
         old_catalog = catalog_hash()
         assert history_hash(w.organization) == original
         with setup_context(w.organization):
             verify_chain(w.organization)
-        MigrationExecutor(connection).migrate(NEW)
+        mode_migrations(backwards=False)
+        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
         with connection.cursor() as cursor:
@@ -84,14 +109,20 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
                 "WHERE conname='teleconsult_mode_audit_binding'"
             )
             assert cursor.fetchone() == (True,)
-        MigrationExecutor(connection).migrate(OLD)
+        mode_migrations(backwards=True)
+        reversed_modes = True
         assert catalog_hash() == old_catalog
         assert history_hash(w.organization) == original
-        MigrationExecutor(connection).migrate(NEW)
+        mode_migrations(backwards=False)
+        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
     finally:
-        MigrationExecutor(connection).migrate(NEW)
+        if reversed_modes:
+            mode_migrations(backwards=False)
+    assert (
+        frozenset(MigrationExecutor(connection).loader.applied_migrations) == installed
+    )
     with runtime_role(), patient_session_context(second):
         participants.set_patient_audio_only(session_id=w.session, enabled=False)
     events, audits = mode_history(w)

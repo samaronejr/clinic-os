@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:clinic-ops:agent:action-payload:v1",
+  "title": "Digest-bound agent action",
+  "description": "SHA-256 of RFC 8785 canonical bytes. Duplicate keys, floats, non-finite numbers and unknown fields are refused before canonicalization. Text is never Unicode-normalized. Set-valued arrays must be sorted by their RFC 8785 bytes, with no duplicate entries. Server attestations are not qualified signatures.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "action_id", "operation", "organization_id", "clinic_id",
+    "patient_id", "subject", "source_versions", "document", "recipients", "amounts",
+    "provider", "parameters", "not_before", "expires_at",
+    "approver_authority_snapshots", "approval_policy", "compensation_policy",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "action_id": {"$ref": "#/$defs/uuid"},
+    "organization_id": {"$ref": "#/$defs/uuid"},
+    "clinic_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"$ref": "#/$defs/uuid"},
+    "patient_id": {"anyOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+    "operation": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version"],
+      "properties": {
+        "name": {"enum": ["comms.synthetic_reminder", "workflows.review_task"]},
+        "version": {"const": 1}
+      }
+    },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "expected_state", "revision"],
+      "properties": {
+        "kind": {"enum": ["workflow_definition", "ai_artifact"]},
+        "id": {"$ref": "#/$defs/uuid"},
+        "expected_state": {"type": "string", "minLength": 1, "maxLength": 24},
+        "revision": {"$ref": "#/$defs/version"}
+      }
+    },
+    "source_versions": {
+      "type": "array", "maxItems": 100, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "id", "version", "revision", "content_sha256"],
+        "properties": {
+          "kind": {"enum": ["workflow_definition", "ai_artifact"]},
+          "id": {"$ref": "#/$defs/uuid"}, "version": {"$ref": "#/$defs/version"},
+          "revision": {"$ref": "#/$defs/version"},
+          "content_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "document": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false, "required": ["version", "sha256"],
+          "properties": {"version": {"$ref": "#/$defs/version"}, "sha256": {"$ref": "#/$defs/sha256"}}
+        }
+      ]
+    },
+    "recipients": {
+      "type": "array", "maxItems": 100, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "id", "destination", "version", "consent_refs", "delegation_refs"],
+        "properties": {
+          "kind": {"enum": ["synthetic", "email", "sms", "whatsapp", "portal"]},
+          "id": {"$ref": "#/$defs/uuid"},
+          "destination": {"type": "string", "minLength": 1, "maxLength": 256},
+          "version": {"$ref": "#/$defs/version"},
+          "consent_refs": {"$ref": "#/$defs/references"},
+          "delegation_refs": {"$ref": "#/$defs/references"}
+        }
+      }
+    },
+    "amounts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["currency", "centavos", "direction", "allocations"],
+      "properties": {
+        "currency": {"const": "BRL"}, "centavos": {"$ref": "#/$defs/centavos"},
+        "direction": {"enum": ["none", "debit", "credit"]},
+        "allocations": {
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "centavos"],
+            "properties": {"id": {"$ref": "#/$defs/uuid"}, "centavos": {"$ref": "#/$defs/centavos"}}
+          }
+        }
+      }
+    },
+    "provider": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capability_version", "account", "environment", "api_version"],
+      "properties": {
+        "capability_version": {"$ref": "#/$defs/uuid"}, "account": {"$ref": "#/$defs/provider_text"},
+        "environment": {"$ref": "#/$defs/provider_text"}, "api_version": {"$ref": "#/$defs/provider_text"}
+      }
+    },
+    "parameters": {"type": "object"},
+    "not_before": {"$ref": "#/$defs/instant"},
+    "expires_at": {"$ref": "#/$defs/instant"},
+    "approver_authority_snapshots": {
+      "type": "array", "maxItems": 100, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["user_id", "permission", "memberships"],
+        "properties": {
+          "user_id": {"$ref": "#/$defs/uuid"},
+          "permission": {"type": "string", "minLength": 1, "maxLength": 64},
+          "memberships": {
+            "description": "Unique entries in ascending RFC 8785 byte order: bundle_version, id, role for v1.",
+            "type": "array", "maxItems": 100, "uniqueItems": true,
+            "items": {
+              "type": "object", "additionalProperties": false, "required": ["id", "role", "bundle_version"],
+              "properties": {
+                "id": {"$ref": "#/$defs/uuid"}, "role": {"type": "string", "minLength": 1, "maxLength": 24},
+                "bundle_version": {"type": "integer", "minimum": 1, "maximum": 2}
+              }
+            }
+          }
+        }
+      }
+    },
+    "approval_policy": {
+      "type": "object", "additionalProperties": false, "required": ["policy_id", "version", "quorum", "autonomy"],
+      "properties": {
+        "policy_id": {"$ref": "#/$defs/uuid"}, "version": {"$ref": "#/$defs/version"},
+        "quorum": {"type": "integer", "minimum": 0, "maximum": 2},
+        "autonomy": {"enum": ["A0", "A1", "A2", "A3"]}
+      }
+    },
+    "compensation_policy": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "version"],
+      "properties": {"mode": {"enum": ["manual", "synthetic_cancel", "none"]}, "version": {"const": 1}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"properties": {"name": {"const": "comms.synthetic_reminder"}}}}},
+      "then": {"properties": {"parameters": {
+        "type": "object", "additionalProperties": false, "required": ["template"],
+        "properties": {"template": {"const": "logistics-v1"}}
+      }}},
+      "else": {"properties": {"parameters": {
+        "type": "object", "additionalProperties": false, "required": ["due_at"],
+        "properties": {"due_at": {"$ref": "#/$defs/instant"}}
+      }}}
+    }
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "centavos": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,17})$"},
+    "instant": {"type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d{1,6})?Z$"},
+    "references": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/$defs/uuid"}},
+    "provider_text": {"type": "string", "minLength": 1, "maxLength": 128}
+  }
+}

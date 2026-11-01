@@ -97,7 +97,7 @@ ACTOR_GUC = "app.current_user_id"
 # is rewritten, so every byte, including whitespace inside literals, counts.
 # Changing principal_scope means re-reviewing it and updating this pin.
 REFUSAL_HELPER_DIGEST = (
-    "5d1317b75f31ab4987abf387194cced1b4c9a2d1f866baef1d9152a3aea2a28a"
+    "b5ca76af4dadf7c7aecf6ccdaf74a480aae0d44e8714cf2cbab5eb2de91c94c8"
 )
 # Everything the pinned helper's closure may read; any view is refused.
 REFUSAL_HELPER_RELATIONS = frozenset(

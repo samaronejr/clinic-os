@@ -1,0 +1,82 @@
+.scribe-review {
+  max-inline-size: 100rem;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  margin-block: var(--space-6);
+}
+
+.review-column {
+  min-inline-size: 0;
+  border-block-start: var(--line-1) solid var(--color-line);
+  padding-block-start: var(--space-4);
+}
+
+.review-jumps,
+.review-citation {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.review-jumps a,
+.review-citation,
+.review-suggestion summary {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--control-height);
+  padding-inline: var(--space-2);
+}
+
+.review-text,
+.review-suggestion .diff-line,
+.review-proposals {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review-sources {
+  padding-inline-start: var(--space-5);
+}
+
+.review-sources li,
+.review-suggestion {
+  padding-block: var(--space-4);
+  border-block-end: var(--line-1) solid var(--color-line);
+  scroll-margin-block-start: var(--space-6);
+}
+
+.review-suggestion .actions {
+  flex-wrap: wrap;
+}
+
+.review-suggestion button,
+.review-column textarea {
+  max-inline-size: 100%;
+}
+
+.review-suggestion:focus-visible,
+.review-column h2:focus-visible {
+  outline: var(--ring-width) solid var(--color-focus);
+  outline-offset: var(--ring-offset);
+}
+
+.scribe-review [hidden] {
+  display: none !important;
+}
+
+@media (max-width: 70rem) {
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  .review-column,
+  .review-suggestion {
+    border-color: CanvasText;
+  }
+}

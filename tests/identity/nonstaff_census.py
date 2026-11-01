@@ -18,13 +18,17 @@ from identity.delegation_probes import delegation_probes
 from identity.lifecycle_differential_probes import lifecycle_probes
 from identity.nonstaff_agenda_board_probes import agenda_board_probes
 from identity.nonstaff_agenda_grid_probes import agenda_grid_probes
+from identity.nonstaff_decision_support_probes import decision_probes
 from identity.nonstaff_differential import (
     DifferentialProbe,
     DifferentialReport,
     assert_behavioral_classifications,
 )
 from identity.nonstaff_document_probes import document_probes
+from identity.nonstaff_draft_probes import draft_probes
 from identity.nonstaff_ehr_probes import ehr_probes
+from identity.nonstaff_evaluation_probes import evaluation_probes
+from identity.nonstaff_extraction_probes import extraction_probes
 from identity.nonstaff_infrastructure_probes import (
     infrastructure_probes,
     metrics_probes,
@@ -84,6 +88,7 @@ def run_nonstaff_census(
             )
         probes: dict[str, list[DifferentialProbe]] = {}
         for probe in [
+            *draft_probes(data, graph),
             *patient_probes(data),
             *infrastructure_probes(data, patch),
             *metrics_probes(data, patch),
@@ -92,10 +97,15 @@ def run_nonstaff_census(
             *appointment_lifecycle_probes(data, graph),
             *agenda_grid_probes(data, graph),
             *ehr_probes(data, graph),
+            *extraction_probes(
+                graph, data.actor.pk, patch, encounter_id=data.legacy.encounter
+            ),
             *document_probes(data, graph),
             *agenda_board_probes(data, graph),
             *delegation_probes(graph, data.actor.pk),
             *lifecycle_probes(graph),
+            *decision_probes(data, graph, patch),
+            *evaluation_probes(graph, data.actor.pk),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(

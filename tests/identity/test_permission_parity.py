@@ -127,7 +127,7 @@ def test_every_authorization_candidate_is_accounted_for(
     merged = {
         row["symbol"]
         for row in candidates
-        if row.get("probes") == [row["symbol"] + "#cut1"]
+        if row["symbol"] + "#cut1" in row.get("probes", ())
     }
     executed = run_cut1_census(
         merged,

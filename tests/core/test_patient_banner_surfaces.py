@@ -43,6 +43,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _ehr_surface(
     graph: RbacGraph, view: str
 ) -> tuple[Client, str, dict[str, str], _MonkeyPatchedWSGIResponse]:
+    if view.startswith("ai:"):
+        return _ai_surface(graph, view)
     encounter = begin(graph)
     url = reverse(view, kwargs={"clinic_id": graph.clinic_a})
     if view == "intake:patient-timeline":
@@ -97,6 +99,41 @@ def _prescription_surface(
     return client, url, data, response
 
 
+def _ai_surface(
+    graph: RbacGraph, view: str
+) -> tuple[Client, str, dict[str, str], _MonkeyPatchedWSGIResponse]:
+    encounter = begin(graph)
+    registration(graph, graph.physician, graph.clinic_a)
+    with owner_context(graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.get(
+            clinic_id=graph.clinic_a, patient_id=encounter.patient_id
+        )
+    url = reverse(view, kwargs={"clinic_id": graph.clinic_a})
+    data = (
+        {
+            "command": "generate",
+            "surface": "workspace",
+            "enrollment_id": str(enrollment.pk),
+        }
+        if view == "ai:chart-assistant"
+        else {"command": "open", "encounter_id": str(encounter.pk)}
+    )
+    with physician_client(graph) as client:
+        if view == "ai:decision-support":
+            # Decision support renders its own bound banner but never selects
+            # a patient or changes a clinician's opt-in/session preferences.
+            selected = client.post(
+                reverse("ehr:patient-workspace", args=(graph.clinic_a,)),
+                {"action": "open", "enrollment_id": str(enrollment.pk)},
+            )
+            assert selected.status_code == 200
+        before = dict(client.session)
+        response = client.post(url, data)
+        if view == "ai:decision-support":
+            assert dict(client.session) == before
+    return client, url, data, response
+
+
 @pytest.mark.parametrize("view", sorted(PATIENT_BOUND_VIEWS))
 def test_each_patient_surface_binds_and_refuses_revocation(
     rbac_graph: RbacGraph,
@@ -105,7 +142,7 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     synthetic_provider: object,
 ) -> None:
     graph, role = rbac_graph, "physician"
-    if view.startswith("ehr:") or view == "intake:patient-timeline":
+    if view.startswith(("ehr:", "ai:")) or view == "intake:patient-timeline":
         client, url, data, response = _ehr_surface(graph, view)
     elif view.startswith("prescription:"):
         client, url, data, response = _prescription_surface(graph, view, settings)

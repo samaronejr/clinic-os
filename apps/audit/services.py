@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from django.db import connection
+from django.db import connection, connections
 
 from apps.audit.canonical import (
     AUDIT_PAYLOAD_ALLOWED,
@@ -208,6 +208,12 @@ def record_phase1_event(
     )
     if append.chain == "system":
         return _record_system_event(append.event, payload=append.payload)
+    if event_type.startswith("retention.purge."):
+        return _record_retention_event(append, affected_record_id)
+    if "agent" in connections and connections["agent"].in_atomic_block:
+        from apps.ai.action_audit import record_agent_event  # noqa: PLC0415
+
+        return record_agent_event(append, affected_record_id)
     if event_type.startswith("identity.delegate."):
         with connection.cursor() as cursor:
             cursor.execute(
@@ -225,6 +231,40 @@ def record_phase1_event(
         if row is not None and row[0] is not None:
             return _record_lab_event(append, affected_record_id)
     return record_event(append.event, payload=append.payload)
+
+
+def _record_retention_event(append: Phase1AuditAppend, record_id: UUID) -> int:
+    """Bind the canonical hash to the actual executing retention principal."""
+    with connections["agent"].cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.retention_audit_scope(%s,%s)",
+            [record_id, append.event.event_type],
+        )
+        scope = cursor.fetchone()
+        if (
+            scope is None
+            or append.payload.get("clinic_id") != str(scope[1])
+            or append.event.affected_record_type != scope[3]
+        ):
+            raise AuditContextRejectedError(setting="retention_audit_scope")
+        content_hash = _content_hash(
+            append.event,
+            AuditTrustedContext(organization_id=scope[0], actor_user_id=scope[2]),
+            _normalize_payload(append.payload),
+        )
+        cursor.execute(
+            "SELECT clinic_app.retention_audit(%s,%s,%s,%s)",
+            [
+                record_id,
+                append.event.event_type,
+                append.event.occurred_at_utc,
+                content_hash,
+            ],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise AuditContextRejectedError(setting="retention_audit")
+    return int(row[0])
 
 
 def _record_lab_event(append: Phase1AuditAppend, record_id: UUID) -> int:

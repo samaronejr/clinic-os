@@ -33,13 +33,39 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Derived from the migrated todo-36 PostgreSQL catalog; the live census in
+    # Re-derived from the task 47 integrated PostgreSQL catalogue: 180 relations.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 150
+    assert len(restore_contract.DOMAIN_RELATIONS) == 180
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
+    assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(
+        restore_contract.DOMAIN_RELATIONS
+    )
+    assert {
+        "ai_actionexecution",
+        "ai_actionproposal",
+        "ai_actionreceipt",
+        "ai_agentpolicyversion",
+        "ai_agentrun",
+        "ai_aiartifact",
+        "ai_aicircuit",
+        "ai_aiinvocation",
+        "ai_approval",
+        "ai_compensation",
+        "ai_gatewayswitch",
+        "ai_modelconfiguration",
+    } <= set(restore_contract.DOMAIN_RELATIONS)
     assert "clinic_app.identity_patientdelegategrant" in restore_contract.TABLE_DATA
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA
+    assert {
+        "scribe_audiochunk",
+        "scribe_captureepoch",
+        "scribe_chunktranscription",
+        "scribe_recordingcommand",
+        "scribe_recordingsession",
+        "scribe_transcriptsegment",
+        "scribe_transcriptversion",
+    } <= set(restore_contract.DOMAIN_RELATIONS)
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {
         "prescription_prescriptionclasspolicy",
         "providers_capabilityversion",

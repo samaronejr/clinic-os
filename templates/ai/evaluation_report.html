@@ -1,0 +1,34 @@
+{% load i18n %}
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% trans "AI evaluation report" %}</title></head>
+<body>
+<main>
+  <h1>{% trans "AI evaluation report" %}</h1>
+  <p>{{ report.limitations }}</p>
+  <dl>
+    <dt>{% trans "Capability" %}</dt><dd>{{ report.capability }}</dd>
+    <dt>{% trans "Evaluation status" %}</dt><dd>{{ status }}</dd>
+    <dt>{% trans "Corpus version" %}</dt><dd>{{ report.corpus_version }}</dd>
+    <dt>{% trans "Thresholds hash" %}</dt><dd>{{ report.thresholds_sha256 }}</dd>
+    <dt>{% trans "Cases" %}</dt><dd>{{ report.cases }}</dd>
+    <dt>{% trans "Encounter clusters" %}</dt><dd>{{ report.encounters }}</dd>
+    <dt>{% trans "Cohen's kappa" %}</dt><dd>{{ report.kappa|default_if_none:undefined }}</dd>
+    <dt>{% trans "Word error rate (descriptive only)" %}</dt><dd>{{ report.word_error_rate.rate|default_if_none:undefined }} ({{ report.word_error_rate.errors }}/{{ report.word_error_rate.reference_words }})</dd>
+    <dt>{% trans "Clinical error encounter bootstrap interval" %}</dt><dd>{{ report.clinical_error_cluster_bootstrap_95 }}</dd>
+    <dt>{% trans "Mean correction time of the two independent raters in milliseconds" %}</dt><dd>{{ report.correction_ms.mean }}; {{ report.correction_ms.cluster_bootstrap_95 }}</dd>
+  </dl>
+  <table><caption>{% trans "Adjudicated rates and Wilson confidence intervals" %}</caption>
+    <thead><tr><th scope="col">{% trans "Metric" %}</th><th scope="col">{% trans "Numerator" %}</th><th scope="col">{% trans "Denominator" %}</th><th scope="col">{% trans "Rate" %}</th><th scope="col">{% trans "Wilson interval" %}</th></tr></thead>
+    <tbody>{% for name,metric in rates %}<tr><th scope="row">{{ name }}</th><td>{{ metric.numerator }}</td><td>{{ metric.denominator }}</td><td>{{ metric.rate }}</td><td>{{ metric.wilson_95 }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% for axis,groups in strata %}
+  <h2>{{ axis }}</h2>
+  <table><caption>{% trans "Stratified engineering observations" %}</caption>
+    <thead><tr><th scope="col">{% trans "Tag" %}</th><th scope="col">{% trans "Errors" %}</th><th scope="col">{% trans "Cases" %}</th><th scope="col">{% trans "Rate" %}</th><th scope="col">{% trans "Wilson interval" %}</th></tr></thead>
+    <tbody>{% for group in groups %}<tr><th scope="row">{{ group.tag }}</th><td>{{ group.errors }}</td><td>{{ group.cases }}</td><td>{{ group.rate }}</td><td>{{ group.wilson_95 }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endfor %}
+</main>
+</body>
+</html>

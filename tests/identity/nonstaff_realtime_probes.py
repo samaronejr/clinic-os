@@ -18,6 +18,7 @@ from django.db import connection
 from django.test import override_settings
 from django.utils import timezone
 
+from identity.delegation_probes import _as_owner
 from identity.nonstaff_differential import DifferentialProbe
 from identity.permission_support import owner_context
 
@@ -68,7 +69,7 @@ def _invalidated(clinic: UUID, role: str) -> set[str]:
 
 
 def _members(d: NonstaffSubjects, clinic: UUID, role: str) -> set[str]:
-    with owner_context(d.legacy.graph.organization_a):
+    with _as_owner(), owner_context(d.legacy.graph.organization_a):
         return {
             f"authz:user:{user_id}"
             for user_id in UserClinicRole.objects.filter(
@@ -82,10 +83,17 @@ def realtime_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
     # Fixture values are resolved outside the observed call; reading the
     # actor model's id inside it would itself count as an authority touch.
     subject = d.legacy.graph.shared_user
-    # Expected subjects are read as the owner before any observed invocation.
-    physicians = _members(d, clinic, UserClinicRole.Role.PHYSICIAN)
-    foreign = _members(d, d.legacy.graph.clinic_c, UserClinicRole.Role.PHYSICIAN)
-    assert physicians, "invalidation oracle needs a non-empty member set"
+    physicians: set[str] = set()
+    foreign: set[str] = set()
+
+    def prepare_members() -> None:
+        # Later census builders may seed more staff. Capture the complete roster
+        # in trusted preparation, not during construction or observed execution.
+        nonlocal physicians, foreign
+        physicians = _members(d, clinic, UserClinicRole.Role.PHYSICIAN)
+        foreign = _members(d, d.legacy.graph.clinic_c, UserClinicRole.Role.PHYSICIAN)
+        assert physicians, "invalidation oracle needs a non-empty member set"
+
     return [
         DifferentialProbe(
             "apps.realtime.authorization._patient_topics",
@@ -107,6 +115,7 @@ def realtime_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
         DifferentialProbe(
             "apps.realtime.hooks.permission_changed",
             lambda: _invalidated(clinic, UserClinicRole.Role.PHYSICIAN) == physicians,
+            prepare=prepare_members,
         ),
         DifferentialProbe(
             "apps.realtime.hooks.permission_changed",
@@ -114,5 +123,6 @@ def realtime_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
                 _invalidated(d.legacy.graph.clinic_c, UserClinicRole.Role.PHYSICIAN)
                 == foreign
             ),
+            prepare=prepare_members,
         ),
     ]

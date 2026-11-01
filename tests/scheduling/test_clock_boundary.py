@@ -15,6 +15,51 @@ from scheduling.clock_residual_probes import EVENTS
 from scheduling.clock_source import _contexts, source_fragments
 
 APPS = Path(__file__).resolve().parents[2] / "apps"
+
+
+@pytest.mark.parametrize(
+    ("other", "violations"),
+    [
+        ('"SELECT 2"', []),
+        ('"PREPARE hidden AS SELECT now()"', ["server-prepare"]),
+        ("unknown_query", ["unresolved-statement"]),
+    ],
+)
+def test_conditional_query_checks_every_possible_branch(
+    tmp_path: Path, other: str, violations: list[str]
+) -> None:
+    (tmp_path / "query.py").write_text(
+        f'cursor.execute("SELECT 1" if selected else {other})'
+    )
+    assert application_boundary(tmp_path) == (
+        {"query.py": violations} if violations else {}
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "violations"),
+    [
+        (
+            'flagged = any(fragment in folded for fragment in ("execute shell",))',
+            [],
+        ),
+        ('cursor.execute("EXECUTE shell")', ["dynamic-or-prepared-execute"]),
+        (
+            'flagged = any(fragment in folded for fragment in ("EXECUTE shell",) '
+            "if cursor.execute(fragment))",
+            ["dynamic-or-prepared-execute", "unresolved-statement"],
+        ),
+    ],
+)
+def test_membership_data_does_not_hide_executable_sql(
+    tmp_path: Path, source: str, violations: list[str]
+) -> None:
+    (tmp_path / "query.py").write_text(source)
+    assert application_boundary(tmp_path) == (
+        {"query.py": violations} if violations else {}
+    )
+
+
 PROBES = {
     "event-trigger-exact": (
         "SQL = " + repr(EVENTS["event-exact"]),
@@ -204,6 +249,43 @@ for setting, value in (("app.current_tenant", tenant), ("app.current_user_id", u
 """
     (tmp_path / "safe.py").write_text(source)
     assert application_boundary(tmp_path) == {}
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "reason"),
+    [
+        ('"SELECT 1"', '"SELECT 2"', None),
+        ('"PREPARE hidden AS SELECT now()"', '"SELECT 1"', "server-prepare"),
+        ('"SELECT 1"', '"EXECUTE hidden"', "dynamic-or-prepared-execute"),
+        ('"SELECT 1"', "query_text", "unresolved-statement"),
+        ("query_text", '"SELECT 1"', "unresolved-statement"),
+    ],
+)
+def test_conditional_sql_censuses_both_branches(
+    tmp_path: Path, first: str, second: str, reason: str | None
+) -> None:
+    (tmp_path / "conditional.py").write_text(
+        f"cursor.execute({first} if condition else {second})\n"
+    )
+    assert application_boundary(tmp_path) == (
+        {} if reason is None else {"conditional.py": [reason]}
+    )
+
+
+@pytest.mark.parametrize("phrase", ["execute shell", "EXECUTE hidden"])
+def test_membership_needles_are_data_but_executed_needles_remain_censused(
+    tmp_path: Path, phrase: str
+) -> None:
+    path = tmp_path / "needles.py"
+    path.write_text(
+        f"flagged = any(fragment in folded for fragment in ({phrase!r},))\n"
+    )
+    assert application_boundary(tmp_path) == {}
+    path.write_text(
+        "flagged = any(cursor.execute(fragment) or fragment in folded "
+        f"for fragment in ({phrase!r},))\n"
+    )
+    assert "unresolved-statement" in application_boundary(tmp_path)["needles.py"]
 
 
 @pytest.mark.parametrize("statement", ["SELECT 1", "PREPARE hidden AS SELECT now()"])

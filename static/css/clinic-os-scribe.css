@@ -1,0 +1,90 @@
+.scribe-capture {
+  margin-block: var(--space-5);
+  padding-block: var(--space-5);
+  border-block: var(--line-1) solid var(--color-line);
+}
+
+.scribe-capture [hidden] {
+  display: none !important;
+}
+
+.scribe-capture h2:focus-visible {
+  outline: var(--ring-width) solid var(--color-focus);
+  outline-offset: var(--ring-offset);
+}
+
+.scribe-meter {
+  margin-block: var(--space-4);
+}
+
+.scribe-meter label,
+.scribe-meter meter {
+  display: block;
+  width: 100%;
+}
+
+.scribe-meter meter {
+  block-size: var(--space-5);
+  accent-color: var(--color-primary);
+}
+
+.scribe-capture[data-state="offline"] [data-capture-status],
+.scribe-capture[data-state="stale"] [data-capture-status] {
+  background: var(--color-info-tint);
+  color: var(--color-info);
+}
+
+.scribe-capture[data-state="error"] [data-capture-status],
+.scribe-capture[data-state="permission-denied"] [data-capture-status] {
+  background: var(--color-error-tint);
+  color: var(--color-error);
+}
+
+.scribe-persistent {
+  position: fixed;
+  inset-inline: var(--space-4);
+  inset-block-end: var(--space-3);
+  z-index: 10;
+  margin: 0 auto;
+  max-width: 36rem;
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  border: var(--line-1) solid var(--color-control-border);
+  border-radius: var(--radius-1);
+}
+
+.scribe-persistent a {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  font-weight: 600;
+}
+
+body[data-scribe-live] {
+  padding-block-end: calc(var(--space-8) + var(--space-8));
+}
+
+body[data-scribe-live] :focus {
+  scroll-margin-block-end: calc(var(--space-8) + var(--space-8));
+}
+
+.scribe-decision {
+  max-width: min(32rem, calc(100% - var(--space-6)));
+  padding: var(--space-5);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  border: var(--line-1) solid var(--color-control-border);
+  border-radius: var(--radius-2);
+}
+
+.scribe-decision::backdrop {
+  background: var(--color-scrim);
+}
+
+@media (forced-colors: active) {
+  .scribe-persistent,
+  .scribe-decision {
+    border-color: CanvasText;
+  }
+}

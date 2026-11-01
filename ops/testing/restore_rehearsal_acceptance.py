@@ -57,6 +57,7 @@ def main(repository: Path | None = None) -> int:
         secret_dir = _secret_dir(work_dir)
         attachment_source = work_dir / "attachments-source"
         attachment_source.mkdir(mode=0o700)
+        (work_dir / "media-source").mkdir(mode=0o700)
         _seed(source, work_dir, secret_dir, attachment_source)
         attachment_restored = work_dir / "attachments-restored"
         shutil.copytree(attachment_source, attachment_restored)
@@ -193,6 +194,7 @@ def _seed(
             ),
             "PHYSICIAN_SYNTHETIC_REGISTRY": "1",
             "PRESCRIPTION_SYNTHETIC_SIGNING": "1",
+            "SCRIBE_MEDIA_ROOT": str(work_dir / "media-source"),
             "TELECONSULT_SYNTHETIC_PROVIDER": "1",
         }
     )
@@ -218,6 +220,8 @@ def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
     secret_dir: Path,
 ) -> bytes:
     evidence = work_dir / "restore-rehearsal.json"
+    media_store = work_dir / "media-restored"
+    media_store.mkdir(mode=0o700)
     uv_cache = work_dir / "uv-cache"
     uv_cache.mkdir(mode=0o700)
     credentials = {
@@ -241,12 +245,14 @@ def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
                 "RESTORE_ATTACHMENT_ROOT": str(object_store),
                 "RESTORE_CREDENTIALS_FD": str(read_descriptor),
                 "RESTORE_EVIDENCE_PATH": str(evidence),
+                "RESTORE_MEDIA_STORE": str(media_store),
                 "RESTORE_OBJECT_STORE": str(object_store),
                 "RESTORE_PROBE_PATH": str(probe_path),
                 "RESTORE_SECRET_DIR": str(secret_dir),
                 "RESTORE_SOURCE_CLAIM": source.claim_id,
                 "RESTORE_SOURCE_CONTAINER": source.container_id,
                 "RESTORE_SOURCE_DATABASE": source.database,
+                "RESTORE_SOURCE_MEDIA_STORE": str(work_dir / "media-source"),
                 "RESTORE_TARGET_CLAIM": target.claim_id,
                 "RESTORE_TARGET_CONTAINER": target.container_id,
                 "RESTORE_TARGET_DATABASE": target.database,

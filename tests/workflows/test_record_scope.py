@@ -22,14 +22,16 @@ from uuid import UUID, uuid4
 import pytest
 from apps.comms.adapters import OperationScope
 from apps.core import integration
+from apps.core.chart_sources import ChartBatch
 from apps.core.integration import ActionOperationRequest, enqueue_operation
 from apps.identity.current_context import CurrentActorError
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import CareTeamMembership, User, UserClinicRole
 from apps.scheduling.availability_creation import create_availability
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from apps.workflows import (
     access,
+    chart_sources,
     definition_services,
     designer,
     engine,
@@ -70,6 +72,7 @@ from django.urls import resolve
 from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
+from ehr.test_autosave import registration
 from identity.permission_support import (
     owner_context,
     permission_context,
@@ -545,6 +548,74 @@ def today_scope(s: Scoped, monkeypatch: pytest.MonkeyPatch) -> None:
         screen = outcome(s, physician, partial(today.view_today, clinic_id=clinic))[0]
         assert isinstance(screen, today.TodayView), screen
         assert [row.appointment_id for row in screen.appointments] == [expected]
+        assert [row.enrollment_id for row in screen.appointments] == [
+            UUID(s.ref(clinic, "enrollment")["id"])
+        ]
+
+
+def chart_task_scope(s: Scoped) -> None:
+    """The same patient's two clinic enrollments never mix tasks or appointments."""
+    physician = s.graph.physician
+    with owner_context(s.graph.organization_a):
+        UserClinicRole.objects.filter(user_id=physician, clinic_id=s.a).update(
+            workflow_bundle_version=2
+        )
+        UserClinicRole.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.b,
+            user_id=physician,
+            role=UserClinicRole.Role.PHYSICIAN,
+            workflow_bundle_version=2,
+        )
+    for clinic in (s.a, s.b):
+        registration(s.graph, physician, clinic)
+    with owner_context(s.graph.organization_a):
+        for clinic in (s.a, s.b):
+            CareTeamMembership.objects.create(
+                organization_id=s.graph.organization_a,
+                clinic_id=clinic,
+                patient_enrollment_id=s.ref(clinic, "enrollment")["id"],
+                user_id=physician,
+                role=UserClinicRole.Role.PHYSICIAN,
+                valid_from=timezone.now() - timedelta(days=1),
+            )
+    expected: dict[UUID, set[UUID]] = {}
+    with permission_context(s.graph, physician):
+        for clinic in (s.a, s.b):
+            expected[clinic] = {
+                create_task(
+                    clinic_id=clinic,
+                    spec=spec(clinic, s.ref(clinic, kind)),
+                    idempotency_key=uuid4(),
+                ).pk
+                for kind in ("enrollment", "appointment")
+            }
+            # Visible operational work is not automatically this patient's work.
+            create_task(clinic_id=clinic, spec=spec(clinic), idempotency_key=uuid4())
+    for clinic, foreign in ((s.a, s.b), (s.b, s.a)):
+        batch = outcome(
+            s,
+            physician,
+            partial(
+                chart_sources.read_task_sources,
+                clinic_id=clinic,
+                enrollment_id=UUID(s.ref(clinic, "enrollment")["id"]),
+            ),
+        )[0]
+        assert isinstance(batch, ChartBatch), batch
+        assert {source.id for source in batch.sources} == expected[clinic]
+        same_denial(
+            s,
+            physician,
+            partial(
+                chart_sources.read_task_sources,
+                clinic_id=clinic,
+                enrollment_id=UUID(s.ref(foreign, "enrollment")["id"]),
+            ),
+            partial(
+                chart_sources.read_task_sources, clinic_id=clinic, enrollment_id=uuid4()
+            ),
+        )
 
 
 def exceptions_scope(s: Scoped, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -862,6 +933,13 @@ PY_CASES: dict[str, Callable[..., None]] = {
     PYTHON + "views._authorized_tasks:scope:clinic_id=clinic_id": exceptions_scope,
     PYTHON + "task_feed.task_items:scope:clinic_id=scope.clinic_id": inbox_task_scope,
     PYTHON + "today.view_today:scope:clinic_id=clinic_id": today_scope,
+    PYTHON + "today.view_today:scope:clinic_id=clinic_id#2": today_scope,
+    PYTHON
+    + "chart_sources.read_task_sources:scope:clinic_id=clinic_id": chart_task_scope,
+    PYTHON
+    + "chart_sources.read_task_sources:scope:clinic_id=clinic_id#2": chart_task_scope,
+    PYTHON
+    + "chart_sources.read_task_sources:scope:clinic_id=clinic_id#3": chart_task_scope,
 }
 
 

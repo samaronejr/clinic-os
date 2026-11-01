@@ -12,6 +12,9 @@ from playwright.sync_api import expect
 from renewal.browser._navigation import goto_settled
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box
+from renewal.browser.results_extraction import (
+    test_document_extraction_five_values_unreadable_and_injection,
+)
 from renewal.browser.results_lab_support import runtime_effects, seed_delivery
 from renewal.browser.results_support import (
     SOURCE,
@@ -28,7 +31,10 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import Page
 
-__all__ = ("availability_staff",)
+__all__ = (
+    "availability_staff",
+    "test_document_extraction_five_values_unreadable_and_injection",
+)
 DAYS = {1280: "2039-06-12", 768: "2039-06-13", 375: "2039-06-14"}
 
 

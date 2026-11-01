@@ -126,6 +126,13 @@ history exists, use an additive forward correction rather than dropping it.
 
 ## Service principals (ADR-019, task 7)
 
+Todo 43 adds an explicitly provisioned v3 `retention` principal with only
+`retention.execute`. `register_retention_principal` uses the authenticated
+owner lifecycle; it never changes an existing v1 identity or grant.
+Its fixed resolvers expose purge metadata and commands, never clinical content.
+The synthetic retention configuration is seven days, dry-run enabled, with a
+35-day simulated backup-expiry horizon; live terms remain BLOCKED-ON-EG.
+
 `ServicePrincipal` is a machine identity, never a UserClinicRole or a clinician.
 Its organization, exact clinic, machine slug name/purpose, database login and
 version are immutable; only `active=True -> False` is allowed. `db_identity` is

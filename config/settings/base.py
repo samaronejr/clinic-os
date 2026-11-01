@@ -76,7 +76,20 @@ INSTALLED_APPS: list[str] = [
     "apps.realtime.apps.RealtimeConfig",
     "apps.workflows.apps.WorkflowsConfig",
     "apps.orders.apps.OrdersConfig",
+    "apps.ai.apps.AiConfig",
+    "apps.scribe.apps.ScribeConfig",
 ]
+
+# Capture is an explicit synthetic rehearsal until the provider lifecycle and
+# live runtime both authorize object_storage_media. No flag approves a provider.
+SCRIBE_SYNTHETIC_CAPTURE: bool = env.bool("SCRIBE_SYNTHETIC_CAPTURE", default=False)
+SCRIBE_DEV_MINIO: bool = env.bool("SCRIBE_DEV_MINIO", default=False)
+SCRIBE_MEDIA_ROOT: Path = Path(
+    env("SCRIBE_MEDIA_ROOT", default=str(BASE_DIR / "var" / "scribe-media"))
+)
+SCRIBE_S3_ENDPOINT: str = env("SCRIBE_S3_ENDPOINT", default="")
+SCRIBE_S3_BUCKET: str = env("SCRIBE_S3_BUCKET", default="")
+SCRIBE_S3_REGION: str = env("SCRIBE_S3_REGION", default="sa-east-1")
 
 # Rehearsal is explicit and cannot activate a real provider.
 WORKFLOWS_SYNTHETIC_ENABLED: bool = env.bool(

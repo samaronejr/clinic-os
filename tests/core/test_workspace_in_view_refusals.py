@@ -16,6 +16,7 @@ from apps.core.api.errors import UI_API_PREFIX
 from apps.ehr.services import SOAP_FIELDS
 from apps.identity.account_views import request_session_key
 from apps.identity.models import UserClinicRole
+from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.db import connection
 from django.http import HttpRequest, HttpResponse
@@ -190,6 +191,19 @@ def _send(
         return client.post(url, data, headers=headers)
 
 
+def assert_session_read_only(
+    client: Client,
+    response: _MonkeyPatchedWSGIResponse,
+    snapshot: dict[str, object],
+) -> None:
+    """Match the collection oracle's session-only cookie boundary."""
+    assert response.wsgi_request.session.modified is False
+    unchanged = dict(client.session) == snapshot
+    session_cookie = settings.SESSION_COOKIE_NAME in response.cookies
+    assert unchanged
+    assert not session_cookie
+
+
 def _probe_route(
     route: WorkspaceRoute,
     client: Client,
@@ -216,20 +230,87 @@ def _probe_route(
     statuses = set()
     with monkeypatch.context() as patch:
         patch.setattr(route.pattern, "callback", entered)
+        requests = (
+            (
+                *_requests(graph, known_encounter),
+                *_autosave_requests(graph, route.name),
+            )
+            if attempts is None
+            else attempts
+        )
+        if route.name == "ai:settings":
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "expected_version": "1",
+                        "enabled": "on",
+                        "purposes": "front_desk",
+                        "monthly_budget_micros": "100000",
+                        "limit_front_desk": "100000",
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
+        if route.name == "ai:chart-assistant":
+            # The closed form rejects the generic action-shaped requests
+            # before chart authorization. Unknown records with a valid form
+            # reach the real view's refusal in native and enhanced requests.
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        selector: str(uuid4()),
+                        "command": "generate",
+                        "surface": "workspace",
+                    },
+                    htmx,
+                )
+                for selector, htmx in product(
+                    ("enrollment_id", "encounter_id"), (False, True)
+                )
+            )
+        if route.name == "scribe:review":
+            # The review form rejects generic bodies before note authorization.
+            # A valid body reaches the unchanged view's unknown-version refusal.
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "action": "open",
+                        "encounter_id": known_encounter or str(uuid4()),
+                        "version_id": str(uuid4()),
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
+        if route.name == "scribe:control":
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "action": "pause",
+                        "encounter_token": "invalid",
+                        "session_id": str(uuid4()),
+                        "command_id": str(uuid4()),
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
+        requests += tuple(
+            ("POST", {"encounter_id": str(uuid4()), "command": "open"}, htmx)
+            for htmx in (False, True)
+            if route.name == "ai:decision-support"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
             else (graph.clinic_a,)
         )
         for clinic_id in clinics:
-            requests = (
-                (
-                    *_requests(graph, known_encounter),
-                    *_autosave_requests(graph, route.name),
-                )
-                if attempts is None
-                else attempts
-            )
             for method, data, htmx in requests:
                 _restore_session(client, snapshot)
                 before = len(entries)
@@ -238,23 +319,23 @@ def _probe_route(
                 statuses.add(response.status_code)
                 if response.status_code in {403, 404} and len(entries) > before:
                     refusals += 1
-                    assert response.wsgi_request.session.modified is False
-                    assert dict(client.session) == snapshot
+                    assert_session_read_only(client, response, snapshot)
                     assert not response.cookies
     return refusals, statuses
 
 
-def _passkey_page_refusal(
+def _membership_page_refusal(
     graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     superuser_database_url: str,
+    *,
+    route_name: str,
+    role: str,
 ) -> tuple[int, set[int]]:
     # Given a real authenticated member whose page is initially available.
-    client, user = _client_for(graph, "receptionist")
+    client, user = _client_for(graph, role)
     route = next(
-        route
-        for route in workspace_routes(get_resolver())
-        if route.name == "identity:passkeys"
+        route for route in workspace_routes(get_resolver()) if route.name == route_name
     )
     assert _get(client, route.url(graph.clinic_a)).status_code == 200
     session_key = client.session.session_key
@@ -312,7 +393,13 @@ def test_passkey_page_refuses_membership_lost_after_admission(
     monkeypatch: pytest.MonkeyPatch,
     superuser_database_url: str,
 ) -> None:
-    _passkey_page_refusal(rbac_graph, monkeypatch, superuser_database_url)
+    _membership_page_refusal(
+        rbac_graph,
+        monkeypatch,
+        superuser_database_url,
+        route_name="identity:passkeys",
+        role="receptionist",
+    )
 
 
 def test_authorised_in_view_refusals_are_session_read_only(
@@ -377,11 +464,30 @@ def test_authorised_in_view_refusals_are_session_read_only(
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)
-    refused, codes = _passkey_page_refusal(
-        rbac_graph, monkeypatch, superuser_database_url
-    )
-    observed["identity:passkeys"] += refused
-    statuses["identity:passkeys"].update(codes)
+    for route_name, role in (
+        ("identity:passkeys", "receptionist"),
+        ("ai:agents", "clinic_admin"),
+        ("ai:agent-settings", "clinic_admin"),
+    ):
+        refused, codes = _membership_page_refusal(
+            rbac_graph,
+            monkeypatch,
+            superuser_database_url,
+            route_name=route_name,
+            role=role,
+        )
+        observed[route_name] += refused
+        statuses[route_name].update(codes)
+    # This owner can read clinic A's controls but lacks organization authority
+    # in clinic B. A valid AI policy POST therefore reaches the real view's
+    # organization-wide refusal instead of stopping at a schema/auth boundary.
+    owner_client, _owner = _client_for(rbac_graph, "owner")
+    assert _get(owner_client, "/auth/protected/").status_code == 200
+    ai_route = next(route for route in routes if route.name == "ai:settings")
+    refused, codes = _probe_route(ai_route, owner_client, rbac_graph, monkeypatch)
+    assert refused > 0
+    observed[ai_route.name] += refused
+    statuses[ai_route.name].update(codes)
     # The authenticated routes cannot have an absent framework key. A thin
     # HTTP adapter covers the parser's denial using a real anonymous session,
     # without changing the resolver-derived oracle or pretending auth passed.

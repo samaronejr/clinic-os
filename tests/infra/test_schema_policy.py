@@ -64,6 +64,39 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        # Exact receipt-only policies and resolver-only writes: retention tests.
+        "retention_artifactpurge",
+        # Exact capture/consent/token policies: tests/scribe/test_posture.py.
+        "scribe_recordingsession",
+        "scribe_captureepoch",
+        "scribe_audiochunk",
+        "scribe_recordingcommand",
+        "scribe_chunktranscription",
+        "scribe_transcriptversion",
+        "scribe_transcriptsegment",
+        "scribe_aidraft",
+        "scribe_draftsectionsuggestion",
+        "scribe_draftactionproposal",
+        "scribe_reviewdecision",
+        # Exact requester-only ciphertext and ledger policies: tests/ai/test_posture.py.
+        "ai_aiartifact",
+        "ai_aiinvocation",
+        "ai_aicircuit",
+        "ai_agentpolicyversion",
+        "ai_agentrun",
+        "ai_actionproposal",
+        "ai_approval",
+        "ai_actionexecution",
+        "ai_actionreceipt",
+        "ai_compensation",
+        # Exact source-bound, resolver-confirmed extraction posture: tests/ai.
+        "ai_extractionjob",
+        "ai_extractioncandidate",
+        # Blinded reviewer policies/ACLs: tests/ai/test_evaluation_authority.py.
+        "ai_evaluationprotocol",
+        "ai_evaluationrun",
+        "ai_evaluationrating",
+        "ai_modelchangerequest",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

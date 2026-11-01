@@ -499,7 +499,18 @@ def launch(
     browser_type = {"firefox": driver.firefox, "webkit": driver.webkit}[engine]
     if engine == "firefox":
         return browser_type.launch(
-            executable_path=executable, firefox_user_prefs=FIREFOX_USER_PREFS
+            executable_path=executable,
+            firefox_user_prefs={
+                **FIREFOX_USER_PREFS,
+                **(
+                    {
+                        "media.navigator.streams.fake": True,
+                        "media.navigator.permission.disabled": True,
+                    }
+                    if media
+                    else {}
+                ),
+            },
         )
     return browser_type.launch(executable_path=executable)
 
@@ -518,6 +529,12 @@ def _engine_of(context: BrowserContext) -> str:
     browser = context.browser
     assert browser is not None
     return browser.browser_type.name
+
+
+def grant_capture_audio(context: BrowserContext, origin: str) -> None:
+    """Grant Chromium's native fake mic; Firefox grants its fake at launch."""
+    if _engine_of(context) == "chromium":
+        context.grant_permissions(["microphone"], origin=origin)
 
 
 def install_media(
@@ -585,7 +602,12 @@ def failed_responses_logged() -> bool:
     return selected_engine() != "firefox"
 
 
-def new_context(browser: Browser, **options: Any) -> BrowserContext:  # noqa: ANN401 - Playwright options pass through
+def new_context(
+    browser: Browser,
+    *,
+    media: bool = False,
+    **options: Any,  # noqa: ANN401 - Playwright options pass through
+) -> BrowserContext:
     """``browser.new_context``; a device scale factor also survives on Firefox."""
     scale = options.pop("device_scale_factor", None)
     if scale is None or browser.browser_type.name != "firefox":
@@ -604,6 +626,14 @@ def new_context(browser: Browser, **options: Any) -> BrowserContext:  # noqa: AN
         firefox_user_prefs={
             **FIREFOX_USER_PREFS,
             "layout.css.devPixelsPerPx": str(float(scale)),
+            **(
+                {
+                    "media.navigator.streams.fake": True,
+                    "media.navigator.permission.disabled": True,
+                }
+                if media
+                else {}
+            ),
         },
         **options,
     )

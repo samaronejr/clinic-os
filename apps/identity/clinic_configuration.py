@@ -13,6 +13,7 @@ from django.core.validators import validate_email
 from django.db import connection, transaction
 from PIL import Image, UnidentifiedImageError
 
+from apps.ai.policy import organization_policy
 from apps.audit.services import record_phase1_event
 from apps.core.fairness import _organization_quotas, validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
@@ -39,6 +40,8 @@ DEFAULT_BRAND = "navy"
 MIN_HOLD_TTL = 1
 MAX_HOLD_TTL = 60
 DEFAULT_HOLD_TTL = 10
+MAX_RAW_RETENTION_DAYS = 365
+MAX_BACKUP_RETENTION_DAYS = 3650
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,9 @@ class ConfigurationContent:
     # ordinary settings save never resets approval or hold TTL (todo 22).
     self_booking_requires_approval: bool | None = None
     hold_ttl_minutes: int | None = None
+    raw_audio_retention_days: int | None = None
+    retention_dry_run: bool | None = None
+    retention_backup_days: int | None = None
 
     def validate(self) -> None:
         """Validate text, formats and fixed tokens at the service boundary."""
@@ -88,6 +94,28 @@ class ConfigurationContent:
             raise ValidationError(message)
         if self.contact_email:
             validate_email(self.contact_email)
+        if (
+            (
+                self.raw_audio_retention_days is not None
+                and (
+                    type(self.raw_audio_retention_days) is not int
+                    or not 0 <= self.raw_audio_retention_days <= MAX_RAW_RETENTION_DAYS
+                )
+            )
+            or (
+                self.retention_backup_days is not None
+                and (
+                    type(self.retention_backup_days) is not int
+                    or not 1 <= self.retention_backup_days <= MAX_BACKUP_RETENTION_DAYS
+                )
+            )
+            or (
+                self.retention_dry_run is not None
+                and type(self.retention_dry_run) is not bool
+            )
+        ):
+            message = "Invalid synthetic retention configuration."
+            raise ValidationError(message)
 
 
 def latest_configuration(clinic_id: UUID) -> ClinicConfiguration | None:
@@ -187,6 +215,10 @@ def publish_configuration(
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            [f"ai-budget:{clinic.organization_id}"],
+        )
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
             [f"clinic-configuration:{clinic_id}"],
         )
         previous = latest_configuration(clinic_id)
@@ -203,6 +235,13 @@ def publish_configuration(
             fields["hold_ttl_minutes"] = (
                 previous.hold_ttl_minutes if previous else DEFAULT_HOLD_TTL
             )
+        for name, default in (
+            ("raw_audio_retention_days", 7),
+            ("retention_dry_run", True),
+            ("retention_backup_days", 35),
+        ):
+            if fields[name] is None:
+                fields[name] = getattr(previous, name) if previous else default
         # Serialize quota writes and org-effective carry-forward reads so
         # concurrent publishes cannot resurrect a superseded quota map.
         cursor.execute(
@@ -225,6 +264,7 @@ def publish_configuration(
             organization_id=clinic.organization_id,
             version=expected_version + 1,
             queue_quotas=quotas,
+            ai_policy=organization_policy().as_json(),
             **fields,
             logo_png=(
                 logo_bytes

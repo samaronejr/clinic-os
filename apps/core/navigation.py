@@ -260,8 +260,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "automations",
         gettext_noop("Automations"),
-        None,
-        ("automation.admin", "automation.finance", "automation.organization"),
+        "ai:agents",
+        ("automation.admin", "automation.organization"),
+        route_roles=None,
+        views=frozenset({"ai:agents", "ai:agent-settings"}),
         owner_todo=39,
     ),
     Destination(
@@ -279,6 +281,14 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         route_roles=ADMIN_ROUTE,
         views=frozenset({"identity:clinic-settings"}),
         entries=(
+            Destination(
+                "ai-settings",
+                gettext_noop("AI settings"),
+                "ai:settings",
+                ("configuration.organization",),
+                route_roles=None,
+                views=frozenset({"ai:settings"}),
+            ),
             Destination(
                 "scheduling-settings",
                 gettext_noop("Scheduling settings"),

@@ -1,5 +1,12 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from ai import test_agent_execution, test_agent_guards, test_agent_staff_authority
+from ai import test_controls as ai_controls
+from ai import test_posture as ai_posture
+from ai.evaluation_oracles import CASES as EVALUATION_CASES
+from ai.evaluation_oracles import SQL_PROTOCOL_ORACLES as EVALUATION_PROTOCOLS
+from ai.extraction_oracles import CASES as EXTRACTION_CASES
+from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -49,6 +56,8 @@ from prescription.test_document_kinds import (
 from prescription.test_sncr_adapter import (
     test_issuance_trigger_binds_the_stored_physician_role,
 )
+from retention.sql_oracles import CASES as RETENTION_CASES
+from retention.sql_oracles import SQL_PROTOCOL_ORACLES as RETENTION_PROTOCOLS
 from scheduling.test_appointment_states import (
     test_database_trigger_decides_every_status_pair_by_actor,
     test_guards_decide_by_the_exact_permission_not_a_sibling,
@@ -61,6 +70,14 @@ from scheduling.test_resource_permission_identity import GUARDS
 from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
 )
+from scribe import test_actor_readers as scribe_actor
+from scribe import test_draft_authority as scribe_draft_authority
+from scribe import test_draft_runtime as scribe_draft_runtime
+from scribe import test_ingest as scribe_ingest
+from scribe import test_refusals as scribe_refusals
+from scribe import test_room_capture as scribe_room
+from scribe import test_transcript_concurrency as scribe_transcript_native
+from scribe import test_transcript_runtime as scribe_transcript
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -184,10 +201,123 @@ EHR_PROTOCOLS = {
     name: [*cases, "test_longitudinal_functions_keep_exact_execute_privileges"]
     for name, cases in EHR_PROTOCOLS.items()
 }
+SCRIBE_PROTOCOL_ORACLES = {
+    "clinic_app.scribe_note_author": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ],
+    "clinic_app.scribe_note_visible": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ],
+    "clinic_app.scribe_citation_allowed": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references",
+    ],
+    "clinic_app.scribe_draft_guard": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references",
+        "test_raw_review_guard_enforces_applied_text_by_decision_kind",
+        "test_exact_review_replay_is_read_only_and_changed_replay_is_refused",
+    ],
+    "clinic_app.scribe_asr_allowed": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_ai_revocation_refuses_an_already_queued_invocation",
+    ],
+    "clinic_app.scribe_asr_consent_fence": [
+        "test_ai_revocation_refuses_an_already_queued_invocation",
+        "test_native_consent_publication_holds_asr_send_fence",
+    ],
+    "clinic_app.scribe_transcript_coverage": [
+        "test_coverage_reader_rechecks_native_assignment_and_active_actor",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_read_unknown_and_foreign_clinic_have_the_same_denial",
+    ],
+    "clinic_app.scribe_transcript_guard": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_database_coverage_change_is_a_recoverable_transcript_conflict",
+        "test_native_coverage_storage_has_per_version_and_recording_bounds",
+    ],
+    "clinic_app.scribe_assigned": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority",
+    ],
+    "clinic_app.scribe_consent": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_consent_fence": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_gaps": [
+        "test_reordered_chunks_close_only_the_gap_they_fill",
+        "test_resume_fences_old_epoch_and_commands_replay",
+    ],
+    "clinic_app.scribe_guard": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_resume_fences_old_epoch_and_commands_replay",
+        "test_role_loss_refuses_every_action_without_session_or_domain_mutation",
+    ],
+    "clinic_app.scribe_room_capture_allowed": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_room_cleanup": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_room_guard": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+    ],
+}
+
 PROTOCOL_ORACLES = {
+    **RETENTION_PROTOCOLS,
+    **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
+    **EXTRACTION_PROTOCOLS,
+    **EVALUATION_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
+    **{
+        name: [
+            "test_agent_scope_and_approval_refusals_are_side_effect_free",
+            "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+            "test_revoked_approver_blocks_after_approval",
+            "test_superseded_source_publication_blocks_execution",
+            "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        ]
+        for name in (
+            "clinic_app.agent_action_payload",
+            "clinic_app.agent_approval_current",
+            "clinic_app.agent_audit",
+            "clinic_app.agent_audit_scope",
+            "clinic_app.agent_bound_snapshot",
+            "clinic_app.agent_controls",
+            "clinic_app.agent_mutation_lock",
+            "clinic_app.agent_proposal_scope",
+            "clinic_app.agent_record_guard",
+            "clinic_app.agent_snapshot",
+            "clinic_app.agent_source",
+            "clinic_app.agent_transition",
+            "clinic_app.identity_actor_permission",
+            "clinic_app.identity_agent_grant_version",
+        )
+    },
+    "clinic_app.agent_staff": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_agent_staff_admits_only_automation_authority",
+    ],
+    "clinic_app.ai_staff": [
+        "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
+        "test_clinical_purposes_recheck_current_patient_authority",
+    ],
+    "clinic_app.configuration_guard": [
+        "test_ai_policy_requires_organization_permission_in_every_clinic",
+        "test_native_controls_execute_valid_invalid_stale_and_forbidden_requests",
+    ],
     **SCHEDULING_CASES,
     "clinic_app.scheduling_capacity_guard": [
         *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
@@ -234,6 +364,11 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert all(
+        callable(RETENTION_CASES[name])
+        for names in RETENTION_PROTOCOLS.values()
+        for name in names
+    )
     assert callable(test_reception_display_device_contract)
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
     assert all(callable(case) for case in SQL_CASES.values())
@@ -242,6 +377,18 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(callable(case) for case in DELEGATE_CASES.values())
     assert all(callable(case) for case in EHR_CASES.values())
     assert all(callable(case) for case in ORDERS_CASES.values())
+    assert all(callable(case) for case in EXTRACTION_CASES.values())
+    assert all(callable(case) for case in EVALUATION_CASES.values())
+    assert all(
+        name in EVALUATION_CASES
+        for cases in EVALUATION_PROTOCOLS.values()
+        for name in cases
+    )
+    assert all(
+        name in EXTRACTION_CASES
+        for cases in EXTRACTION_PROTOCOLS.values()
+        for name in cases
+    )
     assert all(
         name in ORDERS_CASES for cases in ORDERS_PROTOCOLS.values() for name in cases
     )
@@ -277,3 +424,81 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
+    for module, names in (
+        (
+            scribe_draft_authority,
+            (
+                "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+                "test_raw_citation_and_history_guards_reject_foreign_references",
+                "test_raw_review_guard_enforces_applied_text_by_decision_kind",
+            ),
+        ),
+        (
+            scribe_draft_runtime,
+            (
+                "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+                "test_exact_review_replay_is_read_only_and_changed_replay_is_refused",
+            ),
+        ),
+        (
+            test_agent_guards,
+            (
+                "test_agent_scope_and_approval_refusals_are_side_effect_free",
+                "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+                "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+            ),
+        ),
+        (
+            test_agent_execution,
+            (
+                "test_revoked_approver_blocks_after_approval",
+                "test_superseded_source_publication_blocks_execution",
+            ),
+        ),
+        (
+            test_agent_staff_authority,
+            ("test_agent_staff_admits_only_automation_authority",),
+        ),
+        (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
+        (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),
+        (
+            scribe_actor,
+            ("test_native_capture_authority_refuses_inactive_actor",),
+        ),
+        (
+            scribe_ingest,
+            (
+                "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority",
+                "test_revoked_consent_stops_new_chunks_and_direct_sql",
+                "test_reordered_chunks_close_only_the_gap_they_fill",
+                "test_resume_fences_old_epoch_and_commands_replay",
+            ),
+        ),
+        (
+            scribe_refusals,
+            ("test_role_loss_refuses_every_action_without_session_or_domain_mutation",),
+        ),
+        (
+            scribe_room,
+            ("test_room_bits_require_explicit_live_capture_and_asr_stays_closed",),
+        ),
+        (
+            scribe_transcript,
+            (
+                "test_coverage_reader_rechecks_native_assignment_and_active_actor",
+                "test_governed_completion_review_and_final_are_retained_successors",
+                "test_ai_revocation_refuses_an_already_queued_invocation",
+                "test_finalize_without_full_coverage_requires_explicit_disposition",
+                "test_read_unknown_and_foreign_clinic_have_the_same_denial",
+            ),
+        ),
+        (
+            scribe_transcript_native,
+            (
+                "test_native_consent_publication_holds_asr_send_fence",
+                "test_database_coverage_change_is_a_recoverable_transcript_conflict",
+                "test_native_coverage_storage_has_per_version_and_recording_bounds",
+            ),
+        ),
+    ):
+        assert all(callable(getattr(module, name)) for name in names)

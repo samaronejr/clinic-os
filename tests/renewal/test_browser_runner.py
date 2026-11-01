@@ -73,6 +73,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "questionnaires",
         "retention",
         "self-booking",
+        "scribe-capture",
         "waitlist",
         "reminders",
         "teleconsult",
@@ -112,6 +113,8 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         )
         == runner.VIDEO_SUITES
     )
+    assert "scribe-capture" in runner.FIXTURE_SUITES
+    assert "--cov=apps.scribe" in runner.COVERAGE_TARGETS
     # The rehearsal drives every synthetic adapter slice in one runtime.
     assert "end-to-end" in (
         runner.FIXTURE_SUITES
@@ -474,6 +477,12 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         "submit_pack": (
             "Enter submits the hx-post pack form; exact POST response and "
             "main-content afterSettle are subscribed before submission; no document"
+        ),
+    },
+    BROWSER_SUITES / "evaluation_journeys.py": {
+        "_hx_enter": (
+            "Enter submits only the HX evaluation form; the POST response and "
+            "afterSettle are subscribed before submission; no document"
         ),
     },
     BROWSER_SUITES / "test_primitives.py": dict.fromkeys(
