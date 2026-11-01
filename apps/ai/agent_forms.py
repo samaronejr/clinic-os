@@ -29,6 +29,13 @@ class AgentPolicyForm(forms.Form):
         choices=(
             ("workflows.review_task", _("Create an operational review checklist")),
             ("comms.synthetic_reminder", _("Simulate one logistics reminder")),
+            # Task 54: the front-desk agent's bounded tools.
+            ("scheduling.hold", _("Offer one real free slot to a verified patient")),
+            (
+                "scheduling.book_approved",
+                _("Move an appointment after the patient accepts the offered slot"),
+            ),
+            ("comms.send_approved_link", _("Send an approved administrative link")),
         ),
     )
     principal_id = forms.UUIDField(

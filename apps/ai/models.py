@@ -10,6 +10,7 @@ from apps.ai.evaluation_models import (
 )
 from apps.ai.execution_models import ActionExecution, ActionReceipt, Compensation
 from apps.ai.extraction_models import ExtractionCandidateRecord, ExtractionJob
+from apps.ai.front_desk_models import FrontDeskThread, FrontDeskTurn, KnowledgeArticle
 from apps.ai.ledger_models import AIArtifact, AICircuit, AIInvocation
 
 __all__ = (
@@ -28,7 +29,10 @@ __all__ = (
     "EvaluationRun",
     "ExtractionCandidateRecord",
     "ExtractionJob",
+    "FrontDeskThread",
+    "FrontDeskTurn",
     "GatewaySwitch",
+    "KnowledgeArticle",
     "ModelChangeRequest",
     "ModelConfiguration",
 )

@@ -8561,3 +8561,172 @@ msgstr "Até %(limit)s caracteres. Uma pessoa da equipe lê a mensagem, então e
 
 msgid "Send reply"
 msgstr "Enviar resposta"
+
+msgid "You are talking to the clinic's automated assistant. It answers administrative questions only. To talk to a person, reply ATENDENTE."
+msgstr "Você está falando com o assistente automático da clínica. Ele responde apenas a dúvidas administrativas. Para falar com uma pessoa, responda ATENDENTE."
+
+msgid "I cannot assess symptoms. In an emergency, call 192 now; otherwise call the clinic. Your message was passed to the clinical team."
+msgstr "Não consigo avaliar sintomas. Em uma emergência, ligue agora para o 192; caso contrário, ligue para a clínica. Sua mensagem foi passada para a equipe clínica."
+
+msgid "I don't know how to answer that; I am forwarding your message to the clinic team."
+msgstr "Não sei responder isso; estou encaminhando sua mensagem para a equipe da clínica."
+
+msgid "I am forwarding this conversation to the clinic team; a person will reply here."
+msgstr "Estou encaminhando esta conversa para a equipe da clínica; uma pessoa vai responder aqui."
+
+msgid "I can help with opening hours, prices, services, exam preparation and your appointments."
+msgstr "Posso ajudar com horários de atendimento, preços, serviços, preparo para exames e suas consultas."
+
+msgid "To protect your data, reply with your date of birth (DD/MM/YYYY)."
+msgstr "Para proteger seus dados, responda com sua data de nascimento (DD/MM/AAAA)."
+
+msgid "I could not confirm your identity. Reply with your date of birth (DD/MM/YYYY)."
+msgstr "Não consegui confirmar sua identidade. Responda com sua data de nascimento (DD/MM/AAAA)."
+
+msgid "I could not confirm your identity, so I cannot show appointments here. I am forwarding this conversation to the clinic team."
+msgstr "Não consegui confirmar sua identidade, então não posso mostrar consultas aqui. Estou encaminhando esta conversa para a equipe da clínica."
+
+msgid "Thank you, your identity is confirmed. Ask about your appointment again, or reply REMARCAR to look for another time."
+msgstr "Obrigado, sua identidade foi confirmada. Pergunte de novo sobre sua consulta ou responda REMARCAR para procurar outro horário."
+
+#, python-format
+msgid "Your next appointment is on %(when)s. Reply REMARCAR to look for another time."
+msgstr "Sua próxima consulta é em %(when)s. Responda REMARCAR para procurar outro horário."
+
+msgid "I found no upcoming appointment. To book one, reply ATENDENTE."
+msgstr "Não encontrei nenhuma consulta futura. Para agendar, responda ATENDENTE."
+
+#, python-format
+msgid "The next available time is %(when)s. Reply SIM to move your appointment there, or NÃO to keep it."
+msgstr "O próximo horário disponível é %(when)s. Responda SIM para mudar sua consulta para esse horário ou NÃO para mantê-la."
+
+msgid "There is no available time in the next two weeks. The clinic keeps a waiting list: reply ATENDENTE and the team will add you to it."
+msgstr "Não há horário disponível nas próximas duas semanas. A clínica tem uma lista de espera: responda ATENDENTE e a equipe vai incluir você nela."
+
+#, python-format
+msgid "Done: your appointment is now on %(when)s."
+msgstr "Pronto: sua consulta agora é em %(when)s."
+
+msgid "That time was just taken. Reply REMARCAR to look for another one."
+msgstr "Esse horário acabou de ser ocupado. Responda REMARCAR para procurar outro."
+
+msgid "All right, your appointment stays as it was."
+msgstr "Certo, sua consulta continua como estava."
+
+msgid "Opening hours"
+msgstr "Horário de atendimento"
+
+msgid "Prices"
+msgstr "Preços"
+
+msgid "Services"
+msgstr "Serviços"
+
+msgid "Exam preparation"
+msgstr "Preparo para exames"
+
+msgid "Administrative policies"
+msgstr "Políticas administrativas"
+
+msgid "Possibly urgent message"
+msgstr "Mensagem possivelmente urgente"
+
+msgid "Asked for a person"
+msgstr "Pediu para falar com uma pessoa"
+
+msgid "No reviewed answer"
+msgstr "Sem resposta revisada"
+
+msgid "Identity not confirmed"
+msgstr "Identidade não confirmada"
+
+msgid "Outside the assistant's limits"
+msgstr "Fora dos limites do assistente"
+
+msgid "No longer used"
+msgstr "Fora de uso"
+
+msgid "Use a short key (lowercase letters, digits, hyphens), a title, an answer of up to 600 characters without e-mail addresses, links or long numbers, up to 12 keywords and, optionally, one plain https link."
+msgstr "Use uma chave curta (letras minúsculas, números e hífens), um título, uma resposta de até 600 caracteres sem e-mails, links ou números longos, até 12 palavras-chave e, se quiser, um link https simples."
+
+msgid "This item changed since you opened the page. Review it again before deciding."
+msgstr "Este item mudou desde que você abriu a página. Revise de novo antes de decidir."
+
+msgid "Draft saved. Approve it to let the assistant answer with it."
+msgstr "Rascunho salvo. Aprove para o assistente poder responder com ele."
+
+msgid "Answer approved. The assistant now uses this version."
+msgstr "Resposta aprovada. O assistente passa a usar esta versão."
+
+msgid "Answer retired. The assistant no longer uses it."
+msgstr "Resposta desativada. O assistente não a usa mais."
+
+msgid "Marked as resolved. The assistant answers new messages again."
+msgstr "Marcada como resolvida. O assistente volta a responder as novas mensagens."
+
+msgid "Front-desk assistant answers"
+msgstr "Respostas do assistente de recepção"
+
+msgid "The automated assistant answers patients only with these reviewed answers. It never gives clinical advice, never invents availability, prices or coverage, and forwards anything else to the team."
+msgstr "O assistente automático responde aos pacientes apenas com estas respostas revisadas. Ele nunca dá orientação clínica, nunca inventa horários, preços ou cobertura e encaminha todo o resto para a equipe."
+
+msgid "Approve this version"
+msgstr "Aprovar esta versão"
+
+msgid "No answers yet: the assistant forwards every question to the team."
+msgstr "Ainda não há respostas: o assistente encaminha todas as perguntas para a equipe."
+
+msgid "New answer"
+msgstr "Nova resposta"
+
+msgid "Key"
+msgstr "Chave"
+
+msgid "Topic"
+msgstr "Assunto"
+
+msgid "Title"
+msgstr "Título"
+
+msgid "Answer"
+msgstr "Resposta"
+
+msgid "Keywords, separated by commas"
+msgstr "Palavras-chave, separadas por vírgulas"
+
+msgid "Approved link (optional)"
+msgstr "Link aprovado (opcional)"
+
+msgid "Save draft"
+msgstr "Salvar rascunho"
+
+#, python-format
+msgid "Key %(key)s, version %(version)s"
+msgstr "Chave %(key)s, versão %(version)s"
+
+msgid "Conversations waiting for a person"
+msgstr "Conversas aguardando uma pessoa"
+
+msgid "The automated assistant handed these conversations to the team. Answer in the conversation, then mark it resolved; until then the assistant stays silent there."
+msgstr "O assistente automático passou estas conversas para a equipe. Responda na conversa e depois marque como resolvida; até lá, o assistente fica em silêncio nela."
+
+msgid "Mark resolved"
+msgstr "Marcar como resolvida"
+
+msgid "No conversation is waiting for a person."
+msgstr "Nenhuma conversa aguardando uma pessoa."
+
+msgid "Assistant handoffs"
+msgstr "Encaminhamentos do assistente"
+
+msgid "Assistant answers"
+msgstr "Respostas do assistente"
+
+msgid "Offer one real free slot to a verified patient"
+msgstr "Oferecer um horário livre real a um paciente verificado"
+
+msgid "Move an appointment after the patient accepts the offered slot"
+msgstr "Mudar uma consulta depois que o paciente aceita o horário oferecido"
+
+msgid "Send an approved administrative link"
+msgstr "Enviar um link administrativo aprovado"

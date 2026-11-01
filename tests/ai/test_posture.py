@@ -20,6 +20,7 @@ from apps.ai.rls import (
     CUSTOM_RLS_TABLES,
     EVALUATION_TABLES,
     EXTRACTION_TABLES,
+    FRONT_DESK_TABLES,
     RUNTIME_GRANTS,
 )
 from apps.core.integration import execute_operation
@@ -124,6 +125,14 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
             for table in EVALUATION_TABLES
             for policy in ("evaluation_owner", "evaluation_staff")
         ),
+        *(
+            (table, policy)
+            for table in FRONT_DESK_TABLES
+            for policy in ("front_desk_owner", "front_desk_read")
+        ),
+        ("ai_knowledgearticle", "front_desk_insert"),
+        ("ai_knowledgearticle", "front_desk_update"),
+        ("ai_frontdeskthread", "front_desk_update"),
     }
     assert grants == {
         (table, privilege)

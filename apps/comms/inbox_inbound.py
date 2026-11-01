@@ -51,7 +51,7 @@ from apps.comms.triage import classify_inbound
 from apps.core.secrets import SecretUnavailableError, secret_store
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
     from datetime import datetime
     from uuid import UUID
 
@@ -151,6 +151,30 @@ def inbound_context(*, account_id: UUID, proof: str) -> Iterator[ResolvedAccount
         yield account
 
 
+_MESSAGE_HOOKS: list[Callable[[UUID, str], None]] = []
+_RUNNERS: list[Callable[[UUID, str], None]] = []
+
+
+def register_inbound_message_hook(hook: Callable[[UUID, str], None]) -> None:
+    """Run ``hook(message_id, channel)`` in the inbound transaction after a message.
+
+    The hook shares the authenticated principal context and the event's
+    savepoint: if it fails, the message and its event receipt roll back.
+    """
+    if hook not in _MESSAGE_HOOKS:
+        _MESSAGE_HOOKS.append(hook)
+
+
+def register_inbound_runner(runner: Callable[[UUID, str], None]) -> None:
+    """Run ``runner(account_id, proof)`` after the delivery committed.
+
+    The runner may re-enter ``inbound_context`` with the same proof; it runs
+    outside any transaction, so it can also open a patient session.
+    """
+    if runner not in _RUNNERS:
+        _RUNNERS.append(runner)
+
+
 def receive_inbound(
     *, provider: str, account_id: UUID, headers: Mapping[str, str], body: bytes
 ) -> InboundReceipt:
@@ -164,7 +188,11 @@ def receive_inbound(
             if account.provider == "whatsapp-cloud-v1"
             else parse_signed_envelope(account.channel, body)
         )
-        return _apply(account, events)
+        receipt = _apply(account, events)
+    if receipt.accepted:
+        for runner in _RUNNERS:
+            runner(account_id, proof)
+    return receipt
 
 
 class _NotAppliedError(Exception):
@@ -336,6 +364,9 @@ def _apply_message(account: ResolvedAccount, event: InboundMessage) -> None:
         from apps.workflows.inbox import publish_inbox_hint  # noqa: PLC0415
 
         publish_inbox_hint(account.clinic_id)
+    if event.supported:
+        for hook in _MESSAGE_HOOKS:
+            hook(message.pk, account.channel)
 
 
 def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:

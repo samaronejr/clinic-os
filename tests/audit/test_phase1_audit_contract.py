@@ -1796,6 +1796,22 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "comms.suggested_reply",
         "decided",
     ),
+    # Task 54: reviewed front-desk answers and staff handoff resolution.
+    **{
+        f"ai.knowledge_article.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.knowledge_article",
+            state,
+        )
+        for state in ("drafted", "approved", "retired")
+    },
+    "ai.front_desk.resolved": (
+        "tenant",
+        "clinic-os-web",
+        "ai.front_desk_thread",
+        "resolved",
+    ),
 }
 
 

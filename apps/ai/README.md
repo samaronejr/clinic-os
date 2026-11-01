@@ -223,6 +223,85 @@ The binding [execution contract](../../docs/ai/agent-execution.md) describes
 the closed tool registry, actual-principal attribution, execute-time revalidation,
 unknown-outcome reconciliation and the synthetic-only limits.
 
+## Front-desk agent (todo 54, AI-04)
+
+Default off. The agent answers a clinic's patient-initiated inbox messages
+(WhatsApp, email, SMS on the signed webhook path) only while both opt-ins hold:
+the organization AI policy enables the `front_desk` purpose, and the clinic's
+latest `front_desk` agent policy is enabled at A2 with a service principal that
+still holds `agent.execute`. Turning either off stops every new turn; that is the
+rollback switch. Portal threads are clinic-opened conversations that a patient
+replies to, and the portal already offers verified self-service booking, so the
+agent stays out of them.
+
+- **Turn pipeline.** The comms inbound hook queues one `FrontDeskTurn` for each
+  stored, supported inbound message inside the authenticated delivery
+  transaction (`clinic_app.ai_front_desk_enqueue`). After commit the runner
+  re-enters `inbound_context` with the same proof and answers each pending turn.
+  One runner per provider account works at a time (a session advisory lock held
+  across the turn's transactions), so concurrent deliveries never work on the
+  same turn.
+  Every bridge (`ai_front_desk_turn`, `_articles`, `_state`, `_verify`,
+  `_finish`) requires the conversation's own ingest principal, the enabled policy
+  and the turn's pending state. Nothing else writes the agent tables
+  (`ai_front_desk_guard`), and a thread that waits for a person gets no turn.
+- **Untrusted text, closed intents.** Message text is data. A fixed word
+  classifier, after comms `classify_inbound`, picks one closed intent; the text
+  never names a tool, a record or an argument, so "cancel all appointments"
+  calls nothing.
+- **Safety.** Urgent or clinical text gets fixed safety text (call 192 in an
+  emergency, otherwise the clinic) and the thread becomes `handoff_pending`.
+  Clinical-owner approval of that copy is EG-3 and still pending. The comms
+  triage has already put the conversation in the clinician queue (Clinical Inbox
+  feed `question`). There is no clinical advice and no monitoring promise. The
+  first reply of every thread discloses the automation and the ATENDENTE path to
+  a person.
+- **Identity.** Appointment data needs a verified identity. Staff must have
+  linked the thread to the patient through a verified contact, and the person
+  must give the enrollment's date of birth. The bridge compares it server-side
+  against the encrypted field, allows three attempts, and on success mints a
+  booking-only patient grant and session for 30 minutes, issued in the name of
+  the administrator who enabled the policy. Contact possession or a name ("sou o
+  paciente X") never verifies, and linked and unlinked threads get identical
+  replies. After three failures the thread waits for a person.
+- **Tools and limits.** `scheduling.hold` binds the first real free slot of the
+  same practitioner in the next 14 days to the thread for 10 minutes
+  (`patient_slots`; nothing is invented). `scheduling.book_approved` moves the
+  appointment only after the patient's explicit SIM to that exact offer, checked
+  again against real availability under the patient session
+  (`reschedule_patient_appointment`). `comms.send_approved_link` appends an
+  answer's approved https link. Each tool needs its entry in the policy allowlist
+  (closed schemas in `TOOL_SCHEMAS`) and room in the policy's daily action
+  budget; otherwise a person takes over (`policy_limit`). When nothing is free
+  the reply offers the clinic's waiting list through the team.
+- **Reviewed answers (D-15).** `KnowledgeArticle` versions cover hours, prices,
+  services, preparation and administrative policies. Staff with
+  `configuration.clinic` draft and approve them, and approval retires the key's
+  previous version. The agent answers only from approved versions, by
+  deterministic keyword lookup (most matching keywords; a tie answers nothing),
+  and records the cited version on the turn. No match answers "Não sei responder
+  isso; estou encaminhando sua mensagem para a equipe da clínica." and hands off.
+  Answer text holds no e-mail, link or long number; a link lives in the approved
+  link field (plain https, no query).
+- **Staff surfaces.** Settings > Assistant answers (`ai:front-desk-knowledge`,
+  `configuration.clinic`) and Messages > Assistant handoffs
+  (`ai:front-desk-handoffs`, `demographics.read`). The handoff list shows the
+  reason and the time only; the text stays in the conversation. Mark resolved
+  returns the thread to the agent. Audit events:
+  `ai.knowledge_article.{drafted,approved,retired}` and `ai.front_desk.resolved`.
+- **Replies.** The finish bridge stores the reply as an outbound message without
+  a sender, with the turn id as its command id (comms `0011_agent_replies`). On
+  the synthetic channels delivery is simulated (`provider_state=sent`); a real
+  provider send of machine-originated messages is BLOCKED-ON-EG, because the
+  outbox has no principal path. The hook therefore queues no turn unless the
+  data mode is synthetic and the channel is a synthetic one.
+- **Schema.** Migration `0007_front_desk` adds three FORCE-RLS tables without
+  patient text, column-limited staff updates and retained history. The reverse
+  runs only on an empty synthetic database; once turns exist, rollback = restore.
+- **Follow-ups.** Link handoffs to the todo-55 urgent-concern queue; add a
+  portal-channel agent if patients ever open portal threads; a real provider
+  send (EG).
+
 ## Permitted chart assistant (todo 44)
 
 `context.assemble_context` reads only through the owning EHR, orders and task

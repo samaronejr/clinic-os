@@ -194,6 +194,21 @@ signed-in human with its own `command_id`. No path sends a model result. The
 governed gateway wiring (purpose `front_desk`, A1) is not registered: until an
 approved drafter exists the panel reads "Sugestão indisponível".
 
+### Front-desk agent replies (todo 54)
+
+The ai app registers an inbound message hook (`register_inbound_message_hook`).
+It runs in the delivery transaction after a supported message is stored, so a
+failure rolls the event back. It also registers an after-commit runner
+(`register_inbound_runner`, called with the account id and proof), which may
+re-enter `inbound_context`. The message contract admits one more row shape: an
+outbound message without a sender, which is the front-desk agent's reply, with
+the agent turn id as its command id. The message guard admits it only while
+`clinic_app.ai_front_desk_finish` names that exact row for its own finishing
+turn, and never on the portal channel or a closed thread. Agent replies have no
+outbox operation; on the synthetic channels they are stored as sent (simulated)
+and the thread shows them as clinic messages. The agent's own contract is in
+`apps/ai/README.md` ("Front-desk agent").
+
 ### Audit and telemetry
 
 Staff commands append fixed `comms.*` events (no content). Machine ingest appends

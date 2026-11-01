@@ -231,6 +231,19 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         ("demographics.read",),
         route_roles=MESSAGES_ROUTE,
         views=frozenset({"comms:inbox", "comms:conversation"}),
+        entries=(
+            # Task 54: conversations the front-desk assistant handed to a person.
+            Destination(
+                "front-desk-handoffs",
+                gettext_noop("Assistant handoffs"),
+                "ai:front-desk-handoffs",
+                ("demographics.read",),
+                # The people who can open the conversation to answer it.
+                route_roles=MESSAGES_ROUTE,
+                views=frozenset({"ai:front-desk-handoffs"}),
+                owner_todo=54,
+            ),
+        ),
     ),
     Destination(
         "finance",
@@ -319,6 +332,16 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("appointment.book", "configuration.organization"),
                 route_roles=None,
                 views=frozenset({"scheduling:resource-settings"}),
+            ),
+            # Task 54: the reviewed answers of the front-desk assistant.
+            Destination(
+                "front-desk-knowledge",
+                gettext_noop("Assistant answers"),
+                "ai:front-desk-knowledge",
+                ("configuration.clinic",),
+                route_roles=ADMIN_ROUTE | {_ROLE.CLINIC_MANAGER},
+                views=frozenset({"ai:front-desk-knowledge"}),
+                owner_todo=54,
             ),
         ),
     ),

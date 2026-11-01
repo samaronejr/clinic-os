@@ -744,6 +744,218 @@
       ]
     },
     {
+      "symbol": "apps.ai.front_desk._appointment_step",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._appointment_step#cut1"
+      ],
+      "reason": "Opens only the booking-only patient session a passed challenge minted for this thread (patient_session_context revalidates it); the patient booking services and the shared scheduling boundary decide every appointment read and change."
+    },
+    {
+      "symbol": "apps.ai.front_desk._articles",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._articles#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_articles returns only approved answers of the turn's clinic."
+    },
+    {
+      "symbol": "apps.ai.front_desk._context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._context#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_turn claims one pending turn and repeats the ownership, enabled-policy and daily-budget checks."
+    },
+    {
+      "symbol": "apps.ai.front_desk._finish",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._finish#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_finish rechecks the tool against the policy allowlist and the cited answer against approved versions; the message guard admits the sender-less reply only from this bridge."
+    },
+    {
+      "symbol": "apps.ai.front_desk._pending",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._pending#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_pending lists only that principal's pending turns; run_pending_turns holds a per-account session advisory lock across the turn transactions, so two deliveries never work on one turn."
+    },
+    {
+      "symbol": "apps.ai.front_desk._state",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._state#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_state allows only challenge, offer (verified thread, future slot), clear and the closed handoff reasons for its own pending turn."
+    },
+    {
+      "symbol": "apps.ai.front_desk._verify",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._verify#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_verify compares the date of birth of the thread's verified-contact enrollment server-side, at most three attempts, and mints a booking-only patient session; unlinked and linked threads get the same answer."
+    },
+    {
+      "symbol": "apps.ai.front_desk.enqueue_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk.enqueue_turn#cut1"
+      ],
+      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_enqueue queues a turn only for a just-stored inbound message of a thread that principal owns (comms_ingest_account), when the clinic's latest front_desk policy is enabled at A2 with a live agent.execute principal and the organization AI opt-in names front_desk."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb._article",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb._article#cut1"
+      ],
+      "reason": "Row lookup after the caller decided configuration.clinic; the front_desk_read policy hides foreign rows, so unknown and foreign answers share one denial."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.approve_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.approve_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard repeats the permission and binds the approver to the acting administrator."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.draft_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.draft_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard repeats the permission and binds the author to the acting administrator."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.knowledge_articles",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.knowledge_articles#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the front_desk_read policy repeats it for every row."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.retire_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.retire_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard allows only approved -> retired with the recorded approver kept."
+    },
+    {
+      "symbol": "apps.ai.front_desk_staff.handoff_threads",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_staff.handoff_threads#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the front_desk_read policy repeats it for every thread."
+    },
+    {
+      "symbol": "apps.ai.front_desk_staff.resolve_handoff",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_staff.resolve_handoff#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the ai_front_desk_guard admits only handoff_pending -> resolved by the acting staff member, nothing else."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views._front_desk_handoffs",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views._front_desk_handoffs#cut1"
+      ],
+      "reason": "TOTP-protected page body; repeats demographics.read and delegates the resolution to resolve_handoff."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views._front_desk_knowledge",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views._front_desk_knowledge#cut1"
+      ],
+      "reason": "TOTP-protected page body; repeats configuration.clinic and delegates each command to the knowledge services."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views.front_desk_handoffs_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views.front_desk_handoffs_page#cut1"
+      ],
+      "reason": "Decides demographics.read before the auth decorators; every refusal is the shared 403 page."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views.front_desk_knowledge_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views.front_desk_knowledge_page#cut1"
+      ],
+      "reason": "Decides configuration.clinic before the auth decorators; every refusal is the shared 403 page."
+    },
+    {
       "symbol": "apps.audit.services._record_comms_ingest_event",
       "signals": [
         "resolver"
@@ -8280,6 +8492,25 @@
     "apps.ai.evaluation.views.evaluation_view#cut1",
     "apps.ai.evaluation.views.evaluation_view#observed",
     "apps.ai.execution_tasks.dispatch_approved#cut1",
+    "apps.ai.front_desk._appointment_step#cut1",
+    "apps.ai.front_desk._articles#cut1",
+    "apps.ai.front_desk._context#cut1",
+    "apps.ai.front_desk._finish#cut1",
+    "apps.ai.front_desk._pending#cut1",
+    "apps.ai.front_desk._state#cut1",
+    "apps.ai.front_desk._verify#cut1",
+    "apps.ai.front_desk.enqueue_turn#cut1",
+    "apps.ai.front_desk_kb._article#cut1",
+    "apps.ai.front_desk_kb.approve_article#cut1",
+    "apps.ai.front_desk_kb.draft_article#cut1",
+    "apps.ai.front_desk_kb.knowledge_articles#cut1",
+    "apps.ai.front_desk_kb.retire_article#cut1",
+    "apps.ai.front_desk_staff.handoff_threads#cut1",
+    "apps.ai.front_desk_staff.resolve_handoff#cut1",
+    "apps.ai.front_desk_views._front_desk_handoffs#cut1",
+    "apps.ai.front_desk_views._front_desk_knowledge#cut1",
+    "apps.ai.front_desk_views.front_desk_handoffs_page#cut1",
+    "apps.ai.front_desk_views.front_desk_knowledge_page#cut1",
     "apps.ai.management.commands.ai_eval.Command.handle#cut1",
     "apps.ai.management.commands.ai_eval.Command.handle#observed",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
@@ -9984,6 +10215,270 @@
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
+    "clinic_app.ai_front_desk_articles": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54: returns only approved reviewed answers of the turn's clinic to its owning ingest principal."
+    },
+    "clinic_app.ai_front_desk_enqueue": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54 front-desk enqueue bridge: inside the authenticated inbound transaction it queues one turn for a just-stored inbound message of a conversation the current ingest principal owns (comms_ingest_account), only when the clinic's latest front_desk policy is enabled at A2 with a live agent.execute principal and the organization AI opt-in names front_desk; no staff actor is read."
+    },
+    "clinic_app.ai_front_desk_finish": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, reply_body bytea, kek text, turn_intent text, turn_tool text, turn_outcome text, cited uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54 reply bridge: rechecks the tool allowlist and the cited approved answer, stores the sender-less outbound reply the message guard admits only for this finishing turn, and closes the turn."
+    },
+    "clinic_app.ai_front_desk_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54 table guard: reviewed answers only by a configuration.clinic administrator (author and approver binding, draft -> approved -> retired), the staff handoff_pending -> resolved transition, otherwise only the bridge marker of the row's own claimed message or turn; no delete or truncate. Real staff, foreign and inactive actors drive it in tests/ai/test_front_desk_guards.py."
+    },
+    "clinic_app.ai_front_desk_pending": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54: lists the pending turns of conversations the current ingest principal owns; staff and patient contexts see none."
+    },
+    "clinic_app.ai_front_desk_state": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, change text, appointment uuid, practitioner uuid, start timestamp with time zone, reason text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54: thread bookkeeping for the turn's owning principal (challenge, offer only on a verified thread with a future slot, clear, the closed handoff reasons)."
+    },
+    "clinic_app.ai_front_desk_turn": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54: claims one pending turn for its owning ingest principal under the enabled policy and returns closed facts plus the decrypted inbound text and the daily tool budget."
+    },
+    "clinic_app.ai_front_desk_verify": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, birth text, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 54 identity challenge: compares the date of birth of the thread's verified-contact enrollment server-side, at most three attempts, and on success mints a booking-only grant and session (30 minutes) issued in the name of the policy publisher; linked and unlinked threads behave the same."
+    },
     "clinic_app.ai_budget_usage": {
       "discovery": {
         "migrations": [
@@ -10040,6 +10535,11 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_ledger_guard",
           "clinic_app.configuration_guard"
         ],
@@ -10751,6 +11251,13 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.comms_message_guard_v1",
           "clinic_app.comms_open_window"
         ],
@@ -10951,7 +11458,7 @@
     },
     "clinic_app.comms_message_guard_v1": {
       "kind": "domain_protocol",
-      "reason": "Todo 51 message guard with the todo 50 portal branch: an inbound portal row needs the live patient session of the thread's enrollment holding the messages operation and a thread that is not closed, and refuses any staff actor; provider-account inbound and the outbound rules are unchanged. Executed by the portal message matrix.",
+      "reason": "Todo 51 message guard with the todo 50 portal branch: an inbound portal row needs the live patient session of the thread's enrollment holding the messages operation and a thread that is not closed, and refuses any staff actor; provider-account inbound and the outbound rules are unchanged. Executed by the portal message matrix. The todo 54 agent branch admits an outbound row without any actor only while clinic_app.ai_front_desk_finish names that exact row for its own finishing turn, never on the portal channel or a closed thread; tests/ai/test_front_desk*.py execute it.",
       "probes": [
         "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
         "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
@@ -10966,6 +11473,7 @@
       ],
       "discovery": {
         "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py",
           "apps/comms/migrations/_portal_messages_sql.py"
         ],
         "policies": [],
@@ -11719,6 +12227,7 @@
         "resolvers": [
           "clinic_app.agent_audit",
           "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
@@ -12494,6 +13003,9 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_review_extraction",
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
@@ -12541,6 +13053,11 @@
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
+          "clinic_app.ai_frontdeskthread:front_desk_read",
+          "clinic_app.ai_frontdeskthread:front_desk_update",
+          "clinic_app.ai_frontdeskturn:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_update",
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
           "clinic_app.consent_consentacceptance:consent_acceptance_read",
@@ -12606,6 +13123,7 @@
           "clinic_app.agent_staff",
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_extraction_source_allowed",
+          "clinic_app.ai_front_desk_guard",
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
@@ -15166,6 +15684,9 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.comms_patient_messages",
           "clinic_app.comms_patient_reply",
           "clinic_app.patient_delegate_options",

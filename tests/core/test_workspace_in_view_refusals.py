@@ -62,6 +62,20 @@ NO_IN_VIEW_REFUSAL = {
         "For a valid staff User, refused, unknown and foreign clinics return the "
         "200 empty inbox page; invalid JSON/schema returns 400, not a refusal."
     ),
+    # Task 54: the front-desk assistant's staff pages.
+    "ai:front-desk-knowledge": (
+        "For the probed roles the registry permission (configuration.clinic and "
+        "the administrative route roles) refuses before the view, or the view "
+        "answers 200 and a body without article_id and revision is 400. Its own "
+        "403 for an unknown or foreign article is pinned in "
+        "tests/ai/test_front_desk_views.py."
+    ),
+    "ai:front-desk-handoffs": (
+        "For the probed roles the registry permission (demographics.read and the "
+        "inbox route roles) refuses before the view, or the view answers 200 and a "
+        "body without thread_id and revision is 400. Its own 403 for an unknown "
+        "thread is pinned in tests/ai/test_front_desk_views.py."
+    ),
 }
 
 

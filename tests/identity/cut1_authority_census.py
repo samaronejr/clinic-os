@@ -17,6 +17,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.ai_authority_census import exercise_ai_authority
+from identity.front_desk_authority_oracle import run_front_desk_census
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
@@ -272,7 +273,7 @@ def _care_scanner_proof(
     )
 
 
-def run_cut1_census(
+def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     symbols: set[str],
     patch: pytest.MonkeyPatch,
     secret_root: Path,
@@ -337,6 +338,7 @@ def run_cut1_census(
     run_passkey_census(proofs, graph)
     run_orders_census(proofs, graph)
     run_portal_census(proofs, graph, secret_root.parent)
+    run_front_desk_census(proofs, graph, patch)
     run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()

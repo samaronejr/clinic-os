@@ -3,6 +3,7 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
+from apps.ai import front_desk_kb, front_desk_staff
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
@@ -855,6 +856,39 @@ def test_care_boundaries_take_scope_not_actor(
     ],
 )
 def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 54: the front-desk agent's staff services, appended as their own block.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            front_desk_kb.draft_article,
+            ["clinic_id", "key", "topic", "title", "body", "keywords", "link"],
+        ),
+        (
+            front_desk_kb.approve_article,
+            ["clinic_id", "article_id", "expected_revision"],
+        ),
+        (
+            front_desk_kb.retire_article,
+            ["clinic_id", "article_id", "expected_revision"],
+        ),
+        (front_desk_kb.knowledge_articles, ["clinic_id"]),
+        (front_desk_staff.handoff_threads, ["clinic_id"]),
+        (
+            front_desk_staff.resolve_handoff,
+            ["clinic_id", "thread_id", "expected_revision"],
+        ),
+    ],
+)
+def test_front_desk_services_take_scope_not_actor(
     entrypoint: Callable[..., object], names: list[str]
 ) -> None:
     parameters = signature(entrypoint).parameters

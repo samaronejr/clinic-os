@@ -268,10 +268,12 @@ class Message(TenantScopedModel):
                 name="comms_message_event_uniq",
             ),
             models.CheckConstraint(
+                # An outbound row without a sender is the front-desk agent's
+                # reply (todo 54); the message guard admits it only from the
+                # agent's finish bridge, with the turn id as its command id.
                 condition=(
                     models.Q(
                         direction="out",
-                        sent_by__isnull=False,
                         command_id__isnull=False,
                         event_id__isnull=True,
                     )
