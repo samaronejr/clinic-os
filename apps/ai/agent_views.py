@@ -17,7 +17,11 @@ from apps.ai.action_contracts import (
     ActionRefusedError,
 )
 from apps.ai.agent_forms import ActionDecisionForm, AgentPolicyForm
-from apps.ai.agent_policies import policy_administrator, publish_agent_policy
+from apps.ai.agent_policies import (
+    CAPABILITIES,
+    policy_administrator,
+    publish_agent_policy,
+)
 from apps.ai.agent_presenter import present_proposal
 from apps.ai.approvals import approve_action, reject_action
 from apps.ai.attestations import step_up_evidence
@@ -126,13 +130,14 @@ def agent_settings(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     except CurrentActorError:
         return render(request, "403.html", status=403)
     capability = request.POST.get("capability", "")
-    if request.method == "POST" and capability not in ("front_desk", "analyst"):
+    if request.method == "POST" and capability not in CAPABILITIES:
         return render(request, "400.html", status=400)
     forms: list[tuple[str, str, AgentPolicyForm]] = []
     status = 200
     for key, label in (
         ("front_desk", _("Front desk drafts")),
         ("analyst", _("Operational analysis")),
+        ("care_coordination", _("Care coordination proposals")),
     ):
         current = (
             AgentPolicyVersion.objects.filter(clinic_id=clinic_id, capability=key)

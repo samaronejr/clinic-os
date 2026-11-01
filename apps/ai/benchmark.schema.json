@@ -59,7 +59,7 @@
       "additionalProperties": false,
       "required": ["purpose", "primary", "fallback", "candidates"],
       "properties": {
-        "purpose": {"enum": ["scribe_asr", "scribe_draft", "brief", "extraction", "front_desk", "analyst", "decision_support"]},
+        "purpose": {"enum": ["scribe_asr", "scribe_draft", "brief", "extraction", "front_desk", "analyst", "decision_support", "care_coordination"]},
         "primary": {"type": ["string", "null"]},
         "fallback": {"type": ["string", "null"]},
         "candidates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/result"}}

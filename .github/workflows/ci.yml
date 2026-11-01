@@ -177,6 +177,7 @@ jobs:
           - "clinical-inbox,clinical-inbox@firefox,clinical-inbox@webkit"
           - "portal,portal@firefox,portal@webkit"
           - "messages,messages@firefox,messages@webkit"
+          - "care-coordination,care-coordination@firefox,care-coordination@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

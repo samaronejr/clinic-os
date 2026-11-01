@@ -262,6 +262,7 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 "ai:settings",
                 "ai:agents",
                 "ai:agent-settings",
+                "ai:care-coordination",
             }
             or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
         ),

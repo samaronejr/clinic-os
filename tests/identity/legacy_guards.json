@@ -744,6 +744,134 @@
       ]
     },
     {
+      "symbol": "apps.ai.care_coordination._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.ai_care_staff: agent_staff (automation.admin/.organization through has_permission) and has_permission('tasks.assign'); the care SQL protocol oracles execute it."
+    },
+    {
+      "symbol": "apps.ai.care_coordination.request_care_coordination",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.workflows.care.access.load_plan",
+        "apps.workflows.care.access.require_clinician",
+        "apps.ehr.services.view_version",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "Only the plan's clinician asks: care plan visibility, patient-scoped clinical.write, the EHR version reader and the governed gateway admission decide; the actor id only names the requester."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._requested",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.input_for",
+        "apps.workflows.care.access.require_clinician"
+      ],
+      "reason": "The requester-bound gateway input reader and patient-scoped clinical.write decide; foreign, unknown and another user's runs share one denial."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._decide",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Attribution only: stamps the deciding actor after its callers decided authority (require_clinician for clinicians, approve_action for staff bundles); the ai_care_guard trigger repeats the decider binding and permissions."
+    },
+    {
+      "symbol": "apps.ai.care_views._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Presentation probe of clinic_app.ai_care_staff (agent_staff plus tasks.assign through has_permission); every command rechecks it in the service and the guard."
+    },
+    {
+      "symbol": "apps.ai.care_views._clinician",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Clinic-scoped automation.propose_clinical through require_permission/has_permission; patient-scoped clinical authority is decided again by every command."
+    },
+    {
+      "symbol": "apps.ai.care_views._plans",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Lists only the actor's own active plans; care plan row security (tasks.view through has_permission) decides visibility."
+    },
+    {
+      "symbol": "apps.ai.care_views._automation",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.agent_staff, which is has_permission('automation.admin'/'automation.organization')."
+    },
+    {
+      "symbol": "apps.ai.care_views._context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; rows stay bounded by the care proposal policy."
+    },
+    {
+      "symbol": "apps.ai.care_views.care_coordination",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required"
+      ],
+      "reason": "TOTP-protected staff view; each command delegates to the care services, whose authority is decided in Python and SQL."
+    },
+    {
+      "symbol": "apps.ai.care_views._approve",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.stepup.assert_step_up",
+        "apps.ai.attestations.step_up_evidence",
+        "apps.ai.approvals.approve_action"
+      ],
+      "reason": "A recent TOTP step-up mints one exact-digest receipt per proposal; approve_action verifies it and the approver's current authority."
+    },
+    {
       "symbol": "apps.audit.services._record_comms_ingest_event",
       "signals": [
         "resolver"
@@ -9859,6 +9987,117 @@
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
+    "clinic_app.ai_care_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
+    "clinic_app.ai_care_plan_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_care_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_plan uuid, requested_revision integer",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
+    "clinic_app.ai_care_staff": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_care_visible"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
+    "clinic_app.ai_care_visible": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_careproposal:care_staff"
+        ],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, enrollment uuid, audience text, state text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
     "clinic_app.ai_extraction_job_allowed": {
       "discovery": {
         "migrations": [
@@ -12604,6 +12843,9 @@
         "resolvers": [
           "clinic_app.agent_record_guard",
           "clinic_app.agent_staff",
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_care_staff",
+          "clinic_app.ai_care_visible",
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ai_imported_observation",
@@ -18276,7 +18518,8 @@
         ],
         "resolvers": [
           "clinic_app.agent_approval_current",
-          "clinic_app.agent_controls"
+          "clinic_app.agent_controls",
+          "clinic_app.ai_care_staff"
         ],
         "signatures": [
           {

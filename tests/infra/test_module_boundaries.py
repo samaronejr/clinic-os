@@ -3,6 +3,7 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
+from apps.ai import care_coordination
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
@@ -855,6 +856,40 @@ def test_care_boundaries_take_scope_not_actor(
     ],
 )
 def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 53: care-coordination proposals, appended as their own block.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (care_coordination.request_care_coordination, ["clinic_id", "plan_id"]),
+        (
+            care_coordination.collect_care_coordination,
+            ["clinic_id", "invocation_id"],
+        ),
+        (care_coordination.care_bundle, ["clinic_id", "invocation_id"]),
+        (care_coordination.pending_bundle, ["clinic_id", "invocation_id"]),
+        (
+            care_coordination.bundle_digest,
+            ["clinic_id", "invocation_id", "items"],
+        ),
+        (
+            care_coordination.approve_care_bundle,
+            ["clinic_id", "invocation_id", "digest", "step_up"],
+        ),
+        (
+            care_coordination.decide_care_item,
+            ["clinic_id", "item_id", "decision", "expected_revision"],
+        ),
+    ],
+)
+def test_care_coordination_services_take_scope_not_actor(
     entrypoint: Callable[..., object], names: list[str]
 ) -> None:
     parameters = signature(entrypoint).parameters

@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 
 MAX_DAILY_ACTIONS: Final = 1000
 MAX_TIMEOUT_SECONDS: Final = 60
+CAPABILITIES: Final = ("front_desk", "analyst", "care_coordination")
+# Care coordination (AI-05) only drafts: staff approve each exact
+# administrative effect, and its one command adds an action to a care plan.
+CARE_TOOLS: Final = frozenset({"care_action.create"})
+A1_TOOLS: Final = frozenset({"workflows.review_task"}) | CARE_TOOLS
 
 TOOL_SCHEMAS: Final[dict[str, JSON]] = {
     "comms.synthetic_reminder": {
@@ -38,6 +43,16 @@ TOOL_SCHEMAS: Final[dict[str, JSON]] = {
         "additionalProperties": False,
         "required": ["due_at"],
         "properties": {"due_at": {"type": "string", "format": "date-time"}},
+    },
+    "care_action.create": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["kind", "window_start", "window_end"],
+        "properties": {
+            "kind": {"enum": ["return_window", "staff_coordination"]},
+            "window_start": {"type": "string", "format": "date-time"},
+            "window_end": {"type": "string", "format": "date-time"},
+        },
     },
 }
 
@@ -59,16 +74,17 @@ class PolicyTerms:
 
     def __post_init__(self) -> None:
         """Parse policy controls once, including Python boolean/int ambiguity."""
+        care = self.capability == "care_coordination"
         if (
-            self.capability not in ("front_desk", "analyst")
+            self.capability not in CAPABILITIES
             or self.autonomy_ceiling not in AUTONOMY
             or len(set(self.tools)) != len(self.tools)
             or not set(self.tools) <= TOOL_SCHEMAS.keys()
             or (self.autonomy_ceiling == "A0" and self.tools)
-            or (
-                self.autonomy_ceiling == "A1"
-                and set(self.tools) - {"workflows.review_task"}
-            )
+            or (self.autonomy_ceiling == "A1" and set(self.tools) - A1_TOOLS)
+            or (care and self.autonomy_ceiling not in ("A0", "A1"))
+            or (care and not set(self.tools) <= CARE_TOOLS)
+            or (not care and bool(set(self.tools) & CARE_TOOLS))
             or (self.autonomy_ceiling in ("A2", "A3") and self.principal_id is None)
             or type(self.budget_actions) is not int
             or not 1 <= self.budget_actions <= MAX_DAILY_ACTIONS

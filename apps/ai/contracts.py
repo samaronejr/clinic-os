@@ -23,6 +23,7 @@ class Purpose(StrEnum):
     FRONT_DESK = "front_desk"
     ANALYST = "analyst"
     DECISION_SUPPORT = "decision_support"
+    CARE_COORDINATION = "care_coordination"
 
 
 type Method = Literal["complete", "stream", "transcribe", "extract"]

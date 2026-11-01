@@ -97,6 +97,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_evaluationrun",
         "ai_evaluationrating",
         "ai_modelchangerequest",
+        # Clinician/staff care proposal policies: tests/ai/test_care_coordination.py.
+        "ai_careproposal",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

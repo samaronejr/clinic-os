@@ -122,6 +122,8 @@ SUITES: Final = {
     "portal": ("tests/renewal/browser/test_portal.py",),
     # Task 51: the omnichannel inbox, appended as its own registration block.
     "messages": ("tests/renewal/browser/test_messages.py",),
+    # Task 53: care-coordination proposals, appended as its own registration block.
+    "care-coordination": ("tests/renewal/browser/test_care_coordination.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -164,6 +166,7 @@ FIXTURE_SUITES: Final = frozenset(
         "clinical-inbox",
         "portal",
         "messages",
+        "care-coordination",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.

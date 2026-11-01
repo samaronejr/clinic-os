@@ -288,6 +288,23 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         route_roles=None,
         views=frozenset({"ai:agents", "ai:agent-settings"}),
         owner_todo=39,
+        entries=(
+            # Clinicians reach their plans' suggestions; automation staff
+            # approve administrative bundles. The page rechecks both.
+            Destination(
+                "care-coordination",
+                gettext_noop("Care coordination"),
+                "ai:care-coordination",
+                (
+                    "automation.propose_clinical",
+                    "automation.admin",
+                    "automation.organization",
+                ),
+                route_roles=None,
+                views=frozenset({"ai:care-coordination"}),
+                owner_todo=53,
+            ),
+        ),
     ),
     Destination(
         "reports",

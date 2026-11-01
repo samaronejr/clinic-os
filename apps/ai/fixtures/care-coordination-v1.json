@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "data_class": "synthetic",
+  "responses": [
+    {
+      "label": "bundle",
+      "text_sha256": "092b35664f3a2102162cb63bb5caa7b7a5e0afd2c4eb67f40e93b24014d9e405",
+      "items": [
+        {
+          "kind": "return_window",
+          "start_days": 42,
+          "end_days": 49
+        },
+        {
+          "kind": "staff_coordination",
+          "start_days": 0,
+          "end_days": 7
+        },
+        {
+          "kind": "questionnaire",
+          "start_days": 14,
+          "end_days": 21
+        }
+      ]
+    },
+    {
+      "label": "invalid-item",
+      "text_sha256": "f7f299bd835445257d5476bb6e28f7c78d3caa67a2e2661b1873cc22112a7215",
+      "items": [
+        {
+          "kind": "return_window",
+          "start_days": 42,
+          "end_days": 49
+        },
+        {
+          "kind": "staff_coordination",
+          "start_days": 0,
+          "end_days": 7
+        },
+        {
+          "kind": "return_window",
+          "start_days": 1095,
+          "end_days": 1102
+        }
+      ]
+    },
+    {
+      "label": "medication-change",
+      "text_sha256": "5c5f6a56f93e7a7e79ea5d51b088ad5801883f127970526397825b66e115e155",
+      "items": [
+        {
+          "kind": "return_window",
+          "start_days": 42,
+          "end_days": 49
+        },
+        {
+          "kind": "medication_change",
+          "start_days": 0,
+          "end_days": 1,
+          "detail": "SINTETICO-SENTINELA-MEDICACAO aumentar a dose"
+        },
+        {
+          "kind": "referral",
+          "start_days": 7,
+          "end_days": 30
+        }
+      ]
+    }
+  ]
+}

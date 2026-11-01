@@ -223,6 +223,71 @@ The binding [execution contract](../../docs/ai/agent-execution.md) describes
 the closed tool registry, actual-principal attribution, execute-time revalidation,
 unknown-outcome reconciliation and the synthetic-only limits.
 
+## Care coordination (todo 53, AI-05)
+
+`care_coordination` is a clinical gateway purpose (patient-scoped
+`clinical.read`, default off: organization opt-in, model configuration and an
+enabled agent policy) and an agent capability with exactly one command,
+`care_action.create`, at autonomy A1. It never diagnoses, prescribes, changes
+treatment or messages a patient.
+
+- **Request.** Only the plan's clinician (patient-scoped `clinical.write`)
+  asks, for an active plan whose source note is still the finalized version.
+  The encrypted input holds the plan section of that note and the plan
+  identity; nothing else of the chart.
+- **Model output is untrusted.** `care_contracts.validate_reply` is the only
+  path to a proposal. The envelope is exactly `{schema, items}` (16 items at
+  most); each item is exactly `{kind, start_days, end_days}`, with days counted
+  from the plan's approval. Proposable kinds are `return_window` and
+  `staff_coordination` (administrative) and `order`, `questionnaire`,
+  `monitoring_task` (clinical). A referral destination or a patient
+  instruction is clinician-written free text, and a medication, dose or
+  procedure has no field at all: such an item is kept only as a refusal
+  (`kind_forbidden`, stored kind `unsupported` for invented kinds) without any
+  model text, which stays in the encrypted gateway output until retention.
+- **`CareProposal` (`ai_careproposal`).** One row per model item: closed kind,
+  audience, window, the plan revision and source version it cites, and a
+  state: `pending`, `refused`, `approved` (staff), `accepted` (clinician),
+  `rejected` or `stale` (`source_superseded`). FORCE RLS: the patient's
+  clinicians see every row; staff who hold both the Automations queue
+  authority (`automation.admin`/`.organization`) and `tasks.assign` see only
+  administrative rows that are not refusals. Only the requesting clinician can
+  insert, from their own succeeded run over the current plan. A trigger owns
+  every decision: it binds the decider, requires the plan to still be current
+  for approval or acceptance, and requires the exact care action (and, for
+  staff, the A1 receipt) to exist. No DELETE, no TRUNCATE, no plaintext.
+- **Staff bundle.** The preview lists every pending administrative item with
+  its exact effect; the confirmation posts the preview's SHA-256 bundle digest,
+  and any change refuses the whole bundle before an effect. After one recent
+  TOTP verification, each item still becomes its own digest-bound
+  `care_action.create` proposal, approval receipt and A1 execution, revalidated
+  at the send boundary against the plan and the pending item. The operation can
+  only express an administrative kind, so a clinical item is not representable
+  in an agent approval. A stale or refused item never blocks the valid ones.
+- **Clinician decisions.** A clinical item becomes a care action only when the
+  patient's clinician accepts it through `add_care_action`, which records them
+  as its approver; staff can only decline administrative items.
+- **Stale sources (scenario 8 variant).** A superseded plan, a changed plan
+  revision or a source note that is no longer finalized makes every pending
+  item stale at its next approval or acceptance, in the service and again in
+  the database.
+- **Page.** Automations > Care coordination (`ai:care-coordination`) is a
+  TOTP-protected, private no-store page whose selectors travel in POST bodies.
+  The clinician sees their active plans, requests and refreshes suggestions and
+  decides clinical items; staff with approval authority review and approve the
+  pending administrative bundles. Every refusal keeps the committed state. The
+  `care-coordination` browser suite owns these journeys and `bundle.webm`.
+
+The synthetic provider replays only the reviewed recordings in
+`fixtures/care-coordination-v1.json` for their exact plan texts (SHA-256);
+any other plan proposes nothing and planning continues manually. Migration
+`0007_care_coordination` adds the purpose to the four closed vocabularies,
+replaces three resolver bodies by anchored edits of their released text and
+creates the table with its posture. Its reverse is a rehearsal for an empty
+synthetic database only; with history, rollback = restore. The A1 path checks
+the same synthetic provider lifecycle record as the other A1 command. Live,
+sandbox and real-model legs remain **BLOCKED-ON-EG** (EG-2, EG-3, EG-5).
+
 ## Permitted chart assistant (todo 44)
 
 `context.assemble_context` reads only through the owning EHR, orders and task

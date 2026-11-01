@@ -97,7 +97,16 @@ EXPECTED: Final = {
         "operations",
         "settings",
     ],
-    "physician": ["today", "agenda", "patients", "inbox", "messages", "operations"],
+    # Task 53: physicians open Automations > Care coordination for their plans.
+    "physician": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "messages",
+        "operations",
+        "automations",
+    ],
     "nurse": ["today", "inbox", "messages"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "messages", "settings"],
@@ -413,6 +422,7 @@ def test_palette_search_filters_destinations_by_permission(
         "orders:results",
         "comms:inbox",
         "retention:status",
+        "ai:care-coordination",
         "identity:preferences",
     ]
     assert {row["kind"] for row in receptionist_rows} == {"destination", "action"}

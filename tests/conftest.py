@@ -44,6 +44,7 @@ TRUNCATE_GUARDS = (
     ("ai_modelchangerequest", "evaluation_no_truncate"),
     ("ai_extractionjob", "extraction_no_truncate"),
     ("ai_extractioncandidate", "extraction_no_truncate"),
+    ("ai_careproposal", "care_no_truncate"),
     ("scribe_aidraft", "draft_no_truncate"),
     ("scribe_draftsectionsuggestion", "draft_no_truncate"),
     ("scribe_draftactionproposal", "draft_no_truncate"),
