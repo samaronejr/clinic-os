@@ -111,7 +111,14 @@ def _settle_live_region(page: Page) -> None:
 
 
 def _open_thread(page: Page, *, contact: str | None = None) -> None:
-    """Open a thread from the list; the contact picks the row by its masked number."""
+    """Open a thread from the list; the contact picks the row by its masked number.
+
+    The list and the thread each swap their live region in once more after load. A
+    press that lands on the old node and is released on its replacement activates
+    nothing, while Playwright, which checks the hit target on the first event only,
+    reports the click done; so the list settles before the click and the thread
+    before returning, ready for the caller's next click into its region.
+    """
     _settle_live_region(page)
     rows = page.locator("tr[data-conversation]")
     row = rows.filter(has_text=contact).first if contact else rows.first
@@ -119,6 +126,7 @@ def _open_thread(page: Page, *, contact: str | None = None) -> None:
     expect(link).to_be_visible()
     click_to_navigate(link)
     expect(page.locator("[data-conversation][data-purpose]")).to_be_visible()
+    _settle_live_region(page)
 
 
 def _reply(page: Page, text: str) -> None:
@@ -229,6 +237,7 @@ def test_provider_down_shows_not_sent_and_recovery_never_duplicates(
     assert outcomes[-1] == "failed"
     assert "succeeded" not in outcomes
     reload_settled(page)
+    _settle_live_region(page)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "failed")
     expect(page.locator(".thread__item--out")).to_contain_text(
         pgettext("delivery state", "Not sent")
@@ -296,7 +305,7 @@ def test_hostile_deliveries_and_clinical_text_change_nothing(
     expect(page.locator("tr[data-conversation]")).to_have_count(1)
     row = page.locator("tr[data-conversation]").first
     expect(row).to_contain_text(gettext("Clinical question"))
-    click_to_navigate(row.get_by_role("link", name=pgettext("inbox action", "Open")))
+    _open_thread(page)
     expect(
         page.get_by_role(
             "heading", name=gettext("Question forwarded to the clinical team")
