@@ -11,7 +11,7 @@ from ops.testing.isolation_common import IsolationError
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-SHARDS: Final = (1, 2)
+SHARDS: Final = (1, 2, 3)
 PYTHONS: Final = ("3.12", "3.13")
 PHASES: Final = ("parallel", "serial")
 ALGORITHM: Final = "file-population-lpt-sha256-v1"
