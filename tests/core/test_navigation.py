@@ -411,6 +411,9 @@ def test_palette_search_filters_destinations_by_permission(
         "consent:staff",
         "workflows:inbox",
         "orders:results",
+        # Task 55: the urgent-concern queue and the release notice wording.
+        "workflows:urgent-concerns",
+        "workflows:release-notices",
         "comms:inbox",
         "retention:status",
         "identity:preferences",

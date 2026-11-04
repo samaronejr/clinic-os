@@ -44,6 +44,13 @@ acknowledgment or release forward. Correction and clinical decisions share a
 PostgreSQL advisory fence. Event replay is idempotent; altered replay and stale
 predecessors write nothing.
 
+The results page releases through
+`apps.workflows.release.release_result_to_patient` (todo 55), which calls
+`release_result` with these rules unchanged and also queues the clinic's current
+clinician-approved portal notice; the form posts the notice version it showed,
+and without an approved notice the page cannot release. The notice never
+carries result content. `release_result` itself stays the orders service.
+
 `result_rows`, `trends` and `patient_sources` recheck current authorization.
 Trends preserve decimal separators, units, flags and reference intervals from
 the source rather than inferring conversions or normal ranges. Patient source

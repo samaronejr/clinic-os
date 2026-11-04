@@ -8561,3 +8561,132 @@ msgstr "Até %(limit)s caracteres. Uma pessoa da equipe lê a mensagem, então e
 
 msgid "Send reply"
 msgstr "Enviar resposta"
+
+msgid "Urgent concerns"
+msgstr "Preocupações urgentes"
+
+msgid "Patient messages the portal flagged as possibly urgent. A person on the responsible roles answers each one in its conversation; nothing replies automatically."
+msgstr "Mensagens de pacientes que o portal sinalizou como possivelmente urgentes. Uma pessoa das funções responsáveis responde cada uma na própria conversa; nada responde automaticamente."
+
+msgid "What patients see:"
+msgstr "O que os pacientes veem:"
+
+msgid "Urgent patient message"
+msgstr "Mensagem urgente de paciente"
+
+msgid "Overdue: escalated to managers"
+msgstr "Atrasada: escalada para a gerência"
+
+msgid "Acknowledged"
+msgstr "Assumida"
+
+msgctxt "urgent concern state"
+msgid "Open"
+msgstr "Aberta"
+
+msgid "Answer by"
+msgstr "Responder até"
+
+msgid "No coverage policy: no deadline"
+msgstr "Sem política de cobertura: sem prazo"
+
+msgid "Mark resolved"
+msgstr "Marcar como resolvida"
+
+msgid "Escalated to you as a manager; a responsible role acknowledges it."
+msgstr "Escalada para você como gestor; uma função responsável a assume."
+
+msgid "No urgent concerns are waiting."
+msgstr "Nenhuma preocupação urgente aguardando."
+
+msgid "Urgent message coverage"
+msgstr "Cobertura de mensagens urgentes"
+
+msgid "Set when the clinic team reads urgent patient messages, which roles answer them and how fast. Patients see exactly these terms; the clinic never claims round-the-clock monitoring."
+msgstr "Defina quando a equipe da clínica lê mensagens urgentes de pacientes, quais funções respondem e em quanto tempo. Os pacientes veem exatamente estes termos; a clínica nunca alega monitoramento 24 horas."
+
+msgid "Patients currently see:"
+msgstr "Os pacientes veem agora:"
+
+msgid "Days covered"
+msgstr "Dias cobertos"
+
+msgid "From"
+msgstr "Das"
+
+msgid "Until"
+msgstr "Até"
+
+msgid "Response window (business hours)"
+msgstr "Prazo de resposta (horas úteis)"
+
+msgid "Responsible roles"
+msgstr "Funções responsáveis"
+
+msgid "Publish coverage"
+msgstr "Publicar cobertura"
+
+msgid "Result release notice"
+msgstr "Aviso de liberação de resultado"
+
+msgid "The portal message a patient receives when a clinician releases a result. It is the same text for every patient and never contains the result itself."
+msgstr "A mensagem do portal que o paciente recebe quando um médico libera um resultado. É o mesmo texto para todos os pacientes e nunca contém o resultado."
+
+msgid "No notice is approved yet. Results cannot be released to patients until a clinician approves one."
+msgstr "Nenhum aviso aprovado ainda. Os resultados não podem ser liberados aos pacientes até que um médico aprove um aviso."
+
+msgid "New notice text"
+msgstr "Texto do novo aviso"
+
+msgid "Up to 300 characters, without numbers or e-mail addresses. Approving it makes it the version new releases use."
+msgstr "Até 300 caracteres, sem números nem endereços de e-mail. Ao aprovar, esta passa a ser a versão usada nas novas liberações."
+
+msgid "Approve this notice"
+msgstr "Aprovar este aviso"
+
+msgid "Approved versions"
+msgstr "Versões aprovadas"
+
+msgid "Current notice, version %(version)s:"
+msgstr "Aviso atual, versão %(version)s:"
+
+msgid "Approve a release notice before releasing results."
+msgstr "Aprove um aviso de liberação antes de liberar resultados."
+
+msgid "The patient receives notice version %(version)s in the portal:"
+msgstr "O paciente recebe no portal o aviso na versão %(version)s:"
+
+msgid "Open urgent concerns"
+msgstr "Abrir preocupações urgentes"
+
+msgid "This clinic does not watch messages continuously. In an emergency, call 192."
+msgstr "Esta clínica não acompanha as mensagens continuamente. Em emergência, ligue 192."
+
+msgid "Urgent messages are read by the clinic team on %(days)s, from %(opens)s to %(closes)s."
+msgstr "Mensagens urgentes são lidas pela equipe da clínica em %(days)s, das %(opens)s às %(closes)s."
+
+msgid "Concern acknowledged. Reply to the patient in the conversation."
+msgstr "Preocupação assumida. Responda ao paciente na conversa."
+
+msgid "Concern resolved."
+msgstr "Preocupação resolvida."
+
+msgid "Coverage published. Patients now see these hours."
+msgstr "Cobertura publicada. Os pacientes agora veem estes horários."
+
+msgid "Write the notice in up to 300 characters, without numbers or e-mail addresses: it is the same text for every patient."
+msgstr "Escreva o aviso com até 300 caracteres, sem números nem endereços de e-mail: é o mesmo texto para todos os pacientes."
+
+msgid "Notice approved. New releases use this version."
+msgstr "Aviso aprovado. As novas liberações usam esta versão."
+
+msgid "This item changed since you opened the page. Review it again before deciding."
+msgstr "Este item mudou desde que você abriu a página. Revise-o novamente antes de decidir."
+
+msgid "Choose at least one day and one responsible role, an end time after the start time and a response window of 1 to 72 hours."
+msgstr "Escolha pelo menos um dia e uma função responsável, um horário de término posterior ao de início e um prazo de resposta de 1 a 72 horas."
+
+msgid "Reply within %(hours)s business hour; in an emergency, call 192."
+msgid_plural "Reply within %(hours)s business hours; in an emergency, call 192."
+msgstr[0] "Resposta em até %(hours)s hora útil; em emergência, ligue 192."
+msgstr[1] "Resposta em até %(hours)s horas úteis; em emergência, ligue 192."

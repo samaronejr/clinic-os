@@ -222,6 +222,25 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 views=frozenset({"orders:results", "orders:source"}),
                 owner_todo=31,
             ),
+            # Task 55: the urgent-concern queue and the release notice wording.
+            Destination(
+                "urgent-concerns",
+                gettext_noop("Urgent concerns"),
+                "workflows:urgent-concerns",
+                ("demographics.read",),
+                route_roles=None,
+                views=frozenset({"workflows:urgent-concerns"}),
+                owner_todo=55,
+            ),
+            Destination(
+                "release-notices",
+                gettext_noop("Result release notice"),
+                "workflows:release-notices",
+                ("configuration.propose",),
+                route_roles=None,
+                views=frozenset({"workflows:release-notices"}),
+                owner_todo=55,
+            ),
         ),
     ),
     Destination(
@@ -319,6 +338,17 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("appointment.book", "configuration.organization"),
                 route_roles=None,
                 views=frozenset({"scheduling:resource-settings"}),
+            ),
+            # Task 55: when and by whom urgent patient messages are answered.
+            Destination(
+                "urgent-coverage",
+                gettext_noop("Urgent message coverage"),
+                "workflows:urgent-coverage",
+                ("configuration.clinic",),
+                # The administrative roles that already open Settings.
+                route_roles=ADMIN_ROUTE | {_ROLE.CLINIC_MANAGER},
+                views=frozenset({"workflows:urgent-coverage"}),
+                owner_todo=55,
             ),
         ),
     ),

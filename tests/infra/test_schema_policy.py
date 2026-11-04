@@ -222,6 +222,12 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "workflows_proassignment",
         "workflows_prooccurrence",
         "workflows_carerefusal",
+        # Task 55: exact release/urgent policies, ACLs, column grants and triggers
+        # are pinned by tests/workflows/test_posture.py (posture.json).
+        "workflows_releasenoticetemplate",
+        "workflows_releasedelivery",
+        "workflows_urgentcoveragepolicy",
+        "workflows_urgentconcern",
         # Plan item 30: exact specialty policies are checked in tests/ehr.
         "ehr_specialtypack",
         "ehr_specialtyentry",

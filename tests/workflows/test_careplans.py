@@ -532,9 +532,14 @@ def test_referral_links_only_a_same_encounter_referral_document(
 
 
 def rerun_referral_link_migration() -> None:
-    """Reverse migration 0007 (a no-op that keeps every row) and reapply it."""
-    for target in ("0006_care_plans", "0007_referral_backfill"):
-        MigrationExecutor(connection).migrate([("workflows", target)])
+    """Reverse migration 0007 (a no-op that keeps every row) and reapply it.
+
+    Later workflows migrations are unapplied with it and reapplied after it, so
+    the database ends at the app's leaf again for the next test.
+    """
+    MigrationExecutor(connection).migrate([("workflows", "0006_care_plans")])
+    executor = MigrationExecutor(connection)
+    executor.migrate(executor.loader.graph.leaf_nodes("workflows"))
 
 
 def test_migration_links_each_existing_referral_document_once(

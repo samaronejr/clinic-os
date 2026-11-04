@@ -259,6 +259,18 @@
       "UPDATE"
     ],
     [
+      "workflows_releasedelivery",
+      "failure_reason",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_releasedelivery",
+      "failure_task_id",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
       "workflows_task",
       "completion_evidence",
       "clinic_app",
@@ -334,6 +346,42 @@
       "workflows_task",
       "updated_at",
       "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "acknowledged_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "acknowledged_by_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "resolved_at",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "resolved_by_id",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "revision",
+      "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "state",
+      "clinic_app",
       "UPDATE"
     ],
     [
@@ -1191,6 +1239,132 @@
       true
     ],
     [
+      "workflows_releasedelivery",
+      "audience",
+      "character varying(8)",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "delegate_grant_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_releasedelivery",
+      "enrollment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "failure_reason",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "failure_task_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_releasedelivery",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "message_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_releasedelivery",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "release_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "released_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "template_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasedelivery",
+      "version_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "approved_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "body",
+      "character varying(300)",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "version",
+      "integer",
+      true
+    ],
+    [
       "workflows_task",
       "clinic_id",
       "uuid",
@@ -1362,6 +1536,156 @@
       "workflows_taskcomment",
       "task_id",
       "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "acknowledged_at",
+      "timestamp with time zone",
+      false
+    ],
+    [
+      "workflows_urgentconcern",
+      "acknowledged_by_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "conversation_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "enrollment_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "message_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "policy_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_urgentconcern",
+      "reported_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "resolved_at",
+      "timestamp with time zone",
+      false
+    ],
+    [
+      "workflows_urgentconcern",
+      "resolved_by_id",
+      "uuid",
+      false
+    ],
+    [
+      "workflows_urgentconcern",
+      "revision",
+      "integer",
+      true
+    ],
+    [
+      "workflows_urgentconcern",
+      "state",
+      "character varying(16)",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "closes_at",
+      "time without time zone",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "created_at",
+      "timestamp with time zone",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "created_by_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "opens_at",
+      "time without time zone",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "organization_id",
+      "uuid",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "response_hours",
+      "smallint",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "responsible_roles",
+      "character varying(20)[]",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "version",
+      "integer",
+      true
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "weekdays",
+      "smallint[]",
       true
     ],
     [
@@ -2228,6 +2552,151 @@
       "CHECK (((target_kind)::text = ANY ((ARRAY['specialty'::character varying, 'external'::character varying, 'unspecified'::character varying])::text[])))"
     ],
     [
+      "workflows_releasedelivery",
+      "workflows_delivery_audience",
+      "CHECK (((((audience)::text = 'patient'::text) AND (delegate_grant_id IS NULL)) OR (((audience)::text = 'delegate'::text) AND (delegate_grant_id IS NOT NULL))))"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_delivery_failure",
+      "CHECK (((failure_reason)::text = ANY ((ARRAY[''::character varying, 'scope_revoked'::character varying, 'send_failed'::character varying])::text[])))"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_delivery_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_clinic_id_279c8ea5_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_delegate_grant_id_7bf566b2_fk_identity_",
+      "FOREIGN KEY (delegate_grant_id) REFERENCES identity_patientdelegategrant(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_enrollment_id_e19d4a07_fk_intake_pa",
+      "FOREIGN KEY (enrollment_id) REFERENCES intake_patientclinicenrollment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_failure_task_id_aa251c2e_fk_workflows",
+      "FOREIGN KEY (failure_task_id) REFERENCES workflows_task(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_message_id_0e41f1db_fk_comms_mes",
+      "FOREIGN KEY (message_id) REFERENCES comms_message(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_organization_id_790defff_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_release_id_f7920854_fk_orders_re",
+      "FOREIGN KEY (release_id) REFERENCES orders_resultrelease(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_released_by_id_52c5b5e7_fk_identity_",
+      "FOREIGN KEY (released_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_template_id_951068f6_fk_workflows",
+      "FOREIGN KEY (template_id) REFERENCES workflows_releasenoticetemplate(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedel_version_id_78d07147_fk_orders_re",
+      "FOREIGN KEY (version_id) REFERENCES orders_resultversion(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_enrollment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, enrollment_id) REFERENCES intake_patientclinicenrollment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_failure_task_id_key",
+      "UNIQUE (failure_task_id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_message_id_key",
+      "UNIQUE (message_id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_release_id_key",
+      "UNIQUE (release_id)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "workflows_releasedelivery_template_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, template_id) REFERENCES workflows_releasenoticetemplate(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_notice_positive",
+      "CHECK ((version >= 1))"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_notice_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_notice_version",
+      "UNIQUE (clinic_id, version)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenot_approved_by_id_eb2fe64c_fk_identity_",
+      "FOREIGN KEY (approved_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenot_clinic_id_e079d3dc_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenot_organization_id_2f74343a_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenoticetemplate_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenoticetemplate_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "workflows_releasenoticetemplate_version_check",
+      "CHECK ((version >= 0))"
+    ],
+    [
       "workflows_task",
       "care_task_mirror",
       "TRIGGER DEFERRABLE INITIALLY DEFERRED"
@@ -2356,6 +2825,136 @@
       "workflows_taskcomment",
       "workflows_taskcomment_task_id_8b6ca6e8_fk_workflows_task_id",
       "FOREIGN KEY (task_id) REFERENCES workflows_task(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_concern_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_concern_state",
+      "CHECK ((((acknowledged_by_id IS NULL) AND ((state)::text = 'open'::text)) OR ((acknowledged_by_id IS NOT NULL) AND (resolved_by_id IS NULL) AND ((state)::text = 'acknowledged'::text)) OR ((acknowledged_by_id IS NOT NULL) AND (resolved_by_id IS NOT NULL) AND ((state)::text = 'resolved'::text))))"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_acknowledged_by_id_3fd12229_fk_identity_",
+      "FOREIGN KEY (acknowledged_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_clinic_id_cc6e0157_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_conversation_id_782963dc_fk_comms_con",
+      "FOREIGN KEY (conversation_id) REFERENCES comms_conversation(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_enrollment_id_88035511_fk_intake_pa",
+      "FOREIGN KEY (enrollment_id) REFERENCES intake_patientclinicenrollment(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_organization_id_fa39299a_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_policy_id_921d592f_fk_workflows",
+      "FOREIGN KEY (policy_id) REFERENCES workflows_urgentcoveragepolicy(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconc_resolved_by_id_7b2673a0_fk_identity_",
+      "FOREIGN KEY (resolved_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_enrollment_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, enrollment_id) REFERENCES intake_patientclinicenrollment(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_message_id_a609b383_fk_comms_message_id",
+      "FOREIGN KEY (message_id) REFERENCES comms_message(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_message_id_key",
+      "UNIQUE (message_id)"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_policy_scope_fk",
+      "FOREIGN KEY (organization_id, clinic_id, policy_id) REFERENCES workflows_urgentcoveragepolicy(organization_id, clinic_id, id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentconcern",
+      "workflows_urgentconcern_revision_check",
+      "CHECK ((revision >= 0))"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_coverage_scope",
+      "UNIQUE (organization_id, clinic_id, id)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_coverage_terms",
+      "CHECK (((version >= 1) AND (closes_at > opens_at) AND (response_hours >= 1) AND (response_hours <= 72)))"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_coverage_version",
+      "UNIQUE (clinic_id, version)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcove_clinic_id_f6a4ea85_fk_identity_",
+      "FOREIGN KEY (clinic_id) REFERENCES identity_clinic(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcove_created_by_id_f644dcc8_fk_identity_",
+      "FOREIGN KEY (created_by_id) REFERENCES identity_user(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcove_organization_id_71b90966_fk_identity_",
+      "FOREIGN KEY (organization_id) REFERENCES identity_organization(id) DEFERRABLE INITIALLY DEFERRED"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcoveragepolicy_clinic_fk",
+      "FOREIGN KEY (organization_id, clinic_id) REFERENCES identity_clinic(organization_id, id)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcoveragepolicy_pkey",
+      "PRIMARY KEY (id)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcoveragepolicy_response_hours_check",
+      "CHECK ((response_hours >= 0))"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "workflows_urgentcoveragepolicy_version_check",
+      "CHECK ((version >= 0))"
     ],
     [
       "workflows_workflowdefinitionversion",
@@ -2597,6 +3196,18 @@
       "clinic_owner"
     ],
     [
+      "workflows_releasedelivery",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
       "workflows_task",
       true,
       true,
@@ -2604,6 +3215,18 @@
     ],
     [
       "workflows_taskcomment",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_urgentconcern",
+      true,
+      true,
+      "clinic_owner"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
       true,
       true,
       "clinic_owner"
@@ -2761,6 +3384,34 @@
       ]
     ],
     [
+      "clinic_app.workflows_coordination_guard",
+      "",
+      "clinic_owner",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "9c00f8f1568c4e99c230c63c76782d0752c8225e6f09d3f9549750aa426d70e2",
+      [
+        "clinic_owner"
+      ]
+    ],
+    [
+      "clinic_app.workflows_coverage_policy",
+      "tenant uuid, clinic uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "525202d543b552a858a0c1e2c8685009418e6e52c2f7e2f03e1088c58d9a94f8",
+      [
+        "clinic_resolver"
+      ]
+    ],
+    [
       "clinic_app.workflows_due_steps",
       "due_at timestamp with time zone",
       "clinic_resolver",
@@ -2799,7 +3450,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "44eb7118fccf5c9197dbe2ac260e43ef38ec8ea3ea6a33132dcd9df5a8598435",
+      "d5c54848b5684493f3915b3541e305a8747d8dcf023f14cf42e6a12c91f262a1",
       [
         "clinic_resolver"
       ]
@@ -2850,6 +3501,21 @@
       ]
     ],
     [
+      "clinic_app.workflows_patient_coverage",
+      "",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "28c960e408b96d6e79fceb7d058c14bd87b4adcbdf3633829f9abf71503f5dee",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
       "clinic_app.workflows_predecessor_ready",
       "clinic uuid, requested_task uuid",
       "clinic_resolver",
@@ -2875,6 +3541,65 @@
       ],
       "4d1fc0d4ad472007aa122fce79015e9cd7a3fa6717a27fe12bd8400e690beaa9",
       [
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_release_outcome",
+      "",
+      "clinic_resolver",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "f93b9c29c752bb709087768151091c0aacc3b66a2137a70a96d8613f8df61c92",
+      [
+        "clinic_owner",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_release_send_eligible",
+      "requested_message uuid",
+      "clinic_resolver",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "508b1006add705208a1f7615b7c734ee474e5c4f535262b697cfd57984b58800",
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_release_system_task_valid",
+      "row_data jsonb",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "68142a928f92cd2b36210c28570eeaedfe078d5a76d224d0a796b5fa443a4a1c",
+      [
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_report_urgent",
+      "requested_message uuid",
+      "clinic_resolver",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "ac388947165ffc27f905bebbb43d7bdd83ad53fd1b90d6746a796d86c21ff228",
+      [
+        "clinic_app",
         "clinic_resolver"
       ]
     ],
@@ -2934,6 +3659,52 @@
       "6072695584b7cb6936d72b4987ca5a15ec55841461b454ff23ef3f0ce34ee238",
       [
         "clinic_app",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_urgent_audit",
+      "record_id uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+      "clinic_owner",
+      true,
+      "v",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "5f690d5527e76654bc2a6ec32e60d36ca511f0d9a494b1aa6318d6d36aac9183",
+      [
+        "clinic_app",
+        "clinic_owner"
+      ]
+    ],
+    [
+      "clinic_app.workflows_urgent_audit_scope",
+      "record_id uuid",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "11f5458a5b9d4b1e848ff50952e82b6b79ade40ac74b05d486a27fba3eaa9960",
+      [
+        "clinic_owner",
+        "clinic_resolver"
+      ]
+    ],
+    [
+      "clinic_app.workflows_urgent_responsible",
+      "clinic uuid, roles character varying[]",
+      "clinic_resolver",
+      true,
+      "s",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      "0d25ad745627c6a21ede578e38f81ede2ee11a3ad2fc702418e81069bc6300ae",
+      [
+        "clinic_app",
+        "clinic_owner",
         "clinic_resolver"
       ]
     ]
@@ -3226,6 +3997,72 @@
       "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
     ],
     [
+      "workflows_releasedelivery",
+      "coordination_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "coordination_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_releasedelivery",
+      "coordination_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('result.release'::text, clinic_id, enrollment_id))",
+      null
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "coordination_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "coordination_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "coordination_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('configuration.propose'::text, clinic_id, NULL::uuid))",
+      null
+    ],
+    [
       "workflows_task",
       "workflow_insert",
       "PERMISSIVE",
@@ -3300,6 +4137,72 @@
       ],
       "SELECT",
       "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_task t\n  WHERE (t.id = workflows_taskcomment.task_id))))",
+      null
+    ],
+    [
+      "workflows_urgentconcern",
+      "coordination_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_urgentconcern",
+      "coordination_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
+      null
+    ],
+    [
+      "workflows_urgentconcern",
+      "coordination_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "coordination_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "coordination_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "coordination_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('demographics.read'::text, clinic_id, NULL::uuid) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
       null
     ],
     [
@@ -3787,6 +4690,101 @@
       "SELECT"
     ],
     [
+      "workflows_releasedelivery",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_releasedelivery",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
       "workflows_task",
       "clinic_app",
       "INSERT"
@@ -3885,6 +4883,106 @@
       "workflows_taskcomment",
       "clinic_owner",
       "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_resolver",
+      "INSERT"
+    ],
+    [
+      "workflows_urgentconcern",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_app",
+      "INSERT"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_app",
+      "SELECT"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "DELETE"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "INSERT"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "REFERENCES"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "SELECT"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "TRIGGER"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "TRUNCATE"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_owner",
+      "UPDATE"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "clinic_resolver",
+      "SELECT"
     ],
     [
       "workflows_workflowdefinitionversion",
@@ -4045,8 +5143,12 @@
     "workflows_prooccurrence",
     "workflows_recall",
     "workflows_referral",
+    "workflows_releasedelivery",
+    "workflows_releasenoticetemplate",
     "workflows_task",
     "workflows_taskcomment",
+    "workflows_urgentconcern",
+    "workflows_urgentcoveragepolicy",
     "workflows_workflowdefinitionversion",
     "workflows_workflowrun",
     "workflows_workflowstep"
@@ -4095,6 +5197,30 @@
       "CREATE TRIGGER care_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_referral FOR EACH ROW EXECUTE FUNCTION workflows_care_guard()"
     ],
     [
+      "workflows_releasedelivery",
+      "coordination_guard",
+      "O",
+      "CREATE TRIGGER coordination_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_releasedelivery FOR EACH ROW EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_releasedelivery",
+      "coordination_truncate",
+      "O",
+      "CREATE TRIGGER coordination_truncate BEFORE TRUNCATE ON clinic_app.workflows_releasedelivery FOR EACH STATEMENT EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "coordination_guard",
+      "O",
+      "CREATE TRIGGER coordination_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_releasenoticetemplate FOR EACH ROW EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_releasenoticetemplate",
+      "coordination_truncate",
+      "O",
+      "CREATE TRIGGER coordination_truncate BEFORE TRUNCATE ON clinic_app.workflows_releasenoticetemplate FOR EACH STATEMENT EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
       "workflows_task",
       "care_task_gate",
       "O",
@@ -4117,6 +5243,30 @@
       "workflow_guard",
       "O",
       "CREATE TRIGGER workflow_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_taskcomment FOR EACH ROW EXECUTE FUNCTION workflows_guard()"
+    ],
+    [
+      "workflows_urgentconcern",
+      "coordination_guard",
+      "O",
+      "CREATE TRIGGER coordination_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_urgentconcern FOR EACH ROW EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_urgentconcern",
+      "coordination_truncate",
+      "O",
+      "CREATE TRIGGER coordination_truncate BEFORE TRUNCATE ON clinic_app.workflows_urgentconcern FOR EACH STATEMENT EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "coordination_guard",
+      "O",
+      "CREATE TRIGGER coordination_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_urgentcoveragepolicy FOR EACH ROW EXECUTE FUNCTION workflows_coordination_guard()"
+    ],
+    [
+      "workflows_urgentcoveragepolicy",
+      "coordination_truncate",
+      "O",
+      "CREATE TRIGGER coordination_truncate BEFORE TRUNCATE ON clinic_app.workflows_urgentcoveragepolicy FOR EACH STATEMENT EXECUTE FUNCTION workflows_coordination_guard()"
     ],
     [
       "workflows_workflowdefinitionversion",

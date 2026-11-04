@@ -1349,6 +1349,33 @@
     "volatility": "i",
     "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
   },
+  "pg_catalog.name(character varying)": {
+    "extension": "",
+    "implementation": "text_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "Identity cast of an explicit value to name in the comms guards' role comparisons, reachable through the todo-55 release outcome trigger; no clock or randomness admission."
+  },
+  "pg_catalog.name(character)": {
+    "extension": "",
+    "implementation": "bpchar_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "Identity cast of an explicit value to name in the comms guards' role comparisons, reachable through the todo-55 release outcome trigger; no clock or randomness admission."
+  },
+  "pg_catalog.name(text)": {
+    "extension": "",
+    "implementation": "text_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "Identity cast of an explicit value to name in the comms guards' role comparisons, reachable through the todo-55 release outcome trigger; no clock or randomness admission."
+  },
   "pg_catalog.numeric(bigint)": {
     "extension": "",
     "implementation": "int8_numeric",

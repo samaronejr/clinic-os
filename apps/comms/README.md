@@ -260,6 +260,19 @@ above and the patient page `/patient/messages/` (`comms:patient-messages`,
   publishes the `clinic:<id>:messages` hint (and the Clinical Inbox hint when it
   is clinical). A representative's reply reads the same there; its audit row's
   session tells them apart. The patient page has no live updates.
+- **Urgent replies and coverage (todo 55).** A newly stored reply that
+  `classify_inbound` marks urgent runs the hooks registered with
+  `register_urgent_reply_hook` (called with the message id) in the reply's own
+  transaction under the same patient session; a failing hook rolls the reply
+  back. Workflows registers its urgent-concern queue there. The message list and
+  thread state the clinic's configured urgent-message coverage
+  (`apps.workflows.urgent.patient_coverage_text`), and without a configured policy
+  they never claim coverage.
+- **Send checks (todo 55).** `register_message_send_check(check)` lets the domain
+  that queued an outbound message veto it at send time: each check runs after the
+  channel rules inside `message_send_eligible`, in the send's tenant transaction
+  under the sender's authority, and any `False` cancels the operation without a
+  provider call. Workflows registers the release-notice scope recheck.
 
 ### Staff entry points
 

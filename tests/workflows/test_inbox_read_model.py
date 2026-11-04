@@ -210,7 +210,13 @@ def test_physician_queue_is_typed_triaged_and_never_duplicates_review_tasks(
     assert keys(view, "draft") == {f"draft:{draft.pk}"}
     [draft_item] = (item for item in view.items if item.kind == "draft")
     assert draft_item.target_id == draft.document.encounter_id
-    assert dict(view.counts) == {"result": 3, "draft": 1, "task": 1, "question": 0}
+    assert dict(view.counts) == {
+        "urgent": 0,
+        "result": 3,
+        "draft": 1,
+        "task": 1,
+        "question": 0,
+    }
     assert view.critical == 1
     eligible = {item.key for item in view.items if item.bulk_eligible}
     assert eligible == {f"result:{normal.version_id}"}
@@ -219,7 +225,7 @@ def test_physician_queue_is_typed_triaged_and_never_duplicates_review_tasks(
     assert [(row.value, row.unit, row.flag) for row in normal_item.preview] == [
         ("7,10", "g/dL", "normal")
     ]
-    assert registered_kinds() == ("result", "draft", "task", "question")
+    assert registered_kinds() == ("urgent", "result", "draft", "task", "question")
 
 
 def test_nurse_sees_only_scope_limited_items(rbac_graph: RbacGraph) -> None:
@@ -246,6 +252,7 @@ def test_nurse_sees_only_scope_limited_items(rbac_graph: RbacGraph) -> None:
         "draft": 0,
         "task": 1,
         "question": 0,
+        "urgent": 0,
     }
     assert f"task:{nurse_task}" not in keys(physician_view, "task")
     assert f"task:{physician_task}" in keys(physician_view, "task")
@@ -324,7 +331,7 @@ def test_feed_registry_refuses_conflicting_and_malformed_kinds() -> None:
     with pytest.raises(ValueError, match="identifier"):
         register_inbox_feed("Bad Kind", other, label="Other", position=1)
     register_inbox_feed("task", task_items, label="Tasks", position=30)
-    assert registered_kinds() == ("result", "draft", "task", "question")
+    assert registered_kinds() == ("urgent", "result", "draft", "task", "question")
 
 
 def test_filters_narrow_items_but_counts_cover_the_whole_queue(
@@ -350,6 +357,7 @@ def test_filters_narrow_items_but_counts_cover_the_whole_queue(
         "draft": 1,
         "task": 1,
         "question": 0,
+        "urgent": 0,
     }
     # Then: the task is due tomorrow; results are due on receipt, like review tasks.
     assert f"task:{task}" not in {item.key for item in overdue.items}
@@ -402,7 +410,13 @@ def test_overflow_keeps_urgent_work_and_marks_counts_incomplete(
     for view in (results, tasks):
         assert view.truncated
         assert view.overflowed == {"result", "task"}
-        assert dict(view.counts) == {"result": 2, "draft": 1, "task": 2, "question": 0}
+        assert dict(view.counts) == {
+            "urgent": 0,
+            "result": 2,
+            "draft": 1,
+            "task": 2,
+            "question": 0,
+        }
 
 
 def test_bound_applies_after_acknowledgment_authority(
@@ -658,7 +672,7 @@ def test_receptionist_api_query_is_the_same_empty_shape(rbac_graph: RbacGraph) -
 
     empty = {
         "items": [],
-        "counts": {"result": 0, "draft": 0, "task": 0, "question": 0},
+        "counts": {"urgent": 0, "result": 0, "draft": 0, "task": 0, "question": 0},
         "total": 0,
         "overdue": 0,
         "critical": 0,
@@ -978,6 +992,7 @@ def test_today_shows_own_day_next_patient_brief_and_counts(
         "draft": 1,
         "task": 0,
         "question": 0,
+        "urgent": 0,
     }
     with (
         as_actor(rbac_graph, rbac_graph.shared_user),

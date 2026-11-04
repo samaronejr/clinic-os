@@ -10,14 +10,16 @@ to allow and to deny and requires one of these tests to fail.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from datetime import time, timedelta
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
+from apps.comms.inbox_services import open_conversation, send_message
 from apps.ehr.models import ClinicalDocument
-from apps.identity.models import RoleGrant, User
+from apps.identity.models import CareTeamMembership, RoleGrant, User
 from apps.identity.permissions import BUNDLES_V2
+from apps.orders.review import release_result as orders_release
 from apps.tenancy.db import tenant_context
 from apps.workflows.access import WorkflowAccessDeniedError, require_task_access
 from apps.workflows.care import services as care
@@ -38,6 +40,7 @@ from apps.workflows.models import (
     WorkflowRun,
     WorkflowStep,
 )
+from apps.workflows.release_models import ReleaseDelivery, ReleaseNoticeTemplate
 from apps.workflows.services import (
     TaskOwner,
     TaskSpec,
@@ -49,6 +52,7 @@ from apps.workflows.services import (
     publish_definition,
     start_run,
 )
+from apps.workflows.urgent_models import UrgentConcern, UrgentCoveragePolicy
 from django.db import DatabaseError, connection, transaction
 from django.db.models import F, Model
 from django.utils import timezone
@@ -60,6 +64,14 @@ from identity.permission_support import (
 )
 from patient_service_support import runtime_role
 from workflows.clock_support import database_clock
+from workflows.coordination_support import (
+    NOTICE,
+    URGENT,
+    acknowledged,
+    bundle_v2,
+    patient_reply,
+    urgent_world,
+)
 from workflows.permission_support import permission_actor
 from workflows.sql_sites import discover_conditions, discover_sql_sites
 from workflows.test_care_privacy import CALM, care_clinician
@@ -1530,6 +1542,312 @@ CARE_CONDITIONS: dict[str, Callable[[World], None]] = {
 }
 
 
+# --- Todo 55: release notices, deliveries, coverage and urgent concerns ---------
+
+COORDINATION = "branch:workflows_coordination_guard():"
+
+
+def _clinician(w: World) -> UUID:
+    clinician, _enrollment = permission_actor(w.graph, "physician")
+    return clinician
+
+
+def _raw_notice(w: World, author: UUID) -> ReleaseNoticeTemplate:
+    return ReleaseNoticeTemplate.objects.create(
+        organization_id=w.graph.organization_a,
+        clinic_id=w.clinic,
+        version=1,
+        body=NOTICE,
+        approved_by_id=author,
+    )
+
+
+def _raw_coverage(w: World, author: UUID) -> UrgentCoveragePolicy:
+    return UrgentCoveragePolicy.objects.create(
+        organization_id=w.graph.organization_a,
+        clinic_id=w.clinic,
+        version=1,
+        weekdays=[0, 1, 2, 3, 4],
+        opens_at=time(8, 0),
+        closes_at=time(18, 0),
+        response_hours=4,
+        responsible_roles=["nurse"],
+        created_by_id=author,
+    )
+
+
+def coordination_notice_read(w: World) -> None:
+    clinician = _clinician(w)
+    with w.acting(clinician):
+        notice = _raw_notice(w, clinician)
+    with w.acting(w.receptionist):
+        assert care_visible(ReleaseNoticeTemplate) == set()
+    with w.acting(clinician):
+        assert care_visible(ReleaseNoticeTemplate) == {notice.pk}
+
+
+def coordination_notice_insert(w: World) -> None:
+    clinician = _clinician(w)
+    with w.acting(w.receptionist):
+        refused(_refuses("notice refused"), lambda: _raw_notice(w, w.receptionist))
+    with w.acting(clinician):
+        assert _raw_notice(w, clinician).version == 1
+
+
+def notice_by_another(w: World) -> None:
+    clinician, other = _clinician(w), _clinician(w)
+    with w.acting(clinician):
+        refused(_refuses("notice refused"), lambda: _raw_notice(w, other))
+
+
+def notice_without_release(w: World) -> None:
+    clinician = _clinician(w)
+    narrow(w, "physician", "configuration.propose")
+    with w.acting(clinician):
+        refused(_refuses("notice refused"), lambda: _raw_notice(w, clinician))
+
+
+def coordination_coverage_read(w: World) -> None:
+    owner, _enrollment = permission_actor(w.graph, "owner")
+    with w.acting(w.manager):
+        policy = _raw_coverage(w, w.manager)
+    with w.acting(owner):
+        assert care_visible(UrgentCoveragePolicy) == set()
+    with w.acting(w.receptionist):
+        assert care_visible(UrgentCoveragePolicy) == {policy.pk}
+
+
+def coordination_coverage_insert(w: World) -> None:
+    with w.acting(w.receptionist):
+        refused(_refuses("coverage refused"), lambda: _raw_coverage(w, w.receptionist))
+    with w.acting(w.manager):
+        assert _raw_coverage(w, w.manager).version == 1
+
+
+def coverage_by_another(w: World) -> None:
+    with w.acting(w.manager):
+        refused(_refuses("coverage refused"), lambda: _raw_coverage(w, w.other_manager))
+
+
+def coverage_without_configuration(w: World) -> None:
+    narrow(w, "clinic_manager", "configuration.clinic")
+    with w.acting(w.manager):
+        refused(_refuses("coverage refused"), lambda: _raw_coverage(w, w.manager))
+
+
+def _delivery_fields(w: World) -> dict[str, object]:
+    """A release and a portal notice by the clinician, with no delivery yet."""
+    graph = w.graph
+    bundle_v2(graph)
+    chart, version = acknowledged(graph)
+    with w.acting(graph.physician):
+        release_row = orders_release(
+            clinic_id=w.clinic, version_id=version, audience="patient"
+        )
+        thread = open_conversation(
+            clinic_id=w.clinic,
+            enrollment_id=chart.enrollment,
+            channel="portal",
+            purpose="care",
+        ).conversation_id
+        message = send_message(
+            clinic_id=w.clinic, conversation_id=thread, command_id=uuid4(), body=NOTICE
+        ).message_id
+        notice = ReleaseNoticeTemplate.objects.get(clinic_id=w.clinic)
+    return {
+        "organization_id": graph.organization_a,
+        "clinic_id": w.clinic,
+        "release_id": release_row.pk,
+        "version_id": version,
+        "enrollment_id": chart.enrollment,
+        "audience": "patient",
+        "template_id": notice.pk,
+        "message_id": message,
+        "released_by_id": graph.physician,
+    }
+
+
+def _raw_delivery(fields: dict[str, object]) -> ReleaseDelivery:
+    return ReleaseDelivery.objects.create(**fields)
+
+
+def coordination_delivery_read(w: World) -> None:
+    fields = _delivery_fields(w)
+    with w.acting(w.graph.physician):
+        delivery = _raw_delivery(fields)
+    with w.acting(w.receptionist):
+        assert care_visible(ReleaseDelivery) == set()
+    with w.acting(w.graph.physician):
+        assert care_visible(ReleaseDelivery) == {delivery.pk}
+
+
+def coordination_delivery_insert(w: World) -> None:
+    fields = _delivery_fields(w)
+    with w.acting(w.receptionist):
+        forged = {**fields, "released_by_id": w.receptionist}
+        refused(_refuses("delivery refused"), lambda: _raw_delivery(forged))
+    with w.acting(w.graph.physician):
+        assert _raw_delivery(fields).released_by_id == w.graph.physician
+
+
+def delivery_by_another(w: World) -> None:
+    fields = _delivery_fields(w)
+    other = _clinician(w)
+    with owner_context(w.graph.organization_a):
+        CareTeamMembership.objects.create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            patient_enrollment_id=cast("UUID", fields["enrollment_id"]),
+            user_id=other,
+            role="physician",
+            valid_from=timezone.now() - timedelta(days=1),
+            valid_to=timezone.now() + timedelta(days=1),
+        )
+    with w.acting(other):
+        refused(_refuses("delivery refused"), lambda: _raw_delivery(fields))
+
+
+def delivery_without_release(w: World) -> None:
+    fields = _delivery_fields(w)
+    narrow(w, "physician", "result.release")
+    with w.acting(w.graph.physician):
+        refused(_refuses("delivery refused"), lambda: _raw_delivery(fields))
+
+
+def _concern(w: World) -> UrgentConcern:
+    """One open concern under a nurse-responsible coverage policy."""
+    patient_reply(urgent_world(w.graph, roles=("nurse",)), URGENT)
+    with owner_context(w.graph.organization_a):
+        return UrgentConcern.objects.get()
+
+
+def _decide(concern: UrgentConcern, **fields: object) -> Callable[[], int]:
+    return lambda: UrgentConcern.objects.filter(pk=concern.pk).update(
+        revision=F("revision") + 1, **fields
+    )
+
+
+def coordination_concern_read(w: World) -> None:
+    concern = _concern(w)
+    with w.acting(w.receptionist):
+        assert care_visible(UrgentConcern) == set()
+    with w.acting(w.nurse):
+        assert care_visible(UrgentConcern) == {concern.pk}
+
+
+def coordination_concern_update(w: World) -> None:
+    concern = _concern(w)
+
+    def touch() -> int:
+        return UrgentConcern.objects.filter(pk=concern.pk).update(
+            revision=F("revision")
+        )
+
+    with w.acting(w.receptionist):
+        assert touch() == 0
+    with w.acting(w.nurse):
+        refused(_refuses("concern transition refused"), touch)
+
+
+def coordination_responsible(w: World) -> None:
+    def responsible(user: UUID) -> object:
+        with w.acting(user), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.workflows_urgent_responsible(%s,%s::varchar[])",
+                [w.clinic, ["nurse"]],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return row[0]
+
+    assert responsible(w.nurse) is True
+    assert responsible(w.receptionist) is False
+
+
+def coordination_concern_transition(w: World) -> None:
+    concern = _concern(w)
+    with w.acting(w.nurse):
+        refused(
+            _refuses("concern transition refused"),
+            _decide(concern, state="acknowledged", acknowledged_by_id=w.receptionist),
+        )
+        assert _decide(concern, state="acknowledged", acknowledged_by_id=w.nurse)() == 1
+
+
+def concern_by_unresponsible(w: World) -> None:
+    concern = _concern(w)
+    with w.acting(w.manager):
+        refused(
+            _refuses("concern transition refused"),
+            _decide(concern, state="acknowledged", acknowledged_by_id=w.manager),
+        )
+
+
+def concern_resolved_by_another(w: World) -> None:
+    concern = _concern(w)
+    with w.acting(w.nurse):
+        _decide(concern, state="acknowledged", acknowledged_by_id=w.nurse)()
+        refused(
+            _refuses("concern transition refused"),
+            _decide(concern, state="resolved", resolved_by_id=w.receptionist),
+        )
+
+
+COORDINATION_CASES: dict[str, Callable[[World], None]] = {
+    "policy:workflows_releasenoticetemplate.coordination_read": (
+        coordination_notice_read
+    ),
+    "policy:workflows_releasedelivery.coordination_read": coordination_delivery_read,
+    "policy:workflows_urgentcoveragepolicy.coordination_read": (
+        coordination_coverage_read
+    ),
+    "policy:workflows_urgentconcern.coordination_read": coordination_concern_read,
+    "policy:workflows_urgentconcern.coordination_update": coordination_concern_update,
+    "function:workflows_urgent_responsible(uuid,character varying[])": (
+        coordination_responsible
+    ),
+    COORDINATION + "notice refused": coordination_notice_insert,
+    COORDINATION + "coverage refused": coordination_coverage_insert,
+    COORDINATION + "delivery refused": coordination_delivery_insert,
+    COORDINATION + "concern transition refused": coordination_concern_transition,
+}
+COORDINATION_CONDITIONS: dict[str, Callable[[World], None]] = {
+    COORDINATION + "notice refused#1:actor:NEW.approved_by_id IS DISTINCT FROM actor": (
+        notice_by_another
+    ),
+    COORDINATION + "notice refused#2:permission:configuration.propose": (
+        notice_without_release
+    ),
+    COORDINATION
+    + "coverage refused#1:actor:NEW.created_by_id IS DISTINCT FROM actor": (
+        coverage_by_another
+    ),
+    COORDINATION + "coverage refused#2:permission:configuration.clinic": (
+        coverage_without_configuration
+    ),
+    COORDINATION
+    + "delivery refused#1:actor:NEW.released_by_id IS DISTINCT FROM actor": (
+        delivery_by_another
+    ),
+    COORDINATION + "delivery refused#2:permission:result.release": (
+        delivery_without_release
+    ),
+    COORDINATION + "concern transition refused#1:helper:workflows_urgent_responsible": (
+        concern_by_unresponsible
+    ),
+    COORDINATION
+    + (
+        "concern transition refused#2:actor:"
+        "NEW.acknowledged_by_id IS NOT DISTINCT FROM actor"
+    ): coordination_concern_transition,
+    COORDINATION
+    + (
+        "concern transition refused#3:actor:"
+        "NEW.resolved_by_id IS NOT DISTINCT FROM actor"
+    ): concern_resolved_by_another,
+}
+
+
 GUARD = "branch:workflows_guard():"
 CASES: dict[str, Callable[[World], None]] = {
     "policy:workflows_task.workflow_read": task_read,
@@ -1559,6 +1877,7 @@ CASES: dict[str, Callable[[World], None]] = {
     GUARD + "run transition denied": run_transition,
     GUARD + "step authority denied": step_authority,
     **CARE_CASES,
+    **COORDINATION_CASES,
 }
 
 
@@ -1776,6 +2095,7 @@ CONDITIONS: dict[str, Callable[[World], None]] = {
     ),
     "step authority denied#6:permission:tasks.view": _cancel_step_without("tasks.view"),
     **CARE_CONDITIONS,
+    **COORDINATION_CONDITIONS,
 }
 
 

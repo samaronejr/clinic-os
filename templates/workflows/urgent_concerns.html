@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load i18n tz workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Urgent concerns" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="urgent-title" data-urgent-concerns>
+  <h1 id="urgent-title">{% trans "Urgent concerns" %}</h1>
+  <p class="lede">{% trans "Patient messages the portal flagged as possibly urgent. A person on the responsible roles answers each one in its conversation; nothing replies automatically." %}</p>
+  <div class="feedback" role="note" data-urgent-coverage>
+    <p>{% trans "What patients see:" %}</p>
+    {% for line in coverage %}<p>{{ line }}</p>{% endfor %}
+  </div>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-urgent-error>{{ error }}</div>{% endif %}
+  {% if notice %}<div class="feedback feedback--success" role="status" data-urgent-saved><p>{{ notice }}</p></div>{% endif %}
+  {% if rows %}
+  <ol class="worklist" data-urgent-list>
+    {% for row in rows %}
+    <li class="worklist-item{% if row.overdue %} worklist-item--critical{% endif %}" data-urgent-concern="{{ row.concern_id }}" data-urgent-state="{{ row.state }}" aria-labelledby="urgent-{{ forloop.counter }}">
+      <div class="worklist-item-head">
+        <h2 id="urgent-{{ forloop.counter }}">{% trans "Urgent patient message" %}</h2>
+        <p class="worklist-badges">
+          {% if row.overdue %}<span class="badge badge--error" data-urgent-overdue>{% trans "Overdue: escalated to managers" %}</span>{% endif %}
+          {% if row.state == "acknowledged" %}<span class="badge badge--warning">{% trans "Acknowledged" %}</span>{% else %}<span class="badge badge--error">{% trans "Open" context "urgent concern state" %}</span>{% endif %}
+        </p>
+      </div>
+      <dl class="worklist-facts">
+        <div><dt>{% trans "Reported" %}</dt><dd><time datetime="{{ row.reported_at|date:'c' }}">{% timezone clinic.timezone %}{{ row.reported_at|date:"d/m/Y H:i" }}{% endtimezone %}</time></dd></div>
+        <div><dt>{% trans "Answer by" %}</dt><dd>{% if row.due_at %}<time datetime="{{ row.due_at|date:'c' }}">{% timezone clinic.timezone %}{{ row.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</time>{% else %}{% trans "No coverage policy: no deadline" %}{% endif %}</dd></div>
+      </dl>
+      <div class="worklist-item-actions">
+        <a class="button button--secondary" href="{% url 'comms:conversation' clinic.id row.conversation_id %}">{% trans "Open conversation" %}<span class="visually-hidden"> · {% trans "Urgent patient message" %} {{ forloop.counter }}</span></a>
+        {% if row.responsible %}
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="concern_id" value="{{ row.concern_id }}">
+          <input type="hidden" name="revision" value="{{ row.revision }}">
+          {% if row.state == "open" %}
+          <input type="hidden" name="action" value="ack">
+          <button class="button" type="submit">{% trans "Acknowledge" %}<span class="visually-hidden"> · {% trans "Urgent patient message" %} {{ forloop.counter }}</span></button>
+          {% else %}
+          <input type="hidden" name="action" value="resolve">
+          <button class="button" type="submit">{% trans "Mark resolved" %}<span class="visually-hidden"> · {% trans "Urgent patient message" %} {{ forloop.counter }}</span></button>
+          {% endif %}
+        </form>
+        {% else %}<p class="hint">{% trans "Escalated to you as a manager; a responsible role acknowledges it." %}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p role="status" data-urgent-empty>{% trans "No urgent concerns are waiting." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

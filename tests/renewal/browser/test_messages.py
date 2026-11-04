@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from django.utils.translation import gettext, pgettext
+from django.utils.translation import gettext, ngettext, pgettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
@@ -40,6 +40,7 @@ from renewal.browser.messages_support import (
     seed_quick_reply,
     status_body,
 )
+from renewal.browser.support_managers import seed_manager
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -55,6 +56,7 @@ from renewal.browser.test_portal import (
     _no_browser_storage,
     _small_targets,
 )
+from renewal.browser.test_retention import sign_in_manager
 from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
 
 if TYPE_CHECKING:
@@ -772,4 +774,110 @@ def test_a_patient_reads_and_replies_in_a_portal_thread_the_clinic_opened(
         _read_and_reply(patient, page, base, root)
         assert errors == []
         _closed_then_forged(patient, page, base, root)
+    assert _portal_inbound(staff, enrollment) == 1
+
+
+# Task 55: an urgent portal reply lands in the accountable human queue.
+URGENT_REPLY = "Estou com dor no peito muito forte agora e falta de ar."
+NO_COVERAGE = (
+    "This clinic does not watch messages continuously. In an emergency, call 192."
+)
+WINDOW = ngettext(
+    "Reply within %(hours)s business hour; in an emergency, call 192.",
+    "Reply within %(hours)s business hours; in an emergency, call 192.",
+    2,
+)
+
+
+def _publish_coverage(page: Page, base: str, staff: dict[str, str], root: Path) -> None:
+    """A clinic admin publishes the hours and roles patients will read."""
+    goto_settled(page, f"{base}/clinics/{staff['clinic_a']}/settings/urgent-coverage/")
+    preview = page.locator("[data-coverage-preview]")
+    expect(preview).to_contain_text(gettext(NO_COVERAGE))
+    for day in range(7):
+        page.locator(f'input[name="weekdays"][value="{day}"]').check()
+    page.locator("#coverage-opens").fill("00:00")
+    page.locator("#coverage-closes").fill("23:59")
+    page.locator("#coverage-hours").fill("2")
+    page.locator('input[name="responsible_roles"][value="physician"]').check()
+    published = click_to_navigate(
+        page.get_by_role("button", name=gettext("Publish coverage"))
+    )
+    assert published is not None
+    assert published.status == OK
+    expect(page.locator("[data-coverage-saved]")).to_be_visible()
+    expect(preview).to_contain_text(WINDOW % {"hours": 2})
+    report = check_page(page, base, root, "messages-urgent-coverage")
+    assert report["violations"] == 0, report
+    _capture(page, root, "urgent-coverage", 1280)
+
+
+def _urgent_reply(patient: Page, base: str, root: Path) -> None:
+    """The patient reads the configured terms, then sends an urgent reply."""
+    click_to_navigate(patient.locator("#messages-link"))
+    expect(patient.locator("[data-portal-coverage]")).to_contain_text(
+        WINDOW % {"hours": 2}
+    )
+    click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+    expect(patient.locator("[data-portal-coverage]")).to_contain_text("192")
+    patient.locator("#reply-body").fill(URGENT_REPLY)
+    click_to_navigate(patient.locator("[data-portal-reply-send]"))
+    expect(patient.locator("[data-portal-reply-sent]")).to_be_visible()
+    _portal_check(patient, base, root, "urgent-replied")
+
+
+def _decide_urgent(page: Page, base: str, staff: dict[str, str], root: Path) -> None:
+    """The responsible physician acknowledges, then resolves, the one concern."""
+    goto_settled(page, f"{base}/clinics/{staff['clinic_a']}/inbox/")
+    opener = page.get_by_role("link", name=re.compile(gettext("Open urgent concerns")))
+    expect(opener).to_have_count(1)
+    click_to_navigate(opener)
+    assert page.url == f"{base}/clinics/{staff['clinic_a']}/inbox/urgent/"
+    concern = page.locator("[data-urgent-concern]")
+    expect(concern).to_have_count(1)
+    expect(concern).to_have_attribute("data-urgent-state", "open")
+    expect(page.locator("main")).not_to_contain_text(URGENT_REPLY)
+    report = check_page(page, base, root, "messages-urgent-queue")
+    assert report["violations"] == 0, report
+    _capture(page, root, "urgent-queue", 1280)
+    click_to_navigate(
+        concern.get_by_role("button", name=re.compile(gettext("Acknowledge")))
+    )
+    expect(page.locator("[data-urgent-saved]")).to_be_visible()
+    expect(concern).to_have_attribute("data-urgent-state", "acknowledged")
+    click_to_navigate(
+        concern.get_by_role("button", name=re.compile(gettext("Mark resolved")))
+    )
+    expect(page.locator("[data-urgent-empty]")).to_be_visible()
+
+
+def test_an_urgent_portal_reply_reaches_the_accountable_urgent_queue(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    directory = root / "messages"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    operator = _organization_admin(staff)["id"]
+    grant_messages(staff, operator, staff["receptionist_id"], directory)
+    page = renewal_page
+    sign_in_manager(page, base, staff, seed_manager(staff))
+    _publish_coverage(page, base, staff, root)
+    name = _new_name()
+    _sign_in_receptionist(page, base, staff)
+    enrollment = _register_patient(page, base, staff, name)
+    code = _portal_access(staff, enrollment)
+    _start_portal_thread(page, base, staff, name, directory)
+    browser = page.context.browser
+    assert browser is not None
+    with _context(browser, 375) as patient_context:
+        patient = patient_context.new_page()
+        errors = _watch_errors(patient)
+        _redeem(patient, base, staff["clinic_a"], code)
+        _urgent_reply(patient, base, root)
+        assert errors == []
+    _sign_in_physician(page, base, staff)
+    _decide_urgent(page, base, staff, root)
     assert _portal_inbound(staff, enrollment) == 1

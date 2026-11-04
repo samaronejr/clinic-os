@@ -202,6 +202,17 @@ ACTOR_PROTOCOL_ORACLES = {
         "workflows.test_sql_authority."
         "test_every_workflow_sql_member_for_every_catalog_role",
     ),
+    # The todo-55 coordination guard and responsible-role helper read the actor;
+    # the same census runs both as every catalog role, an absent member and an
+    # inactive manager (refused publication, no responsibility).
+    "clinic_app.workflows_coordination_guard()": (
+        "workflows.test_sql_authority."
+        "test_every_workflow_sql_member_for_every_catalog_role",
+    ),
+    "clinic_app.workflows_urgent_responsible(uuid,character varying[])": (
+        "workflows.test_sql_authority."
+        "test_every_workflow_sql_member_for_every_catalog_role",
+    ),
 }
 SQL_PROTOCOL_ORACLES = (
     {
@@ -226,6 +237,9 @@ SQL_PROTOCOL_ORACLES = (
             # The workflow SQL inventory already classifies the care guard
             # (domain_protocol); its actor protocol adds the inactive caller.
             "clinic_app.workflows_care_guard()",
+            # Likewise the todo-55 coordination guard and responsible helper.
+            "clinic_app.workflows_coordination_guard()",
+            "clinic_app.workflows_urgent_responsible(uuid,character varying[])",
         }
     }
     | {

@@ -12,7 +12,7 @@ import ast
 import copy
 import inspect
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -30,6 +30,7 @@ from apps.ehr.services import create_draft, open_encounter, record_clinical_note
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import CareTeamMembership, User, UserClinicRole
 from apps.intake.models import PatientClinicEnrollment
+from apps.intake.patient_access import patient_session_context
 from apps.prescription.models import DocumentKind
 from apps.prescription.services import create_document_draft
 from apps.scheduling.availability_creation import create_availability
@@ -38,16 +39,19 @@ from apps.tenancy.db import tenant_context
 from apps.workflows import (
     access,
     chart_sources,
+    coordination_views,
     definition_services,
     designer,
     engine,
     external,
     handlers,
     receipts,
+    release,
     run_control,
     run_views,
     task_feed,
     today,
+    urgent,
     views,
 )
 from apps.workflows.care import plans, pro, recalls
@@ -74,6 +78,7 @@ from apps.workflows.models import (
     WorkflowStep,
 )
 from apps.workflows.reassignment import apply_reassignment, preview_reassignment
+from apps.workflows.release_models import ReleaseNoticeTemplate
 from apps.workflows.services import (
     TaskOwner,
     TaskSpec,
@@ -88,11 +93,13 @@ from apps.workflows.services import (
     start_run,
     start_task,
 )
+from apps.workflows.urgent_models import UrgentConcern
 from django.db import DatabaseError, connection, transaction
 from django.db.models import F
-from django.http import QueryDict
+from django.http import HttpResponse, QueryDict
 from django.urls import resolve
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
 from ehr.test_addenda import clinician, enrollment_of, join
@@ -109,6 +116,14 @@ from scheduling.appointment_service_support import (
     seed_cross_clinic_appointment_setups,
 )
 from workflows import decision_sites
+from workflows.coordination_support import (
+    URGENT,
+    clinic_b_portal,
+    patient_reply,
+    reply_as,
+    urgent_world,
+)
+from workflows.coordination_world import seed_release
 from workflows.decision_sites import SCOPE, discover_sites
 from workflows.permission_support import permission_actor
 from workflows.sql_sites import discover_scope_conditions
@@ -1291,6 +1306,140 @@ def care_referral_scope(s: Scoped) -> None:
     assert linked.document_id == mine.draft
 
 
+# --- Todo 55: release notices, deliveries, coverage and urgent concerns ----------
+
+
+def _role_in_b(s: Scoped, user: UUID, role: str) -> None:
+    with owner_context(s.graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.b,
+            user_id=user,
+            role=role,
+            workflow_bundle_version=2,
+        )
+
+
+def notice_scope(s: Scoped) -> None:
+    """Notices are numbered, current and listed within their own clinic."""
+    physician = s.graph.physician
+    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
+    with as_actor(s.graph, physician):
+        for body in ("Aviso da outra clinica.", "Aviso revisto da outra clinica."):
+            release.publish_release_notice(clinic_id=s.b, body=body)
+        release.publish_release_notice(clinic_id=s.a, body="Aviso desta clinica.")
+    current = outcome(s, physician, lambda: release.current_notice(clinic_id=s.a))[0]
+    assert isinstance(current, ReleaseNoticeTemplate)
+    assert (current.version, current.body) == (1, "Aviso desta clinica.")
+    # The verified request is built outside the runtime role that runs the page.
+    request = verified_request(physician)
+    page = outcome(
+        s,
+        physician,
+        lambda: inspect.unwrap(coordination_views._release_notices)(request, s.a),
+    )[0]
+    assert isinstance(page, HttpResponse)
+    assert 'data-notice-version="1"' in page.content.decode()
+    assert 'data-notice-version="2"' not in page.content.decode()
+    published = outcome(
+        s,
+        physician,
+        lambda: release.publish_release_notice(
+            clinic_id=s.a, body="Aviso desta clinica, revisto."
+        ),
+    )[0]
+    assert isinstance(published, ReleaseNoticeTemplate)
+    assert published.version == 2
+
+
+def release_scope(s: Scoped) -> None:
+    """A release and its deliveries resolve the version in the call's clinic."""
+    physician = s.graph.physician
+    # Released records without an appointment: the scope world already holds
+    # the physician's availability.
+    version = seed_release(s.graph, physician, s.a).version
+    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
+
+    def release_in(clinic: UUID, target: UUID) -> Callable[[], object]:
+        return lambda: release.release_result_to_patient(
+            clinic_id=clinic,
+            result_version_id=target,
+            template_version=1,
+            audience="patient",
+        )
+
+    same_denial(s, physician, release_in(s.b, version), release_in(s.b, uuid4()))
+    with as_actor(s.graph, physician):
+        view = release_in(s.a, version)()
+    assert isinstance(view, release.DeliveryView)
+
+    def deliveries(clinic: UUID) -> object:
+        return outcome(
+            s,
+            physician,
+            lambda: release.release_deliveries(
+                clinic_id=clinic, result_version_id=version
+            ),
+        )[0]
+
+    assert deliveries(s.a) == (view,)
+    assert deliveries(s.b) == ()
+
+
+def coverage_scope(s: Scoped) -> None:
+    """Coverage versions and terms belong to their own clinic."""
+
+    def publish(clinic: UUID, version: int, hours: int) -> Callable[[], object]:
+        return lambda: urgent.set_urgent_coverage(
+            clinic_id=clinic,
+            expected_version=version,
+            weekdays=(0, 1, 2, 3, 4),
+            opens_at=time(8, 0),
+            closes_at=time(18, 0),
+            response_hours=hours,
+            responsible_roles=("nurse",),
+        )
+
+    with as_actor(s.graph, s.manager):
+        publish(s.b, 0, 5)()
+        publish(s.b, 1, 6)()
+        publish(s.a, 0, 3)()
+    current = outcome(s, s.manager, lambda: urgent.current_coverage(clinic_id=s.a))[0]
+    assert isinstance(current, urgent.Coverage)
+    assert (current.version, current.response_hours) == (1, 3)
+    settings = outcome(s, s.manager, lambda: urgent.coverage_settings(clinic_id=s.b))[0]
+    assert isinstance(settings, urgent.Coverage)
+    assert settings.response_hours == 6
+    published = outcome(s, s.manager, publish(s.a, 1, 4))[0]
+    assert isinstance(published, urgent.Coverage)
+    assert published.version == 2
+    stale = outcome(s, s.manager, publish(s.a, 2, 4))[0]
+    assert stale == (WorkflowConflictError, WorkflowConflictError().args)
+
+
+def concern_scope(s: Scoped) -> None:
+    """Concerns are listed and decided only within their own clinic."""
+    world = urgent_world(s.graph, coverage=False)
+    patient_reply(world, URGENT)
+    session, thread = clinic_b_portal(s.graph, world.other_enrollment)
+    reply_as(session, s.b, thread, URGENT)
+    with owner_context(s.graph.organization_a):
+        concerns = {row.clinic_id: row.pk for row in UrgentConcern.objects.all()}
+    listed = outcome(s, s.manager, lambda: urgent.urgent_concerns(clinic_id=s.a))[0]
+    assert isinstance(listed, tuple)
+    assert [row.concern_id for row in listed] == [concerns[s.a]]
+
+    def acknowledge(target: UUID) -> Callable[[], object]:
+        return lambda: urgent.acknowledge_urgent_concern(
+            clinic_id=s.a, concern_id=target, expected_revision=1
+        )
+
+    same_denial(s, s.manager, acknowledge(concerns[s.b]), acknowledge(uuid4()))
+    acknowledged_row = outcome(s, s.manager, acknowledge(concerns[s.a]))[0]
+    assert isinstance(acknowledged_row, urgent.ConcernRow)
+    assert acknowledged_row.state == "acknowledged"
+
+
 PYTHON = "apps.workflows."
 CARE = PYTHON + "care."
 PREVIEW = (
@@ -1372,6 +1521,17 @@ PY_CASES: dict[str, Callable[..., None]] = {
     + (
         "referrals.link_referral_document:scope:clinic_id=clinic_id#2"
     ): care_referral_scope,
+    PYTHON
+    + "coordination_views._release_notices:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.current_notice:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.publish_release_notice:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.release_deliveries:scope:clinic_id=clinic_id": release_scope,
+    PYTHON
+    + "release.release_result_to_patient:scope:clinic_id=clinic_id": release_scope,
+    PYTHON + "urgent._decide:scope:clinic_id=clinic_id": concern_scope,
+    PYTHON + "urgent._latest:scope:clinic_id=clinic_id": coverage_scope,
+    PYTHON + "urgent.set_urgent_coverage:scope:clinic_id=clinic_id": coverage_scope,
+    PYTHON + "urgent.urgent_concerns:scope:clinic_id=clinic_id": concern_scope,
 }
 
 
@@ -1860,6 +2020,46 @@ def care_sql_referral_document(s: Scoped) -> None:
         transaction.set_rollback(True)
 
 
+def urgent_sql_responsible(s: Scoped) -> None:
+    """A responsible role counts only in the clinic that holds it."""
+    member, _enrollment = permission_actor(s.graph, "receptionist")
+    _role_in_b(s, member, "nurse")
+
+    def responsible(clinic: UUID) -> object:
+        with permission_context(s.graph, member), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.workflows_urgent_responsible(%s,%s::varchar[])",
+                [clinic, ["nurse"]],
+            )
+            row = cursor.fetchone()
+            transaction.set_rollback(True)
+        assert row is not None
+        return row[0]
+
+    assert responsible(s.b) is True
+    assert responsible(s.a) is False
+
+
+def urgent_sql_coverage_policy(s: Scoped) -> None:
+    """One clinic's coverage policy never answers for another clinic's patients."""
+    world = urgent_world(s.graph, coverage=False)
+    session, _thread = clinic_b_portal(s.graph, world.other_enrollment)
+    with as_actor(s.graph, s.manager):
+        urgent.set_urgent_coverage(
+            clinic_id=s.b,
+            expected_version=0,
+            weekdays=(0, 1, 2, 3, 4),
+            opens_at=time(8, 0),
+            closes_at=time(18, 0),
+            response_hours=4,
+            responsible_roles=("nurse",),
+        )
+    with runtime_role(), patient_session_context(world.session):
+        assert urgent.patient_coverage_text() == (gettext(urgent.NO_COVERAGE),)
+    with runtime_role(), patient_session_context(session):
+        assert len(urgent.patient_coverage_text()) == 2
+
+
 CARE_GUARD = "scope:workflows_care_guard():"
 
 
@@ -1898,6 +2098,13 @@ SQL_CASES: dict[str, Callable[..., None]] = {
     (
         "scope:workflows_care_version_scope(uuid,uuid):n.clinic_id=e.clinic_id"
     ): care_sql_version_scope,
+    (
+        "scope:workflows_urgent_responsible(uuid,character varying[]):"
+        "r.clinic_id=clinic"
+    ): urgent_sql_responsible,
+    (
+        "scope:workflows_coverage_policy(uuid,uuid):v.clinic_id=clinic"
+    ): urgent_sql_coverage_policy,
 }
 
 

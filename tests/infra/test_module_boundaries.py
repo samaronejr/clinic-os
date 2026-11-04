@@ -44,6 +44,8 @@ from apps.scheduling import services as scheduling_services
 from apps.scribe import services as scribe_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
+from apps.workflows import release as release_services
+from apps.workflows import urgent as urgent_services
 from apps.workflows.care import services as care_services
 from django.apps import apps as django_apps
 
@@ -855,6 +857,60 @@ def test_care_boundaries_take_scope_not_actor(
     ],
 )
 def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 55: result release coordination and the urgent-concern queue.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            release_services.release_result_to_patient,
+            [
+                "clinic_id",
+                "result_version_id",
+                "template_version",
+                "audience",
+                "delegate_grant_id",
+            ],
+        ),
+        (release_services.publish_release_notice, ["clinic_id", "body"]),
+        (release_services.current_notice, ["clinic_id"]),
+        (
+            release_services.release_deliveries,
+            ["clinic_id", "result_version_id"],
+        ),
+        (
+            urgent_services.set_urgent_coverage,
+            [
+                "clinic_id",
+                "expected_version",
+                "weekdays",
+                "opens_at",
+                "closes_at",
+                "response_hours",
+                "responsible_roles",
+            ],
+        ),
+        (urgent_services.current_coverage, ["clinic_id"]),
+        (urgent_services.coverage_settings, ["clinic_id"]),
+        (urgent_services.urgent_concerns, ["clinic_id"]),
+        (
+            urgent_services.acknowledge_urgent_concern,
+            ["clinic_id", "concern_id", "expected_revision"],
+        ),
+        (
+            urgent_services.resolve_urgent_concern,
+            ["clinic_id", "concern_id", "expected_revision"],
+        ),
+    ],
+)
+def test_release_and_urgent_services_take_scope_not_actor(
     entrypoint: Callable[..., object], names: list[str]
 ) -> None:
     parameters = signature(entrypoint).parameters

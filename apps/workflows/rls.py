@@ -17,11 +17,18 @@ CUSTOM_RLS_TABLES: Final = frozenset(
         "workflows_proassignment",
         "workflows_prooccurrence",
         "workflows_carerefusal",
+        "workflows_releasenoticetemplate",
+        "workflows_releasedelivery",
+        "workflows_urgentcoveragepolicy",
+        "workflows_urgentconcern",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
-# Scanner refusals are written by their resolver only; staff read them.
-READ_ONLY_TABLES: Final = frozenset({"workflows_carerefusal"})
+# Scanner refusals are written by their resolver only; staff read them. Urgent
+# concerns are written by the patient bridge only; staff move their state.
+READ_ONLY_TABLES: Final = frozenset(
+    {"workflows_carerefusal", "workflows_urgentconcern"}
+)
 RUNTIME_GRANTS: Final = {
     table: frozenset({"SELECT"} if table in READ_ONLY_TABLES else {"SELECT", "INSERT"})
     for table in CUSTOM_RLS_TABLES
@@ -94,6 +101,14 @@ COLUMN_GRANTS: Final = frozenset(
             "response_task_id",
             "recorded_at",
             *_COMMAND,
+        ),
+        "workflows_urgentconcern": (
+            "state",
+            "acknowledged_by_id",
+            "acknowledged_at",
+            "resolved_by_id",
+            "resolved_at",
+            "revision",
         ),
     }.items()
     for column in columns

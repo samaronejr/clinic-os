@@ -1796,6 +1796,34 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "comms.suggested_reply",
         "decided",
     ),
+    # Task 55: result release notices and the urgent-concern queue.
+    "workflows.release_notice.approved": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.release_notice",
+        "approved",
+    ),
+    "workflows.release_delivery.queued": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.release_delivery",
+        "queued",
+    ),
+    "workflows.urgent_coverage.published": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.urgent_coverage",
+        "published",
+    ),
+    **{
+        f"workflows.urgent_concern.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "workflows.urgent_concern",
+            state,
+        )
+        for state in ("reported", "acknowledged", "resolved")
+    },
 }
 
 

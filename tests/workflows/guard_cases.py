@@ -108,6 +108,8 @@ class GuardWorld:
     enrollment: UUID
     # Seeded lazily for the care guards only (see care_world.seed_care_world).
     care: Any = None
+    # Seeded lazily for the release guard only (coordination_world, todo 55).
+    coordination: Any = None
 
     @property
     def clinic(self) -> UUID:
@@ -2048,6 +2050,9 @@ def _inbox_entrypoints() -> tuple[GuardCase, ...]:
 
 def guard_cases() -> tuple[GuardCase, ...]:
     from workflows.care_guard_cases import care_cases  # noqa: PLC0415 - import cycle
+    from workflows.coordination_guard_cases import (  # noqa: PLC0415 - import cycle
+        coordination_cases,
+    )
 
     extras = _extras()
     cases = tuple(
@@ -2057,6 +2062,7 @@ def guard_cases() -> tuple[GuardCase, ...]:
             *_lifecycle_cases(),
             *_inbox_cases(),
             *care_cases(),
+            *coordination_cases(),
         )
     )
     assert set(extras) <= {case.symbol for case in cases}, set(extras)

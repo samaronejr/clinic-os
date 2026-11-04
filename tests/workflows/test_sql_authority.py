@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import timedelta
+from datetime import time, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -12,6 +12,7 @@ import pytest
 from apps.identity.models import UserClinicRole
 from apps.workflows.care.models import Recall
 from apps.workflows.models import WorkflowDefinitionVersion
+from apps.workflows.urgent_models import UrgentCoveragePolicy
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 from psycopg import sql
@@ -24,6 +25,8 @@ from workflows.guard_cases import GuardWorld, seed_guard_world
 from workflows.test_authority import _set_role
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -274,6 +277,108 @@ def _care_system_task(w: GuardWorld, permitted: bool) -> None:
     assert call(valid, [Jsonb({**task, "priority": "low"})], private=True) == [(False,)]
 
 
+def _granted(w: GuardWorld, permission: str) -> bool:
+    [(allowed,)] = call("has_permission", [permission, w.clinic, None])
+    return bool(allowed)
+
+
+def _refused(sqlstate: str, invoke: Callable[[], object]) -> None:
+    with pytest.raises(DatabaseError) as caught, transaction.atomic():
+        invoke()
+    assert getattr(caught.value.__cause__, "sqlstate", None) == sqlstate
+
+
+def _urgent_responsible(w: GuardWorld, permitted: bool) -> None:
+    # A responsible actor holds one of the named roles and demographics.read.
+    roles = list(UserClinicRole.Role.values)
+    gate = _granted(w, "demographics.read")
+    responsible = "workflows_urgent_responsible"
+    assert call(responsible, [w.clinic, roles]) == [(permitted and gate,)]
+    assert call(responsible, [w.clinic, []]) == [(False,)]
+    assert call(responsible, [w.graph.clinic_b, roles]) == [(False,)]
+
+
+def _coverage_policy(w: GuardWorld, permitted: bool) -> None:
+    # Resolver-only lookup of the latest policy: no actor, no role decision.
+    organization = w.graph.organization_a
+    for clinic in (w.clinic, w.graph.clinic_b, uuid4()):
+        rows = call("workflows_coverage_policy", [organization, clinic], private=True)
+        assert rows == [(None,)]
+
+
+def _report_urgent(w: GuardWorld, permitted: bool) -> None:
+    # Only a live patient session reaches the bridge; staff never do.
+    _refused("42501", lambda: call("workflows_report_urgent", [uuid4()]))
+
+
+def _patient_coverage(w: GuardWorld, permitted: bool) -> None:
+    assert call("workflows_patient_coverage", []) == []
+
+
+def _urgent_audit_scope(w: GuardWorld, permitted: bool) -> None:
+    assert call("workflows_urgent_audit_scope", [uuid4()], private=True) == []
+
+
+def _urgent_audit(w: GuardWorld, permitted: bool) -> None:
+    _refused(
+        "42501",
+        lambda: call("workflows_urgent_audit", [uuid4(), timezone.now(), bytes(32)]),
+    )
+
+
+def _release_send_eligible(w: GuardWorld, permitted: bool) -> None:
+    # Only a known, now-ineligible release notice is held back.
+    assert call("workflows_release_send_eligible", [uuid4()]) == [(True,)]
+
+
+def _release_system_task(w: GuardWorld, permitted: bool) -> None:
+    # Without the outcome bridge's failure marker no task row is admitted.
+    valid = "workflows_release_system_task_valid"
+    row = {"id": str(uuid4()), "kind": "follow_up"}
+    assert call(valid, [Jsonb(row)], private=True) == [(False,)]
+
+
+def _release_outcome(w: GuardWorld, permitted: bool) -> None:
+    # The outcome function reads no actor, only the tenant; its effect is pinned
+    # by test_urgent_queue.test_failed_notice_delivery_opens_one_follow_up_task.
+    # Every role sees the one binding: terminal transitions of message sends.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t "
+            "WHERE t.tgfoid='clinic_app.workflows_release_outcome()'::regprocedure "
+            "AND NOT t.tgisinternal"
+        )
+        [(definition,)] = cursor.fetchall()
+    assert "AFTER UPDATE OF status ON clinic_app.comms_integrationoperation" in (
+        definition
+    )
+    assert "'comms.message'" in definition
+
+
+def _coordination_guard(w: GuardWorld, permitted: bool) -> None:
+    # A coverage version needs configuration.clinic and the acting publisher.
+    allowed = permitted and _granted(w, "configuration.clinic")
+
+    def publish() -> None:
+        UrgentCoveragePolicy.objects.create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            version=1,
+            weekdays=[0, 1, 2, 3, 4],
+            opens_at=time(8, 0),
+            closes_at=time(18, 0),
+            response_hours=4,
+            responsible_roles=["nurse"],
+            created_by_id=w.actor,
+        )
+
+    if allowed:
+        with transaction.atomic():
+            publish()
+    else:
+        _refused("42501", publish)
+
+
 SQL_CASES = {
     "clinic_app.workflows_now": _clock,
     "clinic_app.workflows_predecessor_ready": _predecessor,
@@ -296,6 +401,16 @@ SQL_CASES = {
     "clinic_app.workflows_care_occurrence_scope": _care_occurrence_scope,
     "clinic_app.workflows_care_source_current": _care_source_current,
     "clinic_app.workflows_care_system_task_valid": _care_system_task,
+    "clinic_app.workflows_urgent_responsible": _urgent_responsible,
+    "clinic_app.workflows_coverage_policy": _coverage_policy,
+    "clinic_app.workflows_report_urgent": _report_urgent,
+    "clinic_app.workflows_patient_coverage": _patient_coverage,
+    "clinic_app.workflows_urgent_audit_scope": _urgent_audit_scope,
+    "clinic_app.workflows_urgent_audit": _urgent_audit,
+    "clinic_app.workflows_release_send_eligible": _release_send_eligible,
+    "clinic_app.workflows_release_system_task_valid": _release_system_task,
+    "clinic_app.workflows_release_outcome": _release_outcome,
+    "clinic_app.workflows_coordination_guard": _coordination_guard,
 }
 # Trigger guards: only a manager's own write passes their staff decision.
 GUARDS = {"clinic_app.workflows_guard", "clinic_app.workflows_care_guard"}

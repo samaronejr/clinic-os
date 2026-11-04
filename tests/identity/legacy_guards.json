@@ -8131,6 +8131,230 @@
       ]
     },
     {
+      "symbol": "apps.workflows.coordination_views._release_notices",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._release_notices#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: configuration.propose through require_permission before any read; a post without the publish action is the shared 403 page; the coordination guard repeats the permission and binds the approver."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views._urgent_concerns",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._urgent_concerns#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: demographics.read through require_permission; acknowledge and resolve are decided by the responsible-role helper and the revision; malformed selectors and unknown concerns are the shared 403 page."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views._urgent_coverage",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._urgent_coverage#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: configuration.clinic through require_permission; a post without the publish action is the shared 403 page; the coordination guard repeats the permission and binds the publisher."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.release_notices_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.release_notices_page#cut1"
+      ],
+      "reason": "Decides configuration.propose before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.urgent_concerns_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.urgent_concerns_page#cut1"
+      ],
+      "reason": "Decides demographics.read before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.urgent_coverage_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.urgent_coverage_page#cut1"
+      ],
+      "reason": "Decides configuration.clinic before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.release.current_notice",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.current_notice#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the notice read policy repeats it for every row."
+    },
+    {
+      "symbol": "apps.workflows.release.notice_send_eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.notice_send_eligible#cut1"
+      ],
+      "reason": "The comms send check for release notices: clinic_app.workflows_release_send_eligible admits a queued notice only while its release version is current and a delegate recipient still holds an allowed grant; the outbox cancels it otherwise. Executed by the release oracles through the cut1 census."
+    },
+    {
+      "symbol": "apps.workflows.release.publish_release_notice",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.publish_release_notice#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the coordination guard repeats it, binds the approving clinician and numbers versions under a per-clinic advisory lock."
+    },
+    {
+      "symbol": "apps.workflows.release.release_deliveries",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.release_deliveries#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the delivery read policy requires patient-scoped result.release for every row."
+    },
+    {
+      "symbol": "apps.workflows.release.release_result_to_patient",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.release_result_to_patient#cut1"
+      ],
+      "reason": "configuration.propose first, then patient-scoped result.release and clinical.read before any write; unknown and foreign versions share ReleaseAccessDeniedError; the coordination guard binds the releaser, the release, the template and the portal message."
+    },
+    {
+      "symbol": "apps.workflows.urgent._decide",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._decide#cut1"
+      ],
+      "reason": "Locks the concern of the requested clinic; unknown and foreign concerns share WorkflowAccessDeniedError; the coordination guard allows only open to acknowledged to resolved by the responsible actor with revision plus one."
+    },
+    {
+      "symbol": "apps.workflows.urgent._responsible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._responsible#cut1"
+      ],
+      "reason": "clinic_app.workflows_urgent_responsible decides whether the current actor holds one of the policy's responsible roles in the clinic (managers when no policy); it only marks and orders listed rows."
+    },
+    {
+      "symbol": "apps.workflows.urgent._responsible_actor",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._responsible_actor#cut1"
+      ],
+      "reason": "require_current_actor_clinic_roles with the concern policy's responsible roles (clinic managers without a policy); the urgent-queue oracles execute every role through the cut1 census."
+    },
+    {
+      "symbol": "apps.workflows.urgent.coverage_settings",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.coverage_settings#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the coverage read policy repeats the clinic scope for every row."
+    },
+    {
+      "symbol": "apps.workflows.urgent.current_coverage",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.current_coverage#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the coverage read policy repeats the clinic scope for every row."
+    },
+    {
+      "symbol": "apps.workflows.urgent.patient_coverage_text",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.patient_coverage_text#cut1"
+      ],
+      "reason": "Patient-session text: clinic_app.workflows_patient_coverage, bound to current_patient_authority('messages'), returns only the session clinic's current coverage; without a policy the portal claims no coverage."
+    },
+    {
+      "symbol": "apps.workflows.urgent.report_urgent_message",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.report_urgent_message#cut1"
+      ],
+      "reason": "Patient bridge: clinic_app.workflows_report_urgent admits only a just-stored inbound portal message of the live session's enrollment and opens at most one concern per message; the coordination guard admits that insert only for the bridge's message."
+    },
+    {
+      "symbol": "apps.workflows.urgent.set_urgent_coverage",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.set_urgent_coverage#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the coordination guard repeats it, binds the publisher and checks the terms under a per-clinic advisory lock."
+    },
+    {
+      "symbol": "apps.workflows.urgent.urgent_concerns",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.urgent_concerns#cut1"
+      ],
+      "reason": "Lists the clinic's concerns for the current actor after the caller decided demographics.read; responsibility comes from the SQL helper and overdue concerns rise for managers; rows hold no message text."
+    },
+    {
       "symbol": "apps.scribe.tasks.run_transcription",
       "signals": [
         "tenant_boundary"
@@ -8772,6 +8996,12 @@
     "apps.workflows.care.tasks.run_care#cut1",
     "apps.workflows.care.tasks.scan_care#cut1",
     "apps.workflows.chart_sources.read_task_sources#cut1",
+    "apps.workflows.coordination_views._release_notices#cut1",
+    "apps.workflows.coordination_views._urgent_concerns#cut1",
+    "apps.workflows.coordination_views._urgent_coverage#cut1",
+    "apps.workflows.coordination_views.release_notices_page#cut1",
+    "apps.workflows.coordination_views.urgent_concerns_page#cut1",
+    "apps.workflows.coordination_views.urgent_coverage_page#cut1",
     "apps.workflows.definition_services._definition#cut1",
     "apps.workflows.designer._authorized_designer#cut1",
     "apps.workflows.designer._command#cut1",
@@ -8787,6 +9017,11 @@
     "apps.workflows.inbox_views._selected_versions#cut1",
     "apps.workflows.inbox_views._terms#cut1",
     "apps.workflows.inbox_views.today#cut1",
+    "apps.workflows.release.current_notice#cut1",
+    "apps.workflows.release.notice_send_eligible#cut1",
+    "apps.workflows.release.publish_release_notice#cut1",
+    "apps.workflows.release.release_deliveries#cut1",
+    "apps.workflows.release.release_result_to_patient#cut1",
     "apps.workflows.run_control.retry_run#cut1",
     "apps.workflows.run_services.cancel_run#cut1",
     "apps.workflows.run_services.start_run#cut1",
@@ -8801,6 +9036,15 @@
     "apps.workflows.tasks.escalate#cut1",
     "apps.workflows.tasks.scan_due#cut1",
     "apps.workflows.today.view_today#cut1",
+    "apps.workflows.urgent._decide#cut1",
+    "apps.workflows.urgent._responsible#cut1",
+    "apps.workflows.urgent._responsible_actor#cut1",
+    "apps.workflows.urgent.coverage_settings#cut1",
+    "apps.workflows.urgent.current_coverage#cut1",
+    "apps.workflows.urgent.patient_coverage_text#cut1",
+    "apps.workflows.urgent.report_urgent_message#cut1",
+    "apps.workflows.urgent.set_urgent_coverage#cut1",
+    "apps.workflows.urgent.urgent_concerns#cut1",
     "apps.workflows.views._authorized_tasks#cut1",
     "apps.workflows.views._staff_catalog#cut1",
     "clinic_app.auth_lookup",
@@ -9435,6 +9679,17 @@
       "roles": "INBOX_ROLES",
       "legacy_allowed": [
         "physician"
+      ]
+    },
+    {
+      "path": "apps/workflows/urgent.py",
+      "function": "_responsible_actor",
+      "roles": "roles",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
       ]
     }
   ],
@@ -11373,7 +11628,10 @@
           "clinic_app.questionnaire_patient_enrollment",
           "clinic_app.retention_records_session",
           "clinic_app.submit_data_request",
-          "clinic_app.teleconsult_patient_match"
+          "clinic_app.teleconsult_patient_match",
+          "clinic_app.workflows_patient_coverage",
+          "clinic_app.workflows_report_urgent",
+          "clinic_app.workflows_urgent_audit_scope"
         ],
         "signatures": [
           {
@@ -11749,7 +12007,10 @@
           "clinic_app.retention_system_task_valid",
           "clinic_app.teleconsult_mode_transition_audit",
           "clinic_app.workflows_care_guard",
-          "clinic_app.workflows_care_system_task_valid"
+          "clinic_app.workflows_care_system_task_valid",
+          "clinic_app.workflows_release_outcome",
+          "clinic_app.workflows_release_system_task_valid",
+          "clinic_app.workflows_urgent_audit"
         ],
         "signatures": [
           {
@@ -12515,7 +12776,9 @@
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_receipt",
           "clinic_app.submit_data_request",
-          "clinic_app.workflows_care_park"
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_release_outcome",
+          "clinic_app.workflows_report_urgent"
         ],
         "signatures": [
           {
@@ -12593,8 +12856,13 @@
           "clinic_app.workflows_recall:care_update",
           "clinic_app.workflows_referral:care_read",
           "clinic_app.workflows_referral:care_update",
+          "clinic_app.workflows_releasedelivery:coordination_read",
+          "clinic_app.workflows_releasenoticetemplate:coordination_read",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
+          "clinic_app.workflows_urgentconcern:coordination_read",
+          "clinic_app.workflows_urgentconcern:coordination_update",
+          "clinic_app.workflows_urgentcoveragepolicy:coordination_read",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
           "clinic_app.workflows_workflowdefinitionversion:workflow_update",
           "clinic_app.workflows_workflowrun:workflow_read",
@@ -12645,11 +12913,13 @@
           "clinic_app.workflows_care_guard",
           "clinic_app.workflows_care_occurrence_scope",
           "clinic_app.workflows_care_version_scope",
+          "clinic_app.workflows_coordination_guard",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
           "clinic_app.workflows_predecessor_ready",
-          "clinic_app.workflows_staff_catalog"
+          "clinic_app.workflows_staff_catalog",
+          "clinic_app.workflows_urgent_responsible"
         ],
         "signatures": [
           {
@@ -17476,6 +17746,238 @@
       ],
       "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
     },
+    "clinic_app.workflows_coordination_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_coordination_guard"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_coverage_policy": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_patient_coverage",
+          "clinic_app.workflows_report_urgent"
+        ],
+        "signatures": [
+          {
+            "arguments": "tenant uuid, clinic uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_coverage_policy"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_patient_coverage": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_patient_coverage"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_outcome": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_outcome"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_send_eligible": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_send_eligible"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_system_task_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_system_task_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_report_urgent": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_report_urgent"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_audit"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_urgent_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_audit_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_responsible": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [
+          "clinic_app.workflows_urgentconcern:coordination_read",
+          "clinic_app.workflows_urgentconcern:coordination_update"
+        ],
+        "resolvers": [
+          "clinic_app.workflows_coordination_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, roles character varying[]",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_responsible"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
     "clinic_app.orders_audit_scope": {
       "discovery": {
         "migrations": [
@@ -17571,7 +18073,8 @@
         "policies": [],
         "resolvers": [
           "clinic_app.orders_guard",
-          "clinic_app.orders_patient_sources"
+          "clinic_app.orders_patient_sources",
+          "clinic_app.workflows_release_send_eligible"
         ],
         "signatures": [
           {
@@ -17728,7 +18231,8 @@
           "clinic_app.ai_review_extraction",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_scope",
-          "clinic_app.orders_verify_identity"
+          "clinic_app.orders_verify_identity",
+          "clinic_app.workflows_release_send_eligible"
         ],
         "signatures": [
           {
