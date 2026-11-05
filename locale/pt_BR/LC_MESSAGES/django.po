@@ -8600,6 +8600,16 @@ msgstr "Não encontrei nenhuma consulta futura. Para agendar, responda ATENDENTE
 msgid "The next available time is %(when)s. Reply SIM to move your appointment there, or NÃO to keep it."
 msgstr "O próximo horário disponível é %(when)s. Responda SIM para mudar sua consulta para esse horário ou NÃO para mantê-la."
 
+#, python-format
+msgid "The next available time is %(when)s with %(practitioner)s. Reply SIM to book this appointment, or NÃO to leave it unbooked."
+msgstr "O próximo horário disponível é %(when)s com %(practitioner)s. Responda SIM para agendar essa consulta ou NÃO para não agendar."
+
+msgid "Please read the offered time, then reply SIM to accept that exact offer."
+msgstr "Leia o horário oferecido e depois responda SIM para aceitar exatamente essa oferta."
+
+msgid "All right, no appointment was booked."
+msgstr "Certo, nenhuma consulta foi agendada."
+
 msgid "There is no available time in the next two weeks. The clinic keeps a waiting list: reply ATENDENTE and the team will add you to it."
 msgstr "Não há horário disponível nas próximas duas semanas. A clínica tem uma lista de espera: responda ATENDENTE e a equipe vai incluir você nela."
 

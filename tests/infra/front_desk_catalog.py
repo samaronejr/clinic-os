@@ -31,7 +31,7 @@ RESULTS: Final = {
         "challenge_pending boolean, attempts integer, offered_appointment uuid, "
         "offered_practitioner uuid, offered_start timestamp with time zone, "
         "first_turn boolean, inbound_text text, policy_id uuid, tools text[], "
-        "budget_left integer)"
+        "budget_left integer, offer_received boolean)"
     ),
     ("ai_front_desk_articles", "requested_turn uuid"): (
         "TABLE(article_id uuid, key text, version integer, title text, body text, "

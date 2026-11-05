@@ -223,6 +223,11 @@ def approve_article(
         previous.retired_at = now
         previous.revision += 1
         previous.save(update_fields=("state", "retired_at", "revision"))
+        record_phase1_event(
+            "ai.knowledge_article.retired",
+            clinic_id=clinic_id,
+            affected_record_id=previous.pk,
+        )
     article.state = "approved"
     article.approved_by_id = actor
     article.approved_at = now

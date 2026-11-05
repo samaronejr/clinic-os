@@ -37,6 +37,7 @@ INTENTS: Final = (
     "greeting",
     "information",
     "appointments",
+    "booking",
     "reschedule",
     "birth_date",
     "accept",
@@ -141,6 +142,13 @@ class FrontDeskThread(TenantScopedModel):
         related_name="+",
     )
     verified_until = models.DateTimeField(null=True)
+    verified_contact = models.ForeignKey(
+        "intake.PatientContact",
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    verified_contact_version = models.PositiveIntegerField(null=True)
     # The channel session minted by a successful challenge; appointment reads
     # and changes run under it, through the patient booking services.
     session = models.ForeignKey(
@@ -167,6 +175,14 @@ class FrontDeskThread(TenantScopedModel):
     )
     offered_start = models.DateTimeField(null=True)
     offered_until = models.DateTimeField(null=True)
+    offered_turn = models.ForeignKey(
+        "ai.FrontDeskTurn", null=True, on_delete=models.PROTECT, related_name="+"
+    )
+    # Turns received before the last handoff cannot resume after resolution.
+    automation_after = models.DateTimeField(null=True)
+    handoff_turn = models.ForeignKey(
+        "ai.FrontDeskTurn", null=True, on_delete=models.PROTECT, related_name="+"
+    )
     resolved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -206,6 +222,10 @@ class FrontDeskTurn(TenantScopedModel):
     )
     inbound = models.OneToOneField(
         "comms.Message", on_delete=models.PROTECT, related_name="+"
+    )
+    # The published offer visible when this inbound message was received.
+    received_offer = models.ForeignKey(
+        "self", null=True, on_delete=models.PROTECT, related_name="+"
     )
     reply = models.OneToOneField(
         "comms.Message", null=True, on_delete=models.PROTECT, related_name="+"

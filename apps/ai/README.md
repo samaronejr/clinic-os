@@ -240,7 +240,7 @@ cannot gain booking authority through a challenge.
   transaction (`clinic_app.ai_front_desk_enqueue`). After commit the runner
   re-enters `inbound_context` with the same proof and answers each pending turn.
   One runner per provider account works at a time (a session advisory lock held
-  across the turn's transactions), so concurrent deliveries never work on the
+  across the turns), so concurrent deliveries never work on the
   same turn.
   Its dedicated `locks` connection also retains `agent-send-v1` across those
   transactions, sharing the existing policy/principal/membership mutation fence
@@ -251,6 +251,9 @@ cannot gain booking authority through a challenge.
   `_finish`) requires the conversation's own ingest principal, the enabled policy
   and the turn's pending state. Nothing else writes the agent tables
   (`ai_front_desk_guard`), and a thread that waits for a person gets no turn.
+  Execution repeats that ownership check. A handoff also records a permanent
+  cutoff: already received turns remain history and cannot execute after staff
+  resolve the handoff. The handoff clears the outstanding offer.
   Portal replies run the same bounded decision inside their patient transaction,
   using its enrollment-bound ownership rather than a provider proof. No staff
   or tenant GUC is installed, and the challenge bridge refuses portal turns.
@@ -276,12 +279,33 @@ cannot gain booking authority through a challenge.
   the administrator who enabled the policy. Contact possession or a name ("sou o
   paciente X") never verifies, and linked and unlinked threads get identical
   replies. After three failures the thread waits for a person.
+  The challenge also rechecks the exact current verified contact against the
+  conversation's encrypted destination and binds its ID and destination
+  version. Every later channel session use rechecks that binding. Destination
+  changes invalidate appointment authority even if the new destination is
+  subsequently verified. Patient transactions share the existing contact
+  mutation key, so a committed change cannot be overtaken by a booking.
+  A channel turn retrieves appointments, applies its accepted effect and inserts
+  its reply/provenance in one inbound transaction. During scheduling it uses
+  only the touched patient session, with staff, tenant and principal settings
+  cleared locally and restored before publication. The contact mutation key
+  stays held through reply insertion; SQL rechecks all appointment answers,
+  including those with no tool. Failed publication rolls the appointment back.
 - **Tools and limits.** `scheduling.hold` binds the first real free slot of the
   same practitioner in the next 14 days to the thread for 10 minutes
   (`patient_slots`; nothing is invented). `scheduling.book_approved` moves the
   appointment only after the patient's explicit SIM to that exact offer, checked
   again against real availability under the patient session
-  (`reschedule_patient_appointment`). Acceptance must be a complete affirmative
+  (`reschedule_patient_appointment`). A new booking request, or an appointment
+  request without an upcoming appointment, offers the first real generic
+  30-minute patient slot within the same 14-day bound, showing its practitioner
+  and clinic-local time. Acceptance calls `book_patient_slot` with the turn's
+  idempotency key. Clinics that require approval use the human path.
+  No appointment is created before acceptance; no availability offers the
+  existing waitlist path.
+  Inbound enqueue binds each message to the already published offer it could
+  have received. A queued SIM received before an offer was published cannot
+  accept that offer; a fresh subsequent SIM is required. Acceptance must be a complete affirmative
   reply; a negation, question or qualified reply never books merely because it
   contains an affirmative word. `comms.send_approved_link` appends an
   answer's approved https link. Each tool needs its entry in the policy allowlist
@@ -295,6 +319,8 @@ cannot gain booking authority through a challenge.
   deterministic keyword lookup (most matching keywords; a tie answers nothing),
   and records the cited version on the turn. No match answers "Não sei responder
   isso; estou encaminhando sua mensagem para a equipe da clínica." and hands off.
+  Replacement approval appends each previous version's retirement event and
+  the replacement's approval event in the same transaction.
   Answer text holds no e-mail, link or long number; a link lives in the approved
   link field (plain https, no query).
 - **Staff surfaces.** Settings > Assistant answers (`ai:front-desk-knowledge`,
@@ -303,6 +329,10 @@ cannot gain booking authority through a challenge.
   reason and the time only; the text stays in the conversation. Mark resolved
   returns the thread to the agent. Audit events:
   `ai.knowledge_article.{drafted,approved,retired}` and `ai.front_desk.resolved`.
+  Opening a handoff uses native POST to `comms:inbox` with `action=show`; its
+  selector stays in form bodies for opening, realtime refresh and subsequent
+  handling. Mutations redirect to the selector-free inbox; selection is not
+  stored in the session.
 - **Replies.** The finish bridge stores the reply as an outbound message without
   a sender, with the turn id as its command id (comms `0011_agent_replies`). On
   the synthetic channels delivery is simulated (`provider_state=sent`); a real

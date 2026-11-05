@@ -746,13 +746,13 @@
     {
       "symbol": "apps.ai.front_desk._appointment_step",
       "signals": [
-        "tenant_boundary"
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
         "apps.ai.front_desk._appointment_step#cut1"
       ],
-      "reason": "Opens only the booking-only patient session a passed challenge minted for this thread (patient_session_context revalidates it); the patient booking services and the shared scheduling boundary decide every appointment read and change."
+      "reason": "Touches the booking-only patient session inside the inbound transaction with patient-only local GUCs; restores the inbound scope before reply insertion. Existing scheduling gates precede the contact mutation key, which remains held through publication."
     },
     {
       "symbol": "apps.ai.front_desk._articles",

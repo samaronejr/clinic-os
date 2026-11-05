@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core import signing
-from django.db import connection, connections
+from django.db import connection, connections, transaction
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
@@ -42,16 +42,24 @@ from apps.comms.portal_messages import portal_message_scope
 from apps.comms.triage import classify_inbound
 from apps.core.secrets import secret_store
 from apps.intake.access import PatientAccessDeniedError
-from apps.intake.patient_access import patient_session_context
 from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentTerminalError,
     SlotConflictError,
 )
-from apps.scheduling.patient_authority import require_patient_booking_scope
+from apps.scheduling.appointment_locking import (
+    AppointmentWriteTarget,
+    acquire_appointment_write_gates,
+)
+from apps.scheduling.patient_authority import (
+    patient_booking_requires_approval,
+    require_patient_booking_scope,
+)
 from apps.scheduling.patient_booking import (
     SLOT_SALT,
+    book_patient_slot,
+    patient_appointment,
     patient_appointments,
     patient_slots,
     reschedule_patient_appointment,
@@ -81,6 +89,7 @@ RUNNER_LOCK: Final = "clinic-os:ai:front-desk-runner:v1"
 MAX_ROUNDS: Final = 3
 # The tool each verified appointment intent needs from the enabled policy.
 _TOOL_FOR: Final = {
+    "booking": "scheduling.hold",
     "reschedule": "scheduling.hold",
     "accept": "scheduling.book_approved",
 }
@@ -92,6 +101,7 @@ _HUMAN: Final = frozenset(
 _ACCEPT: Final = frozenset({"sim", "confirmo", "aceito", "confirmar"})
 _DECLINE: Final = frozenset({"nao", "outro", "outra"})
 _RESCHEDULE: Final = frozenset({"remarcar", "reagendar", "remarcacao", "adiar"})
+_BOOK: Final = frozenset({"agendar", "marcar", "reservar"})
 _APPOINTMENTS: Final = frozenset(
     {"consulta", "consultas", "agendamento", "agendamentos", "agendada", "marcada"}
 )
@@ -136,12 +146,16 @@ VERIFIED: Final = gettext_noop(
 NEXT_APPOINTMENT: Final = gettext_noop(
     "Your next appointment is on %(when)s. Reply REMARCAR to look for another time."
 )
-NO_APPOINTMENT: Final = gettext_noop(
-    "I found no upcoming appointment. To book one, reply ATENDENTE."
-)
 OFFER: Final = gettext_noop(
     "The next available time is %(when)s. Reply SIM to move your appointment "
     "there, or NÃO to keep it."
+)
+NEW_OFFER: Final = gettext_noop(
+    "The next available time is %(when)s with %(practitioner)s. Reply SIM to "
+    "book this appointment, or NÃO to leave it unbooked."
+)
+CONFIRM_OFFER: Final = gettext_noop(
+    "Please read the offered time, then reply SIM to accept that exact offer."
 )
 NO_SLOTS: Final = gettext_noop(
     "There is no available time in the next two weeks. The clinic keeps a "
@@ -152,6 +166,7 @@ TAKEN: Final = gettext_noop(
     "That time was just taken. Reply REMARCAR to look for another one."
 )
 KEPT: Final = gettext_noop("All right, your appointment stays as it was.")
+NOT_BOOKED: Final = gettext_noop("All right, no appointment was booked.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +187,7 @@ class Context:
     text: str
     tools: tuple[str, ...]
     budget_left: int
+    offer_received: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,7 +201,7 @@ class Decision:
     article: UUID | None = None
     handoff: str = ""
     # The held offer: the appointment to move, its practitioner and the slot.
-    offer: tuple[UUID, UUID, datetime] | None = None
+    offer: tuple[UUID | None, UUID, datetime] | None = None
 
 
 def _words(text: str) -> frozenset[str]:
@@ -207,6 +223,7 @@ def classify(text: str, *, challenge_pending: bool, offer_pending: bool) -> str:
         ),
         (offer_pending and bool(words & _DECLINE), "decline"),
         (bool(words & _RESCHEDULE), "reschedule"),
+        (bool(words & _BOOK), "booking"),
         (bool(words & _APPOINTMENTS), "appointments"),
         (bool(words) and words <= _GREETING, "greeting"),
     )
@@ -268,6 +285,7 @@ def _context(turn_id: UUID, kek: str) -> Context | None:
         text=str(row[14]),
         tools=tuple(row[16]),
         budget_left=int(row[17]),
+        offer_received=row[18] is True,
     )
 
 
@@ -358,7 +376,7 @@ _FIXED: Final = {
 
 def _decide(ctx: Context, kek: str) -> Decision:
     """Decide one turn inside the principal context; appointments come later."""
-    offer = ctx.offered_start is not None and ctx.verified
+    offer = ctx.offered_start is not None
     intent = classify(
         ctx.text, challenge_pending=ctx.challenge_pending, offer_pending=offer
     )
@@ -369,6 +387,8 @@ def _decide(ctx: Context, kek: str) -> Decision:
         return Decision(intent, "answered", _(GREETING))
     if intent == "information":
         return _information(ctx)
+    if intent == "accept" and ctx.verified and not ctx.offer_received:
+        return Decision(intent, "refused", _(CONFIRM_OFFER))
     # Verified: the appointment step runs under the patient session.
     return _identity(ctx, intent, kek) or Decision(intent, "", "")
 
@@ -402,11 +422,79 @@ def _upcoming(appointments: Sequence[Appointment]) -> Appointment | None:
 
 
 def _appointment_step(ctx: Context, decision: Decision) -> Decision:
-    """Run the verified appointment intent under the minted patient session."""
+    """Use patient-only scope inside the turn's transaction, then restore it.
+
+    The existing touch bridge takes the patient/channel mutation key until the
+    outer inbound transaction commits its reply and provenance. No outermost
+    patient/tenant context is nested, and scheduling sees no machine or staff
+    authority.
+    """
     if ctx.session_id is not None:
-        with patient_session_context(ctx.session_id) as binding:
-            if binding is not None:
-                return _under_session(ctx, decision)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT current_setting('app.current_user_id',true),"
+                "current_setting('app.current_tenant',true),"
+                "current_setting('app.current_principal',true),"
+                "current_setting('app.current_patient_session',true),"
+                "current_setting('app.comms_inbound_proof',true)"
+            )
+            prior = cursor.fetchone()
+            cursor.execute(
+                "SELECT set_config('app.current_user_id','',true),"
+                "set_config('app.current_tenant','',true),"
+                "set_config('app.current_principal','',true),"
+                "set_config('app.comms_inbound_proof','',true),"
+                "set_config('app.current_patient_session',%s,true)",
+                [str(ctx.session_id)],
+            )
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                scope = require_patient_booking_scope()
+                practitioners = (
+                    (ctx.offered_practitioner,)
+                    if decision.intent == "accept"
+                    and ctx.offered_practitioner is not None
+                    else ()
+                )
+                resources: tuple[UUID, ...] = ()
+                if decision.intent == "accept" and ctx.offered_appointment is not None:
+                    appointment = patient_appointment(ctx.offered_appointment)
+                    resources = tuple(appointment.resource_ids)
+                # Contact mutations take clinic/patient gates before their
+                # channel key. Keep the shared scheduling order before touch
+                # holds that key through the rest of the turn.
+                acquire_appointment_write_gates(
+                    target=AppointmentWriteTarget(
+                        scope.organization_id,
+                        scope.clinic_id,
+                        scope.patient_id,
+                        practitioners,
+                        resources,
+                    )
+                )
+                cursor.execute(
+                    "SELECT * FROM clinic_app.touch_patient_session(%s)",
+                    [ctx.session_id],
+                )
+                if cursor.fetchone() is not None:
+                    return _under_session(ctx, decision)
+        except (AppointmentAccessDeniedError, PatientAccessDeniedError):
+            return Decision(
+                decision.intent,
+                "not_verified",
+                _(NOT_VERIFIED),
+                handoff="verification_failed",
+            )
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_user_id',%s,true),"
+                    "set_config('app.current_tenant',%s,true),"
+                    "set_config('app.current_principal',%s,true),"
+                    "set_config('app.current_patient_session',%s,true),"
+                    "set_config('app.comms_inbound_proof',%s,true)",
+                    [value or "" for value in prior],
+                )
     return Decision(
         decision.intent,
         "not_verified",
@@ -420,10 +508,14 @@ def _under_session(ctx: Context, decision: Decision) -> Decision:
     if decision.intent == "accept":
         return _book(ctx, zone)
     if decision.intent == "decline":
-        return Decision("decline", "answered", _(KEPT))
+        return Decision(
+            "decline",
+            "answered",
+            _(NOT_BOOKED if ctx.offered_appointment is None else KEPT),
+        )
     appointment = _upcoming(patient_appointments())
-    if appointment is None:
-        return Decision(decision.intent, "answered", _(NO_APPOINTMENT))
+    if appointment is None or decision.intent == "booking":
+        return _new_booking(ctx, zone)
     if decision.intent != "reschedule":
         when = _when(appointment.start_at, zone)
         return Decision(
@@ -441,9 +533,36 @@ def _under_session(ctx: Context, decision: Decision) -> Decision:
     )
 
 
+def _new_booking(ctx: Context, zone: ZoneInfo) -> Decision:
+    """Offer one real generic slot; clinic approval still needs a person."""
+    if (
+        "scheduling.hold" not in ctx.tools
+        or ctx.budget_left <= 0
+        or patient_booking_requires_approval()
+    ):
+        return Decision("booking", "handoff", _(HUMAN), handoff="policy_limit")
+    today = timezone.now().astimezone(zone).date()
+    for offset in range(1, SEARCH_DAYS + 1):
+        slots = patient_slots(today + timedelta(days=offset))
+        if slots:
+            slot = slots[0]
+            return Decision(
+                "booking",
+                "offered",
+                _(NEW_OFFER)
+                % {
+                    "when": _when(slot.start_at, zone),
+                    "practitioner": slot.practitioner,
+                },
+                tool="scheduling.hold",
+                offer=(None, _slot_practitioner(slot.token), slot.start_at),
+            )
+    return Decision("booking", "waitlist", _(NO_SLOTS))
+
+
 def _book(ctx: Context, zone: ZoneInfo) -> Decision:
     """Book exactly the offered slot, rechecked against real availability."""
-    if ctx.offered_start is None or ctx.offered_appointment is None:
+    if ctx.offered_start is None or not ctx.offer_received:
         return Decision("accept", "refused", _(TAKEN))
     local = ctx.offered_start.astimezone(zone)
     for slot in patient_slots(local.date(), ctx.offered_appointment):
@@ -452,8 +571,12 @@ def _book(ctx: Context, zone: ZoneInfo) -> Decision:
             and _slot_practitioner(slot.token) == ctx.offered_practitioner
         ):
             try:
-                moved = reschedule_patient_appointment(
-                    ctx.offered_appointment, slot.token
+                moved = (
+                    book_patient_slot(token=slot.token, idempotency_key=ctx.turn_id)
+                    if ctx.offered_appointment is None
+                    else reschedule_patient_appointment(
+                        ctx.offered_appointment, slot.token
+                    )
                 )
             except (
                 AppointmentAvailabilityError,
@@ -534,15 +657,8 @@ def _run(account_id: UUID, proof: str, turn_id: UUID, kek: str) -> None:
             decision = Decision(
                 decision.intent, "handoff", _(HUMAN), handoff="policy_limit"
             )
-        if decision.outcome:
-            _finish(ctx, decision, kek)
-            return
-    # A verified appointment intent: patient authority, then record the turn.
-    decision = _appointment_step(ctx, decision)
-    with inbound_context(account_id=account_id, proof=proof):
-        ctx = _context(turn_id, kek)
-        if ctx is None:
-            return
+        if not decision.outcome:
+            decision = _appointment_step(ctx, decision)
         if decision.offer is not None:
             appointment, practitioner, start = decision.offer
             _state(
@@ -552,8 +668,6 @@ def _run(account_id: UUID, proof: str, turn_id: UUID, kek: str) -> None:
                 practitioner=practitioner,
                 start=start,
             )
-        elif decision.intent in {"accept", "decline"}:
-            _state(ctx.turn_id, "clear")
         _finish(ctx, decision, kek)
 
 
@@ -615,8 +729,6 @@ def run_portal_turn(*, clinic_id: UUID, message_id: UUID) -> None:
                 practitioner=practitioner,
                 start=start,
             )
-        elif decision.intent in {"accept", "decline"}:
-            _state(ctx.turn_id, "clear")
         _finish(ctx, decision, kek)
 
 

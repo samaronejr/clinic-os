@@ -839,6 +839,67 @@ def _enable_portal_assistant(staff: dict[str, str], actor: str) -> None:
     assert json.loads(result.stdout)["synthetic"] is True
 
 
+def _native_assistant_handoff(
+    page: Page, base: str, root: Path, staff: dict[str, str]
+) -> None:
+    """A person opens and handles the handoff with no scripts or URL selector."""
+    browser = page.context.browser
+    assert browser is not None
+    authentication: StorageState = {
+        "cookies": list(page.context.cookies()),
+        "origins": [],
+    }
+    queue = f"{base}/clinics/{staff['clinic_a']}/messages/front-desk/"
+    selected = _inbox(staff, base)
+    with browser.new_context(
+        viewport={"width": 375, "height": 900},
+        java_script_enabled=False,
+        locale="pt-BR",
+        storage_state=authentication,
+    ) as native:
+        staff_page = native.new_page()
+        goto_settled(staff_page, queue)
+        form = staff_page.locator("form:has([data-handoff-open])").first
+        selector = form.locator("[name=conversation_id]").input_value()
+        for width in (1280, 375):
+            staff_page.set_viewport_size({"width": width, "height": 900})
+            _capture(staff_page, root, "assistant-handoff-queue", width)
+        response = click_to_navigate(form.locator("[data-handoff-open]"))
+        assert response is not None
+        assert response.request.method == "POST"
+        assert staff_page.url == selected
+        assert selector not in response.url
+        expect(staff_page.locator("[data-conversation]")).to_have_attribute(
+            "data-conversation", selector
+        )
+        for thread_form in staff_page.locator(
+            'form[method="post"]:not([action])'
+        ).all():
+            expect(thread_form.locator('[name="conversation_id"]')).to_have_value(
+                selector
+            )
+        staff_page.locator("#note-body").fill("Synthetic human handoff recorded")
+        click_to_navigate(staff_page.get_by_role("button", name=gettext("Save note")))
+        assert staff_page.url == selected
+        goto_settled(staff_page, queue)
+        click_to_navigate(staff_page.locator("[data-handoff-open]").first)
+        assert staff_page.url == selected
+        expect(staff_page.locator("#notes-title").locator("..")).to_contain_text(
+            "Synthetic human handoff recorded"
+        )
+        _capture(staff_page, root, "assistant-handoff-open", 375)
+    goto_settled(page, queue)
+    report = check_page(page, base, root, "messages-assistant-handoff-queue")
+    assert report["violations"] == 0, report
+    click_to_navigate(page.locator("[data-handoff-open]").first)
+    assert page.url == selected
+    expect(page.locator("[data-conversation]")).to_have_attribute(
+        "data-conversation", selector
+    )
+    report = check_page(page, base, root, "messages-assistant-handoff-open")
+    assert report["violations"] == 0, report
+
+
 def test_portal_assistant_answers_reviewed_facts_and_hands_off_without_javascript(
     renewal_page: Page,
     renewal_base_url: str,
@@ -899,5 +960,98 @@ def test_portal_assistant_answers_reviewed_facts_and_hands_off_without_javascrip
         assert patient.url == f"{base}/patient/messages/"
         _portal_check_without_scripts(patient, base, root, "assistant-human-handoff")
         assert errors == []
+        _native_assistant_handoff(page, base, root, staff)
     finally:
         context.close()
+
+
+def _assistant_booking_availability(staff: dict[str, str]) -> None:
+    """Owner fixture: one real future availability, with no appointment."""
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.scheduling_availabilityblock "
+            "(id,organization_id,clinic_id,practitioner_id,start_at,end_at,"
+            "idempotency_key,create_fingerprint,created_at,updated_at) "
+            "SELECT %s,organization_id,id,%s,"
+            "(date_trunc('day',now() AT TIME ZONE timezone)+interval '2 days 9 hours') "
+            "AT TIME ZONE timezone,"
+            "(date_trunc('day',now() AT TIME ZONE timezone)"
+            "+interval '2 days 12 hours') "
+            "AT TIME ZONE timezone,%s,%s,now(),now() "
+            "FROM clinic_app.identity_clinic WHERE id=%s",
+            [
+                str(uuid4()),
+                staff["physician_a_id"],
+                str(uuid4()),
+                os.urandom(32),
+                staff["clinic_a"],
+            ],
+        )
+
+
+def _assistant_booking_count(staff: dict[str, str], enrollment: str) -> int:
+    """Read the actual effect as clinic_app under the reception authority."""
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute("SET LOCAL ROLE clinic_app")
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true),"
+            "set_config('app.current_user_id',%s,true)",
+            [staff["organization"], staff["receptionist_id"]],
+        )
+        row = conn.execute(
+            "SELECT count(*) FROM clinic_app.scheduling_appointment a "
+            "JOIN clinic_app.intake_patientclinicenrollment e "
+            "ON e.patient_id=a.patient_id "
+            "AND e.clinic_id=a.clinic_id WHERE e.id=%s AND a.status='scheduled'",
+            [enrollment],
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def test_assistant_books_a_new_appointment_only_after_native_acceptance(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    directory = root / "messages"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    operator = seed_ai_admin(staff, "light")["id"]
+    grant_messages(staff, operator, staff["receptionist_id"], directory)
+    page = renewal_page
+    name = _new_name()
+    _sign_in_receptionist(page, base, staff)
+    enrollment = _register_patient(page, base, staff, name)
+    code = _portal_access(staff, enrollment)
+    _start_portal_thread(page, base, staff, name, directory)
+    _enable_portal_assistant(staff, operator)
+    _assistant_booking_availability(staff)
+    browser = page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        viewport={"width": 375, "height": 900},
+        java_script_enabled=False,
+        locale="pt-BR",
+        timezone_id="Asia/Tokyo",
+    ) as native:
+        patient = native.new_page()
+        _redeem(patient, base, staff["clinic_a"], code)
+        click_to_navigate(patient.locator("#messages-link"))
+        click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+        patient.locator("#reply-body").fill("Quero agendar uma consulta")
+        click_to_navigate(patient.locator("[data-portal-reply-send]"))
+        reply = patient.locator('[data-portal-message-from="clinic"]').last
+        expect(reply).to_contain_text("Responda SIM para agendar essa consulta")
+        assert _assistant_booking_count(staff, enrollment) == 0
+        _portal_check_without_scripts(patient, base, root, "assistant-new-offer")
+        patient.locator("#reply-body").fill("SIM")
+        click_to_navigate(patient.locator("[data-portal-reply-send]"))
+        expect(reply).to_contain_text("Pronto: sua consulta agora é em")
+        assert _assistant_booking_count(staff, enrollment) == 1
+        assert patient.url == f"{base}/patient/messages/"
+        _portal_check_without_scripts(patient, base, root, "assistant-new-booked")

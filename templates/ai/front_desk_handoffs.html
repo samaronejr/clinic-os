@@ -17,7 +17,12 @@
         <p class="hint"><time datetime="{{ item.row.updated_at|date:'c' }}">{% timezone clinic.timezone %}{{ item.row.updated_at|date:"d/m/Y H:i" }}{% endtimezone %}</time></p>
       </div>
       <div class="worklist-item-actions">
-        <a class="button button--secondary" href="{% url 'comms:conversation' clinic.id item.row.conversation_id %}">{% trans "Open conversation" %}<span class="visually-hidden"> · {{ item.reason }} {{ forloop.counter }}</span></a>
+        <form method="post" action="{% url 'comms:inbox' clinic.id %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="show">
+          <input type="hidden" name="conversation_id" value="{{ item.row.conversation_id }}">
+          <button class="button button--secondary" type="submit" data-handoff-open>{% trans "Open conversation" %}<span class="visually-hidden"> · {{ item.reason }} {{ forloop.counter }}</span></button>
+        </form>
         <form method="post" novalidate>
           {% csrf_token %}
           <input type="hidden" name="thread_id" value="{{ item.row.thread_id }}">

@@ -194,21 +194,6 @@ signed-in human with its own `command_id`. No path sends a model result. The
 governed gateway wiring (purpose `front_desk`, A1) is not registered: until an
 approved drafter exists the panel reads "Sugestão indisponível".
 
-### Front-desk agent replies (todo 54)
-
-The ai app registers an inbound message hook (`register_inbound_message_hook`).
-It runs in the delivery transaction after a supported message is stored, so a
-failure rolls the event back. It also registers an after-commit runner
-(`register_inbound_runner`, called with the account id and proof), which may
-re-enter `inbound_context`. The message contract admits one more row shape: an
-outbound message without a sender, which is the front-desk agent's reply, with
-the agent turn id as its command id. The message guard admits it only while
-`clinic_app.ai_front_desk_finish` names that exact row for its own finishing
-turn, and never on the portal channel or a closed thread. Agent replies have no
-outbox operation; on the synthetic channels they are stored as sent (simulated)
-and the thread shows them as clinic messages. The agent's own contract is in
-`apps/ai/README.md` ("Front-desk agent").
-
 ### Audit and telemetry
 
 Staff commands append fixed `comms.*` events (no content). Machine ingest appends
@@ -275,9 +260,28 @@ above and the patient page `/patient/messages/` (`comms:patient-messages`,
   publishes the `clinic:<id>:messages` hint (and the Clinical Inbox hint when it
   is clinical). A representative's reply reads the same there; its audit row's
   session tells them apart. The patient page has no live updates.
+- **Urgent replies and coverage (todo 55).** A newly stored reply that
+  `classify_inbound` marks urgent runs the hooks registered with
+  `register_urgent_reply_hook` (called with the message id) in the reply's own
+  transaction under the same patient session; a failing hook rolls the reply
+  back. Workflows registers its urgent-concern queue there. The message list and
+  thread state the clinic's configured urgent-message coverage
+  (`apps.workflows.urgent.patient_coverage_text`), and without a configured policy
+  they never claim coverage.
+- **Send checks (todo 55).** `register_message_send_check(check)` lets the domain
+  that queued an outbound message veto it at send time: each check runs after the
+  channel rules inside `message_send_eligible`, in the send's tenant transaction
+  under the sender's authority, and any `False` cancels the operation without a
+  provider call. Workflows registers the release-notice scope recheck.
 
 ### Staff entry points
 
+- **Workflow selections.** A workflow opens a thread with `POST` to the inbox,
+  `action=show` and `conversation_id` in the body. Its subsequent actions keep
+  that selector in their bodies, and realtime refresh uses the same POST.
+  Each selected-thread request rechecks the actor's current thread authority.
+  Mutating actions redirect to the inbox so reloading cannot repeat the command
+  or put the conversation selector into a navigation URL.
 - **Realtime.** Both pages declare `data-realtime-topic="clinic:<id>:messages"`
   and refetch their own region on `rt:messages` and `rt:poll` (HTMX `hx-select`).
   The element that carries the trigger stays in the page and only its children are
