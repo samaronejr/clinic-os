@@ -276,6 +276,12 @@ above and the patient page `/patient/messages/` (`comms:patient-messages`,
 
 ### Staff entry points
 
+- **Workflow selections.** A workflow opens a thread with `POST` to the inbox,
+  `action=show` and `conversation_id` in the body. Its subsequent actions keep
+  that selector in their bodies, and realtime refresh uses the same POST.
+  Each selected-thread request rechecks the actor's current thread authority.
+  Mutating actions redirect to the inbox so reloading cannot repeat the command
+  or put the conversation selector into a navigation URL.
 - **Realtime.** Both pages declare `data-realtime-topic="clinic:<id>:messages"`
   and refetch their own region on `rt:messages` and `rt:poll` (HTMX `hx-select`).
   The element that carries the trigger stays in the page and only its children are

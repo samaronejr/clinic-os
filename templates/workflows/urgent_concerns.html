@@ -28,7 +28,12 @@
         <div><dt>{% trans "Answer by" %}</dt><dd>{% if row.due_at %}<time datetime="{{ row.due_at|date:'c' }}">{% timezone clinic.timezone %}{{ row.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</time>{% else %}{% trans "No coverage policy: no deadline" %}{% endif %}</dd></div>
       </dl>
       <div class="worklist-item-actions">
-        <a class="button button--secondary" href="{% url 'comms:conversation' clinic.id row.conversation_id %}">{% trans "Open conversation" %}<span class="visually-hidden"> · {% trans "Urgent patient message" %} {{ forloop.counter }}</span></a>
+        <form method="post" action="{% url 'comms:inbox' clinic.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="show">
+          <input type="hidden" name="conversation_id" value="{{ row.conversation_id }}">
+          <button class="button button--secondary" type="submit">{% trans "Open conversation" %}<span class="visually-hidden"> · {% trans "Urgent patient message" %} {{ forloop.counter }}</span></button>
+        </form>
         {% if row.responsible %}
         <form method="post" novalidate>
           {% csrf_token %}

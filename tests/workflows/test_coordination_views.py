@@ -26,9 +26,11 @@ from core.test_navigation import _client_for, _get
 from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time
 from patient_service_support import runtime_role
+from workflow_view_support import writes
 from workflows.coordination_support import (
     NOTICE,
     URGENT,
+    clinic_b_portal,
     patient_reply,
     urgent_world,
 )
@@ -85,6 +87,17 @@ def test_urgent_queue_page_decides_by_post_body_and_never_shows_the_text(
     assert gettext("Urgent patient message") in html
     assert str(concern.pk) in html
     assert URGENT not in html
+    inbox = reverse("comms:inbox", args=(graph.clinic_a,))
+    assert f'method="post" action="{inbox}"' in html
+    assert f'name="conversation_id" value="{world.conversation}"' in html
+    assert (
+        reverse("comms:conversation", args=(graph.clinic_a, world.conversation))
+        not in html
+    )
+    opened = _post(
+        nurse, inbox, {"action": "show", "conversation_id": str(world.conversation)}
+    )
+    assert URGENT in _html(opened)
     selector = {"concern_id": str(concern.pk)}
     assert _post(nurse, url, {"action": "ack"}).status_code == FORBIDDEN
     unknown = {"action": "ack", "concern_id": str(uuid4()), "revision": "1"}
@@ -103,6 +116,39 @@ def test_urgent_queue_page_decides_by_post_body_and_never_shows_the_text(
     assert _post(
         finance, url, {**selector, "action": "ack", "revision": "3"}
     ).status_code == (FORBIDDEN)
+
+
+def test_workflow_conversation_selection_refuses_foreign_as_unknown_without_writes(
+    rbac_graph: RbacGraph,
+) -> None:
+    graph = rbac_graph
+    world = urgent_world(graph)
+    _session, foreign = clinic_b_portal(graph, world.other_enrollment)
+    nurse, user = _client_for(graph, "nurse")
+    path = reverse("comms:inbox", args=(graph.clinic_a,))
+    session = dict(nurse.session)
+    with runtime_role(), tenant_context(user.pk, graph.organization_a):
+        before = writes()
+    baseline = _post(nurse, path, {"action": "show", "conversation_id": str(uuid4())})
+    assert baseline.status_code == 404
+    for action in ("show", "find_patient", "note"):
+        denied = _post(
+            nurse,
+            path,
+            {
+                "action": action,
+                "conversation_id": str(foreign),
+                "body": "Nao deve ser registrada.",
+                "q": "Sintetico Ausente",
+            },
+        )
+        assert denied.status_code == baseline.status_code
+        assert denied.content == baseline.content
+        assert not denied.cookies
+        assert denied.wsgi_request.session.modified is False
+    assert dict(nurse.session) == session
+    with runtime_role(), tenant_context(user.pk, graph.organization_a):
+        assert writes() == before
 
 
 def test_coverage_page_publishes_versions_and_refuses_bad_or_stale_terms(
