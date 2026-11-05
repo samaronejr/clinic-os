@@ -10009,7 +10009,8 @@
         "test_stale_proposals_are_rejected_after_the_plan_changes",
         "test_clinical_action_without_clinician_approval_is_refused",
         "test_database_guards_refuse_raw_forgery",
-        "test_care_sql_rechecks_inactive_and_foreign_actor"
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
       ],
       "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
     },
@@ -10033,13 +10034,9 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_staff_approve_the_previewed_administrative_bundle",
-        "test_stale_proposals_are_rejected_after_the_plan_changes",
-        "test_clinical_action_without_clinician_approval_is_refused",
-        "test_database_guards_refuse_raw_forgery",
-        "test_care_sql_rechecks_inactive_and_foreign_actor"
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
       ],
-      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+      "reason": "Resolver-only care-plan predicate called by ai_care_guard. The real-role oracle proves direct runtime calls fail with SQLSTATE 42501 for known/unknown plans and current/stale revisions across authorized, unrelated, unknown and inactive actors, while the resolver-owned trigger still collects an authorized proposal. Migration 0008 only corrects this function's ACL; its definition remains in _care_sql.py."
     },
     "clinic_app.ai_care_staff": {
       "discovery": {
@@ -10066,7 +10063,8 @@
         "test_stale_proposals_are_rejected_after_the_plan_changes",
         "test_clinical_action_without_clinician_approval_is_refused",
         "test_database_guards_refuse_raw_forgery",
-        "test_care_sql_rechecks_inactive_and_foreign_actor"
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
       ],
       "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
     },
@@ -10094,7 +10092,8 @@
         "test_stale_proposals_are_rejected_after_the_plan_changes",
         "test_clinical_action_without_clinician_approval_is_refused",
         "test_database_guards_refuse_raw_forgery",
-        "test_care_sql_rechecks_inactive_and_foreign_actor"
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
       ],
       "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
     },
