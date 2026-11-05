@@ -113,9 +113,8 @@ def submit(
             else:
                 button.click(timeout=SUBMIT_TIMEOUT_MS)
         else:
-            with expect_document(
-                page, wait_until="domcontentloaded", timeout=SUBMIT_TIMEOUT_MS
-            ):
+            # Rendered-text comparisons require the native response's stylesheets.
+            with expect_document(page, wait_until="load", timeout=SUBMIT_TIMEOUT_MS):
                 _answer(
                     page,
                     page.keyboard._impl_obj.press("Enter"),

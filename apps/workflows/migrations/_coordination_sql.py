@@ -290,6 +290,8 @@ BEGIN
   OR cardinality(NEW.weekdays)=0 OR NOT NEW.weekdays<@ARRAY[0,1,2,3,4,5,6]::smallint[]
   OR cardinality(NEW.responsible_roles)=0
   OR NOT NEW.responsible_roles<@ARRAY[__RESPONSIBLE__]::varchar[]
+  OR extract(second FROM NEW.opens_at)<>0
+  OR extract(second FROM NEW.closes_at)<>0
   THEN RAISE EXCEPTION 'coverage refused' USING ERRCODE='42501'; END IF;
   NEW.created_at:=statement_timestamp();
   RETURN NEW;

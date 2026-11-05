@@ -39,8 +39,9 @@ from apps.workflows.urgent import (
     resolve_urgent_concern,
     urgent_concerns,
 )
-from apps.workflows.urgent_models import UrgentConcern
+from apps.workflows.urgent_models import UrgentConcern, UrgentCoveragePolicy
 from apps.workflows.validation import WorkflowConflictError, WorkflowInputError
+from django.db import DatabaseError, transaction
 from django.utils.translation import gettext
 
 from comms.support import manager_of
@@ -119,6 +120,105 @@ def test_narrow_weekly_coverage_keeps_the_full_response_deadline() -> None:
     assert due_at(monday, coverage, ZONE) == (
         monday + timedelta(weeks=71, hours=1)
     ).astimezone(UTC)
+    shortest = Coverage(1, (0,), time(8), time(8, 1), 72, ("nurse",))
+    assert due_at(monday, shortest, ZONE) == (
+        monday + timedelta(weeks=4319, minutes=1)
+    ).astimezone(UTC)
+
+
+@pytest.mark.parametrize(
+    ("opens_at", "closes_at"),
+    [
+        (time(8, 0, 1), time(18)),
+        (time(8, 0, 0, 1), time(18)),
+        (time(8), time(18, 0, 1)),
+        (time(8), time(18, 0, 0, 1)),
+        (time(8, tzinfo=UTC), time(18)),
+        (time(8), time(18, tzinfo=UTC)),
+    ],
+)
+def test_coverage_accepts_only_naive_whole_minutes(
+    rbac_graph: RbacGraph, opens_at: time, closes_at: time
+) -> None:
+    manager = manager_of(rbac_graph)
+    with (
+        runtime_role(),
+        tenant_context(manager, rbac_graph.organization_a),
+        pytest.raises(WorkflowInputError),
+    ):
+        urgent.set_urgent_coverage(
+            clinic_id=rbac_graph.clinic_a,
+            expected_version=0,
+            weekdays=(0,),
+            opens_at=opens_at,
+            closes_at=closes_at,
+            response_hours=1,
+            responsible_roles=("nurse",),
+        )
+
+
+@pytest.mark.parametrize(
+    ("opens_at", "closes_at"),
+    [
+        (time(8, 0, 1), time(18)),
+        (time(8, 0, 0, 1), time(18)),
+        (time(8), time(18, 0, 1)),
+        (time(8), time(18, 0, 0, 1)),
+    ],
+)
+def test_database_rejects_undisclosed_coverage_precision(
+    rbac_graph: RbacGraph, opens_at: time, closes_at: time
+) -> None:
+    manager = manager_of(rbac_graph)
+    with (
+        runtime_role(),
+        tenant_context(manager, rbac_graph.organization_a),
+        pytest.raises(DatabaseError, match="coverage refused"),
+        transaction.atomic(),
+    ):
+        UrgentCoveragePolicy.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            version=1,
+            weekdays=[0],
+            opens_at=opens_at,
+            closes_at=closes_at,
+            response_hours=1,
+            responsible_roles=["nurse"],
+            created_by_id=manager,
+        )
+
+
+def test_new_overdue_concern_is_not_hidden_by_older_long_window_concerns(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = urgent_world(rbac_graph, roles=("nurse",), hours=72)
+    graph = world.graph
+    for _ in range(200):
+        patient_reply(world, URGENT)
+    manager = manager_of(graph)
+    with runtime_role(), tenant_context(manager, graph.organization_a):
+        urgent.set_urgent_coverage(
+            clinic_id=graph.clinic_a,
+            expected_version=1,
+            weekdays=(0, 1, 2, 3, 4, 5, 6),
+            opens_at=time(0),
+            closes_at=time(23, 59),
+            response_hours=1,
+            responsible_roles=("nurse",),
+        )
+    message = patient_reply(world, URGENT)
+    with owner_context(graph.organization_a):
+        concern = UrgentConcern.objects.get(message_id=message)
+    now = concern.reported_at + timedelta(hours=2)
+    monkeypatch.setattr(urgent, "utc_now", lambda: now)
+    with as_actor(graph, manager):
+        [row] = urgent_concerns(clinic_id=graph.clinic_a)
+    assert (row.concern_id, row.overdue, row.responsible) == (
+        concern.pk,
+        True,
+        False,
+    )
 
 
 def test_urgent_reply_opens_one_concern_and_escalates_when_overdue(
@@ -166,7 +266,8 @@ def test_urgent_reply_opens_one_concern_and_escalates_when_overdue(
     with owner_context(graph.organization_a):
         payloads = list(
             AuditEvent.objects.filter(
-                event_type="workflows.urgent_concern.reported"
+                organization_id=graph.organization_a,
+                event_type="workflows.urgent_concern.reported",
             ).values_list("payload", flat=True)
         )
     assert len(payloads) == 1

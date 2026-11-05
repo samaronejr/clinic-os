@@ -19,7 +19,10 @@
     <fieldset>
       <legend>{% trans "Days covered" %}</legend>
       {% for value, label in weekdays %}
-      <label class="field-check"><input type="checkbox" name="weekdays" value="{{ value }}"{% if coverage and value in coverage.weekdays %} checked{% endif %}> {{ label }}</label>
+      <div class="field settings-check">
+        <input id="coverage-weekday-{{ value }}" type="checkbox" name="weekdays" value="{{ value }}"{% if coverage and value in coverage.weekdays %} checked{% endif %}>
+        <label for="coverage-weekday-{{ value }}">{{ label }}</label>
+      </div>
       {% endfor %}
     </fieldset>
     <div class="field">
@@ -37,7 +40,10 @@
     <fieldset>
       <legend>{% trans "Responsible roles" %}</legend>
       {% for value, label in roles %}
-      <label class="field-check"><input type="checkbox" name="responsible_roles" value="{{ value }}"{% if coverage and value in coverage.responsible_roles %} checked{% endif %}> {{ label }}</label>
+      <div class="field settings-check">
+        <input id="coverage-role-{{ value }}" type="checkbox" name="responsible_roles" value="{{ value }}"{% if coverage and value in coverage.responsible_roles %} checked{% endif %}>
+        <label for="coverage-role-{{ value }}">{{ label }}</label>
+      </div>
       {% endfor %}
     </fieldset>
     <div class="actions"><button class="button" type="submit">{% trans "Publish coverage" %}</button></div>

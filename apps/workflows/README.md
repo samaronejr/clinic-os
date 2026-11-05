@@ -401,7 +401,8 @@ replies to the patient automatically; staff answer in the conversation.
 
 **Coverage policy.** `set_urgent_coverage` (`configuration.clinic`) publishes
 the next immutable `UrgentCoveragePolicy` version: covered weekdays, opening and
-closing time in clinic time, a response window of 1 to 72 business hours and
+closing time in clinic time at whole-minute precision, a response window of
+1 to 72 business hours and
 the responsible roles (nurse, physician, receptionist, clinic manager). The
 deadline (`due_at`) adds the window in covered business minutes from the report
 time. The patient portal (message list and thread) states exactly the
@@ -409,14 +410,19 @@ configured terms, ending with "em emergência, ligue 192"; without a policy it
 says the clinic does not watch messages continuously and to call 192, and never
 claims coverage. The policy is clinic configuration; clinical safety and
 staffing content remain external gate EG-3, which this change never marks
-satisfied.
+satisfied. Services reject timezone-bearing times, seconds and microseconds;
+the database guard repeats the precision check so stored terms always match
+the hours patients see and cannot make a deadline overflow.
 
 **Overdue escalation.** A concern still open at its deadline is overdue: it
 rises above every other item in the queue and in the Clinical Inbox feed
 `urgent` (critical), and it becomes visible to clinic managers outside the
 responsible roles. Overdue is derived from the policy deadline whenever the queue
 is read (`urgent.utc_now`, which tests replace), so escalation never waits for a
-scanner interval and needs no machine writer.
+scanner interval and needs no machine writer. Selection considers every scoped
+unresolved concern before keeping the 200 visible rows with the highest priority;
+200 older concerns with longer windows cannot hide a newer overdue concern.
+Rows stream in batches and selection retains only the bounded result.
 
 **Pages.** Inbox > Urgent concerns (`demographics.read`), Inbox > Result release
 notice (`configuration.propose`) and Settings > Urgent message coverage

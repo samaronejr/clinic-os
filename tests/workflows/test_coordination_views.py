@@ -125,6 +125,10 @@ def test_coverage_page_publishes_versions_and_refuses_bad_or_stale_terms(
     assert _post(admin, url, {**terms, "action": "save"}).status_code == FORBIDDEN
     inverted = {**terms, "opens_at": "18:00", "closes_at": "08:00"}
     assert gettext(COVERAGE_INPUT) in _html(_post(admin, url, inverted), BAD_REQUEST)
+    timezone_bearing = {**terms, "opens_at": "0900Z"}
+    assert gettext(COVERAGE_INPUT) in _html(
+        _post(admin, url, timezone_bearing), BAD_REQUEST
+    )
     unknown_role = {**terms, "responsible_roles": ["owner"]}
     assert gettext(COVERAGE_INPUT) in _html(
         _post(admin, url, unknown_role), BAD_REQUEST

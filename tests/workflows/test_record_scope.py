@@ -1355,10 +1355,12 @@ def notice_scope(s: Scoped) -> None:
 def release_scope(s: Scoped) -> None:
     """A release and its deliveries resolve the version in the call's clinic."""
     physician = s.graph.physician
+    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
+    for clinic in (s.a, s.b):
+        registration(s.graph, physician, clinic)
     # Released records without an appointment: the scope world already holds
     # the physician's availability.
     version = seed_release(s.graph, physician, s.a).version
-    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
 
     def release_in(clinic: UUID, target: UUID) -> Callable[[], object]:
         return lambda: release.release_result_to_patient(

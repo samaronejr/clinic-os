@@ -807,9 +807,23 @@ def _publish_coverage(page: Page, base: str, staff: dict[str, str], root: Path) 
     assert published.status == OK
     expect(page.locator("[data-coverage-saved]")).to_be_visible()
     expect(preview).to_contain_text(WINDOW % {"hours": 2})
-    report = check_page(page, base, root, "messages-urgent-coverage")
-    assert report["violations"] == 0, report
-    _capture(page, root, "urgent-coverage", 1280)
+    for width in (1280, 375):
+        page.set_viewport_size({"width": width, "height": 900})
+        controls = page.locator('[data-coverage-form] input[type="checkbox"]')
+        expect(controls).to_have_count(11)
+        for control in controls.all():
+            geometry: list[float] = control.evaluate("""element => {
+                const box = element.getBoundingClientRect();
+                const label = element.labels[0].getBoundingClientRect();
+                return [box.right, label.left, box.top, box.bottom,
+                    label.top + label.height / 2];
+            }""")
+            assert geometry[1] >= geometry[0], (width, geometry)
+            assert geometry[2] <= geometry[4] <= geometry[3], (width, geometry)
+        report = check_page(page, base, root, f"messages-urgent-coverage-{width}")
+        assert report["violations"] == 0, report
+        _capture(page, root, "urgent-coverage", width)
+    page.set_viewport_size({"width": 1280, "height": 900})
 
 
 def _urgent_reply(patient: Page, base: str, root: Path) -> None:

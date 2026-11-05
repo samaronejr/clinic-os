@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from heapq import nsmallest
 from typing import TYPE_CHECKING, Final, Literal, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -197,6 +198,12 @@ def set_urgent_coverage(  # noqa: PLR0913 - the closed policy terms
         or any(type(day) is not int or not 0 <= day <= _SUNDAY for day in days)
         or type(opens_at) is not time
         or type(closes_at) is not time
+        or opens_at.tzinfo is not None
+        or closes_at.tzinfo is not None
+        or opens_at.second != 0
+        or opens_at.microsecond != 0
+        or closes_at.second != 0
+        or closes_at.microsecond != 0
         or closes_at <= opens_at
         or type(response_hours) is not int
         or not 1 <= response_hours <= MAX_RESPONSE_HOURS
@@ -346,14 +353,17 @@ def urgent_concerns(*, clinic_id: UUID) -> tuple[ConcernRow, ...]:
     current_actor_id()
     zone = _zone(clinic_id)
     now = utc_now()
-    rows = [
+    rows = (
         _row(concern, zone, now)
         for concern in UrgentConcern.objects.select_related("policy")
         .filter(clinic_id=clinic_id, state__in=("open", "acknowledged"))
-        .order_by("reported_at", "pk")[:200]
-    ]
-    visible = [row for row in rows if row.responsible or row.overdue]
-    return tuple(sorted(visible, key=lambda row: (not row.overdue, row.reported_at)))
+        .order_by("reported_at", "pk")
+        .iterator(chunk_size=200)
+    )
+    visible = (row for row in rows if row.responsible or row.overdue)
+    return tuple(
+        nsmallest(200, visible, key=lambda row: (not row.overdue, row.reported_at))
+    )
 
 
 def _decide(
