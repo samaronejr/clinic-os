@@ -256,6 +256,8 @@ treatment or messages a patient.
   every decision: it binds the decider, requires the plan to still be current
   for approval or acceptance, and requires the exact care action (and, for
   staff, the A1 receipt) to exist. No DELETE, no TRUNCATE, no plaintext.
+  Its `ai_care_plan_current` predicate is private to `clinic_resolver`; neither
+  runtime role nor `clinic_owner` can invoke it directly to inspect a plan.
 - **Staff bundle.** The preview lists every pending administrative item with
   its exact effect; the confirmation posts the preview's SHA-256 bundle digest,
   and any change refuses the whole bundle before an effect. After one recent
@@ -287,6 +289,9 @@ creates the table with its posture. Its reverse is a rehearsal for an empty
 synthetic database only; with history, rollback = restore. The A1 path checks
 the same synthetic provider lifecycle record as the other A1 command. Live,
 sandbox and real-model legs remain **BLOCKED-ON-EG** (EG-2, EG-3, EG-5).
+Migration `0008_care_plan_status_private` also revokes the old helper grants on
+databases that previously applied 0007. Reversing that reconciliation keeps the
+corrected 0007 restriction and does not restore the disclosure.
 
 ## Permitted chart assistant (todo 44)
 

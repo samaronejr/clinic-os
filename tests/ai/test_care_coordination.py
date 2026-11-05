@@ -30,7 +30,7 @@ from apps.ai.models import ActionProposal, AIArtifact
 from apps.audit.models import AuditEvent
 from apps.identity.models import User
 from apps.workflows.care.models import CareAction
-from django.db import DatabaseError, connections, transaction
+from django.db import DatabaseError, connection, connections, transaction
 
 from ai.care_support import (
     INVALID_PLAN,
@@ -350,7 +350,7 @@ def test_database_guards_refuse_raw_forgery(world: CareWorld) -> None:
             window_start=admin.window_start,
             window_end=admin.window_end,
         )
-    # An approval needs the matching care action and receipt.
+    # A caller cannot forge another actor's decision.
     with (
         acting(graph, world.manager),
         pytest.raises(DatabaseError),
@@ -417,6 +417,47 @@ def test_care_sql_rechecks_inactive_and_foreign_actor(world: CareWorld) -> None:
             User.objects.filter(pk=world.physician).update(is_active=True)
     assert items_of(world, bundle.invocation_id)[0].state == "pending"
     assert len(items_of(world, bundle.invocation_id)) == len(bundle.items)
+
+
+def test_runtime_cannot_call_the_internal_plan_status_helper(world: CareWorld) -> None:
+    graph = world.graph
+    unrelated, _enrollment = permission_actor(graph, "physician")
+    actors = (
+        (world.physician, True),
+        (world.manager, True),
+        (unrelated, True),
+        (uuid4(), True),
+        (world.physician, False),
+    )
+    try:
+        for actor, active in actors:
+            if actor == world.physician:
+                with owner_context(graph.organization_a):
+                    User.objects.filter(pk=actor).update(is_active=active)
+            with permission_context(graph, actor):
+                for plan in (world.plan.pk, uuid4()):
+                    for revision in (world.plan.revision, world.plan.revision + 1):
+                        with (
+                            pytest.raises(DatabaseError) as denied,
+                            transaction.atomic(),
+                            connection.cursor() as cursor,
+                        ):
+                            cursor.execute(
+                                "SELECT clinic_app.ai_care_plan_current(%s,%s)",
+                                [plan, revision],
+                            )
+                        assert (
+                            getattr(denied.value.__cause__, "sqlstate", None) == "42501"
+                        )
+                        assert (
+                            "permission denied for function ai_care_plan_current"
+                            in str(denied.value)
+                        )
+    finally:
+        with owner_context(graph.organization_a):
+            User.objects.filter(pk=world.physician).update(is_active=True)
+    # The authorized resolver-owned trigger still uses the private predicate.
+    assert request_and_collect(world).state == "ready"
 
 
 def test_concurrent_bundle_approvals_add_each_action_once(world: CareWorld) -> None:

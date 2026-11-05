@@ -176,8 +176,9 @@ REVOKE ALL ON FUNCTION clinic_app.ai_care_staff(uuid),
  clinic_app.ai_care_visible(uuid,uuid,text,text),
  clinic_app.ai_care_plan_current(uuid,integer),clinic_app.ai_care_guard() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION clinic_app.ai_care_staff(uuid),
- clinic_app.ai_care_visible(uuid,uuid,text,text),
- clinic_app.ai_care_plan_current(uuid,integer) TO clinic_app,clinic_owner;
+ clinic_app.ai_care_visible(uuid,uuid,text,text) TO clinic_app,clinic_owner;
+REVOKE ALL ON FUNCTION clinic_app.ai_care_plan_current(uuid,integer)
+ FROM clinic_app,clinic_owner,clinic_agent;
 GRANT EXECUTE ON FUNCTION clinic_app.ai_care_guard() TO clinic_owner;
 RESET ROLE;
 """

@@ -28,6 +28,7 @@ from playwright.sync_api import expect
 from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import (
     click_to_navigate,
+    expect_document,
     goto_settled,
     wait_for_signed_in,
 )
@@ -38,11 +39,12 @@ from renewal.browser.test_availability import (
     _sign_in_physician,
     availability_staff,
 )
+from renewal.browser.test_patient_access import _tab_until
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Browser, BrowserContext, Page
+    from playwright.sync_api import Browser, BrowserContext, Locator, Page
 
 __all__ = ("availability_staff",)
 OK = 200
@@ -190,6 +192,14 @@ def _capture(page: Page, root: Path, name: str) -> None:
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
+def _submit_with_keyboard(page: Page, button: Locator) -> None:
+    """Reach the real control by Tab with a visible ring, then submit by Enter."""
+    _tab_until(page, button, [], limit=120)
+    with expect_document(page) as navigation:
+        page.keyboard.press("Enter")
+    assert navigation.value.status == OK
+
+
 def _requested(page: Page, staff: dict[str, str], base: str, text: str) -> str:
     """The physician asks for suggestions; the worker runs the synthetic model."""
     plan = fixture(staff, "plan", text=text)["plan_id"]
@@ -200,7 +210,9 @@ def _requested(page: Page, staff: dict[str, str], base: str, text: str) -> str:
         gettext("Care coordination")
     )
     card = page.locator(f'[data-care-plan="{plan}"]')
-    click_to_navigate(card.get_by_role("button", name=gettext("Request suggestions")))
+    _submit_with_keyboard(
+        page, card.get_by_role("button", name=gettext("Request suggestions"))
+    )
     expect(page.locator("[data-care-generating]")).to_be_visible()
     invocation = page.locator(
         'form:has(input[name="action"][value="refresh"]) input[name="invocation_id"]'
@@ -209,7 +221,9 @@ def _requested(page: Page, staff: dict[str, str], base: str, text: str) -> str:
         "runtime_role": "clinic_app",
         "state": "succeeded",
     }
-    click_to_navigate(page.get_by_role("button", name=gettext("Refresh suggestions")))
+    _submit_with_keyboard(
+        page, page.get_by_role("button", name=gettext("Refresh suggestions"))
+    )
     expect(page.locator('[data-care-bundle="ready"]')).to_be_visible()
     return invocation
 
@@ -223,9 +237,13 @@ def _approve(page: Page, base: str, staff: dict[str, str], invocation: str) -> N
         "form[data-care-bundle-row]"
         f':has(input[name="invocation_id"][value="{invocation}"])'
     )
-    click_to_navigate(row.get_by_role("button", name=gettext("Review bundle")))
+    _submit_with_keyboard(
+        page, row.get_by_role("button", name=gettext("Review bundle"))
+    )
     expect(page.locator("[data-care-preview-item]")).to_have_count(2)
-    click_to_navigate(page.get_by_role("button", name=gettext("Approve this bundle")))
+    _submit_with_keyboard(
+        page, page.get_by_role("button", name=gettext("Approve this bundle"))
+    )
     expect(page.locator('[data-care-outcome="approved"]')).to_have_count(2)
 
 
@@ -270,10 +288,10 @@ def test_clinician_request_and_staff_bundle_approval(
         'form:has(input[name="action"][value="open"])'
         f':has(input[name="invocation_id"][value="{invocation}"])'
     )
-    click_to_navigate(opened.get_by_role("button"))
+    _submit_with_keyboard(page, opened.get_by_role("button"))
     questionnaire = page.locator('[data-care-kind="questionnaire"]')
-    click_to_navigate(
-        questionnaire.get_by_role("button", name=gettext("Accept into the plan"))
+    _submit_with_keyboard(
+        page, questionnaire.get_by_role("button", name=gettext("Accept into the plan"))
     )
     expect(page.locator("[data-care-saved]")).to_be_visible()
     expect(page.locator('[data-care-kind="questionnaire"]')).to_have_attribute(
@@ -368,3 +386,97 @@ def test_fake_medication_change_is_rejected_by_the_validator(
         "session: {...sessionStorage}}).includes(sentinel)",
         SENTINEL,
     )
+
+
+@pytest.mark.parametrize(
+    "scene",
+    [
+        ("phone", 375, 812, 1),
+        ("reflow-200", 640, 450, 2),
+        ("reflow-400", 320, 225, 4),
+    ],
+)
+def test_keyboard_bundle_and_refusal_reflow(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    care_staff: dict[str, str],
+    scene: tuple[str, int, int, int],
+) -> None:
+    """Run the feature at narrow and equivalent 200%/400% CSS viewports."""
+    name, width, height, scale = scene
+    staff, base = care_staff, renewal_base_url
+    root = renewal_artifact_root / "care-coordination" / name
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with (
+        browser.new_context(
+            locale="pt-BR",
+            timezone_id="Asia/Tokyo",
+            viewport={"width": width, "height": height},
+            device_scale_factor=scale,
+            reduced_motion="reduce",
+        ) as clinician_context,
+        browser.new_context(
+            locale="pt-BR",
+            timezone_id="Asia/Tokyo",
+            viewport={"width": width, "height": height},
+            device_scale_factor=scale,
+            reduced_motion="reduce",
+        ) as staff_context,
+    ):
+        page, approver = clinician_context.new_page(), staff_context.new_page()
+        _sign_in_physician(page, base, staff)
+        invocation = _requested(page, staff, base, INVALID_PLAN)
+        expect(
+            page.locator('[data-care-item][data-care-state="refused"]')
+        ).to_have_count(1)
+        _capture(page, root, "clinician-refusal")
+        check_page(page, base, root, "clinician-refusal")
+        _manager(approver, base, staff)
+        goto_settled(approver, _url(staff, base))
+        expect(approver.locator("[data-care-plans]")).to_have_count(0)
+        row = approver.locator(
+            "form[data-care-bundle-row]"
+            f':has(input[name="invocation_id"][value="{invocation}"])'
+        )
+        _submit_with_keyboard(
+            approver, row.get_by_role("button", name=gettext("Review bundle"))
+        )
+        expect(approver.locator("[data-care-preview-item]")).to_have_count(2)
+        focused: list[str] = []
+        _tab_until(
+            approver,
+            approver.get_by_role("button", name=gettext("Approve this bundle")),
+            focused,
+            limit=120,
+        )
+        _capture(approver, root, "staff-preview-keyboard")
+        check_page(approver, base, root, "staff-preview")
+        with expect_document(approver) as navigation:
+            approver.keyboard.press("Enter")
+        assert navigation.value.status == OK
+        expect(approver.locator('[data-care-outcome="approved"]')).to_have_count(2)
+        _capture(approver, root, "staff-approved")
+        check_page(approver, base, root, "staff-approved")
+        observed = approver.evaluate(
+            "({width: innerWidth, height: innerHeight, scale: devicePixelRatio})"
+        )
+        assert observed == {"width": width, "height": height, "scale": scale}
+        (root / "keyboard-reflow.json").write_text(
+            json.dumps(
+                {
+                    "scene": name,
+                    "viewport": observed,
+                    "approval_tab_stops": focused,
+                    "request_review_approve": "Tab and Enter with visible focus rings",
+                    "refused_items": 1,
+                    "approved_items": 2,
+                    "horizontal_overflow": False,
+                    "zoom_method": "equivalent CSS viewport and device scale factor",
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )

@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 from apps.ai.action_validation import database_time
 from apps.ai.care_models import CareProposal
-from apps.core import workspace
+from apps.core import workspace_access
 from apps.core.navigation import granted_permissions
 from apps.identity import stepup
 from apps.identity.models import User
@@ -235,7 +235,7 @@ def test_page_rechecks_authority_when_the_workspace_gate_admits(
     receptionist, _enrollment = permission_actor(world.graph, "receptionist")
     client = _client(receptionist, "receptionist")
     monkeypatch.setattr(
-        workspace,
+        workspace_access,
         "granted_permissions",
         lambda clinic_id: (
             granted_permissions(clinic_id) | {"automation.propose_clinical"}

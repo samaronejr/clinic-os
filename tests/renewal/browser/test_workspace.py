@@ -764,6 +764,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
         "inbox",
         "messages",
         "operations",
+        "automations",
     ]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
@@ -786,6 +787,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
         "inbox",
         "messages",
         "operations",
+        "automations",
     ]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(

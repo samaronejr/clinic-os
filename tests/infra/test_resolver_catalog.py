@@ -330,11 +330,7 @@ POSTURE_OVERRIDES: Final = {
     "ai_extraction_guard": ("v", False, ["clinic_resolver"]),
     "ai_care_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_care_visible": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
-    "ai_care_plan_current": (
-        "v",
-        True,
-        ["clinic_app", "clinic_owner", "clinic_resolver"],
-    ),
+    "ai_care_plan_current": ("v", False, ["clinic_resolver"]),
     "ai_care_guard": ("v", False, ["clinic_resolver"]),
     "ai_review_extraction": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ai_platform_guard": ("v", False, ["clinic_resolver"]),
