@@ -11,7 +11,10 @@ live, then meet the closed thread and a tampered selector.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -40,6 +43,7 @@ from renewal.browser.messages_support import (
     seed_quick_reply,
     status_body,
 )
+from renewal.browser.support_managers import seed_ai_admin
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -60,7 +64,7 @@ from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, StorageState
 
 __all__ = ("availability_staff",)
 OK = 200
@@ -668,6 +672,39 @@ def _portal_check(page: Page, base: str, root: Path, state: str) -> None:
     _capture(page, root, f"portal-{state}", 375)
 
 
+def _portal_check_without_scripts(
+    page: Page, base: str, root: Path, state: str
+) -> None:
+    """Keep native forms script-free and audit the same server-rendered thread."""
+    assert _small_targets(page) == []
+    assert page.evaluate(
+        "({local: localStorage.length, session: sessionStorage.length})"
+    ) == {"local": 0, "session": 0}
+    _capture(page, root, f"portal-{state}", 375)
+    messages = page.locator("[data-portal-message-from]").all_text_contents()
+    browser = page.context.browser
+    assert browser is not None
+    authentication: StorageState = {
+        "cookies": list(page.context.cookies()),
+        "origins": [],
+    }
+    # axe is JavaScript. Give its observer a separate context; the patient
+    # journey retains disabled scripts throughout, including the next submit.
+    with browser.new_context(
+        viewport={"width": 375, "height": 900},
+        locale="pt-BR",
+        timezone_id="Asia/Tokyo",
+        storage_state=authentication,
+    ) as observer:
+        audit_page = observer.new_page()
+        goto_settled(audit_page, f"{base}/patient/messages/")
+        click_to_navigate(audit_page.locator("[data-portal-conversation-open]"))
+        expect(audit_page.locator("[data-portal-message-from]")).to_have_text(messages)
+        report = check_page(audit_page, base, root, f"messages-portal-{state}")
+        assert report["violations"] == 0, report
+        _no_browser_storage(audit_page)
+
+
 def _start_portal_thread(
     page: Page, base: str, staff: dict[str, str], name: str, directory: Path
 ) -> None:
@@ -773,3 +810,94 @@ def test_a_patient_reads_and_replies_in_a_portal_thread_the_clinic_opened(
         assert errors == []
         _closed_then_forged(patient, page, base, root)
     assert _portal_inbound(staff, enrollment) == 1
+
+
+def _enable_portal_assistant(staff: dict[str, str], actor: str) -> None:
+    environment = {
+        **os.environ,
+        "APP_DATABASE_URL": staff["dsn"],
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "PYTHONPATH": ".:tests",
+    }
+    result = subprocess.run(  # noqa: S603 - fixed fixture and UUID-only arguments.
+        [
+            sys.executable,
+            "-m",
+            "renewal.front_desk_fixture",
+            actor,
+            staff["clinic_a"],
+            staff["organization"],
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["synthetic"] is True
+
+
+def test_portal_assistant_answers_reviewed_facts_and_hands_off_without_javascript(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    directory = root / "messages"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    operator = seed_ai_admin(staff, "light")["id"]
+    grant_messages(staff, operator, staff["receptionist_id"], directory)
+    page = renewal_page
+    name = _new_name()
+    _sign_in_receptionist(page, base, staff)
+    enrollment = _register_patient(page, base, staff, name)
+    code = _portal_access(staff, enrollment)
+    _start_portal_thread(page, base, staff, name, directory)
+    _enable_portal_assistant(staff, operator)
+    browser = page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        viewport={"width": 375, "height": 900},
+        locale="pt-BR",
+        timezone_id="Asia/Tokyo",
+        java_script_enabled=False,
+    )
+    try:
+        patient = context.new_page()
+        errors = _watch_errors(patient)
+        _redeem(patient, base, staff["clinic_a"], code)
+        click_to_navigate(patient.locator("#messages-link"))
+        click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+        patient.locator("#reply-body").fill(ADMINISTRATIVE)
+        click_to_navigate(patient.locator("[data-portal-reply-send]"))
+        reply = patient.locator('[data-portal-message-from="clinic"]').last
+        expect(reply).to_contain_text("Atendemos de segunda a sexta, das 8h às 18h.")
+        expect(reply).to_contain_text(
+            gettext(
+                "You are talking to the clinic's automated assistant. It answers "
+                "administrative questions only. To talk to a person, reply ATENDENTE."
+            )
+        )
+        _portal_check_without_scripts(patient, base, root, "assistant-reviewed-answer")
+        patient.locator("#reply-body").fill("Dor no peito e falta de ar agora")
+        click_to_navigate(patient.locator("[data-portal-reply-send]"))
+        expect(reply).to_contain_text(
+            gettext(
+                "I cannot assess symptoms. In an emergency, call 192 now; otherwise "
+                "call the clinic. Your message was passed to the clinical team."
+            )
+        )
+        before = patient.locator('[data-portal-message-from="clinic"]').count()
+        patient.locator("#reply-body").fill("ATENDENTE")
+        click_to_navigate(patient.locator("[data-portal-reply-send]"))
+        expect(patient.locator('[data-portal-message-from="clinic"]')).to_have_count(
+            before
+        )
+        assert patient.url == f"{base}/patient/messages/"
+        _portal_check_without_scripts(patient, base, root, "assistant-human-handoff")
+        assert errors == []
+    finally:
+        context.close()

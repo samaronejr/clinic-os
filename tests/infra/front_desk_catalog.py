@@ -20,6 +20,9 @@ TABLE_GRANTS: Final = {
     ("intake_patientaccessgrant", "INSERT"),
 }
 RESULTS: Final = {
+    ("ai_front_desk_audit_scope", "requested_turn uuid"): (
+        "TABLE(principal_id uuid, organization_id uuid, clinic_id uuid)"
+    ),
     ("ai_front_desk_enqueue", "requested_message uuid"): "uuid",
     ("ai_front_desk_pending", ""): "SETOF uuid",
     ("ai_front_desk_turn", "requested_turn uuid, kek text"): (
@@ -58,3 +61,8 @@ POSTURE: Final = {
     )
     for name, _arguments in RESULTS
 }
+POSTURE["ai_front_desk_audit_scope"] = (
+    "v",
+    True,
+    ["clinic_app", "clinic_owner", "clinic_resolver"],
+)

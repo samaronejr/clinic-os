@@ -448,6 +448,9 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ai.front_desk.resolved": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ai.front_desk_thread", "resolved"
         ),
+        "ai.front_desk.replied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.front_desk_turn", "replied"
+        ),
         "identity.passkey.registered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.passkey", "created"
         ),

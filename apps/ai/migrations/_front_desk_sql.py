@@ -7,17 +7,21 @@ a staff identity. A turn exists only because the authenticated inbound principal
 of the conversation's provider account enqueued it for a stored inbound message;
 every later agent function rechecks that same principal context, the clinic's
 enabled front_desk A2 policy, the tool allowlist and the daily action budget.
-Appointment reads and changes never happen here: they run under the patient
-session the challenge mints, through the patient booking services.
+Appointment reads and changes never happen here: they run through the patient
+booking services under the challenge's session or the portal's live session.
 """
 
 from typing import Final
 
+from apps.comms.migrations._portal_messages_sql import _VISIBLE as PORTAL_VISIBLE
 from apps.comms.migrations._portal_messages_sql import GUARD_SQL as PORTAL_GUARD
+from apps.comms.migrations._portal_messages_sql import RESOLVER_SQL as PORTAL_READERS
 
 _SCOPE = "organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid"
 _ACTOR = "NULLIF(current_setting('app.current_user_id',true),'')::uuid"
-_TENANT = "NULLIF(current_setting('app.current_tenant',true),'')::uuid"
+_TENANT = """coalesce(NULLIF(current_setting('app.current_tenant',true),'')::uuid,
+ (SELECT s.organization_id
+  FROM clinic_app.current_patient_authority('messages') s))"""
 TABLES: Final = ("ai_knowledgearticle", "ai_frontdeskthread", "ai_frontdeskturn")
 _ALL = ",".join(f"clinic_app.{table}" for table in TABLES)
 DAILY_WINDOW: Final = "interval '1 day'"
@@ -34,7 +38,7 @@ if len(PORTAL_GUARD.split(_ANCHOR)) - 1 != 1:  # pragma: no cover - import contr
     raise RuntimeError(message)
 _AGENT_BRANCH = """ IF actor IS NULL AND NEW.sent_by_id IS NULL
     AND current_setting('app.ai_front_desk_reply',true)=NEW.id::text THEN
-  IF c.state='closed' OR c.channel='portal' OR NOT EXISTS (
+  IF c.state='closed' OR NOT EXISTS (
      SELECT 1 FROM clinic_app.ai_frontdeskturn u
      JOIN clinic_app.ai_frontdeskthread h ON h.id=u.thread_id
      WHERE u.reply_id=NEW.id AND u.state='finishing'
@@ -47,11 +51,18 @@ _AGENT_BRANCH = """ IF actor IS NULL AND NEW.sent_by_id IS NULL
 GUARD_SQL: Final = PORTAL_GUARD.replace(_ANCHOR, _AGENT_BRANCH + _ANCHOR, 1)
 PRIOR_GUARD_SQL: Final = PORTAL_GUARD
 
-# The thread's owner: the authenticated ingest principal of the conversation's
-# provider account (no staff actor, no patient session; comms_ingest_account).
+# The thread's owner: its authenticated ingest principal or the portal's current
+# enrollment-bound patient session. Neither path installs a staff actor.
+_PORTAL_OWNER = """(c.channel='portal' AND EXISTS (
+ SELECT 1 FROM clinic_app.current_patient_authority('messages') s
+ WHERE s.organization_id=c.organization_id AND s.clinic_id=c.clinic_id
+  AND s.enrollment_id=c.enrollment_id))"""
 _OWNER = (
-    "clinic_app.comms_ingest_account(c.clinic_id,c.channel::text)"
-    " IS NOT DISTINCT FROM c.provider_account_id AND c.provider_account_id IS NOT NULL"
+    """((clinic_app.comms_ingest_account(c.clinic_id,c.channel::text)
+ IS NOT DISTINCT FROM c.provider_account_id AND c.provider_account_id IS NOT NULL)
+ OR """
+    + _PORTAL_OWNER
+    + ")"
 )
 # The clinic's latest front_desk policy, enabled at A2, whose service principal
 # still holds agent.execute, under the organization's AI opt-in for the
@@ -69,8 +80,12 @@ _POLICY = """(SELECT pv.id FROM clinic_app.ai_agentpolicyversion pv
      AND sp.clinic_id=pv.clinic_id AND sp.active AND sp.grant_set_version=2
      AND g.active AND g.subject_scope='clinic' AND g.permission='agent.execute'
      AND g.grant_set_version=2)
-   AND (clinic_app.ai_organization_policy()->'enabled')='true'::jsonb
-   AND (clinic_app.ai_organization_policy()->'purposes') ? 'front_desk')"""
+   AND ((SELECT k.ai_policy FROM clinic_app.identity_clinicconfiguration k
+    WHERE k.organization_id=c.organization_id
+    ORDER BY k.created_at DESC,k.id DESC LIMIT 1)->'enabled')='true'::jsonb
+   AND ((SELECT k.ai_policy FROM clinic_app.identity_clinicconfiguration k
+    WHERE k.organization_id=c.organization_id
+    ORDER BY k.created_at DESC,k.id DESC LIMIT 1)->'purposes') ? 'front_desk')"""
 
 SQL = (
     """
@@ -148,8 +163,11 @@ RETURNS TABLE(turn_id uuid,thread_id uuid,clinic_id uuid,channel text,
 LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT u.id,h.id,c.clinic_id,c.channel::text,c.enrollment_id,h.state,
-  h.verified_until IS NOT NULL AND h.verified_until>statement_timestamp(),
-  CASE WHEN h.verified_until>statement_timestamp() THEN h.session_id END,
+  (__PORTAL_OWNER__ OR
+   (h.verified_until IS NOT NULL AND h.verified_until>statement_timestamp())),
+  CASE WHEN c.channel='portal' THEN
+   (SELECT s.session_id FROM clinic_app.current_patient_authority('messages') s)
+   WHEN h.verified_until>statement_timestamp() THEN h.session_id END,
   h.challenge_until IS NOT NULL AND h.challenge_until>statement_timestamp(),
   h.challenge_attempts::integer,
   CASE WHEN h.offered_until>statement_timestamp() THEN h.offered_appointment_id END,
@@ -206,7 +224,8 @@ BEGIN
  SELECT * INTO h FROM clinic_app.ai_frontdeskthread x WHERE x.id=u.thread_id
   FOR UPDATE;
  SELECT * INTO c FROM clinic_app.comms_conversation x WHERE x.id=h.conversation_id;
- IF u.id IS NULL OR h.id IS NULL OR NOT (__OWNER__) OR u.policy_id IS DISTINCT FROM
+ IF u.id IS NULL OR h.id IS NULL OR c.channel='portal'
+  OR NOT (__OWNER__) OR u.policy_id IS DISTINCT FROM
   __POLICY__ OR h.challenge_until IS NULL OR h.challenge_until<=statement_timestamp()
   OR h.challenge_attempts>=3
  THEN RAISE EXCEPTION 'front desk challenge refused' USING ERRCODE='42501'; END IF;
@@ -266,9 +285,9 @@ BEGIN
  IF u.id IS NULL OR h.id IS NULL OR NOT (__OWNER__)
   OR u.policy_id IS DISTINCT FROM __POLICY__
   OR change NOT IN ('challenge','offer','clear','handoff')
-  OR (change='offer' AND (h.verified_until IS NULL
-   OR h.verified_until<=statement_timestamp() OR practitioner IS NULL
-   OR start IS NULL OR start<=statement_timestamp()))
+  OR (change='offer' AND ((NOT (__PORTAL_OWNER__) AND
+   (h.verified_until IS NULL OR h.verified_until<=statement_timestamp()))
+   OR practitioner IS NULL OR start IS NULL OR start<=statement_timestamp()))
   OR (change='handoff' AND reason NOT IN ('urgent','clinical','human_request',
    'kb_missing','verification_failed','policy_limit'))
  THEN RAISE EXCEPTION 'front desk state refused' USING ERRCODE='42501'; END IF;
@@ -348,6 +367,7 @@ GRANT EXECUTE ON FUNCTION clinic_app.ai_front_desk_enqueue(uuid),
 RESET ROLE;
 """.replace("__ALL__", _ALL)
     .replace("__OWNER__", _OWNER)
+    .replace("__PORTAL_OWNER__", _PORTAL_OWNER)
     .replace("__POLICY__", _POLICY)
     .replace("__TENANT__", _TENANT)
     .replace("__DAY__", DAILY_WINDOW)
@@ -482,6 +502,103 @@ RESET ROLE;
 {GUARD_SQL}
 """
 
+
+def _portal_reader(name: str) -> str:
+    head = f"CREATE FUNCTION clinic_app.{name}("
+    start = PORTAL_READERS.index(head)
+    end = PORTAL_READERS.index("$f$;", start) + len("$f$;")
+    return PORTAL_READERS[start:end].replace(
+        "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1
+    )
+
+
+# A local portal agent reply is delivered in the reply transaction itself.
+# The patient's existing enrollment-bound readers admit only the exact reply
+# of a completed turn; ordinary staff messages still need their outbox receipt.
+_AGENT_VISIBLE = """(m.direction='in' OR (m.provider_state<>'failed'
+ AND (op.status IN ('succeeded','delivered') OR EXISTS (
+  SELECT 1 FROM clinic_app.ai_frontdeskturn u
+  JOIN clinic_app.ai_frontdeskthread h ON h.id=u.thread_id
+  WHERE u.reply_id=m.id AND u.state='done' AND u.organization_id=c.organization_id
+   AND h.conversation_id=c.id))))"""
+_PRIOR_READERS = (
+    _portal_reader("comms_patient_conversations")
+    + "\n"
+    + _portal_reader("comms_patient_messages")
+    + "\n"
+    + _portal_reader("comms_patient_reply")
+)
+SQL += (
+    "SET LOCAL ROLE clinic_resolver;\n"
+    + _PRIOR_READERS.replace(PORTAL_VISIBLE, _AGENT_VISIBLE).replace(
+        " SELECT * INTO c FROM clinic_app.comms_conversation x\n",
+        " PERFORM pg_advisory_xact_lock(hashtextextended('agent-send-v1',0));\n"
+        " SELECT * INTO c FROM clinic_app.comms_conversation x\n",
+        1,
+    )
+    + "\nRESET ROLE;\n"
+)
+SQL += """
+SET LOCAL ROLE clinic_resolver;
+CREATE FUNCTION clinic_app.ai_front_desk_audit_scope(requested_turn uuid)
+RETURNS TABLE(principal_id uuid,organization_id uuid,clinic_id uuid)
+LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+ SELECT CASE WHEN c.channel='portal' THEN
+  (SELECT s.session_id FROM clinic_app.current_patient_authority('messages') s)
+  ELSE NULLIF(current_setting('app.current_principal',true),'')::uuid END,
+  u.organization_id,u.clinic_id
+ FROM clinic_app.ai_frontdeskturn u
+ JOIN clinic_app.ai_frontdeskthread h ON h.id=u.thread_id
+ JOIN clinic_app.comms_conversation c ON c.id=h.conversation_id
+ JOIN clinic_app.comms_message m ON m.id=u.reply_id
+ WHERE u.id=requested_turn AND u.state='done' AND u.organization_id=__TENANT__
+  AND __OWNER__ AND m.command_id=u.id AND m.sent_by_id IS NULL
+  AND m.created_at>=transaction_timestamp()
+$f$;
+REVOKE ALL ON FUNCTION clinic_app.ai_front_desk_audit_scope(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION clinic_app.ai_front_desk_audit_scope(uuid)
+ TO clinic_app,clinic_owner;
+RESET ROLE;
+CREATE FUNCTION clinic_app.ai_front_desk_audit(requested_turn uuid,
+ occurred_at_utc timestamptz,content_hash bytea)
+RETURNS bigint LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE s RECORD; previous_hash bytea; inserted_seq bigint;
+BEGIN
+ SELECT * INTO s FROM clinic_app.ai_front_desk_audit_scope(requested_turn);
+ IF s.principal_id IS NULL THEN
+  RAISE EXCEPTION 'front desk audit denied' USING ERRCODE='42501'; END IF;
+ IF current_setting('transaction_isolation')<>'read committed'
+  OR content_hash IS NULL OR octet_length(content_hash)<>32
+  OR occurred_at_utc IS NULL OR occurred_at_utc NOT BETWEEN
+   clock_timestamp()-interval '5 minutes' AND clock_timestamp()+interval '5 minutes'
+ THEN RAISE EXCEPTION 'invalid audit input' USING ERRCODE='22023'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+  ('clinic-audit:'||s.organization_id::text) COLLATE pg_catalog."C",0));
+ SELECT a.seq INTO inserted_seq FROM clinic_app.audit_event a
+ WHERE a.organization_id=s.organization_id AND a.event_type='ai.front_desk.replied'
+  AND a.affected_record_id=requested_turn::text;
+ IF inserted_seq IS NOT NULL THEN RETURN inserted_seq; END IF;
+ SELECT a.curr_hash INTO previous_hash FROM clinic_app.audit_event a
+ WHERE a.organization_id=s.organization_id ORDER BY a.seq DESC LIMIT 1;
+ previous_hash:=coalesce(previous_hash,decode(repeat('00',32),'hex'));
+ INSERT INTO clinic_app.audit_event
+ (organization_id,actor_user_id,event_type,component_id,component_ip,
+  affected_record_type,affected_record_id,occurred_at_utc,payload,prev_hash,curr_hash)
+ VALUES (s.organization_id,s.principal_id,'ai.front_desk.replied','clinic-os-web',
+  NULL,'ai.front_desk_turn',requested_turn::text,occurred_at_utc,
+  jsonb_build_object('clinic_id',s.clinic_id::text,'object_verb','replied'),
+  previous_hash,clinic_app.digest(content_hash||previous_hash,'sha256'))
+ RETURNING seq INTO inserted_seq;
+ RETURN inserted_seq;
+END $f$;
+REVOKE ALL ON FUNCTION clinic_app.ai_front_desk_audit(uuid,timestamptz,bytea)
+ FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION clinic_app.ai_front_desk_audit(uuid,timestamptz,bytea)
+ TO clinic_app;
+""".replace("__TENANT__", _TENANT).replace("__OWNER__", _OWNER)
+
 # The batched schema operations drop the tables after this reverse runs (its
 # RunSQL is the batch's last database operation), so it drops only what depends
 # on the functions it removes.
@@ -501,6 +618,11 @@ _REVERSE_TABLE_OBJECTS = "".join(
 )
 REVERSE_SQL: Final = f"""
 {PRIOR_GUARD_SQL}
+DROP FUNCTION clinic_app.ai_front_desk_audit(uuid,timestamptz,bytea);
+SET LOCAL ROLE clinic_resolver;
+DROP FUNCTION clinic_app.ai_front_desk_audit_scope(uuid);
+{_PRIOR_READERS}
+RESET ROLE;
 REVOKE INSERT ON clinic_app.intake_patientaccessgrant FROM clinic_resolver;
 {_REVERSE_TABLE_OBJECTS}
 DROP POLICY front_desk_insert ON clinic_app.ai_knowledgearticle;

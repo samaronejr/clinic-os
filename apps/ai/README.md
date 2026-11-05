@@ -230,9 +230,10 @@ Default off. The agent answers a clinic's patient-initiated inbox messages
 the organization AI policy enables the `front_desk` purpose, and the clinic's
 latest `front_desk` agent policy is enabled at A2 with a service principal that
 still holds `agent.execute`. Turning either off stops every new turn; that is the
-rollback switch. Portal threads are clinic-opened conversations that a patient
-replies to, and the portal already offers verified self-service booking, so the
-agent stays out of them.
+rollback switch. The same assistant answers replies in clinic-opened portal
+threads. The live portal session supplies identity; every scheduling call
+separately requires its current `booking` operation. A messages-only session
+cannot gain booking authority through a challenge.
 
 - **Turn pipeline.** The comms inbound hook queues one `FrontDeskTurn` for each
   stored, supported inbound message inside the authenticated delivery
@@ -241,10 +242,21 @@ agent stays out of them.
   One runner per provider account works at a time (a session advisory lock held
   across the turn's transactions), so concurrent deliveries never work on the
   same turn.
+  Its dedicated `locks` connection also retains `agent-send-v1` across those
+  transactions, sharing the existing policy/principal/membership mutation fence
+  and serializing the policy's action budget across provider accounts. Portal
+  replies take the matching transaction lock before the conversation or audit
+  lock, so their policy check, booking, provenance and audit commit together.
   Every bridge (`ai_front_desk_turn`, `_articles`, `_state`, `_verify`,
   `_finish`) requires the conversation's own ingest principal, the enabled policy
   and the turn's pending state. Nothing else writes the agent tables
   (`ai_front_desk_guard`), and a thread that waits for a person gets no turn.
+  Portal replies run the same bounded decision inside their patient transaction,
+  using its enrollment-bound ownership rather than a provider proof. No staff
+  or tenant GUC is installed, and the challenge bridge refuses portal turns.
+  Each completed turn appends `ai.front_desk.replied`, attributed to the
+  authenticated ingest principal or the portal session, with clinic and verb
+  metadata only. A replay adds no turn, effect or audit event.
 - **Untrusted text, closed intents.** Message text is data. A fixed word
   classifier, after comms `classify_inbound`, picks one closed intent; the text
   never names a tool, a record or an argument, so "cancel all appointments"
@@ -269,7 +281,9 @@ agent stays out of them.
   (`patient_slots`; nothing is invented). `scheduling.book_approved` moves the
   appointment only after the patient's explicit SIM to that exact offer, checked
   again against real availability under the patient session
-  (`reschedule_patient_appointment`). `comms.send_approved_link` appends an
+  (`reschedule_patient_appointment`). Acceptance must be a complete affirmative
+  reply; a negation, question or qualified reply never books merely because it
+  contains an affirmative word. `comms.send_approved_link` appends an
   answer's approved https link. Each tool needs its entry in the policy allowlist
   (closed schemas in `TOOL_SCHEMAS`) and room in the policy's daily action
   budget; otherwise a person takes over (`policy_limit`). When nothing is free
@@ -294,13 +308,16 @@ agent stays out of them.
   the synthetic channels delivery is simulated (`provider_state=sent`); a real
   provider send of machine-originated messages is BLOCKED-ON-EG, because the
   outbox has no principal path. The hook therefore queues no turn unless the
-  data mode is synthetic and the channel is a synthetic one.
+  data mode is synthetic and the channel is a synthetic one. A portal reply is
+  delivered locally in the patient's transaction and visible only through the
+  existing enrollment-bound readers, which require its completed agent turn.
 - **Schema.** Migration `0007_front_desk` adds three FORCE-RLS tables without
   patient text, column-limited staff updates and retained history. The reverse
   runs only on an empty synthetic database; once turns exist, rollback = restore.
-- **Follow-ups.** Link handoffs to the todo-55 urgent-concern queue; add a
-  portal-channel agent if patients ever open portal threads; a real provider
-  send (EG).
+- **External legs.** Real-provider sends and clinical approval of safety wording
+  remain BLOCKED-ON-EG. Urgent messages already enter the human-owned Clinical
+  Inbox through comms triage; no automated clinical reply or monitoring promise
+  is introduced.
 
 ## Permitted chart assistant (todo 44)
 

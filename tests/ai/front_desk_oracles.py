@@ -1,6 +1,11 @@
 """Bind catalog-discovered front-desk protocols to real authority tests (todo 54)."""
 
-from ai import test_front_desk, test_front_desk_guards, test_front_desk_views
+from ai import (
+    test_front_desk,
+    test_front_desk_guards,
+    test_front_desk_portal,
+    test_front_desk_views,
+)
 
 CASES = {
     case.__name__: case
@@ -17,12 +22,18 @@ CASES = {
         test_front_desk_views.test_handoff_page_lists_reasons_and_resolves_by_post_body,
         test_front_desk_guards.test_database_guards_refuse_raw_front_desk_forgery,
         test_front_desk_guards.test_front_desk_sql_rechecks_inactive_and_foreign_actor,
+        test_front_desk_portal.test_verified_portal_books_only_after_accepting_the_exact_offer,
+        test_front_desk_portal.test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person,
+        test_front_desk_portal.test_portal_without_booking_scope_cannot_gain_it_through_the_agent,
+        test_front_desk_portal.test_disabled_portal_agent_keeps_the_human_message_path,
     )
 }
 SQL_PROTOCOL_ORACLES = {
     name: list(CASES)
     for name in (
         "clinic_app.ai_front_desk_articles",
+        "clinic_app.ai_front_desk_audit",
+        "clinic_app.ai_front_desk_audit_scope",
         "clinic_app.ai_front_desk_enqueue",
         "clinic_app.ai_front_desk_finish",
         "clinic_app.ai_front_desk_guard",

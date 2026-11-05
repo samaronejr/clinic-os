@@ -29,16 +29,21 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core import signing
-from django.db import connection
+from django.db import connection, connections
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 
 from apps.ai.front_desk_kb import ArticleAnswer, best_answer, fold
-from apps.comms.inbox_inbound import inbound_context
+from apps.audit.events import build_phase1_audit_event
+from apps.audit.services import AuditTrustedContext, _content_hash
+from apps.comms.inbox_inbound import InboundRejectedError, inbound_context
+from apps.comms.portal_messages import portal_message_scope
 from apps.comms.triage import classify_inbound
 from apps.core.secrets import secret_store
+from apps.intake.access import PatientAccessDeniedError
 from apps.intake.patient_access import patient_session_context
+from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentTerminalError,
@@ -63,6 +68,7 @@ __all__ = (
     "classify",
     "enqueue_turn",
     "run_pending_turns",
+    "run_portal_turn",
 )
 
 LANGUAGE: Final = "pt-br"
@@ -195,7 +201,10 @@ def classify(text: str, *, challenge_pending: bool, offer_pending: bool) -> str:
         (verdict.needs_clinician, "clinical"),
         (bool(words & _HUMAN), "human"),
         (challenge_pending and _BIRTH.search(text) is not None, "birth_date"),
-        (offer_pending and bool(words & _ACCEPT), "accept"),
+        (
+            offer_pending and fold(text).strip().rstrip(".!").strip() in _ACCEPT,
+            "accept",
+        ),
         (offer_pending and bool(words & _DECLINE), "decline"),
         (bool(words & _RESCHEDULE), "reschedule"),
         (bool(words & _APPOINTMENTS), "appointments"),
@@ -482,6 +491,31 @@ def _finish(ctx: Context, decision: Decision, kek: str) -> None:
                 decision.article,
             ],
         )
+    _audit_turn(ctx.turn_id)
+
+
+def _audit_turn(turn_id: UUID) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.ai_front_desk_audit_scope(%s)", [turn_id]
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise InboundRejectedError
+    principal, organization, clinic = row
+    event = build_phase1_audit_event(
+        "ai.front_desk.replied", clinic_id=clinic, affected_record_id=turn_id
+    )
+    content_hash = _content_hash(
+        event.event,
+        AuditTrustedContext(organization_id=organization, actor_user_id=principal),
+        dict(event.payload),
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_front_desk_audit(%s,%s,%s)",
+            [turn_id, event.event.occurred_at_utc, content_hash],
+        )
 
 
 def _run(account_id: UUID, proof: str, turn_id: UUID, kek: str) -> None:
@@ -532,6 +566,60 @@ def _pending(account_id: UUID, proof: str) -> list[UUID]:
         return [row[0] for row in cursor.fetchall()]
 
 
+def run_portal_turn(*, clinic_id: UUID, message_id: UUID) -> None:
+    """Answer one new portal reply under its current, verified patient session.
+
+    The enqueue bridge binds the message to that session's enrollment and the
+    enabled policy. No staff or tenant GUC is set and no channel session is
+    minted. Scheduling rechecks the current booking operation on every call;
+    delegates whose booking grant was removed cannot read or move appointments.
+    """
+    if settings.CLINIC_DATA_MODE != "synthetic":
+        return
+    scope = portal_message_scope()
+    if scope is None or scope.clinic_id != clinic_id:
+        return
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.ai_front_desk_enqueue(%s)", [message_id])
+        row = cursor.fetchone()
+    if row is None or not isinstance(row[0], UUID):
+        return
+    kek = secret_store().get_secret(KEK_SECRET_NAME)
+    ctx = _context(row[0], kek)
+    if ctx is None:
+        return
+    with translation.override(LANGUAGE):
+        decision = _decide(ctx, kek)
+        tool = _TOOL_FOR.get(decision.intent)
+        if not decision.outcome:
+            if tool is not None and (tool not in ctx.tools or ctx.budget_left <= 0):
+                decision = Decision(
+                    decision.intent, "handoff", _(HUMAN), handoff="policy_limit"
+                )
+            else:
+                try:
+                    decision = _under_session(ctx, decision)
+                except (AppointmentAccessDeniedError, PatientAccessDeniedError):
+                    decision = Decision(
+                        decision.intent,
+                        "not_verified",
+                        _(NOT_VERIFIED),
+                        handoff="verification_failed",
+                    )
+        if decision.offer is not None:
+            appointment, practitioner, start = decision.offer
+            _state(
+                ctx.turn_id,
+                "offer",
+                appointment=appointment,
+                practitioner=practitioner,
+                start=start,
+            )
+        elif decision.intent in {"accept", "decline"}:
+            _state(ctx.turn_id, "clear")
+        _finish(ctx, decision, kek)
+
+
 def run_pending_turns(account_id: UUID, proof: str) -> None:
     """After the inbound commit: answer every queued turn of this account.
 
@@ -540,9 +628,16 @@ def run_pending_turns(account_id: UUID, proof: str) -> None:
     on the same turn; a waiting runner then finds only the turns left.
     """
     key = f"{RUNNER_LOCK}:{account_id}"
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", [key])
+    # Policy, principal and membership mutations already take agent-send-v1.
+    # The dedicated direct/session alias retains custody across the principal
+    # and patient transactions and serializes the policy's shared action budget.
+    locks = connections.create_connection("locks")
     try:
+        with locks.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_lock(hashtextextended('agent-send-v1',0))"
+            )
+            cursor.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", [key])
         for _round in range(MAX_ROUNDS):
             turns = _pending(account_id, proof)
             if not turns:
@@ -552,5 +647,4 @@ def run_pending_turns(account_id: UUID, proof: str) -> None:
                 for turn_id in turns:
                     _run(account_id, proof, turn_id, kek)
     finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", [key])
+        locks.close()

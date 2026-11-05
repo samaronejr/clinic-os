@@ -1812,6 +1812,12 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "ai.front_desk_thread",
         "resolved",
     ),
+    "ai.front_desk.replied": (
+        "tenant",
+        "clinic-os-web",
+        "ai.front_desk_turn",
+        "replied",
+    ),
 }
 
 

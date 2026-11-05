@@ -3,7 +3,7 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
-from apps.ai import front_desk_kb, front_desk_staff
+from apps.ai import front_desk, front_desk_kb, front_desk_staff
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
@@ -882,6 +882,7 @@ def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
         ),
         (front_desk_kb.knowledge_articles, ["clinic_id"]),
         (front_desk_staff.handoff_threads, ["clinic_id"]),
+        (front_desk.run_portal_turn, ["clinic_id", "message_id"]),
         (
             front_desk_staff.resolve_handoff,
             ["clinic_id", "thread_id", "expected_revision"],

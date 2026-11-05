@@ -763,7 +763,18 @@
       "probes": [
         "apps.ai.front_desk._articles#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_articles returns only approved answers of the turn's clinic."
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the resolver returns only approved answers of the turn clinic."
+    },
+    {
+      "symbol": "apps.ai.front_desk._audit_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._audit_turn#cut1"
+      ],
+      "reason": "The signed inbox and verified portal authority oracles complete actual turns and execute this source-backed audit boundary. Its resolver accepts only the current principal or patient session, the matching clinic, and a completed reply created in this transaction."
     },
     {
       "symbol": "apps.ai.front_desk._context",
@@ -774,7 +785,7 @@
       "probes": [
         "apps.ai.front_desk._context#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_turn claims one pending turn and repeats the ownership, enabled-policy and daily-budget checks."
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the turn resolver claims a pending turn and repeats current ownership, enabled-policy and daily-budget checks."
     },
     {
       "symbol": "apps.ai.front_desk._finish",
@@ -785,7 +796,7 @@
       "probes": [
         "apps.ai.front_desk._finish#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_finish rechecks the tool against the policy allowlist and the cited answer against approved versions; the message guard admits the sender-less reply only from this bridge."
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the reply bridge rechecks the tool and cited approved version, and only its completed local reply is visible to the patient."
     },
     {
       "symbol": "apps.ai.front_desk._pending",
@@ -796,7 +807,7 @@
       "probes": [
         "apps.ai.front_desk._pending#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_pending lists only that principal's pending turns; run_pending_turns holds a per-account session advisory lock across the turn transactions, so two deliveries never work on one turn."
+      "reason": "Lists only pending turns of the authenticated inbox principal; the dedicated global and per-account session locks protect custody across turn transactions."
     },
     {
       "symbol": "apps.ai.front_desk._state",
@@ -807,7 +818,7 @@
       "probes": [
         "apps.ai.front_desk._state#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_state allows only challenge, offer (verified thread, future slot), clear and the closed handoff reasons for its own pending turn."
+      "reason": "Rechecks the owning inbox principal or verified portal messages session and accepts only closed challenge, verified future offer, clear and handoff transitions."
     },
     {
       "symbol": "apps.ai.front_desk._verify",
@@ -818,7 +829,7 @@
       "probes": [
         "apps.ai.front_desk._verify#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_verify compares the date of birth of the thread's verified-contact enrollment server-side, at most three attempts, and mints a booking-only patient session; unlinked and linked threads get the same answer."
+      "reason": "Authenticates only an inbox principal and its verified-contact enrollment, limits challenge attempts, and mints a booking-only session after a successful challenge. Portal sessions are refused and cannot widen their existing scope."
     },
     {
       "symbol": "apps.ai.front_desk.enqueue_turn",
@@ -829,7 +840,18 @@
       "probes": [
         "apps.ai.front_desk.enqueue_turn#cut1"
       ],
-      "reason": "Runs only inside inbound_context, the authenticated ingest principal of the conversation's provider account; clinic_app.ai_front_desk_enqueue queues a turn only for a just-stored inbound message of a thread that principal owns (comms_ingest_account), when the clinic's latest front_desk policy is enabled at A2 with a live agent.execute principal and the organization AI opt-in names front_desk."
+      "reason": "Queues only a just-stored message owned by the authenticated inbox principal under the current clinic A2 policy, live agent.execute principal and organization opt-in; portal admission uses run_portal_turn with its current patient session."
+    },
+    {
+      "symbol": "apps.ai.front_desk.run_portal_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk.run_portal_turn#cut1"
+      ],
+      "reason": "Runs inside the current portal messages session without staff or tenant GUCs. Enqueue, policy, reviewed answers, tool budget and booking services recheck that session and clinic; a messages-only session cannot obtain booking scope."
     },
     {
       "symbol": "apps.ai.front_desk_kb._article",
@@ -8494,12 +8516,14 @@
     "apps.ai.execution_tasks.dispatch_approved#cut1",
     "apps.ai.front_desk._appointment_step#cut1",
     "apps.ai.front_desk._articles#cut1",
+    "apps.ai.front_desk._audit_turn#cut1",
     "apps.ai.front_desk._context#cut1",
     "apps.ai.front_desk._finish#cut1",
     "apps.ai.front_desk._pending#cut1",
     "apps.ai.front_desk._state#cut1",
     "apps.ai.front_desk._verify#cut1",
     "apps.ai.front_desk.enqueue_turn#cut1",
+    "apps.ai.front_desk.run_portal_turn#cut1",
     "apps.ai.front_desk_kb._article#cut1",
     "apps.ai.front_desk_kb.approve_article#cut1",
     "apps.ai.front_desk_kb.draft_article#cut1",
@@ -10244,9 +10268,89 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54: returns only approved reviewed answers of the turn's clinic to its owning ingest principal."
+      "reason": "Returns only approved reviewed answers of the turn clinic to its owning inbox principal or current verified portal messages session."
+    },
+    "clinic_app.ai_front_desk_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Appends one metadata-only hash-chain event for a completed owned turn and reply created in the current transaction; principal, organization and clinic come from the source-backed audit scope, and repeated publication is idempotent."
+    },
+    "clinic_app.ai_front_desk_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_front_desk_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Returns only the current inbox principal or verified portal patient session and its stored organization/clinic for an owned completed turn whose reply was created in the current transaction."
     },
     "clinic_app.ai_front_desk_enqueue": {
       "discovery": {
@@ -10277,9 +10381,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54 front-desk enqueue bridge: inside the authenticated inbound transaction it queues one turn for a just-stored inbound message of a conversation the current ingest principal owns (comms_ingest_account), only when the clinic's latest front_desk policy is enabled at A2 with a live agent.execute principal and the organization AI opt-in names front_desk; no staff actor is read."
+      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in and daily budget."
     },
     "clinic_app.ai_front_desk_finish": {
       "discovery": {
@@ -10310,9 +10418,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54 reply bridge: rechecks the tool allowlist and the cited approved answer, stores the sender-less outbound reply the message guard admits only for this finishing turn, and closes the turn."
+      "reason": "Rechecks current owner, enabled policy, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
     },
     "clinic_app.ai_front_desk_guard": {
       "discovery": {
@@ -10343,9 +10455,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54 table guard: reviewed answers only by a configuration.clinic administrator (author and approver binding, draft -> approved -> retired), the staff handoff_pending -> resolved transition, otherwise only the bridge marker of the row's own claimed message or turn; no delete or truncate. Real staff, foreign and inactive actors drive it in tests/ai/test_front_desk_guards.py."
+      "reason": "Pins reviewed-answer administrator authorship and approval, staff handoff resolution, and the current owned turn bridge for agent rows. Raw foreign or inactive staff, forged reply bindings, deletes and truncation refuse."
     },
     "clinic_app.ai_front_desk_pending": {
       "discovery": {
@@ -10376,9 +10492,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54: lists the pending turns of conversations the current ingest principal owns; staff and patient contexts see none."
+      "reason": "Lists pending turns only for the current authenticated inbox principal or matching verified portal messages session; unrelated staff and patient scopes get none."
     },
     "clinic_app.ai_front_desk_state": {
       "discovery": {
@@ -10409,9 +10529,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54: thread bookkeeping for the turn's owning principal (challenge, offer only on a verified thread with a future slot, clear, the closed handoff reasons)."
+      "reason": "Allows only the owning inbox principal or verified portal messages session to record closed challenge, clear, handoff and verified future-offer transitions."
     },
     "clinic_app.ai_front_desk_turn": {
       "discovery": {
@@ -10442,9 +10566,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54: claims one pending turn for its owning ingest principal under the enabled policy and returns closed facts plus the decrypted inbound text and the daily tool budget."
+      "reason": "Claims one pending owned turn under current A2 policy and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
     },
     "clinic_app.ai_front_desk_verify": {
       "discovery": {
@@ -10475,9 +10603,13 @@
         "test_knowledge_page_drafts_approves_and_retires_exact_versions",
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
-        "test_front_desk_sql_rechecks_inactive_and_foreign_actor"
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Todo 54 identity challenge: compares the date of birth of the thread's verified-contact enrollment server-side, at most three attempts, and on success mints a booking-only grant and session (30 minutes) issued in the name of the policy publisher; linked and unlinked threads behave the same."
+      "reason": "Compares a verified-contact inbox enrollment birth date server-side with a three-attempt bound, then mints only a short booking session. Portal callers refuse and cannot gain any new scope."
     },
     "clinic_app.ai_budget_usage": {
       "discovery": {
@@ -10535,11 +10667,6 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.ai_front_desk_enqueue",
-          "clinic_app.ai_front_desk_finish",
-          "clinic_app.ai_front_desk_state",
-          "clinic_app.ai_front_desk_turn",
-          "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_ledger_guard",
           "clinic_app.configuration_guard"
         ],
@@ -11252,6 +11379,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_audit_scope",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_pending",
@@ -11857,6 +11985,15 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_guard",
+          "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.billing_patient_charge",
           "clinic_app.billing_patient_charges",
           "clinic_app.comms_message_guard_v1",
@@ -12227,6 +12364,7 @@
         "resolvers": [
           "clinic_app.agent_audit",
           "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_front_desk_audit",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",

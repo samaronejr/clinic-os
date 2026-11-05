@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 from pytest_django.fixtures import SettingsWrapper
 
-from ai import test_front_desk, test_front_desk_guards, test_front_desk_views
+from ai import (
+    test_front_desk,
+    test_front_desk_guards,
+    test_front_desk_portal,
+    test_front_desk_views,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,6 +43,8 @@ def run_front_desk_census(
             test_front_desk.test_missing_answer_says_it_does_not_know_and_forwards,
             test_front_desk_views.test_handoff_page_lists_reasons_and_resolves_by_post_body,
             test_front_desk_guards.test_front_desk_sql_rechecks_inactive_and_foreign_actor,
+            test_front_desk_portal.test_verified_portal_books_only_after_accepting_the_exact_offer,
+            test_front_desk_portal.test_portal_without_booking_scope_cannot_gain_it_through_the_agent,
         ):
             with patch.context() as scoped:
                 proofs.run(oracle.__name__, partial(oracle, graph(), settings, scoped))
