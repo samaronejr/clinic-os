@@ -905,7 +905,9 @@ def test_https_probes_dispatch_the_injected_or_legacy_browser_probe(
     containers = {"database": "db", "release": "rel", "web": "web"}
     monkeypatch.setattr(https_probes, "inspect_https_runtime", lambda _p, _c: None)
     monkeypatch.setattr(https_probes, "configure_roles", lambda _c, _p: None)
-    monkeypatch.setattr(https_probes, "run_docker_command", lambda _a: "")
+    monkeypatch.setattr(
+        https_probes, "run_docker_command", lambda _a, *, timeout_seconds: ""
+    )
     monkeypatch.setattr(https_probes, "_probe_database_tls", lambda _c, _p: None)
     monkeypatch.setattr(https_probes, "_probe_https", lambda _p, _c: None)
     calls: list[str] = []
@@ -992,7 +994,9 @@ def _inert_https_boundaries(
     monkeypatch.setattr(https_stack_runtime, "_remove_volume", lambda _n: None)
     monkeypatch.setattr(https_probes, "inspect_https_runtime", lambda _p, _c: None)
     monkeypatch.setattr(https_probes, "configure_roles", lambda _c, _p: None)
-    monkeypatch.setattr(https_probes, "run_docker_command", lambda _a: "")
+    monkeypatch.setattr(
+        https_probes, "run_docker_command", lambda _a, *, timeout_seconds: ""
+    )
     monkeypatch.setattr(https_probes, "_probe_database_tls", lambda _c, _p: None)
     monkeypatch.setattr(https_probes, "_probe_https", lambda _p, _c: None)
     probe_calls: list[tuple[Path, str, JsonObject]] = []

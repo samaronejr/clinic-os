@@ -23,6 +23,8 @@ _MODEL_OPERATIONS = (
 
 
 class SchemaStateBatch(migrations.SeparateDatabaseAndState):
+    # For nullable hidden FKs with unchanged target keys, equivalence holds at
+    # delayed-registry consumption, not for every transient registry.
     """Render changed models once while retaining original database operations.
 
     These batches create plain models or change metadata and non-key scalar

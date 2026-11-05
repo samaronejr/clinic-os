@@ -1349,6 +1349,33 @@
     "volatility": "i",
     "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
   },
+  "pg_catalog.name(character varying)": {
+    "extension": "",
+    "implementation": "text_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+  },
+  "pg_catalog.name(character)": {
+    "extension": "",
+    "implementation": "bpchar_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+  },
+  "pg_catalog.name(text)": {
+    "extension": "",
+    "implementation": "text_name",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "i",
+    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+  },
   "pg_catalog.numeric(bigint)": {
     "extension": "",
     "implementation": "int8_numeric",
