@@ -25,13 +25,14 @@ _MODEL_OPERATIONS = (
 class SchemaStateBatch(migrations.SeparateDatabaseAndState):
     # For nullable hidden FKs with unchanged target keys, equivalence holds at
     # delayed-registry consumption, not for every transient registry.
-    """Render changed models once while retaining original database operations.
+    """Render changed field shapes while retaining original database operations.
 
     These batches create plain models or change metadata and non-key scalar
     fields on existing models. Added relationships belong to models created in
     the same batch. Existing relationships and key fields must remain unchanged.
     Historical ORM callbacks clear the delayed registry, as they do for the
-    existing tenant constraint operations.
+    existing tenant constraint operations. Constraint-only state changes are
+    rendered at that consumption boundary instead of rebuilding field shapes.
 
     Database operations still run one at a time against their own intermediate
     states. Each state re-renders only the model its operation changed, so the
@@ -40,8 +41,10 @@ class SchemaStateBatch(migrations.SeparateDatabaseAndState):
     """
 
     def state_forwards(self, app_label: str, state: ProjectState) -> None:
-        """Apply the complete state batch before refreshing changed models."""
-        _apply_and_render_changed(app_label, self.state_operations, state)
+        """Apply the state batch, deferring constraint-only registry refreshes."""
+        _apply_and_render_changed(
+            app_label, self.state_operations, state, defer_constraints=True
+        )
 
     def database_forwards(
         self,
@@ -86,7 +89,11 @@ def _following_state(
 
 
 def _apply_and_render_changed(
-    app_label: str, operations: Sequence[Operation], state: ProjectState
+    app_label: str,
+    operations: Sequence[Operation],
+    state: ProjectState,
+    *,
+    defer_constraints: bool = False,
 ) -> None:
     """Apply state changes without a registry, then render only changed models."""
     registry = state.__dict__.pop("apps", None)
@@ -94,7 +101,14 @@ def _apply_and_render_changed(
         operation.state_forwards(app_label, state)
     if registry is None:
         return
-    changed = {_changed_model(app_label, operation) for operation in operations}
+    changed = {
+        _changed_model(app_label, operation)
+        for operation in operations
+        if not defer_constraints
+        or not isinstance(
+            operation, (migrations.AddConstraint, migrations.RemoveConstraint)
+        )
+    }
     state.apps = registry
     with registry.bulk_update():
         for key in changed:
