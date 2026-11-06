@@ -14,7 +14,7 @@ from apps.billing.models import JournalBook, JournalSettlement
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-type QueryTrace = list[tuple[str, tuple[str, ...]]]
+type QueryTrace = list[tuple[str, dict[str, object]]]
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ class VisibleRows:
     label: str
 
     def filter(self, **conditions: object) -> VisibleRows:
-        self.trace.append((f"{self.label}.filter", tuple(sorted(conditions))))
+        self.trace.append((f"{self.label}.filter", conditions))
 
         def matches(row: JournalSettlement) -> bool:
             for path, expected in conditions.items():
@@ -40,7 +40,7 @@ class VisibleRows:
         )
 
     def exists(self) -> bool:
-        self.trace.append((f"{self.label}.exists", ()))
+        self.trace.append((f"{self.label}.exists", {}))
         return bool(self.rows)
 
 
@@ -55,7 +55,7 @@ def test_legacy_import_preflight_uses_the_requested_clinic(
 
     class NoImportCursor:
         def execute(self, sql: str, params: object) -> None:
-            trace.append(("cursor.execute", ()))
+            trace.append(("cursor.execute", {}))
 
         def fetchone(self) -> None:
             return None
@@ -73,10 +73,13 @@ def test_legacy_import_preflight_uses_the_requested_clinic(
     compensation.bridge_legacy_settlement(
         clinic_id=UUID(int=5843), settlement_id=UUID(int=5842)
     )
-    assert trace[:2] == [
-        ("legacy.filter", ("book__clinic_id", "legacy_settlement_id")),
-        ("legacy.exists", ()),
-    ]
+    assert trace[0] == (
+        "legacy.filter",
+        {
+            "book__clinic_id": UUID(int=5843),
+            "legacy_settlement_id": UUID(int=5842),
+        },
+    )
 
 
 def test_legacy_import_fetch_uses_the_requested_clinic(

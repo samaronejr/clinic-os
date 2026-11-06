@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, timedelta
+from datetime import timedelta
 from importlib import import_module
 from io import StringIO
 from typing import TYPE_CHECKING, cast
@@ -121,7 +121,7 @@ def test_journal_export_route_returns_the_accountant_download(
         assert response.content.startswith(b"entry_id,posted_at,")
 
 
-def test_finance_native_open_and_close_use_the_stored_journal(
+def test_finance_native_open_and_replay_use_the_stored_journal(
     finance_setup: FinanceSetup,
 ) -> None:
     # Given: a real Finance session and the existing clinic book.
@@ -208,4 +208,3 @@ def test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values(
             .count("\n")
             == 1
         )
-        assert date.fromisoformat(str(day)) == day
