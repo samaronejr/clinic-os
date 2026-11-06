@@ -1,0 +1,21 @@
+{
+  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "added_psp_python": [
+    "apps.billing.psp_gate.require_psp_rehearsal",
+    "apps.billing.psp_gate.require_psp_sandbox",
+    "apps.billing.psp_posting.apply_psp_evidence",
+    "apps.billing.psp_presentation.patient_psp_payment",
+    "apps.billing.psp_services.prepare_psp_charge",
+    "apps.billing.psp_services.prepare_psp_outgoing",
+    "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
+    "apps.billing.psp_storage.record_status",
+    "apps.billing.psp_storage.resolve_intent",
+    "apps.billing.psp_worker.PspSendAdapter.send",
+    "apps.billing.psp_worker._eligible"
+  ],
+  "preserved_existing_python_candidates": 824,
+  "changed_existing_python_candidates": [],
+  "preserved_existing_sql_classifications": 465,
+  "changed_existing_sql_classifications": [],
+  "role_calls_unchanged": true
+}

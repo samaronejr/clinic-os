@@ -1,0 +1,5 @@
+tests/billing/test_psp_adapter.py:186: error: Argument 1 to "StatementLine" has incompatible type "**dict[str, object]"; expected "str"  [arg-type]
+tests/billing/test_psp_adapter.py:186: error: Argument 1 to "StatementLine" has incompatible type "**dict[str, object]"; expected "int"  [arg-type]
+tests/billing/test_psp_adapter.py:186: error: Argument 1 to "StatementLine" has incompatible type "**dict[str, object]"; expected "Literal['charge', 'refund', 'payout']"  [arg-type]
+apps/billing/psp_worker.py:65: error: Returning Any from function declared to return "bool"  [no-any-return]
+Found 4 errors in 2 files (checked 2390 source files)

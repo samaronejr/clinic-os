@@ -1,0 +1,9 @@
+{
+  "synthetic": true,
+  "runtime_role": "clinic_app",
+  "timeout_decision": "unknown",
+  "held_status": "in_progress",
+  "recovery": "succeeded",
+  "remote_effects": 1,
+  "send_attempts": 1
+}

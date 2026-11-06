@@ -1,0 +1,2 @@
+apps/billing/psp_gate.py:54: error: Incompatible type for lookup 'pk': (got "UUID | None", expected "UUID | str")  [misc]
+Found 1 error in 1 file (checked 2393 source files)

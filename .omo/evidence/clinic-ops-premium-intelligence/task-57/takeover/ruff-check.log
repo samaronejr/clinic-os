@@ -1,0 +1,30 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/infra/test_resolver_catalog.py:1:1
+   |
+ 1 | / from typing import Final
+ 2 | |
+ 3 | | import pytest
+ 4 | | from django.db import connection
+ 5 | |
+ 6 | | from infra import (
+ 7 | |     comms_inbox_catalog,
+ 8 | |     coordination_catalog,
+ 9 | |     duplicate_catalog,
+10 | |     front_desk_catalog,
+11 | |     identity_lifecycle_catalog,
+12 | |     journal_catalog,
+13 | |     longitudinal_catalog,
+14 | |     orders_catalog,
+15 | |     portal_catalog,
+16 | |     portal_messages_catalog,
+17 | |     retention_catalog,
+18 | |     psp_catalog,
+19 | | )
+   | |_^
+20 |
+21 |   pytestmark = pytest.mark.django_db(transaction=True)
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

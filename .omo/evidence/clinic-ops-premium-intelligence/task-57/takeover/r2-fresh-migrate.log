@@ -1,0 +1,32 @@
+System check identified some issues:
+
+WARNINGS:
+ehr.Allergy: (models.W045) Check constraint 'allergy_description_required' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+ehr.Problem: (models.W045) Check constraint 'problem_description_required' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+identity.Clinic: (models.W045) Check constraint 'identity_clinic_timezone_nonblank' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+identity.ClinicConfiguration: (models.W045) Check constraint 'identity_config_queue_quotas_shape' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.ClinicIntakePolicy: (models.W045) Check constraint 'intake_policy_fields_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.DemographicsCorrection: (models.W045) Check constraint 'intake_demographics_correction_fields_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientAccessGrant: (models.W045) Check constraint 'intake_grant_operations_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientAccessGrant: (models.W045) Check constraint 'intake_grant_secret_hash_32_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientIdentifier: (models.W045) Check constraint 'intake_identifier_blind_index_32_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientSession: (models.W045) Check constraint 'intake_session_operations_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+Operations to perform:
+  Apply all migrations: admin, ai, audit, auth, billing, comms, consent, contenttypes, ehr, identity, intake, orders, otp_static, otp_totp, prescription, providers, retention, scheduling, scribe, sessions, teleconsult, tenancy, workflows
+Running migrations:
+  Applying billing.0012_sandbox_psp... OK
+  Applying orders.0005_patient_downloads... OK
+  Applying scribe.0005_note_drafts... OK
+  Applying sessions.0001_initial... OK
+  Applying workflows.0007_referral_backfill... OK
+  Applying workflows.0008_release_and_urgent... OK

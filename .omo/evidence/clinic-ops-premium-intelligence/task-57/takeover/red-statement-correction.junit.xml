@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="30.605" timestamp="2026-11-06T20:27:53.168431+00:00" hostname="pop-os"><testcase classname="tests.billing.test_psp_review" name="test_corrected_statement_at_the_same_provider_version_can_post" file="tests/billing/test_psp_review.py" line="117" time="30.263"><failure message="AssertionError: assert ('superseded',) == ('matched',)&#10;  &#10;  At index 0 diff: 'superseded' != 'matched'&#10;  Use -v to get more diff">tests/billing/test_psp_review.py:141: in test_corrected_statement_at_the_same_provider_version_can_post
+    assert reconcile_psp_statement(intent_id=intent.pk) == (decision,)
+E   AssertionError: assert ('superseded',) == ('matched',)
+E     
+E     At index 0 diff: 'superseded' != 'matched'
+E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

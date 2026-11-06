@@ -1,0 +1,10 @@
+{
+  "container": "cpi-t57-st01a1b176-pg",
+  "container_id": "4e56b56ac588892f1804661b7469e0bd9bacc1ac3da7d1d7d02342ca43b688b4",
+  "volume": "cpi-t57-st01a1b176-data",
+  "host": "127.0.0.1",
+  "host_port": 33033,
+  "owner": "st_01a1b176",
+  "container_memory": "3G",
+  "container_swap": "0"
+}

@@ -1,0 +1,22 @@
+{
+  "corrected_source_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "pre_fix_revision": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
+  "node": "tests/billing/test_psp_review.py::test_corrected_statement_at_the_same_provider_version_can_post",
+  "substitution": "in-memory migration SQL and posting module; no source-file edits",
+  "archived_source_sha256": {
+    "apps/billing/migrations/0012_sandbox_psp.py": "92bb34c435f9df0baf71a1658992a42b8510737003eb176e5a36920923e8de0b",
+    "apps/billing/migrations/_psp_guard_sql.py": "60df5d1452472fba0d144d900b512554027bffd753cca2c336fe9ca59e6178e7",
+    "apps/billing/psp_posting.py": "1ca05a2461d31566ca6100e224efa2e7f7919a99e3238a2303d9601bdb8763cd"
+  },
+  "pre_fix_guard_sql_sha256": "7bb2f31e1fd049a4a36da8e4be04d13b2435cdb63c848a356e285e42e67f33f2",
+  "pre_fix_migration_sql_sha256": "58ae6890ceafbd0155f5b1adb3e8ba3eda1512b2b0586c1008afb99800adfb87",
+  "posting_code_filename": "<git:7193de9245b32a5ec2c67b2c13ae5a0f2205921a:apps/billing/psp_posting.py>",
+  "rebound_aliases": [],
+  "database": "test_clinic",
+  "live_guard_owner": "clinic_resolver",
+  "live_pre_fix_guard_body_sha256": "a7ddff91b9b4c5785f3cd0c578dd2c9d9c9b28fe3f8f68996413ff3d3e2f0802",
+  "live_guard_matches_pre_fix": true,
+  "pytest_exit": 1,
+  "corrected_schema_restored": true,
+  "tracked_source_diff": ""
+}

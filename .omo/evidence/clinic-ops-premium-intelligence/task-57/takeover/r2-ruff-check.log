@@ -1,0 +1,45 @@
+PLR0913 Too many arguments in function definition (7 > 5)
+  --> tests/renewal/browser/test_billing_psp.py:71:5
+   |
+69 | @pytest.mark.parametrize("method", ["pix", "card"])
+70 | @pytest.mark.parametrize(("width", "javascript"), [(1280, True), (375, False)])
+71 | def test_recorded_psp_instructions_never_pay_until_a_sealed_receipt(
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+72 |     renewal_page: Page,
+73 |     renewal_base_url: str,
+   |
+
+E501 Line too long (93 > 88)
+   --> tests/renewal/browser/test_billing_psp.py:104:89
+    |
+102 |         instructions = page.locator("[data-psp-instructions]")
+103 |         expect(instructions).to_contain_text(
+104 |             gettext("Recorded sandbox rehearsal. No real payment or card data is collected.")
+    |                                                                                         ^^^^^
+105 |         )
+106 |         if method == "pix":
+    |
+
+E501 Line too long (96 > 88)
+   --> tests/renewal/browser/test_billing_psp.py:108:89
+    |
+106 |         if method == "pix":
+107 |             expect(page.locator("#recorded-psp-code")).to_have_value(
+108 |                 f"SYNTHETIC-NOT-PAYABLE|fixture-{prepared['intent'].replace('-', '')}|18000|BRL"
+    |                                                                                         ^^^^^^^^
+109 |             )
+110 |         else:
+    |
+
+E501 Line too long (89 > 88)
+   --> tests/renewal/browser/test_billing_psp.py:112:89
+    |
+110 |         else:
+111 |             expect(instructions.get_by_role("link")).to_have_attribute(
+112 |                 "href", f"https://payments.invalid/{prepared['intent'].replace('-', '')}"
+    |                                                                                         ^
+113 |             )
+114 |             expect(instructions).to_contain_text(
+    |
+
+Found 4 errors.

@@ -1,0 +1,3 @@
+.                                                                        [100%]
+REFUSAL_GUARD {"client_requests": 1, "elapsed_ns": 7050, "evaluated_requests": 1, "integrity_ns": 765313, "refusals": 0, "responses": 1, "trace_ns": 0, "violations": 0}
+1 passed in 2.93s

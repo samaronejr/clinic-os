@@ -1,0 +1,23 @@
+PT018 Assertion should be broken down into multiple parts
+  --> tests/billing/psp_broker_support.py:86:9
+   |
+84 |       if external is not None:
+85 |           endpoint = urlsplit(external)
+86 | /         assert (
+87 | |             endpoint.scheme == "redis"
+88 | |             and endpoint.hostname == "127.0.0.1"
+89 | |             and endpoint.port is not None
+90 | |             and endpoint.port != 6379
+91 | |             and endpoint.username is None
+92 | |             and endpoint.password is None
+93 | |             and endpoint.path == "/0"
+94 | |             and not endpoint.query
+95 | |             and not endpoint.fragment
+96 | |         ), "required PSP broker must be task-owned loopback Redis"
+   | |__________________________________________________________________^
+97 |           yield GateBroker(external)
+98 |           return
+   |
+help: Break down assertion into multiple parts
+
+Found 1 error.

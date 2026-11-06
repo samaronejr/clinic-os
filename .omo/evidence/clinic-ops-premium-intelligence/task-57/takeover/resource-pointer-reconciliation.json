@@ -1,0 +1,12 @@
+{
+  "authoritative_creation_receipt": "review-private-resource.json",
+  "retired_receipt_preserved": "initial-private-resource.json",
+  "container_id": "40285b870a790ec0e297436271d0a534186ec63d8d337fbc6c6c7b4d295112b9",
+  "owner": "st_01a1b176",
+  "host_port": 33027,
+  "private_runtime_port_matches": true,
+  "creation_credential_binding_matches": true,
+  "volume_identity_matches": true,
+  "cause": "attempt-prefixed up receipt did not refresh the stable cleanup pointer",
+  "repair": "publish a stable private-resource.json alongside attempt history"
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="8.531" timestamp="2026-11-06T16:01:31.998007+00:00" hostname="pop-os"><testcase classname="tests.billing.test_psp_review" name="test_financial_read_authority_cannot_fabricate_another_actors_evidence[clinic_manager]" time="4.977"><failure message="Failed: DID NOT RAISE DatabaseError">tests/billing/test_psp_review.py:103: in test_financial_read_authority_cannot_fabricate_another_actors_evidence
+    with pytest.raises(DatabaseError) as refused, transaction.atomic():
+E   Failed: DID NOT RAISE DatabaseError</failure></testcase><testcase classname="tests.billing.test_psp_review" name="test_financial_read_authority_cannot_fabricate_another_actors_evidence[owner]" time="3.170"><failure message="Failed: DID NOT RAISE DatabaseError">tests/billing/test_psp_review.py:103: in test_financial_read_authority_cannot_fabricate_another_actors_evidence
+    with pytest.raises(DatabaseError) as refused, transaction.atomic():
+E   Failed: DID NOT RAISE DatabaseError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,41 @@
+{
+  "todo": 57,
+  "status": "ready_for_native_gates",
+  "committed_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "branch": "ulw/cpi-e-t57-r2",
+  "source_clean": true,
+  "staged_tree": "640557d398505b946326971f9d478931196802a4",
+  "canonical_clone": "/home/samarone/.c9/t57-st01a1b176",
+  "canonical_clone_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "canonical_source_receipt": "canonical-source.json",
+  "canonical_source_refresh": "Git only; no ledger admission or browser gate ran",
+  "browser_evidence_head": null,
+  "browser_gate": "deferred-to-host-quiet-batch",
+  "browser_suites": [
+    "billing",
+    "locale"
+  ],
+  "browser_engines": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
+  "refused_browser_attempt": "canonical-billing-chromium.log",
+  "refused_browser_unit": "browser-refused-unit-readback.txt",
+  "native_R": "deferred-to-host-quiet-batch",
+  "upgrade": "excluded-by-Root",
+  "review": "native production fixes confirmed; T57-R2-B1 red proof supplied",
+  "serial_summary": "serial-summary.json",
+  "affected_summary": "affected-summary.json",
+  "cleanup": "cleanup-receipt.json",
+  "runtime_equivalence": "component-source-reuse.json",
+  "DoneClaim": "../DoneClaim.json",
+  "external_provider_gates": [
+    "BLOCKED-ON-EG-1",
+    "BLOCKED-ON-EG-5"
+  ],
+  "review_report": "../gate-review-r2.md",
+  "statement_regression": "statement-red-green.json",
+  "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R"
+}

@@ -1,0 +1,31 @@
+{
+  "committed_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "parent": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "qualified_tree": "640557d398505b946326971f9d478931196802a4",
+  "required_artifacts_present": true,
+  "selected_checks_passing": 23,
+  "ci_serial_unique_passed": 109,
+  "affected_unique_passed": 366,
+  "owned_runtime_cleanup_complete": true,
+  "private_runtime_file_absent": true,
+  "new_artifacts_private_credential_leaks": [],
+  "browser_and_R": "deferred-to-host-quiet-batch",
+  "root_source_approval": "Native review confirmed both production fixes; evidence-only finding T57-R2-B1 now has the requested red proof.",
+  "statement_regression": {
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "failed_tests": 1,
+    "errors": 0,
+    "reason": "superseded instead of matched",
+    "paired_green": "takeover/statement-red-green.json",
+    "production_source_unchanged": true,
+    "corrected_schema_restored": true
+  },
+  "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R",
+  "evidence_package": {
+    "public_files_excluding_manifest": 162,
+    "bytes_scanned": 2667646,
+    "private_password_leaks": [],
+    "generated_caches_excluded": true
+  }
+}

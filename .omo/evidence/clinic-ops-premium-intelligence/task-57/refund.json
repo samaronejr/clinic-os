@@ -1,0 +1,11 @@
+{
+  "synthetic": true,
+  "runtime_role": "clinic_app",
+  "authenticated_callback": "verified",
+  "replayed_callback": "duplicate",
+  "refund_callback_facts": 1,
+  "refund_entries": 1,
+  "linked_repasse_reversals": 1,
+  "refund_minor": 5000,
+  "repasse_reversed_minor": 1500
+}

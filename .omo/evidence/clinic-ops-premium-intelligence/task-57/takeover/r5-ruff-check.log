@@ -1,0 +1,12 @@
+D401 First line of docstring should be in imperative mood: "New effects need the current version; lookups retain the approved binding."
+  --> apps/billing/psp_gate.py:48:5
+   |
+46 |     lookup_only: bool = False,
+47 | ) -> CapabilityVersion:
+48 |     """New effects need the current version; lookups retain the approved binding."""
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+49 |     require_psp_rehearsal()
+50 |     if method not in CAPABILITY_KEYS or (lookup_only and version_id is None):
+   |
+
+Found 1 error.

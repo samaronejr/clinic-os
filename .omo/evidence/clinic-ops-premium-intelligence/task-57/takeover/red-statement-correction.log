@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_corrected_statement_at_the_same_provider_version_can_post ________
+tests/billing/test_psp_review.py:141: in test_corrected_statement_at_the_same_provider_version_can_post
+    assert reconcile_psp_statement(intent_id=intent.pk) == (decision,)
+E   AssertionError: assert ('superseded',) == ('matched',)
+E     
+E     At index 0 diff: 'superseded' != 'matched'
+E     Use -v to get more diff
+REFUSAL_GUARD {"client_requests": 0, "elapsed_ns": 5320, "evaluated_requests": 0, "integrity_ns": 775523, "refusals": 0, "responses": 0, "trace_ns": 0, "violations": 0}
+=========================== short test summary info ============================
+FAILED tests/billing/test_psp_review.py::test_corrected_statement_at_the_same_provider_version_can_post
+1 failed in 30.36s

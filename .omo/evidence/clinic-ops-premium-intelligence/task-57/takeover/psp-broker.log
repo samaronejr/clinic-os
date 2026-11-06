@@ -1,0 +1,28 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicate _
+.venv/lib/python3.12/site-packages/celery/backends/asynchronous.py:397: in _wait_for_pending
+    for _ in self.drain_events_until(
+.venv/lib/python3.12/site-packages/celery/backends/asynchronous.py:86: in drain_events_until
+    raise socket.timeout()
+E   TimeoutError
+
+During handling of the above exception, another exception occurred:
+tests/billing/test_psp_broker.py:117: in test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicate
+    assert result.get(timeout=90) == "succeeded"
+           ^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/celery/result.py:253: in get
+    return self.backend.wait_for_pending(
+.venv/lib/python3.12/site-packages/celery/backends/asynchronous.py:298: in wait_for_pending
+    for _ in self._wait_for_pending(result, **kwargs):
+.venv/lib/python3.12/site-packages/celery/backends/asynchronous.py:403: in _wait_for_pending
+    raise TimeoutError('The operation timed out.')
+E   celery.exceptions.TimeoutError: The operation timed out.
+----------------------------- Captured stderr call -----------------------------
+{"level": "warning", "logger": "kombu.connection", "message": "[unlisted]", "timestamp": "2026-11-06T16:17:29.099952Z"}
+------------------------------ Captured log call -------------------------------
+WARNING  kombu.connection:connection.py:671 No hostname was supplied. Reverting to default 'localhost'
+REFUSAL_GUARD {"client_requests": 0, "elapsed_ns": 5190, "evaluated_requests": 0, "integrity_ns": 767123, "refusals": 0, "responses": 0, "trace_ns": 0, "violations": 0}
+=========================== short test summary info ============================
+FAILED tests/billing/test_psp_broker.py::test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicate
+1 failed in 98.93s (0:01:38)

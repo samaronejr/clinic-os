@@ -1,0 +1,570 @@
+{
+  "schema_version": 1,
+  "todo": 57,
+  "date": "2026-11-06T19:52:20.257Z",
+  "status": "ready_for_native_gates",
+  "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R",
+  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "original_base_commit": "ae1b3e4cc8dc0557abf7fb2db8b4e9599099b6ff",
+  "branch": "ulw/cpi-e-t57-r2",
+  "worktree": "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2",
+  "committed_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "commits": [
+    "6a3c7666c9eb5f7736d21afa58e2a7be95425876"
+  ],
+  "staged_tree": "640557d398505b946326971f9d478931196802a4",
+  "source_clean": true,
+  "canonical_clone": "/home/samarone/.c9/t57-st01a1b176",
+  "browser_evidence_head": null,
+  "browser_reports": [],
+  "browser_total_tests": 0,
+  "checks": {
+    "review-fresh-migrate": {
+      "time": "2026-11-06T16:08:47.738622+00:00",
+      "name": "review-fresh-migrate",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "migrate",
+        "--noinput"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/review-fresh-migrate.log"
+    },
+    "review-django-check": {
+      "time": "2026-11-06T16:08:48.852467+00:00",
+      "name": "review-django-check",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "check"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/review-django-check.log"
+    },
+    "review-migration-drift": {
+      "time": "2026-11-06T16:08:50.290799+00:00",
+      "name": "review-migration-drift",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "makemigrations",
+        "--check",
+        "--dry-run"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/review-migration-drift.log"
+    },
+    "review-db-posture": {
+      "time": "2026-11-06T16:08:50.398890+00:00",
+      "name": "review-db-posture",
+      "argv": [
+        "make",
+        "db-posture"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/review-db-posture.log"
+    },
+    "integrated-ruff-check": {
+      "time": "2026-11-06T18:50:09.517406+00:00",
+      "name": "integrated-ruff-check",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "check",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/integrated-ruff-check.log"
+    },
+    "integrated-ruff-format": {
+      "time": "2026-11-06T18:50:09.553040+00:00",
+      "name": "integrated-ruff-format",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "format",
+        "--check",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/integrated-ruff-format.log"
+    },
+    "integrated-mypy": {
+      "time": "2026-11-06T18:50:13.661665+00:00",
+      "name": "integrated-mypy",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/mypy",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/integrated-mypy.log"
+    },
+    "role-ruff-check": {
+      "time": "2026-11-06T19:18:31.725751+00:00",
+      "name": "role-ruff-check",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "check",
+        "tests/billing/test_psp_review.py"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/role-ruff-check.log"
+    },
+    "role-ruff-format": {
+      "time": "2026-11-06T19:18:31.734201+00:00",
+      "name": "role-ruff-format",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "format",
+        "--check",
+        "tests/billing/test_psp_review.py"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/role-ruff-format.log"
+    },
+    "role-mypy": {
+      "time": "2026-11-06T19:18:33.242630+00:00",
+      "name": "role-mypy",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/mypy",
+        "tests/billing/test_psp_review.py"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/role-mypy.log"
+    },
+    "affected": {
+      "time": "2026-11-06T19:18:22.156705+00:00",
+      "name": "affected",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_adapter.py",
+        "tests/billing/test_psp_outbox.py",
+        "tests/billing/test_psp_patient.py",
+        "tests/billing/test_psp_policy.py",
+        "tests/billing/test_psp_posture.py",
+        "tests/billing/test_psp_reconciliation.py",
+        "tests/billing/test_psp_refunds.py",
+        "tests/billing/test_psp_review.py",
+        "tests/billing/test_psp_statement.py",
+        "tests/renewal/test_invoices.py",
+        "tests/renewal/test_live_activation.py",
+        "tests/identity/test_sql_guard_inventory.py",
+        "tests/infra/test_module_boundaries.py",
+        "tests/infra/test_resolver_catalog.py",
+        "tests/infra/test_schema_policy.py",
+        "tests/infra/test_recovery_manifest.py",
+        "tests/isolation/test_backup_restore_guard.py",
+        "tests/audit/test_phase1_audit_contract.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/affected.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/affected-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/affected.log"
+    },
+    "serial-census-retry": {
+      "time": "2026-11-06T19:08:44.181908+00:00",
+      "name": "serial-census-retry",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/serial-census-retry.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/serial-census-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/serial-census-retry.log"
+    },
+    "reader-writer-regression": {
+      "time": "2026-11-06T19:19:57.988624+00:00",
+      "name": "reader-writer-regression",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_review.py::test_financial_read_authority_cannot_fabricate_another_actors_evidence",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/reader-writer-regression.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/role-review-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/reader-writer-regression.log"
+    },
+    "broker-r3-psp-broker": {
+      "time": "2026-11-06T16:23:17.825590+00:00",
+      "name": "broker-r3-psp-broker",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_broker.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/psp-broker.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/replay-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/broker-r3-psp-broker.log"
+    },
+    "manual-qa": {
+      "time": "2026-11-06T16:27:02.013256+00:00",
+      "name": "manual-qa",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/qa_runner.py",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/manual_qa.py",
+        "--reuse-db",
+        "-q",
+        "-s",
+        "--tb=short",
+        "--no-showlocals",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/manual-qa.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/qa-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/manual-qa.log"
+    },
+    "manual-qa-refund": {
+      "time": "2026-11-06T16:35:29.015908+00:00",
+      "name": "manual-qa-refund",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/qa_runner.py",
+        "-q",
+        "--reuse-db",
+        "--tb=short",
+        "--no-showlocals",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/manual_qa.py::test_manual_authenticated_refund_replay_has_one_linked_reversal",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/manual-qa-refund.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/qa-refund-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/manual-qa-refund.log"
+    },
+    "native-presentation": {
+      "time": "2026-11-06T16:36:52.565891+00:00",
+      "name": "native-presentation",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "tests/billing/test_psp_patient.py::test_native_psp_partial_labels_nonpayable_instructions_and_installments",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/native-presentation.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/presentation-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/native-presentation.log"
+    },
+    "psp-signature-pins": {
+      "time": "2026-11-06T16:51:38.611385+00:00",
+      "name": "psp-signature-pins",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "tests/infra/test_module_boundaries.py::test_psp_human_boundaries_derive_authority_from_current_context",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/psp-signature-pins.junit.xml"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/psp-signature-pins.log"
+    },
+    "dependency-audit": {
+      "time": "2026-11-06T16:16:08.677922+00:00",
+      "name": "dependency-audit",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/pip-audit",
+        "--local"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/dependency-audit.log"
+    },
+    "discovery": {
+      "time": "2026-11-06T18:44:34.092495+00:00",
+      "name": "discovery",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/generate_psp_inventory.py"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/discovery.log"
+    },
+    "commit": {
+      "time": "2026-11-06T19:30:29.835081+00:00",
+      "name": "commit",
+      "argv": [
+        "git",
+        "commit",
+        "-F",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/COMMIT_MESSAGE.txt"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/commit.log"
+    },
+    "remove-private-postgres": {
+      "time": "2026-11-06T19:44:07.812844+00:00",
+      "name": "remove-private-postgres",
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "cpi-t57-st01a1b176-pg"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/remove-private-postgres.log"
+    },
+    "remove-private-volume": {
+      "time": "2026-11-06T19:44:08.704520+00:00",
+      "name": "remove-private-volume",
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "cpi-t57-st01a1b176-data"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "takeover/remove-private-volume.log"
+    }
+  },
+  "targeted_cases": {
+    "qualified_unique_affected": 366,
+    "affected_run": 365,
+    "strengthened_reader_owner_collector_run": 3,
+    "ci_serial_unique": 109,
+    "ci_serial_prefixes": 18,
+    "serial_summary": "takeover/serial-summary.json",
+    "affected_summary": "takeover/affected-summary.json",
+    "current_failures": 0,
+    "current_errors": 0,
+    "current_skips": 0
+  },
+  "dependency_sync": {
+    "status": "passed",
+    "command": "uv sync --locked --all-groups; manage.py compilemessages -l pt_BR",
+    "observed_exit": 0,
+    "evidence": "retained task tool transcript: DEPS_AND_MESSAGES_PASS"
+  },
+  "discovery": {
+    "receipt": "takeover/discovery-receipt.json",
+    "base_preservation": "takeover/base-preservation.json",
+    "added_python": 11,
+    "added_sql": 7,
+    "preserved_base_python": 824,
+    "preserved_base_sql_classifications": 465,
+    "domain_relations": 223,
+    "unclassified": [],
+    "stale_entries": []
+  },
+  "live_catalog": {
+    "path": "takeover/live-catalog.json",
+    "origin": "fresh PostgreSQL 16.14 live catalog",
+    "domain_relations": 223
+  },
+  "manual_qa": {
+    "report": "Manual-QA.md",
+    "passing_probes": 4,
+    "happy": "pix.json",
+    "timeout": "timeout.json",
+    "refund_replay": "refund.json",
+    "adversarial": "adversarial.json",
+    "broker": "takeover/broker-r3-psp-broker.log"
+  },
+  "heavy_run_limits": {
+    "systemd_MemoryMax": "12G",
+    "systemd_MemorySwapMax": 0,
+    "postgres_memory": "3G",
+    "postgres_swap": 0,
+    "redis_memory": "256M",
+    "redis_swap": 0,
+    "active_unit_readbacks": "takeover/*-unit.txt"
+  },
+  "privacy": {
+    "data": "synthetic fixtures only",
+    "raw_callback_authenticated_before_scope": true,
+    "payload_tenant_ignored": true,
+    "audit_outbox_logs_sentinel_free": true,
+    "private_runtime_password_scan": "takeover/cleanup-receipt.json",
+    "private_runtime_password_leaks": []
+  },
+  "cleanup": {
+    "owner": "st_01a1b176",
+    "postgres_container_id": "4e56b56ac588892f1804661b7469e0bd9bacc1ac3da7d1d7d02342ca43b688b4",
+    "postgres_removed": true,
+    "volume_removed": true,
+    "runtime_secrets_removed": true,
+    "temporary_evidence_directories_removed": [
+      "review-temp"
+    ],
+    "remaining_owned_containers": [],
+    "private_password_scan_checked_files": 163,
+    "private_password_scan_leaks": [],
+    "receipt": "takeover/cleanup-receipt.json",
+    "identity_reconciliation": "takeover/resource-pointer-reconciliation.json",
+    "canonical_clone_retained": "source and refused-attempt evidence for Root batch",
+    "native_monitor_disposition": "Root explicitly allowed the native subscriptions to expire",
+    "regression_runtime_removed": true
+  },
+  "external_provider_gates": {
+    "psp_pix": "BLOCKED-ON-EG-1/EG-5",
+    "psp_card": "BLOCKED-ON-EG-1/EG-5",
+    "environment": "recorded sandbox only",
+    "real_enabled": false,
+    "live_data_approval_claimed": false
+  },
+  "native_gates": {
+    "browser": "deferred-to-host-quiet-batch",
+    "R": "deferred-to-host-quiet-batch",
+    "full_coverage_and_full_sink_scan": "Belong to the deferred native R.",
+    "migration_upgrade": "excluded-by-Root"
+  },
+  "visual_inspection": {
+    "status": "deferred-to-host-quiet-batch",
+    "native_instruction_cases_passed": 3,
+    "note": "No three-engine or desktop/mobile visual approval is claimed."
+  },
+  "review": {
+    "verdict": "needs-fix-evidence-only; missing red proof now supplied",
+    "resolution": "SOURCE_REVIEW_RESOLUTION.md",
+    "resolved": [
+      "stored-actor-only evidence and binding writes",
+      "same-version corrected statements without suppressing newer reversals",
+      "lookup-only recovery using the original approved sandbox version"
+    ],
+    "strong_role_proof": "takeover/reader-writer-regression.junit.xml",
+    "independent_approval_claimed": false,
+    "report": "gate-review-r2.md",
+    "production_fixes_confirmed_by_native_review": true,
+    "evidence_finding": {
+      "id": "T57-R2-B1",
+      "status": "requested-red-proof-recorded",
+      "proof": "takeover/statement-red-green.json"
+    }
+  },
+  "rollback": {
+    "migration": "billing.0012_sandbox_psp",
+    "strategy": "forward-only additive schema; retain immutable money facts and disable rehearsal configuration",
+    "upgrade_gate_run": false
+  },
+  "runtime_equivalence": "takeover/component-source-reuse.json",
+  "history": {
+    "preserved_october_wip": "wip/cpi-e-t57-oct",
+    "component_checkpoint": "68fb3ad73ae18d39d4666bae5de2ee86670ee5da",
+    "refused_browser_head": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
+    "refused_browser_log": "takeover/canonical-billing-chromium.log",
+    "red_guard_proof": "takeover/red-evidence-authority.log",
+    "resolved_serial_fixture_error": "takeover/serial-summary.json",
+    "resolved_cleanup_pointer_error": "takeover/resource-pointer-reconciliation.json",
+    "broad_pre_review": {
+      "passed": 3010,
+      "optional_broker_skipped": 1,
+      "receipt": {
+        "time": "2026-11-06T15:58:43.958655+00:00",
+        "name": "r2-targeted",
+        "argv": [
+          "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+          "-m",
+          "pytest",
+          "--reuse-db",
+          "-q",
+          "--tb=short",
+          "--no-showlocals",
+          "tests/billing",
+          "tests/renewal/test_invoices.py",
+          "tests/renewal/test_billing_views.py",
+          "tests/renewal/test_payment_reconciliation.py",
+          "tests/renewal/test_pix_adapter.py",
+          "tests/renewal/test_live_activation.py::test_live_preflight_rejects_invalid_environment",
+          "tests/renewal/test_browser_runner.py",
+          "tests/renewal/test_action_operations.py",
+          "tests/renewal/test_integration_boundary.py",
+          "tests/infra/test_schema_policy.py",
+          "tests/infra/test_resolver_catalog.py",
+          "tests/infra/test_module_boundaries.py",
+          "tests/infra/test_recovery_manifest.py",
+          "tests/audit/test_phase1_audit_contract.py",
+          "tests/isolation/test_backup_restore_guard.py",
+          "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/targeted.junit.xml",
+          "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/pytest-temp"
+        ],
+        "exit": 0,
+        "expected_exit": 0,
+        "log": "takeover/r2-targeted.log"
+      },
+      "source_checkpoint": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
+      "reused_unchanged_harness_paths": [
+        "ops/testing/renewal_runner.py",
+        "apps/core/integration.py",
+        "apps/comms/adapters.py",
+        "tests/renewal/test_browser_runner.py",
+        "tests/renewal/test_action_operations.py",
+        "tests/renewal/test_integration_boundary.py"
+      ],
+      "note": "Current PSP acceptance uses the 366-case affected and 109-case serial qualifications; the required broker variant passed separately."
+    }
+  },
+  "remaining_implementation_blockers": [],
+  "implementation_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "evidence_only_update": {
+    "date": "2026-11-06T20:34:46.533Z",
+    "finding": "T57-R2-B1",
+    "production_source_unchanged": true,
+    "source_basis": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+    "proof": "takeover/statement-red-green.json",
+    "red_exit": 1,
+    "expected_exit": 1,
+    "red_output": "F                                                                        [100%]\n=================================== FAILURES ===================================\n________ test_corrected_statement_at_the_same_provider_version_can_post ________\ntests/billing/test_psp_review.py:141: in test_corrected_statement_at_the_same_provider_version_can_post\n    assert reconcile_psp_statement(intent_id=intent.pk) == (decision,)\nE   AssertionError: assert ('superseded',) == ('matched',)\nE     \nE     At index 0 diff: 'superseded' != 'matched'\nE     Use -v to get more diff\nREFUSAL_GUARD {\"client_requests\": 0, \"elapsed_ns\": 5320, \"evaluated_requests\": 0, \"integrity_ns\": 775523, \"refusals\": 0, \"responses\": 0, \"trace_ns\": 0, \"violations\": 0}\n=========================== short test summary info ============================\nFAILED tests/billing/test_psp_review.py::test_corrected_statement_at_the_same_provider_version_can_post\n1 failed in 30.36s\n",
+    "green_receipts": [
+      "takeover/affected.junit.xml",
+      "takeover/green-review.junit.xml"
+    ],
+    "green_rerun": false
+  }
+}

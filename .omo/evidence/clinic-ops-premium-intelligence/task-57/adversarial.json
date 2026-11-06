@@ -1,0 +1,17 @@
+{
+  "synthetic": true,
+  "runtime_role": "clinic_app",
+  "forged_callback_pre_scope_refused": true,
+  "payload_tenant_ignored": true,
+  "replay": "duplicate",
+  "cross_org_tables_denied": [
+    "billing_pspbinding",
+    "billing_pspevidence",
+    "billing_pspintent",
+    "billing_psppolicy",
+    "billing_pspreceipt"
+  ],
+  "runtime_delete_truncate_denied": true,
+  "privileged_delete_trigger_denied": true,
+  "audit_outbox_logs_sentinel_free": true
+}

@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "affected_run": {
+    "tests": 365,
+    "junit": "affected.junit.xml"
+  },
+  "strengthened_role_run": {
+    "tests": 3,
+    "junit": "reader-writer-regression.junit.xml",
+    "roles": [
+      "clinic_manager",
+      "owner",
+      "finance"
+    ]
+  },
+  "unique_passed_tests": 366,
+  "errors": 0,
+  "failures": 0,
+  "skipped": 0
+}

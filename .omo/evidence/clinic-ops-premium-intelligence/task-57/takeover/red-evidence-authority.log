@@ -1,0 +1,15 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_financial_read_authority_cannot_fabricate_another_actors_evidence[clinic_manager] _
+tests/billing/test_psp_review.py:103: in test_financial_read_authority_cannot_fabricate_another_actors_evidence
+    with pytest.raises(DatabaseError) as refused, transaction.atomic():
+E   Failed: DID NOT RAISE DatabaseError
+_ test_financial_read_authority_cannot_fabricate_another_actors_evidence[owner] _
+tests/billing/test_psp_review.py:103: in test_financial_read_authority_cannot_fabricate_another_actors_evidence
+    with pytest.raises(DatabaseError) as refused, transaction.atomic():
+E   Failed: DID NOT RAISE DatabaseError
+REFUSAL_GUARD {"client_requests": 0, "elapsed_ns": 6190, "evaluated_requests": 0, "integrity_ns": 1180207, "refusals": 0, "responses": 0, "trace_ns": 0, "violations": 0}
+=========================== short test summary info ============================
+FAILED tests/billing/test_psp_review.py::test_financial_read_authority_cannot_fabricate_another_actors_evidence[clinic_manager]
+FAILED tests/billing/test_psp_review.py::test_financial_read_authority_cannot_fabricate_another_actors_evidence[owner]
+2 failed in 8.26s

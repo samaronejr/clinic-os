@@ -1,0 +1,8 @@
+{
+  "container": "cpi-t57-st01a1b176-redis",
+  "container_id": "4797ef0c3d32b185c41e56c11ce8650455c30c2f8760a922eae87722cc843bf0",
+  "owner": "st_01a1b176",
+  "host_port": 33030,
+  "memory_bytes": 268435456,
+  "swap_bytes": 0
+}

@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "runtime_role": "clinic_app",
+  "created_instructions_state": "pending",
+  "instructions_created_receipt": false,
+  "receipts": 1,
+  "collection_entries": 1,
+  "statement_reimport": "duplicate",
+  "balances_minor": {
+    "bank": 9900,
+    "psp_clearing": 0,
+    "psp_fees": 100,
+    "practitioner_payables": -3000
+  }
+}

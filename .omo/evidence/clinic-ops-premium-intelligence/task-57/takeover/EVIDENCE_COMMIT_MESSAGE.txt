@@ -1,0 +1,19 @@
+test(billing): record pre-fix PSP statement regression
+
+Close the native review's evidence-only finding T57-R2-B1. The earlier
+capture demonstrated the authority defect but lacked a failing run for
+same-version statement correction.
+
+Load the archived migration guard and posting owner only in the isolated
+test process. The unchanged regression fails with superseded instead of
+matched; record its exit and full output and pair the existing green runs.
+Bind the live guard to its archived body, restore the corrected schema,
+and remove the dedicated runtime without changing production or tests.
+
+Constraint: Evidence only; production and tests remain byte-identical to 6a3c7666.
+Rejected: Editing the regression or checking out old source | substitute archived owners only in the dedicated test process.
+Confidence: high
+Scope-risk: low
+Directive: Keep the lane serial scope at 18 required selectors and 109 tests; full CI-serial, browser and native R remain deferred to Root.
+Tested: Expected pre-fix regression failure with exit 1; live schema identity and restoration; existing corrected-source green receipts; unchanged tracked source; owned-runtime cleanup and private-password scans.
+Not-tested: No green, serial, browser or full native R runs were repeated.

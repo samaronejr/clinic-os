@@ -1,0 +1,254 @@
+System check identified some issues:
+
+WARNINGS:
+ehr.Allergy: (models.W045) Check constraint 'allergy_description_required' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+ehr.Problem: (models.W045) Check constraint 'problem_description_required' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+identity.Clinic: (models.W045) Check constraint 'identity_clinic_timezone_nonblank' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+identity.ClinicConfiguration: (models.W045) Check constraint 'identity_config_queue_quotas_shape' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.ClinicIntakePolicy: (models.W045) Check constraint 'intake_policy_fields_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.DemographicsCorrection: (models.W045) Check constraint 'intake_demographics_correction_fields_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientAccessGrant: (models.W045) Check constraint 'intake_grant_operations_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientAccessGrant: (models.W045) Check constraint 'intake_grant_secret_hash_32_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientIdentifier: (models.W045) Check constraint 'intake_identifier_blind_index_32_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+intake.PatientSession: (models.W045) Check constraint 'intake_session_operations_check' contains RawSQL() expression and won't be validated during the model full_clean().
+	HINT: Silence this warning if you don't care about it.
+Operations to perform:
+  Apply all migrations: admin, ai, audit, auth, billing, comms, consent, contenttypes, ehr, identity, intake, orders, otp_static, otp_totp, prescription, providers, retention, scheduling, scribe, sessions, teleconsult, tenancy, workflows
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0001_initial... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying identity.0001_initial... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying tenancy.0001_initial... OK
+  Applying identity.0002_userclinicrole_org_clinic_fk... OK
+  Applying tenancy.0002_rls_and_resolvers... OK
+  Applying otp_totp.0001_initial... OK
+  Applying otp_totp.0002_auto_20190420_0723... OK
+  Applying otp_totp.0003_add_timestamps... OK
+  Applying identity.0003_totp_device_rls... OK
+  Applying identity.0004_current_actor_acl_and_physician_catalog... OK
+  Applying identity.0005_clinic_timezone... OK
+  Applying intake.0001_patient_and_enrollment... OK
+  Applying scheduling.0001_availability_block... OK
+  Rendering model states... DONE
+  Applying audit.0001_initial... OK
+  Applying audit.0002_audit_append... OK
+  Applying audit.0003_immutability_and_verification... OK
+  Applying audit.0004_raw_audit_string_boundaries... OK
+  Applying audit.0005_clinic_metadata_v2... OK
+  Applying scheduling.0002_appointment... OK
+  Rendering model states... DONE
+  Applying intake.0002_contacts_and_preferences... OK
+  Applying intake.0003_patient_access... OK
+  Applying intake.0004_questionnaires... OK
+  Applying intake.0005_booking_operation... OK
+  Applying scheduling.0003_patient_booking... OK
+  Applying intake.0006_remove_patientchannelpreference_intake_preference_purpose_check_and_more... OK
+  Applying scheduling.0004_waitlistentry_waitlistoffer_and_more... OK
+  Applying tenancy.0003_tenant_envelope... OK
+  Applying intake.0007_records_operation... OK
+  Applying intake.0008_remove_patientaccessgrant_intake_grant_operations_check_and_more... OK
+  Applying intake.0009_teleconsult_operation... OK
+  Applying ehr.0001_initial... OK
+  Applying ehr.0002_clinical_policy... OK
+  Applying ehr.0003_longitudinal_history... OK
+  Applying ehr.0004_history_policy... OK
+  Applying ehr.0005_clinical_attachment... OK
+  Applying ehr.0006_attachment_policy... OK
+  Applying ehr.0007_version_finalization... OK
+  Applying ehr.0008_finalization_policy... OK
+  Applying identity.0006_physician_verification... OK
+  Applying identity.0007_physician_verification_policy... OK
+  Applying intake.0010_remove_patientaccessgrant_intake_grant_operations_check_and_more... OK
+  Applying tenancy.0004_protected_fields... OK
+  Applying intake.0011_protected_fields... OK
+  Rendering model states... DONE
+  Applying identity.0008_clinic_configuration... OK
+  Applying consent.0001_initial... OK
+  Applying consent.0002_consent_policy... OK
+  Applying identity.0009_clinic_configuration_policy... OK
+  Applying comms.0001_integration_operation... OK
+  Applying comms.0002_integrationoperation_not_before_appointmentreminder... OK
+  Applying comms.0003_video_channel... OK
+  Applying identity.0010_configuration_reminder_schedule... OK
+  Applying identity.0011_user_preference... OK
+  Applying identity.0012_queue_quotas... OK
+  Applying identity.0013_permission_bundles... OK
+  Applying scheduling.0005_resources_templates... OK
+  Applying scheduling.0006_capacity_insert_authorization... OK
+  Applying tenancy.0005_active_tenant_actor... OK
+  Applying tenancy.0006_runtime_pooling... OK
+  Applying tenancy.0007_blind_indexes... OK
+  Applying intake.0012_patient_name_index... OK
+  Applying intake.0013_patient_demographics... OK
+  Applying identity.0014_service_principals... OK
+  Applying identity.0015_saved_views... OK
+  Applying identity.0016_task_workflows... OK
+  Applying comms.0004_pending_recovery... OK
+  Applying comms.0005_operation_state_counts... OK
+  Applying comms.0006_action_operations... OK
+  Applying workflows.0001_task_workflows... OK
+  Applying workflows.0002_predecessor_eligibility... OK
+  Applying workflows.0003_execution_receipts_and_retry... OK
+  Applying workflows.0004_task_completion_gate... OK
+  Applying otp_static.0001_initial... OK
+  Applying otp_static.0002_throttling... OK
+  Applying otp_static.0003_add_timestamps... OK
+  Applying identity.0017_workflow_bundle_subtractions... OK
+  Applying identity.0018_signup... OK
+  Applying identity.0019_identity_lifecycle... OK
+  Applying identity.0020_lifecycle_writer_authority... OK
+  Applying identity.0021_invitation_claim_type... OK
+  Applying identity.0022_lifecycle_surface_scope... OK
+  Applying identity.0023_authenticator_verification_metadata... OK
+  Applying identity.0024_lifecycle_function_privileges... OK
+  Applying identity.0025_offboarding_internal_reader... OK
+  Applying identity.0026_session_rotation_cause... OK
+  Applying identity.0027_session_revoke_scope... OK
+  Applying identity.0028_savedview_current_membership... OK
+  Applying identity.0029_physician_current_membership... OK
+  Applying identity.0030_workflow_current_membership... OK
+  Applying identity.0031_cut2_current_membership... OK
+  Applying ehr.0009_protected_fields... OK
+  Rendering model states... DONE
+  Applying consent.0003_protected_fields... OK
+  Rendering model states... DONE
+  Applying consent.0004_purpose_taxonomy... OK
+  Applying identity.0032_patient_delegate_grants... OK
+  Applying identity.0033_scheduling_policy... OK
+  Applying scheduling.0007_appointment_lifecycle_v2... OK
+  Applying scheduling.0008_expiry_audit... OK
+  Applying identity.0034_encounter_permission_bundle... OK
+  Applying identity.0035_passkeys... OK
+  Applying identity.0036_passkey_sessions... OK
+  Applying identity.0037_passkey_controls... OK
+  Applying identity.0038_reception_permission... OK
+  Applying billing.0001_initial... OK
+  Applying scheduling.0009_reception_operations... OK
+  Applying scheduling.0010_patient_service_booking... OK
+  Applying retention.0001_retention_records... OK
+  Applying retention.0002_retention_policy... OK
+  Applying prescription.0001_initial... OK
+  Applying prescription.0002_draft_policy... OK
+  Applying prescription.0003_prescription_document... OK
+  Applying prescription.0004_document_policy... OK
+  Applying prescription.0005_signature_operation... OK
+  Applying prescription.0006_signature_policy... OK
+  Applying prescription.0007_verification... OK
+  Applying prescription.0008_verification_policy... OK
+  Applying prescription.0009_protected_fields... OK
+  Rendering model states... DONE
+  Applying prescription.0010_protected_documents... OK
+  Rendering model states... DONE
+  Applying retention.0003_protected_fields... OK
+  Applying teleconsult.0001_initial... OK
+  Applying teleconsult.0002_teleconsult_policy... OK
+  Applying teleconsult.0003_teleconsult_fail... OK
+  Applying billing.0002_invoice_policy... OK
+  Applying billing.0003_pixoperation_pixcharge_and_more... OK
+  Applying billing.0004_pix_policy... OK
+  Applying billing.0005_payment_events... OK
+  Applying billing.0006_payment_event_superseded... OK
+  Applying billing.0007_patient_charge_detail... OK
+  Applying billing.0008_invoice_create_idempotency... OK
+  Applying billing.0009_protected_fields... OK
+  Rendering model states... DONE
+  Applying intake.0014_delegate_sessions... OK
+  Applying retention.0004_delegate_confidentiality... OK
+  Applying prescription.0011_delegate_confidentiality... OK
+  Applying intake.0015_questionnaire_branching... OK
+  Applying intake.0016_duplicate_detection... OK
+  Applying intake.0017_patient_aliases... OK
+  Applying intake.0018_survivor_writes... OK
+  Applying intake.0019_alias_clinical_reads... OK
+  Applying billing.0010_delegate_charges... OK
+  Applying intake.0020_alias_released_reads... OK
+  Applying intake.0021_merge_transfer_bindings... OK
+  Applying consent.0005_delegate_purposes... OK
+  Applying intake.0022_alias_portal_reads... OK
+  Applying intake.0023_duplicate_lookup_indexes... OK
+  Applying intake.0024_document_decrypt_context... OK
+  Applying intake.0025_survivor_confirmations... OK
+  Applying ehr.0010_autosave_episodes_unscheduled... OK
+  Applying ehr.0011_encounter_addenda... OK
+  Applying ehr.0012_addendum_receipt_open_encounter... OK
+  Applying ehr.0013_template_v2... OK
+  Applying ehr.0014_longitudinal_record... OK
+  Applying orders.0001_identity_safe_results... OK
+  Applying workflows.0005_result_source_tasks... OK
+  Applying providers.0001_initial... OK
+  Applying teleconsult.0004_teleconsult_v2... OK
+  Applying teleconsult.0005_event_authority... OK
+  Applying teleconsult.0006_mode_audit... OK
+  Applying identity.0039_ai_policy... OK
+  Applying scribe.0001_initial... OK
+  Applying teleconsult.0007_consented_capture... OK
+  Applying scribe.0002_ai_disclosure_capture... OK
+  Applying ai.0001_initial... OK
+  Applying scribe.0003_transcripts... OK
+  Applying scribe.0004_purge_state... OK
+  Applying identity.0040_agent_execution_authority... OK
+  Applying identity.0041_retention_authority... OK
+  Applying ai.0002_agent_execution... OK
+  Applying ai.0003_artifact_retention... OK
+  Applying retention.0005_transient_purge... OK
+  Applying identity.0042_privacy_request_permission... OK
+  Applying intake.0026_data_subject_requests... OK
+  Applying intake.0027_portal_reads... OK
+  Applying intake.0028_messages_operation... OK
+  Applying identity.0043_delegate_messages_operation... OK
+  Applying comms.0007_portal_channel... OK
+  Applying comms.0008_omnichannel_inbox... OK
+  Applying comms.0009_inbound_audit... OK
+  Applying comms.0010_portal_messages... OK
+  Applying comms.0011_agent_replies... OK
+  Applying orders.0002_accountable_result_tasks... OK
+  Applying orders.0003_current_result_authority... OK
+  Applying orders.0004_matched_patient_authority... OK
+  Applying prescription.0012_clinical_document_kinds... OK
+  Applying prescription.0013_class_catalog_directions... OK
+  Rendering model states... DONE
+  Applying prescription.0014_independent_signature_verification... OK
+  Applying prescription.0015_sncr_issuance... OK
+  Rendering model states... DONE
+  Applying ai.0004_document_extraction... OK
+  Applying ai.0005_evaluation... OK
+  Applying ai.0006_agent_staff_authority... OK
+  Applying ai.0007_front_desk... OK
+  Applying ai.0008_front_desk_authority... OK
+  Applying ehr.0015_specialty_packs... OK
+  Applying ehr.0016_later_pack_draft_guard... OK
+  Applying workflows.0006_care_plans... OK
+  Applying ai.0007_care_coordination... OK
+  Applying ai.0008_care_plan_status_private... OK
+  Applying ai.0009_merge_care_coordination_front_desk... OK
+  Applying billing.0011_operational_journal... OK
+  Applying billing.0012_sandbox_psp... OK
+  Applying orders.0005_patient_downloads... OK
+  Applying scribe.0005_note_drafts... OK
+  Applying sessions.0001_initial... OK
+  Applying workflows.0007_referral_backfill... OK
+  Applying workflows.0008_release_and_urgent... OK

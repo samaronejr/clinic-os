@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "requested_prefixes": [
+    "tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for",
+    "tests/identity/test_active_tenant_actor.py::test_active_actor_migration_reverses_without_changing_membership_or_posture",
+    "tests/identity/test_identity_acl_migration.py::test_canonicalization_failure_aborts_before_any_update",
+    "tests/identity/test_identity_acl_migration.py::test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role",
+    "tests/identity/test_identity_acl_migration.py::test_identity_migration_reverses_and_reapplies",
+    "tests/infra/test_clinic_timezone_migration.py::test_failed_backfill_restores_role_and_gucs",
+    "tests/infra/test_clinic_timezone_migration.py::test_timezone_migration_reverses_reapplies_and_installs_named_check",
+    "tests/infra/test_clinic_timezone_migration.py::test_two_tenant_backfill_restores_role_and_gucs",
+    "tests/identity/test_service_principals.py",
+    "tests/identity/test_decision_support_probes.py::test_decision_adapters_compose_with_primary_nonstaff_census",
+    "tests/identity/test_scribe_census.py::test_real_nonstaff_census_observes_the_note_reader",
+    "tests/retention/test_execution.py",
+    "tests/retention/test_principal_migrations.py",
+    "tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action",
+    "tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write",
+    "tests/renewal/test_browser_runner.py::test_ci_interruption_stops_later_gates_and_exits_130",
+    "tests/renewal/test_browser_runner.py::test_provision_teardown_completes_through_a_second_interrupt",
+    "tests/renewal/test_browser_runner.py::test_teardown_interrupt_is_reaped_then_propagated"
+  ],
+  "requested_prefix_count": 18,
+  "unique_passed_tests": 109,
+  "failed_tests": 0,
+  "errors": 0,
+  "skipped_tests": 0,
+  "initial_run": {
+    "junit": "serial.junit.xml",
+    "passed": 108,
+    "fixture_errors": 1,
+    "reason": "record_property requires xunit1; pytest strict warnings remain enabled"
+  },
+  "corrective_run": {
+    "junit": "serial-census-retry.junit.xml",
+    "passed": 1,
+    "junit_family": "xunit1"
+  },
+  "uncovered_prefixes": []
+}

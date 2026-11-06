@@ -1,0 +1,38 @@
+{
+  "component_checkpoint": "68fb3ad73ae18d39d4666bae5de2ee86670ee5da",
+  "integrated_base": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "integrated_tree": "640557d398505b946326971f9d478931196802a4",
+  "changed_application_paths": [],
+  "changed_paths_after_component_checkpoint": [
+    "docs/qa/task-56-manual-qa.md",
+    "ops/testing/restore_contract.py",
+    "tests/billing/journal_oracles.py",
+    "tests/billing/test_authority_census.py",
+    "tests/billing/test_finance_views.py",
+    "tests/billing/test_legacy_replay_scope.py",
+    "tests/billing/test_psp_review.py",
+    "tests/identity/billing_authority_oracle.py",
+    "tests/identity/cut1_authority_census.py",
+    "tests/identity/domain_sql_oracles.py",
+    "tests/identity/legacy_guards.json",
+    "tests/identity/sql_guard_probes.py",
+    "tests/patients/test_duplicates.py"
+  ],
+  "reused_passed_checks": [
+    "green-review",
+    "broker-r3-psp-broker",
+    "manual-qa",
+    "manual-qa-refund",
+    "native-presentation",
+    "dependency-audit",
+    "psp-signature-pins"
+  ],
+  "additional_integration_checks": [
+    "generated-discovery",
+    "integrated-static",
+    "affected-modules",
+    "mandatory-ci-serial",
+    "reader-writer-regression",
+    "role-static"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "python_discovery": "identity.legacy_guard_inventory.discover",
+  "sql_discovery": "identity.legacy_guard_inventory.discover_sql",
+  "relation_discovery": "infra.test_recovery_manifest.catalog_relations",
+  "owned_python_candidates": [
+    "apps.billing.psp_gate.require_psp_rehearsal",
+    "apps.billing.psp_gate.require_psp_sandbox",
+    "apps.billing.psp_posting.apply_psp_evidence",
+    "apps.billing.psp_presentation.patient_psp_payment",
+    "apps.billing.psp_services.prepare_psp_charge",
+    "apps.billing.psp_services.prepare_psp_outgoing",
+    "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
+    "apps.billing.psp_storage.record_status",
+    "apps.billing.psp_storage.resolve_intent",
+    "apps.billing.psp_worker.PspSendAdapter.send",
+    "apps.billing.psp_worker._eligible"
+  ],
+  "new_sql_roots": [
+    "clinic_app.billing_patient_psp_instructions",
+    "clinic_app.billing_psp_access",
+    "clinic_app.billing_psp_dispatchable",
+    "clinic_app.billing_psp_guard",
+    "clinic_app.billing_psp_intent_scope",
+    "clinic_app.billing_psp_scope",
+    "clinic_app.billing_psp_seen"
+  ],
+  "derived_psp_relations": [
+    "billing_pspbinding",
+    "billing_pspevidence",
+    "billing_pspintent",
+    "billing_psppolicy",
+    "billing_pspreceipt"
+  ],
+  "derived_domain_count": 223,
+  "unclassified": [],
+  "stale_entries": []
+}

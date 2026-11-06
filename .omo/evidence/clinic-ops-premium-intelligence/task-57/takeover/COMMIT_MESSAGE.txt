@@ -1,0 +1,22 @@
+feat(billing): reconcile sandbox PSP payments without duplicates
+
+Keep recorded PIX/card charges, refunds, payouts and provider observations
+scoped to immutable intents. Authenticate raw callbacks before scope lookup
+and compare independent status with exact references, amounts and statements.
+Use the operational journal commands and post_entry for financial lineage.
+
+Bind evidence inserts to the stored actor, retain valid corrections without
+letting rejected statements supersede facts, and recover ambiguous effects
+through the original idempotency key and approved sandbox version. Expose
+non-payable instructions and clinic-controlled installments.
+
+Generate PSP authority and recovery entries from repository discovery and
+the live catalog while preserving the corrected todo 56 classifications.
+
+Constraint: Todo 57 on 63240e99; recorded sandbox only; FORCE RLS; no real provider or patient data.
+Rejected: Trusting callback amounts or resending unknown effects | both can create false or duplicate financial facts.
+Confidence: medium
+Scope-risk: moderate
+Directive: Keep provider legs BLOCKED-ON-EG-1/EG-5; require current approval for new effects and the original approved binding for lookup-only recovery.
+Tested: Locked dependencies and messages; Ruff check/format; strict mypy; fresh migrate, drift and db-posture; 109 CI-serial tests across 18 selectors; 366 unique affected tests; required real Redis/PG SIGKILL gate; four Manual-QA probes; three native instruction cases; nine signature pins; dependency audit; live catalog and frozen-plan checks.
+Not-tested: Canonical browsers and full native R deferred-to-host-quiet-batch; migration upgrade excluded by Root; final source re-review belongs to Root on this head.

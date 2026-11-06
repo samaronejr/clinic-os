@@ -1,0 +1,1 @@
+database posture: clinic_app runtime; clinic_agent NOINHERIT NOBYPASSRLS; clinic_owner NOCREATEDB; test_clinic precreated
