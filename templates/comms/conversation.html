@@ -23,13 +23,16 @@
   {% if messages %}{% for message in messages %}
   <p class="feedback{% if message.tags == 'error' %} feedback--error" role="alert"{% else %} feedback--success" role="status"{% endif %} tabindex="-1">{{ message }}</p>
   {% endfor %}{% endif %}
-  <div id="thread-region" hx-get="{{ request.path }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#thread-region &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
+  {% if post_selection %}
+  <form id="thread-selection" method="post" hidden>{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="show"></form>
+  {% endif %}
+  <div id="thread-region" {% if post_selection %}hx-post="{{ request.path }}" hx-include="#thread-selection"{% else %}hx-get="{{ request.path }}"{% endif %} hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#thread-region &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
   {% if c.needs_clinician %}
   <section class="feedback feedback--error" role="status" aria-labelledby="clinical-flag">
     <h2 id="clinical-flag">{% trans "Question forwarded to the clinical team" %}</h2>
     <p>{% trans "This text seems to involve clinical advice. Do not reply with clinical advice or use an automatic suggestion; wait for a professional." %}</p>
     {% if clinician %}
-    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="clear_clinician"><input type="hidden" name="expected_revision" value="{{ c.revision }}"><button type="submit">{% trans "Take this question" %}</button></form>
+    <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="clear_clinician"><input type="hidden" name="expected_revision" value="{{ c.revision }}"><button type="submit">{% trans "Take this question" %}</button></form>
     {% endif %}
   </section>
   {% endif %}
@@ -55,7 +58,7 @@
         {% if row.message.direction == 'out' %}
         <p><span class="badge{% if row.state == 'failed' %} badge--error{% elif row.state == 'delivered' or row.state == 'read' %} badge--success{% endif %}">{% if row.state == 'queued' %}{% trans "Queued" context "delivery state" %}{% elif row.state == 'sent' %}{% trans "Sent · awaiting confirmation" context "delivery state" %}{% elif row.state == 'delivered' %}{% trans "Delivered" context "delivery state" %}{% elif row.state == 'read' %}{% trans "Read" context "delivery state" %}{% else %}{% trans "Not sent" context "delivery state" %}{% endif %}</span></p>
         {% if row.state == 'failed' %}
-        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="retry"><input type="hidden" name="message_id" value="{{ row.message.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}"><button class="button--secondary" type="submit">{% trans "Try sending again" %}<span class="visually-hidden"> {% blocktrans with when=row.message.created_at|date:"d/m/Y H:i" %}the message of {{ when }}{% endblocktrans %}</span></button></form>
+        <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="retry"><input type="hidden" name="message_id" value="{{ row.message.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}"><button class="button--secondary" type="submit">{% trans "Try sending again" %}<span class="visually-hidden"> {% blocktrans with when=row.message.created_at|date:"d/m/Y H:i" %}the message of {{ when }}{% endblocktrans %}</span></button></form>
         {% endif %}
         {% endif %}
       </li>
@@ -64,11 +67,11 @@
   </section>
   <section class="panel" aria-labelledby="handling-title">
     <h2 id="handling-title">{% trans "Handling" context "inbox" %}</h2>
-    <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="assign"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+    <form method="post" class="actions">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="assign"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
       <button class="button--secondary" type="submit" name="assignee" value="me">{% trans "Assign to me" %}</button>
       <button class="button--quiet" type="submit" name="assignee" value="none">{% trans "Remove assignee" %}</button>
     </form>
-    <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="state"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+    <form method="post" class="actions">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="state"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
       <button class="button--secondary" type="submit" name="state" value="open">{% trans "Reopen" context "inbox" %}</button>
       <button class="button--secondary" type="submit" name="state" value="pending">{% trans "Mark as pending" %}</button>
       <button class="button--danger" type="submit" name="state" value="closed">{% trans "Close conversation" %}</button>
@@ -82,14 +85,14 @@
     <article class="feedback" aria-labelledby="suggestion-title" data-suggestion="{{ view.suggestion.pk }}">
       <h3 id="suggestion-title">{% trans "Suggested reply · review required" %}</h3>
       <p>{% trans "Generated by AI for administrative text. Nothing is sent without your confirmation." %}</p>
-      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="use_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}">
+      <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="use_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><input type="hidden" name="command_id" value="{{ command_id }}">
         <div class="field"><label for="suggestion-body">{% trans "Text to send (edit if needed)" %}</label><textarea id="suggestion-body" name="body" rows="4" maxlength="4096" required>{{ view.suggestion.body }}</textarea></div>
         <button type="submit">{% trans "Send reviewed text" %}</button>
       </form>
-      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="discard_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><button class="button--quiet" type="submit">{% trans "Discard suggestion" %}</button></form>
+      <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="discard_suggestion"><input type="hidden" name="suggestion_id" value="{{ view.suggestion.pk }}"><button class="button--quiet" type="submit">{% trans "Discard suggestion" %}</button></form>
     </article>
     {% elif not c.needs_clinician and c.purpose != 'marketing' %}
-    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="suggest"><button class="button--quiet" type="submit">{% trans "Ask for a suggested reply" %}</button></form>
+    <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="suggest"><button class="button--quiet" type="submit">{% trans "Ask for a suggested reply" %}</button></form>
     {% endif %}
     {% if view.free_text %}
     {% if view.quick_replies %}
@@ -98,12 +101,12 @@
       <p class="hint">{% trans "A quick reply only fills the message box. Review and send it yourself." %}</p>
       <ul class="actions">
         {% for quick in view.quick_replies %}
-        <li><form method="post">{% csrf_token %}<input type="hidden" name="action" value="quick_reply"><input type="hidden" name="quick_reply_id" value="{{ quick.pk }}"><button class="button--secondary" type="submit">{{ quick.title }}</button></form></li>
+        <li><form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="quick_reply"><input type="hidden" name="quick_reply_id" value="{{ quick.pk }}"><button class="button--secondary" type="submit">{{ quick.title }}</button></form></li>
         {% endfor %}
       </ul>
     </section>
     {% endif %}
-    <form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}">
+    <form method="post" novalidate>{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}">
       <div class="field"><label for="reply-body">{% trans "Message" context "inbox" %}</label>
         <textarea id="reply-body" name="body" rows="4" maxlength="4096" required>{{ prefill }}</textarea>
       </div>
@@ -111,7 +114,7 @@
     </form>
     {% endif %}
     {% for choice in view.templates %}
-    <form method="post" novalidate data-template="{{ choice.template.pk }}">{% csrf_token %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}"><input type="hidden" name="template_version_id" value="{{ choice.template.pk }}">
+    <form method="post" novalidate data-template="{{ choice.template.pk }}">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="send"><input type="hidden" name="command_id" value="{{ command_id }}"><input type="hidden" name="template_version_id" value="{{ choice.template.pk }}">
       <h3>{% blocktrans with name=choice.template.name version=choice.template.version %}Template {{ name }} · v{{ version }}{% endblocktrans %}</h3>
       <p class="hint">{{ choice.template.body }}</p>
       {% for slot in choice.slots %}
@@ -126,7 +129,7 @@
   <section class="panel" aria-labelledby="link-title" data-link-panel>
     <h2 id="link-title">{% trans "Link to a patient" %}</h2>
     <p class="hint">{% trans "A number is linked only to a patient whose contact for this channel is verified and is this number." %}</p>
-    <form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="find_patient">
+    <form method="post" novalidate>{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="find_patient">
       <div class="field"><label for="patient-query">{% if clinician %}{% trans "Filter your care-team patients by name (optional)" %}{% else %}{% trans "Patient full name" %}{% endif %}</label><input id="patient-query" name="q" type="text" maxlength="100" autocomplete="off"{% if not clinician %} required{% endif %}></div>
       <button class="button--secondary" type="submit">{% if clinician %}{% trans "Show my patients" %}{% else %}{% trans "Search patients" %}{% endif %}</button>
     </form>
@@ -136,7 +139,7 @@
       {% for choice in choices %}
       <li class="candidate">
         <strong>{{ choice.label }}</strong>
-        <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="link"><input type="hidden" name="enrollment_id" value="{{ choice.enrollment_id }}"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
+        <form method="post" class="actions">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="link"><input type="hidden" name="enrollment_id" value="{{ choice.enrollment_id }}"><input type="hidden" name="expected_revision" value="{{ c.revision }}">
           {% if clinician %}<label class="check"><input type="checkbox" name="promote" value="1"> {% trans "Move to a care conversation" %}</label>{% endif %}
           <button type="submit">{% trans "Link to this patient" %}<span class="visually-hidden"> {{ choice.label }}</span></button>
         </form>
@@ -153,7 +156,7 @@
     <h2 id="notes-title">{% trans "Internal notes" %}</h2>
     <p class="hint">{% trans "Visible to staff only; never sent to the patient." %}</p>
     <ul>{% for note in view.notes %}<li>{{ note.created_at|date:"d/m/Y H:i" }} · {{ note.body }}</li>{% empty %}<li>{% trans "No notes." %}</li>{% endfor %}</ul>
-    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="note">
+    <form method="post">{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="note">
       <div class="field"><label for="note-body">{% trans "New note" %}</label><textarea id="note-body" name="body" rows="3" maxlength="4000" required></textarea></div>
       <button class="button--secondary" type="submit">{% trans "Save note" %}</button>
     </form>

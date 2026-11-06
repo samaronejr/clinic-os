@@ -24,16 +24,24 @@ EVALUATION_TABLES: Final = frozenset(
     }
 )
 CARE_TABLES: Final = frozenset({"ai_careproposal"})
+# Task 54: reviewed answers (administrators) and the agent's thread and turns
+# (written only by the principal-bound bridges; staff read them and resolve).
+FRONT_DESK_TABLES: Final = frozenset(
+    {"ai_knowledgearticle", "ai_frontdeskthread", "ai_frontdeskturn"}
+)
 CUSTOM_RLS_TABLES: Final = (
     frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"})
     | AGENT_TABLES
     | EXTRACTION_TABLES
     | EVALUATION_TABLES
     | CARE_TABLES
+    | FRONT_DESK_TABLES
 )
 NON_RLS_TABLES: Final = frozenset({"ai_modelconfiguration", "ai_gatewayswitch"})
 RUNTIME_GRANTS: Final = {
     **{table: frozenset({"SELECT", "INSERT"}) for table in CUSTOM_RLS_TABLES},
+    "ai_frontdeskthread": frozenset({"SELECT"}),
+    "ai_frontdeskturn": frozenset({"SELECT"}),
     **{table: frozenset({"SELECT"}) for table in NON_RLS_TABLES},
     **{
         table: frozenset({"SELECT", "INSERT", "UPDATE"})
@@ -79,6 +87,20 @@ COLUMN_GRANTS: Final = frozenset(
     (table, column, "UPDATE")
     for table, columns in {
         "ai_evaluationrun": ("sample_results", "automatic_failures", "scored_at"),
+        "ai_knowledgearticle": (
+            "state",
+            "approved_by_id",
+            "approved_at",
+            "retired_at",
+            "revision",
+        ),
+        "ai_frontdeskthread": (
+            "state",
+            "handoff_reason",
+            "resolved_by_id",
+            "revision",
+            "updated_at",
+        ),
         "ai_modelchangerequest": (
             "status",
             "approved_by_id",

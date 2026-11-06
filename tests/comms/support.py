@@ -132,8 +132,17 @@ def whatsapp_body(
     return json.dumps(root).encode()
 
 
-def inbox_account(graph: RbacGraph, settings: SettingsWrapper) -> InboxWorld:
-    """Provision principal, account and secret the way the owner CLI would."""
+def inbox_account(
+    graph: RbacGraph,
+    settings: SettingsWrapper,
+    *,
+    phone_number_id: str = PHONE_NUMBER_ID,
+) -> InboxWorld:
+    """Provision principal, account and secret the way the owner CLI would.
+
+    Provider account ids are unique across tenants: a caller that provisions
+    several worlds in one database passes its own ``phone_number_id``.
+    """
     settings.COMMS_SYNTHETIC_CHANNELS = ("email", "sms", "whatsapp")
     key = secrets.token_hex(32)
     with owner_context(graph.organization_a):
@@ -149,7 +158,7 @@ def inbox_account(graph: RbacGraph, settings: SettingsWrapper) -> InboxWorld:
             clinic_id=graph.clinic_a,
             channel="whatsapp",
             provider="whatsapp-cloud-v1",
-            external_account_id=PHONE_NUMBER_ID,
+            external_account_id=phone_number_id,
             principal=principal,
             signing_key_digest=hashlib.sha256(key.encode()).hexdigest(),
         )
@@ -157,4 +166,4 @@ def inbox_account(graph: RbacGraph, settings: SettingsWrapper) -> InboxWorld:
     path = root / f"{secret_name(account.pk)}.secret"
     path.write_text(key)
     path.chmod(0o600)
-    return InboxWorld(graph, account.pk, key, principal.pk)
+    return InboxWorld(graph, account.pk, key, principal.pk, phone_number_id)

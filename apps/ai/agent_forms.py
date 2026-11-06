@@ -33,6 +33,13 @@ class AgentPolicyForm(forms.Form):
                 "care_action.create",
                 _("Add an administrative action to a care plan"),
             ),
+            # Task 54: the front-desk agent's bounded tools.
+            ("scheduling.hold", _("Offer one real free slot to a verified patient")),
+            (
+                "scheduling.book_approved",
+                _("Move an appointment after the patient accepts the offered slot"),
+            ),
+            ("comms.send_approved_link", _("Send an approved administrative link")),
         ),
     )
     principal_id = forms.UUIDField(

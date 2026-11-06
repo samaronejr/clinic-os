@@ -139,6 +139,17 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     searched = False
     if request.method == "POST":
         action = request.POST.get("action", "")
+        if (
+            action in ACTIONS
+            or action in ("show", "quick_reply")
+            or "conversation_id" in request.POST
+        ):
+            conversation_id = parse_uuid(request.POST.get("conversation_id"))
+            if conversation_id is None:
+                raise Http404
+            return _conversation_post(
+                request, clinic_id, conversation_id, post_selection=True
+            )
         try:
             if action == "open":
                 opened = services.open_conversation(
@@ -335,6 +346,8 @@ def _page(
     clinic_id: UUID,
     conversation_id: UUID,
     extra: dict[str, object] | None = None,
+    *,
+    post_selection: bool = False,
 ) -> HttpResponse:
     try:
         view = conversation_view(
@@ -350,6 +363,7 @@ def _page(
         {
             "clinic_id": clinic_id,
             "view": view,
+            "post_selection": post_selection,
             "command_id": uuid4(),
             "clinician": clinician,
             "can_link": conversation.enrollment_id is None
@@ -385,8 +399,25 @@ def conversation(
     """Show one thread; POST applies one named action then redirects."""
     if request.method == "GET":
         return _page(request, clinic_id, conversation_id)
+    return _conversation_post(request, clinic_id, conversation_id)
+
+
+def _conversation_post(
+    request: HttpRequest,
+    clinic_id: UUID,
+    conversation_id: UUID,
+    *,
+    post_selection: bool = False,
+) -> HttpResponse:
+    """Keep body-selected threads and their refreshes out of navigation URLs."""
     action = request.POST.get("action", "")
     try:
+        if post_selection:
+            conversation_view(
+                clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
+            )
+            if action == "show":
+                return _page(request, clinic_id, conversation_id, post_selection=True)
         if action == "find_patient":
             choices, notice = _find(request, clinic_id)
             return _page(
@@ -394,6 +425,7 @@ def conversation(
                 clinic_id,
                 conversation_id,
                 {"choices": choices, "choice_notice": notice, "searched": True},
+                post_selection=post_selection,
             )
         if action == "quick_reply":
             shown = conversation_view(
@@ -408,9 +440,10 @@ def conversation(
                         request, clinic_id, shown.conversation.purpose
                     )
                 },
+                post_selection=post_selection,
             )
         confirmation = _handle(request, clinic_id, conversation_id, action)
-    except InboxAccessDeniedError as error:
+    except CurrentActorError as error:
         raise Http404 from error
     except (InboxRefusedError, InboxConflictError) as error:
         messages.error(request, _refusal(error.code))
@@ -418,4 +451,6 @@ def conversation(
         messages.error(request, str(DEFAULT_REFUSAL))
     else:
         messages.success(request, confirmation)
+    if post_selection:
+        return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
     return _back(clinic_id, conversation_id)

@@ -38,6 +38,9 @@ from ai.evaluation_oracles import (
 from ai.extraction_oracles import (
     ACTOR_PROTOCOL_ORACLES as EXTRACTION_ACTOR_PROTOCOL_ORACLES,
 )
+from ai.front_desk_oracles import (
+    ACTOR_PROTOCOL_ORACLES as FRONT_DESK_ACTOR_PROTOCOL_ORACLES,
+)
 from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
@@ -126,7 +129,9 @@ JUSTIFIED = {
     "clinic_app.comms_message_guard_v1()": (
         "dual boundary: an inbound row requires the provider account, or on a "
         "portal thread the live patient session of its enrollment, and refuses "
-        "any actor; an outbound row only binds sent_by_id to the signed-in actor. "
+        "any actor; an outbound row binds sent_by_id to the signed-in actor, or, "
+        "with no actor at all, is the front-desk agent's reply that only its "
+        "finish bridge admits for its own finishing turn (task 54). "
         "The role and the active check run first, in the service's _actor"
     ),
     "clinic_app.comms_template_guard_v1()": (
@@ -422,6 +427,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | EXTRACTION_ACTOR_PROTOCOL_ORACLES
         | EVALUATION_ACTOR_PROTOCOL_ORACLES
         | CARE_ACTOR_PROTOCOL_ORACLES
+        | FRONT_DESK_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

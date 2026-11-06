@@ -54,6 +54,26 @@ TOOL_SCHEMAS: Final[dict[str, JSON]] = {
             "window_end": {"type": "string", "format": "date-time"},
         },
     },
+    # Task 54: the front-desk turn tools. Each argument is a closed value the
+    # turn derives itself (a real slot start, an approved article), never text.
+    "scheduling.hold": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["start"],
+        "properties": {"start": {"type": "string", "format": "date-time"}},
+    },
+    "scheduling.book_approved": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["start"],
+        "properties": {"start": {"type": "string", "format": "date-time"}},
+    },
+    "comms.send_approved_link": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["article"],
+        "properties": {"article": {"type": "string", "format": "uuid"}},
+    },
 }
 
 

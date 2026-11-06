@@ -9,6 +9,8 @@ from ai.evaluation_oracles import CASES as EVALUATION_CASES
 from ai.evaluation_oracles import SQL_PROTOCOL_ORACLES as EVALUATION_PROTOCOLS
 from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
+from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
+from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
 from comms import test_portal_messages
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
@@ -356,6 +358,7 @@ PROTOCOL_ORACLES = {
     **EXTRACTION_PROTOCOLS,
     **EVALUATION_PROTOCOLS,
     **CARE_PROTOCOLS,
+    **FRONT_DESK_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
     **{
@@ -475,6 +478,12 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(callable(case) for case in CARE_CASES.values())
     assert all(
         name in CARE_CASES for cases in CARE_PROTOCOLS.values() for name in cases
+    )
+    assert all(callable(case) for case in FRONT_DESK_CASES.values())
+    assert all(
+        name in FRONT_DESK_CASES
+        for cases in FRONT_DESK_PROTOCOLS.values()
+        for name in cases
     )
     assert all(
         name in EVALUATION_CASES

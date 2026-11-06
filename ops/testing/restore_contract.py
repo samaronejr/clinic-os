@@ -37,6 +37,10 @@ DOMAIN_RELATIONS: Final = (
     "ai_compensation",
     "ai_extractioncandidate",
     "ai_extractionjob",
+    # Task 54 front desk: reviewed answers, agent threads and turns (no text).
+    "ai_frontdeskthread",
+    "ai_frontdeskturn",
+    "ai_knowledgearticle",
     "ai_gatewayswitch",
     "ai_modelconfiguration",
     "audit_event",

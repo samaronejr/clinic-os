@@ -14,7 +14,7 @@ answers the patient on its own.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 from uuid import UUID
 
 from django.db import DatabaseError, connection, transaction
@@ -57,6 +57,23 @@ MESSAGES_OPERATION: Final = "messages"
 REPLY_EVENT: Final = "comms.portal.reply_received"
 ESCALATED_EVENT: Final = "comms.portal.escalated"
 _BODY_PURPOSE: Final = "comms.message.body"
+
+
+class PortalReplyHook(Protocol):
+    """A clinic-scoped callback for a newly stored patient reply."""
+
+    def __call__(self, *, clinic_id: UUID, message_id: UUID) -> None:
+        """Run under the existing patient transaction, without new authority."""
+        ...
+
+
+_REPLY_HOOKS: list[PortalReplyHook] = []
+
+
+def register_portal_reply_hook(hook: PortalReplyHook) -> None:
+    """Run a domain hook for a new reply in the live patient transaction."""
+    if hook not in _REPLY_HOOKS:
+        _REPLY_HOOKS.append(hook)
 
 
 class PortalMessageInputError(ValueError):
@@ -271,6 +288,8 @@ def reply_to_portal_conversation(
             raise PatientAccessDeniedError
         if changed:
             _audit(scope, REPLY_EVENT, message_id)
+            for hook in _REPLY_HOOKS:
+                hook(clinic_id=clinic_id, message_id=message_id)
         if escalated:
             _audit(scope, ESCALATED_EVENT, conversation_id)
     if changed:

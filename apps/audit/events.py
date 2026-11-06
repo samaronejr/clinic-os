@@ -454,6 +454,19 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "comms.suggestion.decided": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "comms.suggested_reply", "decided"
         ),
+        # Task 54: reviewed front-desk answers and staff handoff resolution.
+        **{
+            f"ai.knowledge_article.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.knowledge_article", state
+            )
+            for state in ("drafted", "approved", "retired")
+        },
+        "ai.front_desk.resolved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.front_desk_thread", "resolved"
+        ),
+        "ai.front_desk.replied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.front_desk_turn", "replied"
+        ),
         "identity.passkey.registered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.passkey", "created"
         ),

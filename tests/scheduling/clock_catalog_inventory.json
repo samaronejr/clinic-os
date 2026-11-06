@@ -1,4 +1,362 @@
 {
+  "constraint:ai_actionexecution.ai_actionexecution_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_clinic_id_0e3329d0_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_fencing_token_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_organization_id_b8b7ddf7_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_parent_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id",
+      "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_",
+      "constraint:ai_actionproposal.ai_actionproposal_parent_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id",
+      "policy:ai_actionproposal.agent_machine",
+      "policy:ai_actionproposal.agent_owner",
+      "policy:ai_actionproposal.agent_staff",
+      "trigger:ai_actionproposal.agent_record_guard"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_proposal_id_3cf82112_fk_ai_actionproposal_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id",
+      "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_",
+      "constraint:ai_actionproposal.ai_actionproposal_parent_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id",
+      "policy:ai_actionproposal.agent_machine",
+      "policy:ai_actionproposal.agent_owner",
+      "policy:ai_actionproposal.agent_staff",
+      "trigger:ai_actionproposal.agent_record_guard"
+    ]
+  },
+  "constraint:ai_actionexecution.ai_actionexecution_reserved_micros_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:ai_actionproposal.ai_actionproposal_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_actionproposal.ai_actionproposal_parent_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "trigger:ai_agentrun.agent_record_guard"
+    ]
+  },
+  "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "trigger:ai_agentrun.agent_record_guard"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agent_policy_values": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)",
+      "function:pg_catalog.int24le(smallint, integer)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)",
+      "function:pg_catalog.int8le(bigint, bigint)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "index:ai_configuration_primary_uniq",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_cost_micros_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_aiinvocation.ai_aiinvocation_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_clinic_id_956db410_fk_identity_clinic_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_config_version_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_configuration_id_c896cffa_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_minor_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_inputs_ref_id_ed3c5cbf_fk_ai_aiartifact_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_latency_ms_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
+      "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
+      "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_user_id_71ed2fa9_fk_identity_user_id",
+      "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
+      "constraint:ai_aiinvocation.ai_invocation_input_fk",
+      "constraint:ai_aiinvocation.ai_invocation_values",
+      "policy:ai_aiinvocation.ai_invocation_user",
+      "policy:ai_aiinvocation.ai_owner",
+      "trigger:ai_aiinvocation.ai_invocation_guard"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_latency_ms_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_parent_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
   "constraint:ai_aiartifact.ai_aiartifact_clinic_id_e6745ce8_fk_identity_clinic_id": {
     "direct": {},
     "via": [
@@ -719,6 +1077,452 @@
       "trigger:ai_aiinvocation.ai_invocation_guard"
     ]
   },
+  "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientcontact.intake_contact_channel_check",
+      "constraint:intake_patientcontact.intake_contact_org_patient_fk",
+      "constraint:intake_patientcontact.intake_contact_verification_check",
+      "constraint:intake_patientcontact.intake_contact_version_check",
+      "constraint:intake_patientcontact.intake_patientcontac_organization_id_848b51d7_fk_identity_",
+      "constraint:intake_patientcontact.intake_patientcontact_destination_version_check",
+      "constraint:intake_patientcontact.intake_patientcontact_patient_id_dbbe435c_fk_intake_patient_id",
+      "constraint:intake_patientcontact.intake_patientcontact_verified_version_check",
+      "policy:intake_patientcontact.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdesk_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24le(smallint, integer)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con": {
+    "direct": {},
+    "via": [
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "index:comms_conversation_live_uniq",
+      "policy:comms_conversation.tenant_isolation",
+      "trigger:comms_conversation.comms_conversation_guard"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin": {
+    "direct": {},
+    "via": [
+      "constraint:scheduling_appointment.scheduling_appointme_organization_id_b9bcf979_fk_identity_",
+      "constraint:scheduling_appointment.scheduling_appointme_practitioner_id_092c1b4b_fk_identity_",
+      "constraint:scheduling_appointment.scheduling_appointme_series_id_10d6bf8a_fk_schedulin",
+      "constraint:scheduling_appointment.scheduling_appointme_service_type_id_37395baf_fk_schedulin",
+      "constraint:scheduling_appointment.scheduling_appointment_authorization_reference_check",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_after_check",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_before_check",
+      "constraint:scheduling_appointment.scheduling_appointment_clinic_id_c959ca14_fk_identity_clinic_id",
+      "constraint:scheduling_appointment.scheduling_appointment_enrollment_fk",
+      "constraint:scheduling_appointment.scheduling_appointment_fingerprint_32_check",
+      "constraint:scheduling_appointment.scheduling_appointment_hold_check",
+      "constraint:scheduling_appointment.scheduling_appointment_lifecycle_check",
+      "constraint:scheduling_appointment.scheduling_appointment_org_clinic_fk",
+      "constraint:scheduling_appointment.scheduling_appointment_patient_id_1a2fb708_fk_intake_patient_id",
+      "constraint:scheduling_appointment.scheduling_appointment_positive_minute_range_check",
+      "constraint:scheduling_appointment.scheduling_appointment_revision_check",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_patient_excl",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_practitioner_excl",
+      "constraint:scheduling_appointment.scheduling_appointment_series_binding",
+      "constraint:scheduling_appointment.scheduling_appointment_series_index_check",
+      "constraint:scheduling_appointment.scheduling_appointment_series_shape",
+      "constraint:scheduling_appointment.scheduling_service_binding",
+      "constraint:scheduling_appointment.scheduling_z_buffer_practitioner_excl",
+      "default:scheduling_appointment.authorization_reference",
+      "default:scheduling_appointment.buffer_after",
+      "default:scheduling_appointment.buffer_before",
+      "index:scheduling_appointment_scheduled_patient_excl",
+      "index:scheduling_appointment_scheduled_practitioner_excl",
+      "index:scheduling_z_buffer_practitioner_excl",
+      "policy:scheduling_appointment.patient_booking_insert",
+      "policy:scheduling_appointment.patient_booking_read",
+      "policy:scheduling_appointment.patient_booking_update",
+      "policy:scheduling_appointment.tenant_isolation",
+      "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.patient_booking_guard",
+      "trigger:scheduling_appointment.patient_booking_receipt",
+      "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
+      "trigger:scheduling_appointment.scheduling_appointment_guard",
+      "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
+      "trigger:scheduling_appointment.scheduling_capacity_after",
+      "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_appointment.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
+      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
+      "constraint:intake_patientsession.intake_session_org_clinic_fk",
+      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
+      "constraint:intake_patientsession.intake_session_org_grant_fk",
+      "constraint:intake_patientsession.intake_session_org_patient_fk",
+      "constraint:intake_patientsession.session_delegate_pair",
+      "policy:intake_patientsession.tenant_isolation",
+      "trigger:intake_patientsession.delegate_session_binding"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientcontact.intake_contact_channel_check",
+      "constraint:intake_patientcontact.intake_contact_org_patient_fk",
+      "constraint:intake_patientcontact.intake_contact_verification_check",
+      "constraint:intake_patientcontact.intake_contact_version_check",
+      "constraint:intake_patientcontact.intake_patientcontac_organization_id_848b51d7_fk_identity_",
+      "constraint:intake_patientcontact.intake_patientcontact_destination_version_check",
+      "constraint:intake_patientcontact.intake_patientcontact_patient_id_dbbe435c_fk_intake_patient_id",
+      "constraint:intake_patientcontact.intake_patientcontact_verified_version_check",
+      "policy:intake_patientcontact.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_knowledgearticle.ai_article_terms",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_approved_by_id_33c17ab5_fk_identity_user_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_fk",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_id_bd335ad9_fk_identity_clinic_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_created_by_id_f340a7ae_fk_identity_user_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_organization_id_6bd2d6db_fk_identity_",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_revision_check",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_version_check",
+      "policy:ai_knowledgearticle.front_desk_insert",
+      "policy:ai_knowledgearticle.front_desk_owner",
+      "policy:ai_knowledgearticle.front_desk_read",
+      "policy:ai_knowledgearticle.front_desk_update",
+      "trigger:ai_knowledgearticle.front_desk_guard",
+      "trigger:ai_knowledgearticle.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_knowledgearticle.ai_article_terms",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_approved_by_id_33c17ab5_fk_identity_user_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_fk",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_id_bd335ad9_fk_identity_clinic_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_created_by_id_f340a7ae_fk_identity_user_id",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_organization_id_6bd2d6db_fk_identity_",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_revision_check",
+      "constraint:ai_knowledgearticle.ai_knowledgearticle_version_check",
+      "policy:ai_knowledgearticle.front_desk_insert",
+      "policy:ai_knowledgearticle.front_desk_owner",
+      "policy:ai_knowledgearticle.front_desk_read",
+      "policy:ai_knowledgearticle.front_desk_update",
+      "trigger:ai_knowledgearticle.front_desk_guard",
+      "trigger:ai_knowledgearticle.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id": {
+    "direct": {},
+    "via": [
+      "constraint:comms_message.comms_message_contract",
+      "constraint:comms_message.comms_message_conversation_id_2ee130cc_fk_comms_conversation_id",
+      "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_",
+      "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
+      "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
+      "policy:comms_message.tenant_isolation",
+      "trigger:comms_message.comms_message_guard"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id": {
+    "direct": {},
+    "via": [
+      "constraint:comms_message.comms_message_contract",
+      "constraint:comms_message.comms_message_conversation_id_2ee130cc_fk_comms_conversation_id",
+      "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_",
+      "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
+      "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
+      "policy:comms_message.tenant_isolation",
+      "trigger:comms_message.comms_message_guard"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_state",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "policy:ai_frontdeskthread.front_desk_owner",
+      "policy:ai_frontdeskthread.front_desk_read",
+      "policy:ai_frontdeskthread.front_desk_update",
+      "trigger:ai_frontdeskthread.front_desk_guard",
+      "trigger:ai_frontdeskthread.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk": {
+    "direct": {},
+    "via": [
+      "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_state",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "policy:ai_frontdeskthread.front_desk_owner",
+      "policy:ai_frontdeskthread.front_desk_read",
+      "policy:ai_frontdeskthread.front_desk_update",
+      "trigger:ai_frontdeskthread.front_desk_guard",
+      "trigger:ai_frontdeskthread.front_desk_truncate"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_turn_terms": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check": {
     "direct": {},
     "via": [
@@ -729,6 +1533,67 @@
     "direct": {},
     "via": [
       "function:pg_catalog.int24eq(smallint, integer)"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_article_terms": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_approved_by_id_33c17ab5_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_clinic_id_bd335ad9_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_created_by_id_f340a7ae_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_organization_id_6bd2d6db_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ai_knowledgearticle.ai_knowledgearticle_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:ai_modelchangerequest.ai_eval_change_run": {
@@ -1067,6 +1932,99 @@
       "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
+  "constraint:comms_conversation.comms_conversation_account_fk": {
+    "direct": {},
+    "via": [
+      "constraint:comms_provideraccount.comms_account_contract",
+      "constraint:comms_provideraccount.comms_provideraccoun_organization_id_33b6926f_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccoun_principal_id_4ff7b33d_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccount_clinic_id_56c8c1b8_fk_identity_clinic_id",
+      "constraint:comms_provideraccount.comms_provideraccount_org_clinic_fk",
+      "policy:comms_provideraccount.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_enrollment_fk": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_org_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro": {
+    "direct": {},
+    "via": [
+      "constraint:comms_provideraccount.comms_account_contract",
+      "constraint:comms_provideraccount.comms_provideraccoun_organization_id_33b6926f_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccoun_principal_id_4ff7b33d_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccount_clinic_id_56c8c1b8_fk_identity_clinic_id",
+      "constraint:comms_provideraccount.comms_provideraccount_org_clinic_fk",
+      "policy:comms_provideraccount.tenant_isolation"
+    ]
+  },
+  "constraint:comms_conversation.comms_conversation_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
   "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_": {
     "direct": {},
     "via": [
@@ -1130,6 +2088,162 @@
     "direct": {},
     "via": [
       "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:comms_message.comms_message_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:comms_message.comms_message_conversation_id_2ee130cc_fk_comms_conversation_id": {
+    "direct": {},
+    "via": [
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "index:comms_conversation_live_uniq",
+      "policy:comms_conversation.tenant_isolation",
+      "trigger:comms_conversation.comms_conversation_guard"
+    ]
+  },
+  "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id": {
+    "direct": {},
+    "via": [
+      "constraint:comms_templateversion.comms_template_contract",
+      "constraint:comms_templateversion.comms_templateversio_created_by_id_47777714_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversio_organization_id_21e01d81_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversion_clinic_id_a91fca49_fk_identity_clinic_id",
+      "constraint:comms_templateversion.comms_templateversion_org_clinic_fk",
+      "constraint:comms_templateversion.comms_templateversion_parameter_count_check",
+      "constraint:comms_templateversion.comms_templateversion_version_check",
+      "policy:comms_templateversion.tenant_isolation",
+      "trigger:comms_templateversion.comms_template_guard"
+    ]
+  },
+  "constraint:comms_provideraccount.comms_account_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:comms_provideraccount.comms_provideraccoun_organization_id_33b6926f_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:comms_provideraccount.comms_provideraccoun_principal_id_4ff7b33d_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "constraint:comms_provideraccount.comms_provideraccount_clinic_id_56c8c1b8_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_provideraccount.comms_provideraccount_org_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_templateversion.comms_template_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversio_created_by_id_47777714_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversio_organization_id_21e01d81_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversion_clinic_id_a91fca49_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversion_org_clinic_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversion_parameter_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
+    ]
+  },
+  "constraint:comms_templateversion.comms_templateversion_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:consent_aiusedisclosure.consent_aiusedisclos_clinic_id_ab9abfc9_fk_identity_": {
@@ -8800,12 +9914,129 @@
       "function:pg_catalog.int2(integer)"
     ]
   },
+  "function:clinic_app.agent_bound_snapshot(uuid, uuid, text, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
+      "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicrole_workflow_bundle_version_check",
+      "constraint:identity_userclinicrole.identity_workflow_bundle_version",
+      "function:clinic_app.identity_actor_permission(text, uuid, uuid, uuid, uuid)",
+      "function:pg_catalog.jsonb_agg(anyelement)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_userclinicrole.agent_send_mutation",
+      "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
+      "trigger:identity_userclinicrole.identity_membership_session_rejection",
+      "trigger:identity_userclinicrole.pending_membership_guard",
+      "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
   "function:clinic_app.agent_mutation_lock()": {
     "direct": {},
     "via": [
       "function:pg_catalog.hashtextextended(text, bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(integer, integer)"
+    ]
+  },
+  "function:clinic_app.agent_record_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
+      "unanalysed-plpgsql:unanalysed-declaration-form:allowed": 1
+    },
+    "via": [
+      "constraint:ai_actionexecution.ai_actionexecution_clinic_fk",
+      "constraint:ai_actionexecution.ai_actionexecution_clinic_id_0e3329d0_fk_identity_clinic_id",
+      "constraint:ai_actionexecution.ai_actionexecution_fencing_token_check",
+      "constraint:ai_actionexecution.ai_actionexecution_organization_id_b8b7ddf7_fk_identity_",
+      "constraint:ai_actionexecution.ai_actionexecution_parent_fk",
+      "constraint:ai_actionexecution.ai_actionexecution_proposal_id_3cf82112_fk_ai_actionproposal_id",
+      "constraint:ai_actionexecution.ai_actionexecution_reserved_micros_check",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id",
+      "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_",
+      "constraint:ai_actionproposal.ai_actionproposal_parent_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id",
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "function:clinic_app.agent_snapshot(uuid, text)",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.cardinality(anyarray)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "policy:ai_actionexecution.agent_machine",
+      "policy:ai_actionexecution.agent_owner",
+      "policy:ai_actionexecution.agent_staff",
+      "policy:ai_actionproposal.agent_machine",
+      "policy:ai_actionproposal.agent_owner",
+      "policy:ai_actionproposal.agent_staff",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:ai_actionexecution.agent_record_guard",
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "function:clinic_app.agent_snapshot(uuid, text)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_bound_snapshot(uuid, uuid, text, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)"
+    ]
+  },
+  "function:clinic_app.agent_staff(uuid)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)"
     ]
   },
   "function:clinic_app.ai_budget_usage(text)": {
@@ -9332,6 +10563,34 @@
       "trigger:orders_resultversion.orders_binding"
     ]
   },
+  "function:clinic_app.ai_front_desk_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
+      "pg_catalog.statement_timestamp()": 4,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 18,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
+    },
+    "via": [
+      "constraint:comms_message.comms_message_contract",
+      "constraint:comms_message.comms_message_conversation_id_2ee130cc_fk_comms_conversation_id",
+      "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_",
+      "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
+      "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
+      "function:clinic_app.current_patient_authority(text)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "policy:comms_message.tenant_isolation",
+      "trigger:comms_message.comms_message_guard"
+    ]
+  },
   "function:clinic_app.ai_imported_observation(uuid, uuid, uuid)": {
     "direct": {},
     "via": [
@@ -9651,6 +10910,141 @@
       "function:pg_catalog.to_char(timestamp without time zone, text)"
     ]
   },
+  "function:clinic_app.comms_conversation_guard_v1()": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_user()"
+    ]
+  },
+  "function:clinic_app.comms_ingest_account(uuid, text)": {
+    "direct": {},
+    "via": [
+      "constraint:comms_provideraccount.comms_account_contract",
+      "constraint:comms_provideraccount.comms_provideraccoun_organization_id_33b6926f_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccoun_principal_id_4ff7b33d_fk_identity_",
+      "constraint:comms_provideraccount.comms_provideraccount_clinic_id_56c8c1b8_fk_identity_clinic_id",
+      "constraint:comms_provideraccount.comms_provideraccount_org_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.encode(bytea, text)",
+      "policy:comms_provideraccount.tenant_isolation",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "function:clinic_app.comms_message_guard_v1()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_state",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "constraint:comms_templateversion.comms_template_contract",
+      "constraint:comms_templateversion.comms_templateversio_created_by_id_47777714_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversio_organization_id_21e01d81_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversion_clinic_id_a91fca49_fk_identity_clinic_id",
+      "constraint:comms_templateversion.comms_templateversion_org_clinic_fk",
+      "constraint:comms_templateversion.comms_templateversion_parameter_count_check",
+      "constraint:comms_templateversion.comms_templateversion_version_check",
+      "function:clinic_app.comms_ingest_account(uuid, text)",
+      "function:clinic_app.comms_open_window(uuid)",
+      "function:clinic_app.current_patient_authority(text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.interval(interval, integer)",
+      "function:pg_catalog.interval(time without time zone)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "index:comms_conversation_live_uniq",
+      "policy:ai_frontdeskthread.front_desk_owner",
+      "policy:ai_frontdeskthread.front_desk_read",
+      "policy:ai_frontdeskthread.front_desk_update",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "policy:comms_conversation.tenant_isolation",
+      "policy:comms_templateversion.tenant_isolation",
+      "trigger:ai_frontdeskthread.front_desk_guard",
+      "trigger:ai_frontdeskthread.front_desk_truncate",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate",
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_templateversion.comms_template_guard"
+    ]
+  },
+  "function:clinic_app.comms_open_window(uuid)": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 2,
+      "unresolved-identifier:found": 1
+    },
+    "via": [
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "function:clinic_app.comms_ingest_account(uuid, text)",
+      "index:comms_conversation_live_uniq",
+      "policy:comms_conversation.tenant_isolation",
+      "trigger:comms_conversation.comms_conversation_guard"
+    ]
+  },
   "function:clinic_app.comms_schedule_reminders_v1()": {
     "direct": {
       "pg_catalog.statement_timestamp()": 4,
@@ -9746,6 +11140,21 @@
       "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
+    ]
+  },
+  "function:clinic_app.comms_template_guard_v1()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": [
+      "function:clinic_app.comms_ingest_account(uuid, text)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.current_user()",
+      "function:pg_catalog.name(character varying)",
+      "function:pg_catalog.name(character)",
+      "function:pg_catalog.name(text)",
+      "function:pg_catalog.version()"
     ]
   },
   "function:clinic_app.configuration_guard()": {
@@ -12817,8 +14226,39 @@
     ]
   },
   "function:clinic_app.patient_authority(uuid, text)": {
-    "direct": {},
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
     "via": [
+      "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_state",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
       "constraint:ehr_clinicalattachment.ehr_attachment_digest_check",
       "constraint:ehr_clinicalattachment.ehr_attachment_scanned_check",
       "constraint:ehr_clinicalattachment.ehr_attachment_size_check",
@@ -12847,12 +14287,31 @@
       "constraint:identity_patientdelegategrant.identity_patientdele_requested_by_id_c5b23e84_fk_identity_",
       "constraint:identity_patientdelegategrant.identity_patientdele_verified_by_id_85c88804_fk_identity_",
       "constraint:identity_patientdelegategrant.identity_patientdelegategrant_revision_check",
+      "constraint:intake_patientaccessgrant.intake_grant_expiry_check",
+      "constraint:intake_patientaccessgrant.intake_grant_operations_check",
+      "constraint:intake_patientaccessgrant.intake_grant_org_clinic_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_enrollment_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_patient_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_clinic_id_74051320_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_enrollment_id_a7d28acd_fk_intake_pa",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_issued_by_id_a73e9224_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_organization_id_510993a5_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_patient_id_3f1484a5_fk_intake_pa",
       "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
       "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
       "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "constraint:intake_patientcontact.intake_contact_channel_check",
+      "constraint:intake_patientcontact.intake_contact_org_patient_fk",
+      "constraint:intake_patientcontact.intake_contact_verification_check",
+      "constraint:intake_patientcontact.intake_contact_version_check",
+      "constraint:intake_patientcontact.intake_patientcontac_organization_id_848b51d7_fk_identity_",
+      "constraint:intake_patientcontact.intake_patientcontact_destination_version_check",
+      "constraint:intake_patientcontact.intake_patientcontact_patient_id_dbbe435c_fk_intake_patient_id",
+      "constraint:intake_patientcontact.intake_patientcontact_verified_version_check",
       "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
       "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
       "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
@@ -12872,14 +14331,24 @@
       "function:pg_catalog.unnest(anyarray)",
       "function:pg_catalog.unnest(anymultirange)",
       "function:pg_catalog.unnest(tsvector)",
+      "index:comms_conversation_live_uniq",
+      "policy:ai_frontdeskthread.front_desk_owner",
+      "policy:ai_frontdeskthread.front_desk_read",
+      "policy:ai_frontdeskthread.front_desk_update",
+      "policy:comms_conversation.tenant_isolation",
       "policy:ehr_clinicalattachment.attachment_insert",
       "policy:ehr_clinicalattachment.attachment_read",
       "policy:ehr_clinicalattachment.attachment_scan",
       "policy:ehr_clinicalattachment.setup_tenant",
       "policy:identity_patientdelegategrant.delegate_read",
       "policy:identity_patientdelegategrant.setup_tenant",
+      "policy:intake_patientaccessgrant.tenant_isolation",
       "policy:intake_patientclinicenrollment.tenant_isolation",
+      "policy:intake_patientcontact.tenant_isolation",
       "policy:intake_patientsession.tenant_isolation",
+      "trigger:ai_frontdeskthread.front_desk_guard",
+      "trigger:ai_frontdeskthread.front_desk_truncate",
+      "trigger:comms_conversation.comms_conversation_guard",
       "trigger:ehr_clinicalattachment.ehr_attachment_binding",
       "trigger:identity_patientdelegategrant.delegate_binding",
       "trigger:intake_patientsession.delegate_session_binding"
@@ -17699,6 +19168,24 @@
     },
     "via": []
   },
+  "function:pg_catalog.name(character varying)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.name(character varying)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.name(character)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.name(character)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.name(text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.name(text)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.numeric(bigint)": {
     "direct": {
       "opaque:reviewed:pg_catalog.numeric(bigint)": 1
@@ -18338,6 +19825,12 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "index:comms_conversation_live_uniq": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "index:ehr_document_one_current": {
     "direct": {},
     "via": [
@@ -18443,6 +19936,153 @@
       "function:pg_catalog.texteq(text, text)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
+    ]
+  },
+  "policy:ai_actionexecution.agent_machine": {
+    "direct": {},
+    "via": [
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id",
+      "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_",
+      "constraint:ai_actionproposal.ai_actionproposal_parent_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id",
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "function:clinic_app.principal_has(text, uuid)",
+      "function:clinic_app.principal_scope(uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:ai_actionproposal.agent_machine",
+      "policy:ai_actionproposal.agent_owner",
+      "policy:ai_actionproposal.agent_staff",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_agentrun.agent_record_guard"
+    ]
+  },
+  "policy:ai_actionexecution.agent_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_actionexecution.agent_staff": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_staff(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_actionproposal.agent_machine": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "function:clinic_app.principal_has(text, uuid)",
+      "function:clinic_app.principal_scope(uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "trigger:ai_agentrun.agent_record_guard"
+    ]
+  },
+  "policy:ai_actionproposal.agent_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_actionproposal.agent_staff": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_staff(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentpolicyversion.agent_machine": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.principal_has(text, uuid)",
+      "function:clinic_app.principal_scope(uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentpolicyversion.agent_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentpolicyversion.agent_staff": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_staff(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentrun.agent_machine": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.principal_has(text, uuid)",
+      "function:clinic_app.principal_scope(uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentrun.agent_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_agentrun.agent_staff": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_staff(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
   "policy:ai_aiartifact.ai_artifact_user": {
@@ -18599,6 +20239,92 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:ai_frontdeskthread.front_desk_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_frontdeskthread.front_desk_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_frontdeskthread.front_desk_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_frontdeskturn.front_desk_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_frontdeskturn.front_desk_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_knowledgearticle.front_desk_insert": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_knowledgearticle.front_desk_owner": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_knowledgearticle.front_desk_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ai_knowledgearticle.front_desk_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:ai_modelchangerequest.evaluation_owner": {
     "direct": {},
     "via": [
@@ -18627,7 +20353,43 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:comms_conversation.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:comms_integrationoperation.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:comms_message.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:comms_provideraccount.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:comms_templateversion.tenant_isolation": {
     "direct": {},
     "via": [
       "function:pg_catalog.current_setting(text)",
@@ -21724,6 +23486,36 @@
       "trigger:workflows_workflowrun.workflow_guard"
     ]
   },
+  "trigger:ai_actionexecution.agent_record_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_record_guard()"
+    ]
+  },
+  "trigger:ai_actionproposal.agent_record_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_record_guard()"
+    ]
+  },
+  "trigger:ai_agentpolicyversion.agent_record_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_record_guard()"
+    ]
+  },
+  "trigger:ai_agentpolicyversion.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
+  "trigger:ai_agentrun.agent_record_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_record_guard()"
+    ]
+  },
   "trigger:ai_aiartifact.ai_artifact_guard": {
     "direct": {},
     "via": [
@@ -21802,6 +23594,30 @@
       "function:clinic_app.ai_extraction_guard()"
     ]
   },
+  "trigger:ai_frontdeskthread.front_desk_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
+    ]
+  },
+  "trigger:ai_frontdeskthread.front_desk_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
+    ]
+  },
+  "trigger:ai_frontdeskturn.front_desk_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
+    ]
+  },
+  "trigger:ai_frontdeskturn.front_desk_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
+    ]
+  },
   "trigger:ai_gatewayswitch.agent_send_mutation": {
     "direct": {},
     "via": [
@@ -21812,6 +23628,18 @@
     "direct": {},
     "via": [
       "function:clinic_app.ai_platform_guard()"
+    ]
+  },
+  "trigger:ai_knowledgearticle.front_desk_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
+    ]
+  },
+  "trigger:ai_knowledgearticle.front_desk_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_front_desk_guard()"
     ]
   },
   "trigger:ai_modelchangerequest.evaluation_guard": {
@@ -21844,10 +23672,28 @@
       "function:clinic_app.ai_platform_guard()"
     ]
   },
+  "trigger:comms_conversation.comms_conversation_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.comms_conversation_guard_v1()"
+    ]
+  },
   "trigger:comms_integrationoperation.identity_reset_delivered_clock": {
     "direct": {},
     "via": [
       "function:clinic_app.identity_reset_notification_clock()"
+    ]
+  },
+  "trigger:comms_message.comms_message_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.comms_message_guard_v1()"
+    ]
+  },
+  "trigger:comms_templateversion.comms_template_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.comms_template_guard_v1()"
     ]
   },
   "trigger:consent_aiusedisclosure.consent_binding": {

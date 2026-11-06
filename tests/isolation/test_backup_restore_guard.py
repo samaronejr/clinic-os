@@ -33,11 +33,9 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Task 47 integrated catalogue: 180 relations, plus intake_datasubjectrequest
-    # (task 50), seven care tables (task 52), ten inbox relations (task 51) and
-    # ai_careproposal (task 53): 199.
+    # The merged Wave D live catalog contains 202 domain relations.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 199
+    assert len(restore_contract.DOMAIN_RELATIONS) == 202
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(

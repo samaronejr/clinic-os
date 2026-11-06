@@ -6,6 +6,7 @@ from django.db import connection
 from infra import (
     comms_inbox_catalog,
     duplicate_catalog,
+    front_desk_catalog,
     identity_lifecycle_catalog,
     longitudinal_catalog,
     orders_catalog,
@@ -173,6 +174,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *portal_catalog.TABLE_GRANTS,
     *comms_inbox_catalog.TABLE_GRANTS,
     *portal_messages_catalog.TABLE_GRANTS,
+    *front_desk_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_evaluationrun", "status", "UPDATE"),
@@ -538,6 +540,7 @@ POSTURE_OVERRIDES: Final = {
     **portal_catalog.POSTURE,
     **comms_inbox_catalog.POSTURE,
     **portal_messages_catalog.POSTURE,
+    **front_desk_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
@@ -849,6 +852,7 @@ FUNCTION_SIGNATURES: Final = {
     *portal_catalog.RESULTS,
     *comms_inbox_catalog.RESULTS,
     *portal_messages_catalog.RESULTS,
+    *front_desk_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
@@ -1329,6 +1333,7 @@ FUNCTION_RESULTS: Final = {
     **portal_catalog.RESULTS,
     **comms_inbox_catalog.RESULTS,
     **portal_messages_catalog.RESULTS,
+    **front_desk_catalog.RESULTS,
 }
 
 

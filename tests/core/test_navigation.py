@@ -421,6 +421,8 @@ def test_palette_search_filters_destinations_by_permission(
         "workflows:inbox",
         "orders:results",
         "comms:inbox",
+        # Task 54: Messages > Assistant handoffs.
+        "ai:front-desk-handoffs",
         "retention:status",
         "ai:care-coordination",
         "identity:preferences",
