@@ -13072,6 +13072,7 @@
       },
       "kind": "domain_protocol",
       "probes": [
+        "test_psp_sql_requires_current_active_actor",
         "test_no_context_or_foreign_organization_sees_psp_intents",
         "test_financial_read_authority_cannot_fabricate_another_actors_evidence"
       ],
@@ -13095,6 +13096,7 @@
       },
       "kind": "domain_protocol",
       "probes": [
+        "test_psp_sql_requires_current_active_actor",
         "test_remote_timeout_keeps_in_progress_and_redelivery_uses_lookup_only",
         "test_lookup_only_recovery_retains_original_approved_version_after_rotation"
       ],
@@ -13123,6 +13125,7 @@
         "test_lookup_only_recovery_retains_original_approved_version_after_rotation",
         "test_newer_authoritative_reversal_still_blocks_prior_verified_fact",
         "test_no_context_or_foreign_organization_sees_psp_intents",
+        "test_psp_sql_requires_current_active_actor",
         "test_remote_timeout_keeps_in_progress_and_redelivery_uses_lookup_only",
         "test_replayed_refund_callback_requires_finance_and_reverses_repasse_once",
         "test_survivor_sees_psp_instructions_until_unmerge_without_reparenting_money"

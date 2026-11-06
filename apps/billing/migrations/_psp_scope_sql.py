@@ -9,6 +9,9 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  NULLIF(current_setting('app.current_tenant',true),'')::uuid
  AND NULLIF(current_setting('app.current_patient_session',true),'') IS NULL
  AND NULLIF(current_setting('app.current_principal',true),'') IS NULL
+ AND EXISTS (SELECT 1 FROM clinic_app.identity_user u
+  WHERE u.id=NULLIF(current_setting('app.current_user_id',true),'')::uuid
+  AND u.is_active)
  AND (i.requested_by_id=NULLIF(current_setting('app.current_user_id',true),'')::uuid
  OR clinic_app.billing_book_access(i.book_id,'journal.read')
  OR clinic_app.billing_book_access(i.book_id,'charge.collect')))
