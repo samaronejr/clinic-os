@@ -1,6 +1,7 @@
 """Public model surface of the AI gateway."""
 
 from apps.ai.agent_models import ActionProposal, AgentPolicyVersion, AgentRun, Approval
+from apps.ai.care_models import CareProposal
 from apps.ai.configuration_models import GatewaySwitch, ModelConfiguration
 from apps.ai.evaluation_models import (
     EvaluationProtocol,
@@ -22,6 +23,7 @@ __all__ = (
     "AgentPolicyVersion",
     "AgentRun",
     "Approval",
+    "CareProposal",
     "Compensation",
     "EvaluationProtocol",
     "EvaluationRating",

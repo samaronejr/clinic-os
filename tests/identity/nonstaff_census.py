@@ -18,6 +18,7 @@ from identity.delegation_probes import delegation_probes
 from identity.lifecycle_differential_probes import lifecycle_probes
 from identity.nonstaff_agenda_board_probes import agenda_board_probes
 from identity.nonstaff_agenda_grid_probes import agenda_grid_probes
+from identity.nonstaff_care_probes import care_probes
 from identity.nonstaff_decision_support_probes import decision_probes
 from identity.nonstaff_differential import (
     DifferentialProbe,
@@ -106,6 +107,7 @@ def run_nonstaff_census(
             *lifecycle_probes(graph),
             *decision_probes(data, graph, patch),
             *evaluation_probes(graph, data.actor.pk),
+            *care_probes(graph),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(

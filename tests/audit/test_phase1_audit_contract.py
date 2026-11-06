@@ -463,6 +463,28 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "ai.model_configuration",
         "drafted",
     ),
+    "ai.care_coordination.requested": (
+        "tenant",
+        "clinic-os-web",
+        "ai.invocation",
+        "care_requested",
+    ),
+    **{
+        f"ai.care_coordination.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.care_proposal",
+            state,
+        )
+        for state in (
+            "proposed",
+            "refused",
+            "approved",
+            "accepted",
+            "rejected",
+            "stale",
+        )
+    },
     **{
         f"ai.evaluation.{state}": ("tenant", "clinic-os-web", "ai.evaluation", state)
         for state in (

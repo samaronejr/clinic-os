@@ -8561,3 +8561,158 @@ msgstr "Até %(limit)s caracteres. Uma pessoa da equipe lê a mensagem, então e
 
 msgid "Send reply"
 msgstr "Enviar resposta"
+
+msgid "Care coordination"
+msgstr "Coordenação do cuidado"
+
+msgid "The assistant turns an approved plan into proposed follow-up actions. Staff approve administrative actions as a reviewed bundle; the clinician decides every clinical action."
+msgstr "O assistente transforma um plano aprovado em ações de acompanhamento propostas. A equipe aprova as ações administrativas em um pacote revisado; o médico decide cada ação clínica."
+
+msgid "Synthetic suggestions only. The assistant never changes medication, procedures or treatment, and nothing is sent to patients."
+msgstr "Sugestões somente simuladas. O assistente nunca altera medicação, procedimentos ou tratamento, e nada é enviado aos pacientes."
+
+msgid "Decision recorded."
+msgstr "Decisão registrada."
+
+msgid "Bundle result"
+msgstr "Resultado do pacote"
+
+msgid "Review the administrative bundle"
+msgstr "Revise o pacote administrativo"
+
+msgid "Each approved item adds one administrative action to the care plan and creates one unassigned follow-up task. Approval needs a recent verification code."
+msgstr "Cada item aprovado acrescenta uma ação administrativa ao plano de cuidado e cria uma tarefa de acompanhamento sem responsável. A aprovação exige um código de verificação recente."
+
+msgid "Effect"
+msgstr "Efeito"
+
+msgid "Creates a follow-up task due %(due)s."
+msgstr "Cria uma tarefa de acompanhamento com vencimento em %(due)s."
+
+msgid "Approve this bundle"
+msgstr "Aprovar este pacote"
+
+msgid "Preparing suggestions. Refresh to see them; you can continue planning manually."
+msgstr "Preparando sugestões. Atualize para vê-las; você pode continuar o planejamento manualmente."
+
+msgid "Refresh suggestions"
+msgstr "Atualizar sugestões"
+
+msgid "Suggestions are unavailable. Continue planning manually."
+msgstr "Sugestões indisponíveis. Continue o planejamento manualmente."
+
+msgid "The plan changed after the request. Request new suggestions."
+msgstr "O plano mudou depois da solicitação. Solicite novas sugestões."
+
+msgid "Clinical: the clinician decides"
+msgstr "Clínica: o médico decide"
+
+msgid "Administrative: staff approve"
+msgstr "Administrativa: a equipe aprova"
+
+msgid "Accept into the plan"
+msgstr "Aceitar no plano"
+
+msgid "Waiting for staff approval in a reviewed bundle."
+msgstr "Aguardando aprovação da equipe em um pacote revisado."
+
+msgid "No suggestions for this plan. Continue planning manually."
+msgstr "Nenhuma sugestão para este plano. Continue o planejamento manualmente."
+
+msgid "Bundles awaiting approval"
+msgstr "Pacotes aguardando aprovação"
+
+msgid "Review bundle"
+msgstr "Revisar pacote"
+
+msgid "No bundles are waiting. Administrative follow-up can continue manually in Tasks."
+msgstr "Nenhum pacote aguardando. O acompanhamento administrativo pode continuar manualmente em Tarefas."
+
+msgid "Your active care plans"
+msgstr "Seus planos de cuidado ativos"
+
+msgid "Plan approved on"
+msgstr "Plano aprovado em"
+
+msgid "Request suggestions"
+msgstr "Solicitar sugestões"
+
+msgid "Open suggestions"
+msgstr "Abrir sugestões"
+
+msgid "No active care plans of yours. Plans come from finalized notes."
+msgstr "Você não tem planos de cuidado ativos. Os planos vêm de notas finalizadas."
+
+msgid "Return window"
+msgstr "Janela de retorno"
+
+msgid "Staff coordination"
+msgstr "Coordenação da equipe"
+
+msgid "Order follow-up"
+msgstr "Acompanhamento de pedido"
+
+msgid "Questionnaire"
+msgstr "Questionário"
+
+msgid "Monitoring task"
+msgstr "Tarefa de monitoramento"
+
+msgid "Patient instruction"
+msgstr "Orientação ao paciente"
+
+msgid "Action type not allowed"
+msgstr "Tipo de ação não permitido"
+
+msgid "Awaiting decision"
+msgstr "Aguardando decisão"
+
+msgid "Refused by the validator"
+msgstr "Recusada pelo validador"
+
+msgid "Approved by staff"
+msgstr "Aprovada pela equipe"
+
+msgid "Accepted by the clinician"
+msgstr "Aceita pelo médico"
+
+msgid "Plan changed; not applied"
+msgstr "Plano alterado; não aplicada"
+
+msgid "The assistant may not propose this kind of action. Only the clinician decides medication, procedures, referrals and patient guidance."
+msgstr "O assistente não pode propor este tipo de ação. Somente o médico decide medicação, procedimentos, encaminhamentos e orientações ao paciente."
+
+msgid "The proposed window is outside the allowed range."
+msgstr "O período proposto está fora do intervalo permitido."
+
+msgid "The suggestion was incomplete and was discarded."
+msgstr "A sugestão estava incompleta e foi descartada."
+
+msgid "The same suggestion appeared twice."
+msgstr "A mesma sugestão apareceu duas vezes."
+
+msgid "The plan changed after the suggestion. Request new suggestions."
+msgstr "O plano mudou depois da sugestão. Solicite novas sugestões."
+
+msgid "This item could not be approved now. Review it again or continue manually."
+msgstr "Este item não pôde ser aprovado agora. Revise-o novamente ou continue manualmente."
+
+msgid "These suggestions changed or are no longer eligible. Review them again or continue manually."
+msgstr "Estas sugestões mudaram ou não são mais elegíveis. Revise-as novamente ou continue manualmente."
+
+msgid "Approval is unavailable. Ask an administrator to check its managed key."
+msgstr "A aprovação está indisponível. Peça a um administrador que verifique a chave gerenciada."
+
+msgid "Care coordination proposals"
+msgstr "Propostas de coordenação do cuidado"
+
+msgid "Add an administrative action to a care plan"
+msgstr "Acrescentar uma ação administrativa a um plano de cuidado"
+
+msgid "%(count)s administrative action proposed on %(when)s"
+msgid_plural "%(count)s administrative actions proposed on %(when)s"
+msgstr[0] "%(count)s ação administrativa proposta em %(when)s"
+msgstr[1] "%(count)s ações administrativas propostas em %(when)s"
+
+msgid "Approving bundles also needs permission to assign tasks in this clinic."
+msgstr "Aprovar pacotes também exige permissão para atribuir tarefas nesta clínica."

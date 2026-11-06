@@ -23,11 +23,13 @@ EVALUATION_TABLES: Final = frozenset(
         "ai_modelchangerequest",
     }
 )
+CARE_TABLES: Final = frozenset({"ai_careproposal"})
 CUSTOM_RLS_TABLES: Final = (
     frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"})
     | AGENT_TABLES
     | EXTRACTION_TABLES
     | EVALUATION_TABLES
+    | CARE_TABLES
 )
 NON_RLS_TABLES: Final = frozenset({"ai_modelconfiguration", "ai_gatewayswitch"})
 RUNTIME_GRANTS: Final = {
@@ -82,6 +84,15 @@ COLUMN_GRANTS: Final = frozenset(
             "approved_by_id",
             "approval_ref",
             "decided_at",
+        ),
+        "ai_careproposal": (
+            "state",
+            "reason_code",
+            "action_proposal_id",
+            "care_action_id",
+            "decided_by_id",
+            "decided_at",
+            "revision",
         ),
     }.items()
     for column in columns

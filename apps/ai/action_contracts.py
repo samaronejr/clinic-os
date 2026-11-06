@@ -79,7 +79,11 @@ TRANSITIONS: Final = {
     "compensating": frozenset({"compensated", "manual_required"}),
 }
 AUTONOMY: Final = ("A0", "A1", "A2", "A3")
-OPERATIONS: Final = ("comms.synthetic_reminder", "workflows.review_task")
+OPERATIONS: Final = (
+    "comms.synthetic_reminder",
+    "workflows.review_task",
+    "care_action.create",
+)
 MAX_ACTION_BYTES: Final = 65_536
 
 

@@ -32,6 +32,8 @@ DOMAIN_RELATIONS: Final = (
     "ai_aicircuit",
     "ai_aiinvocation",
     "ai_approval",
+    # Task 53 care proposals: plain-text-free review history of model items.
+    "ai_careproposal",
     "ai_compensation",
     "ai_extractioncandidate",
     "ai_extractionjob",

@@ -57,12 +57,31 @@ def test_capability_matrix_cannot_silently_omit_a_new_registered_capability() ->
     )
     assert isinstance(constraint, CheckConstraint)
     assert isinstance(constraint.condition, Q)
-    assert ("capability__in", CAPABILITIES) in constraint.condition.children
+    # Task 53: care coordination has no generic tool. Its one A1 command,
+    # care_action.create, is attacked by tests/ai/test_care_coordination.py and
+    # tests/ai/test_care_views.py (forgery, injection, staff vs clinician).
+    assert (
+        "capability__in",
+        (*CAPABILITIES, "care_coordination"),
+    ) in constraint.condition.children
     for capability in CAPABILITIES:
         assert (
             PolicyTerms(capability, "A1", ("workflows.review_task",)).capability
             == capability
         )
-    assert set(OPERATIONS) == {"workflows.review_task", "comms.synthetic_reminder"}
-    with pytest.raises(ActionInputError):
-        PolicyTerms("undeclared-capability", "A1", ("workflows.review_task",))
+    assert (
+        PolicyTerms("care_coordination", "A1", ("care_action.create",)).capability
+        == "care_coordination"
+    )
+    assert set(OPERATIONS) == {
+        "workflows.review_task",
+        "comms.synthetic_reminder",
+        "care_action.create",
+    }
+    for capability, tools in (
+        ("undeclared-capability", ("workflows.review_task",)),
+        ("care_coordination", ("workflows.review_task",)),
+        ("front_desk", ("care_action.create",)),
+    ):
+        with pytest.raises(ActionInputError):
+            PolicyTerms(capability, "A1", tools)

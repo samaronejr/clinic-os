@@ -62,6 +62,22 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
                 "change_rejected",
             )
         },
+        "ai.care_coordination.requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.invocation", "care_requested"
+        ),
+        **{
+            f"ai.care_coordination.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.care_proposal", state
+            )
+            for state in (
+                "proposed",
+                "refused",
+                "approved",
+                "accepted",
+                "rejected",
+                "stale",
+            )
+        },
         **{
             f"retention.purge.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-worker", "retention.artifact_purge", state

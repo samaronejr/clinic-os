@@ -311,6 +311,13 @@ def _probe_route(
             for htmx in (False, True)
             if route.name == "ai:decision-support"
         )
+        # Task 53: the closed command form answers generic bodies with 400; a
+        # valid command naming an unknown run reaches the view's own denial.
+        requests += tuple(
+            ("POST", {"action": "open", "invocation_id": str(uuid4())}, htmx)
+            for htmx in (False, True)
+            if route.name == "ai:care-coordination"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"

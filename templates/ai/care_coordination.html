@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load i18n clinic_locale workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Care coordination" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="care-title" data-care-coordination>
+  <h1 id="care-title">{% trans "Care coordination" %}</h1>
+  <p class="lede">{% trans "The assistant turns an approved plan into proposed follow-up actions. Staff approve administrative actions as a reviewed bundle; the clinician decides every clinical action." %}</p>
+  <div class="feedback" role="note"><p>{% trans "Synthetic suggestions only. The assistant never changes medication, procedures or treatment, and nothing is sent to patients." %}</p></div>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-care-error>{{ error }}</div>{% endif %}
+  {% if saved %}<div class="feedback feedback--success" role="status" data-care-saved><p>{% trans "Decision recorded." %}</p></div>{% endif %}
+
+  {% if outcomes %}
+  <section class="panel" aria-labelledby="outcomes-title" data-care-outcomes>
+    <h2 id="outcomes-title">{% trans "Bundle result" %}</h2>
+    <ul>
+      {% for outcome in outcomes %}
+      <li data-care-outcome="{{ outcome.state }}"><strong>{{ outcome.kind_label }}</strong>: {{ outcome.message }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if preview %}
+  <section class="panel" aria-labelledby="preview-title" data-care-preview>
+    <h2 id="preview-title">{% trans "Review the administrative bundle" %}</h2>
+    <p>{% trans "Each approved item adds one administrative action to the care plan and creates one unassigned follow-up task. Approval needs a recent verification code." %}</p>
+    <ol>
+      {% for row in preview_items %}
+      <li data-care-preview-item="{{ row.kind }}">
+        <strong>{{ row.kind_label }}</strong>
+        <dl>
+          <dt>{% trans "Window" %}</dt><dd>{{ row.window_start|clinic_minute }} – {{ row.window_end|clinic_minute }}</dd>
+          <dt>{% trans "Effect" %}</dt><dd>{% blocktrans with due=row.window_end|clinic_minute %}Creates a follow-up task due {{ due }}.{% endblocktrans %}</dd>
+        </dl>
+      </li>
+      {% endfor %}
+    </ol>
+    <form method="post" novalidate data-care-approve-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="approve">
+      <input type="hidden" name="invocation_id" value="{{ preview }}">
+      <input type="hidden" name="digest" value="{{ digest }}">
+      <div class="actions"><button class="button" type="submit">{% trans "Approve this bundle" %}</button></div>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if bundle %}
+  <section aria-labelledby="bundle-title" data-care-bundle="{{ bundle.state }}">
+    <h2 id="bundle-title">{% trans "Suggestions" %}</h2>
+    {% if bundle.state == "generating" %}
+    <p role="status" data-care-generating>{% trans "Preparing suggestions. Refresh to see them; you can continue planning manually." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="refresh">
+      <input type="hidden" name="invocation_id" value="{{ bundle.invocation_id }}">
+      <div class="actions"><button class="button button--secondary" type="submit">{% trans "Refresh suggestions" %}</button></div>
+    </form>
+    {% elif bundle.state == "unavailable" %}
+    <p role="status" data-care-unavailable>{% trans "Suggestions are unavailable. Continue planning manually." %}</p>
+    {% elif bundle.state == "stale" %}
+    <p role="status" data-care-stale>{% trans "The plan changed after the request. Request new suggestions." %}</p>
+    {% else %}
+    {% for row in items %}
+    <article class="panel" data-care-item="{{ row.item_id }}" data-care-kind="{{ row.kind }}" data-care-state="{{ row.state }}" aria-labelledby="item-{{ forloop.counter }}">
+      <h3 id="item-{{ forloop.counter }}">{{ row.kind_label }}</h3>
+      <p><span class="badge">{{ row.state_label }}</span>
+        <span class="badge">{% if row.audience == "clinical" %}{% trans "Clinical: the clinician decides" %}{% else %}{% trans "Administrative: staff approve" %}{% endif %}</span></p>
+      {% if row.window_start %}<p>{% trans "Window" %}: {{ row.window_start|clinic_minute }} – {{ row.window_end|clinic_minute }}</p>{% endif %}
+      {% if row.reason_label %}<p data-care-reason>{{ row.reason_label }}</p>{% endif %}
+      {% if row.decidable %}
+      <form method="post" novalidate data-care-decide-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="decide">
+        <input type="hidden" name="item_id" value="{{ row.item_id }}">
+        <input type="hidden" name="revision" value="{{ row.revision }}">
+        <div class="actions">
+          {% if row.audience == "clinical" and clinician %}<button class="button" type="submit" name="decision" value="accept">{% trans "Accept into the plan" %}<span class="visually-hidden">: {{ row.kind_label }}</span></button>{% endif %}
+          <button class="button button--quiet" type="submit" name="decision" value="reject">{% trans "Decline" %}<span class="visually-hidden">: {{ row.kind_label }}</span></button>
+        </div>
+      </form>
+      {% if row.audience == "administrative" %}<p class="hint">{% trans "Waiting for staff approval in a reviewed bundle." %}</p>{% endif %}
+      {% endif %}
+    </article>
+    {% empty %}
+    <p role="status" data-care-empty-bundle>{% trans "No suggestions for this plan. Continue planning manually." %}</p>
+    {% endfor %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if automation %}
+  <section aria-labelledby="bundles-title" data-care-bundles>
+    <h2 id="bundles-title">{% trans "Bundles awaiting approval" %}</h2>
+    {% if not staff %}<p role="note" data-care-approval-denied>{% trans "Approving bundles also needs permission to assign tasks in this clinic." %}</p>{% endif %}
+    {% for row in bundles %}
+    <form method="post" novalidate class="panel" data-care-bundle-row>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="preview">
+      <input type="hidden" name="invocation_id" value="{{ row.invocation_id }}">
+      <p>{% blocktrans count count=row.pending with when=row.created_at|clinic_minute %}{{ count }} administrative action proposed on {{ when }}{% plural %}{{ count }} administrative actions proposed on {{ when }}{% endblocktrans %}</p>
+      <div class="actions"><button class="button" type="submit">{% trans "Review bundle" %}</button></div>
+    </form>
+    {% empty %}
+    <p role="status" data-care-no-bundles>{% trans "No bundles are waiting. Administrative follow-up can continue manually in Tasks." %}</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if clinician %}
+  <section aria-labelledby="plans-title" data-care-plans>
+    <h2 id="plans-title">{% trans "Your active care plans" %}</h2>
+    {% for row in plans %}
+    <article class="panel" data-care-plan="{{ row.plan_id }}">
+      <h3>{{ row.patient }}</h3>
+      <p>{% trans "Plan approved on" %} {{ row.created_at|clinic_minute }}</p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="request">
+        <input type="hidden" name="plan_id" value="{{ row.plan_id }}">
+        <div class="actions"><button class="button button--secondary" type="submit">{% trans "Request suggestions" %}<span class="visually-hidden">: {{ row.patient }}</span></button></div>
+      </form>
+      {% for invocation in row.bundles %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="open">
+        <input type="hidden" name="invocation_id" value="{{ invocation }}">
+        <button class="button button--quiet" type="submit">{% trans "Open suggestions" %}<span class="visually-hidden">: {{ row.patient }}</span></button>
+      </form>
+      {% endfor %}
+    </article>
+    {% empty %}
+    <p role="status" data-care-no-plans>{% trans "No active care plans of yours. Plans come from finalized notes." %}</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

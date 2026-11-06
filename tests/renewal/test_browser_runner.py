@@ -88,6 +88,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "clinical-inbox",
         "portal",
         "messages",
+        "care-coordination",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
     assert {
@@ -1440,6 +1441,7 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
     # this environment; without the pin they would publish to whatever listens
     # on the developer workstation's 6379.
     assert environment["CELERY_BROKER_URL"] == "memory://"
+    assert "COVERAGE_FILE" not in environment
     for leaked in (
         "APP_DATABASE_URL",
         "MIGRATION_DATABASE_URL",
@@ -1477,8 +1479,13 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
 
     @contextlib.contextmanager
     def fake_provision(
-        repository: Path, token: str, *, docker: object = None
+        repository: Path,
+        token: str,
+        *,
+        docker: object = None,
+        memory_backed: bool = False,
     ) -> Iterator[runner.ProvisionedDatabase]:
+        assert memory_backed
         yield database
 
     captured: list[dict[str, str]] = []
@@ -1491,6 +1498,8 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         timeout: int,
         cwd: Path | None = None,
     ) -> int:
+        assert timeout == 3600
+        assert "--workers=8" in argv
         captured.append(environment)
         return 0
 
@@ -1504,6 +1513,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     environment = captured[0]
     assert environment["DJANGO_SETTINGS_MODULE"] == "config.settings.test"
     assert environment["CELERY_BROKER_URL"] == "memory://"
+    assert environment["COVERAGE_FILE"] == str(tmp_path / "coverage.data")
     assert environment["APP_DATABASE_URL"] == database.app_dsn
     assert environment["MIGRATION_DATABASE_URL"] == database.owner_dsn
     assert environment["TEST_SUPERUSER_DATABASE_URL"] == database.super_dsn
@@ -1514,6 +1524,7 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     owned = {
+        "CLINIC_EVIDENCE_ROOT": str(tmp_path / "evidence"),
         "TMPDIR": str(tmp_path / "tmp"),
         "PLAYWRIGHT_BROWSERS_PATH": str(tmp_path / "browsers"),
         "REALTIME_REDIS_URL": "redis://127.0.0.1:65431/1",
@@ -1522,6 +1533,7 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("CLINIC_UNRELATED_SECRET", "must-not-inherit")
     environments = (
+        runner._child_env({}),
         runner._server_environment(
             "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic"
         ),
@@ -1621,9 +1633,58 @@ def test_provisioned_database_uses_unique_names_and_cleans_only_its_own(
         assert f"127.0.0.1:{db.port}" in db.app_dsn
     removed = [call for call in calls if call[:2] == ("container", "rm")]
     volumes = [call for call in calls if call[:2] == ("volume", "rm")]
+    assert (
+        "volume",
+        "create",
+        "--label",
+        "clinic.renewal.run=deadbeef",
+        db.volume,
+    ) in calls
+    [started] = [call for call in calls if call[0] == "run"]
+    assert "--memory" not in started
     assert removed == [("container", "rm", "-f", db.container)]
     assert volumes == [("volume", "rm", db.volume)]
     assert all("app_mei" not in " ".join(call) for call in calls)
+
+
+def test_coverage_database_bounds_memory_and_retains_durability_defaults() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+        calls.append(arguments)
+        return ""
+
+    with runner._provision_database(
+        REPOSITORY, "memorycov", docker=fake_docker, memory_backed=True
+    ) as database:
+        [created] = [call for call in calls if call[:2] == ("volume", "create")]
+        assert created == (
+            "volume",
+            "create",
+            "--driver",
+            "local",
+            "--opt",
+            "type=tmpfs",
+            "--opt",
+            "device=tmpfs",
+            "--opt",
+            "o=size=2g,mode=0700",
+            "--label",
+            "clinic.renewal.run=memorycov",
+            database.volume,
+        )
+        [started] = [call for call in calls if call[0] == "run"]
+        assert started[started.index("--memory") + 1] == "6g"
+        assert started[started.index("--memory-swap") + 1] == "6g"
+        assert started[-1] == runner.POSTGRES_IMAGE
+        assert not any(
+            "fsync=" in arg
+            or "synchronous_commit=" in arg
+            or "full_page_writes=" in arg
+            for arg in started
+        )
+    assert ("container", "rm", "-f", database.container) in calls
+    assert ("volume", "rm", database.volume) in calls
 
 
 def test_provision_cleans_up_when_readiness_fails(tmp_path: Path) -> None:

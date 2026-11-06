@@ -19,6 +19,7 @@ from identity.delegation_probe_support import (
     checked_permissions as _checked_permissions,
 )
 from identity.delegation_probes import CASES
+from identity.nonstaff_care_probes import SYMBOLS as CARE_SYMBOLS
 from identity.nonstaff_differential import root_delegation
 from identity.nonstaff_document_probes import SYMBOLS as DOCUMENT_SYMBOLS
 from identity.nonstaff_ehr_probes import SYMBOLS as EHR_SYMBOLS
@@ -93,6 +94,7 @@ def test_cases_cover_every_root_delegation() -> None:
         | EHR_SYMBOLS
         | DOCUMENT_SYMBOLS
         | EXTRACTION_SYMBOLS
+        | CARE_SYMBOLS
     ) == sorted(rows)
     for case in CASES.values():
         assert case.permission in BUNDLES_V1[case.permission_role]

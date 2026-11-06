@@ -41,6 +41,7 @@ PURPOSE_CAPABILITIES = {
     "brief": "AI-02",
     "extraction": "AI-03",
     "front_desk": "AI-04",
+    "care_coordination": "AI-05",
     "analyst": "AI-07",
     "decision_support": "AI-08",
 }

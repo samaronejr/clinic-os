@@ -16,6 +16,7 @@ from apps.ai.owner import reset_circuit
 from apps.ai.rls import (
     AGENT_GRANTS,
     AGENT_TABLES,
+    CARE_TABLES,
     COLUMN_GRANTS,
     CUSTOM_RLS_TABLES,
     EVALUATION_TABLES,
@@ -124,6 +125,11 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
             for table in EVALUATION_TABLES
             for policy in ("evaluation_owner", "evaluation_staff")
         ),
+        *(
+            (table, policy)
+            for table in CARE_TABLES
+            for policy in ("care_owner", "care_staff")
+        ),
     }
     assert grants == {
         (table, privilege)
@@ -184,6 +190,7 @@ def test_clinical_purposes_recheck_current_patient_authority(
             "brief",
             "extraction",
             "decision_support",
+            "care_coordination",
         ):
             cursor.execute(
                 "SELECT clinic_app.ai_staff(%s,%s,%s)",

@@ -4,8 +4,12 @@ Todo 39 adds an execution platform, not real-provider authorization. No external
 gate is satisfied here. The runnable external command is a labelled, offline
 logistics reminder simulation. The other registered command creates an
 operational review checklist through `workflows.create_task` in the approving
-human's request. Neither command diagnoses, finalizes, prescribes, moves money
-or sends a real patient message.
+human's request. Todo 53 registers a third, A1-only command,
+`care_action.create`, which adds one administrative action (return window or
+staff coordination) to a care plan through `add_care_action` in the approving
+staff member's request; its own validator binds the plan revision and the
+pending care proposal it executes (`apps/ai/README.md`). No command
+diagnoses, finalizes, prescribes, moves money or sends a real patient message.
 
 ## Authority and approval
 

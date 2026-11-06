@@ -41,6 +41,7 @@ def check_authority(
             | Purpose.BRIEF
             | Purpose.EXTRACTION
             | Purpose.DECISION_SUPPORT
+            | Purpose.CARE_COORDINATION
         ):
             permission = "clinical.read"
         case unreachable:

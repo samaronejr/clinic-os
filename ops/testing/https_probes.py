@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 import json
 import sys
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Final, Never
 from urllib.parse import urlsplit
 
 from ops.testing.https_role_bootstrap import configure_roles
@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
     from ops.testing.https_stack_specs import HttpsStackPlan
 
+# Fresh release starts five Django processes and applies the complete schema.
+RELEASE_TIMEOUT_SECONDS: Final = 120
+
 
 def run_https_probes(
     repository: Path,
@@ -32,7 +35,10 @@ def run_https_probes(
     """Run role setup, release, TLS/HBA assertions, and browser fixture checks."""
     inspect_https_runtime(plan, containers)
     configure_roles(containers["database"], plan)
-    run_docker_command(("exec", containers["release"], "/app/ops/container/release.sh"))
+    run_docker_command(
+        ("exec", containers["release"], "/app/ops/container/release.sh"),
+        timeout_seconds=RELEASE_TIMEOUT_SECONDS,
+    )
     _probe_database_tls(containers["release"], plan)
     _probe_https(plan, ca_path)
     if browser_probe is None:

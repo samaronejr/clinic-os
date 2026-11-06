@@ -29,6 +29,10 @@ class AgentPolicyForm(forms.Form):
         choices=(
             ("workflows.review_task", _("Create an operational review checklist")),
             ("comms.synthetic_reminder", _("Simulate one logistics reminder")),
+            (
+                "care_action.create",
+                _("Add an administrative action to a care plan"),
+            ),
         ),
     )
     principal_id = forms.UUIDField(

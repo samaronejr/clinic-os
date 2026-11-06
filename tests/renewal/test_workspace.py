@@ -48,7 +48,8 @@ NAV_CLINIC: Final = re.compile(
 PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
 # A physician sees every IA destination their bundle and routes open (plan
 # annex IA, todo 13): Patients leads to consent, never to the registry, and
-# the clinic billing ledger stays hidden.
+# the clinic billing ledger stays hidden. Task 53: Automations leads a
+# physician to Care coordination for their own plans.
 PHYSICIAN_MODULES: Final = {
     "today",
     "agenda",
@@ -56,6 +57,7 @@ PHYSICIAN_MODULES: Final = {
     "inbox",
     "messages",
     "operations",
+    "automations",
 }
 
 
