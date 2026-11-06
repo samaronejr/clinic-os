@@ -72,4 +72,4 @@ def test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation(
         )
         assert payout.state == "confirmed"
         assert balance(finance_setup.book_id, "bank") == 700
-        assert balance(finance_setup.book_id, "practitioner_payable_in_transit") == 0
+        assert balance(finance_setup.book_id, "payout_in_transit") == 0
