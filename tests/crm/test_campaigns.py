@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from apps.audit.models import AuditEvent
-from apps.comms.inbox_adapters import EmailInboxAdapter
+from apps.comms.inbox_adapters import EmailInboxAdapter, OutboundMessage
 from apps.comms.inbox_services import (
     InboxRefusedError,
     create_template_version,
@@ -16,6 +16,7 @@ from apps.comms.inbox_services import (
 )
 from apps.comms.models import IntegrationOperation, Message
 from apps.consent.services import revoke_consent
+from apps.core import integration
 from apps.core.integration import execute_operation
 from apps.crm.access import CrmAccessDeniedError, CrmRuleError
 from apps.crm.campaigns import (
@@ -29,7 +30,8 @@ from apps.crm.campaigns import (
 from apps.crm.models import Campaign, CampaignSend, MarketingPreference
 from apps.crm.patient import set_marketing_preference
 from apps.crm.rules import MARKETING_BODIES
-from apps.intake.contacts import save_contact_destination
+from apps.intake.contacts import save_contact_destination, verify_contact
+from apps.intake.models import PatientContact
 from apps.intake.patient_access import patient_session_context
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, transaction
@@ -40,6 +42,10 @@ from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
+    from apps.comms.adapters import OperationScope, SendAdapter, SendResult
+    from apps.core.integration import ExecutionResult
     from pytest_django.fixtures import SettingsWrapper
 
     from rbac_fixtures import RbacGraph
@@ -270,6 +276,94 @@ def test_missing_consent_never_starts_campaign(state: CrmWorld) -> None:
         campaign.refresh_from_db()
         assert campaign.state == "approved"
         assert not CampaignSend.objects.filter(campaign=campaign).exists()
+
+
+@pytest.mark.parametrize("after_prepare", [False, True])
+def test_reverified_replacement_never_receives_queued_old_address_send(
+    state: CrmWorld, monkeypatch: pytest.MonkeyPatch, after_prepare: bool
+) -> None:
+    """Fresh consent cannot revive an operation bound to the previous address."""
+    _opt_in(state)
+    delivered: list[str] = []
+    original_send = EmailInboxAdapter.send
+    original_finish = integration._send_and_finish
+
+    def observe_send(
+        self: EmailInboxAdapter, prepared: object, *, operation_id: UUID
+    ) -> SendResult:
+        assert isinstance(prepared, OutboundMessage)
+        delivered.append(prepared.destination)
+        return original_send(self, prepared, operation_id=operation_id)
+
+    def queue() -> IntegrationOperation:
+        campaign = _campaign(state)
+        with runtime_role(), tenant_context(state.manager, state.graph.organization_a):
+            approve_campaign(
+                clinic_id=state.graph.clinic_a,
+                campaign_id=campaign.pk,
+                expected_revision=1,
+            )
+            send_campaign(
+                clinic_id=state.graph.clinic_a,
+                campaign_id=campaign.pk,
+                expected_revision=2,
+            )
+            return IntegrationOperation.objects.get(
+                subject_id=CampaignSend.objects.get(campaign=campaign).message_id
+            )
+
+    def replace_verify_and_opt_in() -> None:
+        with tenant_context(state.graph.shared_user, state.graph.organization_a):
+            changed = save_contact_destination(
+                clinic_id=state.graph.clinic_a,
+                enrollment_id=state.enrollment,
+                channel="email",
+                destination="replacement@example.invalid",
+                expected_version=1,
+            )
+            verify_contact(
+                clinic_id=state.graph.clinic_a,
+                enrollment_id=state.enrollment,
+                channel="email",
+                expected_version=changed.destination_version,
+            )
+        with patient_session_context(state.session):
+            set_marketing_preference(channel="email", opted_in=True)
+
+    def replace_after_prepare(
+        scope: OperationScope, adapter: SendAdapter, prepared: object
+    ) -> ExecutionResult:
+        replace_verify_and_opt_in()
+        return original_finish(scope, adapter, prepared)
+
+    monkeypatch.setattr(EmailInboxAdapter, "send", observe_send)
+    stale = queue()
+    with runtime_role(), tenant_context(state.manager, state.graph.organization_a):
+        old = PatientContact.objects.get(
+            patient_id=state.patient, channel="email"
+        ).destination
+    if after_prepare:
+        monkeypatch.setattr(integration, "_send_and_finish", replace_after_prepare)
+    else:
+        with runtime_role():
+            replace_verify_and_opt_in()
+    with runtime_role():
+        execute_operation(stale.pk)
+    with runtime_role(), tenant_context(state.manager, state.graph.organization_a):
+        stale.refresh_from_db()
+        assert stale.status == "cancelled"
+        assert stale.provider_reference is None
+        assert marketing_opted_in(state.enrollment, "email")
+    assert old not in delivered
+    assert delivered == []
+    monkeypatch.setattr(integration, "_send_and_finish", original_finish)
+    fresh = queue()
+    with runtime_role():
+        execute_operation(fresh.pk)
+    with runtime_role(), tenant_context(state.manager, state.graph.organization_a):
+        fresh.refresh_from_db()
+        assert fresh.status == "succeeded"
+    assert delivered == ["replacement@example.invalid"]
 
 
 def test_staff_cannot_attest_patient_opt_in(state: CrmWorld) -> None:

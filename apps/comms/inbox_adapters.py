@@ -21,21 +21,25 @@ from django.utils import timezone
 
 from apps.comms.adapters import PermanentSendError, SendResult, TransientSendError
 from apps.comms.capabilities import channel_capability
+from apps.comms.inbound_providers import WebhookRejectedError, normalize_address
 from apps.comms.inbox_rules import SendRequest, decide_send
 from apps.comms.inbox_services import (
     PROVIDER_BY_CHANNEL,
     SUBJECT_TYPE,
+    contact_fingerprints,
     conversation_lock_key,
     marketing_opted_in,
 )
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
+from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from uuid import UUID
 
     from apps.comms.adapters import OperationScope
+    from apps.comms.models import Conversation
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +56,31 @@ def _message_for(operation: IntegrationOperation) -> Message:
     return Message.objects.select_related("conversation", "template").get(
         pk=operation.subject_id, direction="out"
     )
+
+
+def _marketing_destination(conversation: Conversation) -> str | None:
+    """Bind the immutable thread identity to the current verified destination."""
+    if conversation.enrollment_id is None:
+        return None
+    enrollment = PatientClinicEnrollment.objects.filter(
+        pk=conversation.enrollment_id, clinic_id=conversation.clinic_id
+    ).first()
+    if enrollment is None:
+        return None
+    contact = PatientContact.objects.filter(
+        patient_id=enrollment.patient_id, channel=conversation.channel
+    ).first()
+    if contact is None or contact.verified_version != contact.destination_version:
+        return None
+    try:
+        destination = normalize_address(conversation.channel, contact.destination)
+    except WebhookRejectedError:
+        return None
+    if conversation.contact_fingerprint not in contact_fingerprints(
+        channel=conversation.channel, address=destination
+    ):
+        return None
+    return destination
 
 
 class InboxAdapter:
@@ -76,6 +105,10 @@ class InboxAdapter:
 
             if template is None or template.body not in MARKETING_BODIES:
                 raise PermanentSendError
+            current_destination = _marketing_destination(conversation)
+            if current_destination is None:
+                raise PermanentSendError
+            destination = current_destination
         # Marketing bytes come from the immutable neutral template, never an
         # independently inserted encrypted body or arbitrary stored parameters.
         body = template.body if marketing and template is not None else message.body
@@ -171,7 +204,11 @@ def message_send_eligible(scope: OperationScope) -> bool:
     if conversation.purpose == "marketing":
         from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
 
-        if template is None or template.body not in MARKETING_BODIES:
+        if (
+            template is None
+            or template.body not in MARKETING_BODIES
+            or _marketing_destination(conversation) is None
+        ):
             return False
     decision = decide_send(
         SendRequest(

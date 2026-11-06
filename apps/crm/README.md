@@ -33,7 +33,10 @@ They support a bounded cohort of at most 200 enrollments and fail closed above
 that bound, rather than silently sampling. Each recipient needs BOTH current,
 unrevoked marketing purpose consent and their own current channel opt-in bound
 to the verified destination version. Changing the destination invalidates that
-choice. Missing choices, newer consent text, refusal or revocation excludes the
+choice. A fresh opt-in for a replacement address cannot revive an old queued
+thread: preparation resolves the current verified contact, and the final locked
+recheck requires its fingerprint to match the thread's immutable contact identity.
+Missing choices, newer consent text, refusal or revocation excludes the
 recipient. The preview shows eligible and excluded counts without identities.
 Clinical-condition targeting is blocked: no reviewed lawful-basis record exists,
 and no condition filter or clinical join is implemented.
