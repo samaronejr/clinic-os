@@ -28,6 +28,8 @@ once the database holds the receipt.
 </div>
 {% elif view.instructions %}
   {% include "billing/partials/instructions.html" with instructions=view.instructions patient=True %}
+{% elif psp_payment %}
+  {% include "billing/partials/psp_instructions.html" %}
 {% endif %}
 <p class="feedback feedback--error billing-offline" role="alert" data-offline hidden>Não foi possível atualizar o estado agora. O que está na tela pode estar desatualizado; nada foi pago por causa disso.</p>
 <div class="actions billing-refresh">

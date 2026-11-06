@@ -225,6 +225,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_payout",
         "billing_cashsession",
         "billing_cashsessionevent",
+        "billing_psppolicy",
+        "billing_pspintent",
+        "billing_pspbinding",
+        "billing_pspevidence",
+        "billing_pspreceipt",
         # Exact owner/task/run policies and ACLs: tests/workflows/test_posture.py.
         "workflows_task",
         "workflows_taskcomment",

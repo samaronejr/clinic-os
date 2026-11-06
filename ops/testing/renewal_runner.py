@@ -73,7 +73,10 @@ SUITES: Final = {
         "tests/renewal/browser/test_passkeys.py",
     ),
     "clinic-settings": ("tests/renewal/browser/test_clinic_settings.py",),
-    "billing": ("tests/renewal/browser/test_billing.py",),
+    "billing": (
+        "tests/renewal/browser/test_billing.py",
+        "tests/renewal/browser/test_billing_psp.py",
+    ),
     "prescription-draft": ("tests/renewal/browser/test_prescription_draft.py",),
     "prescribing": ("tests/renewal/browser/test_prescribing.py",),
     "document-verification": ("tests/renewal/browser/test_document_verification.py",),
@@ -831,6 +834,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
             else {}
         ),
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
+        **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
         **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
     }
 

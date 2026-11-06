@@ -74,6 +74,16 @@ TRUNCATE_GUARDS = (
             "billing_cashsessionevent",
         )
     ),
+    *(
+        (table, "billing_psp_no_truncate")
+        for table in (
+            "billing_psppolicy",
+            "billing_pspintent",
+            "billing_pspbinding",
+            "billing_pspevidence",
+            "billing_pspreceipt",
+        )
+    ),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
     ("scribe_chunktranscription", "transcript_no_truncate"),

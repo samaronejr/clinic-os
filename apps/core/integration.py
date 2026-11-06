@@ -57,6 +57,7 @@ from django.utils import timezone
 from apps.audit.events import build_integration_audit_event
 from apps.audit.services import record_event
 from apps.comms.adapters import (
+    AmbiguousSendError,
     CallbackAuthenticationError,
     CallbackAuthenticator,
     OperationScope,
@@ -89,6 +90,7 @@ __all__ = (
     "receive_provider_callback",
     "register_action_adapter",
     "register_action_dispatcher",
+    "register_action_recovery_adapter",
     "register_callback_authenticator",
     "register_send_adapter",
     "register_subject_recheck",
@@ -125,6 +127,7 @@ type _PresendDecision = Literal["send", "missing", "ineligible", "revoked"]
 _SEND_ADAPTERS: dict[str, SendAdapter] = {}
 _ACTION_ADAPTERS: dict[str, SendAdapter] = {}
 _ACTION_DISPATCHERS: dict[str, Callable[[OperationScope], None]] = {}
+_ACTION_RECOVERY_ADAPTERS: dict[str, SendAdapter] = {}
 _CALLBACK_AUTHENTICATORS: dict[str, CallbackAuthenticator] = {}
 _SUBJECT_RECHECKS: dict[str, Callable[[OperationScope], bool]] = {}
 _SUBJECT_LOCK_KEYS: dict[str, Callable[[OperationScope, UUID], str | None]] = {}
@@ -216,6 +219,11 @@ def register_action_dispatcher(
     _ACTION_DISPATCHERS[provider] = dispatcher
 
 
+def register_action_recovery_adapter(adapter: SendAdapter) -> None:
+    """Register lookup-only recovery, never a second action send after ambiguity."""
+    _ACTION_RECOVERY_ADAPTERS[adapter.provider] = adapter
+
+
 def register_callback_authenticator(authenticator: CallbackAuthenticator) -> None:
     """Register the authenticator for one provider's callbacks."""
     _CALLBACK_AUTHENTICATORS[authenticator.provider] = authenticator
@@ -279,6 +287,7 @@ def clear_integration_registrations() -> None:
     _SEND_ADAPTERS.clear()
     _ACTION_ADAPTERS.clear()
     _ACTION_DISPATCHERS.clear()
+    _ACTION_RECOVERY_ADAPTERS.clear()
     _CALLBACK_AUTHENTICATORS.clear()
 
 
@@ -599,14 +608,21 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
         return _ClaimDecision("skipped", operation.provider)
     if not _actor_has_clinic_authority(scope):
         return _ClaimDecision("revoked", operation.provider)
-    if operation.attempt_count >= operation.max_attempts:
+    recovering = (
+        operation.kind == OperationKind.ACTION
+        and operation.status == _IN_PROGRESS
+        and operation.provider in _ACTION_RECOVERY_ADAPTERS
+    )
+    if not recovering and operation.attempt_count >= operation.max_attempts:
         return _ClaimDecision("exhausted", operation.provider)
-    operation.attempt_count += 1
+    if not recovering:
+        operation.attempt_count += 1
     if operation.status == _PENDING:
         operation.status = _IN_PROGRESS
         operation.save(update_fields=("status", "attempt_count", "updated_at"))
         return _ClaimDecision("send", operation.provider)
-    operation.save(update_fields=("attempt_count", "updated_at"))
+    if not recovering:
+        operation.save(update_fields=("attempt_count", "updated_at"))
     return _ClaimDecision("reconcile", operation.provider)
 
 
@@ -900,6 +916,9 @@ def _deliver(
     outcome: ExecutionResult
     try:
         result = adapter.send(prepared, operation_id=scope.operation_id)
+    except AmbiguousSendError:
+        # Do not reset to pending: a remote effect may already exist.
+        outcome = "reconcile"
     except TransientSendError:
         outcome = "retry" if _release_for_retry(scope) else _persisted_outcome(scope)
     except PermanentSendError:
@@ -938,12 +957,14 @@ def _prepare_with_authority(
     return adapter.prepare(_operation_for_prepare(scope))
 
 
-def _send_claimed(scope: OperationScope, provider: str) -> ExecutionResult:
+def _send_claimed(
+    scope: OperationScope, provider: str, *, recovery: bool = False
+) -> ExecutionResult:
     """Prepare inside the tenant transaction, then send outside it."""
     with _stored_scope_context(scope):
         operation = _operation_for_prepare(scope)
         adapters = (
-            _ACTION_ADAPTERS
+            (_ACTION_RECOVERY_ADAPTERS if recovery else _ACTION_ADAPTERS)
             if operation.kind == OperationKind.ACTION
             else _SEND_ADAPTERS
         )
@@ -1016,6 +1037,11 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
             )
         elif decision.outcome == "send":
             outcome = _send_claimed(scope, decision.provider)
+        elif (
+            decision.outcome == "reconcile"
+            and decision.provider in _ACTION_RECOVERY_ADAPTERS
+        ):
+            outcome = _send_claimed(scope, decision.provider, recovery=True)
         else:
             outcome = decision.outcome
         return outcome

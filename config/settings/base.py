@@ -322,6 +322,9 @@ TELECONSULT_SYNTHETIC_FAIL: bool = env.bool(
 # the generated codes are explicitly non-payable.
 BILLING_SYNTHETIC_PIX: bool = env.bool("BILLING_SYNTHETIC_PIX", default=False)
 BILLING_SYNTHETIC_PIX_SECRET: str = env("BILLING_SYNTHETIC_PIX_SECRET", default="")
+# Local recordings only; the registry must also name the approved fixture sandbox.
+BILLING_SYNTHETIC_PSP: bool = env.bool("BILLING_SYNTHETIC_PSP", default=False)
+BILLING_PSP_FIXTURE_SECRET: str = env("BILLING_PSP_FIXTURE_SECRET", default="")
 COMMS_REVOKED_REMINDER_TEMPLATES: list[str] = env.list(
     "COMMS_REVOKED_REMINDER_TEMPLATES", default=[]
 )

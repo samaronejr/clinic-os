@@ -40,6 +40,7 @@ from apps.billing.presentation import (
     staff_charge,
     staff_charges,
 )
+from apps.billing.psp_presentation import patient_psp_payment
 from apps.billing.services import (
     BillingAccessDeniedError,
     BillingConflictError,
@@ -476,6 +477,7 @@ def _patient_context(request: HttpRequest, invoice_id: UUID) -> dict[str, object
         return {}
     return {
         "patient_charge": charge,
+        "psp_payment": patient_psp_payment(invoice_id=invoice_id),
         "view": charge.charge,
         "detail": charge.detail,
         "clinic_timezone": charge.clinic_timezone,

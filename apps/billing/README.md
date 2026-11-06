@@ -165,6 +165,72 @@ copy text is selectable without JavaScript; the clipboard button appears only
 when the browser can write to the clipboard. Both carry the synthetic rehearsal
 badge, because the code is explicitly not payable.
 
+## Task 57: recorded sandbox PSP and statements
+
+`PaymentProvider` adds charge creation, authoritative lookup by the original
+idempotency key, refund, payout, statement fetch and raw-byte authentication.
+Only `RecordedPaymentProvider` is registered. It makes no network calls, collects
+no card/bank/patient data, and produces `SYNTHETIC-NOT-PAYABLE` dynamic PIX text
+or a `payments.invalid` card link. Its recorded fixtures are local rehearsals,
+not recordings obtained from a real PSP or proof that a real sandbox passed.
+
+Every external sandbox/production/provider leg remains
+**BLOCKED-ON-EG-1/EG-5**, and `PspCapability.real_enabled` is always `False`.
+`BILLING_SYNTHETIC_PSP` defaults off. An explicit opt-in also requires the
+current provider lifecycle version to be an approved `sandbox`, with provider
+`recorded-psp-v1`, environment `sandbox`, and account `fixture`. The logical
+`psp_pix` key uses the registry's existing canonical `pix` alias; cards use
+`psp_card`. This code never creates approvals, advances a gate or selects a real
+provider. Replacing or revoking that version blocks new effects. Lookup-only
+recovery and local journal application retain the intent's approved sandbox
+version after replacement; revocation still closes that version.
+
+`set_psp_policy` appends an authorized clinic installment policy (1-12).
+`prepare_psp_charge` freezes issued patient net terms and its policy/version;
+PIX has one installment. One target has one immutable `PspIntent` and provider
+key. Creating instructions never marks an invoice paid. Approved refund/payout
+reservations use `prepare_psp_outgoing`, which requires current Finance authority
+and genuine fresh step-up. The worker revalidates the exact dispatch session
+before sending, not merely the historical approval.
+
+Preparation and the shared action outbox commit together. The first send looks
+up the original provider key before any mutation. Timeout or worker death leaves
+the same outbox row in progress; `AmbiguousSendError` never resets it to pending.
+The registered recovery adapter performs lookup only, without consuming send
+attempts or minting another key. A not-found/unknown recovery remains held; it
+does not infer that an effect failed and resend. The required real broker/PG
+variant has a durable fixture remote effect immediately before SIGKILL.
+
+`receive_psp_event` authenticates exact raw bytes before resolving the unique
+stored provider/reference binding. Tenant claims are never read. Independent
+authoritative amount, currency, status and version must match. Replays converge;
+contradictions are quarantined, and stale versions cannot regress newer facts.
+`reconcile_psp_intent` recovers a missing callback by the same key.
+`reconcile_psp_statement` fetches outside transactions and matches reference,
+gross integer centavos, currency, kind and separate fees. Foreign/unmatched
+references are reported, not attributed to a guessed tenant. The retained
+evidence includes the actual mismatching statement amount. Quarantined statement
+observations cannot supersede independently verified status facts.
+
+Callbacks retain immutable evidence; they do not approve outgoing money.
+`apply_psp_evidence` requires current exact-clinic Finance permission and uses
+the existing journal services. Gross collection posts to PSP clearing, net
+collection earns repasse before PSP fees, and an independent matched statement
+releases clearing to bank with a separate fee expense. Outgoing confirmation
+requires fresh step-up and preserves the original refund/payout reservation.
+Unknown outcomes can be recorded without releasing that reservation.
+Replaying a fact cannot create a second collection, receipt, refund or fee.
+
+`PspReceipt` is created only after a verified collection is posted and exactly
+allocated. Existing legacy Settlement/Receipt one-to-one contracts remain intact.
+Patient/delegate projections revalidate released-invoice billing authority and
+show stored non-payable instructions or the sealed synthetic receipt. Encrypted
+codes/links, FORCE RLS, immutable guards, exact resolver ACLs and recovery
+classification cover every new table. No payloads or credentials enter outbox,
+audit, error text or evidence.
+Binding and evidence inserts require the stored intent actor; financial read
+authority alone cannot manufacture proof for another actor's request.
+
 ## Task 56: operational journal
 
 The binding economic policy is

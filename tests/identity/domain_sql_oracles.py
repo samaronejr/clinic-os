@@ -13,6 +13,8 @@ from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
 from billing.journal_oracles import CASES as BILLING_CASES
 from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
+from billing.psp_oracles import CASES as PSP_CASES
+from billing.psp_oracles import SQL_PROTOCOL_ORACLES as PSP_PROTOCOLS
 from comms import test_portal_messages
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
@@ -354,6 +356,7 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    **PSP_PROTOCOLS,
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -459,6 +462,9 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         callable(BILLING_CASES[name])
         for names in BILLING_PROTOCOLS.values()
         for name in names
+    )
+    assert all(
+        callable(PSP_CASES[name]) for names in PSP_PROTOCOLS.values() for name in names
     )
     assert all(
         callable(RETENTION_CASES[name])

@@ -9410,3 +9410,16 @@ msgid "Reply within %(hours)s business hour; in an emergency, call 192."
 msgid_plural "Reply within %(hours)s business hours; in an emergency, call 192."
 msgstr[0] "Resposta em até %(hours)s hora útil; em emergência, ligue 192."
 msgstr[1] "Resposta em até %(hours)s horas úteis; em emergência, ligue 192."
+
+msgid "Recorded sandbox rehearsal. No real payment or card data is collected."
+msgstr "Ensaio local com registros sintéticos. Não há pagamento real nem coleta de dados de cartão."
+
+msgid "Non-payable PIX rehearsal code"
+msgstr "Código PIX de ensaio, não pagável"
+
+msgid "Recorded card link (not payable)"
+msgstr "Link de cartão de ensaio, não pagável"
+
+#, python-format
+msgid "Installments agreed by the clinic: %(count)s."
+msgstr "Parcelas acordadas pela clínica: %(count)s."
