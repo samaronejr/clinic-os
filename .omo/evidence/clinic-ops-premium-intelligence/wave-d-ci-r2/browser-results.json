@@ -1,0 +1,87 @@
+{
+  "base_revision_sha": "d3bb5356ed874a5d299897c1dcfb2f1c1b9a6924",
+  "base_tree_sha": "c77b4702853c67fa03b4154a47b42a8c08f1934e",
+  "runtime_role": "clinic_app",
+  "qualified_runs": 9,
+  "passed": 159,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "all_process_exits": 0,
+  "final_source_sha256": {
+    "tests/renewal/browser/a11y_support.py": "1712b95eb8b0d07ac36daf8c623d59ca1bfb97984f2421eab75632c4dea46c05",
+    "tests/renewal/browser/test_smoke.py": "22a5ce432c10f272bbcc299428fb931d99436fe5cdbd15f87a1fbce659082a38"
+  },
+  "source_manifests": {
+    "messages_and_agenda_grid": "2d9e28e54a86c3bacdc564850f0d6af73301f137db4dc7b4b87693cbbf56261f",
+    "corrected_smoke": "80292832c8152420f424cc68fa6f12344296e70ca781b3bbcd7ed9a36d254470",
+    "difference": "Only the new smoke regression changed: capture response bytes before navigating. The shared loader and the six qualified domain-suite inputs did not change."
+  },
+  "runs": [
+    {
+      "label": "green-messages-chromium",
+      "suite": "messages", "engine": "chromium", "tests": 16,
+      "junit_sha256": "2e844f8b6025717afead40061c8b98885dc6664ca328bf6cc83c0384a2c56188"
+    },
+    {
+      "label": "green-messages-firefox",
+      "suite": "messages", "engine": "firefox", "tests": 16,
+      "junit_sha256": "7be2723bf63c0b65765b76c2b007093af1b18990c366a29694958f87540af145"
+    },
+    {
+      "label": "green-messages-webkit",
+      "suite": "messages", "engine": "webkit", "tests": 16,
+      "junit_sha256": "1e5c2640dcfc1073185cc7898ebc57cced05340bbce1181177ddd4a6f25dd16a"
+    },
+    {
+      "label": "green-agenda-grid-chromium",
+      "suite": "agenda-grid", "engine": "chromium", "tests": 11,
+      "junit_sha256": "4981605691e36de4d77d83c11f3c85aefb5549af31b90734993b3f9b6168b4af"
+    },
+    {
+      "label": "green-agenda-grid-firefox",
+      "suite": "agenda-grid", "engine": "firefox", "tests": 11,
+      "junit_sha256": "b72dd8f584d84df8ceca72f6db85aec76fe36c1624bde81e266302d2bbae7b44"
+    },
+    {
+      "label": "green-agenda-grid-webkit",
+      "suite": "agenda-grid", "engine": "webkit", "tests": 11,
+      "junit_sha256": "1a17636a903f94fea6d132f041379912cfe465adca752e28019e76626bff1e2c"
+    },
+    {
+      "label": "green2-smoke-chromium",
+      "suite": "smoke", "engine": "chromium", "tests": 26,
+      "junit_sha256": "eb3c4a96ca994401e43ccfb7cc9e4f078b5f68bb58044887b73883d96c9e85ef"
+    },
+    {
+      "label": "green2-smoke-firefox",
+      "suite": "smoke", "engine": "firefox", "tests": 26,
+      "junit_sha256": "9dd7eb851cb4cb7649582a70b35859e92641a0d2bf84aff4cdc019795e58e3b3"
+    },
+    {
+      "label": "green2-smoke-webkit",
+      "suite": "smoke", "engine": "webkit", "tests": 26,
+      "junit_sha256": "41f4639b50f469cc47744421eb102445d3370e6c5a40351eb578a728fc753dff"
+    }
+  ],
+  "resource_limits": {
+    "runner_memory_bytes": 8589934592,
+    "runner_swap_bytes": 0,
+    "postgres_memory_bytes": 3221225472,
+    "postgres_memory_plus_swap_bytes": 3221225472,
+    "redis_memory_bytes": 268435456,
+    "redis_memory_plus_swap_bytes": 268435456,
+    "combined_limit_bytes": 12079595520,
+    "host_database_port_5432_used": false
+  },
+  "cleanup_audit": {
+    "created_postgres_containers": 13,
+    "created_redis_containers": 6,
+    "remaining_task_containers": 0,
+    "remaining_task_named_volumes": 0,
+    "active_task_units": 0,
+    "outstanding_ledger_claims": 0
+  },
+  "hosted_rerun_performed": false,
+  "push_performed": false
+}
