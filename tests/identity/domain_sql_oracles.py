@@ -11,6 +11,8 @@ from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
+from billing.journal_oracles import CASES as BILLING_CASES
+from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
 from comms import test_portal_messages
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
@@ -431,6 +433,7 @@ PROTOCOL_ORACLES = {
         "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
     ],
     **ORDERS_PROTOCOLS,
+    **BILLING_PROTOCOLS,
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
@@ -452,6 +455,11 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert all(
+        callable(BILLING_CASES[name])
+        for names in BILLING_PROTOCOLS.values()
+        for name in names
+    )
     assert all(
         callable(RETENTION_CASES[name])
         for names in RETENTION_PROTOCOLS.values()
