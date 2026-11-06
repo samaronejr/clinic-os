@@ -51,10 +51,14 @@ class SqlReferences:
 
 def _identifier(kind: object, value: str) -> bool:
     return (
-        kind in tokens.Name
-        or kind in tokens.Keyword
-        or kind is tokens.Literal.String.Symbol
-    ) and value not in {"%s", "%b", "%t"}
+        (
+            kind in tokens.Name
+            or kind in tokens.Keyword
+            or kind is tokens.Literal.String.Symbol
+        )
+        and value not in {"%s", "%b", "%t"}
+        and not (kind in tokens.Keyword and any(char.isspace() for char in value))
+    )
 
 
 def _name(value: str) -> str:
@@ -115,6 +119,12 @@ def _syntax_call(
         return bool(inner) and all(
             value and set(value) <= OPERATOR_CHARACTERS for _kind, value in inner
         )
+    if name == "conflict" and previous == "on":
+        depth = 0
+        for index in range(end, len(items)):
+            depth += {"(": 1, ")": -1}.get(items[index][1], 0)
+            if depth == 0:
+                return index + 1 < len(items) and items[index + 1][1].lower() == "do"
     return False
 
 
@@ -141,6 +151,12 @@ def references(
         result.names.add(name)
         if end >= len(items) or items[end][1] != "(":
             continue
+        start = end - (2 * len(name) - 1)
+        previous = items[start - 1][1].lower() if start else ""
+        # Relation aliases and INSERT targets may declare column lists. Their
+        # names remain available for policy and write-effect traversal.
+        if previous in {"as", "into"}:
+            continue
         called = name[-1]
         if quoted or len(name) > 1 or not _syntax_call(items, called, end, keywords):
             result.calls.add(name)
@@ -153,6 +169,14 @@ def references(
 def _keyword(
     items: Sequence[Token], index: int, keyword: str, result: SqlReferences
 ) -> None:
+    if (
+        keyword == "do"
+        and index + 1 < len(items)
+        and items[index + 1][0] in tokens.Keyword
+        and items[index + 1][1].lower() in {"nothing", "update"}
+    ):
+        # INSERT/MERGE actions are not anonymous executable DO blocks.
+        return
     if keyword == "show":
         _show_setting(items, index + 1, result)
     if keyword == "reset" or (
@@ -207,6 +231,9 @@ def _operators(items: Sequence[Token]) -> set[str]:
                 pending = ""
             if kind in tokens.Literal.Number and value.startswith("-"):
                 result.add("-")
+    # PostgreSQL reserves this exact token for named function arguments.
+    # Longer operator names containing it remain executable references.
+    result.discard("=>")
     return result
 
 

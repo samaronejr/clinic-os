@@ -21,8 +21,8 @@ from apps.orders.services import (
     match_result,
     place_order,
     reject_result,
-    release_result,
 )
+from apps.orders.values import OrdersConflictError
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -115,13 +115,26 @@ def submit_command(
         )
         return _("Clinical acknowledgment recorded for this version.")
     if action == "release":
-        delegate = request.POST.get("delegate_grant_id", "")
-        release_result(
-            clinic_id=clinic_id,
-            version_id=version,
-            audience=request.POST.get("audience", ""),
-            delegate_grant_id=UUID(delegate) if delegate else None,
+        # Task 55: a release always carries the clinician-approved portal notice.
+        from apps.workflows.release import (  # noqa: PLC0415 - workflows composes orders
+            release_result_to_patient,
         )
+        from apps.workflows.validation import (  # noqa: PLC0415
+            WorkflowConflictError,
+        )
+
+        delegate = request.POST.get("delegate_grant_id", "")
+        notice = request.POST.get("notice_version", "")
+        try:
+            release_result_to_patient(
+                clinic_id=clinic_id,
+                result_version_id=version,
+                template_version=int(notice) if notice.isdecimal() else 0,
+                audience=request.POST.get("audience", ""),
+                delegate_grant_id=UUID(delegate) if delegate else None,
+            )
+        except WorkflowConflictError as error:
+            raise OrdersConflictError from error
         return _("This version was released to the selected audience.")
     if action == "match":
         match_result(

@@ -434,7 +434,7 @@ def discover_sql_sites() -> dict[str, SqlSite]:
         opaque = {item for item in reads.opaque if item not in _TOKENIZER_KEYWORDS}
         assert not opaque, (signature, opaque)
         if ACTOR in reads.settings:
-            assert language == "sql", (signature, "uninspected language")
+            assert language in {"sql", "plpgsql"}, (signature, "uninspected language")
             sid = f"{FUNCTION}:{signature}"
             sites[sid] = SqlSite(
                 sid, FUNCTION, f"clinic_app.{signature}", boolean=bool(boolean)

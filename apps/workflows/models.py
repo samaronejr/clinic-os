@@ -279,6 +279,14 @@ from apps.workflows.care.models import (  # noqa: E402 - models register on impo
     Recall,
     Referral,
 )
+from apps.workflows.release_models import (  # noqa: E402 - models register on import
+    ReleaseDelivery,
+    ReleaseNoticeTemplate,
+)
+from apps.workflows.urgent_models import (  # noqa: E402 - models register on import
+    UrgentConcern,
+    UrgentCoveragePolicy,
+)
 
 __all__ = (
     "CareAction",
@@ -288,8 +296,12 @@ __all__ = (
     "PROOccurrence",
     "Recall",
     "Referral",
+    "ReleaseDelivery",
+    "ReleaseNoticeTemplate",
     "Task",
     "TaskComment",
+    "UrgentConcern",
+    "UrgentCoveragePolicy",
     "WorkflowDefinitionVersion",
     "WorkflowRun",
     "WorkflowStep",

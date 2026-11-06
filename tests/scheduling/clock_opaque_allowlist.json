@@ -1356,7 +1356,7 @@
     "library": "",
     "returns": "name",
     "volatility": "i",
-    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+    "reason": "The inbox template guard and release outcome trigger conservatively reach this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
   },
   "pg_catalog.name(character)": {
     "extension": "",
@@ -1365,7 +1365,7 @@
     "library": "",
     "returns": "name",
     "volatility": "i",
-    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+    "reason": "The inbox template guard and release outcome trigger conservatively reach this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
   },
   "pg_catalog.name(text)": {
     "extension": "",
@@ -1374,7 +1374,7 @@
     "library": "",
     "returns": "name",
     "volatility": "i",
-    "reason": "The newly reachable inbox template guard conservatively resolves its name fields through this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
+    "reason": "The inbox template guard and release outcome trigger conservatively reach this exact native identifier conversion. Retain the catalog-pinned implementation as opaque risk; this is not a clock-independence exemption."
   },
   "pg_catalog.numeric(bigint)": {
     "extension": "",

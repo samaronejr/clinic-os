@@ -10,6 +10,7 @@ import psycopg
 import pytest
 from apps.identity.models import User
 from django.db import connection, transaction
+from psycopg import sql
 
 from identity.authority_catalog import UNRESOLVED_WRITE, Catalog, Reads
 from identity.authority_observer import AuthorityObservedError, AuthorityObserver
@@ -425,28 +426,107 @@ def test_operator_over_a_setting_reader_is_not_an_escape(rbac_graph: RbacGraph) 
             cursor.execute("DROP FUNCTION clinic_app.t6_operator(integer,integer)")
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["t6_native", "length", "pg_trigger_depth", "pg_advisory_xact_lock_shared"],
+)
 def test_native_alias_cannot_inherit_a_builtin_allowance(
     rbac_graph: RbacGraph,
     superuser_database_url: str,
+    name: str,
 ) -> None:
     # CREATE LANGUAGE internal is privileged; use the existing test admin URL.
     with psycopg.connect(superuser_database_url, autocommit=True) as admin:
-        admin.execute("""
-            CREATE FUNCTION clinic_app.t6_native(text,boolean) RETURNS text
-            LANGUAGE internal STABLE AS 'show_config_by_name_missing_ok';
-            GRANT EXECUTE ON FUNCTION clinic_app.t6_native(text,boolean) TO clinic_app;
-        """)
+        function = sql.Identifier("clinic_app", name)
+        admin.execute(
+            sql.SQL("""
+                CREATE FUNCTION {}(text,boolean) RETURNS text
+                LANGUAGE internal STABLE AS 'show_config_by_name_missing_ok';
+                GRANT EXECUTE ON FUNCTION {}(text,boolean) TO clinic_app;
+            """).format(function, function)
+        )
         try:
             observer = _observe(
                 rbac_graph,
-                "SELECT clinic_app.t6_native('app.current_user_id',true)",
+                sql.SQL("SELECT {}('app.current_user_id',true)")
+                .format(function)
+                .as_string(admin),
             )
             assert (
                 "opaque",
-                "opaque function clinic_app.t6_native",
+                f"opaque function clinic_app.{name}",
             ) in observer.touches
         finally:
-            admin.execute("DROP FUNCTION clinic_app.t6_native(text,boolean)")
+            admin.execute(sql.SQL("DROP FUNCTION {}(text,boolean)").format(function))
+
+
+@pytest.mark.parametrize(
+    ("statement", "calls"),
+    [
+        (
+            "IF EXISTS (SELECT current_setting('app.current_user_id',true)) "
+            "THEN RETURN; END IF;",
+            {("current_setting",)},
+        ),
+        (
+            "IF NOT EXISTS (SELECT current_setting('app.current_user_id',true)) "
+            "THEN RETURN; END IF;",
+            {("current_setting",)},
+        ),
+        (
+            "SELECT * FROM jsonb_path_query('[]','$[*]') AS leaves(value)",
+            {("jsonb_path_query",)},
+        ),
+        (
+            "SELECT * FROM jsonb_path_query('[]','$[*]') AS current_setting(value)",
+            {("jsonb_path_query",)},
+        ),
+        (
+            "INSERT INTO t(id) VALUES (1) ON CONFLICT(id) DO NOTHING",
+            set(),
+        ),
+        (
+            "INSERT INTO clinic_app.t(id) VALUES (1) ON CONFLICT(id) DO NOTHING",
+            set(),
+        ),
+        (
+            "INSERT INTO t(id) VALUES (1) ON CONFLICT(id) "
+            "DO UPDATE SET id=current_setting('app.current_user_id',true)",
+            {("current_setting",)},
+        ),
+        ("SELECT make_interval(hours=>1)", {("make_interval",)}),
+        ('SELECT "if exists"()', {("if exists",)}),
+        ("SELECT 1 FROM t JOIN u ON conflict()", {("conflict",)}),
+        ("SELECT leaves()", {("leaves",)}),
+    ],
+)
+def test_postgres_syntax_retains_only_executable_function_calls(
+    statement: str, calls: set[tuple[str, ...]]
+) -> None:
+    result = references(statement)
+    assert result.calls == calls
+    assert not result.opaque
+    assert "=>" not in result.operators
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "SELECT pg_catalog.pg_trigger_depth()",
+        "SELECT pg_catalog.pg_advisory_xact_lock_shared(1)",
+        "SELECT pg_catalog.length('bytes'::bytea,'UTF8'::name)",
+    ],
+)
+def test_builtin_context_primitives_have_inspectable_contracts(
+    statement: str,
+) -> None:
+    result = Catalog().statement(statement)
+    assert not result.opaque
+    assert not result.settings
+
+
+def test_named_argument_syntax_does_not_hide_longer_operators() -> None:
+    assert "==>" in references("SELECT 1 OPERATOR(clinic_app.==>) 2").operators
 
 
 def test_domain_cast_with_hidden_actor_read_is_uninspectable(
@@ -459,6 +539,52 @@ def test_domain_cast_with_hidden_actor_read_is_uninspectable(
         """)
     observer = _observe(rbac_graph, "SELECT 'value'::pg_temp.t6_domain")
     assert any(kind == "opaque" for kind, _name in observer.touches)
+
+
+@pytest.mark.parametrize("direction", ["return", "argument"])
+@pytest.mark.parametrize("opaque_column", [False, True])
+def test_table_row_signatures_keep_actor_reads_and_opaque_types(
+    rbac_graph: RbacGraph, direction: str, *, opaque_column: bool
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE DOMAIN pg_temp.t6_row_domain AS text
+            CHECK (current_setting('app.current_user_id',true) IS NOT NULL)
+        """)
+        column = "pg_temp.t6_row_domain" if opaque_column else "text"
+        cursor.execute(f"CREATE TEMP TABLE t6_row_table (value {column})")
+        cursor.execute("GRANT SELECT ON pg_temp.t6_row_table TO clinic_app")
+        definitions = {
+            "return": """
+                CREATE FUNCTION pg_temp.t6_row_reader()
+                RETURNS SETOF pg_temp.t6_row_table LANGUAGE sql AS $body$
+                    SELECT * FROM pg_temp.t6_row_table
+                    WHERE current_setting('app.current_user_id',true) IS NOT NULL
+                $body$;
+                GRANT EXECUTE ON FUNCTION pg_temp.t6_row_reader() TO clinic_app;
+            """,
+            "argument": """
+                CREATE FUNCTION pg_temp.t6_row_reader(pg_temp.t6_row_table)
+                RETURNS boolean LANGUAGE sql AS $body$
+                    SELECT current_setting('app.current_user_id',true) IS NOT NULL
+                $body$;
+                GRANT EXECUTE ON FUNCTION
+                    pg_temp.t6_row_reader(pg_temp.t6_row_table) TO clinic_app;
+            """,
+        }
+        cursor.execute(definitions[direction])
+    query = (
+        "SELECT * FROM pg_temp.t6_row_reader()"
+        if direction == "return"
+        else "SELECT pg_temp.t6_row_reader(r) FROM pg_temp.t6_row_table r"
+    )
+    observer = _observe(rbac_graph, query)
+    assert ("guc", "app.current_user_id") in observer.touches
+    # Only flat table return types can be fully inspected. Domain columns and
+    # composite arguments remain opaque rather than inheriting that allowance.
+    assert any(kind == "opaque" for kind, _name in observer.touches) == (
+        opaque_column or direction == "argument"
+    )
 
 
 @pytest.mark.parametrize(

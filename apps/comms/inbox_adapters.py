@@ -32,6 +32,7 @@ from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from uuid import UUID
 
     from apps.comms.adapters import OperationScope
@@ -128,6 +129,19 @@ class PortalInboxAdapter(InboxAdapter):
     provider = PROVIDER_BY_CHANNEL["portal"]
 
 
+_SEND_CHECKS: list[Callable[[Message], bool]] = []
+
+
+def register_message_send_check(check: Callable[[Message], bool]) -> None:
+    """Let the domain that queued an outbound message veto it at send time.
+
+    Each check runs inside the send's tenant transaction, under the sender's
+    authority, after the channel rules; any ``False`` cancels the operation.
+    """
+    if check not in _SEND_CHECKS:
+        _SEND_CHECKS.append(check)
+
+
 def message_send_eligible(scope: OperationScope) -> bool:
     """Re-decide the send under current facts; False cancels without a side effect."""
     operation = IntegrationOperation.objects.filter(pk=scope.operation_id).first()
@@ -154,11 +168,15 @@ def message_send_eligible(scope: OperationScope) -> bool:
             linked_to_patient=conversation.enrollment_id is not None,
         )
     )
-    return decision.allowed and (
-        conversation.purpose != "marketing"
-        or marketing_opted_in(
-            enrollment_id=conversation.enrollment_id, channel=conversation.channel
+    return (
+        decision.allowed
+        and (
+            conversation.purpose != "marketing"
+            or marketing_opted_in(
+                enrollment_id=conversation.enrollment_id, channel=conversation.channel
+            )
         )
+        and all(check(message) for check in _SEND_CHECKS)
     )
 
 

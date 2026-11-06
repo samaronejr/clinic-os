@@ -467,6 +467,22 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ai.front_desk.replied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ai.front_desk_turn", "replied"
         ),
+        # Task 55: result release notices and the urgent-concern queue.
+        "workflows.release_notice.approved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.release_notice", "approved"
+        ),
+        "workflows.release_delivery.queued": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.release_delivery", "queued"
+        ),
+        "workflows.urgent_coverage.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.urgent_coverage", "published"
+        ),
+        **{
+            f"workflows.urgent_concern.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "workflows.urgent_concern", state
+            )
+            for state in ("reported", "acknowledged", "resolved")
+        },
         "identity.passkey.registered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.passkey", "created"
         ),

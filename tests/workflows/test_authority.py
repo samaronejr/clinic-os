@@ -40,6 +40,8 @@ from database_urls import database_url_for_name
 from identity.permission_support import owner_context, permission_context
 from patient_service_support import runtime_role
 from workflows import decision_sites
+from workflows.coordination_guard_cases import COORDINATION_SEEDED
+from workflows.coordination_world import seed_coordination_world
 from workflows.guard_cases import (
     Cell,
     GuardCase,
@@ -399,6 +401,8 @@ def test_every_guard_refuses_all_nonpermitted_catalog_roles_and_reaches_permissi
         from workflows.care_world import seed_care_world  # noqa: PLC0415
 
         world = replace(world, care=seed_care_world(world))
+    if case.symbol in COORDINATION_SEEDED:
+        world = replace(world, coordination=seed_coordination_world(world))
     with decision_sites.rewritten():
         target = inspect.unwrap(discover_guards()[case.symbol].function).__code__
         _verify_guard(case, world, target, monkeypatch, record_property)

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load i18n workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Urgent message coverage" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="coverage-title" data-urgent-coverage-settings>
+  <h1 id="coverage-title">{% trans "Urgent message coverage" %}</h1>
+  <p class="lede">{% trans "Set when the clinic team reads urgent patient messages, which roles answer them and how fast. Patients see exactly these terms; the clinic never claims round-the-clock monitoring." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-coverage-error>{{ error }}</div>{% endif %}
+  {% if notice %}<div class="feedback feedback--success" role="status" data-coverage-saved><p>{{ notice }}</p></div>{% endif %}
+  <div class="feedback" role="note" data-coverage-preview>
+    <p>{% trans "Patients currently see:" %}</p>
+    {% for line in patient_text %}<p>{{ line }}</p>{% endfor %}
+  </div>
+  <form method="post" novalidate data-coverage-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="publish">
+    <input type="hidden" name="expected_version" value="{% if coverage %}{{ coverage.version }}{% else %}0{% endif %}">
+    <fieldset>
+      <legend>{% trans "Days covered" %}</legend>
+      {% for value, label in weekdays %}
+      <div class="field settings-check">
+        <input id="coverage-weekday-{{ value }}" type="checkbox" name="weekdays" value="{{ value }}"{% if coverage and value in coverage.weekdays %} checked{% endif %}>
+        <label for="coverage-weekday-{{ value }}">{{ label }}</label>
+      </div>
+      {% endfor %}
+    </fieldset>
+    <div class="field">
+      <label for="coverage-opens">{% trans "From" %}</label>
+      <input id="coverage-opens" name="opens_at" type="time" required value="{% if coverage %}{{ coverage.opens_at|time:'H:i' }}{% else %}08:00{% endif %}">
+    </div>
+    <div class="field">
+      <label for="coverage-closes">{% trans "Until" %}</label>
+      <input id="coverage-closes" name="closes_at" type="time" required value="{% if coverage %}{{ coverage.closes_at|time:'H:i' }}{% else %}18:00{% endif %}">
+    </div>
+    <div class="field">
+      <label for="coverage-hours">{% trans "Response window (business hours)" %}</label>
+      <input id="coverage-hours" name="response_hours" type="number" min="1" max="{{ max_hours }}" required value="{% if coverage %}{{ coverage.response_hours }}{% else %}4{% endif %}">
+    </div>
+    <fieldset>
+      <legend>{% trans "Responsible roles" %}</legend>
+      {% for value, label in roles %}
+      <div class="field settings-check">
+        <input id="coverage-role-{{ value }}" type="checkbox" name="responsible_roles" value="{{ value }}"{% if coverage and value in coverage.responsible_roles %} checked{% endif %}>
+        <label for="coverage-role-{{ value }}">{{ label }}</label>
+      </div>
+      {% endfor %}
+    </fieldset>
+    <div class="actions"><button class="button" type="submit">{% trans "Publish coverage" %}</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -8,6 +8,7 @@ import psycopg
 from django.utils.translation import gettext as _
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import full_page_screenshot
@@ -16,9 +17,11 @@ from renewal.browser.test_patient_workspace import _patient
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Locator, Page
+    from playwright.sync_api import Locator, Page, Response
 
 SOURCE = b"%PDF-1.4\nsynthetic source result\n%%EOF"
+# Task 55: the clinic-wide wording a clinician approves before any release.
+NOTICE = "Seu resultado está disponível no portal da clínica."
 
 
 def seed_result_patient(staff: dict[str, str], day: str) -> dict[str, str]:
@@ -122,3 +125,19 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     page.emulate_media(reduced_motion="reduce")
     full_page_screenshot(page, directory / f"{state}-{width}.png")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def open_results_with_notice(page: Page, base: str, clinic: str) -> Response | None:
+    """Approve the next release notice natively, then open results (todo 55)."""
+    goto_settled(page, f"{base}/clinics/{clinic}/inbox/release-notices/")
+    page.locator("#notice-body").fill(NOTICE)
+    approved = click_to_navigate(
+        page.get_by_role("button", name=_("Approve this notice"))
+    )
+    assert approved is not None
+    assert approved.status == 200
+    expect(page.locator("[data-notice-saved]")).to_contain_text(
+        _("Notice approved. New releases use this version.")
+    )
+    expect(page.locator("[data-notice-current]")).to_contain_text(NOTICE)
+    return goto_settled(page, f"{base}/clinics/{clinic}/results/")

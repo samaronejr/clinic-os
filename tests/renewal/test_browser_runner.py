@@ -1066,6 +1066,28 @@ def test_browser_suites_navigate_only_through_the_navigation_helpers() -> None:
     assert offenders == []
 
 
+def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
+    path = BROWSER_SUITES / "evaluation_journeys.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    submit = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "submit"
+    )
+    waits = [
+        keyword.value
+        for node in ast.walk(submit)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "expect_document"
+        for keyword in node.keywords
+        if keyword.arg == "wait_until"
+    ]
+    assert len(waits) == 1
+    assert isinstance(waits[0], ast.Constant)
+    assert waits[0].value == "load"
+
+
 @pytest.mark.parametrize("engine", ["firefox", "webkit"])
 @pytest.mark.parametrize("suite", sorted(runner.SUITES))
 def test_every_suite_runs_on_every_engine(

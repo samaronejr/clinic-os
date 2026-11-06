@@ -17,8 +17,10 @@ from renewal.browser.results_extraction import (
 )
 from renewal.browser.results_lab_support import runtime_effects, seed_delivery
 from renewal.browser.results_support import (
+    NOTICE,
     SOURCE,
     capture,
+    open_results_with_notice,
     place,
     seed_result_patient,
     submit,
@@ -62,8 +64,8 @@ def test_result_upload_acknowledgment_release_and_wrong_patient(
     )
     page = context.new_page()
     try:
-        url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/results/"
-        response = goto_settled(page, url)
+        # Task 55: no result reaches a patient without clinician-approved wording.
+        response = open_results_with_notice(page, renewal_base_url, staff["clinic_a"])
         assert response is not None
         assert response.status == 200
         expect(page.get_by_role("heading", level=1)).to_have_text(
@@ -88,6 +90,7 @@ def test_result_upload_acknowledgment_release_and_wrong_patient(
         )
         expect(row).to_have_attribute("data-result-state", "acknowledged")
         expect(page.locator("[data-results-outcome]")).to_be_focused()
+        expect(row.locator("[data-release-notice]")).to_contain_text(NOTICE)
         submit(
             page,
             row.get_by_role("button", name=_("Release this version to patient")),
@@ -138,7 +141,7 @@ def test_results_native_without_javascript(
         viewport={"width": 375, "height": 900},
     ) as context:
         page = context.new_page()
-        goto_settled(page, f"{renewal_base_url}/clinics/{staff['clinic_a']}/results/")
+        open_results_with_notice(page, renewal_base_url, staff["clinic_a"])
         place(page, data)
         upload(page, data)
         expect(page.locator("article[data-result-state]").first).to_have_attribute(

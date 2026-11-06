@@ -14,6 +14,9 @@
       <p>{% trans "You are acting as a representative. The clinic sees what you send here as a message from this patient's portal." %}</p>
     </div>
   {% endif %}
+  <div class="feedback" role="note" data-portal-coverage>
+    {% for line in coverage %}<p>{{ line }}</p>{% endfor %}
+  </div>
   {% if notice %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-portal-reply-sent>{{ notice }}</p>{% endif %}
   {% if error %}
     <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-portal-reply-error>

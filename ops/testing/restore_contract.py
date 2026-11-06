@@ -218,6 +218,12 @@ DOMAIN_RELATIONS: Final = (
     "workflows_prooccurrence",
     # The care scanner's refusal evidence is tenant data too.
     "workflows_carerefusal",
+    # Task 55: approved release wording, delivery provenance, coverage policy
+    # versions and urgent-concern accountability are durable tenant data.
+    "workflows_releasenoticetemplate",
+    "workflows_releasedelivery",
+    "workflows_urgentcoveragepolicy",
+    "workflows_urgentconcern",
     # Plan item 30: live-catalog durable relations, retained on uninstall.
     "ehr_specialtyentry",
     "ehr_specialtypack",

@@ -30,7 +30,7 @@ from apps.intake.access import PatientAccessDeniedError
 from apps.tenancy.envelope import KEK_SECRET_NAME, protect
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from datetime import datetime
 
     type _Parameter = str | bytes | UUID | datetime
@@ -50,6 +50,7 @@ __all__ = (
     "patient_conversations",
     "portal_message_scope",
     "portal_thread",
+    "register_urgent_reply_hook",
     "reply_to_portal_conversation",
 )
 
@@ -248,6 +249,40 @@ def _audit(scope: PortalMessageScope, event_name: str, record_id: UUID) -> None:
     )
 
 
+_URGENT_REPLY_HOOKS: list[Callable[[UUID], None]] = []
+
+
+def register_urgent_reply_hook(hook: Callable[[UUID], None]) -> None:
+    """Route a newly stored urgent reply (its message id) to a human queue.
+
+    Hooks run in the reply's own transaction under the same patient session,
+    after the message is stored; a failing hook rolls the reply back.
+    """
+    if hook not in _URGENT_REPLY_HOOKS:
+        _URGENT_REPLY_HOOKS.append(hook)
+
+
+def _record_reply(  # noqa: PLR0913 - one stored reply's facts
+    scope: PortalMessageScope,
+    *,
+    message_id: UUID,
+    conversation_id: UUID,
+    changed: bool,
+    escalated: bool,
+    urgent: bool,
+) -> None:
+    """Audit a stored reply and route a new urgent one to the human queues."""
+    if changed:
+        _audit(scope, REPLY_EVENT, message_id)
+        for reply_hook in _REPLY_HOOKS:
+            reply_hook(clinic_id=scope.clinic_id, message_id=message_id)
+    if escalated:
+        _audit(scope, ESCALATED_EVENT, conversation_id)
+    if changed and urgent:
+        for hook in _URGENT_REPLY_HOOKS:
+            hook(message_id)
+
+
 def reply_to_portal_conversation(
     *, clinic_id: UUID, conversation_id: UUID, body: str, idempotency_key: UUID
 ) -> PortalReplyReceipt:
@@ -286,12 +321,14 @@ def reply_to_portal_conversation(
             and type(escalated) is bool
         ):
             raise PatientAccessDeniedError
-        if changed:
-            _audit(scope, REPLY_EVENT, message_id)
-            for hook in _REPLY_HOOKS:
-                hook(clinic_id=clinic_id, message_id=message_id)
-        if escalated:
-            _audit(scope, ESCALATED_EVENT, conversation_id)
+        _record_reply(
+            scope,
+            message_id=message_id,
+            conversation_id=conversation_id,
+            changed=changed,
+            escalated=escalated,
+            urgent=verdict.category == "urgent",
+        )
     if changed:
         publish_messages_hint(clinic_id)
         if verdict.needs_clinician:

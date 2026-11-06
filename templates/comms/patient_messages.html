@@ -9,6 +9,9 @@
   <h1 id="patient-messages-title">{% trans "Your messages" %}</h1>
   <p class="lede">{% trans "Conversations the clinic team opened with you in this portal. A person from the team reads every message you send here." %}</p>
   <p class="hint">{% trans "Times are shown in the clinic's time zone." %}</p>
+  <div class="feedback" role="note" data-portal-coverage>
+    {% for line in coverage %}<p>{{ line }}</p>{% endfor %}
+  </div>
   {% if scope.acting_for_patient %}
     <div class="feedback feedback--warning" role="status" data-portal-delegate>
       <p>{% trans "You are acting as a representative. The clinic sees what you send here as a message from this patient's portal." %}</p>

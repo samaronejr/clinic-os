@@ -16,19 +16,29 @@ import re
 import subprocess
 import sys
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import psycopg
 import pytest
-from django.utils.translation import gettext, pgettext
+from django.utils.translation import gettext, ngettext, pgettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
+from renewal.browser._navigation import (
+    click_to_navigate,
+    go_back_settled,
+    goto_settled,
+    reload_settled,
+)
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
-from renewal.browser.a11y_support import check_page
+from renewal.browser.a11y_support import AXE_URL, check_page
 from renewal.browser.engines import full_page_screenshot
+from renewal.browser.evaluation_storage import (
+    observe_storage,
+    register_storage_observer,
+)
 from renewal.browser.messages_support import (
     CONTACT,
     add_care_team,
@@ -43,7 +53,7 @@ from renewal.browser.messages_support import (
     seed_quick_reply,
     status_body,
 )
-from renewal.browser.support_managers import seed_ai_admin
+from renewal.browser.support_managers import seed_ai_admin, seed_manager
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -59,12 +69,13 @@ from renewal.browser.test_portal import (
     _no_browser_storage,
     _small_targets,
 )
+from renewal.browser.test_retention import sign_in_manager
 from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page, StorageState
+    from playwright.sync_api import Page, Request, Route, StorageState
 
 __all__ = ("availability_staff",)
 OK = 200
@@ -1055,3 +1066,320 @@ def test_assistant_books_a_new_appointment_only_after_native_acceptance(
         assert _assistant_booking_count(staff, enrollment) == 1
         assert patient.url == f"{base}/patient/messages/"
         _portal_check_without_scripts(patient, base, root, "assistant-new-booked")
+
+
+# Task 55: an urgent portal reply lands in the accountable human queue.
+URGENT_REPLY = "Estou com dor no peito muito forte agora e falta de ar."
+NO_COVERAGE = (
+    "This clinic does not watch messages continuously. In an emergency, call 192."
+)
+WINDOW = ngettext(
+    "Reply within %(hours)s business hour; in an emergency, call 192.",
+    "Reply within %(hours)s business hours; in an emergency, call 192.",
+    2,
+)
+
+
+def _publish_coverage(page: Page, base: str, staff: dict[str, str], root: Path) -> None:
+    """A clinic admin publishes the hours and roles patients will read."""
+    goto_settled(page, f"{base}/clinics/{staff['clinic_a']}/settings/urgent-coverage/")
+    preview = page.locator("[data-coverage-preview]")
+    expect(preview).to_contain_text(gettext(NO_COVERAGE))
+    for day in range(7):
+        page.locator(f'input[name="weekdays"][value="{day}"]').check()
+    page.locator("#coverage-opens").fill("00:00")
+    page.locator("#coverage-closes").fill("23:59")
+    page.locator("#coverage-hours").fill("2")
+    page.locator('input[name="responsible_roles"][value="physician"]').check()
+    published = click_to_navigate(
+        page.get_by_role("button", name=gettext("Publish coverage"))
+    )
+    assert published is not None
+    assert published.status == OK
+    expect(page.locator("[data-coverage-saved]")).to_be_visible()
+    expect(preview).to_contain_text(WINDOW % {"hours": 2})
+    for width in (1280, 375):
+        page.set_viewport_size({"width": width, "height": 900})
+        controls = page.locator('[data-coverage-form] input[type="checkbox"]')
+        expect(controls).to_have_count(11)
+        for control in controls.all():
+            geometry: list[float] = control.evaluate("""element => {
+                const box = element.getBoundingClientRect();
+                const label = element.labels[0].getBoundingClientRect();
+                return [box.right, label.left, box.top, box.bottom,
+                    label.top + label.height / 2];
+            }""")
+            assert geometry[1] >= geometry[0], (width, geometry)
+            assert geometry[2] <= geometry[4] <= geometry[3], (width, geometry)
+        report = check_page(page, base, root, f"messages-urgent-coverage-{width}")
+        assert report["violations"] == 0, report
+        _capture(page, root, "urgent-coverage", width)
+    page.set_viewport_size({"width": 1280, "height": 900})
+
+
+def _urgent_reply(patient: Page, base: str, root: Path) -> None:
+    """The patient reads the configured terms, then sends an urgent reply."""
+    click_to_navigate(patient.locator("#messages-link"))
+    expect(patient.locator("[data-portal-coverage]")).to_contain_text(
+        WINDOW % {"hours": 2}
+    )
+    click_to_navigate(patient.locator("[data-portal-conversation-open]"))
+    expect(patient.locator("[data-portal-coverage]")).to_contain_text("192")
+    patient.locator("#reply-body").fill(URGENT_REPLY)
+    click_to_navigate(patient.locator("[data-portal-reply-send]"))
+    expect(patient.locator("[data-portal-reply-sent]")).to_be_visible()
+    _portal_check(patient, base, root, "urgent-replied")
+
+
+def _assert_conversation_post(
+    request: Request, path: str, conversation: str, action: str
+) -> None:
+    assert request.method == "POST"
+    assert request.url == path
+    fields = parse_qs(request.post_data or "")
+    assert fields.get("action") == [action]
+    assert fields.get("conversation_id") == [conversation]
+    assert fields.get("csrfmiddlewaretoken")
+
+
+def _staff_conversation_storage(page: Page, inbox: str, urgent: str) -> None:
+    """Staff may cache static assets, but no thread or clinical browser state."""
+    assert observe_storage(page) == {"indexedDB": 0, "staticCacheOnly": True}
+    state = page.evaluate("""() => ({
+        local: Object.keys(localStorage),
+        session: Object.entries(sessionStorage),
+        notifications: 'Notification' in window ? Notification.permission : 'default'
+    })""")
+    assert state["local"] == []
+    assert state["notifications"] == "default"
+    session = state["session"]
+    assert [key for key, _value in session] in ([], ["htmx-current-path-for-history"])
+    paths = {urlsplit(inbox).path, urlsplit(urgent).path}
+    assert all(value in paths for _key, value in session)
+
+
+def _urgent_history(page: Page, inbox: str, urgent: str, conversation: str) -> None:
+    """Inspect stored entries, including the POST selection's forward entry."""
+    entries: list[str] = page.evaluate("navigation.entries().map(entry => entry.url)")
+    assert set(entries) == {urgent, inbox}
+    assert all(conversation not in entry for entry in entries)
+
+
+def _open_urgent_conversation(page: Page, inbox: str, conversation: str) -> None:
+    with page.expect_request(
+        lambda request: request.url == inbox and request.method == "POST"
+    ) as opened:
+        click_to_navigate(
+            page.locator("[data-urgent-concern]").get_by_role(
+                "button", name=re.compile(gettext("Open conversation"))
+            ),
+            wait_until="load",
+        )
+    _assert_conversation_post(opened.value, inbox, conversation, "show")
+    assert page.url == inbox
+    expect(page.locator("[data-conversation][data-purpose]")).to_have_attribute(
+        "data-conversation", conversation
+    )
+    expect(page.locator(".thread__item--in")).to_contain_text(URGENT_REPLY)
+
+
+def _audit_urgent_thread(page: Page, base: str, root: Path, urgent: str) -> None:
+    """Audit native output without enabling scripts in its functional context."""
+    if page.context._impl_obj._options.get("javaScriptEnabled") is not False:
+        report = check_page(page, base, root, "messages-urgent-thread-enhanced")
+        assert report["violations"] == 0, report
+        return
+    browser = page.context.browser
+    assert browser is not None
+    conversation = page.locator("[data-conversation][data-purpose]").get_attribute(
+        "data-conversation"
+    )
+    assert conversation is not None
+    blocked: list[str] = []
+
+    def scripts(route: Route) -> None:
+        path = urlsplit(route.request.url).path
+        if route.request.resource_type == "script" and path != AXE_URL:
+            blocked.append(path)
+            route.abort()
+        else:
+            route.continue_()
+
+    with browser.new_context(
+        storage_state=page.context.storage_state(),
+        viewport=page.viewport_size,
+        locale="pt-BR",
+        timezone_id="Asia/Tokyo",
+        service_workers="block",
+    ) as context:
+        context.route("**/*", scripts)
+        audit = context.new_page()
+        audit.emulate_media(reduced_motion="reduce")
+        goto_settled(audit, urgent, wait_until="load")
+        _open_urgent_conversation(audit, page.url, conversation)
+        draft = page.locator("#reply-body").input_value()
+        audit.locator("#reply-body").fill(draft)
+        expect(audit.locator("#reply-body")).to_have_value(draft)
+        assert (
+            audit.locator(".messages-shell").inner_text()
+            == page.locator(".messages-shell").inner_text()
+        )
+        assert blocked
+        assert audit.evaluate("typeof htmx") == "undefined"
+        report = check_page(audit, base, root, "messages-urgent-thread-native")
+        assert report["violations"] == 0, report
+        report.update(
+            {
+                "functional_context_javascript_enabled": False,
+                "audit_context_application_scripts_blocked": True,
+                "native_http_visible_text_equal": True,
+                "native_reply_value_equal": True,
+                "blocked_script_paths": sorted(set(blocked)),
+            }
+        )
+        destination = root / "axe" / "messages-urgent-thread-native-replay.json"
+        destination.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+        destination.chmod(0o600)
+
+
+def _reply_to_urgent(
+    page: Page,
+    base: str,
+    staff: dict[str, str],
+    root: Path,
+    *,
+    javascript: bool,
+) -> None:
+    """Open, refresh and answer through POST in enhanced and native browsers."""
+    inbox = _inbox(staff, base)
+    urgent = f"{base}/clinics/{staff['clinic_a']}/inbox/urgent/"
+    concern = page.locator("[data-urgent-concern]")
+    conversation = concern.locator('input[name="conversation_id"]').input_value()
+    requests: list[str] = []
+    history = [page.url]
+    page.on("request", lambda request: requests.append(request.url))
+    page.on(
+        "framenavigated",
+        lambda frame: history.append(frame.url) if frame == page.main_frame else None,
+    )
+    _open_urgent_conversation(page, inbox, conversation)
+    _urgent_history(page, inbox, urgent, conversation)
+    go_back_settled(page)
+    assert page.url == urgent
+    _urgent_history(page, inbox, urgent, conversation)
+    # Re-submit the protected read instead of requiring a cached POST response.
+    _open_urgent_conversation(page, inbox, conversation)
+    if javascript:
+        _settle_live_region(page)
+    reply = "A equipe sintetica recebeu sua mensagem."
+    page.locator("#reply-body").fill(reply)
+    if javascript:
+        with page.expect_response(
+            lambda response: (
+                response.url == inbox
+                and response.request.method == "POST"
+                and response.request.headers.get("hx-request") == "true"
+            )
+        ) as refreshed:
+            page.evaluate("document.body.dispatchEvent(new CustomEvent('rt:poll'))")
+        assert refreshed.value.status == OK
+        _assert_conversation_post(refreshed.value.request, inbox, conversation, "show")
+        expect(page.locator("#reply-body")).to_have_value(reply)
+    width = 1280 if javascript else 375
+    mode = "enhanced" if javascript else "native"
+    _audit_urgent_thread(page, base, root, urgent)
+    _capture(page, root, f"urgent-thread-{mode}", width)
+    _staff_conversation_storage(page, inbox, urgent)
+    with page.expect_request(
+        lambda request: (
+            request.url == inbox
+            and request.method == "POST"
+            and parse_qs(request.post_data or "").get("action") == ["send"]
+        )
+    ) as sent:
+        _reply(page, reply)
+    _assert_conversation_post(sent.value, inbox, conversation, "send")
+    assert page.url == inbox
+    assert all(conversation not in url for url in requests)
+    assert all(conversation not in url for url in history)
+    assert set(history) == {urgent, inbox}
+    _urgent_history(page, inbox, urgent, conversation)
+    _staff_conversation_storage(page, inbox, urgent)
+
+
+def _decide_urgent(page: Page, base: str, staff: dict[str, str], root: Path) -> None:
+    """The responsible physician acknowledges, then resolves, the one concern."""
+    goto_settled(page, f"{base}/clinics/{staff['clinic_a']}/inbox/")
+    opener = page.get_by_role("link", name=re.compile(gettext("Open urgent concerns")))
+    expect(opener).to_have_count(1)
+    click_to_navigate(opener)
+    assert page.url == f"{base}/clinics/{staff['clinic_a']}/inbox/urgent/"
+    concern = page.locator("[data-urgent-concern]")
+    expect(concern).to_have_count(1)
+    expect(concern).to_have_attribute("data-urgent-state", "open")
+    expect(page.locator("main")).not_to_contain_text(URGENT_REPLY)
+    report = check_page(page, base, root, "messages-urgent-queue")
+    assert report["violations"] == 0, report
+    _capture(page, root, "urgent-queue", 1280)
+    browser = register_storage_observer(page)
+    assert browser is not None
+    for javascript, width in ((True, 1280), (False, 375)):
+        # A fresh tab's history contains only this urgent workflow, not setup.
+        context = browser.new_context(
+            storage_state=page.context.storage_state(),
+            locale="pt-BR",
+            timezone_id="Asia/Tokyo",
+            viewport={"width": width, "height": 900},
+            java_script_enabled=javascript,
+        )
+        try:
+            thread_page = context.new_page()
+            goto_settled(
+                thread_page, f"{base}/clinics/{staff['clinic_a']}/inbox/urgent/"
+            )
+            _capture(thread_page, root, "urgent-queue-history", width)
+            _reply_to_urgent(thread_page, base, staff, root, javascript=javascript)
+        finally:
+            context.close()
+    goto_settled(page, f"{base}/clinics/{staff['clinic_a']}/inbox/urgent/")
+    click_to_navigate(
+        concern.get_by_role("button", name=re.compile(gettext("Acknowledge")))
+    )
+    expect(page.locator("[data-urgent-saved]")).to_be_visible()
+    expect(concern).to_have_attribute("data-urgent-state", "acknowledged")
+    click_to_navigate(
+        concern.get_by_role("button", name=re.compile(gettext("Mark resolved")))
+    )
+    expect(page.locator("[data-urgent-empty]")).to_be_visible()
+
+
+def test_an_urgent_portal_reply_reaches_the_accountable_urgent_queue(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    directory = root / "messages"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    operator = _organization_admin(staff)["id"]
+    grant_messages(staff, operator, staff["receptionist_id"], directory)
+    page = renewal_page
+    sign_in_manager(page, base, staff, seed_manager(staff))
+    _publish_coverage(page, base, staff, root)
+    name = _new_name()
+    _sign_in_receptionist(page, base, staff)
+    enrollment = _register_patient(page, base, staff, name)
+    code = _portal_access(staff, enrollment)
+    _start_portal_thread(page, base, staff, name, directory)
+    browser = page.context.browser
+    assert browser is not None
+    with _context(browser, 375) as patient_context:
+        patient = patient_context.new_page()
+        errors = _watch_errors(patient)
+        _redeem(patient, base, staff["clinic_a"], code)
+        _urgent_reply(patient, base, root)
+        assert errors == []
+    _sign_in_physician(page, base, staff)
+    _decide_urgent(page, base, staff, root)
+    assert _portal_inbound(staff, enrollment) == 1

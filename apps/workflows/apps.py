@@ -10,8 +10,14 @@ class WorkflowsConfig(AppConfig):
     name = "apps.workflows"
 
     def ready(self) -> None:
-        """Register the external action, the inbox task feed and Today's hint."""
-        from apps.workflows import task_feed, today  # noqa: PLC0415
+        """Register the external action, the inbox feeds and the comms hooks."""
+        from apps.comms.inbox_adapters import (  # noqa: PLC0415
+            register_message_send_check,
+        )
+        from apps.comms.portal_messages import (  # noqa: PLC0415
+            register_urgent_reply_hook,
+        )
+        from apps.workflows import release, task_feed, today, urgent  # noqa: PLC0415
         from apps.workflows.care import tasks as care_tasks  # noqa: PLC0415
         from apps.workflows.external import register_adapters  # noqa: PLC0415
 
@@ -20,3 +26,8 @@ class WorkflowsConfig(AppConfig):
         assert care_tasks.scan_care_job  # noqa: S101
         task_feed.register()
         today.register()
+        # Task 55: release notices recheck their scope at send time; urgent
+        # portal replies open an accountable concern.
+        register_message_send_check(release.notice_send_eligible)
+        register_urgent_reply_hook(urgent.report_urgent_message)
+        urgent.register_urgent_feed()

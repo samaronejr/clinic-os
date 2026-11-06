@@ -106,7 +106,8 @@ class PageStub:
 @contextmanager
 def navigation(page: Page, *, wait_until: str, timeout: float) -> Iterator[None]:
     stub = cast("PageStub", page)
-    assert wait_until == "domcontentloaded"
+    # Native parity compares rendered text after its stylesheets have loaded.
+    assert wait_until == "load"
     stub.timeouts.append(timeout)
     stub.events.append("navigation_subscribed")
     cancelled = True

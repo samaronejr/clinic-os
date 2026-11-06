@@ -67,6 +67,13 @@ REFUSALS: Final[dict[type[Exception], tuple[StrOrPromise, bool, int]]] = {
 }
 
 
+def _coverage() -> tuple[str, ...]:
+    """State the clinic's configured urgent-message coverage, never more (todo 55)."""
+    from apps.workflows.urgent import patient_coverage_text  # noqa: PLC0415
+
+    return patient_coverage_text()
+
+
 def _refused(request: HttpRequest) -> HttpResponse:
     """One gate for every refusal; no selector influences the bytes."""
     return render(
@@ -114,6 +121,7 @@ def _show(  # noqa: PLR0913 - one keyword per piece of page feedback
             "notice": notice,
             "error": error,
             "draft": draft,
+            "coverage": _coverage(),
         },
         status=status,
     )
@@ -184,5 +192,6 @@ def patient_messages(request: HttpRequest) -> HttpResponseBase:
                 {"row": row, "state_label": STATE_LABELS[row.state]}
                 for row in patient_conversations()
             ],
+            "coverage": _coverage(),
         },
     )

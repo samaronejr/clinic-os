@@ -329,3 +329,118 @@ DEFINER transition guard, the refusal table only its resolver's writes.
 Migration `0006` is protected-schema style: irreversible, rollback = restore.
 Live legs (real PRO delivery, patient release, staffing policy) stay
 BLOCKED-ON-EG; none is reachable here.
+
+## Result release and urgent concerns (todo 55)
+
+Code lives in `release.py` and `urgent.py` (models in `release_models.py` and
+`urgent_models.py`, staff pages in `coordination_views.py`). Every service is
+keyword-only with an explicit `clinic_id` and derives the actor from the
+database context. A missing permission raises the actor error; unknown and
+foreign selectors share the payload-free `WorkflowAccessDeniedError`, and a
+stale notice version or revision is a `WorkflowConflictError`.
+
+**Release with approved wording.** `release_result_to_patient(*, clinic_id,
+result_version_id, template_version, audience, delegate_grant_id=None)` composes
+the orders release (`apps.orders.review.release_result`, rules unchanged: the
+version's own acknowledgment; the patient, or an active delegate grant scoped for
+records and care processing) with the clinic's current release notice. The
+plan's sketch has no clinic; SC-1 requires the explicit scope, so the signature
+adds it. A notice (`ReleaseNoticeTemplate`) is one clinic-wide sentence of at
+most 300 characters without digits or `@`, immutable and versioned, approved by
+a physician through the clinic-level `configuration.propose` cell
+(`result.release` is patient-scoped: it needs an enrollment, so no clinic-level
+check can grant it); the approving clinician is its author
+(`publish_release_notice`). Each release still needs patient-scoped
+`result.release` and `clinical.read` for the result's enrollment. `template_version` must equal the current version,
+so the clinician releases with the wording they saw: a stale version is a
+conflict, and without an approved notice the results page cannot release. The
+notice is queued on the patient's portal care thread through the todo-51 inbox
+(`open_conversation` and `send_message`, staff actor, outbox after commit) and
+never carries result content, values, dates or identifiers. A repeated release
+returns the original delivery and sends nothing twice: the message command id
+is derived from the release id.
+
+**Delivery state is derived.** `ReleaseDelivery` is content-free provenance
+(release, version, enrollment, audience, delegate grant, notice version and the
+comms message). It is `pending` until the message's outbox operation succeeds
+(`delivered`) and `failed` when the operation fails or is cancelled.
+
+**Scope is rechecked at send time (scenario 19).** comms runs registered send
+checks inside the send's tenant transaction (`register_message_send_check`).
+`notice_send_eligible` asks the tenant-only resolver
+`workflows_release_send_eligible`: the version must still be current and, for a
+delegate audience, `orders_delegate_allowed` must still hold. A guardian
+revoked or expired between release and send receives nothing: the operation is
+cancelled. Patient result reads keep rechecking the release audience at read
+time (`apps/orders/patient_results.py`).
+
+**A failed delivery reaches staff.** When a notice's outbox operation fails or
+is cancelled, the outcome bridge (`workflows_release_outcome`, an AFTER UPDATE
+trigger on `comms_integrationoperation` for terminal transitions of comms
+messages) marks the delivery `scope_revoked` (the send check refused it) or
+`send_failed` (any other failure) once, and writes one high-priority follow-up
+`Task` for the reception role on the patient's enrollment, due four hours later.
+The task guard admits exactly that row as a source-backed system task
+(`workflows_release_system_task_valid`), as it does for orders, retention and
+care; no staff identity is borrowed, so the task exists even when the releasing
+clinician has since lost authority. The outbox's own `comms.operation.failed` or
+`.cancelled` audit event records the transition.
+
+**Urgent concerns (scenario 20).** A portal reply that `classify_inbound` marks
+urgent opens exactly one `UrgentConcern` in the reply's own transaction through
+the patient bridge (`register_urgent_reply_hook` in comms; SQL
+`workflows_report_urgent` admits only a message that session wrote in that
+transaction), audited once as `workflows.urgent_concern.reported` with the
+patient session as actor. The concern stores pointers only; the text stays
+encrypted in comms. A concern moves open -> acknowledged -> resolved, each step
+by a person holding one of the policy's responsible roles
+(`acknowledge_urgent_concern`, `resolve_urgent_concern`, optimistic
+`expected_revision`), and the table guard enforces the same transitions.
+Without a policy, clinic managers own concerns and no deadline exists. Nothing
+replies to the patient automatically; staff answer in the conversation.
+
+**Coverage policy.** `set_urgent_coverage` (`configuration.clinic`) publishes
+the next immutable `UrgentCoveragePolicy` version: covered weekdays, opening and
+closing time in clinic time at whole-minute precision, a response window of
+1 to 72 business hours and
+the responsible roles (nurse, physician, receptionist, clinic manager). The
+deadline (`due_at`) adds the window in covered business minutes from the report
+time. The patient portal (message list and thread) states exactly the
+configured terms, ending with "em emergência, ligue 192"; without a policy it
+says the clinic does not watch messages continuously and to call 192, and never
+claims coverage. The policy is clinic configuration; clinical safety and
+staffing content remain external gate EG-3, which this change never marks
+satisfied. Services reject timezone-bearing times, seconds and microseconds;
+the database guard repeats the precision check so stored terms always match
+the hours patients see and cannot make a deadline overflow.
+
+**Overdue escalation.** A concern still open at its deadline is overdue: it
+rises above every other item in the queue and in the Clinical Inbox feed
+`urgent` (critical), and it becomes visible to clinic managers outside the
+responsible roles. Overdue is derived from the policy deadline whenever the queue
+is read (`urgent.utc_now`, which tests replace), so escalation never waits for a
+scanner interval and needs no machine writer. Selection considers every scoped
+unresolved concern before keeping the 200 visible rows with the highest priority;
+200 older concerns with longer windows cannot hide a newer overdue concern.
+Rows stream in batches and selection retains only the bounded result.
+
+**Pages.** Inbox > Urgent concerns (`demographics.read`), Inbox > Result release
+notice (`configuration.propose`) and Settings > Urgent message coverage
+(`configuration.clinic` and the administrative route roles) are TOTP-protected,
+private no-store pages whose selectors travel in POST bodies. Each page decides
+its permission before the auth decorators; each form names its action
+(`ack`/`resolve`, `publish`), and an unknown action or a malformed selector gets
+the same shared 403 page as an unknown or foreign record, without session,
+audit or outbox writes.
+
+**Schema.** Migration `0008_release_and_urgent` adds four FORCE RLS tables
+without DELETE: `workflows_releasenoticetemplate`, `workflows_releasedelivery`
+and `workflows_urgentcoveragepolicy` are append-only for the runtime role (only
+the outcome bridge marks a delivery failed), and `workflows_urgentconcern` has
+no runtime INSERT and UPDATE only on its state and attribution columns.
+One SECURITY DEFINER guard, `workflows_coordination_guard`, enforces authorship,
+versions, scope, each delivery's binding to its release and comms message, the
+bridge-only failure update and the concern transitions; the migration also
+re-creates the task guard with the release follow-up admission. The migration is additive and stores no patient text;
+its reverse is for an empty synthetic database only, and once releases or
+concerns exist rollback = restore.

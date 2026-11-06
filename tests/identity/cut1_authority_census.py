@@ -17,6 +17,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.ai_authority_census import exercise_ai_authority
+from identity.coordination_authority_oracle import run_coordination_census
 from identity.front_desk_authority_oracle import run_front_desk_census
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
@@ -248,11 +249,17 @@ def _guard_world(
     committed care records.
     """
     from workflows.care_world import seed_care_world  # noqa: PLC0415
+    from workflows.coordination_guard_cases import (  # noqa: PLC0415
+        COORDINATION_SEEDED,
+    )
+    from workflows.coordination_world import seed_coordination_world  # noqa: PLC0415
     from workflows.guard_cases import seed_guard_world  # noqa: PLC0415
 
     world = seed_guard_world(subject, patch)
     if symbol.startswith("apps.workflows.care."):
         world = replace(world, care=seed_care_world(world))
+    if symbol in COORDINATION_SEEDED:
+        world = replace(world, coordination=seed_coordination_world(world))
     return world
 
 
@@ -339,6 +346,7 @@ def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     run_orders_census(proofs, graph)
     run_portal_census(proofs, graph, secret_root.parent)
     run_front_desk_census(proofs, graph, patch)
+    run_coordination_census(proofs, graph, patch, secret_root.parent)
     run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
