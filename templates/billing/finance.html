@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "Finance" %} · Clinic OS{% endblock %}
+{% block meta_description %}{% trans "Clinic journal, receivables, collections and day close." %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}">{% endblock %}
+{% block content %}{% include "billing/partials/finance_content.html" %}{% endblock %}

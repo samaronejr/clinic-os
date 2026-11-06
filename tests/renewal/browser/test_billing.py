@@ -26,6 +26,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from playwright.sync_api import ViewportSize, expect
 
 from renewal.browser._fixture_secrets import new_access_code
@@ -360,6 +361,20 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         # The ledger is reachable from the shell, not only by typed URL.
         click_to_navigate(admin.locator("a[data-module=finance]"))
         ledger = ledger_url(base, staff)
+        assert admin.url == f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
+        expect(
+            admin.get_by_role("heading", name=gettext("Finance"), exact=True)
+        ).to_be_visible()
+        expect(admin.locator("a[data-module=finance]")).to_have_attribute(
+            "aria-current", "page"
+        )
+        expect(admin.locator("[data-finance-workspace]")).to_be_visible()
+        capture(admin, root, "finance-workspace", width)
+        click_to_navigate(
+            admin.locator("[data-finance-workspace]").get_by_role(
+                "link", name=gettext("Charges"), exact=True
+            )
+        )
         assert admin.url == ledger
         expect(admin.locator("a[data-module=finance]")).to_have_attribute(
             "aria-current", "page"

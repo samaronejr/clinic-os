@@ -8,8 +8,48 @@ from typing import ClassVar
 from django.db import models
 from django.utils import timezone
 
+from apps.billing.collection_models import (
+    InvoiceTerms,
+    JournalSettlement,
+    PractitionerPayoutRule,
+    SettlementAllocation,
+)
+from apps.billing.journal_models import (
+    Account,
+    JournalBook,
+    JournalEntry,
+    JournalLine,
+)
+from apps.billing.money_models import (
+    CashSession,
+    CashSessionEvent,
+    Payout,
+    Refund,
+)
 from apps.tenancy.fields import EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
+
+__all__ = (
+    "Account",
+    "CashSession",
+    "CashSessionEvent",
+    "Invoice",
+    "InvoiceRevision",
+    "InvoiceTerms",
+    "JournalBook",
+    "JournalEntry",
+    "JournalLine",
+    "JournalSettlement",
+    "PaymentEvent",
+    "Payout",
+    "PixCharge",
+    "PixOperation",
+    "PractitionerPayoutRule",
+    "Receipt",
+    "Refund",
+    "Settlement",
+    "SettlementAllocation",
+)
 
 
 class Invoice(TenantScopedModel):

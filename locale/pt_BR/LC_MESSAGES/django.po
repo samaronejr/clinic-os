@@ -354,6 +354,398 @@ msgstr "Voltar ao atendimento"
 
 msgid "Invalid decision-support request."
 msgstr "Solicitação de apoio à decisão inválida."
+msgid "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close."
+msgstr "A contagem do caixa precisa conferir com o diário selado. Recebimentos não lançados, valores não identificados, valores em apuração e resultados desconhecidos impedem o fechamento."
+
+msgid "Account"
+msgstr "Conta"
+
+msgid "Accountant export"
+msgstr "Exportação para a contabilidade"
+
+msgid "Allocate collection"
+msgstr "Alocar recebimento"
+
+msgid "Allocation"
+msgstr "Alocação"
+
+msgid "Amount"
+msgstr "Valor"
+
+msgid "Amount in reais"
+msgstr "Valor em reais"
+
+msgid "Amounts are reais. Rules use basis points (3000 means 30 percent) or fixed centavos. Discounts and payer adjustments precede PSP fees."
+msgstr "Os valores estão em reais. As regras usam pontos-base (3000 equivalem a 30 por cento) ou centavos fixos. Descontos e ajustes da operadora são aplicados antes das tarifas do PSP."
+
+msgid "An unknown refund or payout keeps its reservation. Reconcile evidence; do not send it again."
+msgstr "Um reembolso ou repasse com resultado desconhecido mantém a reserva. Confira a comprovação; não envie novamente."
+
+msgid "Approve payout"
+msgstr "Aprovar repasse"
+
+msgid "Approve refund"
+msgstr "Aprovar reembolso"
+
+msgid "Attest completed service"
+msgstr "Confirmar serviço concluído"
+
+msgid "Awaiting service completion"
+msgstr "Aguardando conclusão do serviço"
+
+msgid "Bad debt"
+msgstr "Perdas com inadimplência"
+
+msgid "Bank"
+msgstr "Banco"
+
+msgid "Basis points or fixed centavos"
+msgstr "Pontos-base ou centavos fixos"
+
+msgid "CSV and the documented OFX-like journal contain the same sealed centavo lines. This is not a bank statement or a fiscal document."
+msgstr "O CSV e o diário documentado, inspirado em OFX, contêm os mesmos lançamentos selados em centavos. Não são extratos bancários nem documentos fiscais."
+
+msgid "Cash drawer"
+msgstr "Caixa físico"
+
+msgid "Cash drawers"
+msgstr "Caixas físicos"
+
+msgid "Chargeback"
+msgstr "Contestação de pagamento"
+
+msgid "Check the export dates."
+msgstr "Confira as datas da exportação."
+
+msgid "Check the financial fields below."
+msgstr "Confira os campos financeiros abaixo."
+
+msgid "Clinic journal, receivables, collections and day close."
+msgstr "Diário da clínica, contas a receber, recebimentos e fechamento do dia."
+
+msgid "Close cash drawer"
+msgstr "Fechar caixa físico"
+
+msgid "Close the day from verified money and a sealed journal."
+msgstr "Feche o dia com recebimentos verificados e lançamentos selados."
+
+msgid "Collection"
+msgstr "Recebimento"
+
+msgid "Collections"
+msgstr "Recebimentos"
+
+msgid "Contra-revenue"
+msgstr "Deduções de receita"
+
+msgid "Correction"
+msgstr "Correção"
+
+msgid "Counted"
+msgstr "Contado"
+
+msgid "Counted cash in reais"
+msgstr "Dinheiro contado em reais"
+
+msgid "Day close"
+msgstr "Fechamento do dia"
+
+msgid "Debit balance; credits are negative"
+msgstr "Saldo devedor; créditos são negativos"
+
+msgid "Discount in reais"
+msgstr "Desconto em reais"
+
+msgid "Discounts"
+msgstr "Descontos"
+
+msgid "Download journal"
+msgstr "Baixar diário"
+
+msgid "Enter an exact nonnegative amount in reais."
+msgstr "Informe um valor exato em reais, igual ou maior que zero."
+
+msgid "Export format"
+msgstr "Formato da exportação"
+
+msgid "Financial action refused. Reload the current state before trying again."
+msgstr "A ação financeira não foi concluída. Atualize o estado atual antes de tentar novamente."
+
+msgid "Financial command recorded. The displayed balances come from the journal."
+msgstr "Ação financeira registrada. Os saldos exibidos vêm do diário."
+
+msgid "Fixed per service"
+msgstr "Fixo por serviço"
+
+msgid "Freeze invoice terms"
+msgstr "Fixar condições da cobrança"
+
+msgid "I independently checked the retained evidence."
+msgstr "Confirmo que conferi a comprovação de forma independente."
+
+msgid "Insurer"
+msgstr "Operadora"
+
+msgid "Insurer overpayment"
+msgstr "Recebimento a maior de operadora"
+
+msgid "Insurer overpayments"
+msgstr "Recebimentos a maior de operadoras"
+
+msgid "Insurer receivables"
+msgstr "Contas a receber de operadoras"
+
+msgid "Journal balance"
+msgstr "Saldo do diário"
+
+msgid "Journal balances"
+msgstr "Saldos do diário"
+
+msgid "Money account"
+msgstr "Conta financeira"
+
+msgid "Net terms"
+msgstr "Valor líquido pactuado"
+
+msgid "No collection recorded. Observed money still needs independent verification before posting."
+msgstr "Nenhum recebimento registrado. Um valor observado ainda precisa de verificação independente antes do lançamento."
+
+msgid "No drawer opened. Count the physical cash, then use Open cash drawer below."
+msgstr "Nenhum caixa aberto. Conte o dinheiro físico e use Abrir caixa físico abaixo."
+
+msgid "No frozen invoice terms. Issue a charge and record its net terms before allocating money."
+msgstr "Nenhuma condição de cobrança fixada. Emita uma cobrança e registre seu valor líquido antes de alocar recebimentos."
+
+msgid "No observed or quarantined receipt in the recent list."
+msgstr "Nenhum recebimento observado ou em quarentena na lista recente."
+
+msgid "No payout reservation. Only verified net collection earns a practitioner payable."
+msgstr "Nenhuma reserva de repasse. Somente o recebimento líquido verificado gera um repasse a pagar."
+
+msgid "No posted economic fact."
+msgstr "Nenhum fato econômico lançado."
+
+msgid "No refund reservation. Finance approval and fresh verification are required before sending."
+msgstr "Nenhuma reserva de reembolso. O envio exige aprovação financeira e confirmação de segurança recente."
+
+msgid "OFX-like journal XML"
+msgstr "Diário XML inspirado em OFX"
+
+msgid "Open cash drawer"
+msgstr "Abrir caixa físico"
+
+msgid "Open the clinic book"
+msgstr "Abrir diário da clínica"
+
+msgid "Opening balances"
+msgstr "Saldos de abertura"
+
+msgid "Outcome evidence reference"
+msgstr "Referência da comprovação do resultado"
+
+msgid "Outstanding"
+msgstr "Em aberto"
+
+msgid "PSP and live-money actions remain blocked by external gates."
+msgstr "As ações com PSP e dinheiro real continuam bloqueadas pelas liberações externas."
+
+msgid "PSP clearing"
+msgstr "Compensação do PSP"
+
+msgid "PSP fees"
+msgstr "Tarifas do PSP"
+
+msgid "Patient advance"
+msgstr "Adiantamento de paciente"
+
+msgid "Patient advances"
+msgstr "Adiantamentos de pacientes"
+
+msgid "Patient receivables"
+msgstr "Contas a receber de pacientes"
+
+msgid "Payer"
+msgstr "Pagador"
+
+msgid "Payer adjustment in reais"
+msgstr "Ajuste do pagador em reais"
+
+msgid "Payer adjustments"
+msgstr "Ajustes do pagador"
+
+msgid "Payout"
+msgstr "Repasse"
+
+msgid "Payouts in transit"
+msgstr "Repasses em trânsito"
+
+msgid "Percentage"
+msgstr "Percentual"
+
+msgid "Petty cash"
+msgstr "Caixa físico"
+
+msgid "Post verified collection"
+msgstr "Lançar recebimento verificado"
+
+msgid "Posted"
+msgstr "Lançado"
+
+msgid "Practitioner"
+msgstr "Médico"
+
+msgid "Practitioner compensation"
+msgstr "Despesa com profissionais"
+
+msgid "Practitioner payables"
+msgstr "Repasses a pagar"
+
+msgid "Practitioner payouts"
+msgstr "Repasses a profissionais"
+
+msgid "Practitioner rule"
+msgstr "Regra de repasse"
+
+msgid "Quarantine receipt"
+msgstr "Colocar recebimento em quarentena"
+
+msgid "Quarantined"
+msgstr "Em quarentena"
+
+msgid "Receipt kind"
+msgstr "Tipo de recebimento"
+
+msgid "Receivables"
+msgstr "Contas a receber"
+
+msgid "Recent tables show up to 100 records. Accountant exports include the full selected period."
+msgstr "As tabelas recentes mostram até 100 registros. A exportação para a contabilidade inclui todo o período selecionado."
+
+msgid "Recognition"
+msgstr "Reconhecimento"
+
+msgid "Reconciliation"
+msgstr "Conciliação"
+
+msgid "Record PSP fee"
+msgstr "Registrar tarifa do PSP"
+
+msgid "Record a financial action"
+msgstr "Registrar ação financeira"
+
+msgid "Record observed money"
+msgstr "Registrar valor observado"
+
+msgid "Record payout rehearsal outcome"
+msgstr "Registrar resultado da simulação de repasse"
+
+msgid "Record practitioner rule"
+msgstr "Registrar regra de repasse"
+
+msgid "Record refund rehearsal outcome"
+msgstr "Registrar resultado da simulação de reembolso"
+
+msgid "Record the required source first; this action has no available selection yet."
+msgstr "Registre primeiro a origem necessária; esta ação ainda não tem uma opção disponível."
+
+msgid "Recorded at"
+msgstr "Registrado em"
+
+msgid "Refresh stored balances"
+msgstr "Atualizar saldos registrados"
+
+msgid "Refund"
+msgstr "Reembolso"
+
+msgid "Refund and payout sending is a local rehearsal. No real money is moved. PSP and live legs remain BLOCKED-ON-EG."
+msgstr "O envio de reembolsos e repasses é uma simulação local. Nenhum dinheiro real é movimentado. As etapas com PSP e dinheiro real permanecem BLOCKED-ON-EG."
+
+msgid "Refunds and chargebacks"
+msgstr "Reembolsos e contestações"
+
+msgid "Refunds payable"
+msgstr "Reembolsos a pagar"
+
+msgid "Rehearsal state"
+msgstr "Estado da simulação"
+
+msgid "Reopen cash drawer"
+msgstr "Reabrir caixa físico"
+
+msgid "Reopening reason"
+msgstr "Motivo da reabertura"
+
+msgid "Repasse reversed"
+msgstr "Repasse estornado"
+
+msgid "Request practitioner payout"
+msgstr "Solicitar repasse a profissional"
+
+msgid "Request refund or chargeback"
+msgstr "Solicitar reembolso ou contestação"
+
+msgid "Retained evidence reference"
+msgstr "Referência da comprovação guardada"
+
+msgid "Return kind"
+msgstr "Tipo de devolução"
+
+msgid "Return unallocated money"
+msgstr "Devolver valor não alocado"
+
+msgid "Reviewed revision"
+msgstr "Revisão conferida"
+
+msgid "Rule basis"
+msgstr "Base de cálculo"
+
+msgid "Sending"
+msgstr "Em envio"
+
+msgid "Service completed"
+msgstr "Serviço concluído"
+
+msgid "Service revenue"
+msgstr "Receita de serviços"
+
+msgid "Suspense"
+msgstr "Valores em apuração"
+
+msgid "Taxes payable"
+msgstr "Tributos a pagar"
+
+msgid "The organization policy owner must open this clinic's book before financial operations."
+msgstr "O responsável pela política da organização precisa abrir o diário desta clínica antes das operações financeiras."
+
+msgid "Through"
+msgstr "Até"
+
+msgid "Unidentified receipt"
+msgstr "Recebimento não identificado"
+
+msgid "Unidentified receipts"
+msgstr "Recebimentos não identificados"
+
+msgid "Unknown outcome"
+msgstr "Resultado desconhecido"
+
+msgid "Verify authenticator"
+msgstr "Confirmar aplicativo autenticador"
+
+msgid "Verify retained evidence"
+msgstr "Verificar comprovação guardada"
+
+msgid "Verify your authenticator again before approving or reopening."
+msgstr "Confirme novamente seu aplicativo autenticador antes de aprovar ou reabrir."
+
+msgid "Record opening balance"
+msgstr "Registrar saldo de abertura"
+
+msgid "Allocate proportionally"
+msgstr "Alocar proporcionalmente"
+
+msgid "Charges for proportional allocation"
+msgstr "Cobranças para alocação proporcional"
 
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"

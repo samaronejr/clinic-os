@@ -164,3 +164,74 @@ vocabulary or transport detail. The QR is rendered from the stored bytes and the
 copy text is selectable without JavaScript; the clipboard button appears only
 when the browser can write to the clipboard. Both carry the synthetic rehearsal
 badge, because the code is explicitly not payable.
+
+## Task 56: operational journal
+
+The binding economic policy is
+[`completion-net-v1`](../../docs/accounting/operational-journal-policy.md).
+Its missing-U1 provenance is explicit: root chose service-completion accrual
+and net verified-collection repasse on best judgment after the owner question
+timed out. This is **not explicit owner approval** or a reconstruction of U1.
+
+`JournalBook` is clinic/legal-entity scoped. Its immutable minimum chart,
+`JournalEntry` and `JournalLine` retain positive bigint centavos and a side.
+`post_entry(*, book_id, source_fact, lines)` seals once per economic fact.
+Changed-content retries conflict; PostgreSQL defers balance to COMMIT.
+Posted facts cannot be edited, deleted or truncated; corrections link reversals.
+Clinic Ops' own SaaS revenue never enters these books.
+
+Service completion recognizes gross revenue against patient/insurer A/R,
+with explicit discounts and payer adjustments reducing net receivables.
+Issuing a charge does not recognize revenue. Prepayments remain advances and
+are applied at completion. `InvoiceTerms` freezes payer, reductions and the
+exact optional practitioner rule before collection. Without a specified
+contract, no practitioner fee is guessed. Completion joins the clinician's
+appointment transition atomically; Finance can separately attest external
+completion evidence for a service without an appointment.
+
+`JournalSettlement` retains observed -> verified -> posted or quarantined
+money facts. A synthetic adapter success is never verification.
+`SettlementAllocation` adds partial/installment/deposit many-to-many edges.
+The original `Settlement.invoice`, `Receipt.invoice` and `Receipt.settlement`
+remain one-to-one; the migration never rewrites historic rows.
+New independently confirmed manual settlements bridge additively when a book
+exists. Historical rows are not silently imported. The exact `create_invoice`
+signature remains unchanged, and the current Finance permission bundle can
+use the same exact-clinic charge boundary.
+
+Repasse accrues on allocated verified **net collection**, before PSP/card fees.
+Rules are immutable percent/basis-point or fixed-per-service versions.
+Cumulative half-even rounding prevents splitting gains; largest remainder
+conserves every allocated cent. The clinic separately expenses PSP fees.
+Confirmed refunds/chargebacks reverse entitlement proportionally through
+linked entries; an already paid practitioner can have a visible clawback
+balance, never an automatic bank debit.
+
+Refunds reserve capacity at request. Payout requests reserve only earned
+unreserved practitioner debt; approval moves it into transit. Unknown outcomes
+retain reservations. Exact-clinic Finance permissions plus genuine persisted
+fresh session verification approve both; legacy manager/owner equivalence
+does not approve outgoing money. Dispatch revalidates the executor's current
+Finance authority and fresh persisted proof; the original approval remains
+historical evidence. Authorized Finance can still record separately evidenced
+outcomes after dispatch if an original approver was offboarded.
+
+`CashSession` counts must match posted petty cash. `CashSessionEvent` preserves
+each count/reopening and command identity. Unknown outcomes, unexplained
+receipts, unresolved settlement verification and suspense prevent close.
+Reopening requires fresh step-up, the reviewed revision and a closed reason.
+The policy owner records evidenced opening balances explicitly; closing never
+creates a balancing plug.
+
+The Finance screen supplies native POST commands and an HTMX read refresh,
+receivables, collections, exceptions, outgoing reservations, cash history,
+PSP-fee recording, frozen rules/terms and scoped CSV/custom OFX-like XML
+exports. Recent tables are bounded; exports cover their full chosen period.
+Operational financial rows exclude clinician-only and patient identities.
+Audit events contain only registered metadata keys. Presentation uses English
+msgids and the pt-BR catalog; selectors remain in POST bodies.
+
+Sending/outcome operations are **local synthetic rehearsals only**.
+PSP, sandbox and live-money legs remain **BLOCKED-ON-EG**. No provider call,
+credentials, activation flag, fiscal tax classification or SaaS book is added.
+Migration rollback after posting is restore, never deletion of financial history.

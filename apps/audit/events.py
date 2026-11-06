@@ -117,6 +117,61 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "prescription.draft.renewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.draft", "renewed"
         ),
+        "billing.book.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "created"
+        ),
+        "billing.rule.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.practitioner_rule", "created"
+        ),
+        "billing.terms.prepared": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.invoice_terms", "prepared"
+        ),
+        "billing.journal.posted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_entry", "posted"
+        ),
+        "billing.service.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_entry", "service_completed"
+        ),
+        "billing.allocation.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.settlement_allocation", "created"
+        ),
+        **{
+            f"billing.settlement.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.journal_settlement", state
+            )
+            for state in ("observed", "verified", "posted", "quarantined")
+        },
+        **{
+            f"billing.refund.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.refund", state
+            )
+            for state in (
+                "requested",
+                "approved",
+                "sending",
+                "confirmed",
+                "rejected",
+                "unknown",
+            )
+        },
+        **{
+            f"billing.payout.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.payout", state
+            )
+            for state in ("requested", "approved", "sending", "confirmed", "unknown")
+        },
+        **{
+            f"billing.cash.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.cash_session", state
+            )
+            for state in ("opened", "closed", "reopened")
+        },
+        "billing.journal.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "viewed"
+        ),
+        "billing.journal.exported": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "exported"
+        ),
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"
         ),

@@ -267,10 +267,26 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "finance",
         gettext_noop("Finance"),
-        "billing:charges",
-        ("charge.read",),
-        route_roles=MANAGER_ROUTE,
-        views=frozenset({"billing:charges", "billing:invoice"}),
+        "billing:finance",
+        (
+            "charge.collect",
+            "settlement.post",
+            "refund.request",
+            "payout.request",
+            "finance.policy",
+        ),
+        route_roles=None,
+        views=frozenset({"billing:finance", "billing:journal-export"}),
+        entries=(
+            Destination(
+                "charges",
+                gettext_noop("Charges"),
+                "billing:charges",
+                ("charge.read",),
+                route_roles=MANAGER_ROUTE | {_ROLE.FINANCE, _ROLE.SCHEDULER},
+                views=frozenset({"billing:charges", "billing:invoice"}),
+            ),
+        ),
     ),
     Destination(
         "operations",

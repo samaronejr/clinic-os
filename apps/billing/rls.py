@@ -8,20 +8,26 @@ policy.
 
 from typing import Final
 
+from apps.billing import journal_posture
+
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
-CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
-    {
-        "billing_invoice",
-        "billing_invoicerevision",
-        "billing_settlement",
-        "billing_receipt",
-        "billing_pixoperation",
-        "billing_pixcharge",
-        "billing_paymentevent",
-    }
+CUSTOM_RLS_TABLES: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "billing_invoice",
+            "billing_invoicerevision",
+            "billing_settlement",
+            "billing_receipt",
+            "billing_pixoperation",
+            "billing_pixcharge",
+            "billing_paymentevent",
+        }
+    )
+    | journal_posture.TABLES
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    **journal_posture.RUNTIME_GRANTS,
     "billing_invoice": frozenset({"SELECT", "INSERT"}),
     "billing_invoicerevision": frozenset({"SELECT"}),
     "billing_settlement": frozenset({"SELECT", "INSERT"}),
@@ -31,13 +37,16 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "billing_paymentevent": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
-COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
-    {
-        ("billing_invoice", "amount_minor", "UPDATE"),
-        ("billing_invoice", "currency", "UPDATE"),
-        ("billing_invoice", "issued_at", "UPDATE"),
-        ("billing_invoice", "released_at", "UPDATE"),
-        ("billing_invoice", "revision", "UPDATE"),
-        ("billing_invoice", "state", "UPDATE"),
-    }
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = (
+    frozenset(
+        {
+            ("billing_invoice", "amount_minor", "UPDATE"),
+            ("billing_invoice", "currency", "UPDATE"),
+            ("billing_invoice", "issued_at", "UPDATE"),
+            ("billing_invoice", "released_at", "UPDATE"),
+            ("billing_invoice", "revision", "UPDATE"),
+            ("billing_invoice", "state", "UPDATE"),
+        }
+    )
+    | journal_posture.COLUMN_GRANTS
 )

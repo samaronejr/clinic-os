@@ -9,6 +9,7 @@ from infra import (
     duplicate_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
+    journal_catalog,
     longitudinal_catalog,
     orders_catalog,
     portal_catalog,
@@ -20,6 +21,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
     *retention_catalog.TABLE_GRANTS,
+    *journal_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
@@ -187,6 +189,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "observation_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
+    *journal_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("ehr_drafteditstate", "version_id", "SELECT"),
     ("ehr_drafteditstate", "section_edit_epochs", "SELECT"),
@@ -249,6 +252,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
 }
 POSTURE_OVERRIDES: Final = {
     **retention_catalog.POSTURE,
+    **journal_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -858,6 +862,7 @@ FUNCTION_SIGNATURES: Final = {
     *portal_messages_catalog.RESULTS,
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
+    *journal_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
@@ -869,6 +874,7 @@ FUNCTION_RESULTS: Final = {
     ("ai_eval_model_gate", ""): "trigger",
     ("ai_eval_record_guard", ""): "trigger",
     **retention_catalog.RESULTS,
+    **journal_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (
@@ -1432,13 +1438,14 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            True,
+            name not in journal_catalog.INVOKERS,
             volatility,
             "u",
             [
                 "search_path=pg_catalog, pg_temp"
                 if name in identity_lifecycle_catalog.POSTURE
                 or name in duplicate_catalog.POSTURE
+                or name in journal_catalog.PG_ONLY
                 else "search_path=pg_catalog, clinic_app, pg_temp"
             ],
             True,
