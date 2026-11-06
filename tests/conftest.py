@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from apps.core import integration
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
+from apps.insurance.rls import TABLES as INSURANCE_TABLES
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
 
@@ -88,6 +89,7 @@ TRUNCATE_GUARDS = (
         "prescription_sncrnumberallocation",
         "prescription_sncrnumberallocation_no_truncate",
     ),
+    *((table, "insurance_no_truncate") for table in INSURANCE_TABLES),
 )
 __all__: Final = (
     "RbacGraph",

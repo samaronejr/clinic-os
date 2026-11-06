@@ -3739,6 +3739,16 @@ msgstr "Mensagens"
 msgid "Finance"
 msgstr "Financeiro"
 
+msgid "Invalid TISS field."
+msgstr "Campo TISS inválido. Revise os dados antes de selar o lote."
+
+msgid "The payer refused this coverage or authorization."
+msgstr "A operadora recusou esta cobertura ou autorização."
+
+msgid "Complete the required payer checks before confirming."
+msgstr "Conclua as verificações exigidas pela operadora antes de confirmar."
+
+
 msgid "Operations"
 msgstr "Operações"
 

@@ -80,6 +80,39 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "prescription.draft",
         "renewed",
     ),
+    **{
+        f"insurance.{kind}.{verb}": (
+            "tenant",
+            "clinic-os-web",
+            f"insurance.{kind}",
+            verb,
+        )
+        for kind, verbs in {
+            "payer": ("created",),
+            "contract": ("created",),
+            "tuss": ("imported",),
+            "prices": ("created",),
+            "membership": ("created",),
+            "registration": ("payer_linked",),
+            "guide": ("draft", "validated", "sealed"),
+            "batch": (
+                "draft",
+                "validated",
+                "sealed",
+                "submitting",
+                "submitted",
+                "unknown",
+                "acknowledged",
+                "returned",
+            ),
+            "submission": ("prepared", "exported"),
+            "return": ("ingested",),
+            "appeal": ("draft", "clinical_approved", "approved", "submitted"),
+            "payment": ("reconciled",),
+            "request": ("recorded",),
+        }.items()
+        for verb in verbs
+    },
     "billing.book.created": (
         "tenant",
         "clinic-os-web",

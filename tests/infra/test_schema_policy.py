@@ -8,6 +8,7 @@ from apps.identity.models import (
     Organization,
     UserClinicRole,
 )
+from apps.insurance.rls import TABLES as INSURANCE_TABLES
 from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
@@ -103,6 +104,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_knowledgearticle",
         "ai_frontdeskthread",
         "ai_frontdeskturn",
+        *INSURANCE_TABLES,
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

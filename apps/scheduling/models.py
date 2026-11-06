@@ -267,8 +267,32 @@ class Appointment(TenantScopedModel):
         related_name="occurrences",
     )
     series_index = models.PositiveSmallIntegerField(null=True, blank=True)
-    # Insurer linkage placeholders; todo 59 adds the FK and eligibility rules.
-    payer_membership_id = models.UUIDField(null=True, blank=True)
+    payer_membership = models.ForeignKey(
+        "insurance.InsuranceMembership",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="appointments",
+    )
+    payer_contract = models.ForeignKey(
+        "insurance.PayerContract", on_delete=models.PROTECT, null=True, blank=True
+    )
+    eligibility_check = models.ForeignKey(
+        "insurance.PayerRequest",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+    )
+    authorization_check = models.ForeignKey(
+        "insurance.PayerRequest",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+    )
     authorization_reference = models.CharField(
         max_length=64, blank=True, default="", db_default=""
     )

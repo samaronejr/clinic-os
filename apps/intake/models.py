@@ -627,15 +627,16 @@ class EmergencyContact(TenantScopedModel):
 class InsuranceMembership(TenantScopedModel):
     """One payer membership slot for an organization patient.
 
-    Payer identity is encrypted free text until todo 59 introduces the
-    ``insurance.Payer`` table and a nullable foreign key plus matcher; no
-    plaintext shadow column is kept for it. Versions are append-only like
-    the other identity sections.
+    Original payer/card values remain encrypted and append-only. The nullable
+    catalog link is populated only by an exact, unambiguous ANS match.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
     sequence = models.PositiveSmallIntegerField(default=1)
+    payer = models.ForeignKey(
+        "insurance.Payer", on_delete=models.PROTECT, null=True, blank=True
+    )
     payer_name = EncryptedTextField(
         purpose="intake.insurancemembership.payer_name", null=True
     )

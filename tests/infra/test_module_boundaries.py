@@ -30,6 +30,7 @@ from apps.identity import (
     service_principals,
 )
 from apps.identity.current_context import require_permission
+from apps.insurance import services as insurance_services
 from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
@@ -97,6 +98,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.tenancy.apps.TenancyConfig",
         "apps.workflows.apps.WorkflowsConfig",
         "apps.orders.apps.OrdersConfig",
+        "apps.insurance.apps.InsuranceConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
@@ -625,6 +627,108 @@ def test_teleconsult_session_requires_exact_clinic_and_encounter() -> None:
     parameters = signature(create_session).parameters
     assert list(parameters) == ["clinic_id", "encounter_id"]
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            insurance_services.approve_appeal,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.approve_appeal_assertions,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.create_batch,
+            ["clinic_id", "contract_id", "guide_ids", "command_id"],
+        ),
+        (
+            insurance_services.create_contract,
+            ["clinic_id", "payer_id", "terms", "command_id"],
+        ),
+        (
+            insurance_services.create_payer,
+            ["clinic_id", "ans_registry", "name", "command_id"],
+        ),
+        (
+            insurance_services.create_price_table,
+            ["clinic_id", "contract_id", "version", "prices", "command_id"],
+        ),
+        (
+            insurance_services.draft_appeal,
+            ["clinic_id", "glosa_id", "body", "clinical_assertions", "command_id"],
+        ),
+        (
+            insurance_services.export_submission,
+            ["clinic_id", "submission_id"],
+        ),
+        (
+            insurance_services.import_tuss,
+            ["clinic_id", "component_version", "source_date", "source", "command_id"],
+        ),
+        (
+            insurance_services.ingest_return,
+            ["clinic_id", "batch_id", "xml", "command_id"],
+        ),
+        (
+            insurance_services.prepare_submission,
+            ["clinic_id", "batch_id", "channel", "command_id"],
+        ),
+        (
+            insurance_services.reconcile_payment,
+            ["clinic_id", "guide_id", "settlement_id", "amount_minor", "command_id"],
+        ),
+        (
+            insurance_services.draft_guide,
+            ["clinic_id", "selection", "command_id"],
+        ),
+        (
+            insurance_services.backfill_membership_payers,
+            ["clinic_id"],
+        ),
+        (
+            insurance_services.register_membership,
+            ["clinic_id", "payer_id", "enrollment_id", "terms", "command_id"],
+        ),
+        (
+            insurance_services.request_payer_check,
+            ["clinic_id", "membership_id", "contract_id", "check", "command_id"],
+        ),
+        (
+            insurance_services.resubmit_guide,
+            ["clinic_id", "guide_id", "command_id"],
+        ),
+        (
+            insurance_services.seal_batch,
+            ["clinic_id", "batch_id", "command_id"],
+        ),
+        (
+            insurance_services.submission_outcome,
+            ["clinic_id", "batch_id", "outcome", "command_id"],
+        ),
+        (
+            insurance_services.submit_appeal,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.validate_batch,
+            ["clinic_id", "batch_id", "command_id"],
+        ),
+        (
+            insurance_services.validate_guide,
+            ["clinic_id", "guide_id", "command_id"],
+        ),
+    ],
+)
+def test_insurance_commands_keep_exact_clinic_scoped_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
 
 
 def test_intake_submission_requires_explicit_response_and_revision() -> None:

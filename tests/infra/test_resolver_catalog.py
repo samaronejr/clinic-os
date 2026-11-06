@@ -9,6 +9,7 @@ from infra import (
     duplicate_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
+    insurance_catalog,
     journal_catalog,
     longitudinal_catalog,
     orders_catalog,
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
     *retention_catalog.TABLE_GRANTS,
+    *insurance_catalog.TABLE_GRANTS,
     *journal_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
@@ -189,6 +191,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "observation_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
+    *insurance_catalog.COLUMN_GRANTS,
     *journal_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("ehr_drafteditstate", "version_id", "SELECT"),
@@ -549,6 +552,7 @@ POSTURE_OVERRIDES: Final = {
     **portal_messages_catalog.POSTURE,
     **front_desk_catalog.POSTURE,
     **coordination_catalog.POSTURE,
+    **insurance_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
@@ -862,6 +866,7 @@ FUNCTION_SIGNATURES: Final = {
     *portal_messages_catalog.RESULTS,
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
+    *insurance_catalog.RESULTS,
     *journal_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
@@ -1346,6 +1351,7 @@ FUNCTION_RESULTS: Final = {
     **portal_messages_catalog.RESULTS,
     **front_desk_catalog.RESULTS,
     **coordination_catalog.RESULTS,
+    **insurance_catalog.RESULTS,
 }
 
 

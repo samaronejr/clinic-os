@@ -49,6 +49,8 @@ def insert_appointment(
                 status=request.initial_status,
                 series_id=request.series_id,
                 series_index=request.series_index,
+                payer_membership_id=request.payer_membership_id,
+                payer_contract_id=request.payer_contract_id,
             )
     except IntegrityError as error:
         replay = replay_appointment(
@@ -83,6 +85,8 @@ def _constraint_name(error: IntegrityError) -> str | None:
 
 def _resource_constraint(error: IntegrityError, constraint: str | None) -> None:
     codes = {
+        "scheduling_payer_refused": "payer_refused",
+        "scheduling_payer_pending": "payer_pending",
         "scheduling_resource_conflict": "resource_conflict",
         "scheduling_resource_capacity_excl": "resource_conflict",
         "scheduling_outside_template": "outside_template",

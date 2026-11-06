@@ -184,9 +184,35 @@ rule (count <= 52 or until <= 366 days) atomically as ordinary bookings bound by
 applies `SeriesEdit(kind cancelled|moved, occurrence_index, scope this|future)`
 under the move terms (own = the series practitioner) and appends an immutable
 `SeriesException`; occurrences are never deleted. Moves keep each date's
-clinic-local wall time, so a DST-free zone never shifts. `payer_membership_id`
-and `authorization_reference` are insurer placeholders without a foreign key
-(todo 59). The agenda offers arrival, start and completion exactly where
+clinic-local wall time, so a DST-free zone never shifts.
+
+`ServiceBooking` optionally selects a `payer_membership_id` and
+`payer_contract_id` together. Membership is a real FK to the clinic's claim
+membership, itself bound to the original intake registration and enrolled
+patient. Both IDs participate in the new fingerprint without changing legacy
+uninsured fingerprints. Same-organization visibility never permits a
+foreign-clinic membership or another patient's registration.
+
+Payers requiring eligibility/authorization use `create_service_hold`, then
+finance's `request_payer_check` with the actual appointment in `PayerCheck`.
+Immutable checks reference that exact appointment/membership/contract. Their
+insert receipt alone advances the appointment's current check FKs and the
+authorization reference, increments its revision and leaves care/status/time
+bindings untouched. Finance gains no scheduling move or care permission.
+Confirming the hold requires affirmative supported checks; denial produces
+`payer_refused`, an unknown/missing result `payer_pending`. No payer outcome
+automatically cancels care or switches the patient to self-pay. Explicit
+uninsured booking retains its existing rules. Replaying an older authorization
+cannot replace a later refusal.
+
+Migration `0011_insurer_membership` retains the UUID column's values and
+adds validated, immediate scope FKs. It is non-atomic, idempotent and
+irreversible. Unknown old references, missing contract bindings or unverified
+old authorization strings stop upgrade with an aggregate preflight refusal;
+the migration never clears, guesses or silently reassigns them. Live catalog,
+upgrade and restore checks must confirm the source-derived relationships.
+
+The agenda offers arrival, start and completion exactly where
 `authorize_transition` accepts them: the move terms record arrival (reception,
 schedulers and managers on any row, the booked clinician on their own), and
 only the booked clinician starts and completes the visit. Physicians open the

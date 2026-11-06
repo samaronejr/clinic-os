@@ -21,3 +21,4 @@
 --cov=apps.tenancy
 --cov=apps.workflows
 --cov=apps.orders
+--cov=apps.insurance

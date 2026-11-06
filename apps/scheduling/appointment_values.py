@@ -58,6 +58,8 @@ class CreateAppointmentRequest:
     permission_authority: bool = False
     series_id: UUID | None = None
     series_index: int | None = None
+    payer_membership_id: UUID | None = None
+    payer_contract_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +115,14 @@ def prepare_appointment(
             b"clinic-appointment-status-v1\0"
             + fingerprint
             + request.initial_status.encode()
+        ).digest()
+    if request.payer_membership_id is not None or request.payer_contract_id is not None:
+        fingerprint = hashlib.sha256(
+            b"clinic-insured-booking-v1\0"
+            + fingerprint
+            + str(request.payer_membership_id).encode("ascii")
+            + b"\0"
+            + str(request.payer_contract_id).encode("ascii")
         ).digest()
     return PreparedAppointment(enrollment, start_at, end_at, fingerprint)
 
