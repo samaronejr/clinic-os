@@ -317,6 +317,8 @@ def open_conversation(
     ).exclude(state="closed")
     existing = live.first()
     if existing is not None:
+        if purpose == "marketing" and existing.enrollment_id != enrollment_id:
+            raise InboxRefusedError(Reason.CONTACT_MISMATCH)
         return OpenedConversation(existing.pk, created=False)
     now = timezone.now()
     with transaction.atomic():
@@ -598,6 +600,11 @@ def send_message(  # noqa: PLR0913 - the pinned public command signature
         enrollment_id=conversation.enrollment_id, channel=conversation.channel
     ):
         raise InboxRefusedError(Reason.MARKETING_OPT_IN_MISSING)
+    if conversation.purpose == "marketing":
+        from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
+
+        if template is None or parameters or template.body not in MARKETING_BODIES:
+            raise InboxRefusedError(Reason.INVALID_TEMPLATE)
     with transaction.atomic():
         message = Message.objects.create(
             organization_id=conversation.organization_id,

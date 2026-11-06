@@ -42,10 +42,12 @@
         {% endfor %}
       </ul>
     {% else %}
-      <p data-channel-preferences-empty>{% trans "The clinic does not send you automated messages." %}</p>
+      <p data-channel-preferences-empty>{% trans "No service notification channels are recorded. Marketing choices are separate." %}</p>
     {% endif %}
     <p class="hint">{% trans "To change a contact or a channel, talk to the clinic team. They confirm each contact before using it." %}</p>
     {% if consent_open %}<p><a class="button button--secondary" href="{% url 'consent:patient' %}">{% trans "Review your consents for messages and other optional uses" %}</a></p>{% endif %}
+    {% if consent_open %}<p><a class="button button--secondary" href="{% url 'crm:preferences' %}">{% trans "Marketing preferences" %}</a></p>{% endif %}
+    <p><a class="button button--secondary" href="{% url 'crm:satisfaction' %}">{% trans "Optional visit feedback" %}</a></p>
   </section>
 
   <section class="panel" aria-labelledby="preferences-alerts-title" data-push-unavailable>

@@ -47,6 +47,21 @@ class Phase1AuditEventRejectedError(ValueError):
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
         **{
+            f"crm.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"crm.{kind}", verb
+            )
+            for kind, verbs in {
+                "source": ("created",),
+                "lead": ("created", "converted", "redacted"),
+                "campaign": ("created", "approved", "sending", "sent"),
+                "send": ("queued",),
+                "profile": ("published",),
+                "preference": ("recorded",),
+                "survey": ("recorded",),
+            }.items()
+            for verb in verbs
+        },
+        **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state
             )

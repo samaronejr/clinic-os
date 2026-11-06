@@ -5,6 +5,7 @@
 --cov=apps.ai
 --cov=apps.billing
 --cov=apps.comms
+--cov=apps.crm
 --cov=apps.consent
 --cov=apps.ehr
 --cov=apps.prescription

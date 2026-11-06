@@ -70,6 +70,15 @@ class InboxAdapter:
             raise PermanentSendError
         destination = conversation.contact_address
         template = message.template
+        marketing = conversation.purpose == "marketing"
+        if marketing:
+            from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
+
+            if template is None or template.body not in MARKETING_BODIES:
+                raise PermanentSendError
+        # Marketing bytes come from the immutable neutral template, never an
+        # independently inserted encrypted body or arbitrary stored parameters.
+        body = template.body if marketing and template is not None else message.body
         payload: dict[str, object] = {}
         if self.channel == "whatsapp":
             payload = (
@@ -77,12 +86,16 @@ class InboxAdapter:
                     to=destination,
                     name=template.name,
                     language=template.language,
-                    parameters=tuple(json.loads(message.template_parameters or "[]")),
+                    parameters=(
+                        ()
+                        if marketing
+                        else tuple(json.loads(message.template_parameters or "[]"))
+                    ),
                 )
                 if template is not None
-                else text_payload(to=destination, body=message.body)
+                else text_payload(to=destination, body=body)
             )
-        return OutboundMessage(self.channel, destination, message.body, payload)
+        return OutboundMessage(self.channel, destination, body, payload)
 
     def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
         """Return only a synthetic acceptance reference, or fail closed."""
@@ -155,6 +168,11 @@ def message_send_eligible(scope: OperationScope) -> bool:
     if message is None or message.conversation.clinic_id != scope.clinic_id:
         return False
     conversation, template = message.conversation, message.template
+    if conversation.purpose == "marketing":
+        from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
+
+        if template is None or template.body not in MARKETING_BODIES:
+            return False
     decision = decide_send(
         SendRequest(
             channel=conversation.channel,
@@ -182,9 +200,15 @@ def message_send_eligible(scope: OperationScope) -> bool:
 
 def message_lock_key(scope: OperationScope, subject_id: UUID) -> str | None:
     """Serialize sends with thread mutations such as close and patient link."""
-    conversation_id = (
+    thread = (
         Message.objects.filter(pk=subject_id, conversation__clinic_id=scope.clinic_id)
-        .values_list("conversation_id", flat=True)
+        .values_list("conversation_id", "conversation__purpose")
         .first()
     )
-    return None if conversation_id is None else conversation_lock_key(conversation_id)
+    if thread is None:
+        return None
+    if thread[1] == "marketing":
+        # The stable clinic parent also covers a preference or purpose consent
+        # changed before a new conversation exists (todo 62).
+        return f"crm.marketing:{scope.clinic_id}"
+    return conversation_lock_key(thread[0])

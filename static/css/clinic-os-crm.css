@@ -1,0 +1,230 @@
+.crm-public {
+  margin: 0;
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.crm-public-header,
+.crm-public-main,
+.crm-public-footer {
+  max-width: 78rem;
+  margin-inline: auto;
+  padding-inline: clamp(var(--space-4), 5vw, var(--space-8));
+}
+
+.crm-public-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 6rem;
+  border-bottom: var(--line-1) solid var(--color-line);
+}
+
+.crm-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 700;
+  text-decoration: none;
+  min-height: var(--control-height);
+  overflow-wrap: anywhere;
+}
+
+.crm-brand img {
+  flex-shrink: 0;
+}
+
+.crm-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(var(--space-6), 6vw, 6rem);
+  padding-block: clamp(var(--space-8), 7vw, 7rem);
+  align-items: start;
+}
+
+.crm-hero-copy h1 {
+  font-size: clamp(2.25rem, 4.6vw, 4.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  max-width: 12ch;
+  margin-block: 0 var(--space-6);
+  text-wrap: balance;
+}
+
+.crm-public-lede {
+  font-size: var(--text-lede);
+  line-height: 1.6;
+  max-width: 45ch;
+}
+
+.crm-principles {
+  border-left: var(--line-3) solid var(--color-primary);
+  padding-inline-start: var(--space-4);
+  margin-top: var(--space-8);
+  color: var(--color-ink-soft);
+}
+
+.crm-booking-panel {
+  background: var(--color-surface-raised);
+  border: var(--line-1) solid var(--color-line);
+  border-top: var(--line-3) solid var(--color-primary);
+  padding: clamp(var(--space-4), 3vw, var(--space-7));
+}
+
+.crm-booking-panel h2 {
+  margin-top: 0;
+}
+
+.crm-booking-panel form,
+.crm-form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.crm-public input,
+.crm-public select,
+.crm-public button,
+.crm-form input,
+.crm-form select,
+.crm-form textarea,
+.crm-workspace button {
+  min-height: var(--control-height);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.crm-public input,
+.crm-public select,
+.crm-form input,
+.crm-form select,
+.crm-form textarea {
+  width: 100%;
+}
+
+.crm-public button,
+.crm-workspace button,
+.crm-public .button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  height: auto;
+  padding-block: var(--space-3);
+}
+
+.crm-next-steps {
+  border-top: var(--line-1) solid var(--color-line);
+  padding-block: var(--space-8);
+}
+
+.crm-next-steps ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-7);
+  padding-left: var(--space-5);
+}
+
+.crm-next-steps li::marker {
+  color: var(--color-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-next-steps strong {
+  display: block;
+  font-size: var(--text-heading);
+}
+
+.crm-public-notice {
+  background: var(--color-surface-sunken);
+  border-block: var(--line-1) solid var(--color-line);
+  padding: var(--space-4);
+}
+
+.crm-clinic-reset {
+  margin-block: var(--space-5);
+}
+
+.crm-public-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-top: var(--line-1) solid var(--color-line);
+  padding-block: var(--space-6);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+}
+
+.crm-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-4);
+}
+
+.crm-slot {
+  border: var(--line-1) solid var(--color-line);
+  padding: var(--space-4);
+}
+
+.crm-slot p {
+  overflow-wrap: anywhere;
+}
+
+.crm-workspace {
+  max-width: 65rem;
+  margin-inline: auto;
+}
+
+.crm-section {
+  border-top: var(--line-1) solid var(--color-line);
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+}
+
+.crm-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-block: var(--space-6);
+}
+
+.crm-metrics dd {
+  margin: var(--space-2) 0;
+  font-size: var(--text-title);
+  font-weight: 700;
+}
+
+.crm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.crm-campaign {
+  border-bottom: var(--line-1) solid var(--color-line);
+  padding-block: var(--space-5);
+}
+
+@media (max-width: 48rem) {
+  .crm-hero,
+  .crm-next-steps ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crm-hero {
+    gap: var(--space-6);
+  }
+
+  .crm-hero-copy h1 {
+    max-width: 15ch;
+  }
+
+  .crm-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crm-public-header,
+  .crm-public-footer {
+    flex-wrap: wrap;
+    padding-block: var(--space-4);
+  }
+}

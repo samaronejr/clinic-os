@@ -12,6 +12,8 @@ from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
 from comms import test_portal_messages
+from crm.sql_oracles import CASES as CRM_CASES
+from crm.sql_oracles import SQL_PROTOCOL_ORACLES as CRM_PROTOCOLS
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -352,6 +354,7 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    **CRM_PROTOCOLS,
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -452,6 +455,9 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert all(
+        callable(CRM_CASES[name]) for names in CRM_PROTOCOLS.values() for name in names
+    )
     assert all(
         callable(RETENTION_CASES[name])
         for names in RETENTION_PROTOCOLS.values()

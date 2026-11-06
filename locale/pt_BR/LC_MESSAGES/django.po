@@ -9018,3 +9018,331 @@ msgid "Reply within %(hours)s business hour; in an emergency, call 192."
 msgid_plural "Reply within %(hours)s business hours; in an emergency, call 192."
 msgstr[0] "Resposta em até %(hours)s hora útil; em emergência, ligue 192."
 msgstr[1] "Resposta em até %(hours)s horas úteis; em emergência, ligue 192."
+
+msgid "Optional visit feedback"
+msgstr "Avaliação opcional da consulta"
+
+msgid "How likely are you to recommend the clinic? This optional score never changes your care or marketing choices."
+msgstr "Qual a chance de você recomendar a clínica? Esta nota opcional não altera seu atendimento nem suas escolhas de divulgação."
+
+msgid "Do not enter clinical details. We collect only a score from zero to ten."
+msgstr "Não informe detalhes clínicos. Coletamos apenas uma nota de zero a dez."
+
+msgid "Completed visit"
+msgstr "Consulta concluída"
+
+msgid "Recommendation score (zero to ten)"
+msgstr "Nota de recomendação (zero a dez)"
+
+msgid "Record optional feedback"
+msgstr "Registrar avaliação opcional"
+
+msgid "Feedback becomes available after a completed visit."
+msgstr "A avaliação fica disponível após uma consulta concluída."
+
+msgid "Continue without feedback"
+msgstr "Continuar sem avaliar"
+
+msgid "Marketing preferences"
+msgstr "Preferências de divulgação"
+
+msgid "Marketing is optional. Your care never depends on it."
+msgstr "A divulgação é opcional. Seu atendimento nunca depende dela."
+
+msgid "Accept the current marketing consent text separately, then choose each verified channel. You can opt out here at any time."
+msgstr "Aceite o texto atual de consentimento para divulgação separadamente e escolha cada canal verificado. Você pode recusar aqui a qualquer momento."
+
+msgid "Review consent texts"
+msgstr "Consultar textos de consentimento"
+
+msgid "Do not send marketing"
+msgstr "Não enviar divulgação"
+
+msgid "Allow neutral marketing on this channel"
+msgstr "Permitir divulgação neutra neste canal"
+
+msgid "Your recorded choices"
+msgstr "Suas escolhas registradas"
+
+msgid "Allowed"
+msgstr "Permitido"
+
+msgid "Not allowed"
+msgstr "Não permitido"
+
+msgid "No marketing channels are allowed by default."
+msgstr "Nenhum canal de divulgação é permitido por padrão."
+
+msgid "Return to patient booking"
+msgstr "Voltar ao agendamento do paciente"
+
+msgid "Ethical outreach"
+msgstr "Relacionamento ético"
+
+msgid "Consent comes first. Clinical conditions are never an audience filter."
+msgstr "O consentimento vem primeiro. Condições clínicas nunca são um filtro de público."
+
+msgid "Synthetic messaging only. Live providers remain blocked pending external approval."
+msgstr "Somente mensagens simuladas. Provedores reais continuam bloqueados até aprovação externa."
+
+msgid "Retained prospects"
+msgstr "Interessados no período de retenção"
+
+msgid "Converted prospects"
+msgstr "Interessados convertidos"
+
+msgid "Optional feedback"
+msgstr "Avaliações opcionais"
+
+msgid "Promoters / detractors"
+msgstr "Promotores / detratores"
+
+msgid "Counts cover retained prospects in this clinic. Promoters score nine or ten; detractors score zero to six. No clinical breakdown is used."
+msgstr "As contagens abrangem interessados retidos nesta clínica. Promotores dão nota nove ou dez; detratores, de zero a seis. Não há recorte clínico."
+
+msgid "Campaigns"
+msgstr "Campanhas"
+
+msgid "Eligible with current consent"
+msgstr "Elegíveis com consentimento atual"
+
+msgid "Excluded without current permission"
+msgstr "Excluídos sem permissão atual"
+
+msgid "Excluded at queue time"
+msgstr "Excluídos ao enfileirar"
+
+msgid "Preview consent counts"
+msgstr "Conferir contagens de consentimento"
+
+msgid "Approve neutral campaign"
+msgstr "Aprovar campanha neutra"
+
+msgid "Queue consented campaign"
+msgstr "Enfileirar campanha consentida"
+
+msgid "Check send receipts"
+msgstr "Conferir comprovantes de envio"
+
+msgid "No campaigns yet. Start with an approved neutral template."
+msgstr "Ainda não há campanhas. Comece com um modelo neutro aprovado."
+
+msgid "New campaign"
+msgstr "Nova campanha"
+
+msgid "Internal title"
+msgstr "Título interno"
+
+msgid "Approved neutral template"
+msgstr "Modelo neutro aprovado"
+
+msgid "Choose a template"
+msgstr "Escolha um modelo"
+
+msgid "Only the fixed neutral copy is allowed. Diagnosis placeholders, personal variables and clinical targeting are blocked."
+msgstr "Somente o texto neutro fixo é permitido. Marcadores de diagnóstico, variáveis pessoais e direcionamento clínico são bloqueados."
+
+msgid "Prospects, separate from patients"
+msgstr "Interessados, separados dos pacientes"
+
+msgid "Recording a prospect does not create a patient or authorize outreach. Contact data is redacted after ninety days."
+msgstr "Registrar um interessado não cria um paciente nem autoriza divulgação. Os dados de contato são removidos após noventa dias."
+
+msgid "Referral source"
+msgstr "Origem da indicação"
+
+msgid "Record prospect"
+msgstr "Registrar interessado"
+
+msgid "Record a verified conversion"
+msgstr "Registrar conversão verificada"
+
+msgid "Select records only after verifying identity. A shared contact never proves identity."
+msgstr "Selecione registros somente após verificar a identidade. Um contato compartilhado nunca comprova identidade."
+
+msgid "Prospect record"
+msgstr "Registro do interessado"
+
+msgid "Verified enrollment record"
+msgstr "Registro do vínculo verificado"
+
+msgid "Record conversion"
+msgstr "Registrar conversão"
+
+msgid "Referral sources"
+msgstr "Origens de indicação"
+
+msgid "Administrative source code"
+msgstr "Código administrativo da origem"
+
+msgid "Source label"
+msgstr "Nome da origem"
+
+msgid "Add source"
+msgstr "Adicionar origem"
+
+msgid "Public booking page"
+msgstr "Página pública de agendamento"
+
+msgid "Publish factual clinic information. Patient verification and the existing booking rules stay required."
+msgstr "Publique informações factuais da clínica. A verificação do paciente e as regras de agendamento continuam obrigatórias."
+
+msgid "Open public booking"
+msgstr "Abrir agendamento público"
+
+msgid "Clinic booking code"
+msgstr "Código de agendamento da clínica"
+
+msgid "Factual clinic introduction"
+msgstr "Apresentação factual da clínica"
+
+msgid "Publish clinic page"
+msgstr "Publicar página da clínica"
+
+msgid "Book with your clinic"
+msgstr "Agende com sua clínica"
+
+msgid "Skip to content"
+msgstr "Ir para o conteúdo"
+
+msgid "Your next visit starts here."
+msgstr "Sua próxima consulta começa aqui."
+
+msgid "Choose a time in your clinic's agenda, with verified patient access."
+msgstr "Escolha um horário na agenda da sua clínica com acesso verificado do paciente."
+
+msgid "A direct path to your clinic. At your pace."
+msgstr "Um caminho direto para sua clínica. No seu ritmo."
+
+msgid "Enter the booking code provided by your clinic to see its page."
+msgstr "Informe o código de agendamento fornecido pela clínica para ver sua página."
+
+msgid "No diagnosis or reason for your visit is requested here."
+msgstr "Não solicitamos diagnóstico nem motivo da consulta aqui."
+
+msgid "Find your clinic"
+msgstr "Encontre sua clínica"
+
+msgid "The clinic supplies this code. It is not your patient access code."
+msgstr "A clínica fornece este código. Ele não é o seu código de acesso do paciente."
+
+msgid "See clinic page"
+msgstr "Ver página da clínica"
+
+msgid "First, verify your access"
+msgstr "Primeiro, verifique seu acesso"
+
+msgid "Use the private invitation your clinic provided. It protects your booking and keeps other patients' information private."
+msgstr "Use o convite privado fornecido pela clínica. Ele protege seu agendamento e mantém os dados de outros pacientes em sigilo."
+
+msgid "Verify patient access"
+msgstr "Verificar acesso do paciente"
+
+msgid "Already verified? Return to this page to choose a time."
+msgstr "Já verificou seu acesso? Volte a esta página para escolher um horário."
+
+msgid "Choose your time"
+msgstr "Escolha seu horário"
+
+msgid "General appointment"
+msgstr "Consulta geral"
+
+msgid "Show available times"
+msgstr "Ver horários disponíveis"
+
+msgid "Available times"
+msgstr "Horários disponíveis"
+
+msgid "Book this time"
+msgstr "Agendar este horário"
+
+msgid "No times are available for this date. Choose another date or contact the clinic."
+msgstr "Não há horários disponíveis nesta data. Escolha outra data ou entre em contato com a clínica."
+
+msgid "A clear path, without pressure."
+msgstr "Um caminho claro, sem pressão."
+
+msgid "Verify"
+msgstr "Verifique"
+
+msgid "Your clinic invitation confirms who can book."
+msgstr "O convite da clínica confirma quem pode agendar."
+
+msgid "Choose"
+msgstr "Escolha"
+
+msgid "See only available times, never another patient's agenda."
+msgstr "Veja apenas horários disponíveis, nunca a agenda de outro paciente."
+
+msgid "Your appointment stays available in the patient portal."
+msgstr "Sua consulta fica disponível no portal do paciente."
+
+msgid "This page is not monitored for emergencies. In an emergency, seek urgent care."
+msgstr "Esta página não é monitorada para emergências. Em uma emergência, procure atendimento de urgência."
+
+msgid "Choose another clinic"
+msgstr "Escolher outra clínica"
+
+msgid "Booking and patient access. No clinical details in links."
+msgstr "Agendamento e acesso do paciente. Sem detalhes clínicos nos links."
+
+msgid "Use the form to select a clinic."
+msgstr "Use o formulário para selecionar uma clínica."
+
+msgid "Clinic unavailable. Check the code with the clinic."
+msgstr "Clínica indisponível. Confira o código com a clínica."
+
+msgid "Verify your patient access before booking."
+msgstr "Verifique seu acesso de paciente antes de agendar."
+
+msgid "The time is unavailable. Choose a new time."
+msgstr "O horário está indisponível. Escolha outro horário."
+
+msgid "Booking recorded. Review it in your portal."
+msgstr "Agendamento registrado. Confira no seu portal."
+
+msgid "CRM action recorded."
+msgstr "Ação de relacionamento registrada."
+
+msgid "Action refused. Check consent, neutral template and current revision."
+msgstr "Ação recusada. Confira o consentimento, o modelo neutro e a revisão atual."
+
+msgid "Your marketing choice was recorded."
+msgstr "Sua escolha de divulgação foi registrada."
+
+msgid "Accept the current marketing text and verify the channel before opting in."
+msgstr "Aceite o texto atual de divulgação e verifique o canal antes de permitir o envio."
+
+msgid "Thank you. Your optional feedback was recorded."
+msgstr "Agradecemos sua avaliação opcional. Ela foi registrada."
+
+msgid "Choose a completed visit and a score from zero to ten."
+msgstr "Escolha uma consulta concluída e uma nota de zero a dez."
+
+#, python-format
+msgid "Times follow the clinic timezone: %(timezone)s."
+msgstr "Os horários seguem o fuso da clínica: %(timezone)s."
+
+msgid "Enter your private invitation"
+msgstr "Informe seu convite privado"
+
+msgid "Access unavailable. Ask the clinic for a new invitation."
+msgstr "Acesso indisponível. Peça um novo convite à clínica."
+
+msgid "No service notification channels are recorded. Marketing choices are separate."
+msgstr "Nenhum canal de aviso de serviço está registrado. As escolhas de divulgação são separadas."
+
+msgid "Sending"
+msgstr "Em envio"
+
+msgid "Sent"
+msgstr "Enviado"
+
+msgid "Choose a prospect"
+msgstr "Escolha um interessado"
+
+msgid "Showing up to 200 recent records in this clinic. Verify identity before recording the conversion."
+msgstr "Exibindo até 200 registros recentes desta clínica. Verifique a identidade antes de registrar a conversão."
+
+msgid "Update clinic page"
+msgstr "Atualizar página da clínica"

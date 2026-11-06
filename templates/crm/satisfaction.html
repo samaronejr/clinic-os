@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load static i18n tz %}
+{% block title %}{% trans "Optional visit feedback" %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-crm.css' %}">{% endblock %}
+{% block content %}<div class="crm-workspace">
+<h1>{% trans "Optional visit feedback" %}</h1>
+<p>{% trans "How likely are you to recommend the clinic? This optional score never changes your care or marketing choices." %}</p>
+<p>{% trans "Do not enter clinical details. We collect only a score from zero to ten." %}</p>
+{% if error %}<div class="notice notice-error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+{% if status %}<div class="notice notice-success" role="status">{{ status }}</div>{% endif %}
+{% if appointments %}<form method="post" class="crm-form" novalidate>{% csrf_token %}
+<label for="feedback-visit">{% trans "Completed visit" %}</label><select id="feedback-visit" name="appointment_id" required>{% for appointment in appointments %}<option value="{{ appointment.id }}">{% timezone timezone %}{{ appointment.start_at|date:"d/m/Y H:i" }}{% endtimezone %}</option>{% endfor %}</select>
+<label for="feedback-score">{% trans "Recommendation score (zero to ten)" %}</label><input id="feedback-score" name="score" type="number" min="0" max="10" required>
+<button type="submit">{% trans "Record optional feedback" %}</button>
+</form>{% else %}<p class="notice">{% trans "Feedback becomes available after a completed visit." %}</p>{% endif %}
+<a href="{% url 'crm:public-booking' %}">{% trans "Continue without feedback" %}</a>
+</div>{% endblock %}

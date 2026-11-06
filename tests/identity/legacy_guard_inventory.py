@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import ast
 import re
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from identity.legacy_sql_inventory import discover_sql
 from identity.staff_state_analysis import _imports, _name
 
-__all__ = ["declared_probes", "discover", "discover_sql"]
+__all__ = ["declared_probes", "discover", "discover_role_calls", "discover_sql"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -95,6 +96,69 @@ def discover() -> dict[str, list[str]]:
             if signals:
                 found[f"{module}.{name}"] = signals
     return found
+
+
+def discover_role_calls() -> list[tuple[str, str, str]]:
+    """Discover exact legacy-helper call contracts for manifest regeneration."""
+    from apps.identity.current_context import (  # noqa: PLC0415
+        require_current_actor_clinic_roles,
+    )
+
+    observed: list[tuple[str, str, str]] = []
+    contract = signature(require_current_actor_clinic_roles)
+    for path in sorted((ROOT / "apps").rglob("*.py")):
+        if "migrations" in path.parts:
+            continue
+        tree = ast.parse(path.read_text())
+        aliases = {"require_current_actor_clinic_roles"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                aliases.update(
+                    item.asname or item.name
+                    for item in node.names
+                    if item.name == "require_current_actor_clinic_roles"
+                )
+        for function in (
+            node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        ):
+            for call in (
+                node for node in ast.walk(function) if isinstance(node, ast.Call)
+            ):
+                if not isinstance(call.func, ast.Name) or call.func.id not in aliases:
+                    continue
+                assert all(keyword.arg is not None for keyword in call.keywords)
+                bound = contract.bind(
+                    *call.args,
+                    **{
+                        keyword.arg: keyword.value
+                        for keyword in call.keywords
+                        if keyword.arg is not None
+                    },
+                )
+                roles_node = bound.arguments["roles"]
+                if isinstance(roles_node, ast.Name):
+                    assignments = [
+                        statement.value
+                        for statement in function.body
+                        if isinstance(statement, ast.Assign)
+                        and any(
+                            isinstance(target, ast.Name) and target.id == roles_node.id
+                            for target in statement.targets
+                        )
+                    ]
+                    if assignments:
+                        assert len(assignments) == 1
+                        assert isinstance(assignments[0], ast.Tuple)
+                        roles_node = assignments[0]
+                assert isinstance(roles_node, ast.expr)
+                observed.append(
+                    (
+                        str(path.relative_to(ROOT)),
+                        function.name,
+                        ast.unparse(roles_node),
+                    )
+                )
+    return observed
 
 
 def declared_probes() -> set[str]:

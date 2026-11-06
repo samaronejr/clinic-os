@@ -22,6 +22,7 @@
 | workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
 | scribe | consented capture, volatile buffers, verified encrypted ingest and room gating | new | scribe/README.md |
+| crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
 
 ## REQUEST AUTHORITY FLOW
 
