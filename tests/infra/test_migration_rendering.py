@@ -376,6 +376,9 @@ def test_wave_c_batch_preserves_unchanged_model_state_and_sql(
         operation.state_forwards("render_probe", after)
         if kind is SchemaStateBatch:
             batch_renders = list(renders)
+        assert after.apps.get_model("render_probe", "Entry")._meta.constraints == [
+            replacement
+        ]
         with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
             operation.database_forwards("render_probe", forward, before.clone(), after)
         with _RecordingEditor(connection, collect_sql=True, atomic=False) as backward:
@@ -414,7 +417,7 @@ def test_wave_c_batch_preserves_unchanged_model_state_and_sql(
 
     assert statements[0] == statements[1]
     assert definitions[0] == definitions[1]
-    assert batch_renders == []
+    assert batch_renders == ["entry"]
 
 
 @pytest.mark.django_db(transaction=True)

@@ -6,10 +6,10 @@ from django.db import migrations
 
 from apps.ai.migrations import _evaluation_sql
 from apps.ai.migrations._evaluation_tables import OPERATIONS
-from apps.tenancy.migration_operations import SeparateDatabaseAndState
+from apps.ai.migrations._state_batch import SchemaStateBatch
 
 
-class ProtectedSchema(SeparateDatabaseAndState):
+class ProtectedSchema(SchemaStateBatch):
     """Commit encrypted observations and their independent SQL guards together."""
 
     atomic = True
