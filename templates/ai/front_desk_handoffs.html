@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load i18n tz workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Conversations waiting for a person" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="handoffs-title" data-front-desk-handoffs>
+  <h1 id="handoffs-title">{% trans "Conversations waiting for a person" %}</h1>
+  <p class="lede">{% trans "The automated assistant handed these conversations to the team. Answer in the conversation, then mark it resolved; until then the assistant stays silent there." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-handoff-error>{{ error }}</div>{% endif %}
+  {% if notice %}<div class="feedback feedback--success" role="status" data-handoff-saved><p>{{ notice }}</p></div>{% endif %}
+  {% if rows %}
+  <ol class="worklist" data-handoff-list>
+    {% for item in rows %}
+    <li class="worklist-item" data-handoff="{{ item.row.thread_id }}" aria-labelledby="handoff-{{ forloop.counter }}">
+      <div class="worklist-item-head">
+        <h2 id="handoff-{{ forloop.counter }}">{{ item.reason }}</h2>
+        <p class="hint"><time datetime="{{ item.row.updated_at|date:'c' }}">{% timezone clinic.timezone %}{{ item.row.updated_at|date:"d/m/Y H:i" }}{% endtimezone %}</time></p>
+      </div>
+      <div class="worklist-item-actions">
+        <form method="post" action="{% url 'comms:inbox' clinic.id %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="show">
+          <input type="hidden" name="conversation_id" value="{{ item.row.conversation_id }}">
+          <button class="button button--secondary" type="submit" data-handoff-open>{% trans "Open conversation" %}<span class="visually-hidden"> · {{ item.reason }} {{ forloop.counter }}</span></button>
+        </form>
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="thread_id" value="{{ item.row.thread_id }}">
+          <input type="hidden" name="revision" value="{{ item.row.revision }}">
+          <button class="button" type="submit">{% trans "Mark resolved" %}<span class="visually-hidden"> · {{ item.reason }} {{ forloop.counter }}</span></button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p role="status" data-handoff-empty>{% trans "No conversation is waiting for a person." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

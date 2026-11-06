@@ -24,6 +24,7 @@ from apps.ai.action_payload import (
     text,
 )
 from apps.ai.agent_policies import TOOL_SCHEMAS
+from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
 from apps.ai.models import AgentPolicyVersion, AgentRun
 from apps.ai.prompt_registry import load_prompt
@@ -174,11 +175,14 @@ def _validate_effect(
 ) -> None:
     operation = closed(data["operation"], {"name", "version"})
     name = operation["name"]
+    care = name == "care_action.create"
     if (
         not isinstance(name, str)
         or policy.tool_allowlist.get(name) != TOOL_SCHEMAS.get(name)
         or name not in policy.tool_allowlist
         or (name == "workflows.review_task" and terms["autonomy"] != "A1")
+        or (care and terms["autonomy"] != "A1")
+        or (care != (policy.capability == "care_coordination"))
         or (
             name == "comms.synthetic_reminder" and terms["autonomy"] not in ("A2", "A3")
         )
@@ -188,8 +192,10 @@ def _validate_effect(
         raise ActionRefusedError(Refusal.TOOL)
     # No registered command accepts clinical, monetary or real-address effects.
     # Adding one requires its own deterministic validator, not an allowlist edit.
+    # An administrative care action names its plan's enrollment; its own
+    # validator (care_sources) binds that enrollment to the current plan.
     if (
-        data["patient_id"] is not None
+        (data["patient_id"] is not None) != care
         or data["document"] is not None
         or data["recipients"] != []
         or data["amounts"]
@@ -247,6 +253,12 @@ def _validate_provider(data: dict[str, JSON], controls: dict[str, JSON]) -> None
 def _validate_sources(
     *, data: dict[str, JSON], policy: AgentPolicyVersion, proposal_id: UUID, using: str
 ) -> None:
+    if closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
+        # A1 runs in the approving human's request; machines never execute it.
+        if using != "default":
+            raise ActionRefusedError(Refusal.SOURCE)
+        check_care_sources(data=data, clinic_id=policy.clinic_id)
+        return
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
     sources = data["source_versions"]
     if not isinstance(sources, list) or not sources:

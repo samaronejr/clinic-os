@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+NOTICE = "Seu resultado está disponível no portal da clínica."
 
 
 def test_native_result_lifecycle_downloads_only_the_exact_authorized_source(
@@ -97,9 +98,13 @@ def test_native_result_lifecycle_downloads_only_the_exact_authorized_source(
         assert response.status_code == 200
         assert response.content == SOURCE
         assert "no-store" in response.headers["Cache-Control"]
+        # Task 55: a release binds the clinic's current clinician-approved notice.
+        notices = f"/clinics/{graph.clinic_a}/inbox/release-notices/"
+        approve = {"action": "publish", "body": NOTICE}
+        assert client.post(notices, approve).status_code == 200
         for action, fields in (
             ("acknowledge", {"disposition": "follow_up"}),
-            ("release", {"audience": "patient"}),
+            ("release", {"audience": "patient", "notice_version": "1"}),
         ):
             response = client.post(
                 url,

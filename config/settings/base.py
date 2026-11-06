@@ -101,6 +101,8 @@ ORDERS_SYNTHETIC_LAB_ENABLED: bool = env.bool(
 PRESCRIPTION_SYNTHETIC_ISSUANCE: bool = env.bool(
     "PRESCRIPTION_SYNTHETIC_ISSUANCE", default=False
 )
+# Portal v2 rollback switch: false serves the retained v1 patient home.
+PATIENT_PORTAL_V2: bool = env.bool("PATIENT_PORTAL_V2", default=True)
 
 AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [

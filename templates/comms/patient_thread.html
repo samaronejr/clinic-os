@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load i18n tz %}
+{% block title %}{% trans "Conversation with the clinic · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Read one conversation with the clinic team and reply to it." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
+{% block content %}{% timezone scope.timezone %}
+<section class="intake-shell portal-page portal-page--prose" aria-labelledby="patient-thread-title" data-patient-thread data-portal-conversation-state="{{ conversation.state }}">
+  {% url 'comms:patient-messages' as messages_href %}{% trans "Back to your messages" as messages_label %}
+  {% include "intake/partials/portal_back.html" with back_href=messages_href back_label=messages_label only %}
+  <h1 id="patient-thread-title">{% trans "Conversation with the clinic" %}</h1>
+  <p class="lede">{% blocktrans with date=conversation.created_at|date:"d/m/Y" %}Started on {{ date }}.{% endblocktrans %} <span class="badge{% if closed %} badge--muted{% else %} badge--success{% endif %}">{{ state_label }}</span></p>
+  {% if scope.acting_for_patient %}
+    <div class="feedback feedback--warning" role="status" data-portal-delegate>
+      <p>{% trans "You are acting as a representative. The clinic sees what you send here as a message from this patient's portal." %}</p>
+    </div>
+  {% endif %}
+  <div class="feedback" role="note" data-portal-coverage>
+    {% for line in coverage %}<p>{{ line }}</p>{% endfor %}
+  </div>
+  {% if notice %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-portal-reply-sent>{{ notice }}</p>{% endif %}
+  {% if error %}
+    <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-portal-reply-error>
+      <p>{{ error }}</p>
+      {% if closed and draft %}<p class="portal-thread-draft" data-portal-unsent>{{ draft }}</p>{% endif %}
+    </div>
+  {% endif %}
+
+  <section class="portal-thread-section" aria-labelledby="patient-thread-messages-title">
+    <h2 id="patient-thread-messages-title">{% trans "Messages" %}</h2>
+    {% if thread.messages %}
+      <ol class="portal-thread" data-portal-thread>
+        {% for message in thread.messages %}
+          <li class="portal-thread-item{% if message.from_clinic %} portal-thread-item--clinic{% else %} portal-thread-item--patient{% endif %}" data-portal-message data-portal-message-from="{% if message.from_clinic %}clinic{% else %}patient{% endif %}">
+            <p class="portal-thread-meta">{% if message.from_clinic %}{% trans "Clinic team" %}{% else %}{% trans "Sent from this portal" %}{% endif %} · <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"d/m/Y H:i" }}</time></p>
+            <p class="portal-thread-body">{{ message.body }}</p>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p data-portal-thread-empty>{% trans "No message in this conversation yet." %}</p>
+    {% endif %}
+  </section>
+
+  {% if closed %}
+    <div class="feedback" role="status" data-portal-thread-closed>
+      <p>{% trans "This conversation is closed. To talk to the clinic team again, use the options below." %}</p>
+    </div>
+  {% else %}
+    <form class="panel portal-reply" method="post" novalidate aria-labelledby="patient-reply-title" data-portal-reply-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reply">
+      <input type="hidden" name="conversation_id" value="{{ conversation.conversation_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ reply_key }}">
+      <h2 id="patient-reply-title">{% trans "Your reply" %}</h2>
+      <div class="field">
+        <label for="reply-body">{% trans "Message to the clinic team" %}</label>
+        <textarea id="reply-body" name="body" rows="5" maxlength="{{ body_max }}" aria-describedby="reply-body-hint" required>{{ draft }}</textarea>
+        <p class="hint" id="reply-body-hint">{% blocktrans with limit=body_max %}Up to {{ limit }} characters. A person from the team reads it, so it is not the way to get help in an emergency: call 192.{% endblocktrans %}</p>
+      </div>
+      <button class="button" type="submit" data-portal-reply-send>{% trans "Send reply" %}</button>
+    </form>
+  {% endif %}
+  {% include "intake/partials/portal_help.html" only %}
+</section>
+{% endtimezone %}{% endblock %}

@@ -106,6 +106,10 @@ class GuardWorld:
     alternate: WorkflowDefinitionVersion
     dependent: Task
     enrollment: UUID
+    # Seeded lazily for the care guards only (see care_world.seed_care_world).
+    care: Any = None
+    # Seeded lazily for the release guard only (coordination_world, todo 55).
+    coordination: Any = None
 
     @property
     def clinic(self) -> UUID:
@@ -158,6 +162,14 @@ class GuardCase:
     # Relation sites whose value the entrypoint fixes by construction; each
     # needs a passing cell that varies the stored relation (see test_authority).
     bound: frozenset[str] = frozenset()
+    # A permitted role that can see the case's records. The control otherwise
+    # acts as the first permitted role, which RP-matrix policy may deny clinical
+    # rows (a PRO slot, a planned referral) before the guard is reached.
+    control_role: str | None = None
+    # The denial every non-permitted role meets, when row policy decides before
+    # the guard: an RP-matrix clinical row is invisible to non-clinicians, so
+    # they get the unknown-record denial, never a permission answer.
+    role_denial: Outcome | None = None
 
 
 @contextmanager
@@ -2037,10 +2049,21 @@ def _inbox_entrypoints() -> tuple[GuardCase, ...]:
 
 
 def guard_cases() -> tuple[GuardCase, ...]:
+    from workflows.care_guard_cases import care_cases  # noqa: PLC0415 - import cycle
+    from workflows.coordination_guard_cases import (  # noqa: PLC0415 - import cycle
+        coordination_cases,
+    )
+
     extras = _extras()
     cases = tuple(
         replace(case, **extras.get(case.symbol, {}))
-        for case in (*_base_cases(), *_lifecycle_cases(), *_inbox_cases())
+        for case in (
+            *_base_cases(),
+            *_lifecycle_cases(),
+            *_inbox_cases(),
+            *care_cases(),
+            *coordination_cases(),
+        )
     )
     assert set(extras) <= {case.symbol for case in cases}, set(extras)
     return cases

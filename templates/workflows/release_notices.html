@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load i18n tz workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Result release notice" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="notices-title" data-release-notices>
+  <h1 id="notices-title">{% trans "Result release notice" %}</h1>
+  <p class="lede">{% trans "The portal message a patient receives when a clinician releases a result. It is the same text for every patient and never contains the result itself." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-notice-error>{{ error }}</div>{% endif %}
+  {% if notice %}<div class="feedback feedback--success" role="status" data-notice-saved><p>{{ notice }}</p></div>{% endif %}
+  {% if current %}
+  <div class="feedback" role="note" data-notice-current="{{ current.version }}">
+    <p>{% blocktrans with version=current.version %}Current notice, version {{ version }}:{% endblocktrans %}</p>
+    <p>{{ current.body }}</p>
+  </div>
+  {% else %}
+  <p role="status" data-notice-empty>{% trans "No notice is approved yet. Results cannot be released to patients until a clinician approves one." %}</p>
+  {% endif %}
+  <form method="post" novalidate data-notice-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="publish">
+    <div class="field">
+      <label for="notice-body">{% trans "New notice text" %}</label>
+      <textarea id="notice-body" name="body" rows="3" maxlength="{{ max_chars }}" required aria-describedby="notice-hint"></textarea>
+      <p id="notice-hint" class="hint">{% trans "Up to 300 characters, without numbers or e-mail addresses. Approving it makes it the version new releases use." %}</p>
+    </div>
+    <div class="actions"><button class="button" type="submit">{% trans "Approve this notice" %}</button></div>
+  </form>
+  {% if history %}
+  <section aria-labelledby="notices-history">
+    <h2 id="notices-history">{% trans "Approved versions" %}</h2>
+    <ol>
+      {% for row in history %}<li data-notice-version="{{ row.version }}">{% blocktrans with version=row.version %}Version {{ version }}{% endblocktrans %} · <time datetime="{{ row.created_at|date:'c' }}">{% timezone clinic.timezone %}{{ row.created_at|date:"d/m/Y H:i" }}{% endtimezone %}</time></li>{% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

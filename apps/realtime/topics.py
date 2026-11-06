@@ -7,7 +7,8 @@ UUID_PATTERN: Final = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 CLINIC_PATTERN: Final = rf"clinic:({UUID_PATTERN}):(agenda|inbox|queue|messages)"
 PATIENT_PATTERN: Final = (
     rf"patient:({UUID_PATTERN}):"
-    r"(enrollment_view|questionnaires|booking|records|consent|teleconsult|billing)"
+    r"(enrollment_view|questionnaires|booking|records|consent|teleconsult|billing|"
+    r"messages)"
 )
 JOB_PATTERN: Final = r"ai_job:[A-Za-z0-9_-]{22,64}"
 # One teleconsult room's physician hints; the opaque room name is no identifier.

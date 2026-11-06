@@ -34,6 +34,8 @@ def source_files(root: Path) -> Iterator[tuple[Path, str]]:
         # Isolated guard fixtures have no Git index; every planted file is input.
         paths = sorted(path for path in root.rglob("*") if path.is_file())
     for path in paths:
+        if path.is_symlink() or not path.is_file():
+            continue
         raw = path.read_bytes()
         if raw.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
             source = raw.decode("utf-32")

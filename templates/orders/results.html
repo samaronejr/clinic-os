@@ -56,9 +56,12 @@
       <button type="submit" {% if not row.can_acknowledge %}disabled aria-describedby="permission-{{ row.match.id }}"{% endif %}>{% trans "Acknowledge this version" %}</button>
     </form>
     {% elif not row.patient_released %}
-    <form method="post" data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+    <form method="post" data-auth-form hx-post="{% url 'orders:results' clinic.id %}" data-release-form>
       {% csrf_token %}<input type="hidden" name="action" value="release"><input type="hidden" name="version_id" value="{{ row.match.version.id }}"><input type="hidden" name="audience" value="patient">
-      <button type="submit" {% if not row.can_release %}disabled aria-describedby="permission-{{ row.match.id }}"{% endif %}>{% trans "Release this version to patient" %}</button>
+      {% if release_notice %}<input type="hidden" name="notice_version" value="{{ release_notice.version }}">
+      <p class="hint" id="notice-{{ row.match.id }}" data-release-notice="{{ release_notice.version }}">{% blocktrans with version=release_notice.version %}The patient receives notice version {{ version }} in the portal:{% endblocktrans %} {{ release_notice.body }}</p>
+      {% else %}<p class="hint" id="notice-{{ row.match.id }}" data-release-notice-missing>{% trans "Approve a release notice before releasing results." %} <a href="{% url 'workflows:release-notices' clinic.id %}">{% trans "Result release notice" %}</a></p>{% endif %}
+      <button type="submit" {% if not row.can_release or not release_notice %}disabled aria-describedby="{% if not row.can_release %}permission-{{ row.match.id }}{% else %}notice-{{ row.match.id }}{% endif %}"{% else %}aria-describedby="notice-{{ row.match.id }}"{% endif %}>{% trans "Release this version to patient" %}</button>
     </form>
     {% endif %}
     {% if not row.can_acknowledge or not row.can_release %}<p id="permission-{{ row.match.id }}" class="hint">{% trans "Clinical acknowledgment and release require the corresponding clinician permission." %}</p>{% endif %}

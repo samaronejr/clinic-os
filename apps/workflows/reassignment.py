@@ -14,6 +14,7 @@ from apps.workflows.access import (
     require_owner_target,
     require_task_access,
 )
+from apps.workflows.care import mirror
 from apps.workflows.task_services import assign_task
 from apps.workflows.validation import (
     TaskOwner,
@@ -60,6 +61,9 @@ def preview_reassignment(
     )
     if any(task.state in {"done", "cancelled"} for task in tasks):
         raise WorkflowConflictError
+    # A care task awaiting its clinician cannot be moved; apply refuses it too.
+    for task in tasks:
+        mirror.gate(task)
     payload = {
         "clinic": str(clinic_id),
         "actor": str(actor),

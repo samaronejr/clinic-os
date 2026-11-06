@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Data-subject requests · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Answer the patients' LGPD requests before their due dates." %}{% endblock %}
+{% block content %}
+<section class="intake-shell contacts-shell" aria-labelledby="data-requests-staff-title" data-data-requests-staff>
+  <h1 id="data-requests-staff-title">{% trans "Data-subject requests" %}</h1>
+  <p class="lede">{% trans "Patients and their verified representatives file these requests in the portal. Each one has a review task due on the same date. Answering never edits a clinical record: corrections to clinical content are made by the clinician as an amendment." %}</p>
+  {% if messages %}{% for message in messages %}<div class="feedback feedback--success" role="status"><p>{{ message }}</p></div>{% endfor %}{% endif %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><p>{{ error }}</p></div>{% endif %}
+  {% if rows %}
+    <div class="table-scroll" role="region" aria-labelledby="data-requests-caption" tabindex="0">
+      <table class="table contacts-table">
+        <caption id="data-requests-caption">{% trans "Requests by due date" %}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{% trans "Request" %}</th>
+            <th scope="col">{% trans "Patient" %}</th>
+            <th scope="col">{% trans "State" %}</th>
+            <th scope="col">{% trans "Received" %}</th>
+            <th scope="col">{% trans "Due" %}</th>
+            <th scope="col">{% trans "Action" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in rows %}
+          <tr data-staff-request data-staff-request-state="{{ item.row.state }}"{% if item.row.overdue %} data-staff-request-overdue{% endif %}>
+            <th scope="row">
+              {{ item.kind_label }}{% if item.purpose_label %} · {{ item.purpose_label }}{% endif %}
+              {% if item.row.delegate_acted %}<span class="hint">{% trans "Sent by a representative" %}</span>{% endif %}
+              {% if item.row.details %}<p class="staff-request-details" data-staff-request-details>{{ item.row.details }}</p>{% endif %}
+            </th>
+            <td data-label="{% trans "Patient" %}">{% if item.patient_name %}{{ item.patient_name }}{% else %}—{% endif %}</td>
+            <td data-label="{% trans "State" %}">
+              <span class="badge{% if item.row.state == 'fulfilled' %} badge--success{% elif item.row.state == 'rejected' %} badge--error{% else %} badge--warning{% endif %}">{{ item.state_label }}</span>
+              {% if item.row.overdue %}<span class="badge badge--error">{% trans "Overdue" %}</span>{% endif %}
+              {% if item.rejection_label %}<p class="hint">{{ item.rejection_label }}</p>{% endif %}
+            </td>
+            <td data-label="{% trans "Received" %}">{{ item.row.received_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="{% trans "Due" %}">{{ item.row.due_at|date:"d/m/Y" }}</td>
+            <td data-label="{% trans "Action" %}">
+              {% if item.row.state == "received" or item.row.state == "in_progress" %}
+                <form method="post" class="staff-request-actions" novalidate>
+                  {% csrf_token %}
+                  <input type="hidden" name="request_id" value="{{ item.row.request_id }}">
+                  <input type="hidden" name="expected_revision" value="{{ item.row.revision }}">
+                  {% if item.row.state == "received" %}
+                    <button class="button button--secondary" type="submit" name="action" value="start">{% trans "Start review" %}</button>
+                  {% else %}
+                    <button class="button button--secondary" type="submit" name="action" value="fulfill">{% trans "Mark as answered" %}</button>
+                  {% endif %}
+                  <div class="field">
+                    <label for="reason-{{ forloop.counter }}">{% trans "Reason to decline" %}</label>
+                    <select id="reason-{{ forloop.counter }}" name="reason">
+                      {% for reason in reasons %}<option value="{{ reason.value }}">{{ reason.label }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <button class="button button--quiet" type="submit" name="action" value="reject">{% trans "Decline" %}</button>
+                </form>
+              {% else %}
+                {{ item.row.closed_at|date:"d/m/Y H:i" }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="contacts-empty" data-staff-requests-empty>{% trans "No data-subject request so far." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -3,6 +3,7 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
+from apps.ai import care_coordination, front_desk, front_desk_kb, front_desk_staff
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
@@ -10,6 +11,7 @@ from apps.ai.extraction import collect_extraction, review_extraction, start_extr
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
 from apps.billing.services import create_invoice
+from apps.comms import inbox_services, portal_messages, suggestions
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
 from apps.core.integration import (
@@ -27,10 +29,12 @@ from apps.identity import (
     service_principals,
 )
 from apps.identity.current_context import require_permission
+from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.orders import services as order_services
+from apps.orders.patient_results import patient_result_file
 from apps.prescription.services import create_document_draft, issue_prescription
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.verification import release_document
@@ -41,6 +45,9 @@ from apps.scheduling import services as scheduling_services
 from apps.scribe import services as scribe_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
+from apps.workflows import release as release_services
+from apps.workflows import urgent as urgent_services
+from apps.workflows.care import services as care_services
 from django.apps import apps as django_apps
 
 FOUNDATION_APP_NAMES: Final = frozenset(
@@ -690,6 +697,289 @@ def test_intake_service_boundaries_derive_context_and_keep_search_body_only() ->
     ],
 )
 def test_order_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            data_requests.submit_data_subject_request,
+            ["clinic_id", "kind", "details", "purpose", "idempotency_key"],
+        ),
+        (data_requests.export_data_subject_copy, ["clinic_id", "request_id"]),
+        (data_requests.staff_data_subject_requests, ["clinic_id"]),
+        (
+            data_requests.start_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision"],
+        ),
+        (
+            data_requests.fulfill_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision"],
+        ),
+        (
+            data_requests.reject_data_subject_request,
+            ["clinic_id", "request_id", "expected_revision", "reason_code"],
+        ),
+        (patient_result_file, ["version_id"]),
+        (portal_messages.portal_thread, ["clinic_id", "conversation_id"]),
+        (
+            portal_messages.reply_to_portal_conversation,
+            ["clinic_id", "conversation_id", "body", "idempotency_key"],
+        ),
+    ],
+)
+def test_portal_services_keep_explicit_scope_and_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            care_services.create_care_plan_from_version,
+            ["clinic_id", "version_id", "actions", "idempotency_key"],
+        ),
+        (
+            care_services.add_care_action,
+            ["clinic_id", "plan_id", "spec", "idempotency_key"],
+        ),
+        (
+            care_services.assign_care_action,
+            ["clinic_id", "action_id", "owner", "expected_revision"],
+        ),
+        (
+            care_services.complete_care_action,
+            ["clinic_id", "action_id", "outcome", "expected_revision"],
+        ),
+        (
+            care_services.cancel_care_action,
+            ["clinic_id", "action_id", "expected_revision"],
+        ),
+        (
+            care_services.review_care_action,
+            ["clinic_id", "action_id", "decision", "expected_revision"],
+        ),
+        (
+            care_services.link_referral_document,
+            ["clinic_id", "referral_id", "draft_id", "expected_revision"],
+        ),
+        (
+            care_services.advance_referral,
+            ["clinic_id", "referral_id", "status", "expected_revision"],
+        ),
+        (
+            care_services.schedule_recall,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "reason",
+                "interval_days",
+                "owner_role",
+                "idempotency_key",
+            ],
+        ),
+        (
+            care_services.assign_pro,
+            ["clinic_id", "enrollment_id", "spec", "idempotency_key"],
+        ),
+        (
+            care_services.record_pro_response,
+            ["clinic_id", "occurrence_id", "answers", "expected_revision"],
+        ),
+    ],
+)
+def test_care_boundaries_take_scope_not_actor(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            inbox_services.send_message,
+            [
+                "clinic_id",
+                "conversation_id",
+                "command_id",
+                "template_version_id",
+                "body",
+                "parameters",
+            ],
+        ),
+        (
+            inbox_services.retry_message,
+            ["clinic_id", "message_id", "command_id"],
+        ),
+        (
+            inbox_services.open_conversation,
+            ["clinic_id", "enrollment_id", "channel", "purpose"],
+        ),
+        (
+            inbox_services.link_conversation_to_patient,
+            [
+                "clinic_id",
+                "conversation_id",
+                "enrollment_id",
+                "expected_revision",
+                "promote_to_care",
+            ],
+        ),
+        (
+            inbox_services.assign_conversation,
+            ["clinic_id", "conversation_id", "assignee_id", "expected_revision"],
+        ),
+        (
+            inbox_services.set_conversation_state,
+            ["clinic_id", "conversation_id", "state", "expected_revision"],
+        ),
+        (
+            inbox_services.add_internal_note,
+            ["clinic_id", "conversation_id", "body"],
+        ),
+        (
+            suggestions.use_suggestion,
+            ["clinic_id", "suggestion_id", "command_id", "body"],
+        ),
+    ],
+)
+def test_inbox_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 53: care-coordination proposals, appended as their own block.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (care_coordination.request_care_coordination, ["clinic_id", "plan_id"]),
+        (
+            care_coordination.collect_care_coordination,
+            ["clinic_id", "invocation_id"],
+        ),
+        (care_coordination.care_bundle, ["clinic_id", "invocation_id"]),
+        (care_coordination.pending_bundle, ["clinic_id", "invocation_id"]),
+        (
+            care_coordination.bundle_digest,
+            ["clinic_id", "invocation_id", "items"],
+        ),
+        (
+            care_coordination.approve_care_bundle,
+            ["clinic_id", "invocation_id", "digest", "step_up"],
+        ),
+        (
+            care_coordination.decide_care_item,
+            ["clinic_id", "item_id", "decision", "expected_revision"],
+        ),
+    ],
+)
+def test_care_coordination_services_take_scope_not_actor(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 54: the front-desk agent's staff services, appended as their own block.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            front_desk_kb.draft_article,
+            ["clinic_id", "key", "topic", "title", "body", "keywords", "link"],
+        ),
+        (
+            front_desk_kb.approve_article,
+            ["clinic_id", "article_id", "expected_revision"],
+        ),
+        (
+            front_desk_kb.retire_article,
+            ["clinic_id", "article_id", "expected_revision"],
+        ),
+        (front_desk_kb.knowledge_articles, ["clinic_id"]),
+        (front_desk_staff.handoff_threads, ["clinic_id"]),
+        (front_desk.run_portal_turn, ["clinic_id", "message_id"]),
+        (
+            front_desk_staff.resolve_handoff,
+            ["clinic_id", "thread_id", "expected_revision"],
+        ),
+    ],
+)
+def test_front_desk_services_take_scope_not_actor(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+# Task 55: result release coordination and the urgent-concern queue.
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            release_services.release_result_to_patient,
+            [
+                "clinic_id",
+                "result_version_id",
+                "template_version",
+                "audience",
+                "delegate_grant_id",
+            ],
+        ),
+        (release_services.publish_release_notice, ["clinic_id", "body"]),
+        (release_services.current_notice, ["clinic_id"]),
+        (
+            release_services.release_deliveries,
+            ["clinic_id", "result_version_id"],
+        ),
+        (
+            urgent_services.set_urgent_coverage,
+            [
+                "clinic_id",
+                "expected_version",
+                "weekdays",
+                "opens_at",
+                "closes_at",
+                "response_hours",
+                "responsible_roles",
+            ],
+        ),
+        (urgent_services.current_coverage, ["clinic_id"]),
+        (urgent_services.coverage_settings, ["clinic_id"]),
+        (urgent_services.urgent_concerns, ["clinic_id"]),
+        (
+            urgent_services.acknowledge_urgent_concern,
+            ["clinic_id", "concern_id", "expected_revision"],
+        ),
+        (
+            urgent_services.resolve_urgent_concern,
+            ["clinic_id", "concern_id", "expected_revision"],
+        ),
+    ],
+)
+def test_release_and_urgent_services_take_scope_not_actor(
     entrypoint: Callable[..., object], names: list[str]
 ) -> None:
     parameters = signature(entrypoint).parameters

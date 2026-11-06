@@ -128,6 +128,11 @@ BUNDLES_V1: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
 TASK_PERMISSIONS_V2: Final = frozenset({"tasks.view", "tasks.assign", "tasks.complete"})
 ENCOUNTER_PERMISSIONS_V2: Final = frozenset({"encounter.open_unscheduled"})
 RECEPTION_PERMISSIONS_V2: Final = frozenset({"reception.queue"})
+# LGPD data-subject requests are answered by clinic and organization management.
+PRIVACY_PERMISSIONS_V2: Final = frozenset({"privacy.requests"})
+PRIVACY_ROLES_V2: Final = frozenset(
+    {"owner", "org_admin", "clinic_admin", "clinic_manager"}
+)
 BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
         role: permissions
@@ -143,6 +148,7 @@ BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
             if role in {"receptionist", "nurse"}
             else frozenset()
         )
+        | (PRIVACY_PERMISSIONS_V2 if role in PRIVACY_ROLES_V2 else frozenset())
         for role, permissions in BUNDLES_V1.items()
     }
 )

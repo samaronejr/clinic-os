@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
-from django.utils.translation import gettext, pgettext
+from django.utils.translation import gettext, gettext_noop, pgettext
 
-from apps.ai.action_payload import closed, instant, parse_payload
+from apps.ai.action_payload import care_window, closed, instant, parse_payload
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -29,6 +29,13 @@ STATE_LABELS: Final = {
     "compensating": "Compensating",
     "compensated": "Compensated",
     "manual_required": "Manual follow-up required",
+}
+
+
+EFFECT_LABELS: Final = {
+    "workflows.review_task": gettext_noop("Create an operational review checklist"),
+    "comms.synthetic_reminder": gettext_noop("Simulate one logistics reminder"),
+    "care_action.create": gettext_noop("Add an administrative action to a care plan"),
 }
 
 
@@ -61,6 +68,13 @@ def present_proposal(proposal: ActionProposal) -> ProposalRow:
     compensation = closed(data["compensation_policy"], {"mode", "version"})
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
     zone = ZoneInfo(str(proposal.clinic.timezone))
+    name = operation["name"]
+    effect = EFFECT_LABELS.get(str(name), EFFECT_LABELS["comms.synthetic_reminder"])
+    due = None
+    if name == "workflows.review_task":
+        due = instant(closed(data["parameters"], {"due_at"})["due_at"])
+    elif name == "care_action.create":
+        due = care_window(data["parameters"])[2]
     return ProposalRow(
         proposal.pk,
         proposal.digest,
@@ -72,9 +86,7 @@ def present_proposal(proposal: ActionProposal) -> ProposalRow:
         pgettext("agent proposal state", "Reconciled")
         if proposal.state == "reconciled"
         else gettext(STATE_LABELS[proposal.state]),
-        gettext("Create an operational review checklist")
-        if operation["name"] == "workflows.review_task"
-        else gettext("Simulate one logistics reminder"),
+        gettext(effect),
         proposal.run.policy.version,
         instant(data["expires_at"]).astimezone(zone).strftime("%Y-%m-%dT%H:%M"),
         str(terms["autonomy"]),
@@ -83,9 +95,5 @@ def present_proposal(proposal: ActionProposal) -> ProposalRow:
         else gettext("Require manual follow-up"),
         proposal.state == "validated",
         str(subject["revision"]),
-        instant(closed(data["parameters"], {"due_at"})["due_at"])
-        .astimezone(zone)
-        .strftime("%Y-%m-%dT%H:%M")
-        if operation["name"] == "workflows.review_task"
-        else None,
+        due.astimezone(zone).strftime("%Y-%m-%dT%H:%M") if due is not None else None,
     )

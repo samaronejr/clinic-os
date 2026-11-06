@@ -858,8 +858,13 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
 
     @contextlib.contextmanager
     def provision(
-        repository: Path, token: str, *, docker: object = None
+        repository: Path,
+        token: str,
+        *,
+        docker: object = None,
+        memory_backed: bool = False,
     ) -> Iterator[object]:
+        assert memory_backed
         yield runner.ProvisionedDatabase(
             app_dsn="postgresql://clinic_app:pw@127.0.0.1:55432/clinic",
             app_password="pw",  # noqa: S106 - synthetic fixture value.
@@ -892,10 +897,11 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
             captured[0][0],
             "-m",
             "ops.testing.ci_pytest",
-            "--workers=4",
+            "--workers=8",
             f"--work-root={tmp_path / 'ci-pytest'}",
             "--",
-            "-q",
+            "-vv",
+            "--durations=30",
         ]
     ]
     assert tuple(runner.COVERAGE_TARGETS) == ci_pytest.coverage_targets()

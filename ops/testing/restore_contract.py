@@ -32,9 +32,15 @@ DOMAIN_RELATIONS: Final = (
     "ai_aicircuit",
     "ai_aiinvocation",
     "ai_approval",
+    # Task 53 care proposals: plain-text-free review history of model items.
+    "ai_careproposal",
     "ai_compensation",
     "ai_extractioncandidate",
     "ai_extractionjob",
+    # Task 54 front desk: reviewed answers, agent threads and turns (no text).
+    "ai_frontdeskthread",
+    "ai_frontdeskturn",
+    "ai_knowledgearticle",
     "ai_gatewayswitch",
     "ai_modelconfiguration",
     "audit_event",
@@ -46,7 +52,19 @@ DOMAIN_RELATIONS: Final = (
     "billing_receipt",
     "billing_settlement",
     "comms_appointmentreminder",
+    # Task 51 inbox: threads, messages, notes, templates and provider accounts
+    # are durable conversation history; keys are secret files, never rows.
+    "comms_conversation",
+    "comms_inboundevent",
     "comms_integrationoperation",
+    "comms_internalnote",
+    "comms_message",
+    "comms_messagemeter",
+    "comms_participant",
+    "comms_provideraccount",
+    "comms_quickreply",
+    "comms_suggestedreply",
+    "comms_templateversion",
     "consent_aiusedisclosure",
     "consent_consentacceptance",
     "consent_consentrevocation",
@@ -107,6 +125,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_userclinicrole",
     "identity_userpreference",
     "intake_clinicintakepolicy",
+    # LGPD data-subject requests and their SLA task links (todo 50).
+    "intake_datasubjectrequest",
     "intake_demographicscorrection",
     "intake_duplicatecandidate",
     "intake_emergencycontact",
@@ -189,6 +209,21 @@ DOMAIN_RELATIONS: Final = (
     "workflows_workflowdefinitionversion",
     "workflows_workflowrun",
     "workflows_workflowstep",
+    # Task 52: care plans and their coordination history are durable tenant data.
+    "workflows_careplan",
+    "workflows_careaction",
+    "workflows_referral",
+    "workflows_recall",
+    "workflows_proassignment",
+    "workflows_prooccurrence",
+    # The care scanner's refusal evidence is tenant data too.
+    "workflows_carerefusal",
+    # Task 55: approved release wording, delivery provenance, coverage policy
+    # versions and urgent-concern accountability are durable tenant data.
+    "workflows_releasenoticetemplate",
+    "workflows_releasedelivery",
+    "workflows_urgentcoveragepolicy",
+    "workflows_urgentconcern",
     # Plan item 30: live-catalog durable relations, retained on uninstall.
     "ehr_specialtyentry",
     "ehr_specialtypack",

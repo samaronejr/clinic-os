@@ -9,14 +9,14 @@ permissions:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/2
+    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -175,6 +175,9 @@ jobs:
           - "agenda@webkit,agenda-slice@webkit,agenda-grid@webkit,reception@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
           - "results,results@firefox,results@webkit"
           - "clinical-inbox,clinical-inbox@firefox,clinical-inbox@webkit"
+          - "portal,portal@firefox,portal@webkit"
+          - "messages,messages@firefox,messages@webkit"
+          - "care-coordination,care-coordination@firefox,care-coordination@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

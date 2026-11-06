@@ -59,6 +59,19 @@ ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
 # clinical roles whose bundle carries it; every item is rechecked per patient.
 INBOX_ROUTE: Final = frozenset(INBOX_ROLES)
 
+# The staff inbox admits the roles that handle a thread's purpose; the thread
+# itself rechecks the exact role and, for care, patient-scoped authority.
+MESSAGES_ROUTE: Final = frozenset(
+    {
+        _ROLE.CLINIC_ADMIN,
+        _ROLE.CLINIC_MANAGER,
+        _ROLE.RECEPTIONIST,
+        _ROLE.SCHEDULER,
+        _ROLE.NURSE,
+        _ROLE.PHYSICIAN,
+    }
+)
+
 _AGENDA_READ: Final = ("appointment.read", "appointment.read_own")
 _CONFIGURATION: Final = ("configuration.clinic", "configuration.organization")
 
@@ -180,6 +193,15 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("demographics.read", *_CONFIGURATION),
                 views=frozenset({"consent:staff"}),
             ),
+            Destination(
+                "data-requests",
+                gettext_noop("Data-subject requests"),
+                "intake:data-requests",
+                ("privacy.requests",),
+                route_roles=None,
+                views=frozenset({"intake:data-requests"}),
+                owner_todo=50,
+            ),
         ),
     ),
     Destination(
@@ -200,14 +222,47 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 views=frozenset({"orders:results", "orders:source"}),
                 owner_todo=31,
             ),
+            # Task 55: the urgent-concern queue and the release notice wording.
+            Destination(
+                "urgent-concerns",
+                gettext_noop("Urgent concerns"),
+                "workflows:urgent-concerns",
+                ("demographics.read",),
+                route_roles=None,
+                views=frozenset({"workflows:urgent-concerns"}),
+                owner_todo=55,
+            ),
+            Destination(
+                "release-notices",
+                gettext_noop("Result release notice"),
+                "workflows:release-notices",
+                ("configuration.propose",),
+                route_roles=None,
+                views=frozenset({"workflows:release-notices"}),
+                owner_todo=55,
+            ),
         ),
     ),
     Destination(
         "messages",
         gettext_noop("Messages"),
-        None,
+        "comms:inbox",
         ("demographics.read",),
-        owner_todo=51,
+        route_roles=MESSAGES_ROUTE,
+        views=frozenset({"comms:inbox", "comms:conversation"}),
+        entries=(
+            # Task 54: conversations the front-desk assistant handed to a person.
+            Destination(
+                "front-desk-handoffs",
+                gettext_noop("Assistant handoffs"),
+                "ai:front-desk-handoffs",
+                ("demographics.read",),
+                # The people who can open the conversation to answer it.
+                route_roles=MESSAGES_ROUTE,
+                views=frozenset({"ai:front-desk-handoffs"}),
+                owner_todo=54,
+            ),
+        ),
     ),
     Destination(
         "finance",
@@ -265,6 +320,23 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         route_roles=None,
         views=frozenset({"ai:agents", "ai:agent-settings"}),
         owner_todo=39,
+        entries=(
+            # Clinicians reach their plans' suggestions; automation staff
+            # approve administrative bundles. The page rechecks both.
+            Destination(
+                "care-coordination",
+                gettext_noop("Care coordination"),
+                "ai:care-coordination",
+                (
+                    "automation.propose_clinical",
+                    "automation.admin",
+                    "automation.organization",
+                ),
+                route_roles=None,
+                views=frozenset({"ai:care-coordination"}),
+                owner_todo=53,
+            ),
+        ),
     ),
     Destination(
         "reports",
@@ -296,6 +368,27 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("appointment.book", "configuration.organization"),
                 route_roles=None,
                 views=frozenset({"scheduling:resource-settings"}),
+            ),
+            # Task 54: the reviewed answers of the front-desk assistant.
+            Destination(
+                "front-desk-knowledge",
+                gettext_noop("Assistant answers"),
+                "ai:front-desk-knowledge",
+                ("configuration.clinic",),
+                route_roles=ADMIN_ROUTE | {_ROLE.CLINIC_MANAGER},
+                views=frozenset({"ai:front-desk-knowledge"}),
+                owner_todo=54,
+            ),
+            # Task 55: when and by whom urgent patient messages are answered.
+            Destination(
+                "urgent-coverage",
+                gettext_noop("Urgent message coverage"),
+                "workflows:urgent-coverage",
+                ("configuration.clinic",),
+                # The administrative roles that already open Settings.
+                route_roles=ADMIN_ROUTE | {_ROLE.CLINIC_MANAGER},
+                views=frozenset({"workflows:urgent-coverage"}),
+                owner_todo=55,
             ),
         ),
     ),

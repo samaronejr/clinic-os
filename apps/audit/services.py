@@ -39,7 +39,7 @@ from apps.audit.verification import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 __all__ = (
     "AUDIT_PAYLOAD_ALLOWED",
@@ -222,15 +222,20 @@ def record_phase1_event(
             row = cursor.fetchone()
         if row is not None and row[0] is not None:
             return _record_delegate_event(append, affected_record_id)
-    if event_type.startswith("orders."):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT NULLIF(current_setting('app.current_principal',true),'')"
-            )
-            row = cursor.fetchone()
-        if row is not None and row[0] is not None:
-            return _record_lab_event(append, affected_record_id)
+    for prefix, record in _PRINCIPAL_CHAIN_RECORDERS:
+        if event_type.startswith(prefix) and _current_principal() is not None:
+            return record(append, affected_record_id)
     return record_event(append.event, payload=append.payload)
+
+
+def _current_principal() -> str | None:
+    """Return the machine principal GUC, or None for a human or patient context."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT NULLIF(current_setting('app.current_principal',true),'')"
+        )
+        row = cursor.fetchone()
+    return None if row is None else row[0]
 
 
 def _record_retention_event(append: Phase1AuditAppend, record_id: UUID) -> int:
@@ -296,6 +301,35 @@ def _record_lab_event(append: Phase1AuditAppend, record_id: UUID) -> int:
     return int(result[0])
 
 
+def _record_comms_ingest_event(append: Phase1AuditAppend, record_id: UUID) -> int:
+    """Bind inbox ingest audit to the authenticated provider principal."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.comms_audit_scope(%s,%s)",
+            [record_id, append.event.event_type],
+        )
+        scope = cursor.fetchone()
+        if scope is None or append.payload.get("clinic_id") != str(scope[2]):
+            raise AuditContextRejectedError(setting="comms_audit_scope")
+        context = AuditTrustedContext(organization_id=scope[1], actor_user_id=scope[0])
+        content_hash = _content_hash(
+            append.event, context, _normalize_payload(append.payload)
+        )
+        cursor.execute(
+            "SELECT clinic_app.comms_ingest_audit(%s,%s,%s,%s)",
+            [
+                record_id,
+                append.event.event_type,
+                append.event.occurred_at_utc,
+                content_hash,
+            ],
+        )
+        result = cursor.fetchone()
+    if result is None:
+        raise AuditContextRejectedError(setting="comms_ingest_audit")
+    return int(result[0])
+
+
 def _record_delegate_event(append: Phase1AuditAppend, record_id: UUID) -> int:
     """Use stored patient authority without ever installing staff tenant GUCs."""
     with connection.cursor() as cursor:
@@ -330,3 +364,12 @@ def verify_chain(
 ) -> AuditChainVerificationResult:
     """Verify one tenant chain or the owner-only system chain."""
     return verify_chain_on_connection(connection, organization_id)
+
+
+# Event families whose rows bind the authenticated provider principal.
+_PRINCIPAL_CHAIN_RECORDERS: tuple[
+    tuple[str, Callable[[Phase1AuditAppend, UUID], int]], ...
+] = (
+    ("orders.", _record_lab_event),
+    ("comms.inbound.", _record_comms_ingest_event),
+)

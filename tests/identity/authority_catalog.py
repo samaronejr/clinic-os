@@ -34,9 +34,11 @@ CONTEXT_PRIMITIVES = frozenset(
         "txid_current",
         "pg_current_xact_id",
         "pg_advisory_xact_lock",
+        "pg_advisory_xact_lock_shared",
         "pg_advisory_lock",
         "pg_advisory_unlock",
         "pg_try_advisory_lock",
+        "pg_trigger_depth",
         "gen_random_uuid",
         "jsonb_build_object",
         "jsonb_build_array",
@@ -44,6 +46,7 @@ CONTEXT_PRIMITIVES = frozenset(
         "to_jsonb",
         "row_to_json",
         "format",
+        "length",
     }
 )
 # Cross-type temporal comparisons are STABLE because of TimeZone, not because
@@ -92,6 +95,7 @@ class Function:
     extension: str | None
     library: str | None
     native_types: bool
+    table_return: bool
     defaults: str | None
     signature: str
 
@@ -176,6 +180,25 @@ class Catalog:
                          JOIN pg_type t ON t.oid=arg.oid
                          JOIN pg_namespace tn ON tn.oid=t.typnamespace
                          WHERE tn.nspname<>'pg_catalog'
+                       ),
+                       NOT EXISTS (
+                         SELECT 1 FROM unnest(COALESCE(p.proallargtypes,
+                           p.proargtypes::oid[])) AS arg(oid)
+                         JOIN pg_type t ON t.oid=arg.oid
+                         JOIN pg_namespace tn ON tn.oid=t.typnamespace
+                         WHERE tn.nspname<>'pg_catalog'
+                       ) AND EXISTS (
+                         SELECT 1 FROM pg_type t
+                         JOIN pg_class c ON c.oid=t.typrelid
+                         WHERE t.oid=p.prorettype AND t.typtype='c'
+                           AND c.relkind IN ('r','p') AND NOT EXISTS (
+                             SELECT 1 FROM pg_attribute a
+                             JOIN pg_type at ON at.oid=a.atttypid
+                             JOIN pg_namespace an ON an.oid=at.typnamespace
+                             WHERE a.attrelid=c.oid AND a.attnum>0
+                               AND NOT a.attisdropped
+                               AND (an.nspname<>'pg_catalog' OR at.oid>=16384)
+                           )
                        ),
                        pg_get_expr(p.proargdefaults, 0),
                        n.nspname||'.'||p.proname||'('||
@@ -557,7 +580,11 @@ class Catalog:
         seen.add(node)
         result = Reads(functions={oid})
         result.merge(self._defaults(function, bypass=caller_bypass, seen=seen))
-        if not function.native_types:
+        # Inspect SQL bodies returning flat built-in table columns. Composite
+        # arguments, opaque columns and native-code signatures stay closed.
+        if not function.native_types and not (
+            function.table_return and function.language in {"sql", "plpgsql"}
+        ):
             result.opaque.add("uninspectable function signature " + function.name)
         if function.language in {"c", "internal"}:
             builtin = function.name.startswith("pg_catalog.") and oid < 16384

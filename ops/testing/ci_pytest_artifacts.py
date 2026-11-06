@@ -391,7 +391,7 @@ def load_version(
     artifacts: Path,
     version: str,
 ) -> tuple[tuple[ShardEvidence, ...], JsonObject]:
-    """Prove the exact reference population and every detector across two shards."""
+    """Prove the exact reference population and every detector across all shards."""
     expected = {f"renewal-python-py{version}-shard-{number}" for number in SHARDS}
     found = {
         path.name for path in artifacts.glob(f"renewal-python-py{version}-shard-*")
@@ -562,7 +562,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     sys.stdout.write(
         f"ci-pytest-artifacts: Python {arguments.python_version} "
-        f"reference={proof['reference_count']} shards=2 checks=passed "
+        f"reference={proof['reference_count']} shards={len(shards)} checks=passed "
         f"combined_coverage={percent:.6f}%\n"
     )
     return 0

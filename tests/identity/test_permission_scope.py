@@ -18,7 +18,12 @@ from apps.identity.models import (
     User,
     UserClinicRole,
 )
-from apps.identity.permissions import BUNDLES_V1, PERMISSIONS
+from apps.identity.permissions import (
+    BUNDLES_V1,
+    PERMISSIONS,
+    PRIVACY_PERMISSIONS_V2,
+    PRIVACY_ROLES_V2,
+)
 from django.db import IntegrityError, connection, connections, transaction
 from django.utils import timezone
 from psycopg.errors import CheckViolation
@@ -58,9 +63,15 @@ def test_alias_roles_are_checked_for_every_permission(
     rbac_graph: RbacGraph, role: str
 ) -> None:
     actor, enrollment = permission_actor(rbac_graph, role)
+    # Task 50: the data-subject request extension reaches every management
+    # role row without a workflow bundle opt-in, like reception.queue does
+    # for receptionists; every other permission stays exactly v1.
+    granted = BUNDLES_V1[role] | (
+        PRIVACY_PERMISSIONS_V2 if role in PRIVACY_ROLES_V2 else frozenset()
+    )
     with permission_context(rbac_graph, actor):
         for permission in sorted(PERMISSIONS):
-            if permission in BUNDLES_V1[role]:
+            if permission in granted:
                 assert (
                     require_permission(
                         permission,

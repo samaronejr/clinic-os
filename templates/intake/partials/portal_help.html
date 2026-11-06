@@ -1,0 +1,10 @@
+{% comment %}
+Portal support (todo 50): the non-AI path to a person, with the home's
+[data-portal-help] copy, as the last block of every patient destination and
+of the access gate under PATIENT_PORTAL_V2. The back row's
+[data-portal-help-link] points at #portal-help. Context: none (use `only`).
+{% endcomment %}{% load i18n %}<section id="portal-help" class="feedback feedback--info portal-help" aria-labelledby="portal-help-title" tabindex="-1" data-portal-help>
+  <h2 id="portal-help-title">{% trans "Talk to a person" %}</h2>
+  <p>{% trans "This portal never answers clinical questions on its own. For anything about your care, contact the clinic team through the channels you already use." %}</p>
+  <p><strong>{% trans "In an emergency, call 192." %}</strong></p>
+</section>

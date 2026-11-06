@@ -5,7 +5,7 @@ runner's coverage gate::
 
     python -m ops.testing.ci_pytest --workers 4 --work-root DIR [--cov-xml PATH]
 
-Hosted jobs add ``--shard 1|2 --artifact-root DIR``. Both phases select that
+Hosted jobs add ``--shard 1|2|3 --artifact-root DIR``. Both phases select that
 shard; raw coverage and detector receipts are retained for the per-version
 ``ops.testing.ci_pytest_artifacts`` gate. Only that gate enforces the combined
 population, refusal-exit union and coverage floor. Local invocations remain

@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 from django.db import connections
 
 from apps.ai.brief_contracts import SCHEMA, synthetic_reply
+from apps.ai.care_contracts import SCHEMA as CARE_SCHEMA
+from apps.ai.care_contracts import synthetic_reply as synthetic_care_reply
 from apps.ai.contracts import (
     MAX_TIMEOUT_SECONDS,
     GatewayInputError,
@@ -101,6 +103,8 @@ class SyntheticProvider(AdapterBase):
         schema = request_schema(request.content)
         if schema == DECISION_SCHEMA:
             content = synthetic_decision_reply(request.content)
+        elif schema == CARE_SCHEMA:
+            content = synthetic_care_reply(request.content)
         elif schema == SCHEMA:
             content = synthetic_reply(request.content)
         return ProviderResult(

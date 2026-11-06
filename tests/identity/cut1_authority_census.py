@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
 from inspect import unwrap
@@ -16,10 +17,13 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.ai_authority_census import exercise_ai_authority
+from identity.coordination_authority_oracle import run_coordination_census
+from identity.front_desk_authority_oracle import run_front_desk_census
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
+from identity.portal_authority_oracle import run_portal_census
 from identity.prescription_authority_oracle import run_prescription_census
 from identity.retention_authority_census import exercise_retention_authority
 from identity.scribe_authority_census import exercise_scribe_authority
@@ -32,6 +36,8 @@ if TYPE_CHECKING:
     from types import FrameType
 
     import pytest
+
+    from workflows.guard_cases import GuardWorld
 
 
 class ExecutedProofs:
@@ -199,7 +205,82 @@ def _scanner(local: pytest.MonkeyPatch, database_now: Callable[[], datetime]) ->
             ]
 
 
-def run_cut1_census(
+def _care_scanner(
+    local: pytest.MonkeyPatch, database_now: Callable[[], datetime]
+) -> None:
+    """The care scanner publishes exactly the listed due records, as opaque jobs."""
+    from unittest import mock  # noqa: PLC0415
+
+    from apps.workflows import engine  # noqa: PLC0415
+    from apps.workflows.care import tasks as care_tasks  # noqa: PLC0415
+    from django.db import connection  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    with runtime_role():
+        now = database_now()
+        with local.context() as clock:
+            clock.setattr(engine, "utc_now", lambda: now)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT kind, record_id FROM clinic_app.workflows_care_due(%s)",
+                    [now],
+                )
+                due = cursor.fetchall()
+            assert due, "care scanner positive control is empty"
+            with mock.patch.object(
+                care_tasks.run_care_job,
+                "apply_async",
+                wraps=care_tasks.run_care_job.apply_async,
+            ) as sent:
+                assert care_tasks.scan_care() == len(due)
+            assert sent.call_args_list == [
+                mock.call(kwargs={"kind": kind, "record_id": str(record)})
+                for kind, record in due
+            ]
+
+
+def _guard_world(
+    subject: RbacGraph, patch: pytest.MonkeyPatch, symbol: str
+) -> GuardWorld:
+    """The world a guard case runs in; care cases get the care world too.
+
+    Mirrors test_authority, so the census executes care guards on the same
+    committed care records.
+    """
+    from workflows.care_world import seed_care_world  # noqa: PLC0415
+    from workflows.coordination_guard_cases import (  # noqa: PLC0415
+        COORDINATION_SEEDED,
+    )
+    from workflows.coordination_world import seed_coordination_world  # noqa: PLC0415
+    from workflows.guard_cases import seed_guard_world  # noqa: PLC0415
+
+    world = seed_guard_world(subject, patch)
+    if symbol.startswith("apps.workflows.care."):
+        world = replace(world, care=seed_care_world(world))
+    if symbol in COORDINATION_SEEDED:
+        world = replace(world, coordination=seed_coordination_world(world))
+    return world
+
+
+def _care_scanner_proof(
+    proofs: ExecutedProofs, subject: RbacGraph, local: pytest.MonkeyPatch
+) -> None:
+    """Seed a care world on its own graph, then prove the care scanner on it.
+
+    The world (overdue, stale, recall and PRO records) is seeded outside the
+    proof, so only the scanner's own execution earns its certificate.
+    """
+    from apps.workflows import engine  # noqa: PLC0415
+
+    _guard_world(subject, local, "apps.workflows.care.tasks.scan_care")
+    proofs.run(
+        "care scanner publishes exactly the listed due records",
+        partial(_care_scanner, local, engine.utc_now),
+    )
+
+
+def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     symbols: set[str],
     patch: pytest.MonkeyPatch,
     secret_root: Path,
@@ -257,13 +338,15 @@ def run_cut1_census(
     with patch.context() as delegate_clock:
         delegate_clock.setattr(time, "time", lambda: STEP_UP_NOW)
         for name, delegate_oracle in DELEGATE_CASES.items():
-            subject = graph()
             proofs.run(
                 f"delegate stored authority, state, scope and response:{name}",
-                partial(delegate_oracle, subject, secret_root.parent),
+                partial(delegate_oracle, graph(), secret_root.parent),
             )
     run_passkey_census(proofs, graph)
     run_orders_census(proofs, graph)
+    run_portal_census(proofs, graph, secret_root.parent)
+    run_front_desk_census(proofs, graph, patch)
+    run_coordination_census(proofs, graph, patch, secret_root.parent)
     run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
@@ -275,8 +358,7 @@ def run_cut1_census(
             patch.context() as local,
         ):
             for case in test_authority.CASES:
-                subject = graph(workflows=True)
-                world = seed_guard_world(subject, local)
+                world = _guard_world(graph(workflows=True), local, case.symbol)
                 with decision_sites.rewritten():
                     guard = discover_guards()[case.symbol]
                     code = unwrap(guard.function).__code__
@@ -291,6 +373,9 @@ def run_cut1_census(
                             lambda _name, _value: None,
                         ),
                     )
+            # Before the timer proof, which pins engine.utc_now for the rest of
+            # this context: the care world seeds through the database clock.
+            _care_scanner_proof(proofs, graph(workflows=True), local)
             subject = graph(workflows=True)
             proofs.run(
                 "workflow timer scanner and stored step scope",

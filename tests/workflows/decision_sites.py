@@ -27,7 +27,12 @@ from apps.identity.current_context import (
     require_permission,
 )
 
-from workflows.guard_discovery import ROOT, _nodes, _resolve, symbol
+from workflows.guard_discovery import (
+    _nodes,
+    _resolve,
+    symbol,
+    workflow_modules,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -77,8 +82,8 @@ def _position(node: ast.AST) -> tuple[int, int, int, int]:
 @cache
 def _functions() -> dict[str, _Function]:
     found = {}
-    for path in sorted((ROOT / "apps/workflows").glob("*.py")):
-        module = import_module("apps.workflows." + path.stem)
+    for path, module_name in workflow_modules():
+        module = import_module(module_name)
         for name, node in _nodes(ast.parse(path.read_text()).body):
             value: object = module
             for part in name.split("."):

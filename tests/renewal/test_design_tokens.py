@@ -25,6 +25,7 @@ SHELL_CSS: Final = CSS / "clinic-os.css"
 COMPONENT_CSS: Final = CSS / "clinic-os-components.css"
 RECEPTION_CSS: Final = CSS / "clinic-os-reception.css"
 INBOX_CSS: Final = CSS / "clinic-os-inbox.css"
+MESSAGES_CSS: Final = CSS / "clinic-os-messages.css"
 AXE: Final = ROOT / "static" / "vendor" / "axe"
 AXE_SHA256: Final = "c24f097bd2f451d4f933e8bc7d8d539f8672a2ebcb5cc9f9f3eec8ca9470a0c1"
 AXE_LICENSE_SHA256: Final = (
@@ -290,6 +291,11 @@ def test_raw_values_live_only_in_the_token_blocks() -> None:
     assert (
         RAW_COLOR.findall(_strip_comments(INBOX_CSS.read_text(encoding="utf-8"))) == []
     )
+    # Message bubbles read the theme's own surface and ink, never a raw color.
+    messages = _strip_comments(MESSAGES_CSS.read_text(encoding="utf-8"))
+    assert RAW_COLOR.findall(messages) == []
+    assert "var(--rule" not in messages
+    assert "var(--paper" not in messages
 
 
 def test_component_styles_keep_the_flat_ledger_rules() -> None:

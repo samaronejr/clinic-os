@@ -65,10 +65,10 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 `tenancy.0006`) belongs in that file: the parallel phase's server-state guard
 fails the run otherwise.
 
-Hosted CI divides both phases into two deterministic, file-atomic shards per
-Python version. Each shard collects the complete reference independently and
+Hosted CI divides both phases into three deterministic, file-atomic shards per
+Python version, keeping each hosted job within its 60-minute budget. Each shard collects the complete reference independently and
 retains its raw line coverage, exactly-once execution reports, refusal census
-and shared-catalog certificate. The `python-coverage` jobs require both shards,
+and shared-catalog certificate. The `python-coverage` jobs require every shard,
 prove their disjoint union equals that reference, require every derived refusal
 exit across the union, revalidate every catalog certificate, and combine raw
 coverage before enforcing the same 90% floor. `Renewal RC acceptance` requires

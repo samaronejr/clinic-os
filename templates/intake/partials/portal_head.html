@@ -1,0 +1,6 @@
+{% comment %}
+Portal stylesheets (todo 50) for every v2 patient page: the component and
+portal layers plus the session's display choices (larger text, higher
+contrast). Include without `only`: the display tag reads the request's
+server-side session; nothing comes from browser storage.
+{% endcomment %}{% load static patient_portal %}{% patient_portal_display as portal_display %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-portal.css' %}">{% if portal_display.text_size == "large" %}<link rel="stylesheet" href="{% static 'css/clinic-os-portal-large-text.css' %}">{% endif %}{% if portal_display.contrast == "high" %}<link rel="stylesheet" href="{% static 'css/clinic-os-portal-contrast.css' %}">{% endif %}

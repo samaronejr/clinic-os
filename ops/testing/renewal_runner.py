@@ -119,6 +119,11 @@ SUITES: Final = {
     "results": ("tests/renewal/browser/test_results.py",),
     # Task 32: Clinical Inbox and clinician Today.
     "clinical-inbox": ("tests/renewal/browser/test_clinical_inbox.py",),
+    "portal": ("tests/renewal/browser/test_portal.py",),
+    # Task 51: the omnichannel inbox, appended as its own registration block.
+    "messages": ("tests/renewal/browser/test_messages.py",),
+    # Task 53: care-coordination proposals, appended as its own registration block.
+    "care-coordination": ("tests/renewal/browser/test_care_coordination.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -159,11 +164,14 @@ FIXTURE_SUITES: Final = frozenset(
         "workspace",
         "results",
         "clinical-inbox",
+        "portal",
+        "messages",
+        "care-coordination",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
 REALTIME_SUITES: Final = frozenset(
-    {"realtime", "agenda-slice", "agenda-grid", "reception"}
+    {"realtime", "agenda-slice", "agenda-grid", "reception", "messages"}
 )
 # Suites that exercise the synthetic room provider through the real outbox.
 # ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
@@ -182,7 +190,7 @@ SIGNING_SUITES: Final = frozenset(
     {"document-verification", "prescribing", "end-to-end"}
 )
 # Suites that exercise the synthetic, explicitly non-payable PIX rehearsal.
-PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end"})
+PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end", "portal"})
 # Browser engines a suite can run on; chromium keeps CI parity as the default.
 ENGINES: Final = ("chromium", "firefox", "webkit")
 DEFAULT_ENGINE: Final = "chromium"
@@ -246,7 +254,7 @@ COMMAND_TIMEOUT_SECONDS: Final = 60
 STATIC_GATE_TIMEOUT_SECONDS: Final = 900
 COVERAGE_TIMEOUT_SECONDS: Final = 3600
 # Same worker count as the hosted job and ``make ci``.
-CI_PYTEST_WORKERS: Final = 4
+CI_PYTEST_WORKERS: Final = 8
 DEPENDENCY_TIMEOUT_SECONDS: Final = 900
 IMAGE_TLS_TIMEOUT_SECONDS: Final = 3600
 BUILD_TIMEOUT_SECONDS: Final = 3600
@@ -512,8 +520,9 @@ def _provision_database(
     token: str,
     *,
     docker: Callable[..., str] = _docker,
+    memory_backed: bool = False,
 ) -> Iterator[ProvisionedDatabase]:
-    """Create one unique PostgreSQL container and remove only what it made."""
+    """Create one owned database; coverage may use bounded ephemeral memory."""
     container = f"clinic_renewal_db_{token}"
     volume = f"clinic_renewal_db_{token}_data"
     database = "clinic"
@@ -528,7 +537,27 @@ def _provision_database(
     init = repository / "ops/db/init"
     if not bootstrap.is_file() or not init.is_dir():
         _fail("renewal database bootstrap inputs are missing")
-    docker("volume", "create", "--label", f"clinic.renewal.run={token}", volume)
+    docker(
+        "volume",
+        "create",
+        *(
+            (
+                "--driver",
+                "local",
+                "--opt",
+                "type=tmpfs",
+                "--opt",
+                "device=tmpfs",
+                "--opt",
+                "o=size=2g,mode=0700",
+            )
+            if memory_backed
+            else ()
+        ),
+        "--label",
+        f"clinic.renewal.run={token}",
+        volume,
+    )
     try:
         docker(
             "run",
@@ -537,6 +566,7 @@ def _provision_database(
             container,
             "--label",
             f"clinic.renewal.run={token}",
+            *(("--memory", "6g", "--memory-swap", "6g") if memory_backed else ()),
             "--publish",
             f"127.0.0.1:{port}:5432/tcp",
             "--env",
@@ -646,7 +676,12 @@ def _child_env(extra: dict[str, str]) -> dict[str, str]:
         "PYTHONPATH": str(_repository()),
         "PYTHONTZPATH": "",
     }
-    for name in ("TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "REALTIME_REDIS_URL"):
+    for name in (
+        "CLINIC_EVIDENCE_ROOT",
+        "TMPDIR",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "REALTIME_REDIS_URL",
+    ):
         if name in os.environ:
             environment[name] = os.environ[name]
     environment.update(extra)
@@ -782,7 +817,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
     return {
         **(
             {"COMMS_SYNTHETIC_CHANNELS": "email,sms,whatsapp"}
-            if suite == "reminders"
+            if suite in {"reminders", "messages"}
             else {}
         ),
         **({"TELECONSULT_SYNTHETIC_PROVIDER": "true"} if suite in VIDEO_SUITES else {}),
@@ -1028,7 +1063,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite in {"agenda", "reminders"}
+                        if suite in {"agenda", "reminders", "messages"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
                         else {}
@@ -1220,7 +1255,7 @@ def _gate_coverage(
     logs: Path,
     token: str,
 ) -> list[JsonObject]:
-    with _provision_database(repository, f"ci{token}") as database:
+    with _provision_database(repository, f"ci{token}", memory_backed=True) as database:
         _create_test_database(repository, database)
         _migrate(repository, database.owner_dsn, logs / "gate-coverage-migrate.log")
         environment = _child_env(
@@ -1229,6 +1264,8 @@ def _gate_coverage(
                 # As in hosted CI: the default broker is a host Redis that
                 # may belong to another project.
                 "CELERY_BROKER_URL": "memory://",
+                # Keep profiles out of subsequent current-source image inputs.
+                "COVERAGE_FILE": str(logs / "coverage.data"),
                 "DJANGO_SETTINGS_MODULE": "config.settings.test",
                 "MIGRATION_DATABASE_URL": database.owner_dsn,
                 "TEST_SUPERUSER_DATABASE_URL": database.super_dsn,
@@ -1244,7 +1281,8 @@ def _gate_coverage(
                 f"--workers={CI_PYTEST_WORKERS}",
                 f"--work-root={logs / 'ci-pytest'}",
                 "--",
-                "-q",
+                "-vv",
+                "--durations=30",
             ],
             environment,
             logs / "gate-coverage.log",

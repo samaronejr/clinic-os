@@ -12,37 +12,63 @@ import ast
 import copy
 import inspect
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlencode
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from apps.comms.adapters import OperationScope
 from apps.core import integration
 from apps.core.chart_sources import ChartBatch
 from apps.core.integration import ActionOperationRequest, enqueue_operation
+from apps.ehr.finalization import finalize_version
+from apps.ehr.models import Encounter, SpecialtyTemplate
+from apps.ehr.services import create_draft, open_encounter, record_clinical_note
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import CareTeamMembership, User, UserClinicRole
+from apps.intake.models import PatientClinicEnrollment
+from apps.intake.patient_access import patient_session_context
+from apps.prescription.models import DocumentKind
+from apps.prescription.services import create_document_draft
 from apps.scheduling.availability_creation import create_availability
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from apps.workflows import (
     access,
     chart_sources,
+    coordination_views,
     definition_services,
     designer,
     engine,
     external,
     handlers,
     receipts,
+    release,
     run_control,
     run_views,
     task_feed,
     today,
+    urgent,
     views,
+)
+from apps.workflows.care import plans, pro, recalls
+from apps.workflows.care import services as care
+from apps.workflows.care.models import (
+    CareAction,
+    CarePlan,
+    PROAssignment,
+    PROOccurrence,
+    Recall,
+    Referral,
+)
+from apps.workflows.care.validation import (
+    CareActionSpec,
+    PROSpec,
+    ReferralSpec,
+    return_window,
 )
 from apps.workflows.inbox import InboxScope
 from apps.workflows.models import (
@@ -52,6 +78,7 @@ from apps.workflows.models import (
     WorkflowStep,
 )
 from apps.workflows.reassignment import apply_reassignment, preview_reassignment
+from apps.workflows.release_models import ReleaseNoticeTemplate
 from apps.workflows.services import (
     TaskOwner,
     TaskSpec,
@@ -66,13 +93,17 @@ from apps.workflows.services import (
     start_run,
     start_task,
 )
+from apps.workflows.urgent_models import UrgentConcern
 from django.db import DatabaseError, connection, transaction
-from django.http import QueryDict
+from django.db.models import F
+from django.http import HttpResponse, QueryDict
 from django.urls import resolve
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
-from ehr.test_autosave import registration
+from ehr.test_addenda import clinician, enrollment_of, join
+from ehr.test_autosave import SECTIONS, as_actor, enrollment, registration
 from identity.permission_support import (
     owner_context,
     permission_context,
@@ -80,10 +111,19 @@ from identity.permission_support import (
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
     AppointmentSetup,
+    arrived_synthetic_appointment,
     create_synthetic_appointment,
     seed_cross_clinic_appointment_setups,
 )
 from workflows import decision_sites
+from workflows.coordination_support import (
+    URGENT,
+    clinic_b_portal,
+    patient_reply,
+    reply_as,
+    urgent_world,
+)
+from workflows.coordination_world import seed_release
 from workflows.decision_sites import SCOPE, discover_sites
 from workflows.permission_support import permission_actor
 from workflows.sql_sites import discover_scope_conditions
@@ -882,7 +922,528 @@ def external_receipt_scope(s: Scoped) -> None:
     assert outcome(s, s.manager, lambda: receipt(own_id))[0] is None
 
 
+# --- Care record-scope sites (todo 52) -------------------------------------------
+# The clinician is on one patient's care team in each clinic and registered in
+# both; the manager manages both. Every permission check passes for the call's
+# clinic, so only each lookup's clinic filter refuses the other clinic's record.
+
+CALM = {f"item_{n}": "0" for n in range(1, 10)}
+
+
+@dataclass(frozen=True)
+class CareSide:
+    """One clinic's care records on one patient of the dual-clinic clinician."""
+
+    enrollment: UUID
+    encounter: UUID
+    plan: UUID
+    plan_key: UUID
+    window: UUID
+    overdue: UUID
+    referral: UUID
+    draft: UUID
+
+
+def care_clinician(s: Scoped) -> tuple[UUID, dict[UUID, UUID]]:
+    enrollments = {clinic: enrollment(s.graph, clinic) for clinic in (s.a, s.b)}
+    user = clinician(s.graph, "physician", enrollments[s.a], s.a)
+    join(s.graph, user, "physician", s.b, enrollments[s.b])
+    with owner_context(s.graph.organization_a):
+        UserClinicRole.objects.filter(user_id=user).update(workflow_bundle_version=2)
+    return user, enrollments
+
+
+def scheduled_encounter(
+    s: Scoped, author: UUID, clinic: UUID, enrolled: UUID, hour: int
+) -> UUID:
+    """An encounter on the author's arrived appointment (referral documents)."""
+    with owner_context(s.graph.organization_a):
+        patient = PatientClinicEnrollment.objects.get(pk=enrolled).patient_id
+    with runtime_role(), tenant_context(s.staff, s.graph.organization_a):
+        # One slot per clinic: a practitioner's availability never overlaps
+        # across clinics (scheduling_availability_active_practitioner_excl).
+        create_availability(
+            clinic_id=clinic,
+            practitioner_id=author,
+            start_local=f"2035-06-05T{hour:02d}:00",
+            end_local=f"2035-06-05T{hour + 1:02d}:00",
+            idempotency_key=uuid4(),
+        )
+        appointment = arrived_synthetic_appointment(
+            AppointmentSetup(
+                organization_id=s.graph.organization_a,
+                clinic_id=clinic,
+                actor_id=s.staff,
+                practitioner_id=author,
+                enrollment_id=enrolled,
+                patient_id=patient,
+            ),
+            start_local=f"2035-06-05T{hour:02d}:00",
+            end_local=f"2035-06-05T{hour + 1:02d}:00",
+        )
+    with as_actor(s.graph, author):
+        return open_encounter(clinic_id=clinic, appointment_id=appointment.pk).pk
+
+
+def finalized_note(
+    s: Scoped, author: UUID, clinic: UUID, enrolled: UUID, hour: int | None = None
+) -> tuple[UUID, UUID]:
+    """A finalized SOAP version on its own encounter in ``clinic``.
+
+    With ``hour`` the encounter is the author's arrived appointment.
+    """
+    with owner_context(s.graph.organization_a):
+        patient = PatientClinicEnrollment.objects.get(pk=enrolled).patient_id
+        template = SpecialtyTemplate.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=clinic,
+            key=f"care-scope-{uuid4().hex[:12]}",
+            version=1,
+            title="Retorno sintetico",
+            prompts=dict.fromkeys(
+                ("subjective", "objective", "assessment", "plan"), "Campo sintetico"
+            ),
+        )
+        if hour is None:
+            encounter = Encounter.objects.create(
+                organization_id=s.graph.organization_a,
+                clinic_id=clinic,
+                patient_id=patient,
+                physician_id=author,
+                unscheduled_reason="documentation_only",
+            ).pk
+    if hour is not None:
+        encounter = scheduled_encounter(s, author, clinic, enrolled, hour)
+    with as_actor(s.graph, author):
+        draft = create_draft(
+            clinic_id=clinic, encounter_id=encounter, template_id=template.pk
+        )
+    request = verified_request(author)
+    with as_actor(s.graph, author):
+        saved = record_clinical_note(
+            clinic_id=clinic,
+            version_id=draft.pk,
+            expected_revision=draft.revision,
+            content=SECTIONS,
+        )
+        version = finalize_version(
+            clinic_id=clinic,
+            version_id=draft.pk,
+            expected_revision=saved.revision,
+            request=request,
+        )
+    return version.pk, encounter
+
+
+def care_side(s: Scoped, author: UUID, clinic: UUID, enrolled: UUID) -> CareSide:
+    # Referral documents are created only from an arrived appointment.
+    version, encounter = finalized_note(
+        s, author, clinic, enrolled, hour=9 if clinic == s.a else 11
+    )
+    now = timezone.now()
+    start, end = return_window(now=now, weeks=6)
+    key = uuid4()
+    with permission_context(s.graph, author):
+        plan = care.create_care_plan_from_version(
+            clinic_id=clinic,
+            version_id=version,
+            actions=(
+                CareActionSpec(
+                    kind="return_window", window_start=start, window_end=end
+                ),
+                CareActionSpec(
+                    kind="staff_coordination",
+                    window_start=now - timedelta(days=3),
+                    window_end=now - timedelta(days=1),
+                ),
+                CareActionSpec(
+                    kind="referral",
+                    window_start=now,
+                    window_end=now + timedelta(days=14),
+                    referral=ReferralSpec(
+                        target_kind="specialty", target_label="Cardiologia"
+                    ),
+                ),
+            ),
+            idempotency_key=key,
+        )
+    with as_actor(s.graph, author):
+        draft = create_document_draft(
+            clinic_id=clinic, encounter_id=encounter, kind=DocumentKind.REFERRAL
+        )
+    with owner_context(s.graph.organization_a):
+        kinds = {a.kind: a.pk for a in CareAction.objects.filter(plan_id=plan.pk)}
+        referral = Referral.objects.get(plan_id=plan.pk).pk
+    return CareSide(
+        enrollment=enrolled,
+        encounter=encounter,
+        plan=plan.pk,
+        plan_key=key,
+        window=kinds["return_window"],
+        overdue=kinds["staff_coordination"],
+        referral=referral,
+        draft=draft.pk,
+    )
+
+
+def care_sides(s: Scoped) -> tuple[UUID, CareSide, CareSide]:
+    author, enrollments = care_clinician(s)
+    return (
+        author,
+        care_side(s, author, s.a, enrollments[s.a]),
+        care_side(s, author, s.b, enrollments[s.b]),
+    )
+
+
+def care_plan_scope(s: Scoped) -> None:
+    """load_plan, load_action, the stale and overdue transitions and both keys."""
+    author, mine, theirs = care_sides(s)
+
+    def cancel(action: UUID) -> object:
+        return care.cancel_care_action(
+            clinic_id=s.a, action_id=action, expected_revision=1
+        )
+
+    same_denial(s, s.manager, lambda: cancel(theirs.window), lambda: cancel(uuid4()))
+    cancelled = outcome(s, s.manager, lambda: cancel(mine.window))[0]
+    assert isinstance(cancelled, CareAction)
+    assert cancelled.state == "cancelled"
+
+    def add(plan: UUID, key: UUID | None = None) -> object:
+        start, end = return_window(now=timezone.now(), weeks=8)
+        return care.add_care_action(
+            clinic_id=s.a,
+            plan_id=plan,
+            spec=CareActionSpec(
+                kind="return_window", window_start=start, window_end=end
+            ),
+            idempotency_key=key or uuid4(),
+        )
+
+    same_denial(s, s.manager, lambda: add(theirs.plan), lambda: add(uuid4()))
+    assert isinstance(outcome(s, s.manager, lambda: add(mine.plan))[0], CareAction)
+    # Another clinic's replay key names a different command in this clinic.
+    reused = uuid5(theirs.plan_key, "action:0")
+    added = outcome(s, s.manager, lambda: add(mine.plan, reused))[0]
+    assert isinstance(added, CareAction)
+    assert (added.clinic_id, added.plan_id) == (s.a, mine.plan)
+
+    def flag(plan: UUID) -> object:
+        return plans.flag_stale_care_plan(clinic_id=s.a, plan_id=plan)
+
+    same_denial(s, s.manager, lambda: flag(theirs.plan), lambda: flag(uuid4()))
+    assert outcome(s, s.manager, lambda: flag(mine.plan))[0] is False
+
+    def overdue(action: UUID) -> object:
+        return plans.mark_care_action_overdue(clinic_id=s.a, action_id=action)
+
+    same_denial(s, s.manager, lambda: overdue(theirs.overdue), lambda: overdue(uuid4()))
+    assert outcome(s, s.manager, lambda: overdue(mine.overdue))[0] is True
+    spare, _encounter = finalized_note(s, author, s.a, mine.enrollment)
+    start, end = return_window(now=timezone.now(), weeks=6)
+    replanned = outcome(
+        s,
+        author,
+        lambda: care.create_care_plan_from_version(
+            clinic_id=s.a,
+            version_id=spare,
+            actions=(
+                CareActionSpec(
+                    kind="return_window", window_start=start, window_end=end
+                ),
+            ),
+            idempotency_key=theirs.plan_key,
+        ),
+    )[0]
+    assert isinstance(replanned, CarePlan)
+    assert (replanned.clinic_id, replanned.source_version_id) == (s.a, spare)
+
+
+def pro_spec(plan: UUID | None = None) -> PROSpec:
+    return PROSpec(
+        instrument_key="phq9",
+        first_due_at=timezone.now() + timedelta(days=7),
+        interval_days=7,
+        occurrences=1,
+        response_role="physician",
+        staffing_policy_ref="eg3-pending-staffing-policy",
+        plan_id=plan,
+    )
+
+
+def care_pro_scope(s: Scoped) -> None:
+    """assign_pro's enrollment, plan and replay lookups and both slot lookups."""
+    author, mine, theirs = care_sides(s)
+
+    def assign(
+        enrolled: UUID,
+        plan: UUID | None = None,
+        key: UUID | None = None,
+        clinic: UUID | None = None,
+    ) -> PROAssignment:
+        return care.assign_pro(
+            clinic_id=clinic or s.a,
+            enrollment_id=enrolled,
+            spec=pro_spec(plan),
+            idempotency_key=key or uuid4(),
+        )
+
+    same_denial(s, author, lambda: assign(theirs.enrollment), lambda: assign(uuid4()))
+    own = outcome(s, author, lambda: assign(mine.enrollment))[0]
+    assert isinstance(own, PROAssignment)
+    same_denial(
+        s,
+        author,
+        lambda: assign(mine.enrollment, theirs.plan),
+        lambda: assign(mine.enrollment, uuid4()),
+    )
+    planned = outcome(s, author, lambda: assign(mine.enrollment, mine.plan))[0]
+    assert isinstance(planned, PROAssignment)
+    assert planned.plan_id == mine.plan
+    key = uuid4()
+    with permission_context(s.graph, author):
+        foreign = assign(theirs.enrollment, key=key, clinic=s.b)
+        local = assign(mine.enrollment)
+    reused = outcome(s, author, lambda: assign(mine.enrollment, key=key))[0]
+    assert isinstance(reused, PROAssignment)
+    assert reused.clinic_id == s.a
+    with owner_context(s.graph.organization_a):
+        slot = {
+            series.clinic_id: PROOccurrence.objects.get(assignment_id=series.pk).pk
+            for series in (foreign, local)
+        }
+
+    def respond(occurrence: UUID) -> object:
+        return care.record_pro_response(
+            clinic_id=s.a, occurrence_id=occurrence, answers=CALM, expected_revision=1
+        )
+
+    same_denial(s, author, lambda: respond(slot[s.b]), lambda: respond(uuid4()))
+    responded = outcome(s, author, lambda: respond(slot[s.a]))[0]
+    assert isinstance(responded, PROOccurrence)
+    assert responded.state == "responded"
+
+    def close(occurrence: UUID) -> object:
+        return pro.close_missed_pro_occurrence(clinic_id=s.a, occurrence_id=occurrence)
+
+    same_denial(s, author, lambda: close(slot[s.b]), lambda: close(uuid4()))
+    assert outcome(s, author, lambda: close(slot[s.a]))[0] is False
+
+
+def care_recall_scope(s: Scoped) -> None:
+    """schedule_recall's enrollment and replay lookups and materialization."""
+    enrollments = {clinic: enrollment(s.graph, clinic) for clinic in (s.a, s.b)}
+
+    def schedule(
+        enrolled: UUID, key: UUID | None = None, clinic: UUID | None = None
+    ) -> Recall:
+        return care.schedule_recall(
+            clinic_id=clinic or s.a,
+            enrollment_id=enrolled,
+            reason="routine_return",
+            interval_days=30,
+            owner_role="receptionist",
+            idempotency_key=key or uuid4(),
+        )
+
+    same_denial(
+        s, s.manager, lambda: schedule(enrollments[s.b]), lambda: schedule(uuid4())
+    )
+    assert isinstance(
+        outcome(s, s.manager, lambda: schedule(enrollments[s.a]))[0], Recall
+    )
+    key = uuid4()
+    with permission_context(s.graph, s.manager):
+        foreign = schedule(enrollments[s.b], key, s.b)
+        local = schedule(enrollments[s.a])
+    reused = outcome(s, s.manager, lambda: schedule(enrollments[s.a], key))[0]
+    assert isinstance(reused, Recall)
+    assert reused.clinic_id == s.a
+    assert reused.pk != foreign.pk
+
+    def materialize(recall: UUID) -> object:
+        return recalls.materialize_recall(clinic_id=s.a, recall_id=recall)
+
+    same_denial(
+        s, s.manager, lambda: materialize(foreign.pk), lambda: materialize(uuid4())
+    )
+    assert outcome(s, s.manager, lambda: materialize(local.pk))[0] is False
+
+
+def care_referral_scope(s: Scoped) -> None:
+    """The referral lookup and link_referral_document's plan and draft lookups."""
+    author, mine, theirs = care_sides(s)
+
+    def advance(referral: UUID) -> object:
+        return care.advance_referral(
+            clinic_id=s.a, referral_id=referral, status="scheduled", expected_revision=1
+        )
+
+    same_denial(s, author, lambda: advance(theirs.referral), lambda: advance(uuid4()))
+    advanced = outcome(s, author, lambda: advance(mine.referral))[0]
+    assert isinstance(advanced, Referral)
+    assert advanced.status == "scheduled"
+
+    def link(referral: UUID, draft: UUID) -> object:
+        return care.link_referral_document(
+            clinic_id=s.a, referral_id=referral, draft_id=draft, expected_revision=1
+        )
+
+    same_denial(
+        s,
+        author,
+        lambda: link(theirs.referral, mine.draft),
+        lambda: link(uuid4(), mine.draft),
+    )
+    same_denial(
+        s,
+        author,
+        lambda: link(mine.referral, theirs.draft),
+        lambda: link(mine.referral, uuid4()),
+    )
+    linked = outcome(s, author, lambda: link(mine.referral, mine.draft))[0]
+    assert isinstance(linked, Referral)
+    assert linked.document_id == mine.draft
+
+
+# --- Todo 55: release notices, deliveries, coverage and urgent concerns ----------
+
+
+def _role_in_b(s: Scoped, user: UUID, role: str) -> None:
+    with owner_context(s.graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.b,
+            user_id=user,
+            role=role,
+            workflow_bundle_version=2,
+        )
+
+
+def notice_scope(s: Scoped) -> None:
+    """Notices are numbered, current and listed within their own clinic."""
+    physician = s.graph.physician
+    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
+    with as_actor(s.graph, physician):
+        for body in ("Aviso da outra clinica.", "Aviso revisto da outra clinica."):
+            release.publish_release_notice(clinic_id=s.b, body=body)
+        release.publish_release_notice(clinic_id=s.a, body="Aviso desta clinica.")
+    current = outcome(s, physician, lambda: release.current_notice(clinic_id=s.a))[0]
+    assert isinstance(current, ReleaseNoticeTemplate)
+    assert (current.version, current.body) == (1, "Aviso desta clinica.")
+    # The verified request is built outside the runtime role that runs the page.
+    request = verified_request(physician)
+    page = outcome(
+        s,
+        physician,
+        lambda: inspect.unwrap(coordination_views._release_notices)(request, s.a),
+    )[0]
+    assert isinstance(page, HttpResponse)
+    assert 'data-notice-version="1"' in page.content.decode()
+    assert 'data-notice-version="2"' not in page.content.decode()
+    published = outcome(
+        s,
+        physician,
+        lambda: release.publish_release_notice(
+            clinic_id=s.a, body="Aviso desta clinica, revisto."
+        ),
+    )[0]
+    assert isinstance(published, ReleaseNoticeTemplate)
+    assert published.version == 2
+
+
+def release_scope(s: Scoped) -> None:
+    """A release and its deliveries resolve the version in the call's clinic."""
+    physician = s.graph.physician
+    _role_in_b(s, physician, UserClinicRole.Role.PHYSICIAN)
+    for clinic in (s.a, s.b):
+        registration(s.graph, physician, clinic)
+    # Released records without an appointment: the scope world already holds
+    # the physician's availability.
+    version = seed_release(s.graph, physician, s.a).version
+
+    def release_in(clinic: UUID, target: UUID) -> Callable[[], object]:
+        return lambda: release.release_result_to_patient(
+            clinic_id=clinic,
+            result_version_id=target,
+            template_version=1,
+            audience="patient",
+        )
+
+    same_denial(s, physician, release_in(s.b, version), release_in(s.b, uuid4()))
+    with as_actor(s.graph, physician):
+        view = release_in(s.a, version)()
+    assert isinstance(view, release.DeliveryView)
+
+    def deliveries(clinic: UUID) -> object:
+        return outcome(
+            s,
+            physician,
+            lambda: release.release_deliveries(
+                clinic_id=clinic, result_version_id=version
+            ),
+        )[0]
+
+    assert deliveries(s.a) == (view,)
+    assert deliveries(s.b) == ()
+
+
+def coverage_scope(s: Scoped) -> None:
+    """Coverage versions and terms belong to their own clinic."""
+
+    def publish(clinic: UUID, version: int, hours: int) -> Callable[[], object]:
+        return lambda: urgent.set_urgent_coverage(
+            clinic_id=clinic,
+            expected_version=version,
+            weekdays=(0, 1, 2, 3, 4),
+            opens_at=time(8, 0),
+            closes_at=time(18, 0),
+            response_hours=hours,
+            responsible_roles=("nurse",),
+        )
+
+    with as_actor(s.graph, s.manager):
+        publish(s.b, 0, 5)()
+        publish(s.b, 1, 6)()
+        publish(s.a, 0, 3)()
+    current = outcome(s, s.manager, lambda: urgent.current_coverage(clinic_id=s.a))[0]
+    assert isinstance(current, urgent.Coverage)
+    assert (current.version, current.response_hours) == (1, 3)
+    settings = outcome(s, s.manager, lambda: urgent.coverage_settings(clinic_id=s.b))[0]
+    assert isinstance(settings, urgent.Coverage)
+    assert settings.response_hours == 6
+    published = outcome(s, s.manager, publish(s.a, 1, 4))[0]
+    assert isinstance(published, urgent.Coverage)
+    assert published.version == 2
+    stale = outcome(s, s.manager, publish(s.a, 2, 4))[0]
+    assert stale == (WorkflowConflictError, WorkflowConflictError().args)
+
+
+def concern_scope(s: Scoped) -> None:
+    """Concerns are listed and decided only within their own clinic."""
+    world = urgent_world(s.graph, coverage=False)
+    patient_reply(world, URGENT)
+    session, thread = clinic_b_portal(s.graph, world.other_enrollment)
+    reply_as(session, s.b, thread, URGENT)
+    with owner_context(s.graph.organization_a):
+        concerns = {row.clinic_id: row.pk for row in UrgentConcern.objects.all()}
+    listed = outcome(s, s.manager, lambda: urgent.urgent_concerns(clinic_id=s.a))[0]
+    assert isinstance(listed, tuple)
+    assert [row.concern_id for row in listed] == [concerns[s.a]]
+
+    def acknowledge(target: UUID) -> Callable[[], object]:
+        return lambda: urgent.acknowledge_urgent_concern(
+            clinic_id=s.a, concern_id=target, expected_revision=1
+        )
+
+    same_denial(s, s.manager, acknowledge(concerns[s.b]), acknowledge(uuid4()))
+    acknowledged_row = outcome(s, s.manager, acknowledge(concerns[s.a]))[0]
+    assert isinstance(acknowledged_row, urgent.ConcernRow)
+    assert acknowledged_row.state == "acknowledged"
+
+
 PYTHON = "apps.workflows."
+CARE = PYTHON + "care."
 PREVIEW = (
     PYTHON + "reassignment.apply_reassignment:scope:payload['clinic'] != str(clinic_id)"
 )
@@ -940,6 +1501,39 @@ PY_CASES: dict[str, Callable[..., None]] = {
     + "chart_sources.read_task_sources:scope:clinic_id=clinic_id#2": chart_task_scope,
     PYTHON
     + "chart_sources.read_task_sources:scope:clinic_id=clinic_id#3": chart_task_scope,
+    CARE + "access.load_action:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE + "access.load_plan:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE + "plans.add_care_action:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE
+    + "plans.create_care_plan_from_version:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE + "plans.flag_stale_care_plan:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE + "plans.mark_care_action_overdue:scope:clinic_id=clinic_id": care_plan_scope,
+    CARE + "pro.assign_pro:scope:clinic_id=clinic_id": care_pro_scope,
+    CARE + "pro.assign_pro:scope:clinic_id=clinic_id#2": care_pro_scope,
+    CARE + "pro.assign_pro:scope:clinic_id=clinic_id#3": care_pro_scope,
+    CARE + "pro.close_missed_pro_occurrence:scope:clinic_id=clinic_id": care_pro_scope,
+    CARE + "pro.record_pro_response:scope:clinic_id=clinic_id": care_pro_scope,
+    CARE + "recalls.materialize_recall:scope:clinic_id=clinic_id": care_recall_scope,
+    CARE + "recalls.schedule_recall:scope:clinic_id=clinic_id": care_recall_scope,
+    CARE + "recalls.schedule_recall:scope:clinic_id=clinic_id#2": care_recall_scope,
+    CARE + "referrals._referral:scope:clinic_id=clinic_id": care_referral_scope,
+    CARE
+    + "referrals.link_referral_document:scope:clinic_id=clinic_id": care_referral_scope,
+    CARE
+    + (
+        "referrals.link_referral_document:scope:clinic_id=clinic_id#2"
+    ): care_referral_scope,
+    PYTHON
+    + "coordination_views._release_notices:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.current_notice:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.publish_release_notice:scope:clinic_id=clinic_id": notice_scope,
+    PYTHON + "release.release_deliveries:scope:clinic_id=clinic_id": release_scope,
+    PYTHON
+    + "release.release_result_to_patient:scope:clinic_id=clinic_id": release_scope,
+    PYTHON + "urgent._decide:scope:clinic_id=clinic_id": concern_scope,
+    PYTHON + "urgent._latest:scope:clinic_id=clinic_id": coverage_scope,
+    PYTHON + "urgent.set_urgent_coverage:scope:clinic_id=clinic_id": coverage_scope,
+    PYTHON + "urgent.urgent_concerns:scope:clinic_id=clinic_id": concern_scope,
 }
 
 
@@ -1283,6 +1877,194 @@ def predecessor_scope(s: Scoped) -> None:
         raw_child(parents[s.a].pk)
 
 
+def care_team(s: Scoped, user: UUID, clinic: UUID, enrolled: UUID) -> None:
+    with owner_context(s.graph.organization_a):
+        CareTeamMembership.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=clinic,
+            patient_enrollment_id=enrolled,
+            user_id=user,
+            role="physician",
+            valid_from=timezone.now() - timedelta(days=1),
+            valid_to=timezone.now() + timedelta(days=1),
+        )
+
+
+def shared_patient(s: Scoped) -> tuple[UUID, UUID, UUID]:
+    """The dual-clinic clinician and one patient enrolled in both clinics.
+
+    The same patient in both clinics leaves only the clinic comparison to
+    refuse; different patients would let a patient check mask its removal.
+    """
+    author, enrollments = care_clinician(s)
+    with owner_context(s.graph.organization_a):
+        patient = PatientClinicEnrollment.objects.get(pk=enrollments[s.a]).patient_id
+    there = enrollment_of(s.graph, patient, s.b)
+    care_team(s, author, s.b, there)
+    return author, enrollments[s.a], there
+
+
+def care_sql_plan_encounter(s: Scoped) -> None:
+    author, here, there = shared_patient(s)
+    local = finalized_note(s, author, s.a, here)
+    foreign = finalized_note(s, author, s.b, there)
+
+    def plan(note: tuple[UUID, UUID]) -> CarePlan:
+        version, encounter = note
+        return CarePlan.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.a,
+            enrollment_id=here,
+            encounter_id=encounter,
+            source_version_id=version,
+            clinician_id=author,
+            idempotency_key=uuid4(),
+            fingerprint="0" * 64,
+        )
+
+    with permission_context(s.graph, author):
+        refused(("23514", "invalid care plan"), lambda: plan(foreign))
+        plan(local)
+        transaction.set_rollback(True)
+
+
+def care_sql_version_scope(s: Scoped) -> None:
+    """The version resolver names this clinic's encounter and enrollment only."""
+    author, here, there = shared_patient(s)
+    local, _encounter = finalized_note(s, author, s.a, here)
+    foreign, _encounter = finalized_note(s, author, s.b, there)
+
+    def scope(version: UUID) -> list[tuple[object, ...]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT enrollment_id FROM "
+                "clinic_app.workflows_care_version_scope(%s,%s)",
+                [s.a, version],
+            )
+            rows: list[tuple[object, ...]] = cursor.fetchall()
+        return rows
+
+    with permission_context(s.graph, author):
+        assert scope(foreign) == []
+        assert scope(local) == [(here,)]
+        transaction.set_rollback(True)
+
+
+def care_sql_occurrence_scope(s: Scoped) -> None:
+    author, here, there = shared_patient(s)
+    slots = {}
+    with permission_context(s.graph, author):
+        for clinic, enrolled in ((s.a, here), (s.b, there)):
+            series = care.assign_pro(
+                clinic_id=clinic,
+                enrollment_id=enrolled,
+                spec=pro_spec(),
+                idempotency_key=uuid4(),
+            )
+            slots[clinic] = PROOccurrence.objects.get(assignment_id=series.pk).pk
+
+    def scope(occurrence: UUID) -> object:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.workflows_care_occurrence_scope(%s,%s)",
+                [s.a, occurrence],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return row[0]
+
+    with permission_context(s.graph, author):
+        assert scope(slots[s.b]) is None
+        assert scope(slots[s.a]) == here
+        transaction.set_rollback(True)
+
+
+def care_sql_referral_document(s: Scoped) -> None:
+    """A documented referral stays linked to a document of its own clinic.
+
+    Plan-less referral rows are written only by migration 0007 (trusted code,
+    guard lifted), so the case writes that row shape the same way; for them
+    the clinic comparison is the only check on the linked document.
+    """
+    author, mine, theirs = care_sides(s)
+    referral = {}
+    with owner_context(s.graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE clinic_app.workflows_referral DISABLE TRIGGER care_guard"
+        )
+        # As in migration 0007: deferred checks must not be pending at ENABLE.
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        for draft in (mine.draft, theirs.draft):
+            referral[draft] = uuid4()
+            cursor.execute(
+                "INSERT INTO clinic_app.workflows_referral (id,organization_id,"
+                "clinic_id,plan_id,action_id,target_kind,target_label,status,"
+                "document_id,created_by_id,revision,last_command_key,"
+                "last_command_digest,created_at,updated_at) VALUES (%s,%s,%s,NULL,"
+                "NULL,'unspecified',NULL,'documented',%s,%s,1,NULL,'',now(),now())",
+                [referral[draft], s.graph.organization_a, s.a, draft, author],
+            )
+        cursor.execute(
+            "ALTER TABLE clinic_app.workflows_referral ENABLE TRIGGER care_guard"
+        )
+
+    def advance(draft: UUID) -> int:
+        return Referral.objects.filter(pk=referral[draft]).update(
+            status="scheduled",
+            revision=F("revision") + 1,
+            last_command_key=uuid4(),
+            last_command_digest="a" * 64,
+        )
+
+    with permission_context(s.graph, s.manager):
+        refused(("23514", "referral document mismatch"), lambda: advance(theirs.draft))
+        assert advance(mine.draft) == 1
+        transaction.set_rollback(True)
+
+
+def urgent_sql_responsible(s: Scoped) -> None:
+    """A responsible role counts only in the clinic that holds it."""
+    member, _enrollment = permission_actor(s.graph, "receptionist")
+    _role_in_b(s, member, "nurse")
+
+    def responsible(clinic: UUID) -> object:
+        with permission_context(s.graph, member), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.workflows_urgent_responsible(%s,%s::varchar[])",
+                [clinic, ["nurse"]],
+            )
+            row = cursor.fetchone()
+            transaction.set_rollback(True)
+        assert row is not None
+        return row[0]
+
+    assert responsible(s.b) is True
+    assert responsible(s.a) is False
+
+
+def urgent_sql_coverage_policy(s: Scoped) -> None:
+    """One clinic's coverage policy never answers for another clinic's patients."""
+    world = urgent_world(s.graph, coverage=False)
+    session, _thread = clinic_b_portal(s.graph, world.other_enrollment)
+    with as_actor(s.graph, s.manager):
+        urgent.set_urgent_coverage(
+            clinic_id=s.b,
+            expected_version=0,
+            weekdays=(0, 1, 2, 3, 4),
+            opens_at=time(8, 0),
+            closes_at=time(18, 0),
+            response_hours=4,
+            responsible_roles=("nurse",),
+        )
+    with runtime_role(), patient_session_context(world.session):
+        assert urgent.patient_coverage_text() == (gettext(urgent.NO_COVERAGE),)
+    with runtime_role(), patient_session_context(session):
+        assert len(urgent.patient_coverage_text()) == 2
+
+
+CARE_GUARD = "scope:workflows_care_guard():"
+
+
 GUARD = "scope:workflows_guard():"
 REFERENCE = "scope:workflows_reference_valid(jsonb,uuid,uuid):"
 SQL_CASES: dict[str, Callable[..., None]] = {
@@ -1307,6 +2089,24 @@ SQL_CASES: dict[str, Callable[..., None]] = {
     REFERENCE + "a.clinic_id=clinic": sql_reference("appointment"),
     REFERENCE + "t.clinic_id=clinic": sql_reference("task"),
     "scope:workflows_staff_catalog(uuid):r.clinic_id=clinic": sql_staff_catalog,
+    CARE_GUARD + "d.clinic_id=NEW.clinic_id": care_sql_referral_document,
+    CARE_GUARD + "e.clinic_id=NEW.clinic_id": care_sql_plan_encounter,
+    (
+        "scope:workflows_care_occurrence_scope(uuid,uuid):o.clinic_id=clinic"
+    ): care_sql_occurrence_scope,
+    (
+        "scope:workflows_care_version_scope(uuid,uuid):e.clinic_id=clinic"
+    ): care_sql_version_scope,
+    (
+        "scope:workflows_care_version_scope(uuid,uuid):n.clinic_id=e.clinic_id"
+    ): care_sql_version_scope,
+    (
+        "scope:workflows_urgent_responsible(uuid,character varying[]):"
+        "r.clinic_id=clinic"
+    ): urgent_sql_responsible,
+    (
+        "scope:workflows_coverage_policy(uuid,uuid):v.clinic_id=clinic"
+    ): urgent_sql_coverage_policy,
 }
 
 
@@ -1367,3 +2167,41 @@ def test_sql_scope_derivation_fails_closed_on_unclassified_uses() -> None:
             discover_scope_conditions()
         transaction.set_rollback(True)
     assert set(discover_scope_conditions()) == set(SQL_CASES)
+
+
+@pytest.mark.parametrize(
+    ("planted", "classified"),
+    [
+        (
+            "CREATE FUNCTION clinic_app.workflows_plant_insert() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ BEGIN "
+            "INSERT INTO clinic_app.workflows_carerefusal "
+            "(id,organization_id,clinic_id) "
+            "VALUES (gen_random_uuid(),NEW.organization_id,NEW.clinic_id); "
+            "RETURN NEW; END $$",
+            True,
+        ),
+        (
+            "CREATE FUNCTION clinic_app.workflows_plant_insert() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ DECLARE v clinic_app.workflows_task; BEGIN "
+            "INSERT INTO clinic_app.workflows_carerefusal "
+            "(id,organization_id,clinic_id) "
+            "VALUES (gen_random_uuid(),v.organization_id,v.clinic_id); "
+            "RETURN NEW; END $$",
+            False,
+        ),
+    ],
+)
+def test_sql_scope_derivation_admits_only_a_trigger_rows_own_scope_in_values(
+    planted: str, *, classified: bool
+) -> None:
+    # INSERT target columns are writes; VALUES may copy only NEW's own scope.
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(planted)
+        if classified:
+            assert set(discover_scope_conditions()) == set(SQL_CASES)
+        else:
+            with pytest.raises(AssertionError, match="unclassified record-scope use"):
+                discover_scope_conditions()
+        transaction.set_rollback(True)
