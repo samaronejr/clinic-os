@@ -114,6 +114,10 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
             "encounter.open_unscheduled",
             "reception.queue",
             "privacy.requests",
+            "inventory.read",
+            "inventory.use",
+            "inventory.manage",
+            "inventory.transfer_org",
         }
         == PERMISSIONS
     )
@@ -129,6 +133,12 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
         # Task 50: management answers LGPD data-subject requests.
         if role in {"owner", "org_admin", "clinic_admin", "clinic_manager"}:
             added.add("privacy.requests")
+        if role in {"clinic_manager", "clinic_admin"}:
+            added.update({"inventory.read", "inventory.use", "inventory.manage"})
+        if role == "nurse":
+            added.update({"inventory.read", "inventory.use"})
+        if role in {"owner", "org_admin"}:
+            added.add("inventory.transfer_org")
         assert bundle == BUNDLES_V1[role] | added, role
     assert len(RP) * len(COLUMNS) == 117
     for role in COLUMNS[:6]:
@@ -144,6 +154,10 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
     with pytest.raises(TypeError):
         cast("dict[str, frozenset[str]]", BUNDLES_V1)["finance"] = frozenset(
             {"clinical.read"}
+        )
+    with pytest.raises(TypeError):
+        cast("dict[str, frozenset[str]]", BUNDLES_V2)["finance"] = frozenset(
+            {"inventory.manage"}
         )
 
 

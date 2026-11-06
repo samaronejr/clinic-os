@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from apps.core import integration
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
+from apps.inventory.rls import CUSTOM_RLS_TABLES as INVENTORY_TABLES
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
 
@@ -71,6 +72,7 @@ TRUNCATE_GUARDS = (
         "prescription_sncrnumberallocation",
         "prescription_sncrnumberallocation_no_truncate",
     ),
+    *((table, "inventory_no_truncate") for table in sorted(INVENTORY_TABLES)),
 )
 __all__: Final = (
     "RbacGraph",
