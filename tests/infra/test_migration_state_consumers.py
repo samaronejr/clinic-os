@@ -14,6 +14,7 @@ from django.db.migrations.state import ModelState, ProjectState
 from infra.test_migration_rendering import _RecordingEditor, rendered_state
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from typing import ClassVar
 
     from django.apps.registry import Apps
@@ -104,8 +105,8 @@ def test_batch_constraint_metadata_reaches_reverse_python_callbacks(
             callback.database_forwards("render_probe", editor, after, before)
 
             class ConsumerMigration(migrations.Migration):
-                operations: ClassVar[list[Operation]] = MigrationOptimizer().optimize(
-                    [batch, callback], "render_probe"
+                operations: ClassVar[Sequence[Operation]] = (
+                    MigrationOptimizer().optimize([batch, callback], "render_probe")
                 )
 
             migration = ConsumerMigration("consumer_probe", "render_probe")
@@ -156,20 +157,25 @@ def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None
     ):
         seen.clear()
         state = before.clone()
+        _ = state.apps
         operation.state_forwards("ai", state)
         callback = migrations.RunPython(observe, reverse_code=observe)
         with _RecordingEditor(connection, collect_sql=True, atomic=False) as editor:
             # Reverse callbacks must be correct before a forward cache clear.
             callback.database_backwards("ai", editor, state, before)
             callback.database_forwards("ai", editor, state, before)
+            following_constraint = migrations.AddConstraint(
+                model_name="evaluationrun", constraint=constraint
+            )
             for following in (
                 migrations.AlterField(
                     model_name="modelconfiguration",
                     name="prompt_sha256",
                     field=models.CharField(default="", max_length=63),
                 ),
-                migrations.AddConstraint(
-                    model_name="evaluationrun", constraint=constraint
+                type(operation)(
+                    database_operations=[following_constraint],
+                    state_operations=[following_constraint],
                 ),
             ):
                 after = state.clone()
