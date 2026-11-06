@@ -14,6 +14,47 @@ from billing import (
     test_suspense_policy,
 )
 
+# These are protocols, not exemptions from actor validation. Definition's own
+# is_active clause checks the practitioner; its caller is checked by lock_book.
+# Allocation, refund, payout and journal-settlement guards also enter lock_book,
+# whose has_permission call reaches identity_actor_permission's active-user check.
+# The legacy settlement guard uses collection_authorized's checked predicates.
+# cash_receipt attributes a write already admitted by cash_guard; its native
+# oracle requires both the active-actor refusal and the actual attributed event.
+ACTOR_PROTOCOL_ORACLES = {
+    "clinic_app.billing_definition_guard()": (
+        "billing.test_sql_inactive_actor."
+        "test_definition_guard_rechecks_active_actor_and_practitioner",
+    ),
+    **dict.fromkeys(
+        (
+            "clinic_app.billing_complete_appointment(uuid,uuid)",
+            "clinic_app.billing_import_legacy(uuid,uuid)",
+            "clinic_app.billing_recognize_completion(uuid,uuid,uuid)",
+        ),
+        (
+            "billing.test_sql_inactive_actor."
+            "test_journal_resolvers_require_current_active_actor",
+        ),
+    ),
+    **dict.fromkeys(
+        (
+            "clinic_app.billing_allocation_guard()",
+            "clinic_app.billing_cash_receipt()",
+            "clinic_app.billing_payout_guard()",
+            "clinic_app.billing_refund_guard()",
+            "clinic_app.billing_settlement_journal_guard()",
+        ),
+        (
+            "billing.test_sql_inactive_actor."
+            "test_journal_native_writes_require_current_active_actor",
+        ),
+    ),
+    "clinic_app.billing_settlement_guard()": (
+        "identity.test_sql_inactive_actor.test_delegating_gates_refuse_inactive_actor",
+    ),
+}
+
 CASES = {
     case.__name__: case
     for case in (
