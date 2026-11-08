@@ -205,5 +205,11 @@ REVOKE EXECUTE ON FUNCTION clinic_app.billing_immutable() FROM clinic_owner;
 """
 for _signature, _public_api in FUNCTIONS:
     _sql += f"REVOKE EXECUTE ON FUNCTION clinic_app.{_signature} FROM clinic_owner;\n"
-_sql += "RESET ROLE;\n"
+# The owner evaluates the billing_staff invoice policy on every maintenance
+# write; its boolean charge check must stay callable there or the policy errors
+# (the same contract questionnaire_staff kept before this migration).
+_sql += """GRANT EXECUTE ON FUNCTION clinic_app.billing_charge_authorized(uuid)
+ TO clinic_owner;
+RESET ROLE;
+"""
 SQL = _sql

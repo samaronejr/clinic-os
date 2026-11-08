@@ -4,8 +4,12 @@ from apps.billing.migrations._invoice_sql import SQL as INVOICE_SQL
 
 
 def _replace_once(source: str, old: str, new: str) -> str:
-    """Fail closed if a frozen SQL fragment no longer has its expected shape."""
-    if source.count(old) != 1:
+    """Fail closed if a frozen SQL fragment no longer has its expected shape.
+
+    The census decoder executes this module without str.count: split is the
+    exactly-once check (tests/scheduling/clock_runsql.py).
+    """
+    if len(source.split(old)) - 1 != 1:
         message = "historical billing guard shape changed"
         raise ValueError(message)
     return source.replace(old, new, 1)

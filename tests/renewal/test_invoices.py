@@ -795,4 +795,5 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             ("billing_payment_event_recorder", "clinic_app"),
             ("billing_payment_event_superseded", "clinic_app"),
             ("billing_payment_event_recovered", "clinic_app"),
+            *((name, "clinic_owner") for name in journal_catalog.OWNER_POLICY),
         }

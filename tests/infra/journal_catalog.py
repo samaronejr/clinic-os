@@ -110,6 +110,9 @@ PUBLIC_API: Final = {
     "billing_complete_appointment",
     "billing_import_legacy",
 }
+# The billing_invoice policy predicate: the owner evaluates that policy on
+# maintenance writes, as it evaluated questionnaire_staff before todo 56.
+OWNER_POLICY: Final = {"billing_charge_authorized"}
 INVOKERS: Final = {"billing_line", "billing_round_ratio"}
 PG_ONLY: Final = INVOKERS
 IMMUTABLE: Final = INVOKERS
@@ -118,7 +121,9 @@ POSTURE: Final = {
     name: (
         "i" if name in IMMUTABLE else "s" if name in STABLE else "v",
         name in PUBLIC_API,
-        ["clinic_app", "clinic_resolver"]
+        ["clinic_app", "clinic_owner", "clinic_resolver"]
+        if name in OWNER_POLICY
+        else ["clinic_app", "clinic_resolver"]
         if name in PUBLIC_API
         else ["clinic_resolver"],
     )
