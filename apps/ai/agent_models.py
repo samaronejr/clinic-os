@@ -123,6 +123,9 @@ class ActionProposal(AgentRecord):
     idempotency_key = models.UUIDField()
     state = models.CharField(max_length=24, default="proposal")
     reason_code = models.CharField(max_length=32, blank=True)
+    # The payload's approval quorum, readable by the PostgreSQL vote guard;
+    # null only on proposals recorded before ai.0012, which cannot advance.
+    quorum = models.PositiveSmallIntegerField(null=True)
 
     class Meta(AgentRecord.Meta):
         """One action key per clinic; changed terms never reuse its approval."""
@@ -148,6 +151,9 @@ class Approval(AgentRecord):
     step_up_evidence = models.JSONField()
     key_id = models.CharField(max_length=32, default="agent-attestation-v1")
     attestation = models.CharField(max_length=64)
+    # Written only by agent_record_approval: the persisted session verification
+    # PostgreSQL checked. Votes without it are never counted.
+    step_up_verified_at = models.DateTimeField(null=True)
 
     class Meta(AgentRecord.Meta):
         """Concurrent approvals by one person contribute exactly one vote."""

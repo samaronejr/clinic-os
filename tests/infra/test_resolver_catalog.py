@@ -20,6 +20,10 @@ from infra import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+RECORD_APPROVAL_ARGUMENTS: Final = (
+    "requested uuid, approval_id uuid, approval_digest text, snapshot jsonb, "
+    "evidence_ref uuid, evidence jsonb, attestation text, session_digest bytea"
+)
 RESOLVER_TABLE_GRANTS: Final = {
     *retention_catalog.TABLE_GRANTS,
     *insurance_catalog.TABLE_GRANTS,
@@ -36,6 +40,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ai_agentrun", "SELECT"),
     ("ai_actionproposal", "SELECT"),
     ("ai_approval", "SELECT"),
+    # ai.0012: agent_record_approval is the only vote writer.
+    ("ai_approval", "INSERT"),
     ("ai_actionexecution", "SELECT"),
     ("ai_actionreceipt", "SELECT"),
     ("ai_compensation", "SELECT"),
@@ -278,6 +284,7 @@ POSTURE_OVERRIDES: Final = {
         True,
         ["clinic_agent", "clinic_app", "clinic_owner", "clinic_resolver"],
     ),
+    "agent_record_approval": ("v", True, ["clinic_app", "clinic_resolver"]),
     "agent_audit_scope": (
         "v",
         False,
@@ -579,6 +586,7 @@ FUNCTION_SIGNATURES: Final = {
     ("agent_source", "requested uuid, source_id uuid"),
     ("agent_approval_current", "requested uuid, approval_id uuid"),
     ("agent_controls", "requested uuid"),
+    ("agent_record_approval", RECORD_APPROVAL_ARGUMENTS),
     ("agent_audit_scope", "record_id uuid, event_name text"),
     ("scribe_room_capture_allowed", "requested_session uuid"),
     ("scribe_room_guard", ""),
@@ -919,6 +927,7 @@ FUNCTION_RESULTS: Final = {
     ("agent_source", "requested uuid, source_id uuid"): "jsonb",
     ("agent_approval_current", "requested uuid, approval_id uuid"): "boolean",
     ("agent_controls", "requested uuid"): "jsonb",
+    ("agent_record_approval", RECORD_APPROVAL_ARGUMENTS): "boolean",
     ("agent_audit_scope", "record_id uuid, event_name text"): (
         "TABLE(organization_id uuid, clinic_id uuid, "
         "principal_id uuid, record_type text)"

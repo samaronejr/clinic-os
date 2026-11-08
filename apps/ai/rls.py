@@ -48,6 +48,8 @@ RUNTIME_GRANTS: Final = {
     "ai_frontdeskthread": frozenset({"SELECT"}),
     "ai_frontdeskturn": frozenset({"SELECT"}),
     **{table: frozenset({"SELECT"}) for table in NON_RLS_TABLES},
+    # ai.0012: only the agent_record_approval resolver writes votes.
+    "ai_approval": frozenset({"SELECT"}),
     **{
         table: frozenset({"SELECT", "INSERT", "UPDATE"})
         for table in (

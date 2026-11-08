@@ -295,6 +295,20 @@ The binding [execution contract](../../docs/ai/agent-execution.md) describes
 the closed tool registry, actual-principal attribution, execute-time revalidation,
 unknown-outcome reconciliation and the synthetic-only limits.
 
+PostgreSQL enforces the approval rules too (`0012_approval_attestation`).
+Runtime cannot insert a vote: `agent_record_approval` is the only writer and
+records one only after it rechecks in SQL that the approver's own session
+carries a persisted TOTP or passkey verification from the last five minutes,
+and that the evidence names the same approver, clinic, digest and evidence id.
+The vote keeps that verification instant, and `agent_approval_current` counts
+only such votes. A proposal declares its payload's quorum; the guard refuses
+approval, an execution claim, the executing transition and the send unless
+that many current votes exist and none is unverified or stale. Only a bounded
+machine-principal policy may declare zero. The HMAC attestation remains a
+Python check because its key never enters PostgreSQL. Votes and proposals
+recorded before 0012 lack this evidence and cannot advance; reject them and
+propose again. Reversing is supported on an empty synthetic database only.
+
 ## Care coordination (todo 53, AI-05)
 
 `care_coordination` is a clinical gateway purpose (patient-scoped
