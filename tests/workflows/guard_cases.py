@@ -110,6 +110,8 @@ class GuardWorld:
     care: Any = None
     # Seeded lazily for the release guard only (coordination_world, todo 55).
     coordination: Any = None
+    # Seeded lazily for the metric receipt trigger only (workflows 0009, todo 63).
+    metric: Any = None
 
     @property
     def clinic(self) -> UUID:

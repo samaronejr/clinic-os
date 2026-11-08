@@ -10,8 +10,9 @@ from uuid import uuid4
 
 import pytest
 from apps.identity.models import UserClinicRole
+from apps.workflows import engine, run_services
 from apps.workflows.care.models import Recall
-from apps.workflows.models import WorkflowDefinitionVersion
+from apps.workflows.models import WorkflowDefinitionVersion, WorkflowStep
 from apps.workflows.urgent_models import UrgentCoveragePolicy
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
@@ -379,6 +380,49 @@ def _coordination_guard(w: GuardWorld, permitted: bool) -> None:
         _refused("42501", publish)
 
 
+def _receipt_refused(step: WorkflowStep) -> None:
+    with pytest.raises(DatabaseError) as caught, transaction.atomic():
+        WorkflowStep.objects.filter(pk=step.pk).update(
+            state="completed", claim_until=None
+        )
+    assert getattr(caught.value.__cause__, "sqlstate", None) == "23514"
+    assert "workflow effect is missing" in str(caught.value.__cause__)
+
+
+def _seed_metric_step(w: GuardWorld) -> WorkflowStep:
+    """Claim one metrics_refresh step as the seeding clinic manager."""
+    with permission_context(w.graph, w.actor):
+        definition = run_services.publish_definition(
+            clinic_id=w.clinic,
+            key="sql-authority-metric-receipt",
+            steps=[{"handler": "metrics_refresh", "metric_id": "no_show", "days": 30}],
+            idempotency_key=uuid4(),
+        )
+        run = run_services.start_run(
+            clinic_id=w.clinic,
+            definition_version_id=definition.pk,
+            context_refs=[{"kind": "clinic", "id": str(w.clinic)}],
+            idempotency_key=uuid4(),
+        )
+        step = WorkflowStep.objects.get(run=run)
+        assert engine.claim_step(step_id=step.pk) == 1
+        # The manager reaches the step, so the per-role case is never vacuous.
+        _receipt_refused(step)
+    return step
+
+
+def _metric_receipt(w: GuardWorld, permitted: bool) -> None:
+    # No role completes a metrics_refresh step without its refresh receipt: a
+    # role that reaches the step meets the receipt trigger before the staff
+    # guard, any other updates no row. The receipt binding itself is pinned by
+    # test_sql_decisions.metric_receipt_authority.
+    steps = WorkflowStep.objects.filter(pk=w.metric.pk)
+    if steps.exists():
+        _receipt_refused(w.metric)
+    else:
+        assert steps.update(state="completed", claim_until=None) == 0
+
+
 SQL_CASES = {
     "clinic_app.workflows_now": _clock,
     "clinic_app.workflows_predecessor_ready": _predecessor,
@@ -411,6 +455,7 @@ SQL_CASES = {
     "clinic_app.workflows_release_system_task_valid": _release_system_task,
     "clinic_app.workflows_release_outcome": _release_outcome,
     "clinic_app.workflows_coordination_guard": _coordination_guard,
+    "clinic_app.analytics_workflow_receipt": _metric_receipt,
 }
 # Trigger guards: only a manager's own write passes their staff decision.
 GUARDS = {"clinic_app.workflows_guard", "clinic_app.workflows_care_guard"}
@@ -423,6 +468,7 @@ def test_every_workflow_sql_member_for_every_catalog_role(
     assert set(SQL_CASES) == workflow_sql_members()
     world = seed_guard_world(rbac_graph, monkeypatch)
     world = replace(world, care=seed_care_world(world))
+    world = replace(world, metric=_seed_metric_step(world))
     managers = {"owner", "org_admin", "clinic_admin", "clinic_manager"}
     for role in (*UserClinicRole.Role.values, None, "inactive"):
         _set_role(
