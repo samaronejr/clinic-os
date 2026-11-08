@@ -17,8 +17,8 @@ PostgreSQL enforces the same boundary (ai.0011). A restrictive
 for revenue ancestry, so agent staff without `automation.finance` neither read
 nor change those rows. A revenue vote stays current only while its approver holds
 `automation.finance`, and `tiss.manage` snapshots approve revenue proposals only.
-An administrator without Finance automation can publish the first policy version
-but cannot read published revenue policy rows.
+Publishing any revenue policy version, the first included, also needs the
+publisher's current `automation.finance`, in Python and in PostgreSQL.
 
 Retrieval uses the existing FORCE-RLS insurance and journal tables, under their
 writer locks. One lock order holds: gateway budget, agent send, insurance, then

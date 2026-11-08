@@ -88,9 +88,18 @@ for _table, _kind, _column in _TABLES:
         f"NOT clinic_app.ai_revenue_ancestry(clinic_id,'{_kind}',{_column})\n"
         f"  OR clinic_app.ai_revenue_row(clinic_id,'{_kind}',{_column})"
     )
+    _check = _bound
+    if _table == "agentpolicyversion":
+        # A new version has no ancestry yet: publishing any revenue version,
+        # the first included, needs the publisher's current Finance automation.
+        _check = (
+            f"({_bound})\n"
+            "  AND (capability<>'revenue_cycle'\n"
+            "  OR clinic_app.has_permission('automation.finance',clinic_id,NULL))"
+        )
     _POLICIES += f"""
 CREATE POLICY agent_finance_bound ON clinic_app.ai_{_table} AS RESTRICTIVE
- TO clinic_app USING({_bound}) WITH CHECK({_bound});
+ TO clinic_app USING({_bound}) WITH CHECK({_check});
 """
     _DROPS += f"DROP POLICY agent_finance_bound ON clinic_app.ai_{_table};\n"
 

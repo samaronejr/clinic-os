@@ -157,6 +157,10 @@ def publish_agent_policy(
 ) -> AgentPolicyVersion:
     """Disabling is a successor version, so queued approvals become stale."""
     user = policy_administrator(clinic_id=clinic_id)
+    if terms.capability == "revenue_cycle":
+        # AI-06 fails closed: every revenue version, the first included, needs
+        # the publisher's current Finance automation (ai.0011 enforces it too).
+        require_permission("automation.finance", clinic_id=clinic_id)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended('agent-send-v1',0))"

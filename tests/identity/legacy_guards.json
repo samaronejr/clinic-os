@@ -116,6 +116,18 @@
       ]
     },
     {
+      "symbol": "apps.ai.agent_policies.publish_agent_policy",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.agent_policies.policy_administrator",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Publishing needs automation administration through policy_administrator; any AI-06 version also needs the publisher's exact-clinic automation.finance through require_permission, and ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
       "symbol": "apps.ai.agent_views.agent_queue",
       "signals": [
         "decorator",
@@ -10660,7 +10672,8 @@
         "test_sql_refuses_a_forged_vote_without_finance_automation",
         "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
         "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
-        "test_inactive_actor_is_refused_by_revenue_sql_itself"
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation"
       ],
       "reason": "Identity-free AI-06 ancestry for restrictive agent policies and the vote guard; agent staff without Finance automation, approver-bound votes, forged votes and raw state changes are executed on 0010 (red) and 0011 (green)."
     },
@@ -14293,6 +14306,7 @@
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
           "clinic_app.ai_frontdeskthread:front_desk_read",
           "clinic_app.ai_frontdeskthread:front_desk_update",
           "clinic_app.ai_frontdeskturn:front_desk_read",

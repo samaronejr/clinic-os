@@ -64,6 +64,7 @@ from ai.revenue_support import (
     PROFESSIONAL_SENTINEL,
     RevenueWorld,
     add_clinic_manager_role,
+    add_finance_role,
     changed_return,
     request_and_collect,
     revenue_world,
@@ -89,6 +90,7 @@ if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
 
     from billing.journal_support import FinanceSetup
+    from rbac_fixtures import RbacGraph
 
 __all__ = ("finance_setup",)
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -437,6 +439,7 @@ def test_finance_scope_resolver_never_opens_another_capability_or_clinic(
     world: RevenueWorld,
 ) -> None:
     graph = world.setup.graph
+    add_finance_role(graph, world.administrator, graph.clinic_b)
     with permission_context(graph, world.administrator):
         unrelated = publish_agent_policy(
             clinic_id=graph.clinic_a,
@@ -960,6 +963,75 @@ def test_sql_refuses_raw_revenue_state_changes_without_finance_automation(
             unbound.approved.pk: "approved",
             unbound.pending.pk: "validated",
         }
+
+
+def policy_row(
+    graph: RbacGraph, clinic: UUID, capability: str, version: int, publisher: UUID
+) -> AgentPolicyVersion:
+    """Write one policy version as publish_agent_policy would, minus its checks."""
+    terms = PolicyTerms(capability, "A0", (), enabled=False)
+    return AgentPolicyVersion.objects.create(
+        organization_id=graph.organization_a,
+        clinic_id=clinic,
+        created_by_id=publisher,
+        capability=capability,
+        version=version,
+        autonomy_ceiling=terms.autonomy_ceiling,
+        tool_allowlist={},
+        budget_actions=terms.budget_actions,
+        budget_micros=terms.budget_micros,
+        timeout_seconds=terms.timeout_seconds,
+        escalation_queue=terms.escalation_queue,
+        compensation_policy={"mode": terms.compensation, "version": 1},
+        enabled=False,
+    )
+
+
+def test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation(
+    world: RevenueWorld,
+) -> None:
+    graph = world.setup.graph
+    revenue = Purpose.REVENUE_CYCLE.value
+    manager, _enrollment = permission_actor(graph, "clinic_manager")
+    for publisher, clinic, version in (
+        # The first revenue version in clinic B, by an owner without Finance there.
+        (world.administrator, graph.clinic_b, 1),
+        # A successor version in clinic A, by a clinic manager without Finance.
+        (manager, graph.clinic_a, 2),
+    ):
+        with permission_context(graph, publisher):
+            with (
+                transaction.atomic(),
+                pytest.raises(DatabaseError, match="row-level security"),
+            ):
+                policy_row(graph, clinic, revenue, version, publisher)
+            # The same publisher still writes another capability's first version.
+            assert policy_row(graph, clinic, "front_desk", 1, publisher).pk
+    with owner_context(graph.organization_a):
+        versions = AgentPolicyVersion.objects.filter(capability=revenue).values_list(
+            "clinic_id", "version"
+        )
+        assert list(versions) == [(graph.clinic_a, 1)]
+
+
+def test_publication_refuses_revenue_policies_without_finance_automation(
+    world: RevenueWorld,
+) -> None:
+    graph = world.setup.graph
+    # Python refuses before any SQL write; PostgreSQL would refuse next.
+    with (
+        permission_context(graph, world.administrator),
+        pytest.raises(CurrentActorError),
+    ):
+        publish_agent_policy(
+            clinic_id=graph.clinic_b,
+            expected_version=0,
+            terms=PolicyTerms("revenue_cycle", "A0", (), enabled=False),
+        )
+    with owner_context(graph.organization_a):
+        assert not AgentPolicyVersion.objects.filter(
+            clinic_id=graph.clinic_b, capability=Purpose.REVENUE_CYCLE.value
+        ).exists()
 
 
 def test_python_refuses_the_same_draft_without_finance_automation(

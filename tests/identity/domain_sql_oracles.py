@@ -378,7 +378,10 @@ REVENUE_BOUND_ORACLES = [
 ]
 
 PROTOCOL_ORACLES = {
-    "clinic_app.ai_revenue_ancestry": REVENUE_BOUND_ORACLES,
+    "clinic_app.ai_revenue_ancestry": [
+        *REVENUE_BOUND_ORACLES,
+        "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation",
+    ],
     "clinic_app.ai_revenue_row": [
         "test_inactive_actor_is_refused_by_revenue_sql_itself",
         "test_finance_scope_resolver_never_opens_another_capability_or_clinic",

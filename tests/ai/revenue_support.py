@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     from billing.journal_support import FinanceSetup
     from insurance.cycle_support import Cycle
+    from rbac_fixtures import RbacGraph
 
 # SC-15 sentinels planted in protected TISS sources; a TISS card holds 20 chars.
 CARD_SENTINEL: Final = "SINTETICO-SENTINELA"
@@ -98,6 +99,8 @@ def revenue_world(
             retention_terms="synthetic-no-retention",
         ),
     )
+    # Publishing any AI-06 version needs the publisher's Finance automation.
+    add_finance_role(graph, gateway.administrator, setup.clinic_id)
     with permission_context(graph, gateway.administrator):
         policy = publish_agent_policy(
             clinic_id=setup.clinic_id,
@@ -136,6 +139,17 @@ def request_and_collect(
     with revenue_scope(world, actor):
         return collect_revenue_cycle(
             clinic_id=world.setup.clinic_id, invocation_id=review.invocation_id
+        )
+
+
+def add_finance_role(graph: RbacGraph, user: UUID, clinic: UUID) -> None:
+    """Give an existing staff member the Finance bundle in one clinic."""
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=clinic,
+            user_id=user,
+            role=UserClinicRole.Role.FINANCE,
         )
 
 
