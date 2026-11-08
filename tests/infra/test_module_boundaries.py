@@ -19,6 +19,9 @@ from apps.core.integration import (
     OperationRequest,
     enqueue_operation,
 )
+from apps.crm import campaigns as crm_campaigns
+from apps.crm import patient as crm_patient
+from apps.crm import services as crm_services
 from apps.ehr.services import record_clinical_note
 from apps.identity import (
     delegates,
@@ -72,6 +75,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
+        "apps.crm.apps.CrmConfig",
         "apps.consent.apps.ConsentConfig",
         "apps.core.apps.CoreConfig",
         "apps.ehr.apps.EhrConfig",
@@ -278,6 +282,71 @@ def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
         if p.default is not Parameter.empty
     } == defaults
     assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            crm_services.create_lead,
+            ["clinic_id", "name", "email", "source_id"],
+            {"source_id": None},
+        ),
+        (
+            crm_campaigns.create_campaign,
+            ["clinic_id", "title", "template_version_id", "targeting"],
+            {"targeting": None},
+        ),
+        (
+            crm_campaigns.approve_campaign,
+            ["clinic_id", "campaign_id", "expected_revision"],
+            {},
+        ),
+        (
+            crm_campaigns.send_campaign,
+            ["clinic_id", "campaign_id", "expected_revision"],
+            {},
+        ),
+        (crm_campaigns.campaign_audience, ["clinic_id", "campaign_id"], {}),
+        (crm_campaigns.refresh_campaign, ["clinic_id", "campaign_id"], {}),
+        (crm_services.create_source, ["clinic_id", "code", "name"], {}),
+        (crm_services.convert_lead, ["clinic_id", "lead_id", "enrollment_id"], {}),
+        (crm_services.redact_expired_leads, ["clinic_id"], {}),
+        (crm_services.conversion_report, ["clinic_id"], {}),
+        (
+            crm_services.publish_booking_profile,
+            ["clinic_id", "code", "description"],
+            {},
+        ),
+        (crm_patient.set_marketing_preference, ["channel", "opted_in"], {}),
+        (crm_patient.record_satisfaction, ["appointment_id", "score"], {}),
+    ],
+)
+def test_crm_entrypoints_are_keyword_only(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+    assert {
+        name: parameter.default
+        for name, parameter in parameters.items()
+        if parameter.default is not Parameter.empty
+    } == defaults
+
+
+def test_crm_marketing_callback_preserves_the_inbox_contract() -> None:
+    parameters = signature(crm_campaigns.marketing_opted_in).parameters
+    assert list(parameters) == ["enrollment_id", "channel"]
+    assert all(
+        parameter.kind is Parameter.POSITIONAL_OR_KEYWORD
+        and parameter.default is Parameter.empty
+        for parameter in parameters.values()
+    )
 
 
 @pytest.mark.parametrize(

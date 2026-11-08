@@ -12,6 +12,19 @@ CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
     **{
+        f"crm.{kind}.{verb}": ("tenant", "clinic-os-web", f"crm.{kind}", verb)
+        for kind, verbs in {
+            "source": ("created",),
+            "lead": ("created", "converted", "redacted"),
+            "campaign": ("created", "approved", "sending", "sent"),
+            "send": ("queued",),
+            "profile": ("published",),
+            "preference": ("recorded",),
+            "survey": ("recorded",),
+        }.items()
+        for verb in verbs
+    },
+    **{
         f"retention.purge.{state}": (
             "tenant",
             "clinic-os-worker",

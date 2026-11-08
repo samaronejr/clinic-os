@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "todo": 62,
+  "recorded_at": "2026-11-06T19:44:27.959570+00:00",
+  "status": "ready_for_native_gates",
+  "scope": "Ethical CRM, consented campaigns, optional post-visit satisfaction and public booking.",
+  "source": {
+    "schema_version": 1,
+    "branch": "ulw/cpi-e-t62",
+    "dependency_base": "d3bb5356ed874a5d299897c1dcfb2f1c1b9a6924",
+    "tree": "23541e3703fec09745e44e9fbab79e050ee68a27",
+    "source_patch": "source-review-fixed.patch",
+    "source_patch_sha256": "17cafeb5606bcde7d3f6a67c881e198bf5a5c3ea83d2db07d9e7e3261cbab59c",
+    "canonical_gate": "deferred-to-host-quiet-batch",
+    "native_reports_relabelled": false,
+    "commit": "9ecbebd4a5f755c7365be5227f687f1f3dd04c20",
+    "reviewed_parent": "3f3a9fec7b36346c1a3dc11c2671a7514fd7245f"
+  },
+  "implementation": [
+    "Separate encrypted prospects, referral sources and 90-day redaction.",
+    "Consent-filtered neutral campaigns with human approval and execute-time revalidation.",
+    "Opt-out, purpose and contact mutation serialized with the clinic marketing send lock.",
+    "Optional satisfaction for the patient's own completed visit and aggregate conversion counts.",
+    "Native demographic record choices and idempotent stable-code clinic publication.",
+    "Selector-free public booking through existing invitation and self-booking authority."
+  ],
+  "verification": "VERIFICATION.json",
+  "campaign_evidence": "campaign.json",
+  "current_crm_cases": 37,
+  "coverage_percent": 94.10801963993454,
+  "serial_final_passes": 3667,
+  "canonical_gate": "deferred-to-host-quiet-batch",
+  "root_takeover": "takeover/canonical-ready.json",
+  "cleanup": "review-fix-r1/cleanup.json",
+  "worktree_clean": true,
+  "external_gates": "BLOCKED-ON-EG",
+  "real_providers_or_patient_data_used": false,
+  "independent_review": "confirmed-pending-R; no approval claimed",
+  "review_history": [
+    {
+      "report": "gate-review-r1.md",
+      "status": "needs-fix",
+      "finding": "B1 consent eligibility was not bound to the prepared destination."
+    },
+    {
+      "report": "review-fix-r1/REVIEW-FIX.json",
+      "status": "consent fix recorded",
+      "commit": "9ecbebd4a5f755c7365be5227f687f1f3dd04c20"
+    },
+    {
+      "report": "gate-review-r1.md",
+      "status": "confirmed-pending-R",
+      "scope": "B1 consent fix; browser, native R and upgrade remain deferred."
+    }
+  ],
+  "review_fix": {
+    "finding": "B1",
+    "reviewed_commit": "3f3a9fec7b36346c1a3dc11c2671a7514fd7245f",
+    "fix_commit": "9ecbebd4a5f755c7365be5227f687f1f3dd04c20",
+    "status": "ready-for-independent-re-review",
+    "native_judgment": "review-fix-r1/NATIVE-JUDGMENT.json",
+    "confirmed_red": 2,
+    "green": 2,
+    "affected_passes": 350,
+    "serial_passes": 3667,
+    "required_manifest_prefixes": 24,
+    "junit_family": "xunit1",
+    "cleanup": "review-fix-r1/cleanup.json",
+    "browser_gate": "deferred-to-host-quiet-batch"
+  }
+}

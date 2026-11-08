@@ -34,6 +34,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("", include("apps.workflows.urls")),
     path("", include("apps.orders.urls")),
     path("", include("apps.comms.urls")),
+    path("", include("apps.crm.urls")),
     path("", include("apps.intake.urls")),
     path("", include("apps.scheduling.urls")),
     path("", include("apps.ehr.urls")),

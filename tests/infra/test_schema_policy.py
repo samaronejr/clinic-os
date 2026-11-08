@@ -2,6 +2,7 @@ from typing import Final
 
 import psycopg
 import pytest
+from apps.crm.rls import CUSTOM_RLS_TABLES as CRM_CUSTOM_RLS_TABLES
 from apps.identity.models import (
     Clinic,
     ClinicConfiguration,
@@ -66,6 +67,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        *CRM_CUSTOM_RLS_TABLES,
         # Exact receipt-only policies and resolver-only writes: retention tests.
         "retention_artifactpurge",
         # Exact capture/consent/token policies: tests/scribe/test_posture.py.

@@ -23,6 +23,7 @@
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
 | scribe | consented capture, volatile buffers, verified encrypted ingest and room gating | new | scribe/README.md |
 | inventory | immutable stock movements, batch expiry, procedure links, approved purchasing and equipment evidence | new | inventory/README.md |
+| crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
 
 ## REQUEST AUTHORITY FLOW
 

@@ -39,6 +39,18 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    *(
+        (f"crm_{table}", "crm_no_truncate")
+        for table in (
+            "referralsource",
+            "lead",
+            "marketingpreference",
+            "campaign",
+            "campaignsend",
+            "satisfactionsurvey",
+            "publicbookingprofile",
+        )
+    ),
     ("ai_evaluationprotocol", "evaluation_no_truncate"),
     ("ai_evaluationrun", "evaluation_no_truncate"),
     ("ai_evaluationrating", "evaluation_no_truncate"),

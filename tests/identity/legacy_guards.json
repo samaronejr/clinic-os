@@ -8889,6 +8889,151 @@
       "probes": [
         "apps.inventory.stock.stock_alerts#cut1"
       ]
+    },
+    {
+      "symbol": "apps.crm.access.manager",
+      "signals": [
+        "denial",
+        "permission",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.access.manager#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns._campaign",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns._campaign#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns._template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns._template#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns.campaign_audience",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns.campaign_audience#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.patient._audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.patient._audit#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.patient.set_marketing_preference",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.patient.set_marketing_preference#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.services.convert_lead",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.services.convert_lead#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.services.create_lead",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.services.create_lead#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._booking_fields",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._booking_fields#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._brand",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._brand#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._public_patient_screen",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._public_patient_screen#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views.manager_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views.manager_page#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views.public_access",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views.public_access#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
     }
   ],
   "probes": [
@@ -9041,6 +9186,19 @@
     "apps.core.workspace.resolve_workspace",
     "apps.core.workspace_access._billing_surface_admitted",
     "apps.core.workspace_access.workspace_denial",
+    "apps.crm.access.manager#cut1",
+    "apps.crm.campaigns._campaign#cut1",
+    "apps.crm.campaigns._template#cut1",
+    "apps.crm.campaigns.campaign_audience#cut1",
+    "apps.crm.patient._audit#cut1",
+    "apps.crm.patient.set_marketing_preference#cut1",
+    "apps.crm.services.convert_lead#cut1",
+    "apps.crm.services.create_lead#cut1",
+    "apps.crm.views._booking_fields#cut1",
+    "apps.crm.views._brand#cut1",
+    "apps.crm.views._public_patient_screen#cut1",
+    "apps.crm.views.manager_page#cut1",
+    "apps.crm.views.public_access#cut1",
     "apps.ehr.attachment_views._workspace",
     "apps.ehr.attachment_views.attachment_workspace",
     "apps.ehr.attachments.attachment_context",
@@ -9583,6 +9741,12 @@
         "receptionist",
         "clinic_admin"
       ]
+    },
+    {
+      "path": "apps/crm/access.py",
+      "function": "manager",
+      "roles": "(UserClinicRole.Role.CLINIC_MANAGER,)",
+      "legacy_allowed": []
     },
     {
       "path": "apps/ehr/attachment_views.py",
@@ -12543,11 +12707,16 @@
           "clinic_app.consent_noticeversion:consent_notice_read",
           "clinic_app.consent_refusalrecord:consent_alias_read",
           "clinic_app.consent_refusalrecord:consent_refusal_insert",
-          "clinic_app.consent_refusalrecord:consent_refusal_read"
+          "clinic_app.consent_refusalrecord:consent_refusal_read",
+          "clinic_app.crm_marketingpreference:crm_patient_insert",
+          "clinic_app.crm_marketingpreference:crm_patient_read"
         ],
         "resolvers": [
           "clinic_app.consent_audit_scope",
-          "clinic_app.consent_guard"
+          "clinic_app.consent_guard",
+          "clinic_app.crm_contact_version",
+          "clinic_app.crm_guard",
+          "clinic_app.crm_patient_audit_scope"
         ],
         "signatures": [
           {
@@ -12962,6 +13131,7 @@
           "clinic_app.comms_patient_audit",
           "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
+          "clinic_app.crm_patient_audit",
           "clinic_app.data_request_audit",
           "clinic_app.data_request_emit_task",
           "clinic_app.data_request_task_valid",
@@ -13892,6 +14062,7 @@
           "clinic_app.ai_staff",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
+          "clinic_app.crm_manager",
           "clinic_app.data_request_guard",
           "clinic_app.delegate_staff",
           "clinic_app.ehr_patient_permission",
@@ -15676,6 +15847,8 @@
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [
+          "clinic_app.crm_satisfactionsurvey:crm_patient_insert",
+          "clinic_app.crm_satisfactionsurvey:crm_patient_read",
           "clinic_app.scheduling_appointment:patient_booking_insert",
           "clinic_app.scheduling_appointment:patient_booking_read",
           "clinic_app.scheduling_appointment:patient_booking_update",
@@ -15690,6 +15863,8 @@
           "clinic_app.scheduling_waitlistoffer:waitlist_update"
         ],
         "resolvers": [
+          "clinic_app.crm_guard",
+          "clinic_app.crm_patient_audit_scope",
           "clinic_app.patient_booking_guard",
           "clinic_app.patient_booking_lock_availability",
           "clinic_app.patient_booking_practitioner",
@@ -15792,6 +15967,8 @@
         ],
         "resolvers": [
           "clinic_app.consent_delegate_guard",
+          "clinic_app.crm_contact_version",
+          "clinic_app.crm_guard",
           "clinic_app.prescription_patient_documents",
           "clinic_app.retention_patient_releases"
         ],
@@ -21489,6 +21666,229 @@
         "test_expired_batch_is_alerted_and_cannot_be_used"
       ],
       "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
+    },
+    "clinic_app.crm_contact_version": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_synthetic_campaign_and_outbox_metadata_only",
+        "test_post_visit_score_only_for_own_completed_appointment"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "channel_name text",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_guard": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_synthetic_campaign_and_outbox_metadata_only",
+        "test_post_visit_score_only_for_own_completed_appointment"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_immutable": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_immutable_sql_receipts_cannot_be_truncated"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_manager": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_manager_role_permissions_remain_current"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [
+          "clinic_app.crm_campaign:crm_staff_insert",
+          "clinic_app.crm_campaign:crm_staff_read",
+          "clinic_app.crm_campaign:crm_staff_update",
+          "clinic_app.crm_campaignsend:crm_staff_insert",
+          "clinic_app.crm_campaignsend:crm_staff_read",
+          "clinic_app.crm_lead:crm_staff_insert",
+          "clinic_app.crm_lead:crm_staff_read",
+          "clinic_app.crm_lead:crm_staff_update",
+          "clinic_app.crm_marketingpreference:crm_staff_read",
+          "clinic_app.crm_publicbookingprofile:crm_staff_insert",
+          "clinic_app.crm_publicbookingprofile:crm_staff_read",
+          "clinic_app.crm_publicbookingprofile:crm_staff_update",
+          "clinic_app.crm_referralsource:crm_staff_insert",
+          "clinic_app.crm_referralsource:crm_staff_read",
+          "clinic_app.crm_satisfactionsurvey:crm_staff_read"
+        ],
+        "resolvers": [
+          "clinic_app.crm_guard"
+        ]
+      }
+    },
+    "clinic_app.crm_marketing_lock": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_synthetic_campaign_and_outbox_metadata_only",
+        "test_post_visit_score_only_for_own_completed_appointment"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_neutral_message": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_raw_marketing_template_rejected_by_sql"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_patient_audit": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_synthetic_campaign_and_outbox_metadata_only",
+        "test_post_visit_score_only_for_own_completed_appointment"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.crm_patient_audit_scope": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_synthetic_campaign_and_outbox_metadata_only",
+        "test_post_visit_score_only_for_own_completed_appointment"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.crm_patient_audit"
+        ]
+      }
+    },
+    "clinic_app.crm_public_profile": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_public_invitation_uses_fixed_url_and_generic_failures"
+      ],
+      "reason": "CRM protocol: executed all-role/current-permission, immutable receipt, patient consent, neutral transport and public projection oracles; exact live catalog pins remain required.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_code text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/crm/migrations/_crm_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
     }
   },
   "sql_method": [

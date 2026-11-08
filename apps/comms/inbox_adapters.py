@@ -21,21 +21,25 @@ from django.utils import timezone
 
 from apps.comms.adapters import PermanentSendError, SendResult, TransientSendError
 from apps.comms.capabilities import channel_capability
+from apps.comms.inbound_providers import WebhookRejectedError, normalize_address
 from apps.comms.inbox_rules import SendRequest, decide_send
 from apps.comms.inbox_services import (
     PROVIDER_BY_CHANNEL,
     SUBJECT_TYPE,
+    contact_fingerprints,
     conversation_lock_key,
     marketing_opted_in,
 )
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
+from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from uuid import UUID
 
     from apps.comms.adapters import OperationScope
+    from apps.comms.models import Conversation
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +58,31 @@ def _message_for(operation: IntegrationOperation) -> Message:
     )
 
 
+def _marketing_destination(conversation: Conversation) -> str | None:
+    """Bind the immutable thread identity to the current verified destination."""
+    if conversation.enrollment_id is None:
+        return None
+    enrollment = PatientClinicEnrollment.objects.filter(
+        pk=conversation.enrollment_id, clinic_id=conversation.clinic_id
+    ).first()
+    if enrollment is None:
+        return None
+    contact = PatientContact.objects.filter(
+        patient_id=enrollment.patient_id, channel=conversation.channel
+    ).first()
+    if contact is None or contact.verified_version != contact.destination_version:
+        return None
+    try:
+        destination = normalize_address(conversation.channel, contact.destination)
+    except WebhookRejectedError:
+        return None
+    if conversation.contact_fingerprint not in contact_fingerprints(
+        channel=conversation.channel, address=destination
+    ):
+        return None
+    return destination
+
+
 class InboxAdapter:
     """Shared mechanics; each channel keeps its own capability gate and provider."""
 
@@ -70,6 +99,19 @@ class InboxAdapter:
             raise PermanentSendError
         destination = conversation.contact_address
         template = message.template
+        marketing = conversation.purpose == "marketing"
+        if marketing:
+            from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
+
+            if template is None or template.body not in MARKETING_BODIES:
+                raise PermanentSendError
+            current_destination = _marketing_destination(conversation)
+            if current_destination is None:
+                raise PermanentSendError
+            destination = current_destination
+        # Marketing bytes come from the immutable neutral template, never an
+        # independently inserted encrypted body or arbitrary stored parameters.
+        body = template.body if marketing and template is not None else message.body
         payload: dict[str, object] = {}
         if self.channel == "whatsapp":
             payload = (
@@ -77,12 +119,16 @@ class InboxAdapter:
                     to=destination,
                     name=template.name,
                     language=template.language,
-                    parameters=tuple(json.loads(message.template_parameters or "[]")),
+                    parameters=(
+                        ()
+                        if marketing
+                        else tuple(json.loads(message.template_parameters or "[]"))
+                    ),
                 )
                 if template is not None
-                else text_payload(to=destination, body=message.body)
+                else text_payload(to=destination, body=body)
             )
-        return OutboundMessage(self.channel, destination, message.body, payload)
+        return OutboundMessage(self.channel, destination, body, payload)
 
     def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
         """Return only a synthetic acceptance reference, or fail closed."""
@@ -155,6 +201,15 @@ def message_send_eligible(scope: OperationScope) -> bool:
     if message is None or message.conversation.clinic_id != scope.clinic_id:
         return False
     conversation, template = message.conversation, message.template
+    if conversation.purpose == "marketing":
+        from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
+
+        if (
+            template is None
+            or template.body not in MARKETING_BODIES
+            or _marketing_destination(conversation) is None
+        ):
+            return False
     decision = decide_send(
         SendRequest(
             channel=conversation.channel,
@@ -182,9 +237,15 @@ def message_send_eligible(scope: OperationScope) -> bool:
 
 def message_lock_key(scope: OperationScope, subject_id: UUID) -> str | None:
     """Serialize sends with thread mutations such as close and patient link."""
-    conversation_id = (
+    thread = (
         Message.objects.filter(pk=subject_id, conversation__clinic_id=scope.clinic_id)
-        .values_list("conversation_id", flat=True)
+        .values_list("conversation_id", "conversation__purpose")
         .first()
     )
-    return None if conversation_id is None else conversation_lock_key(conversation_id)
+    if thread is None:
+        return None
+    if thread[1] == "marketing":
+        # The stable clinic parent also covers a preference or purpose consent
+        # changed before a new conversation exists (todo 62).
+        return f"crm.marketing:{scope.clinic_id}"
+    return conversation_lock_key(thread[0])

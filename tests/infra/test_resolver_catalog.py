@@ -6,6 +6,7 @@ from django.db import connection
 from infra import (
     comms_inbox_catalog,
     coordination_catalog,
+    crm_catalog,
     duplicate_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
@@ -20,6 +21,7 @@ from infra import (
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *crm_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
@@ -251,6 +253,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     *coordination_catalog.COLUMN_GRANTS,
 }
 POSTURE_OVERRIDES: Final = {
+    **crm_catalog.POSTURE,
     **retention_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -551,6 +554,7 @@ POSTURE_OVERRIDES: Final = {
     **inventory_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
+    *crm_catalog.RESULTS,
     *retention_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
@@ -865,6 +869,7 @@ FUNCTION_SIGNATURES: Final = {
     *inventory_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    **crm_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",
