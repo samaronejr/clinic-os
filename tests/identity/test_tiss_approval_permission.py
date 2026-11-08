@@ -88,24 +88,38 @@ def test_clinical_approval_rechecks_registration_and_v2_subtractions(
         require_permission("tiss.clinical_approve", clinic_id=rbac_graph.clinic_a)
 
 
-def test_permission_extension_preserves_current_evaluator_and_is_repeatable() -> None:
+def test_permission_extension_installs_its_static_composition_repeatably() -> None:
+    # Given: 0047's SQL, composed statically from 0044 as 0044 composes from 0042.
+    body = SQL.split("$f$")[1]
+    evaluator = (
+        "SELECT prosrc, pg_get_functiondef(oid) FROM pg_proc WHERE oid="
+        "'clinic_app.identity_actor_permission(text,uuid,uuid,uuid,uuid)'"
+        "::regprocedure"
+    )
+    bundle = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conrelid='clinic_app.identity_rolegrant'::regclass "
+        "AND conname='identity_rolegrant_bundle'"
+    )
     with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_get_functiondef("
-            "'clinic_app.identity_actor_permission(text,uuid,uuid,uuid,uuid)'"
-            "::regprocedure)"
-        )
+        cursor.execute(evaluator)
         before = cursor.fetchone()
+        cursor.execute(bundle)
+        constraint = cursor.fetchone()
+        # Then: the migrated evaluator body is exactly the static composition.
         assert before is not None
-        assert "perm='privacy.requests'" in before[0]
-        assert "perm='tiss.clinical_approve'" in before[0]
+        assert before[0] == body
+        assert "perm='privacy.requests'" in body
+        assert "perm='tiss.clinical_approve'" in body
+        assert constraint is not None
+        assert "tiss.clinical_approve" in constraint[0]
+        # When: the static SQL runs again on the migrated database.
         cursor.execute(SQL)
-        cursor.execute(
-            "SELECT pg_get_functiondef("
-            "'clinic_app.identity_actor_permission(text,uuid,uuid,uuid,uuid)'"
-            "::regprocedure)"
-        )
+        # Then: neither the evaluator nor the bundle constraint changes.
+        cursor.execute(evaluator)
         assert cursor.fetchone() == before
+        cursor.execute(bundle)
+        assert cursor.fetchone() == constraint
         cursor.execute(
             "SELECT pg_get_functiondef("
             "'clinic_app.has_permission(text,uuid,uuid)'::regprocedure)"

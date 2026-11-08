@@ -21104,6 +21104,7 @@
       "discovery": {
         "migrations": [
           "apps/identity/migrations/_agent_authority_sql.py",
+          "apps/identity/migrations/_insurance_permission_sql.py",
           "apps/identity/migrations/_inventory_permission_sql.py"
         ],
         "policies": [],

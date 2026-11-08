@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations
-from psycopg import sql
 
 from apps.ai.migrations._state_batch import SchemaStateBatch
 
@@ -24,14 +23,16 @@ def finish_foreign_keys(
     _apps: StateApps, schema_editor: BaseDatabaseSchemaEditor
 ) -> None:
     """Validate deferred relationships inside the protected schema transaction."""
-    targets = (
-        "identity_organization",
-        "identity_clinic",
-        "identity_user",
+    # Deferred relationships reach these FORCE RLS tables; identity_user, the
+    # remaining target, does not force RLS. Any other state fails closed, so the
+    # literal toggles below never force a table that was not forced.
+    forced_targets = (
         "billing_invoice",
         "billing_journalsettlement",
         "billing_settlementallocation",
         "ehr_encounter",
+        "identity_clinic",
+        "identity_organization",
         "intake_insurancemembership",
         "intake_patientclinicenrollment",
         "scheduling_appointment",
@@ -41,24 +42,23 @@ def finish_foreign_keys(
         cursor.execute(
             "SELECT c.relname FROM pg_class c JOIN pg_namespace n "
             "ON n.oid=c.relnamespace WHERE n.nspname='clinic_app' "
-            "AND c.relname=ANY(%s) AND c.relforcerowsecurity",
-            [list(targets)],
+            "AND c.relname=ANY(%s) AND c.relforcerowsecurity ORDER BY c.relname",
+            [[*forced_targets, "identity_user"]],
         )
-        forced = [row[0] for row in cursor.fetchall()]
-    for table in forced:
+        forced = tuple(row[0] for row in cursor.fetchall())
+    if forced != forced_targets:
+        message = "insurance relationship targets changed their FORCE RLS state"
+        raise RuntimeError(message)
+    for table in forced_targets:
         schema_editor.execute(
-            sql.SQL("ALTER TABLE clinic_app.{} NO FORCE ROW LEVEL SECURITY")
-            .format(sql.Identifier(table))
-            .as_string()
+            f"ALTER TABLE clinic_app.{table} NO FORCE ROW LEVEL SECURITY"
         )
     for statement in schema_editor.deferred_sql:
         schema_editor.execute(statement)
     schema_editor.deferred_sql.clear()
-    for table in forced:
+    for table in forced_targets:
         schema_editor.execute(
-            sql.SQL("ALTER TABLE clinic_app.{} FORCE ROW LEVEL SECURITY")
-            .format(sql.Identifier(table))
-            .as_string()
+            f"ALTER TABLE clinic_app.{table} FORCE ROW LEVEL SECURITY"
         )
 
 
