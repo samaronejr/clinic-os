@@ -9138,6 +9138,90 @@
         "apps.billing.security.require_finance_step_up#cut1"
       ],
       "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.insurance.access.authority",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "reason": "Requires the exact clinic permission through the shared current evaluator.",
+      "probes": [
+        "apps.insurance.access.authority#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.booking_coverage",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The booking resolver requires current appointment book or move authority for the exact clinic before projecting membership and contract coverage.",
+      "probes": [
+        "apps.insurance.appointment_coverage.booking_coverage#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.validate_insured_booking",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Validates the exact identifiers and dates returned by the booking-authorized insurance resolver; it grants no independent role.",
+      "probes": [
+        "apps.insurance.appointment_coverage.validate_insured_booking#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.batches.require_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Checks synthetic mode and the explicit rehearsal flag; no staff state or provider activation is granted. Every caller separately authorizes its clinic."
+    },
+    {
+      "symbol": "apps.insurance.guides.draft_guide",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The insurance write boundary requires tiss.manage and the source resolver rechecks it before exposing completed insurer charge facts.",
+      "probes": [
+        "apps.insurance.guides.draft_guide#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.memberships.backfill_membership_payers",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Requires tiss.manage in the write boundary and the exact-ANS linkage resolver.",
+      "probes": [
+        "apps.insurance.memberships.backfill_membership_payers#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.states.require_transition",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Checks the closed insurance state graph on an already authorized row. It reads no staff state and cannot grant permission."
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.record_booking_coverage",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Uses the existing envelope call path for the fixed coverage receipt command; that command rechecks the exact clinic, current source versions and encrypted coverage before issuing a receipt that runtime RLS cannot forge.",
+      "probes": [
+        "apps.insurance.appointment_coverage.record_booking_coverage#cut1"
+      ]
     }
   ],
   "probes": [
@@ -9428,6 +9512,12 @@
     "apps.identity.stepup_views._current_active_user",
     "apps.identity.stepup_views.step_up_view",
     "apps.identity.views.protected_view",
+    "apps.insurance.access.authority#cut1",
+    "apps.insurance.appointment_coverage.booking_coverage#cut1",
+    "apps.insurance.appointment_coverage.record_booking_coverage#cut1",
+    "apps.insurance.appointment_coverage.validate_insured_booking#cut1",
+    "apps.insurance.guides.draft_guide#cut1",
+    "apps.insurance.memberships.backfill_membership_payers#cut1",
     "apps.intake.access.authorized_enrollment",
     "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
@@ -13218,6 +13308,8 @@
           "clinic_app.data_request_task_valid",
           "clinic_app.delegate_audit",
           "clinic_app.identity_signup_register",
+          "clinic_app.insurance_appointment_guard",
+          "clinic_app.insurance_record_booking_coverage",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_lab_account",
           "clinic_app.orders_lab_audit",
@@ -14000,6 +14092,7 @@
           "clinic_app.identity_invitation_finish",
           "clinic_app.identity_retire_authenticators",
           "clinic_app.identity_session_register",
+          "clinic_app.insurance_record_booking_coverage",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
@@ -14071,6 +14164,22 @@
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.insurance_appeal:insurance_scope",
+          "clinic_app.insurance_batch:insurance_scope",
+          "clinic_app.insurance_batchguide:insurance_scope",
+          "clinic_app.insurance_clinicalapproval:insurance_scope",
+          "clinic_app.insurance_commandreceipt:insurance_scope",
+          "clinic_app.insurance_glosa:insurance_scope",
+          "clinic_app.insurance_guide:insurance_scope",
+          "clinic_app.insurance_insurancemembership:insurance_scope",
+          "clinic_app.insurance_payer:insurance_scope",
+          "clinic_app.insurance_payercontract:insurance_scope",
+          "clinic_app.insurance_payerrequest:insurance_scope",
+          "clinic_app.insurance_paymentmatch:insurance_scope",
+          "clinic_app.insurance_pricetable:insurance_scope",
+          "clinic_app.insurance_return:insurance_scope",
+          "clinic_app.insurance_submission:insurance_scope",
+          "clinic_app.insurance_tussterm:insurance_scope",
           "clinic_app.intake_datasubjectrequest:privacy_staff_read",
           "clinic_app.orders_labaccount:orders_read",
           "clinic_app.orders_order:orders_insert",
@@ -14143,7 +14252,13 @@
           "clinic_app.identity_reset_target",
           "clinic_app.identity_session_step_up",
           "clinic_app.identity_staff_directory",
+          "clinic_app.insurance_appointment_guard",
+          "clinic_app.insurance_booking_coverage",
+          "clinic_app.insurance_guard",
+          "clinic_app.insurance_guide_source",
+          "clinic_app.insurance_link_registered_payer",
           "clinic_app.intake_duplicate_detection_guard",
+          "clinic_app.intake_membership_payer_guard",
           "clinic_app.intake_merge_authorized",
           "clinic_app.orders_can_read_version",
           "clinic_app.orders_guard",
@@ -16694,6 +16809,8 @@
           "clinic_app.ai_front_desk_verify",
           "clinic_app.comms_patient_messages",
           "clinic_app.comms_patient_reply",
+          "clinic_app.insurance_link_registered_payer",
+          "clinic_app.insurance_record_booking_coverage",
           "clinic_app.patient_delegate_options",
           "clinic_app.patient_registry_count",
           "clinic_app.patient_registry_page",
@@ -22318,6 +22435,215 @@
         "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.insurance_appointment_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_scheduling_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_payer_refusal_and_unknown_cannot_be_confirmed_or_forge_authorization",
+        "test_affirmative_checks_bind_the_real_appointment_before_confirmation",
+        "test_issued_receipt_cannot_book_after_coverage_changes",
+        "test_database_rejects_an_insured_booking_without_a_receipt"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_booking_coverage": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_scheduling_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.insurance_record_booking_coverage"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, patient uuid, membership uuid, contract uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_visible_foreign_payer_and_membership_cannot_be_used_in_booking"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_insurance_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sealed_bytes_and_history_cannot_be_mutated_or_deleted",
+        "test_non_clinician_cannot_approve_new_appeal_assertions",
+        "test_v2_subtraction_invalidates_retained_clinical_approval"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_guide_source": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_insurance_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, encounter uuid, invoice uuid, membership uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_rebilling_requires_a_retained_successor_not_a_second_claim_root"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_link_registered_payer": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_membership_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, membership uuid, payer uuid, kek text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_existing_registration_is_linked_once_without_rewriting_ciphertext",
+        "test_unmatched_memberships_stay_null_and_are_reported"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_payer_check_applied": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_scheduling_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_old_authorization_replay_does_not_replace_a_later_refusal",
+        "test_affirmative_checks_bind_the_real_appointment_before_confirmation"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_registration_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_scheduling_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_visible_foreign_payer_and_membership_cannot_be_used_in_booking"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.intake_membership_payer_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_membership_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_existing_registration_is_linked_once_without_rewriting_ciphertext"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
+    },
+    "clinic_app.insurance_record_booking_coverage": {
+      "discovery": {
+        "migrations": [
+          "apps/insurance/migrations/_scheduling_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, patient uuid, membership uuid, contract uuid, appointment uuid, starts timestamp with time zone, ends timestamp with time zone, kek text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_failed_validation_keeps_sensitive_values_out_of_owned_outputs",
+        "test_visible_foreign_payer_and_membership_cannot_be_used_in_booking",
+        "test_runtime_cannot_forge_a_matching_coverage_receipt"
+      ],
+      "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
     }
   },
   "sql_method": [

@@ -36,6 +36,8 @@ from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
 from identity.test_reception_sql_principal import test_reception_display_device_contract
+from insurance.sql_oracles import CASES as INSURANCE_CASES
+from insurance.sql_oracles import SQL_PROTOCOL_ORACLES as INSURANCE_PROTOCOLS
 from orders import test_patient_downloads
 from orders.sql_oracles import CASES as ORDERS_CASES
 from orders.sql_oracles import SQL_PROTOCOL_ORACLES as ORDERS_PROTOCOLS
@@ -434,6 +436,7 @@ PROTOCOL_ORACLES = {
     ],
     **ORDERS_PROTOCOLS,
     **BILLING_PROTOCOLS,
+    **INSURANCE_PROTOCOLS,
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
@@ -458,6 +461,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(
         callable(BILLING_CASES[name])
         for names in BILLING_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(INSURANCE_CASES[name])
+        for names in INSURANCE_PROTOCOLS.values()
         for name in names
     )
     assert all(

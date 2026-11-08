@@ -319,7 +319,6 @@ def register_membership(
             enrollment_id=enrollment_id,
             details=details,
             valid_from=valid_from,
-            valid_to=valid_to,
         )
         audit(clinic_id=clinic_id, row=row, event="insurance.membership.created")
         return row

@@ -9,6 +9,7 @@ EVENTS: Final = {
     "prices": ("created",),
     "membership": ("created",),
     "registration": ("payer_linked",),
+    "coverage": ("checked",),
     "guide": ("draft", "validated", "sealed"),
     "batch": (
         "draft",

@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import uuid
-from typing import ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Self, cast
 
 from django.conf import settings
 from django.db import models
 
 from apps.tenancy.fields import (
     EncryptedBytesField,
+    EncryptedDateField,
     EncryptedJSONField,
     EncryptedTextField,
 )
 from apps.tenancy.models import TenantScopedModel
+
+if TYPE_CHECKING:
+    from datetime import date
 
 
 class InsuranceRow(TenantScopedModel):
@@ -108,8 +112,12 @@ class InsuranceMembership(InsuranceRow):
         "intake.PatientClinicEnrollment", on_delete=models.PROTECT
     )
     details = EncryptedJSONField(purpose="insurance.membership", empty=dict)
-    valid_from = models.DateField()
-    valid_to = models.DateField(null=True)
+    valid_from = EncryptedDateField(purpose="insurance.membership.valid_from")
+
+    @property
+    def valid_to(self) -> date | None:
+        """Read the canonical encrypted registration expiry without a copy."""
+        return cast("date | None", self.registration.valid_until)
 
 
 class Guide(InsuranceRow):

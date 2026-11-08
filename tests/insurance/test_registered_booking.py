@@ -8,10 +8,12 @@ from uuid import UUID, uuid4
 import pytest
 from apps.identity.models import UserClinicRole
 from apps.insurance import services
+from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.insurance.errors import InsuranceDeniedError
 from apps.intake.models import InsuranceMembership as Registration
 from apps.intake.models import PatientClinicEnrollment
 from apps.scheduling.access import AppointmentAccessDeniedError
+from apps.scheduling.models import Appointment
 from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentLocalRange,
@@ -20,7 +22,7 @@ from apps.scheduling.services import (
     create_service_hold,
 )
 from apps.tenancy.db import tenant_context
-from django.db import connection
+from django.db import connection, transaction
 
 from billing.journal_support import finance_scope
 from identity.permission_support import owner_context
@@ -29,7 +31,6 @@ from scheduling.test_resources import _catalog
 
 if TYPE_CHECKING:
     from apps.insurance.models import InsuranceMembership, Payer, PayerContract
-    from apps.scheduling.models import Appointment
     from pytest_django.fixtures import SettingsWrapper
 
     from billing.journal_support import FinanceSetup
@@ -75,6 +76,7 @@ def insured(
             ans_number="000001",
             membership_number="SYNTHETIC-REGISTERED",
             plan_name="Synthetic Plan",
+            valid_until=date(2036, 6, 2),
         )
         before = ciphertexts(registration.pk)
         UserClinicRole.objects.filter(
@@ -232,6 +234,18 @@ def test_visible_foreign_payer_and_membership_cannot_be_used_in_booking(
             ),
             command_id=uuid4(),
         )
+        foreign_contract = services.create_contract(
+            clinic_id=setup.graph.clinic_b,
+            payer_id=payer.pk,
+            terms=services.ContractTerms(
+                1,
+                date(2020, 1, 1),
+                None,
+                insured.contract.billing_identity,
+                frozenset(),
+            ),
+            command_id=uuid4(),
+        )
         with pytest.raises(InsuranceDeniedError):
             services.register_membership(
                 clinic_id=setup.clinic_id,
@@ -262,6 +276,33 @@ def test_visible_foreign_payer_and_membership_cannot_be_used_in_booking(
             ),
             idempotency_key=uuid4(),
         )
+    denials = []
+    with (
+        runtime_role(),
+        tenant_context(setup.appointment.actor_id, setup.graph.organization_a),
+    ):
+        for membership_id, contract_id in (
+            (uuid4(), insured.contract.pk),
+            (member.pk, insured.contract.pk),
+            (insured.membership.pk, uuid4()),
+            (insured.membership.pk, foreign_contract.pk),
+        ):
+            candidate = Appointment(
+                patient_id=setup.appointment.patient_id,
+                payer_membership_id=membership_id,
+                payer_contract_id=contract_id,
+                start_at=datetime(2035, 6, 2, 12, tzinfo=UTC),
+                end_at=datetime(2035, 6, 2, 12, 30, tzinfo=UTC),
+            )
+            with (
+                pytest.raises(AppointmentAccessDeniedError) as denied,
+                transaction.atomic(),
+            ):
+                record_booking_coverage(
+                    clinic_id=setup.clinic_id, appointment=candidate
+                )
+            denials.append((type(denied.value), str(denied.value)))
+    assert len(set(denials)) == 1
 
 
 @pytest.mark.parametrize(

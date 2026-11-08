@@ -1,5 +1,7 @@
 """Frozen initial insurance posture and database-enforced cross-domain bindings."""
 
+from psycopg import sql
+
 TABLES = (
     "insurance_payer",
     "insurance_payercontract",
@@ -63,6 +65,45 @@ _LINK_CASES = "".join(
     + ") "
     for table, links in _REFERENCES.items()
 )
+_LINK_MATCHES = "\n".join(
+    sql.SQL(
+        "WHEN {name} THEN EXISTS(SELECT 1 FROM {table} t {book_join} "
+        "WHERE t.id=(row_data->>link.key)::uuid "
+        "AND t.organization_id=NEW.organization_id "
+        "AND {clinic}=NEW.clinic_id)"
+    )
+    .format(
+        name=sql.Literal(table),
+        table=sql.Identifier("clinic_app", table),
+        book_join=sql.SQL(
+            "JOIN clinic_app.billing_journalbook b ON b.id=t.book_id"
+            if table in {"billing_journalsettlement", "billing_settlementallocation"}
+            else ""
+        ),
+        clinic=sql.SQL(
+            "b.clinic_id"
+            if table in {"billing_journalsettlement", "billing_settlementallocation"}
+            else "t.clinic_id"
+        ),
+    )
+    .as_string()
+    for table in sorted(
+        {target for links in _REFERENCES.values() for target in links.values()}
+    )
+)
+_RECEIPT_MATCHES = "\n".join(
+    sql.SQL(
+        "WHEN {kind} THEN EXISTS(SELECT 1 FROM {table} "
+        "WHERE id=NEW.subject_id AND organization_id=NEW.organization_id "
+        "AND clinic_id=NEW.clinic_id AND state=NEW.next_state)"
+    )
+    .format(
+        kind=sql.Literal(kind),
+        table=sql.Identifier("clinic_app", "insurance_" + kind),
+    )
+    .as_string()
+    for kind in ("guide", "batch", "appeal")
+)
 
 FUNCTIONS = """
 CREATE FUNCTION clinic_app.insurance_guard()
@@ -91,6 +132,12 @@ BEGIN
  ELSIF TG_TABLE_NAME='insurance_commandreceipt'
   AND row_data->>'kind'='clinical_approved' THEN
   allowed:=clinic_app.has_permission('tiss.clinical_approve',NEW.clinic_id,NULL);
+ ELSIF TG_TABLE_NAME='insurance_commandreceipt'
+  AND row_data->>'kind'='coverage' THEN
+  allowed:=clinic_app.has_permission('appointment.book',NEW.clinic_id,NULL)
+   OR clinic_app.has_permission('appointment.book_own',NEW.clinic_id,NULL)
+   OR clinic_app.has_permission('appointment.move',NEW.clinic_id,NULL)
+   OR clinic_app.has_permission('appointment.move_own',NEW.clinic_id,NULL);
  END IF;
  IF NOT allowed THEN
   RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501';
@@ -156,16 +203,7 @@ BEGIN
  links:=CASE TG_TABLE_NAME __LINK_CASES__ ELSE '{}'::jsonb END;
  FOR link IN SELECT * FROM jsonb_each_text(links) LOOP
   IF row_data->>link.key IS NULL THEN CONTINUE; END IF;
-  IF link.value IN ('billing_journalsettlement','billing_settlementallocation') THEN
-   EXECUTE format('SELECT EXISTS(SELECT 1 FROM clinic_app.%I t
-    JOIN clinic_app.billing_journalbook b ON b.id=t.book_id
-    WHERE t.id=$1 AND t.organization_id=$2 AND b.clinic_id=$3)',link.value)
-    INTO matched USING (row_data->>link.key)::uuid,NEW.organization_id,NEW.clinic_id;
-  ELSE
-   EXECUTE format('SELECT EXISTS(SELECT 1 FROM clinic_app.%I
-    WHERE id=$1 AND organization_id=$2 AND clinic_id=$3)',link.value)
-    INTO matched USING (row_data->>link.key)::uuid,NEW.organization_id,NEW.clinic_id;
-  END IF;
+  matched:=CASE link.value __LINK_MATCHES__ ELSE false END;
   IF NOT matched THEN
    RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501';
   END IF;
@@ -185,9 +223,6 @@ BEGIN
    OR NEW.table_code!~'^[0-9]{2}$' OR NEW.code!~'^[0-9]{1,10}$'
    OR length(NEW.description) NOT BETWEEN 1 AND 500 THEN
    RAISE EXCEPTION 'invalid terminology version' USING ERRCODE='23514'; END IF;
- WHEN 'insurance_insurancemembership' THEN
-  IF NEW.valid_to IS NOT NULL AND NEW.valid_to<NEW.valid_from THEN
-   RAISE EXCEPTION 'invalid membership validity' USING ERRCODE='23514'; END IF;
  WHEN 'insurance_guide' THEN
   SELECT * INTO membership FROM clinic_app.insurance_insurancemembership
    WHERE id=NEW.membership_id;
@@ -273,12 +308,10 @@ BEGIN
     OR (NEW.kind='authorization' AND c.authorization_supported))) THEN
    RAISE EXCEPTION 'unsupported payer request' USING ERRCODE='23514'; END IF;
  WHEN 'insurance_commandreceipt' THEN
-  IF NEW.kind NOT IN ('guide','batch','appeal') THEN
+  IF NEW.kind NOT IN ('guide','batch','appeal','coverage') THEN
    RAISE EXCEPTION 'invalid transition receipt' USING ERRCODE='23514'; END IF;
-  EXECUTE format('SELECT EXISTS(SELECT 1 FROM clinic_app.%I
-   WHERE id=$1 AND organization_id=$2 AND clinic_id=$3 AND state=$4)',
-   'insurance_'||NEW.kind) INTO matched
-   USING NEW.subject_id,NEW.organization_id,NEW.clinic_id,NEW.next_state;
+  matched:=CASE NEW.kind WHEN 'coverage' THEN NEW.next_state='covered'
+   __RECEIPT_MATCHES__ ELSE false END;
   IF NOT matched THEN
    RAISE EXCEPTION 'invalid transition receipt' USING ERRCODE='23514'; END IF;
  ELSE NULL;
@@ -314,22 +347,28 @@ $f$;
 """
 FUNCTIONS = (
     FUNCTIONS.replace("__LINK_CASES__", _LINK_CASES)
+    .replace("__LINK_MATCHES__", _LINK_MATCHES)
+    .replace("__RECEIPT_MATCHES__", _RECEIPT_MATCHES)
     .replace("__TENANT__", TENANT)
     .replace("__ACTOR__", ACTOR)
 )
 
-GRANTS = "".join(
-    f"GRANT SELECT ON clinic_app.{table} TO clinic_resolver;\n" for table in TABLES
+GRANTS = (
+    "".join(
+        f"GRANT SELECT ON clinic_app.{table} TO clinic_resolver;\n" for table in TABLES
+    )
+    + "GRANT INSERT ON clinic_app.insurance_commandreceipt TO clinic_resolver;\n"
+    + "SET LOCAL ROLE clinic_resolver;\n"
 )
 FUNCTION_PRIVILEGES = """
-ALTER FUNCTION clinic_app.insurance_guard() OWNER TO clinic_resolver;
-REVOKE ALL ON FUNCTION clinic_app.insurance_guard() FROM PUBLIC,clinic_app,clinic_agent;
-ALTER FUNCTION clinic_app.insurance_guide_source(uuid,uuid,uuid,uuid)
- OWNER TO clinic_resolver;
+REVOKE ALL ON FUNCTION clinic_app.insurance_guard()
+ FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
+GRANT EXECUTE ON FUNCTION clinic_app.insurance_guard() TO clinic_owner;
 REVOKE ALL ON FUNCTION clinic_app.insurance_guide_source(uuid,uuid,uuid,uuid)
- FROM PUBLIC,clinic_agent;
+ FROM PUBLIC,clinic_agent,clinic_owner;
 GRANT EXECUTE ON FUNCTION clinic_app.insurance_guide_source(uuid,uuid,uuid,uuid)
  TO clinic_app;
+RESET ROLE;
 """
 
 
@@ -348,8 +387,9 @@ def posture() -> str:
                 write = clinical
         if table == "insurance_commandreceipt":
             write = (
-                f"({write} OR (kind='clinical_approved' AND "
+                f"(({write} OR (kind='clinical_approved' AND "
                 "clinic_app.has_permission('tiss.clinical_approve',clinic_id,NULL)))"
+                " AND kind<>'coverage')"
             )
             read = (
                 f"({read} OR (kind='clinical_approved' AND "
@@ -389,6 +429,10 @@ def posture() -> str:
             "clinic_app.insurance_payercontract(clinic_id,payer_id,version);",
             "CREATE UNIQUE INDEX insurance_price_version ON "
             "clinic_app.insurance_pricetable(clinic_id,contract_id,version);",
+            "SET LOCAL ROLE clinic_resolver;",
+            "REVOKE EXECUTE ON FUNCTION clinic_app.insurance_guard() "
+            "FROM clinic_owner;",
+            "RESET ROLE;",
         )
     )
     return "\n".join(statements)

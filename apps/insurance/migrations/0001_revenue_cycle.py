@@ -73,7 +73,7 @@ class Migration(migrations.Migration):
     atomic = False
     initial = True
     dependencies: ClassVar = [
-        ("identity", "0045_insurance_approval_permission"),
+        ("identity", "0047_insurance_approval_permission"),
         ("billing", "0011_operational_journal"),
         ("ehr", "0016_later_pack_draft_guard"),
         ("intake", "0028_messages_operation"),

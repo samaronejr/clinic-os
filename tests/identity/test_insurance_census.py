@@ -21,6 +21,7 @@ def test_insurance_census_executes_each_staff_boundary(
     symbols = {
         "apps.insurance.access.authority",
         "apps.insurance.appointment_coverage.booking_coverage",
+        "apps.insurance.appointment_coverage.record_booking_coverage",
         "apps.insurance.appointment_coverage.validate_insured_booking",
         "apps.insurance.guides.draft_guide",
         "apps.insurance.memberships.backfill_membership_payers",

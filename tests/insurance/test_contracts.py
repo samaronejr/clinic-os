@@ -15,9 +15,11 @@ from apps.identity.permissions import (
 from apps.insurance import services
 from apps.insurance.batches import batch_bytes, require_rehearsal
 from apps.insurance.errors import InsuranceConflictError, InsuranceUnavailableError
-from apps.insurance.models import Appeal, Batch, Return
+from apps.insurance.models import Appeal, Batch, InsuranceMembership, Return
 from apps.insurance.rls import TABLES
 from apps.insurance.states import TRANSITIONS, require_transition
+from apps.intake.models import InsuranceMembership as RegisteredMembership
+from apps.tenancy.fields import EncryptedDateField
 from django.apps import apps
 from django.db.migrations.loader import MigrationLoader
 
@@ -26,6 +28,17 @@ from insurance.test_tiss import facts
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
+
+
+def test_claim_expiry_has_no_plaintext_copy_of_the_registered_expiry() -> None:
+    source = RegisteredMembership._meta.get_field("valid_until")
+    assert isinstance(source, EncryptedDateField)
+    copies = [
+        field
+        for field in InsuranceMembership._meta.local_fields
+        if field.name == "valid_to"
+    ]
+    assert all(isinstance(field, EncryptedDateField) for field in copies)
 
 
 def test_dedicated_v2_permission_has_no_read_or_chart_write_side_effects() -> None:

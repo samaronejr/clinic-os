@@ -52,6 +52,9 @@ from identity.test_lifecycle_sql_readers import (
     ACTOR_PROTOCOL_ORACLES,
     assert_lifecycle_oracles,
 )
+from insurance.test_sql_inactive_actor import (
+    ACTOR_PROTOCOL_ORACLES as INSURANCE_ACTOR_PROTOCOL_ORACLES,
+)
 from orders.sql_oracles import (
     ACTOR_PROTOCOL_ORACLES as ORDERS_ACTOR_PROTOCOL_ORACLES,
 )
@@ -432,6 +435,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | CARE_ACTOR_PROTOCOL_ORACLES
         | FRONT_DESK_ACTOR_PROTOCOL_ORACLES
         | BILLING_ACTOR_PROTOCOL_ORACLES
+        | INSURANCE_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

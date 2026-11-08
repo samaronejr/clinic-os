@@ -7,11 +7,19 @@ from apps.insurance.migrations._scheduling_sql import SQL
 from django.db import connection
 
 EXPECTED_ACLS = {
+    "insurance_guard()": "{clinic_resolver=X/clinic_resolver}",
+    "insurance_guide_source(uuid,uuid,uuid,uuid)": (
+        "{clinic_resolver=X/clinic_resolver,clinic_app=X/clinic_resolver}"
+    ),
     "intake_membership_payer_guard()": "{clinic_resolver=X/clinic_resolver}",
     "insurance_link_registered_payer(uuid,uuid,uuid,text)": (
         "{clinic_resolver=X/clinic_resolver,clinic_app=X/clinic_resolver}"
     ),
     "insurance_booking_coverage(uuid,uuid,uuid,uuid)": (
+        "{clinic_resolver=X/clinic_resolver,clinic_app=X/clinic_resolver}"
+    ),
+    "insurance_record_booking_coverage"
+    "(uuid,uuid,uuid,uuid,uuid,timestamptz,timestamptz,text)": (
         "{clinic_resolver=X/clinic_resolver,clinic_app=X/clinic_resolver}"
     ),
     "insurance_registration_guard()": "{clinic_resolver=X/clinic_resolver}",
@@ -33,6 +41,7 @@ EXPECTED_ACLS = {
             SQL,
             {
                 "insurance_booking_coverage",
+                "insurance_record_booking_coverage",
                 "insurance_registration_guard",
                 "insurance_payer_check_applied",
                 "insurance_appointment_guard",

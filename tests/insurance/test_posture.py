@@ -15,6 +15,25 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def test_expiry_has_no_plaintext_storage_shadow() -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT table_name,column_name,data_type "
+            "FROM information_schema.columns WHERE table_schema='clinic_app' "
+            "AND ((table_name='intake_insurancemembership' "
+            "AND column_name='valid_until') OR "
+            "(table_name='insurance_insurancemembership' "
+            "AND column_name='valid_to'))"
+        )
+        columns = cursor.fetchall()
+    assert (
+        "intake_insurancemembership",
+        "valid_until",
+        "bytea",
+    ) in columns
+    assert all(kind == "bytea" for _, _, kind in columns)
+
+
 def test_every_insurance_table_has_exact_force_rls_and_least_privileges() -> None:
     with connection.cursor() as cursor:
         cursor.execute(

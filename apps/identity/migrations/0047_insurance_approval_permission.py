@@ -1,4 +1,4 @@
-"""Extend the current v2 evaluator with dedicated clinical appeal approval."""
+"""Extend v2 approval authority after the reserved Wave E migration numbers."""
 
 from typing import ClassVar
 

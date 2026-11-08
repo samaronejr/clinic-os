@@ -144,18 +144,33 @@ _CAPACITY = PRIOR_CAPACITY.replace(
     "   AND NOT (", "   AND NOT (" + CHECK_UPDATE + ")\n   AND NOT (", 1
 )
 
+# Bind the exact booking and current source revisions. Protected dates enter
+# this digest only as ciphertext, never as a plaintext or comparable shadow.
+_COVERAGE_BINDING = """
+encode(clinic_app.digest(ROW(
+ __APPOINTMENT__,__PATIENT__,m.id,m.registration_id,m.fingerprint,
+ encode(m.valid_from,'hex'),r.version,r.payer_id,
+ coalesce(encode(r.valid_until,'hex'),''),
+ coalesce(extract(epoch FROM r.retired_at)::text,''),
+ c.id,c.version,c.fingerprint,to_char(c.starts_on,'YYYY-MM-DD'),
+ to_char(c.ends_on,'YYYY-MM-DD'),c.eligibility_supported,c.authorization_supported,
+ to_char(__START__ AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US'),
+ to_char(__END__ AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US')
+)::text,'sha256'),'hex')
+"""
+
 FUNCTIONS_SQL = """
 SET LOCAL ROLE clinic_resolver;
 CREATE OR REPLACE FUNCTION clinic_app.insurance_booking_coverage(
  clinic uuid,patient uuid,membership uuid,contract uuid)
 RETURNS TABLE(membership_id uuid,contract_id uuid,clinic_id uuid,patient_id uuid,
- payer_id uuid,contract_payer_id uuid,valid_from date,valid_to date,
+ payer_id uuid,contract_payer_id uuid,valid_from bytea,valid_to bytea,
  starts_on date,ends_on date,eligibility_supported boolean,
  authorization_supported boolean)
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT m.id,c.id,m.clinic_id,e.patient_id,m.payer_id,c.payer_id,
-  m.valid_from,m.valid_to,c.starts_on,c.ends_on,
+  m.valid_from,r.valid_until,c.starts_on,c.ends_on,
   c.eligibility_supported,c.authorization_supported
  FROM clinic_app.insurance_insurancemembership m
  JOIN clinic_app.intake_patientclinicenrollment e ON e.id=m.enrollment_id
@@ -175,14 +190,72 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
    SELECT 1 FROM clinic_app.intake_insurancemembership newer
    WHERE newer.organization_id=r.organization_id AND newer.patient_id=r.patient_id
     AND newer.sequence=r.sequence AND newer.version>r.version)
+  AND NOT EXISTS(SELECT 1 FROM clinic_app.insurance_payercontract newer
+   WHERE newer.organization_id=c.organization_id AND newer.clinic_id=c.clinic_id
+    AND newer.payer_id=c.payer_id AND newer.version>c.version)
   AND m.organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
   AND (clinic_app.has_permission('appointment.book',clinic,NULL)
-   OR clinic_app.has_permission('appointment.book_own',clinic,NULL))
+   OR clinic_app.has_permission('appointment.book_own',clinic,NULL)
+   OR clinic_app.has_permission('appointment.move',clinic,NULL)
+   OR clinic_app.has_permission('appointment.move_own',clinic,NULL))
 $f$;
 REVOKE ALL ON FUNCTION clinic_app.insurance_booking_coverage(uuid,uuid,uuid,uuid)
  FROM PUBLIC,clinic_agent,clinic_owner;
 GRANT EXECUTE ON FUNCTION clinic_app.insurance_booking_coverage(uuid,uuid,uuid,uuid)
  TO clinic_app;
+
+CREATE OR REPLACE FUNCTION clinic_app.insurance_record_booking_coverage(
+ clinic uuid,patient uuid,membership uuid,contract uuid,appointment uuid,
+ starts timestamptz,ends timestamptz,kek text)
+RETURNS uuid LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE m clinic_app.insurance_insurancemembership;
+ c clinic_app.insurance_payercontract; r clinic_app.intake_insurancemembership;
+ covered_from date; covered_until date; first_day date; last_day date;
+ binding text; receipt uuid; zone text;
+BEGIN
+ PERFORM 1 FROM clinic_app.insurance_booking_coverage(
+  clinic,patient,membership,contract);
+ IF NOT FOUND OR appointment IS NULL OR starts IS NULL OR ends IS NULL
+  OR ends<=starts THEN
+  RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+  'insurance-clinic-v1:'||clinic::text,0));
+ SELECT * INTO m FROM clinic_app.insurance_insurancemembership WHERE id=membership;
+ SELECT * INTO c FROM clinic_app.insurance_payercontract WHERE id=contract;
+ SELECT * INTO r FROM clinic_app.intake_insurancemembership WHERE id=m.registration_id;
+ SELECT timezone INTO zone FROM clinic_app.identity_clinic WHERE id=clinic;
+ first_day:=(starts AT TIME ZONE zone)::date;
+ last_day:=((ends-interval '1 microsecond') AT TIME ZONE zone)::date;
+ BEGIN
+  covered_from:=convert_from(clinic_app.protected_decrypt(
+   kek,'insurance.membership.valid_from',m.valid_from),'UTF8')::date;
+  IF r.valid_until IS NOT NULL THEN
+   covered_until:=convert_from(clinic_app.protected_decrypt(
+    kek,'intake.insurancemembership.valid_until',r.valid_until),'UTF8')::date;
+  END IF;
+ EXCEPTION WHEN OTHERS THEN
+  -- Do not expose decryption or date-parser diagnostics containing payloads.
+  RAISE EXCEPTION 'insurance coverage unavailable' USING ERRCODE='42501';
+ END;
+ IF first_day<covered_from OR (covered_until IS NOT NULL AND last_day>covered_until)
+  OR first_day<c.starts_on OR (c.ends_on IS NOT NULL AND last_day>c.ends_on) THEN
+  RAISE EXCEPTION 'payer refused' USING ERRCODE='23514',
+   CONSTRAINT='scheduling_payer_refused'; END IF;
+ binding:=__RECORD_BINDING__;
+ receipt:=gen_random_uuid();
+ INSERT INTO clinic_app.insurance_commandreceipt
+  (id,organization_id,clinic_id,command_id,fingerprint,created_at,
+   kind,subject_id,next_state)
+ VALUES(receipt,m.organization_id,clinic,receipt,binding,statement_timestamp(),
+  'coverage',appointment,'covered');
+ RETURN receipt;
+END $f$;
+REVOKE ALL ON FUNCTION clinic_app.insurance_record_booking_coverage(
+ uuid,uuid,uuid,uuid,uuid,timestamptz,timestamptz,text)
+ FROM PUBLIC,clinic_agent,clinic_owner;
+GRANT EXECUTE ON FUNCTION clinic_app.insurance_record_booking_coverage(
+ uuid,uuid,uuid,uuid,uuid,timestamptz,timestamptz,text) TO clinic_app;
 
 CREATE OR REPLACE FUNCTION clinic_app.insurance_registration_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
@@ -285,9 +358,10 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE m clinic_app.insurance_insurancemembership;
  c clinic_app.insurance_payercontract; e clinic_app.intake_patientclinicenrollment;
+ r clinic_app.intake_insurancemembership;
  eligible clinic_app.insurance_payerrequest;
  authorized clinic_app.insurance_payerrequest;
- day date; confirming boolean;
+ day date; confirming boolean; booking boolean; binding text;
 BEGIN
  IF TG_OP='UPDATE' AND ROW(NEW.eligibility_check_id,NEW.authorization_check_id,
   NEW.authorization_reference) IS DISTINCT FROM
@@ -312,12 +386,19 @@ BEGIN
  SELECT * INTO e FROM clinic_app.intake_patientclinicenrollment
   WHERE id=m.enrollment_id AND patient_id=NEW.patient_id
    AND clinic_id=NEW.clinic_id AND organization_id=NEW.organization_id;
- IF m.id IS NULL OR c.id IS NULL OR e.id IS NULL THEN
+ SELECT * INTO r FROM clinic_app.intake_insurancemembership
+  WHERE id=m.registration_id AND organization_id=NEW.organization_id
+   AND patient_id=NEW.patient_id;
+ IF m.id IS NULL OR c.id IS NULL OR e.id IS NULL OR r.id IS NULL THEN
   RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501'; END IF;
  SELECT (NEW.start_at AT TIME ZONE timezone)::date INTO day
   FROM clinic_app.identity_clinic WHERE id=NEW.clinic_id;
- IF day<m.valid_from OR (m.valid_to IS NOT NULL AND day>m.valid_to)
-  OR day<c.starts_on OR (c.ends_on IS NOT NULL AND day>c.ends_on) THEN
+ binding:=__APPOINTMENT_BINDING__;
+ IF day<c.starts_on OR (c.ends_on IS NOT NULL AND day>c.ends_on)
+  OR NOT EXISTS(SELECT 1 FROM clinic_app.insurance_commandreceipt proof
+   WHERE proof.organization_id=NEW.organization_id AND proof.clinic_id=NEW.clinic_id
+    AND proof.kind='coverage' AND proof.subject_id=NEW.id
+    AND proof.next_state='covered' AND proof.fingerprint=binding) THEN
   RAISE EXCEPTION 'payer refused' USING ERRCODE='23514',
    CONSTRAINT='scheduling_payer_refused'; END IF;
  SELECT * INTO eligible FROM clinic_app.insurance_payerrequest
@@ -333,12 +414,16 @@ BEGIN
   RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501'; END IF;
  confirming:=NEW.status='scheduled' AND
   (TG_OP='INSERT' OR OLD.status IN ('held','requested'));
- IF (TG_OP='INSERT' OR confirming) AND NOT EXISTS(
-  SELECT 1 FROM clinic_app.intake_insurancemembership r
-  WHERE r.id=m.registration_id AND r.retired_at IS NULL
-   AND NOT EXISTS(SELECT 1 FROM clinic_app.intake_insurancemembership newer
+ booking:=TG_OP='INSERT' OR confirming OR
+  (TG_OP='UPDATE' AND ROW(NEW.start_at,NEW.end_at) IS DISTINCT FROM
+   ROW(OLD.start_at,OLD.end_at));
+ IF booking AND (r.retired_at IS NOT NULL
+   OR EXISTS(SELECT 1 FROM clinic_app.intake_insurancemembership newer
     WHERE newer.organization_id=r.organization_id AND newer.patient_id=r.patient_id
-     AND newer.sequence=r.sequence AND newer.version>r.version)) THEN
+     AND newer.sequence=r.sequence AND newer.version>r.version)
+   OR EXISTS(SELECT 1 FROM clinic_app.insurance_payercontract newer
+    WHERE newer.organization_id=c.organization_id AND newer.clinic_id=c.clinic_id
+     AND newer.payer_id=c.payer_id AND newer.version>c.version)) THEN
   RAISE EXCEPTION 'payer refused' USING ERRCODE='23514',
    CONSTRAINT='scheduling_payer_refused'; END IF;
  IF confirming THEN
@@ -364,7 +449,24 @@ CREATE TRIGGER scheduling_insurance_guard BEFORE INSERT OR UPDATE
 SET LOCAL ROLE clinic_resolver;
 REVOKE EXECUTE ON FUNCTION clinic_app.insurance_appointment_guard() FROM clinic_owner;
 RESET ROLE;
-""".replace("__CHECK_UPDATE__", CHECK_UPDATE)
+"""
+FUNCTIONS_SQL = (
+    FUNCTIONS_SQL.replace("__CHECK_UPDATE__", CHECK_UPDATE)
+    .replace(
+        "__RECORD_BINDING__",
+        _COVERAGE_BINDING.replace("__APPOINTMENT__", "appointment")
+        .replace("__PATIENT__", "patient")
+        .replace("__START__", "starts")
+        .replace("__END__", "ends"),
+    )
+    .replace(
+        "__APPOINTMENT_BINDING__",
+        _COVERAGE_BINDING.replace("__APPOINTMENT__", "NEW.id")
+        .replace("__PATIENT__", "NEW.patient_id")
+        .replace("__START__", "NEW.start_at")
+        .replace("__END__", "NEW.end_at"),
+    )
+)
 
 SQL = (
     SCHEMA_SQL

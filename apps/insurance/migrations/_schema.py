@@ -280,8 +280,12 @@ MODELS = [
                     empty=dict, purpose="insurance.membership"
                 ),
             ),
-            ("valid_from", models.DateField()),
-            ("valid_to", models.DateField(null=True)),
+            (
+                "valid_from",
+                apps.tenancy.fields.EncryptedDateField(
+                    purpose="insurance.membership.valid_from"
+                ),
+            ),
             (
                 "clinic",
                 models.ForeignKey(

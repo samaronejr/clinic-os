@@ -31,6 +31,7 @@ from apps.identity import (
 )
 from apps.identity.current_context import require_permission
 from apps.insurance import services as insurance_services
+from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
@@ -632,6 +633,10 @@ def test_teleconsult_session_requires_exact_clinic_and_encounter() -> None:
 @pytest.mark.parametrize(
     ("entrypoint", "names"),
     [
+        (
+            record_booking_coverage,
+            ["clinic_id", "appointment"],
+        ),
         (
             insurance_services.approve_appeal,
             ["clinic_id", "appeal_id", "command_id"],

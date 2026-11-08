@@ -33,9 +33,9 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # The Wave D plus journal live catalog contains 234 domain relations.
+    # The Wave D, journal and insurance live catalog has 234 domain relations.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 218
+    assert len(restore_contract.DOMAIN_RELATIONS) == 234
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(

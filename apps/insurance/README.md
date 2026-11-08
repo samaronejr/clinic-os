@@ -78,6 +78,18 @@ intake registration. Its card/expiry are inherited, not independently re-entered
 on unique exact ANS matches and returns unmatched/ambiguous identifiers. It never
 guesses from names, changes ciphertext or modifies existing non-null links.
 
+Coverage start is encrypted. Expiry remains only in the canonical encrypted
+intake registration; the claim model reads it without storing another date.
+The fixed booking resolver decrypts dates transiently through the existing
+tenancy KEK path and validates the appointment interval. It creates an immutable
+coverage receipt bound to the appointment, patient, membership, contract, times,
+source versions and ciphertext. Runtime RLS forbids direct coverage receipts.
+The appointment trigger requires the matching receipt and current registration
+and contract versions at creation, confirmation and rescheduling. A superseding
+or changed source cannot make an old receipt authorize a new booking. Validation
+errors and application metadata contain neither the KEK nor the protected dates.
+The shared cursor/SQL-logging transport remains a separately tracked issue.
+
 `PayerCheck(appointment_id, kind, due_at, fixture_outcome)` binds a check to the
 actual insured appointment and its immutable membership/contract selection.
 The appointment keeps current eligibility/authorization FKs; only insertion

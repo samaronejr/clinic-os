@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+import psycopg
 from django.db import connection
 
+from apps.audit.services import record_phase1_event
 from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.resource_errors import SchedulingRuleError
+from apps.tenancy.envelope import EnvelopeError, _call_scalar, _kek, reveal
 
 if TYPE_CHECKING:
-    from datetime import date
-
     from apps.identity.models import Clinic
     from apps.scheduling.appointment_values import (
         CreateAppointmentRequest,
         PreparedAppointment,
     )
+    from apps.scheduling.models import Appointment
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +62,63 @@ def booking_coverage(
         UUID(str(row[3])),
         UUID(str(row[4])),
         UUID(str(row[5])),
-        cast("date", row[6]),
-        cast("date | None", row[7]),
+        date.fromisoformat(
+            reveal(
+                purpose="insurance.membership.valid_from", envelope=bytes(row[6])
+            ).decode("ascii")
+        ),
+        (
+            date.fromisoformat(
+                reveal(
+                    purpose="intake.insurancemembership.valid_until",
+                    envelope=bytes(row[7]),
+                ).decode("ascii")
+            )
+            if row[7] is not None
+            else None
+        ),
         cast("date", row[8]),
         cast("date | None", row[9]),
         bool(row[10]),
         bool(row[11]),
+    )
+
+
+def record_booking_coverage(*, clinic_id: UUID, appointment: Appointment) -> None:
+    """Retain a DB-validated receipt inside the scheduling write transaction."""
+    if appointment.payer_membership_id is None:
+        return
+    try:
+        receipt = _call_scalar(
+            "SELECT clinic_app.insurance_record_booking_coverage("
+            "%s::uuid,%s::uuid,%s::uuid,%s::uuid,%s::uuid,"
+            "%s::timestamptz,%s::timestamptz,%s)",
+            (
+                str(clinic_id),
+                str(appointment.patient_id),
+                str(appointment.payer_membership_id),
+                str(appointment.payer_contract_id),
+                str(appointment.pk),
+                appointment.start_at.isoformat(),
+                appointment.end_at.isoformat(),
+                _kek(),
+            ),
+        )
+    except EnvelopeError as error:
+        cause = getattr(error.__cause__, "__cause__", None)
+        if isinstance(cause, psycopg.Error):
+            if cause.sqlstate == "42501":
+                raise AppointmentAccessDeniedError from error
+            if cause.diag.constraint_name == "scheduling_payer_refused":
+                code = "payer_refused"
+                raise SchedulingRuleError(code) from error
+        raise
+    if not isinstance(receipt, UUID):
+        raise EnvelopeError
+    record_phase1_event(
+        "insurance.coverage.checked",
+        clinic_id=clinic_id,
+        affected_record_id=receipt,
     )
 
 
