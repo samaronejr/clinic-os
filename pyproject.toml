@@ -20,10 +20,10 @@ dependencies = [
   "sentry-sdk[django]",
   "sqlparse>=0.6.0,<0.7",
   "uvicorn>=0.35,<1",
+  "xmlschema>=4.3.2,<5",
   "tzdata==2026.3",
   "webauthn==3.0.1",
   "whitenoise==6.12.0",
-  "xmlschema>=4.3.2,<5",
 ]
 
 [dependency-groups]
