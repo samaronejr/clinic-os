@@ -25,6 +25,7 @@ from identity.nonstaff_document_probes import SYMBOLS as DOCUMENT_SYMBOLS
 from identity.nonstaff_ehr_probes import SYMBOLS as EHR_SYMBOLS
 from identity.nonstaff_extraction_probes import SYMBOLS as EXTRACTION_SYMBOLS
 from identity.nonstaff_lifecycle_probes import SYMBOLS as LIFECYCLE_SYMBOLS
+from identity.nonstaff_revenue_probes import SYMBOLS as REVENUE_SYMBOLS
 from identity.permission_support import permission_actor, permission_context
 from identity.test_permission_parity import INVENTORY
 from identity.test_scope_provisioning import provisioning_context
@@ -95,6 +96,7 @@ def test_cases_cover_every_root_delegation() -> None:
         | DOCUMENT_SYMBOLS
         | EXTRACTION_SYMBOLS
         | CARE_SYMBOLS
+        | REVENUE_SYMBOLS
     ) == sorted(rows)
     for case in CASES.values():
         assert case.permission in BUNDLES_V1[case.permission_role]

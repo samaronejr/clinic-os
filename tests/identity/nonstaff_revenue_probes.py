@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 SYMBOL = "apps.ai.revenue_cycle.check_revenue_sources"
 PUBLISH = "apps.ai.agent_policies.publish_agent_policy"
+SYMBOLS = frozenset({SYMBOL, PUBLISH})
 
 
 def revenue_probes(graph: RbacGraph) -> list[DifferentialProbe]:
