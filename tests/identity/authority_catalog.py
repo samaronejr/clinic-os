@@ -31,6 +31,7 @@ CONTEXT_PRIMITIVES = frozenset(
         "clock_timestamp",
         "timestamptz_pl_interval",
         "timestamptz_mi_interval",
+        "date_trunc",
         "txid_current",
         "pg_current_xact_id",
         "pg_advisory_xact_lock",
