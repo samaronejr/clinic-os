@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from apps.crm import views as crm_views
 from apps.crm.access import CrmAccessDeniedError, CrmRuleError
 from apps.crm.models import Lead, SatisfactionSurvey
 from apps.crm.patient import record_satisfaction, set_marketing_preference
@@ -22,6 +24,7 @@ from apps.identity.models import UserClinicRole
 from apps.intake.patient_access import patient_session_context
 from apps.scheduling.appointment_lifecycle import complete, start
 from apps.scheduling.patient_booking import patient_slots
+from apps.scheduling.services import AppointmentAccessDeniedError
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.test import Client
@@ -434,3 +437,18 @@ def test_post_visit_score_only_for_own_completed_appointment(
             ).status_code
             == 409
         )
+
+
+def test_feedback_rechecks_patient_authority_inside_the_view(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(_session(seed_appointment_setup(rbac_graph)))
+    with runtime_role():
+        assert client.get("/patient/feedback/").status_code == 200
+        # Booking authority can lapse after the middleware's initial session touch.
+        monkeypatch.setattr(
+            crm_views,
+            "require_patient_booking_scope",
+            Mock(side_effect=AppointmentAccessDeniedError),
+        )
+        assert client.get("/patient/feedback/").status_code == 403
