@@ -479,3 +479,35 @@ def test_proposals_without_a_declared_quorum_never_advance(subject: Subject) -> 
     # Even a vote with genuinely verified step-up cannot approve it.
     assert record_vote(subject, genuine)
     refuse_raw_approval(subject)
+
+
+def test_zero_vote_dispatch_needs_the_bound_machine_principal(
+    subject: Subject,
+) -> None:
+    force_proposal(subject, "quorum", "0")
+    if isinstance(subject.world, RevenueWorld):
+        # An A1 Finance policy has no machine principal: zero votes never approve.
+        refuse_raw_approval(subject)
+        return
+    # A bounded policy may approve with zero votes, as propose_action does.
+    with acting(subject) as cursor:
+        cursor.execute(RAW_APPROVAL, ["approved", subject.proposal.pk])
+        assert cursor.rowcount == 1
+    # Human staff cannot claim, start or send it: only its machine principal can.
+    with acting(subject) as cursor:
+        with pytest.raises(DatabaseError, match=QUORUM_REFUSED), transaction.atomic():
+            cursor.execute(RAW_APPROVAL, ["executing", subject.proposal.pk])
+        with pytest.raises(DatabaseError, match=QUORUM_REFUSED), transaction.atomic():
+            cursor.execute(RAW_EXECUTION, execution_values(subject, uuid4()))
+    execution = force_execution(subject)
+    force_proposal(subject, "state", "executing")
+    with (
+        acting(subject) as cursor,
+        pytest.raises(DatabaseError, match=QUORUM_REFUSED),
+        transaction.atomic(),
+    ):
+        cursor.execute(
+            "UPDATE clinic_app.ai_actionexecution "
+            "SET send_started_at=statement_timestamp() WHERE id=%s",
+            [execution],
+        )

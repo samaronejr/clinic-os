@@ -20081,7 +20081,8 @@
         "test_python_approval_still_records_one_counted_vote",
         "test_vote_writer_requires_this_approvers_fresh_verified_session",
         "test_vote_writer_refuses_an_inactive_approver",
-        "test_proposals_without_a_declared_quorum_never_advance"
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20282,7 +20283,8 @@
         "test_python_approval_still_records_one_counted_vote",
         "test_vote_writer_requires_this_approvers_fresh_verified_session",
         "test_vote_writer_refuses_an_inactive_approver",
-        "test_proposals_without_a_declared_quorum_never_advance"
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
       "reason": "ai.0012 vote writer and the only INSERT path into ai_approval: the caller's agent_staff or AI-06 Finance scope, this approver's own persisted fresh TOTP or passkey session verification and evidence facts naming the same actor, clinic, digest and evidence id; it records the verified instant. Forged inserts, unverified votes and raw approvals are executed on 0011 (red) and 0012 (green)."
     },
@@ -20322,7 +20324,8 @@
         "test_python_approval_still_records_one_counted_vote",
         "test_vote_writer_requires_this_approvers_fresh_verified_session",
         "test_vote_writer_refuses_an_inactive_approver",
-        "test_proposals_without_a_declared_quorum_never_advance"
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20460,10 +20463,10 @@
         ],
         "signatures": [
           {
-            "arguments": "requested uuid",
+            "arguments": "requested uuid, dispatch boolean",
             "returns": "bool",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
         ]
       },
@@ -20476,9 +20479,10 @@
         "test_python_approval_still_records_one_counted_vote",
         "test_vote_writer_requires_this_approvers_fresh_verified_session",
         "test_vote_writer_refuses_an_inactive_approver",
-        "test_proposals_without_a_declared_quorum_never_advance"
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
-      "reason": "Private to agent_record_guard: the declared quorum of digest-bound votes, every one counted by agent_approval_current, before approval, an execution claim or a send; zero votes only under a bounded machine-principal policy."
+      "reason": "Private to agent_record_guard: the declared quorum of digest-bound votes, every one counted by agent_approval_current, before approval, an execution claim or a send; zero votes only under a bounded policy, and only its machine principal may claim, start or send."
     },
     "clinic_app.identity_actor_permission": {
       "discovery": {

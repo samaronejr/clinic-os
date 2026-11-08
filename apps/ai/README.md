@@ -304,7 +304,8 @@ The vote keeps that verification instant, and `agent_approval_current` counts
 only such votes. A proposal declares its payload's quorum; the guard refuses
 approval, an execution claim, the executing transition and the send unless
 that many current votes exist and none is unverified or stale. Only a bounded
-machine-principal policy may declare zero. The HMAC attestation remains a
+machine-principal policy may declare zero, and then only that machine principal
+on the agent login may claim, start or send the execution. The HMAC attestation remains a
 Python check because its key never enters PostgreSQL. Votes and proposals
 recorded before 0012 lack this evidence and cannot advance; reject them and
 propose again. Reversing is supported on an empty synthetic database only.

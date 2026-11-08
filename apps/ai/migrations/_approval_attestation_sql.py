@@ -84,11 +84,13 @@ _APPROVAL = _edit(
 # votes, with no unverified or stale vote. Zero votes suffice only for a bounded
 # policy executed by its machine principal.
 _VOTES = r"""
-CREATE FUNCTION clinic_app.agent_votes_current(requested uuid)
+CREATE FUNCTION clinic_app.agent_votes_current(requested uuid,dispatch boolean)
 RETURNS boolean LANGUAGE sql VOLATILE
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT p.quorum IS NOT NULL
- AND (p.quorum>0 OR (v.autonomy_ceiling IN ('A2','A3') AND v.principal_id IS NOT NULL))
+ AND (p.quorum>0 OR (v.autonomy_ceiling IN ('A2','A3') AND v.principal_id IS NOT NULL
+  AND (NOT dispatch OR (pg_has_role(session_user,'clinic_agent','USAGE')
+   AND r.principal_id=NULLIF(current_setting('app.current_principal',true),'')::uuid))))
  AND (SELECT count(*) FROM clinic_app.ai_approval a WHERE a.proposal_id=p.id)
   >=p.quorum
  AND NOT EXISTS(SELECT 1 FROM clinic_app.ai_approval a WHERE a.proposal_id=p.id
@@ -99,7 +101,7 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  JOIN clinic_app.ai_agentpolicyversion v ON v.id=r.policy_id
  WHERE p.id=requested
 $f$;
-REVOKE ALL ON FUNCTION clinic_app.agent_votes_current(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION clinic_app.agent_votes_current(uuid,boolean) FROM PUBLIC;
 """
 
 _QUORUM_REFUSED = (
@@ -129,16 +131,15 @@ _GUARD = _edit(
     _TRANSITION,
     _TRANSITION + "  IF TG_TABLE_NAME='ai_actionproposal' THEN\n"
     "   IF OLD.state<>NEW.state AND NEW.state IN ('approved','executing')\n"
-    "    AND clinic_app.agent_votes_current(NEW.id) IS NOT TRUE THEN\n"
-    + _QUORUM_REFUSED
-    + "   END IF;\n  END IF;\n",
+    "    AND clinic_app.agent_votes_current(NEW.id,NEW.state='executing') IS NOT TRUE\n"
+    "    THEN\n" + _QUORUM_REFUSED + "   END IF;\n  END IF;\n",
 )
 # So does the send boundary, under the same retained mutation lock.
 _GUARD = _edit(
     _GUARD,
     _FENCE,
     _FENCE + "   IF OLD.send_started_at IS NULL AND NEW.send_started_at IS NOT NULL\n"
-    "    AND clinic_app.agent_votes_current(NEW.proposal_id) IS NOT TRUE THEN\n"
+    "    AND clinic_app.agent_votes_current(NEW.proposal_id,true) IS NOT TRUE THEN\n"
     + _QUORUM_REFUSED
     + "   END IF;\n",
 )
@@ -164,7 +165,7 @@ _GUARD = _edit(
 _GUARD = _edit(
     _GUARD,
     _EXECUTION,
-    _EXECUTION + "  IF clinic_app.agent_votes_current(p.id) IS NOT TRUE THEN\n"
+    _EXECUTION + "  IF clinic_app.agent_votes_current(p.id,true) IS NOT TRUE THEN\n"
     "   RAISE EXCEPTION 'agent approval quorum refused' USING ERRCODE='23514';\n"
     "  END IF;\n",
 )
@@ -179,7 +180,7 @@ SQL = (
 )
 REVERSE_SQL = (
     PRIOR_GUARD
-    + "\nDROP FUNCTION clinic_app.agent_votes_current(uuid);\n"
+    + "\nDROP FUNCTION clinic_app.agent_votes_current(uuid,boolean);\n"
     + _resolver((PRIOR_APPROVAL, f"DROP FUNCTION {_RECORD_SIGNATURE};"))
     + "GRANT INSERT ON clinic_app.ai_approval TO clinic_app;\n"
     "REVOKE INSERT ON clinic_app.ai_approval FROM clinic_resolver;\n"

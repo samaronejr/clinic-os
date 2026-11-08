@@ -65,7 +65,9 @@ instant, and `agent_approval_current` ignores votes without one. A proposal
 declares its payload's quorum, which approval and execution compare with the
 payload. The record guard requires that many digest-bound current votes before
 `approved` or `executing`, before an execution is claimed and before its send
-starts. Recording an outcome after dispatch is never blocked.
+starts. A zero quorum exists only under a bounded policy with a machine
+principal, and only that principal on the agent login may claim, start or send
+such an execution. Recording an outcome after dispatch is never blocked.
 
 The `front_desk` capability's A2 policy also drives the bounded front-desk turn
 pipeline (`apps/ai/README.md`, "Front-desk agent"). Its three tools

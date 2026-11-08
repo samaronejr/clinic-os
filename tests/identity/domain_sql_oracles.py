@@ -388,6 +388,7 @@ VOTE_ORACLES = [
     "test_vote_writer_requires_this_approvers_fresh_verified_session",
     "test_vote_writer_refuses_an_inactive_approver",
     "test_proposals_without_a_declared_quorum_never_advance",
+    "test_zero_vote_dispatch_needs_the_bound_machine_principal",
 ]
 
 PROTOCOL_ORACLES = {
