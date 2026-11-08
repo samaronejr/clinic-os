@@ -289,6 +289,9 @@ def test_a_different_document_or_real_environment_cannot_become_authorized(
             gzip.compress(b'<!DOCTYPE x [<!ENTITY phi "SYNTHETIC">]><x>&phi;</x>')
         ).decode(),
     ],
+    # gzip stamps the current time into each header, so payload-derived IDs
+    # would differ between the reference collection and every xdist worker.
+    ids=["not-base64", "not-gzip", "oversized", "doctype"],
 )
 def test_xml_codec_refuses_invalid_or_unbounded_content(encoded: str) -> None:
     with pytest.raises(FiscalRefusedError) as refused:
