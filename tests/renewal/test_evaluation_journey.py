@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -93,7 +94,13 @@ class PageStub:
             await asyncio.Event().wait()
 
     async def add_script_tag(self, *, url: str) -> None:
-        assert url.endswith(a11y_support.AXE_URL)
+        # check_page loads the vendored axe from the audited origin under a
+        # fresh per-document query, so cache revalidation cannot answer it.
+        assert re.fullmatch(
+            rf"https://synthetic\.invalid{re.escape(a11y_support.AXE_URL)}"
+            r"\?audit=[0-9a-f]{32}",
+            url,
+        )
         await asyncio.Event().wait()
 
     def _sync(self, work: Coroutine[object, object, object]) -> object:
