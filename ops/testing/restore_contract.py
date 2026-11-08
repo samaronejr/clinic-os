@@ -254,6 +254,15 @@ DOMAIN_RELATIONS: Final = (
     "inventory_calibration",
     "inventory_maintenance",
     "inventory_commandreceipt",
+    # CRM (plan 62): tenant prospects, consent choices, campaigns and receipts;
+    # populated rollback is restore (apps/crm/README.md).
+    "crm_referralsource",
+    "crm_lead",
+    "crm_marketingpreference",
+    "crm_campaign",
+    "crm_campaignsend",
+    "crm_satisfactionsurvey",
+    "crm_publicbookingprofile",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive
