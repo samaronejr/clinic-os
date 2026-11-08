@@ -285,7 +285,10 @@ def _effect_terms(row: dict[str, JSON]) -> None:
     identifier(provider["capability_version"])
     for key in ("account", "environment", "api_version"):
         text(provider[key], maximum=128)
-    if operation["name"] == "comms.synthetic_reminder":
+    if operation["name"] in ("appeal.draft", "discrepancy.explain"):
+        arguments = closed(row["parameters"], {"position"})
+        integer(arguments["position"], minimum=0, maximum=191)
+    elif operation["name"] == "comms.synthetic_reminder":
         arguments = closed(row["parameters"], {"template"})
         if arguments["template"] != "logistics-v1":
             raise ActionInputError

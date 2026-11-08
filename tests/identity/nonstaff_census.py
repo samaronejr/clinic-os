@@ -40,6 +40,7 @@ from identity.nonstaff_patient_probes import patient_probes
 from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_psp_probes import psp_probes
 from identity.nonstaff_realtime_probes import realtime_probes
+from identity.nonstaff_revenue_probes import revenue_probes
 from identity.nonstaff_states import CareScope, ReplayScope
 from identity.nonstaff_subjects import seed_nonstaff
 from identity.permission_support import owner_context
@@ -112,6 +113,7 @@ def run_nonstaff_census(
             *decision_probes(data, graph, patch),
             *evaluation_probes(graph, data.actor.pk),
             *care_probes(graph),
+            *revenue_probes(graph),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(

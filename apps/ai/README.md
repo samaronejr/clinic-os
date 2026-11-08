@@ -1,5 +1,77 @@
 # Governed synthetic AI gateway
 
+## Revenue-cycle assistant (todo 60, AI-06)
+
+Default off: `revenue_cycle` has its own organization opt-in, evaluated model
+configuration and A1 agent policy. `request_revenue_cycle`, `collect_revenue_cycle`
+and `propose_revenue_action` are keyword-only and clinic-scoped. Current
+`charge.read`, `tiss.read` and `tiss.manage` are required before any source lookup.
+Finance reviewers additionally need `automation.finance` to admit, approve or
+execute an effect; the shared source recheck enforces it on every path,
+including the generic agent queue.
+Policy publication remains an administrator action. Finance gains visibility
+only to this capability's policy/run/proposal/approval/receipt ancestry through
+`ai_revenue_row`; neither the general agent queue nor another capability opens.
+PostgreSQL enforces the same boundary (ai.0011). A restrictive
+`agent_finance_bound` policy on the seven agent tables requires `ai_revenue_row`
+for revenue ancestry, so agent staff without `automation.finance` neither read
+nor change those rows. A revenue vote stays current only while its approver holds
+`automation.finance`, and `tiss.manage` snapshots approve revenue proposals only.
+Publishing any revenue policy version, the first included, also needs the
+publisher's current `automation.finance`, in Python and in PostgreSQL.
+
+Retrieval uses the existing FORCE-RLS insurance and journal tables, under their
+writer locks. One lock order holds: gateway budget, agent send, insurance, then
+journal; commands take only the prefix they need. The immutable guide binds billed procedure codes, quantities and
+prices to its completed encounter. Only those minimum billing facts, exact
+centavos, posted-allocation totals and fixed source aliases enter the model.
+Patient/card/encounter/member identifiers, names, professional identities,
+clinical notes and raw payer prose never enter the prompt. Source identifiers,
+versions and hashes stay in the existing encrypted, requester-bound AIArtifact.
+Absent journal terms or posted allocations are cited by the exact scoped book
+query result, never by an invented receipt.
+Output keeps the input's original one-day deadline. There is no new tenant table.
+
+Rules detect recorded denials, missing return/recognition/payment evidence and
+claim/journal or claim/allocation discrepancies. Missing evidence means not found
+in these supplied sources; the assistant never claims absence of care. Clinical
+supporting evidence is explicitly not retrieved. The synthetic model classifies
+only these findings; the output envelope has no narrative/instruction field.
+Validation compares the entire output, exact citations and every
+procedure/code/quantity/price against the encounter-bound source. Fabrication,
+upcoding, omitted findings, extra tools and unknown fields reject the entire
+response before output storage. Display text and administrative appeal wording
+are rendered from the verified facts. Payer return text cannot choose a tool.
+
+`appeal.draft` and `discrepancy.explain` are A1-only registered commands. Finance
+first previews one exact effect, then explicitly approves its canonical digest
+using the shared todo-39 TOTP attestation, authority snapshot and execution
+algorithm. Approval and execution reload source bindings, policy, provider and
+authority; new returns, allocations, reversal, supersession, expiry or revocation
+refuse stale work. The direct draft bridge also requires the matching executing
+intent and authenticated human approval. Replays retain one receipt/effect.
+An appeal has no new clinical assertions and remains an unsubmitted insurance
+draft; its separate human submission approval is unchanged. Its body is only
+the reviewed wording: source identifiers and digests stay in the artifact and
+on the review page, never in payer-facing text. An explanation's receipt
+records review only. No claim, clinical record or journal is rewritten.
+
+Refund, write-off, price change, payout and submission are unrepresentable on this
+A1 path. A material agent command would need a separately registered domain
+validator and todo-39 A3 approvals; no such command is authorized by AI-06.
+The native private/no-store review page is Finance > Revenue-cycle assistant.
+Selectors travel only in POST bodies with CSRF/TOTP and a manual workflow path.
+Audit/outbox/logs retain metadata only; all content remains encrypted.
+
+Migration `0010_revenue_cycle` follows AI 0009 and insurance 0001. It widens frozen
+vocabularies, adds the A1-only policy CHECK and installs exact Finance scope
+policies/resolver grants. Fresh reverse is supported only without retained
+AI-06 rows; after history, rollback = restore or disable the organization flag.
+Tests are `tests/ai/test_revenue_contracts.py`, `test_revenue_cycle.py` and
+`test_revenue_views.py`, plus the existing exact posture and SQL registries.
+Real adapters remain `real_enabled=False`; sandbox, paid, provider and live legs
+remain **BLOCKED-ON-EG**. Local fixtures satisfy no external gate.
+
 ## Offline ASR/LLM benchmark (todo 48)
 
 `python manage.py ai_benchmark --report <new-path>` runs only the closed

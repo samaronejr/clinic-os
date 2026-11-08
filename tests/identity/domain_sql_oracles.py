@@ -1,6 +1,11 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
-from ai import test_agent_execution, test_agent_guards, test_agent_staff_authority
+from ai import (
+    test_agent_execution,
+    test_agent_guards,
+    test_agent_staff_authority,
+    test_revenue_cycle,
+)
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
 from ai.care_oracles import CASES as CARE_CASES
@@ -367,10 +372,36 @@ SCRIBE_PROTOCOL_ORACLES = {
     ],
 }
 
+AGENT_PROTOCOL_ORACLES = [
+    "test_agent_scope_and_approval_refusals_are_side_effect_free",
+    "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+    "test_revoked_approver_blocks_after_approval",
+    "test_superseded_source_publication_blocks_execution",
+    "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+]
+# ai.0011 binds revenue ancestry in these resolvers; each oracle fails on 0010.
+REVENUE_BOUND_ORACLES = [
+    "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+    "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+    "test_sql_refuses_a_forged_vote_without_finance_automation",
+    "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+    "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+    "test_inactive_actor_is_refused_by_revenue_sql_itself",
+]
+
 PROTOCOL_ORACLES = {
     **CRM_PROTOCOLS,
     **PSP_PROTOCOLS,
     **ANALYTICS_PROTOCOLS,
+    "clinic_app.ai_revenue_ancestry": [
+        *REVENUE_BOUND_ORACLES,
+        "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation",
+    ],
+    "clinic_app.ai_revenue_row": [
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_finance_scope_resolver_never_opens_another_capability_or_clinic",
+        "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft",
+    ],
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -380,15 +411,8 @@ PROTOCOL_ORACLES = {
     **FRONT_DESK_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
-    **{
-        name: [
-            "test_agent_scope_and_approval_refusals_are_side_effect_free",
-            "test_fabricated_step_up_and_double_approval_cannot_add_votes",
-            "test_revoked_approver_blocks_after_approval",
-            "test_superseded_source_publication_blocks_execution",
-            "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
-        ]
-        for name in (
+    **dict.fromkeys(
+        (
             "clinic_app.agent_action_payload",
             "clinic_app.agent_approval_current",
             "clinic_app.agent_audit",
@@ -403,6 +427,15 @@ PROTOCOL_ORACLES = {
             "clinic_app.agent_transition",
             "clinic_app.identity_actor_permission",
             "clinic_app.identity_agent_grant_version",
+        ),
+        AGENT_PROTOCOL_ORACLES,
+    ),
+    **{
+        name: [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES]
+        for name in (
+            "clinic_app.agent_approval_current",
+            "clinic_app.agent_controls",
+            "clinic_app.agent_record_guard",
         )
     },
     "clinic_app.agent_staff": [
@@ -585,6 +618,8 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_row"]),
+        (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_ancestry"]),
         (
             scribe_draft_authority,
             (

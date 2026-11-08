@@ -10107,3 +10107,99 @@ msgstr "Deixe sem seleção para incluir todos os dias."
 
 msgid "days"
 msgstr "dias"
+
+msgid "Revenue-cycle assistant"
+msgstr "Assistente de faturamento"
+
+msgid "Review discrepancies and administrative appeal drafts against their exact financial sources."
+msgstr "Revise divergências e rascunhos administrativos de recursos de glosa com suas fontes financeiras exatas."
+
+msgid "Synthetic rehearsal. No real model, payment or submission is authorized. BLOCKED-ON-EG."
+msgstr "Simulação sintética. Nenhum modelo real, pagamento ou envio está autorizado. BLOCKED-ON-EG."
+
+msgid "Clinical supporting evidence is not retrieved. Missing evidence means not found in the supplied sources, never absence of care."
+msgstr "Evidências clínicas de apoio não são consultadas. Evidência pendente significa que não foi encontrada nas fontes fornecidas, nunca ausência de atendimento."
+
+msgid "Claim guide"
+msgstr "Guia de cobrança"
+
+msgid "Request financial review"
+msgstr "Solicitar revisão financeira"
+
+msgid "No claim sources are available in this clinic."
+msgstr "Nenhuma fonte de cobrança está disponível nesta clínica."
+
+msgid "The review is generating. Manual financial work remains available."
+msgstr "A revisão está sendo gerada. O trabalho financeiro manual continua disponível."
+
+msgid "The assistant is unavailable. Continue the financial workflow manually."
+msgstr "O assistente está indisponível. Continue o fluxo financeiro manualmente."
+
+msgid "The source or proposal changed. Refresh and review it again."
+msgstr "A fonte ou proposta mudou. Atualize e revise novamente."
+
+msgid "Administrative appeal draft"
+msgstr "Rascunho administrativo de recurso de glosa"
+
+msgid "Discrepancy explanation"
+msgstr "Explicação da divergência"
+
+msgid "Preview exact approval"
+msgstr "Conferir aprovação exata"
+
+msgid "A finance reviewer with Automations authority must approve every exact effect."
+msgstr "Um revisor financeiro com permissão de automação financeira deve aprovar cada efeito exato."
+
+msgid "No discrepancy was found by these bounded rules. This is not a financial clearance."
+msgstr "Estas regras limitadas não encontraram divergências. Isso não é uma quitação financeira."
+
+msgid "Approval binds this exact source version, effect and digest."
+msgstr "A aprovação vincula esta versão exata da fonte, o efeito e o resumo criptográfico."
+
+msgid "Approve exact draft"
+msgstr "Aprovar rascunho exato"
+
+msgid "Choose the source and review the current proposal."
+msgstr "Escolha a fonte e revise a proposta atual."
+
+msgid "Proposal rejected. No claim or billing action was performed."
+msgstr "Proposta rejeitada. Nenhuma ação de cobrança ou faturamento foi realizada."
+
+msgid "Review recorded. An appeal remains a draft and needs separate human submission approval."
+msgstr "Revisão registrada. O recurso continua como rascunho e precisa de aprovação humana separada para envio."
+
+msgid "Create an administrative appeal draft"
+msgstr "Criar um rascunho administrativo de recurso de glosa"
+
+msgid "Record review of a source-backed discrepancy"
+msgstr "Registrar a revisão de uma divergência vinculada às fontes"
+
+msgid "No current service-recognition entry was found in the supplied journal facts."
+msgstr "Nenhum lançamento atual de reconhecimento do serviço foi encontrado nos fatos contábeis fornecidos."
+
+msgid "The submitted claim total differs from the frozen net journal terms."
+msgstr "O total da guia enviada difere dos valores líquidos fixados no livro contábil."
+
+msgid "No payer return was found in the supplied claim sources. This does not establish payment or denial."
+msgstr "Nenhum retorno da operadora foi encontrado nas fontes fornecidas. Isso não comprova pagamento nem glosa."
+
+msgid "The payer return records a denied amount. A person must review the source and any appeal."
+msgstr "O retorno da operadora registra um valor glosado. Uma pessoa deve revisar a fonte e qualquer recurso."
+
+msgid "The accepted claim amount exceeds independently posted allocations. A return is not payment evidence."
+msgstr "O valor aceito da guia supera as alocações lançadas de forma independente. Um retorno não é comprovante de pagamento."
+
+msgid "Independently posted allocations exceed the accepted amount in this return. Review the sources; no refund or adjustment is inferred."
+msgstr "As alocações lançadas de forma independente superam o valor aceito neste retorno. Revise as fontes; nenhum estorno ou ajuste é presumido."
+
+msgid "Administrative appeal draft. Please review the recorded denial. The submitted procedure is table %(table)s, code %(code)s, quantity %(quantity)s, unit value %(unit)s centavos. The payer recorded %(denied)s centavos denied, reason %(reason)s. These are recorded billing facts, not new clinical assertions. Clinical supporting evidence was not retrieved; a person must review it before any submission."
+msgstr "Rascunho administrativo de recurso de glosa. Revise a glosa registrada. O procedimento enviado pertence à tabela %(table)s, código %(code)s, quantidade %(quantity)s, valor unitário de %(unit)s centavos. A operadora registrou %(denied)s centavos glosados, motivo %(reason)s. Estes são fatos de faturamento registrados, não novas afirmações clínicas. Evidências clínicas de apoio não foram consultadas; uma pessoa deve revisá-las antes de qualquer envio."
+
+msgid "Payer return item"
+msgstr "Item do retorno da operadora"
+
+msgid "Journal record"
+msgstr "Registro contábil"
+
+msgid "Posted allocation"
+msgstr "Alocação lançada"

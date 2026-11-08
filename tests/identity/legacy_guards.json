@@ -171,6 +171,7 @@
     {
       "symbol": "apps.ai.artifacts.check_authority",
       "signals": [
+        "denial",
         "permission",
         "scope_name"
       ],
@@ -704,6 +705,7 @@
       "signals": [
         "actor",
         "denial",
+        "permission",
         "resolver"
       ],
       "kind": "direct",
@@ -9701,6 +9703,138 @@
         "apps.analytics.services.refresh_metric"
       ],
       "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.ai.agent_policies.publish_agent_policy",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.agent_policies.policy_administrator",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Publishing needs automation administration through policy_administrator; any AI-06 version also needs the publisher's exact-clinic automation.finance through require_permission, and ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle._ready",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.input_for",
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.check_revenue_sources",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "AI-06 admission, approval and execution recheck the caller's exact-clinic automation.finance through require_permission; ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.collect_revenue_cycle",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.request_revenue_cycle",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.recheck_context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.require_finance",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.retrieve_context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views._command",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.ai.approvals.approve_action"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views._review_for_proposal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views.revenue_cycle_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required",
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     }
   ],
   "probes": [
@@ -12166,6 +12300,7 @@
         ],
         "resolvers": [
           "clinic_app.ai_ledger_guard",
+          "clinic_app.ai_revenue_row",
           "clinic_app.retention_purge_visible"
         ],
         "signatures": [
@@ -14654,6 +14789,7 @@
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
           "clinic_app.ai_frontdeskthread:front_desk_read",
           "clinic_app.ai_frontdeskthread:front_desk_update",
           "clinic_app.ai_frontdeskturn:front_desk_read",
@@ -14775,6 +14911,7 @@
           "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ai_front_desk_guard",
           "clinic_app.ai_imported_observation",
+          "clinic_app.ai_revenue_row",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
           "clinic_app.analytics_allowed",
@@ -20447,7 +20584,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20556,7 +20699,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20639,7 +20788,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20773,6 +20928,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_approval_current",
           "clinic_app.agent_bound_snapshot",
           "clinic_app.agent_controls",
           "clinic_app.has_permission"
@@ -24003,6 +24159,87 @@
         "test_refresh_step_requires_its_exact_effect_and_replays_once"
       ],
       "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.ai_revenue_ancestry": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_revenue_bound_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_finance_bound",
+          "clinic_app.ai_actionproposal:agent_finance_bound",
+          "clinic_app.ai_actionreceipt:agent_finance_bound",
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
+          "clinic_app.ai_agentrun:agent_finance_bound",
+          "clinic_app.ai_approval:agent_finance_bound",
+          "clinic_app.ai_compensation:agent_finance_bound"
+        ],
+        "resolvers": [
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, kind text, requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation"
+      ],
+      "reason": "Identity-free AI-06 ancestry for restrictive agent policies and the vote guard; agent staff without Finance automation, approver-bound votes, forged votes and raw state changes are executed on 0010 (red) and 0011 (green)."
+    },
+    "clinic_app.ai_revenue_row": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, kind text, requested uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_revenue_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_finance",
+          "clinic_app.ai_actionexecution:agent_finance_bound",
+          "clinic_app.ai_actionproposal:agent_finance",
+          "clinic_app.ai_actionproposal:agent_finance_bound",
+          "clinic_app.ai_actionreceipt:agent_finance",
+          "clinic_app.ai_actionreceipt:agent_finance_bound",
+          "clinic_app.ai_agentpolicyversion:agent_finance",
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
+          "clinic_app.ai_agentrun:agent_finance",
+          "clinic_app.ai_agentrun:agent_finance_bound",
+          "clinic_app.ai_approval:agent_finance",
+          "clinic_app.ai_approval:agent_finance_bound",
+          "clinic_app.ai_compensation:agent_finance",
+          "clinic_app.ai_compensation:agent_finance_bound"
+        ],
+        "resolvers": [
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_controls"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_finance_scope_resolver_never_opens_another_capability_or_clinic",
+        "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft"
+      ],
+      "reason": "Current Finance authority and exact policy ancestry admit only AI-06 rows; real active/inactive, foreign-clinic, unrelated-capability and human-approval oracles execute this SQL resolver."
     }
   },
   "sql_method": [

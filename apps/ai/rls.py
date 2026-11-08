@@ -14,6 +14,11 @@ AGENT_TABLES: Final = frozenset(
         "ai_compensation",
     }
 )
+# AI-06 adds a capability-bound Finance policy to these existing FORCE-RLS
+# tables. Table/column/machine grants remain unchanged; ai_revenue_row resolves
+# the policy ancestry without granting access to another agent capability.
+# ai.0011 adds a restrictive agent_finance_bound policy: on revenue ancestry
+# every clinic_app policy, agent_staff included, also needs ai_revenue_row.
 EXTRACTION_TABLES: Final = frozenset({"ai_extractionjob", "ai_extractioncandidate"})
 EVALUATION_TABLES: Final = frozenset(
     {

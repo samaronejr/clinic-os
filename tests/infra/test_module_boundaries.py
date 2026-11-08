@@ -3,7 +3,14 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
-from apps.ai import care_coordination, front_desk, front_desk_kb, front_desk_staff
+from apps.ai import (
+    care_coordination,
+    front_desk,
+    front_desk_kb,
+    front_desk_staff,
+    revenue_cycle,
+    revenue_sources,
+)
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
@@ -116,6 +123,28 @@ def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None
 )
 def test_psp_human_boundaries_derive_authority_from_current_context(
     entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (revenue_cycle.request_revenue_cycle, ["clinic_id", "guide_id"]),
+        (revenue_cycle.collect_revenue_cycle, ["clinic_id", "invocation_id"]),
+        (revenue_cycle.propose_revenue_action, ["clinic_id", "output_id", "position"]),
+        (revenue_cycle.check_revenue_sources, ["clinic_id", "data"]),
+        (revenue_cycle.execute_revenue_draft, ["clinic_id", "payload"]),
+        (revenue_sources.require_finance, ["clinic_id"]),
+        (revenue_sources.retrieve_context, ["clinic_id", "guide_id"]),
+        (revenue_sources.recheck_context, ["clinic_id", "content"]),
+    ],
+)
+def test_revenue_assistant_keeps_explicit_scope_and_no_caller_authority(
+    entrypoint: Callable[..., object],
+    names: list[str],
 ) -> None:
     parameters = signature(entrypoint).parameters
     assert list(parameters) == names

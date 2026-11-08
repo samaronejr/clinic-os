@@ -66,6 +66,13 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         )
         policies = set(cursor.fetchall())
         cursor.execute(
+            "SELECT tablename,policyname,array_to_string(roles,',') FROM pg_policies "
+            "WHERE schemaname='clinic_app' AND permissive='RESTRICTIVE' "
+            "AND tablename=ANY(%s)",
+            [tables],
+        )
+        restrictive = set(cursor.fetchall())
+        cursor.execute(
             "SELECT table_name,privilege_type "
             "FROM information_schema.role_table_grants "
             "WHERE table_schema='clinic_app' AND grantee='clinic_app' "
@@ -114,7 +121,13 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         *(
             (table, policy)
             for table in AGENT_TABLES
-            for policy in ("agent_owner", "agent_staff", "agent_machine")
+            for policy in (
+                "agent_owner",
+                "agent_staff",
+                "agent_machine",
+                "agent_finance",
+                "agent_finance_bound",
+            )
         ),
         *(
             (table, policy)
@@ -139,6 +152,11 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         ("ai_knowledgearticle", "front_desk_insert"),
         ("ai_knowledgearticle", "front_desk_update"),
         ("ai_frontdeskthread", "front_desk_update"),
+    }
+    # AI-06: every clinic_app agent policy also needs Finance automation on
+    # revenue ancestry, so agent staff alone never open those rows.
+    assert restrictive == {
+        (table, "agent_finance_bound", "clinic_app") for table in AGENT_TABLES
     }
     assert grants == {
         (table, privilege)

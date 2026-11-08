@@ -31,6 +31,13 @@ def source_versions(purpose: Purpose) -> dict[str, str]:
         "prompt": load_prompt(purpose)[1],
         "retrieval": _source_hash(
             (
+                "apps/ai/revenue_sources.py",
+                "apps/insurance/guides.py",
+                "apps/insurance/revenue.py",
+                "apps/billing/security.py",
+            )
+            if purpose is Purpose.REVENUE_CYCLE
+            else (
                 "apps/ai/context.py",
                 "apps/core/chart_sources.py",
                 "apps/ehr/chart_sources.py",
@@ -50,6 +57,8 @@ def source_versions(purpose: Purpose) -> dict[str, str]:
                 "apps/ai/fixtures/document_extraction_v1.json",
                 "apps/ai/brief_contracts.py",
                 "apps/ai/decision_contracts.py",
+                "apps/ai/revenue_contracts.py",
+                "apps/ai/revenue_cycle.py",
                 "apps/ai/extraction_contracts.py",
                 "apps/scribe/draft_contracts.py",
                 "apps/ai/evaluation/corpus.schema.json",

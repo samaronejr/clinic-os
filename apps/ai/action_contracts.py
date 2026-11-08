@@ -83,6 +83,8 @@ OPERATIONS: Final = (
     "comms.synthetic_reminder",
     "workflows.review_task",
     "care_action.create",
+    "appeal.draft",
+    "discrepancy.explain",
 )
 MAX_ACTION_BYTES: Final = 65_536
 

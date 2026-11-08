@@ -42,6 +42,7 @@ PURPOSE_CAPABILITIES = {
     "extraction": "AI-03",
     "front_desk": "AI-04",
     "care_coordination": "AI-05",
+    "revenue_cycle": "AI-06",
     "analyst": "AI-07",
     "decision_support": "AI-08",
 }

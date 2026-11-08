@@ -19,6 +19,9 @@ from apps.ai.contracts import (
 )
 from apps.ai.decision_contracts import SCHEMA as DECISION_SCHEMA
 from apps.ai.decision_contracts import parse_decision_request, validate_decision_reply
+from apps.ai.revenue_contracts import SCHEMA as REVENUE_SCHEMA
+from apps.ai.revenue_contracts import parse_model_input as parse_revenue_input
+from apps.ai.revenue_contracts import validate_reply as validate_revenue_reply
 from apps.analytics.analyst_contracts import parse_request as parse_analyst_request
 from apps.analytics.analyst_contracts import validate_reply as validate_analyst_reply
 from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
@@ -103,12 +106,14 @@ def call_provider(
         case unreachable:
             assert_never(unreachable)
     result = validate_result(result, limits=request.limits, method=method)
-    _validate_capability(request, result)
+    _validate_structured_output(request=request, result=result)
     return result
 
 
-def _validate_capability(request: ProviderRequest, result: ProviderResult) -> None:
-    """Validate a capability's typed output before the gateway retains it."""
+def _validate_structured_output(
+    *, request: ProviderRequest, result: ProviderResult
+) -> None:
+    """Validate purpose-specific facts before the gateway can retain any output."""
     schema = request_schema(request.content)
     if schema == ANALYST_SCHEMA:
         validate_analyst_reply(result.content, parse_analyst_request(request.content))
@@ -119,3 +124,5 @@ def _validate_capability(request: ProviderRequest, result: ProviderResult) -> No
     elif schema == CARE_SCHEMA:
         # The envelope must be exact; single items are judged at collection.
         validate_care_reply(result.content)
+    elif schema == REVENUE_SCHEMA:
+        validate_revenue_reply(result.content, parse_revenue_input(request.content))

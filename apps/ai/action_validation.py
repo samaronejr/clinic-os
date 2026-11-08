@@ -176,6 +176,7 @@ def _validate_effect(
     operation = closed(data["operation"], {"name", "version"})
     name = operation["name"]
     care = name == "care_action.create"
+    revenue = name in ("appeal.draft", "discrepancy.explain")
     if (
         not isinstance(name, str)
         or policy.tool_allowlist.get(name) != TOOL_SCHEMAS.get(name)
@@ -183,6 +184,8 @@ def _validate_effect(
         or (name == "workflows.review_task" and terms["autonomy"] != "A1")
         or (care and terms["autonomy"] != "A1")
         or (care != (policy.capability == "care_coordination"))
+        or (revenue and (terms["autonomy"] != "A1" or terms["quorum"] != 1))
+        or (revenue != (policy.capability == "revenue_cycle"))
         or (
             name == "comms.synthetic_reminder" and terms["autonomy"] not in ("A2", "A3")
         )
@@ -209,7 +212,9 @@ def _validate_effect(
         raise ActionRefusedError(Refusal.TOOL)
     snapshots = data["approver_authority_snapshots"]
     allowed = (
-        {"tasks.assign"}
+        {"tiss.manage"}
+        if revenue
+        else {"tasks.assign"}
         if terms["autonomy"] == "A1"
         else {
             "automation.admin",
@@ -253,12 +258,30 @@ def _validate_provider(data: dict[str, JSON], controls: dict[str, JSON]) -> None
 def _validate_sources(
     *, data: dict[str, JSON], policy: AgentPolicyVersion, proposal_id: UUID, using: str
 ) -> None:
+    if closed(data["operation"], {"name", "version"})["name"] in (
+        "appeal.draft",
+        "discrepancy.explain",
+    ):
+        from apps.ai.revenue_cycle import check_revenue_sources  # noqa: PLC0415
+
+        if using != "default":
+            raise ActionRefusedError(Refusal.AUTHORITY)
+        check_revenue_sources(clinic_id=policy.clinic_id, data=data)
+        return
     if closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
         # A1 runs in the approving human's request; machines never execute it.
         if using != "default":
             raise ActionRefusedError(Refusal.SOURCE)
         check_care_sources(data=data, clinic_id=policy.clinic_id)
         return
+    _validate_workflow_sources(
+        data=data, policy=policy, proposal_id=proposal_id, using=using
+    )
+
+
+def _validate_workflow_sources(
+    *, data: dict[str, JSON], policy: AgentPolicyVersion, proposal_id: UUID, using: str
+) -> None:
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
     sources = data["source_versions"]
     if not isinstance(sources, list) or not sources:
