@@ -489,7 +489,9 @@ PROTOCOL_ORACLES = {
     "clinic_app.scheduling_effective_interval": [
         "test_effective_interval_is_actor_invariant"
     ],
-    **{name: [name] for name in SQL_CASES},
+    # A workflow-migration member another domain registry owns keeps that
+    # registry's oracles (analytics_workflow_receipt: workflows 0009, todo 63).
+    **{name: [name] for name in SQL_CASES if name not in ANALYTICS_PROTOCOLS},
     "clinic_app.workflows_bundle_selection_guard": [
         "test_bundle_issuance_requires_the_owner_login_for_every_role"
     ],
