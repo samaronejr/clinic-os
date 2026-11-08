@@ -561,3 +561,73 @@ def test_journal_batch_preserves_sql_and_historical_relations() -> None:
                 getattr(relation, "field", None) is field
                 for relation in target._meta.get_fields(include_hidden=True)
             )
+
+
+# Wave E and the heaviest earlier migrations batch their state; each batch must
+# emit exactly the separated form's SQL and leave exactly its model state.
+BATCHED = [
+    ("ai", "0010_revenue_cycle"),
+    ("analytics", "0001_initial"),
+    ("billing", "0012_sandbox_psp"),
+    ("consent", "0004_purpose_taxonomy"),
+    ("crm", "0001_initial"),
+    ("ehr", "0014_longitudinal_record"),
+    ("insurance", "0001_revenue_cycle"),
+    ("inventory", "0001_inventory"),
+    ("orders", "0001_identity_safe_results"),
+    ("prescription", "0014_independent_signature_verification"),
+    ("teleconsult", "0004_teleconsult_v2"),
+]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(("app", "name"), BATCHED)
+def test_wave_e_batches_preserve_sql_and_state(app: str, name: str) -> None:
+    # Given: the batched migration and Django's separated form of its batch.
+    loader = MigrationLoader(None)
+    migration = loader.disk_migrations[app, name]
+    index = next(
+        position
+        for position, operation in enumerate(migration.operations)
+        if isinstance(operation, SchemaStateBatch)
+    )
+    batch = migration.operations[index]
+    assert isinstance(batch, SchemaStateBatch)
+    separated = migrations.SeparateDatabaseAndState(
+        database_operations=batch.database_operations,
+        state_operations=batch.state_operations,
+    )
+    # The state just before this migration (dependencies may name __first__).
+    before = loader.project_state((app, name), at_end=False)
+    for operation in migration.operations[:index]:
+        operation.state_forwards(app, before)
+    _ = before.apps
+    statements = []
+    definitions = []
+    # When: both forms run forward from the same state.
+    for operation in (separated, batch):
+        after = before.clone()
+        operation.state_forwards(app, after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
+            operation.database_forwards(app, forward, before.clone(), after)
+        statements.append(forward.collected_sql)
+        after.clear_delayed_apps_cache()
+        _ = after.apps
+        definitions.append(
+            MigrationWriter.serialize(
+                [
+                    (
+                        key,
+                        state.name,
+                        sorted(state.fields.items()),
+                        state.options,
+                        state.bases,
+                        state.managers,
+                    )
+                    for key, state in sorted(after.models.items())
+                ]
+            )
+        )
+    # Then: identical database statements and identical final model state.
+    assert statements[0] == statements[1]
+    assert definitions[0] == definitions[1]

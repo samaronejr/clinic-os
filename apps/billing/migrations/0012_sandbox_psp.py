@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.billing.migrations._psp_schema import OPERATIONS
 from apps.billing.migrations._psp_sql import SQL
 
@@ -46,7 +47,8 @@ class Migration(migrations.Migration):
         ("providers", "0001_initial"),
     ]
     operations: ClassVar[list[Operation]] = [
-        *OPERATIONS,
+        # Each new model renders once instead of re-rendering the tenant graph.
+        SchemaStateBatch(database_operations=OPERATIONS, state_operations=OPERATIONS),
         migrations.RunPython(finish_foreign_keys, reverse_code=None),
         migrations.RunSQL(SQL, reverse_sql=None),
     ]

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, ClassVar
 from django.db import migrations
 from psycopg import sql
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
+
 from . import _insurance_sql
 from ._schema import MODELS
 
@@ -60,7 +62,7 @@ def finish_foreign_keys(
         )
 
 
-class ProtectedSchema(migrations.SeparateDatabaseAndState):
+class ProtectedSchema(SchemaStateBatch):
     """Publish all encrypted tables, state guards and least privileges atomically."""
 
     atomic = True
