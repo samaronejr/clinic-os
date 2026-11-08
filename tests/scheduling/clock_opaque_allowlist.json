@@ -2302,5 +2302,230 @@
     "returns": "text",
     "volatility": "s",
     "reason": "The PL/pgSQL version identifier matches the catalog version routine; retain that conservative native candidate as opaque risk."
+  },
+  "pg_catalog.abs(bigint)": {
+    "extension": "",
+    "implementation": "int8abs",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.abs(double precision)": {
+    "extension": "",
+    "implementation": "float8abs",
+    "language": "internal",
+    "library": "",
+    "returns": "double precision",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.abs(integer)": {
+    "extension": "",
+    "implementation": "int4abs",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.abs(numeric)": {
+    "extension": "",
+    "implementation": "numeric_abs",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.abs(real)": {
+    "extension": "",
+    "implementation": "float4abs",
+    "language": "internal",
+    "library": "",
+    "returns": "real",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.abs(smallint)": {
+    "extension": "",
+    "implementation": "int2abs",
+    "language": "internal",
+    "library": "",
+    "returns": "smallint",
+    "volatility": "i",
+    "reason": "Reached absolute-value over supplied values in billing_allocation_guard; conservative overload resolution retains this exact absolute-value implementation as opaque risk."
+  },
+  "pg_catalog.array_agg(anyarray)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "anyarray",
+    "volatility": "i",
+    "reason": "Reached row aggregation in ehr_autosave_guard; conservative overload resolution retains this exact array aggregate implementation as opaque risk."
+  },
+  "pg_catalog.array_agg(anynonarray)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "anyarray",
+    "volatility": "i",
+    "reason": "Reached row aggregation in ehr_autosave_guard; conservative overload resolution retains this exact array aggregate implementation as opaque risk."
+  },
+  "pg_catalog.ceil(double precision)": {
+    "extension": "",
+    "implementation": "dceil",
+    "language": "internal",
+    "library": "",
+    "returns": "double precision",
+    "volatility": "i",
+    "reason": "Reached ceiling over supplied values in subscription_source_meter; conservative overload resolution retains this exact ceiling implementation as opaque risk."
+  },
+  "pg_catalog.ceil(numeric)": {
+    "extension": "",
+    "implementation": "numeric_ceil",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached ceiling over supplied values in subscription_source_meter; conservative overload resolution retains this exact ceiling implementation as opaque risk."
+  },
+  "pg_catalog.charge(\"char\", \"char\")": {
+    "extension": "",
+    "implementation": "charge",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached \"char\" comparison over supplied values in billing_settlement_guard; retain the exact \"char\" comparison implementation as opaque risk."
+  },
+  "pg_catalog.div(numeric, numeric)": {
+    "extension": "",
+    "implementation": "numeric_div_trunc",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached integer-division over supplied values in billing_round_ratio; retain the exact integer-division implementation as opaque risk."
+  },
+  "pg_catalog.int84gt(bigint, integer)": {
+    "extension": "",
+    "implementation": "int84gt",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached integer comparison over supplied values in the scheduling closure; retain the exact integer comparison implementation as opaque risk."
+  },
+  "pg_catalog.int8um(bigint)": {
+    "extension": "",
+    "implementation": "int8um",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "i",
+    "reason": "Reached integer negation over supplied values in the scheduling closure; retain the exact integer negation implementation as opaque risk."
+  },
+  "pg_catalog.mod(bigint, bigint)": {
+    "extension": "",
+    "implementation": "int8mod",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "i",
+    "reason": "Reached remainder over supplied values in billing_round_ratio; conservative overload resolution retains this exact remainder implementation as opaque risk."
+  },
+  "pg_catalog.mod(integer, integer)": {
+    "extension": "",
+    "implementation": "int4mod",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached remainder over supplied values in billing_round_ratio; conservative overload resolution retains this exact remainder implementation as opaque risk."
+  },
+  "pg_catalog.mod(numeric, numeric)": {
+    "extension": "",
+    "implementation": "numeric_mod",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached remainder over supplied values in billing_round_ratio; conservative overload resolution retains this exact remainder implementation as opaque risk."
+  },
+  "pg_catalog.mod(smallint, smallint)": {
+    "extension": "",
+    "implementation": "int2mod",
+    "language": "internal",
+    "library": "",
+    "returns": "smallint",
+    "volatility": "i",
+    "reason": "Reached remainder over supplied values in billing_round_ratio; conservative overload resolution retains this exact remainder implementation as opaque risk."
+  },
+  "pg_catalog.numeric_mul(numeric, numeric)": {
+    "extension": "",
+    "implementation": "numeric_mul",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached numeric multiplication over supplied values in the scheduling closure; retain the exact numeric multiplication implementation as opaque risk."
+  },
+  "pg_catalog.timestamptz_mi(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_mi",
+    "language": "internal",
+    "library": "",
+    "returns": "interval",
+    "volatility": "i",
+    "reason": "Reached interval arithmetic over supplied timestamps in the scheduling closure; retain the exact timestamp-difference implementation as opaque risk."
+  },
+  "pg_catalog.trunc(double precision)": {
+    "extension": "",
+    "implementation": "dtrunc",
+    "language": "internal",
+    "library": "",
+    "returns": "double precision",
+    "volatility": "i",
+    "reason": "Reached truncation over supplied values in billing_round_ratio, ehr_autosave_guard; conservative overload resolution retains this exact truncation implementation as opaque risk."
+  },
+  "pg_catalog.trunc(macaddr)": {
+    "extension": "",
+    "implementation": "macaddr_trunc",
+    "language": "internal",
+    "library": "",
+    "returns": "macaddr",
+    "volatility": "i",
+    "reason": "Reached only through conservative overload resolution of trunc() in billing_round_ratio, ehr_autosave_guard; retain the exact truncation implementation for this type as opaque risk."
+  },
+  "pg_catalog.trunc(macaddr8)": {
+    "extension": "",
+    "implementation": "macaddr8_trunc",
+    "language": "internal",
+    "library": "",
+    "returns": "macaddr8",
+    "volatility": "i",
+    "reason": "Reached only through conservative overload resolution of trunc() in billing_round_ratio, ehr_autosave_guard; retain the exact truncation implementation for this type as opaque risk."
+  },
+  "pg_catalog.trunc(numeric, integer)": {
+    "extension": "",
+    "implementation": "numeric_trunc",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Reached truncation over supplied values in billing_round_ratio, ehr_autosave_guard; conservative overload resolution retains this exact truncation implementation as opaque risk."
+  },
+  "pg_catalog.txid_current()": {
+    "extension": "",
+    "implementation": "pg_current_xact_id",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "s",
+    "reason": "Reached scribe_transcript_guard's transaction identity read; retain the exact transaction-id implementation as opaque risk."
   }
 }
