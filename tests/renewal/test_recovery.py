@@ -321,10 +321,8 @@ def test_app_role_probes_reject_permissive_policy(
                 "DELETE FROM clinic_app.intake_patient WHERE id = %s",
                 [restore_verification.FOREIGN_PROBE_PATIENT],
             )
-            raw.execute(
-                "DELETE FROM clinic_app.identity_organization WHERE id = %s",
-                [restore_verification.FOREIGN_PROBE_ORGANIZATION],
-            )
+            # The probe organization's bootstrapped subscription is retained
+            # history, so the organization stays for the transactional flush.
 
 
 def test_tenant_key_status_must_match_source() -> None:
@@ -342,12 +340,20 @@ def test_tenant_key_status_must_match_source() -> None:
 def _reseed_provider_registry(superuser_database_url: str) -> None:
     """Rebuild the migration seed under fresh surrogate keys and timestamps."""
     with psycopg.connect(superuser_database_url, autocommit=True) as raw:
+        # PSP history references capability versions, so it is truncated with
+        # the registry; replica mode lifts its no-truncate guard for this
+        # session only, as the teardown flush lifts it per test.
+        raw.execute("SET session_replication_role = replica")
         raw.execute(
             "TRUNCATE clinic_app.providers_healthevent, "
             "clinic_app.providers_activationrecord, "
             "clinic_app.providers_capabilityversion, "
             "clinic_app.providers_capabilityapproval, "
-            "clinic_app.providers_providercapability"
+            "clinic_app.providers_providercapability, "
+            "clinic_app.billing_pspbinding, "
+            "clinic_app.billing_pspevidence, "
+            "clinic_app.billing_pspintent, "
+            "clinic_app.billing_pspreceipt"
         )
     seed_capabilities()
 
