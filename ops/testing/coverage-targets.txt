@@ -3,6 +3,7 @@
 # floor (--cov-fail-under=90) is unchanged.
 --cov=apps.audit
 --cov=apps.ai
+--cov=apps.analytics
 --cov=apps.billing
 --cov=apps.comms
 --cov=apps.consent

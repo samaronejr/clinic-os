@@ -12,6 +12,7 @@ from uuid import UUID
 import rfc8785
 from django.utils import timezone
 
+from apps.analytics.catalog import METRICS
 from apps.identity.models import UserClinicRole
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ PRIORITIES: Final = frozenset({"low", "normal", "high", "urgent"})
 REF_KINDS: Final = frozenset({"clinic", "task", "enrollment", "appointment"})
 MAX_STEPS: Final = 64
 MAX_SECONDS: Final = 31_536_000
+MAX_METRIC_DAYS: Final = 366
 
 
 class WorkflowInputError(ValueError):
@@ -154,6 +156,14 @@ def _valid_step(step: object) -> bool:
     if not isinstance(step, dict):
         return False
     handler = step.get("handler")
+    if handler == "metrics_refresh":
+        return (
+            set(step) == {"handler", "metric_id", "days"}
+            and isinstance(step["metric_id"], str)
+            and step["metric_id"] in METRICS
+            and type(step["days"]) is int
+            and 1 <= step["days"] <= MAX_METRIC_DAYS
+        )
     if handler == "timer":
         return set(step) == {"handler", "seconds"} and _bounded_int(
             step["seconds"], MAX_SECONDS

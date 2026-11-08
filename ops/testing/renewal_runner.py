@@ -124,6 +124,7 @@ SUITES: Final = {
     "messages": ("tests/renewal/browser/test_messages.py",),
     # Task 53: care-coordination proposals, appended as its own registration block.
     "care-coordination": ("tests/renewal/browser/test_care_coordination.py",),
+    "reports": ("tests/renewal/browser/test_reports.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -167,6 +168,7 @@ FIXTURE_SUITES: Final = frozenset(
         "portal",
         "messages",
         "care-coordination",
+        "reports",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.

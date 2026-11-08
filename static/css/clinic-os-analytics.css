@@ -1,0 +1,49 @@
+/* Governed Reports use their own reflow rules; Finance's mobile ledger does not. */
+.reports-shell {
+  width: min(var(--measure-wide), 100%);
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.reports-shell .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reports-shell summary {
+  min-block-size: var(--control-height);
+  padding-block: var(--space-2);
+  cursor: pointer;
+}
+
+.reports-shell dd {
+  overflow-wrap: anywhere;
+}
+
+.reports-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-5);
+}
+
+.reports-fields > div {
+  min-width: 0;
+}
+
+.reports-field-wide {
+  grid-column: 1 / -1;
+}
+
+.reports-progress {
+  display: none;
+}
+
+.reports-form[aria-busy="true"] .reports-progress {
+  display: block;
+}
+
+@media (max-width: 40rem) {
+  .reports-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

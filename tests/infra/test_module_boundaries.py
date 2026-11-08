@@ -10,6 +10,8 @@ from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
+from apps.analytics import analyst as analytics_analyst
+from apps.analytics import services as analytics_services
 from apps.billing.journal import post_entry
 from apps.billing.services import create_invoice
 from apps.comms import inbox_services, portal_messages, suggestions
@@ -77,6 +79,7 @@ def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None
 
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
+        "apps.analytics.apps.AnalyticsConfig",
         "apps.ai.apps.AiConfig",
         "apps.scribe.apps.ScribeConfig",
         "apps.audit.apps.AuditConfig",
@@ -107,6 +110,29 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
 @pytest.mark.parametrize(
     ("entrypoint", "names"),
     [
+        (analytics_services.authorize, ["clinic_id", "metric_id"]),
+        (analytics_services.definitions, ["clinic_id"]),
+        (analytics_services.query_metric, ["clinic_id", "query"]),
+        (analytics_services.refresh_metric, ["clinic_id", "query", "command_id"]),
+        (analytics_services.drill_down, ["clinic_id", "query"]),
+        (analytics_services.save_report, ["clinic_id", "query"]),
+        (analytics_services.load_report, ["clinic_id", "report_id"]),
+        (
+            analytics_services.require_snapshot,
+            ["clinic_id", "query", "authorization_version"],
+        ),
+        (analytics_analyst.request_analyst, ["clinic_id", "question", "query"]),
+        (analytics_analyst.display_proposal, ["clinic_id", "invocation_id"]),
+        (
+            analytics_analyst.review_proposal,
+            [
+                "clinic_id",
+                "invocation_id",
+                "query_digest",
+                "authorization_version",
+                "decision",
+            ],
+        ),
         (
             evaluation_services.register_protocol,
             [

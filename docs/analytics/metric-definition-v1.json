@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clinic metric definition version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "metric_id", "version", "grain", "formula", "numerator", "denominator", "unit", "time_basis", "window", "timezone", "filters", "dimensions", "late_data", "freshness_seconds", "authorization", "quality", "provenance", "available", "benchmarking"],
+  "properties": {
+    "schema": {"const": "metric-definition-v1"},
+    "metric_id": {"type": "string", "enum": ["utilization", "no_show", "waiting_time", "task_turnaround", "receivables", "verified_collections", "net_collections", "denials", "payout_liabilities", "result_ack_latency", "follow_up_overdue", "support_load", "ai_correction_time", "activation", "retained_usage"]},
+    "version": {"const": 1},
+    "grain": {"const": "clinic"},
+    "formula": {
+      "type": "object", "additionalProperties": false,
+      "required": ["op", "numerator", "denominator", "scale"],
+      "properties": {
+        "op": {"enum": ["sum", "ratio"]},
+        "numerator": {"const": "numerator"},
+        "denominator": {"enum": ["denominator", "one"]},
+        "scale": {"enum": [1, 100]}
+      }
+    },
+    "numerator": {"type": "string", "minLength": 1},
+    "denominator": {"type": "string", "minLength": 1},
+    "unit": {"enum": ["percent", "seconds", "minor", "count"]},
+    "time_basis": {"enum": ["window", "as_of"]},
+    "window": {"const": {"bounds": "[start,end)", "maximum_days": 366}},
+    "timezone": {"const": "clinic"},
+    "filters": {"type": "array", "uniqueItems": true, "items": {"const": "weekdays"}},
+    "dimensions": {"type": "array", "uniqueItems": true, "items": {"const": "day"}},
+    "late_data": {"type": "string", "minLength": 1},
+    "freshness_seconds": {"const": 900},
+    "authorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["all", "any", "scope"],
+      "properties": {
+        "all": {"const": ["charge.read"]},
+        "any": {"const": ["configuration.clinic", "configuration.organization"]},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["missing_source", "zero_denominator", "unresolved", "forecast"],
+      "properties": {
+        "missing_source": {"const": "partial"},
+        "zero_denominator": {"const": "null"},
+        "unresolved": {"const": "partial"},
+        "forecast": {"const": "unvalidated; unavailable"}
+      }
+    },
+    "provenance": {"type": "string", "minLength": 1},
+    "available": {"type": "boolean"},
+    "benchmarking": {"const": "disabled; BLOCKED-ON-EG-2"}
+  }
+}

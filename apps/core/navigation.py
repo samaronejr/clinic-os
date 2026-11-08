@@ -357,8 +357,18 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "reports",
         gettext_noop("Reports"),
-        None,
-        ("charge.read", "configuration.clinic", "configuration.organization"),
+        "analytics:reports",
+        ("configuration.clinic", "configuration.organization"),
+        route_roles=frozenset(
+            {
+                _ROLE.OWNER,
+                _ROLE.ORG_ADMIN,
+                _ROLE.CLINIC_ADMIN,
+                _ROLE.CLINIC_MANAGER,
+                _ROLE.FINANCE,
+            }
+        ),
+        views=frozenset({"analytics:reports"}),
         owner_todo=63,
     ),
     Destination(
@@ -495,6 +505,9 @@ def allows(
     if destination.url_name is None:
         return False
     if destination.route_roles is not None and not roles & destination.route_roles:
+        return False
+    # Reporting requires charge.read AND one of the configuration permissions.
+    if destination.key == "reports" and "charge.read" not in granted:
         return False
     return not destination.permission or bool(
         granted.intersection(destination.permission)

@@ -155,7 +155,14 @@ def _visible_clinics(
             granted = granted_permissions(clinic.pk)
             command_context = bool({"tasks.view", "demographics.read"} & granted) or (
                 settings_scope
-                and bool({"appointment.book", "configuration.organization"} & granted)
+                and bool(
+                    {
+                        "appointment.book",
+                        "configuration.clinic",
+                        "configuration.organization",
+                    }
+                    & granted
+                )
             )
             if not command_context and "reception.queue" not in granted:
                 continue
@@ -263,6 +270,10 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 "ai:agents",
                 "ai:agent-settings",
                 "ai:care-coordination",
+                "analytics:reports",
+                "billing:finance",
+                "billing:charges",
+                "billing:invoice",
             }
             or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
         ),

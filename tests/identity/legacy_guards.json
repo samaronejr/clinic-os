@@ -9138,6 +9138,114 @@
         "apps.billing.security.require_finance_step_up#cut1"
       ],
       "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.analytics.analyst.display_proposal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.analyst_contracts.question_metric",
+      "signals": [
+        "denial"
+      ],
+      "kind": "nonstaff",
+      "reason": "Pure closed-catalog question classification; the real positive and cross-clinic refusal paths are observed and replayed against every staff state by nonstaff_analytics_probes."
+    },
+    {
+      "symbol": "apps.analytics.analyst_contracts.recheck_request",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services._checked",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services.authorize",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.analytics.services.authorize"
+      ]
+    },
+    {
+      "symbol": "apps.analytics.services.load_report",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services.refresh_metric",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.analytics.services.refresh_metric"
+      ]
+    },
+    {
+      "symbol": "apps.analytics.services.require_snapshot",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.views.reports",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.workflow.refresh_step",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.refresh_metric"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
     }
   ],
   "probes": [
@@ -9234,6 +9342,8 @@
     "apps.ai.services.invoke#cut1",
     "apps.ai.tasks.run_agent#cut1",
     "apps.ai.views.settings_view#cut1",
+    "apps.analytics.services.authorize",
+    "apps.analytics.services.refresh_metric",
     "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_lab_event#cut1",
     "apps.audit.services._record_retention_event#cut1",
@@ -13204,6 +13314,7 @@
           "clinic_app.ai_eval_record_guard",
           "clinic_app.ai_front_desk_audit",
           "clinic_app.ai_front_desk_verify",
+          "clinic_app.analytics_authorization",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
@@ -13986,6 +14097,7 @@
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_review_extraction",
+          "clinic_app.analytics_refresh",
           "clinic_app.billing_cash_receipt",
           "clinic_app.billing_complete_appointment",
           "clinic_app.billing_import_legacy",
@@ -14121,6 +14233,7 @@
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
+          "clinic_app.analytics_allowed",
           "clinic_app.billing_book_access",
           "clinic_app.billing_charge_authorized",
           "clinic_app.billing_collection_authorized",
@@ -18754,6 +18867,7 @@
     "clinic_app.workflows_steps_valid": {
       "discovery": {
         "migrations": [
+          "apps/workflows/migrations/0009_metrics_refresh.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -22318,6 +22432,157 @@
         "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.analytics_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, metric text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/analytics/migrations/_analytics_v1_sql.py"
+        ],
+        "policies": [
+          "clinic_app.analytics_analystreview:analytics_scope",
+          "clinic_app.analytics_metricdefinitionversion:analytics_scope",
+          "clinic_app.analytics_readmodelrefresh:analytics_scope",
+          "clinic_app.analytics_savedreport:analytics_scope"
+        ],
+        "resolvers": [
+          "clinic_app.analytics_authorization",
+          "clinic_app.analytics_validate"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_reporting_boundary_matrix"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.analytics_authorization": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/analytics/migrations/_analytics_v1_sql.py"
+        ],
+        "policies": [
+          "clinic_app.analytics_readmodelrefresh:analytics_scope"
+        ],
+        "resolvers": [
+          "clinic_app.analytics_guard",
+          "clinic_app.analytics_refresh",
+          "clinic_app.analytics_workflow_receipt"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_reporting_boundary_matrix",
+        "test_cache_key_changes_with_effective_authorization_version"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.analytics_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/analytics/migrations/_analytics_v1_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_saved_report_trigger_rejects_forged_scope_and_owner_history_is_immutable",
+        "test_saved_report_trigger_itself_rejects_an_inactive_actor"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.analytics_refresh": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, query jsonb, command uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/analytics/migrations/_analytics_v1_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_reporting_boundary_matrix"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.analytics_validate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, query jsonb",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/analytics/migrations/_analytics_v1_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.analytics_guard",
+          "clinic_app.analytics_refresh"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_reporting_boundary_matrix"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.analytics_workflow_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/0009_metrics_refresh.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_refresh_step_requires_its_exact_effect_and_replays_once"
+      ],
+      "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
     }
   },
   "sql_method": [

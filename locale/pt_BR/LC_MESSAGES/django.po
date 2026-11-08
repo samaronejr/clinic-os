@@ -9410,3 +9410,301 @@ msgid "Reply within %(hours)s business hour; in an emergency, call 192."
 msgid_plural "Reply within %(hours)s business hours; in an emergency, call 192."
 msgstr[0] "Resposta em até %(hours)s hora útil; em emergência, ligue 192."
 msgstr[1] "Resposta em até %(hours)s horas úteis; em emergência, ligue 192."
+
+
+msgid "Utilization"
+msgstr "Ocupação"
+
+msgid "Resolved no-show rate"
+msgstr "Taxa de faltas resolvidas"
+
+msgid "Waiting time"
+msgstr "Tempo de espera"
+
+msgid "Task turnaround"
+msgstr "Tempo de conclusão das tarefas"
+
+msgid "Verified collections"
+msgstr "Recebimentos verificados"
+
+msgid "Net collections"
+msgstr "Recebimentos líquidos"
+
+msgid "Denials"
+msgstr "Glosas"
+
+msgid "Payout liabilities"
+msgstr "Repasses a pagar"
+
+msgid "Result acknowledgment latency"
+msgstr "Tempo até a ciência dos resultados"
+
+msgid "Overdue follow-ups"
+msgstr "Seguimentos atrasados"
+
+msgid "Support load"
+msgstr "Carga de suporte"
+
+msgid "AI correction elapsed time"
+msgstr "Tempo decorrido para correção da IA"
+
+msgid "Staff activation"
+msgstr "Ativação da equipe"
+
+msgid "Retained paid usage"
+msgstr "Uso pago retido"
+
+msgid "Booked, arrived, in-progress, completed and no-show practitioner seconds"
+msgstr "Segundos dos profissionais em consultas agendadas, com chegada, em andamento, concluídas ou com falta"
+
+msgid "Unretired practitioner availability seconds; both clipped to the window"
+msgstr "Segundos da disponibilidade vigente dos profissionais; ambos limitados ao período"
+
+msgid "Appointments resolved as no_show"
+msgstr "Consultas resolvidas como falta"
+
+msgid "Appointments resolved as completed or no_show; unresolved visits are partial"
+msgstr "Consultas concluídas ou com falta; consultas ainda não resolvidas tornam os dados parciais"
+
+msgid "Seconds from queue arrival to first call"
+msgstr "Segundos entre a chegada à fila e a primeira chamada"
+
+msgid "Called queue entries; uncalled arrivals remain partial"
+msgstr "Chegadas já chamadas; chegadas sem chamada tornam os dados parciais"
+
+msgid "Seconds from task creation to its terminal done update"
+msgstr "Segundos entre a criação e a conclusão definitiva da tarefa"
+
+msgid "Completed tasks; unfinished tasks remain partial"
+msgstr "Tarefas concluídas; tarefas em aberto tornam os dados parciais"
+
+msgid "Posted patient_ar and insurer_ar debits less credits through the cutoff"
+msgstr "Débitos menos créditos contabilizados em contas a receber de pacientes e convênios até a data de corte"
+
+msgid "One; cumulative BRL centavos, including opening balances"
+msgstr "Um; centavos de real acumulados, incluindo saldos de abertura"
+
+msgid "Posted collection asset debits; unverified observations are excluded"
+msgstr "Débitos de recebimentos verificados no diário; observações não verificadas ficam excluídas"
+
+msgid "One; BRL centavos before fees and refunds"
+msgstr "Um; centavos de real antes de taxas e devoluções"
+
+msgid "Posted collections less confirmed refund and chargeback asset credits"
+msgstr "Recebimentos contabilizados menos devoluções e contestações confirmadas"
+
+msgid "One; BRL centavos before PSP fees"
+msgstr "Um; centavos de real antes das taxas do prestador de pagamentos"
+
+msgid "Adjudicated denial postings; generic payer adjustments are not denials"
+msgstr "Lançamentos de glosas analisadas; ajustes genéricos do pagador não são glosas"
+
+msgid "One; no reviewed denial posting classification exists on this base"
+msgstr "Um; esta versão ainda não dispõe de classificação validada de lançamentos de glosas"
+
+msgid "Journal-only source required; insurance denial posting contract unavailable"
+msgstr "Fonte obrigatória no diário; contrato de lançamentos de glosas ainda indisponível"
+
+msgid "Posted practitioner_payables and payout_in_transit credits less debits"
+msgstr "Créditos menos débitos contabilizados em repasses a pagar e em trânsito"
+
+msgid "One; cumulative BRL centavos, including retained unknown outcomes"
+msgstr "Um; centavos de real acumulados, incluindo operações com resultado desconhecido"
+
+msgid "Seconds from matched result version arrival to its acknowledgment"
+msgstr "Segundos entre a chegada da versão do resultado identificado e a ciência do responsável"
+
+msgid "Acknowledged matched versions; unacknowledged versions remain partial"
+msgstr "Versões identificadas com ciência registrada; versões sem ciência tornam os dados parciais"
+
+msgid "Nonterminal follow_up tasks with a deadline before refresh time"
+msgstr "Tarefas de seguimento em aberto com prazo anterior à atualização"
+
+msgid "One; tasks whose due date lies in the window"
+msgstr "Um; tarefas com prazo dentro do período"
+
+msgid "Open customer support cases created in the window"
+msgstr "Chamados de suporte de clientes criados no período e ainda em aberto"
+
+msgid "One; no support-case source is installed on this base"
+msgstr "Um; esta versão ainda não dispõe de fonte de chamados de suporte"
+
+msgid "Unavailable support-case source; operational tasks are not support cases"
+msgstr "Fonte de chamados indisponível; tarefas operacionais não são chamados de suporte"
+
+msgid "Elapsed seconds from suggestion creation to a modified review"
+msgstr "Segundos decorridos entre a sugestão e uma revisão com alterações"
+
+msgid "Modified suggestions; includes queue time, not active editing time"
+msgstr "Sugestões modificadas; inclui a espera, sem medir o tempo de edição ativa"
+
+msgid "Current exact-clinic staff with an operational audit event in the window"
+msgstr "Membros ativos desta unidade com evento operacional auditado no período"
+
+msgid "Current active exact-clinic staff; excludes reporting events"
+msgstr "Membros ativos desta unidade; eventos de relatórios ficam excluídos"
+
+msgid "Paid staff active in both adjacent equal windows"
+msgstr "Membros com uso pago nos dois períodos consecutivos de igual duração"
+
+msgid "Paid staff active in the preceding window; subscription evidence required"
+msgstr "Membros com uso pago no período anterior; exige evidência da assinatura"
+
+msgid "Subscription and metered usage source unavailable; never inferred from the clinic journal"
+msgstr "Fonte de assinaturas e uso medido indisponível; nunca inferida do diário da clínica"
+
+msgid "identity.UserClinicRole; audit.AuditEvent metadata only"
+msgstr "Vínculos da equipe; somente metadados dos eventos de auditoria"
+
+msgid "Grouping"
+msgstr "Agrupamento"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Day filter"
+msgstr "Filtro de dia"
+
+msgid "Every day"
+msgstr "Todos os dias"
+
+msgid "Ask the synthetic analyst"
+msgstr "Pergunte ao analista sintético"
+
+msgid "Use a metric name. Dates come from this form. Do not enter patient information."
+msgstr "Use o nome de um indicador. As datas são as deste formulário. Não informe dados de pacientes."
+
+msgid "Check the dates and the metric's permitted dimensions."
+msgstr "Confira as datas e as dimensões permitidas para o indicador."
+
+msgid "Check the report fields."
+msgstr "Confira os campos do relatório."
+
+msgid "Human decision recorded."
+msgstr "Decisão humana registrada."
+
+msgid "Report saved."
+msgstr "Relatório salvo."
+
+msgid "The report request was refused. Reload Reports and try again."
+msgstr "A solicitação foi recusada. Reabra Relatórios e tente novamente."
+
+msgid "Defined metrics, visible denominators and accountable decisions."
+msgstr "Indicadores definidos, denominadores visíveis e decisões com responsável."
+
+msgid "Synthetic analyst only. Real providers remain BLOCKED-ON-EG. Cross-clinic benchmarking is disabled."
+msgstr "Somente analista sintético. Provedores reais permanecem BLOCKED-ON-EG. Comparações entre unidades estão desabilitadas."
+
+msgid "Dates use the clinic timezone. Balance metrics and staff usage support totals only."
+msgstr "As datas usam o fuso da unidade. Saldos, ocupação e uso da equipe aceitam somente totais."
+
+msgid "Refresh metric"
+msgstr "Atualizar indicador"
+
+msgid "Read saved snapshot"
+msgstr "Ler dados salvos"
+
+msgid "Inspect no-show sources"
+msgstr "Inspecionar fontes das faltas"
+
+msgid "Save report"
+msgstr "Salvar relatório"
+
+msgid "Propose a metric query"
+msgstr "Propor consulta de indicador"
+
+msgid "Synthetic analyst"
+msgstr "Analista sintético"
+
+msgid "Choose one metric and explicit dates. The question is ambiguous or outside the catalog."
+msgstr "Escolha um indicador e datas explícitas. A pergunta é ambígua ou está fora do catálogo."
+
+msgid "Proposal queued. No metric query has been executed."
+msgstr "Proposta na fila. Nenhuma consulta de indicador foi executada."
+
+msgid "Check proposal"
+msgstr "Consultar proposta"
+
+msgid "Review the exact metric, version, period and timezone before running this read-only query."
+msgstr "Revise o indicador, a versão, o período e o fuso antes de executar esta consulta somente de leitura."
+
+msgid "Approve and run query"
+msgstr "Aprovar e executar consulta"
+
+msgid "Partial data"
+msgstr "Dados parciais"
+
+msgid "No denominator; no rate is inferred."
+msgstr "Sem denominador; nenhuma taxa é estimada."
+
+msgid "Fresh"
+msgstr "Atualizado"
+
+msgid "Data as of"
+msgstr "dados de"
+
+msgid "Governed result"
+msgstr "Resultado governado"
+
+msgid "Period"
+msgstr "Período"
+
+msgid "Unresolved"
+msgstr "Não resolvidos"
+
+msgid "BRL centavos"
+msgstr "centavos de real"
+
+msgid "No current authorized snapshot. Refresh the selected metric."
+msgstr "Sem dados salvos para a autorização atual. Atualize o indicador selecionado."
+
+msgid "Forecast: unvalidated and unavailable. Observed results are not predictions."
+msgstr "Previsão: não validada e indisponível. Resultados observados não são previsões."
+
+msgid "Authorized no-show sources"
+msgstr "Fontes autorizadas das faltas"
+
+msgid "Up to 100 live operational references. No patient names or clinical content."
+msgstr "Até 100 referências operacionais atuais. Sem nomes de pacientes ou conteúdo clínico."
+
+msgid "No authorized sources in this period."
+msgstr "Sem fontes autorizadas neste período."
+
+msgid "Saved reports"
+msgstr "Relatórios salvos"
+
+msgid "No saved report."
+msgstr "Nenhum relatório salvo."
+
+msgid "Metric definitions"
+msgstr "Definições dos indicadores"
+
+msgid "Freshness"
+msgstr "Atualização"
+
+msgid "15 minutes. Late data appears after an explicit refresh; previous snapshots remain in history."
+msgstr "15 minutos. Dados tardios aparecem após uma atualização explícita; os dados anteriores permanecem no histórico."
+
+msgid "Scope"
+msgstr "Escopo"
+
+msgid "Current clinic and current reporting permission. No cross-clinic benchmarking."
+msgstr "Unidade e permissão atuais. Sem comparação entre unidades."
+
+msgid "Refreshing governed data."
+msgstr "Atualizando os dados governados."
+
+msgid "Connection unavailable. The displayed data may be stale; reconnect and refresh deliberately."
+msgstr "Conexão indisponível. Os dados exibidos podem estar desatualizados; reconecte e atualize quando desejar."
+
+msgid "Metric window in days"
+msgstr "Período do indicador em dias"
+
+msgid "Choose a metric and its window."
+msgstr "Escolha um indicador e seu período."
+
+msgid "Leave empty to include every day."
+msgstr "Deixe sem seleção para incluir todos os dias."
+
+msgid "days"
+msgstr "dias"

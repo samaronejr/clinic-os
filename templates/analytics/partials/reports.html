@@ -1,0 +1,84 @@
+{% load i18n tz clinic_locale %}
+<section class="reports-shell" id="reports-content" aria-labelledby="reports-title" data-reports>
+  <h1 id="reports-title">{% trans "Reports" %}</h1>
+  <p class="lede">{% trans "Defined metrics, visible denominators and accountable decisions." %}</p>
+  <p class="feedback feedback--muted">{% trans "Synthetic analyst only. Real providers remain BLOCKED-ON-EG. Cross-clinic benchmarking is disabled." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  <form class="reports-form" method="post" action="{% url 'analytics:reports' clinic_id %}" novalidate data-auth-form data-auth-errors hx-post="{% url 'analytics:reports' clinic_id %}" hx-target="#reports-content" hx-swap="outerHTML">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="feedback feedback--error" role="alert" data-focus-error tabindex="-1">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="reports-fields">{% for field in form %}<div{% if field.name == "metric" or field.name == "question" %} class="reports-field-wide"{% endif %}>{% include "includes/field.html" with field=field hint=field.help_text hint_id=field.auto_id|add:"_helptext" %}</div>{% endfor %}</div>
+    <p class="hint">{% trans "Dates use the clinic timezone. Balance metrics and staff usage support totals only." %} {{ clinic_timezone }}</p>
+    <div class="actions">
+      <button class="button" type="submit" name="action" value="refresh">{% trans "Refresh metric" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="cached">{% trans "Read saved snapshot" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="drill">{% trans "Inspect no-show sources" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="save">{% trans "Save report" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="ask">{% trans "Propose a metric query" %}</button>
+    </div>
+    <p class="reports-progress" role="status">{% trans "Refreshing governed data." %}</p>
+    <p class="feedback feedback--error" role="alert" tabindex="-1" data-network-error hidden>{% trans "Connection unavailable. The displayed data may be stale; reconnect and refresh deliberately." %}</p>
+  </form>
+  {% if proposal %}
+  <section aria-labelledby="analyst-title" data-analyst-state="{{ proposal.state }}">
+    <h2 id="analyst-title" tabindex="-1" data-report-focus>{% trans "Synthetic analyst" %}</h2>
+    {% if proposal.state == "clarification" %}<p class="feedback" role="status">{% trans "Choose one metric and explicit dates. The question is ambiguous or outside the catalog." %}</p>
+    {% elif proposal.state == "unavailable" %}<p class="feedback" role="status">{% trans "AI is unavailable. Continue working manually." %}</p>
+    {% elif proposal.state == "generating" %}<p role="status">{% trans "Proposal queued. No metric query has been executed." %}</p>
+    <form method="post" action="{% url 'analytics:reports' clinic_id %}">{% csrf_token %}
+      <input type="hidden" name="reference" value="{{ proposal.invocation_id }}">
+      <button class="button button--secondary" name="action" value="proposal">{% trans "Check proposal" %}</button>
+    </form>
+    {% elif proposal.state == "review" %}
+    <p>{% trans "Review the exact metric, version, period and timezone before running this read-only query." %}</p>
+    {% timezone clinic_timezone %}<p>{% trans selected.label %} · {% trans "Version" %} 1 · {{ proposal.query.start|date:"d/m/Y H:i" }} — {{ proposal.query.end|date:"d/m/Y H:i" }} · {{ proposal.query.tz }}</p>{% endtimezone %}
+    <dl><dt>{% trans "Grouping" %}</dt><dd>{{ proposal_grouping }}</dd><dt>{% trans "Day filter" %}</dt><dd>{{ proposal_days }}</dd></dl>
+    <form method="post" action="{% url 'analytics:reports' clinic_id %}">{% csrf_token %}
+      <input type="hidden" name="reference" value="{{ proposal.invocation_id }}">
+      <input type="hidden" name="query_digest" value="{{ proposal.query.digest }}">
+      <input type="hidden" name="authorization_version" value="{{ proposal.authorization_version }}">
+      <div class="actions"><button class="button" name="action" value="accepted">{% trans "Approve and run query" %}</button><button class="button button--secondary" name="action" value="rejected">{% trans "Reject proposal" %}</button></div>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section aria-labelledby="metric-title" data-report-state="{{ result.status|default:'empty' }}">
+    <h2 id="metric-title" tabindex="-1"{% if result %} data-report-focus{% endif %}>{% trans selected.label %}</h2>
+    {% if result %}
+    {% timezone clinic_timezone %}
+    <p role="status">{% if result.status == "stale" %}{% trans "Stale" %} · {% elif result.status == "partial" %}{% trans "Partial data" %} · {% elif result.status == "null" %}{% trans "No denominator; no rate is inferred." %} · {% else %}{% trans "Fresh" %} · {% endif %}{% trans "Data as of" %} {{ result.as_of|date:"H:i" }} ({{ result.as_of|date:"d/m/Y" }})</p>
+    <div class="table-scroll" role="region" aria-labelledby="metric-caption" tabindex="0">
+      <table class="table"><caption id="metric-caption">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
+        <thead><tr><th scope="col">{% trans "Period" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Numerator" %}</th><th scope="col">{% trans "Denominator" %}</th><th scope="col">{% trans "Unresolved" %}</th></tr></thead>
+        <tbody>{% for row in result.rows %}<tr><th scope="row">{{ row.dimension|default:"—" }}</th><td>{% if row.value != None %}{{ row.value }} {% if selected.unit == "percent" %}%{% elif selected.unit == "seconds" %}{% trans "seconds" %}{% elif selected.unit == "minor" %}{% trans "BRL centavos" %}{% endif %}{% else %}{% trans "Unavailable" %}{% endif %}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td><td>{{ row.missing }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% endtimezone %}
+    {% else %}<p class="feedback" role="status">{% trans "No current authorized snapshot. Refresh the selected metric." %}</p>{% endif %}
+    <p class="hint">{% trans "Forecast: unvalidated and unavailable. Observed results are not predictions." %}</p>
+  </section>
+  {% if drill != None %}
+  <section aria-labelledby="sources-title"><h2 id="sources-title">{% trans "Authorized no-show sources" %}</h2>
+    <p>{% trans "Up to 100 live operational references. No patient names or clinical content." %}</p>
+    {% timezone clinic_timezone %}
+    <ul>{% for row in drill %}<li>{{ row.occurred_at|date:"d/m/Y H:i" }} · {{ row.state|appointment_label }} · <span class="hint">{{ row.reference|truncatechars:12 }}</span></li>{% empty %}<li>{% trans "No authorized sources in this period." %}</li>{% endfor %}</ul>
+    {% endtimezone %}
+  </section>
+  {% endif %}
+  <section aria-labelledby="saved-title"><h2 id="saved-title">{% trans "Saved reports" %}</h2>
+    {% timezone clinic_timezone %}
+    {% for report in saved %}<form method="post" action="{% url 'analytics:reports' clinic_id %}">{% csrf_token %}<input type="hidden" name="reference" value="{{ report.pk }}"><button class="button button--secondary" name="action" value="load">{% trans report.label %} · {{ report.created_at|date:"d/m/Y" }}</button></form>{% empty %}<p>{% trans "No saved report." %}</p>{% endfor %}
+    {% endtimezone %}
+  </section>
+  <section aria-labelledby="definitions-title"><h2 id="definitions-title">{% trans "Metric definitions" %}</h2>
+    {% for definition in definitions %}<details class="panel"><summary>{% trans definition.label %} · {% trans "Version" %} {{ definition.version }}</summary>
+      <dl><dt>{% trans "Numerator" %}</dt><dd>{% trans definition.numerator %}</dd>
+        <dt>{% trans "Denominator" %}</dt><dd>{% trans definition.denominator %}</dd>
+        <dt>{% trans "Provenance" %}</dt><dd>{% trans definition.provenance %}</dd>
+        <dt>{% trans "Freshness" %}</dt><dd>{% trans "15 minutes. Late data appears after an explicit refresh; previous snapshots remain in history." %}</dd>
+        <dt>{% trans "Scope" %}</dt><dd>{% trans "Current clinic and current reporting permission. No cross-clinic benchmarking." %}</dd>
+      </dl>
+    </details>{% endfor %}
+  </section>
+</section>

@@ -89,6 +89,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "portal",
         "messages",
         "care-coordination",
+        "reports",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
     assert {

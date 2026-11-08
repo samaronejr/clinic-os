@@ -6,7 +6,11 @@ from typing import Final
 
 from apps.ai.contracts import Purpose
 
-PROMPT_VERSIONS: Final = {**dict.fromkeys(Purpose, 1), Purpose.EXTRACTION: 2}
+PROMPT_VERSIONS: Final = {
+    **dict.fromkeys(Purpose, 1),
+    Purpose.EXTRACTION: 2,
+    Purpose.ANALYST: 2,
+}
 
 
 def load_prompt(purpose: Purpose) -> tuple[str, str]:

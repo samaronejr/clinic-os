@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Reports" %} · Clinic Ops{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-analytics.css' %}"><script src="{% static 'js/reports.js' %}" defer></script>{% endblock %}
+{% block content %}{% include "analytics/partials/reports.html" %}{% endblock %}

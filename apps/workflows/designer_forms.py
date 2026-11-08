@@ -5,10 +5,11 @@ from typing import assert_never
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
+from apps.analytics.catalog import METRICS
 from apps.identity.models import UserClinicRole
 from apps.workflows.forms import KIND_CHOICES, REFERENCE_CHOICES
 from apps.workflows.handlers import Handler
-from apps.workflows.validation import MAX_SECONDS
+from apps.workflows.validation import MAX_METRIC_DAYS, MAX_SECONDS
 
 
 class DefinitionForm(forms.Form):
@@ -60,6 +61,7 @@ class StepForm(forms.Form):
             ("task", _("Task")),
             ("timer", _("Timer")),
             ("external", _("Synthetic external action")),
+            ("metrics_refresh", _("Refresh metric")),
         ),
     )
     task_kind = forms.ChoiceField(label=_("Task kind"), choices=KIND_CHOICES)
@@ -74,6 +76,28 @@ class StepForm(forms.Form):
     offset = forms.IntegerField(
         label=_("Task due in seconds"), min_value=0, max_value=MAX_SECONDS
     )
+    metric_id = forms.ChoiceField(
+        label=_("Metric"),
+        choices=tuple((key, _(metric.label)) for key, metric in METRICS.items()),
+        required=False,
+    )
+    metric_days = forms.IntegerField(
+        label=_("Metric window in days"),
+        min_value=1,
+        max_value=MAX_METRIC_DAYS,
+        required=False,
+    )
+
+    def clean(self) -> dict[str, object]:
+        """Require the exact metric inputs only for a metric refresh step."""
+        values = super().clean()
+        if values is None:
+            return {}
+        if values.get("handler") == "metrics_refresh" and (
+            not values.get("metric_id") or values.get("metric_days") is None
+        ):
+            raise forms.ValidationError(_("Choose a metric and its window."))
+        return values
 
     def step(self) -> dict[str, object]:
         """Parse a validated step choice into its exact machine-consumed shape."""
@@ -91,6 +115,12 @@ class StepForm(forms.Form):
                 return {"handler": "timer", "seconds": values["seconds"]}
             case Handler.EXTERNAL:
                 return {"handler": "external", "provider": "workflow-synthetic-v1"}
+            case Handler.METRICS_REFRESH:
+                return {
+                    "handler": "metrics_refresh",
+                    "metric_id": values["metric_id"],
+                    "days": values["metric_days"],
+                }
             case unreachable:
                 assert_never(unreachable)
 

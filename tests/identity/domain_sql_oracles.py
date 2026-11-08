@@ -11,6 +11,8 @@ from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
+from analytics.sql_oracles import CASES as ANALYTICS_CASES
+from analytics.sql_oracles import SQL_PROTOCOL_ORACLES as ANALYTICS_PROTOCOLS
 from billing.journal_oracles import CASES as BILLING_CASES
 from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
 from comms import test_portal_messages
@@ -354,6 +356,7 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    **ANALYTICS_PROTOCOLS,
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -459,6 +462,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         callable(BILLING_CASES[name])
         for names in BILLING_PROTOCOLS.values()
         for name in names
+    )
+    assert all(
+        callable(ANALYTICS_CASES[name])
+        for cases in ANALYTICS_PROTOCOLS.values()
+        for name in cases
     )
     assert all(
         callable(RETENTION_CASES[name])

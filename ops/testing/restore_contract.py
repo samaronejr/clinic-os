@@ -19,6 +19,10 @@ from dataclasses import dataclass
 from typing import Final, Never
 
 DOMAIN_RELATIONS: Final = (
+    "analytics_analystreview",
+    "analytics_metricdefinitionversion",
+    "analytics_readmodelrefresh",
+    "analytics_savedreport",
     "ai_evaluationprotocol",
     "ai_evaluationrun",
     "ai_evaluationrating",
@@ -297,6 +301,12 @@ TARGET_SEEDED_RELATIONS: Final = (
     "providers_providercapability",
 )
 TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
+    "analytics_metricfact": (
+        "rebuildable authorized view; target migrations recreate it"
+    ),
+    "analytics_usagefact": (
+        "rebuildable authorized view; target migrations recreate it"
+    ),
     "prescription_prescriptionclasspolicy": (
         "immutable D-21 migration seed; exact source/target equality required"
     ),
