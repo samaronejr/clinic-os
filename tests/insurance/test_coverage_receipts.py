@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -274,6 +275,8 @@ def test_failed_validation_keeps_sensitive_values_out_of_owned_outputs(
 
 
 def test_receipt_reuses_the_existing_envelope_helpers() -> None:
-    bindings = appointment_coverage.record_booking_coverage.__globals__
-    assert bindings["_call_scalar"] is envelope._call_scalar
-    assert bindings["_kek"] is envelope._kek
+    # The receipt writer resolves these names in its own module's namespace.
+    namespace = sys.modules[appointment_coverage.record_booking_coverage.__module__]
+    assert namespace is appointment_coverage
+    assert namespace._call_scalar is envelope._call_scalar
+    assert namespace._kek is envelope._kek
