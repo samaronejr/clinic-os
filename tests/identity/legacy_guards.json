@@ -9239,6 +9239,17 @@
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     },
     {
+      "symbol": "apps.ai.revenue_cycle.check_revenue_sources",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "AI-06 admission, approval and execution recheck the caller's exact-clinic automation.finance through require_permission; ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
       "symbol": "apps.ai.revenue_cycle.collect_revenue_cycle",
       "signals": [
         "actor",
@@ -10615,6 +10626,44 @@
     }
   ],
   "sql_guards": {
+    "clinic_app.ai_revenue_ancestry": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_revenue_bound_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_finance_bound",
+          "clinic_app.ai_actionproposal:agent_finance_bound",
+          "clinic_app.ai_actionreceipt:agent_finance_bound",
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
+          "clinic_app.ai_agentrun:agent_finance_bound",
+          "clinic_app.ai_approval:agent_finance_bound",
+          "clinic_app.ai_compensation:agent_finance_bound"
+        ],
+        "resolvers": [
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, kind text, requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
+      ],
+      "reason": "Identity-free AI-06 ancestry for restrictive agent policies and the vote guard; agent staff without Finance automation, approver-bound votes, forged votes and raw state changes are executed on 0010 (red) and 0011 (green)."
+    },
     "clinic_app.scribe_citation_allowed": {
       "kind": "domain_protocol",
       "reason": "Todo 42 binds source-exact generations and immutable clinician decisions to current assigned-note authority; native valid, foreign-reference and mutation-refusal cases execute this protocol.",
@@ -19998,7 +20047,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20107,7 +20162,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20190,7 +20251,13 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+        "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+        "test_sql_refuses_a_forged_vote_without_finance_automation",
+        "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+        "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+        "test_inactive_actor_is_refused_by_revenue_sql_itself"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20323,6 +20390,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_approval_current",
           "clinic_app.agent_bound_snapshot",
           "clinic_app.agent_controls",
           "clinic_app.has_permission"
@@ -22773,12 +22841,19 @@
         ],
         "policies": [
           "clinic_app.ai_actionexecution:agent_finance",
+          "clinic_app.ai_actionexecution:agent_finance_bound",
           "clinic_app.ai_actionproposal:agent_finance",
+          "clinic_app.ai_actionproposal:agent_finance_bound",
           "clinic_app.ai_actionreceipt:agent_finance",
+          "clinic_app.ai_actionreceipt:agent_finance_bound",
           "clinic_app.ai_agentpolicyversion:agent_finance",
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
           "clinic_app.ai_agentrun:agent_finance",
+          "clinic_app.ai_agentrun:agent_finance_bound",
           "clinic_app.ai_approval:agent_finance",
-          "clinic_app.ai_compensation:agent_finance"
+          "clinic_app.ai_approval:agent_finance_bound",
+          "clinic_app.ai_compensation:agent_finance",
+          "clinic_app.ai_compensation:agent_finance_bound"
         ],
         "resolvers": [
           "clinic_app.agent_approval_current",

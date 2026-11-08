@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.ai.action_contracts import ActionInputError, ActionRefusedError, Refusal
+from apps.ai.action_contracts import (
+    ActionAccessDeniedError,
+    ActionInputError,
+    ActionRefusedError,
+    Refusal,
+)
 from apps.ai.action_payload import closed, parse_payload
 from apps.ai.adapters import SyntheticProvider, register_provider
 from apps.ai.agent_policies import PolicyTerms, publish_agent_policy
-from apps.ai.approvals import approve_action
+from apps.ai.approvals import approve_action, reject_action
 from apps.ai.artifacts import read_artifact
 from apps.ai.attestations import step_up_evidence
 from apps.ai.contracts import (
@@ -50,7 +55,7 @@ from apps.identity.current_context import CurrentActorError
 from apps.identity.models import RoleGrant, User, UserClinicRole
 from apps.insurance import services
 from apps.insurance.models import Appeal, Batch
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from ai.revenue_support import (
@@ -75,8 +80,11 @@ from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from uuid import UUID
 
+    from apps.ai.attestations import StepUpEvidence
     from apps.ai.revenue_cycle import RevenueReview
+    from django.db.backends.utils import CursorWrapper
     from django.http import HttpRequest
     from pytest_django.fixtures import SettingsWrapper
 
@@ -387,6 +395,10 @@ def test_inactive_actor_is_refused_by_revenue_sql_itself(world: RevenueWorld) ->
     graph = setup.graph
     review = request_and_collect(world)
     assert review.output_id is not None
+    request = verified_request(graph.clinic_admin)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+        vote = approve(world, proposal, request)
     for active in (True, False):
         User.objects.filter(pk=graph.clinic_admin).update(is_active=active)
         with (
@@ -396,10 +408,24 @@ def test_inactive_actor_is_refused_by_revenue_sql_itself(world: RevenueWorld) ->
             cursor.execute(
                 "SELECT clinic_app.ai_staff(%s,'revenue_cycle',NULL), "
                 "clinic_app.agent_snapshot(%s,'tiss.manage') IS NOT NULL, "
-                "clinic_app.ai_revenue_row(%s,'policy',%s)",
-                [setup.clinic_id, setup.clinic_id, setup.clinic_id, world.policy_id],
+                "clinic_app.ai_revenue_row(%s,'policy',%s), "
+                "clinic_app.agent_approval_current(%s,%s), "
+                "clinic_app.agent_controls(%s) IS NOT NULL, "
+                "clinic_app.ai_revenue_ancestry(%s,'proposal',%s)",
+                [
+                    setup.clinic_id,
+                    setup.clinic_id,
+                    setup.clinic_id,
+                    world.policy_id,
+                    proposal.pk,
+                    vote.pk,
+                    proposal.pk,
+                    setup.clinic_id,
+                    proposal.pk,
+                ],
             )
-            assert cursor.fetchone() == (active, active, active)
+            # Ancestry is identity-free; every authority decision follows is_active.
+            assert cursor.fetchone() == (active, active, active, active, active, True)
             if not active:
                 assert not AIArtifact.objects.filter(
                     purpose=Purpose.REVENUE_CYCLE
@@ -755,9 +781,18 @@ def test_finance_reviewer_without_automation_finance_cannot_admit_a_draft(
             )
 
 
-def test_automation_staff_without_automation_finance_cannot_approve_or_execute(
-    world: RevenueWorld,
-) -> None:
+@dataclass(frozen=True, slots=True)
+class Unbound:
+    """Revenue rows of a clinic manager who bills, once Finance automation ends."""
+
+    approved: ActionProposal
+    pending: ActionProposal
+    vote: Approval
+    evidence: StepUpEvidence
+
+
+@pytest.fixture
+def unbound(world: RevenueWorld) -> Unbound:
     setup = world.setup
     add_clinic_manager_role(setup)
     review = request_and_collect(world)
@@ -765,7 +800,7 @@ def test_automation_staff_without_automation_finance_cannot_approve_or_execute(
     request = verified_request(setup.graph.clinic_admin)
     with finance_scope(setup):
         approved = proposal_for(world, review)
-        approve(world, approved, request)
+        vote = approve(world, approved, request)
         pending = propose_revenue_action(
             clinic_id=setup.clinic_id, output_id=review.output_id, position=0
         )
@@ -773,21 +808,169 @@ def test_automation_staff_without_automation_finance_cannot_approve_or_execute(
         evidence = step_up_evidence(
             request, clinic_id=setup.clinic_id, digest=pending.digest
         )
-        before = Appeal.objects.count()
     withdraw_finance_automation(setup)
+    return Unbound(approved, pending, vote, evidence)
+
+
+def forge_vote(
+    world: RevenueWorld, proposal: ActionProposal, snapshot: object
+) -> Approval:
+    """Write an approval row directly: no step-up, approve_action or HMAC."""
+    return Approval.objects.create(
+        organization_id=world.setup.graph.organization_a,
+        clinic_id=world.setup.clinic_id,
+        proposal_id=proposal.pk,
+        approver_id=world.setup.graph.clinic_admin,
+        digest=proposal.digest,
+        authority_snapshot=snapshot,
+        step_up_evidence_ref=uuid4(),
+        step_up_evidence={},
+        attestation="0" * 64,
+    )
+
+
+def current_snapshot(cursor: CursorWrapper, clinic_id: UUID, permission: str) -> object:
+    cursor.execute("SELECT clinic_app.agent_snapshot(%s,%s)", [clinic_id, permission])
+    row = cursor.fetchone()
+    assert row is not None
+    # Django leaves raw jsonb as text; the forged row must carry the real object.
+    assert isinstance(row[0], str)
+    return json.loads(row[0])
+
+
+def test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation(
+    world: RevenueWorld, unbound: Unbound
+) -> None:
+    setup = world.setup
     with finance_scope(setup), connection.cursor() as cursor:
-        # Still automation staff: the generic agent queue lists both proposals and
-        # calls these same approval and A1 execution services.
-        cursor.execute("SELECT clinic_app.agent_staff(%s)", [setup.clinic_id])
-        assert cursor.fetchone() == (True,)
-        with pytest.raises(ActionRefusedError, match=Refusal.AUTHORITY.value):
+        # Still automation staff, so the generic agent queue opens for them.
+        cursor.execute(
+            "SELECT clinic_app.agent_staff(%s), clinic_app.agent_controls(%s)",
+            [setup.clinic_id, unbound.approved.pk],
+        )
+        assert cursor.fetchone() == (True, None)
+        assert not AgentPolicyVersion.objects.filter(
+            capability=Purpose.REVENUE_CYCLE.value
+        ).exists()
+        runs = (unbound.approved.run_id, unbound.pending.run_id)
+        assert not AgentRun.objects.filter(pk__in=runs).exists()
+        proposals = (unbound.approved.pk, unbound.pending.pk)
+        assert not ActionProposal.objects.filter(pk__in=proposals).exists()
+        assert not Approval.objects.filter(pk=unbound.vote.pk).exists()
+        # The generic queue's own services find nothing to decide or execute.
+        with pytest.raises(ActionAccessDeniedError):
             approve_action(
                 clinic_id=setup.clinic_id,
-                proposal_id=pending.pk,
-                expected_digest=pending.digest,
-                evidence=evidence,
+                proposal_id=unbound.pending.pk,
+                expected_digest=unbound.pending.digest,
+                evidence=unbound.evidence,
             )
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=approved.pk)
-        assert (result.state, result.reason) == ("rejected", Refusal.AUTHORITY)
-        assert Appeal.objects.count() == before
-        assert not Approval.objects.filter(proposal=pending).exists()
+        with pytest.raises(ActionAccessDeniedError):
+            reject_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=unbound.pending.pk,
+                expected_digest=unbound.pending.digest,
+            )
+        with pytest.raises(ActionAccessDeniedError):
+            execute_action(clinic_id=setup.clinic_id, proposal_id=unbound.approved.pk)
+
+
+def test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    graph = setup.graph
+    with owner_context(graph.organization_a):
+        # Only the approver's Finance membership uses the version-2 bundle.
+        UserClinicRole.objects.filter(
+            user_id=graph.clinic_admin,
+            clinic_id=setup.clinic_id,
+            role=UserClinicRole.Role.FINANCE,
+        ).update(workflow_bundle_version=2)
+    review = request_and_collect(world)
+    request = verified_request(graph.clinic_admin)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+        vote = approve(world, proposal, request)
+    caller, _enrollment = permission_actor(graph, "finance")
+    withdraw_finance_automation(setup, bundle_version=2)
+    with permission_context(graph, caller), connection.cursor() as cursor:
+        # The caller keeps Finance automation; the stored approver lost it.
+        cursor.execute(
+            "SELECT clinic_app.ai_revenue_row(%s,'proposal',%s), "
+            "clinic_app.agent_approval_current(%s,%s)",
+            [setup.clinic_id, proposal.pk, proposal.pk, vote.pk],
+        )
+        assert cursor.fetchone() == (True, False)
+
+
+def test_sql_refuses_a_forged_vote_without_finance_automation(
+    world: RevenueWorld, unbound: Unbound
+) -> None:
+    setup = world.setup
+    with finance_scope(setup), connection.cursor() as cursor:
+        snapshot = current_snapshot(cursor, setup.clinic_id, "tiss.manage")
+        with (
+            transaction.atomic(),
+            pytest.raises(DatabaseError, match="agent approval refused"),
+        ):
+            forge_vote(world, unbound.pending, snapshot)
+    with owner_context(setup.graph.organization_a):
+        votes = Approval.objects.filter(
+            proposal_id__in=(unbound.approved.pk, unbound.pending.pk)
+        ).values_list("pk", flat=True)
+        assert list(votes) == [unbound.vote.pk]
+
+
+def test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    add_clinic_manager_role(setup)
+    review = request_and_collect(world)
+    with finance_scope(setup), connection.cursor() as cursor:
+        proposal = proposal_for(world, review)
+        # Automation authority is a real snapshot here, but not a revenue vote.
+        snapshot = current_snapshot(cursor, setup.clinic_id, "automation.admin")
+        with (
+            transaction.atomic(),
+            pytest.raises(DatabaseError, match="agent approval refused"),
+        ):
+            forge_vote(world, proposal, snapshot)
+        assert not Approval.objects.filter(proposal=proposal).exists()
+
+
+def test_sql_refuses_raw_revenue_state_changes_without_finance_automation(
+    world: RevenueWorld, unbound: Unbound
+) -> None:
+    setup = world.setup
+    proposals = (unbound.approved.pk, unbound.pending.pk)
+    with finance_scope(setup), connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE clinic_app.ai_actionproposal SET state='rejected' "
+            "WHERE id = ANY(%s)",
+            [list(proposals)],
+        )
+        assert cursor.rowcount == 0
+    with owner_context(setup.graph.organization_a):
+        states = ActionProposal.objects.filter(pk__in=proposals).values_list(
+            "pk", "state"
+        )
+        assert dict(states) == {
+            unbound.approved.pk: "approved",
+            unbound.pending.pk: "validated",
+        }
+
+
+def test_python_refuses_the_same_draft_without_finance_automation(
+    world: RevenueWorld, unbound: Unbound
+) -> None:
+    # The shared admission/approval/execution recheck, independent of RLS.
+    with (
+        finance_scope(world.setup),
+        pytest.raises(ActionRefusedError, match=Refusal.AUTHORITY.value),
+    ):
+        check_revenue_sources(
+            clinic_id=world.setup.clinic_id,
+            data=json.loads(unbound.pending.payload),
+        )

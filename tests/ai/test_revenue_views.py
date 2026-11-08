@@ -24,6 +24,7 @@ from ai.test_revenue_cycle import finance_setup, proposal_for, world
 from billing.journal_support import finance_scope
 from core.test_navigation import _client_for
 from identity.lifecycle_test_support import verified_client
+from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 
 if TYPE_CHECKING:
@@ -187,7 +188,7 @@ def test_revenue_page_refuses_decisions_without_automation_finance(
     world: RevenueWorld,
 ) -> None:
     setup = world.setup
-    # Automation staff keep reading the row after losing Finance automation.
+    # A clinic manager who bills is automation staff, unlike a Finance-only user.
     add_clinic_manager_role(setup)
     review = request_and_collect(world)
     with finance_scope(setup):
@@ -209,7 +210,7 @@ def test_revenue_page_refuses_decisions_without_automation_finance(
             },
         )
         assert response.status_code == 403
-    with finance_scope(setup):
+    with owner_context(setup.graph.organization_a):
         proposal.refresh_from_db()
         assert proposal.state == "validated"
         assert not Approval.objects.filter(proposal=proposal).exists()

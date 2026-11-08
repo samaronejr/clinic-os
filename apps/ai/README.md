@@ -12,6 +12,13 @@ including the generic agent queue.
 Policy publication remains an administrator action. Finance gains visibility
 only to this capability's policy/run/proposal/approval/receipt ancestry through
 `ai_revenue_row`; neither the general agent queue nor another capability opens.
+PostgreSQL enforces the same boundary (ai.0011). A restrictive
+`agent_finance_bound` policy on the seven agent tables requires `ai_revenue_row`
+for revenue ancestry, so agent staff without `automation.finance` neither read
+nor change those rows. A revenue vote stays current only while its approver holds
+`automation.finance`, and `tiss.manage` snapshots approve revenue proposals only.
+An administrator without Finance automation can publish the first policy version
+but cannot read published revenue policy rows.
 
 Retrieval uses the existing FORCE-RLS insurance and journal tables, under their
 writer locks. One lock order holds: gateway budget, agent send, insurance, then

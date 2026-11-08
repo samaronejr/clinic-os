@@ -42,10 +42,12 @@ from apps.ai.revenue_sources import (
     retrieve_context,
 )
 from apps.ai.services import invoke
-from apps.identity.current_context import current_actor_id
+from apps.identity.current_context import (
+    CurrentActorError,
+    current_actor_id,
+    require_permission,
+)
 from apps.identity.models import Clinic
-from apps.insurance.access import authority
-from apps.insurance.errors import InsuranceDeniedError
 from apps.insurance.revenue import draft_appeal
 from apps.providers.services import current_version
 
@@ -344,9 +346,10 @@ def check_revenue_sources(
     """Shared by admission, human approval and execution under the source locks."""
     try:
         # Every path converges here, including the generic agent queue that
-        # automation staff who also hold Finance can use.
-        authority(clinic_id=clinic_id, permission="automation.finance")
-    except InsuranceDeniedError:
+        # automation staff who also hold Finance can use. PostgreSQL enforces
+        # the same rule through ai.0011 (restrictive policies and vote guard).
+        require_permission("automation.finance", clinic_id=clinic_id)
+    except CurrentActorError:
         raise ActionRefusedError(Refusal.AUTHORITY) from None
     try:
         subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})

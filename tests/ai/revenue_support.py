@@ -150,15 +150,24 @@ def add_clinic_manager_role(setup: FinanceSetup) -> None:
         )
 
 
-def withdraw_finance_automation(setup: FinanceSetup) -> None:
-    """Owner-provisioned subtraction of automation.finance from Finance here."""
+def withdraw_finance_automation(
+    setup: FinanceSetup, *, bundle_version: int | None = None
+) -> None:
+    """Owner-provisioned subtraction of automation.finance from Finance here.
+
+    A version-2 subtraction leaves version-1 Finance memberships untouched.
+    """
     with owner_context(setup.graph.organization_a):
-        versions = set(
-            UserClinicRole.objects.filter(
-                clinic_id=setup.clinic_id,
-                role=UserClinicRole.Role.FINANCE,
-                revoked_at__isnull=True,
-            ).values_list("workflow_bundle_version", flat=True)
+        versions = (
+            {bundle_version}
+            if bundle_version is not None
+            else set(
+                UserClinicRole.objects.filter(
+                    clinic_id=setup.clinic_id,
+                    role=UserClinicRole.Role.FINANCE,
+                    revoked_at__isnull=True,
+                ).values_list("workflow_bundle_version", flat=True)
+            )
         )
         for version in versions:
             RoleGrant.objects.create(
