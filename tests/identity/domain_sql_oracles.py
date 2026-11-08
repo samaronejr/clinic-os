@@ -38,6 +38,7 @@ from ehr.test_prior_notes import test_copy_requires_review_at_the_current_revisi
 from ehr.test_sql_protocols import (
     test_longitudinal_functions_keep_exact_execute_privileges,
     test_longitudinal_sql_uses_current_role_and_actor,
+    test_medication_guard_uses_current_role_and_actor,
     test_note_sql_rechecks_grants_scope_and_active_actor,
     test_projection_worker_refuses_every_ambient_authority,
 )
@@ -249,6 +250,7 @@ EHR_CASES = {
         test_copy_requires_review_at_the_current_revision,
         test_longitudinal_functions_keep_exact_execute_privileges,
         test_longitudinal_sql_uses_current_role_and_actor,
+        test_medication_guard_uses_current_role_and_actor,
         test_note_sql_rechecks_grants_scope_and_active_actor,
         test_projection_worker_refuses_every_ambient_authority,
         test_concurrent_edits_and_duplicate_workers_preserve_every_source,
@@ -261,6 +263,12 @@ EHR_PROTOCOLS = {
         "test_longitudinal_sql_uses_current_role_and_actor"
     ],
     "clinic_app.ehr_longitudinal_guard": [
+        "test_longitudinal_sql_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_medicationstatement_guard": [
+        "test_medication_guard_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_observation_guard": [
         "test_longitudinal_sql_uses_current_role_and_actor"
     ],
     "clinic_app.ehr_note_author": [

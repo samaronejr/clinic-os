@@ -30,7 +30,8 @@ RESULTS: Final = {
         "ehr_patient_permission",
         "permission text, requested_clinic uuid, requested_patient uuid",
     ): "boolean",
-    ("ehr_longitudinal_guard", ""): "trigger",
+    ("ehr_medicationstatement_guard", ""): "trigger",
+    ("ehr_observation_guard", ""): "trigger",
     ("ehr_note_visible", "requested_document uuid"): "boolean",
     ("ehr_note_author", "requested_document uuid"): "boolean",
     ("ehr_note_grantee", "requested_clinic uuid, requested_user uuid"): "boolean",
@@ -46,7 +47,8 @@ RESULTS: Final = {
 }
 POSTURE: Final = {
     "ehr_patient_permission": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "ehr_longitudinal_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_medicationstatement_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_observation_guard": ("v", False, ["clinic_resolver"]),
     "ehr_note_visible": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ehr_note_author": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ehr_note_grantee": ("v", True, ["clinic_app", "clinic_resolver"]),
