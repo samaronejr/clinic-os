@@ -89,6 +89,8 @@ from scribe import test_refusals as scribe_refusals
 from scribe import test_room_capture as scribe_room
 from scribe import test_transcript_concurrency as scribe_transcript_native
 from scribe import test_transcript_runtime as scribe_transcript
+from subscriptions.sql_oracles import CASES as SUBSCRIPTIONS_CASES
+from subscriptions.sql_oracles import SQL_PROTOCOL_ORACLES as SUBSCRIPTIONS_PROTOCOLS
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -356,6 +358,7 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    **{name: list(cases) for name, cases in SUBSCRIPTIONS_PROTOCOLS.items()},
     **PSP_PROTOCOLS,
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
@@ -458,6 +461,11 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert all(
+        callable(SUBSCRIPTIONS_CASES[name])
+        for names in SUBSCRIPTIONS_PROTOCOLS.values()
+        for name in names
+    )
     assert all(
         callable(BILLING_CASES[name])
         for names in BILLING_PROTOCOLS.values()

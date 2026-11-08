@@ -16,11 +16,13 @@ from infra import (
     portal_messages_catalog,
     psp_catalog,
     retention_catalog,
+    subscriptions_catalog,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *subscriptions_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *journal_catalog.TABLE_GRANTS,
     *psp_catalog.TABLE_GRANTS,
@@ -183,6 +185,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *coordination_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *subscriptions_catalog.COLUMN_GRANTS,
     ("ai_evaluationrun", "status", "UPDATE"),
     ("ai_evaluationrun", "finished_at", "UPDATE"),
     *retention_catalog.COLUMN_GRANTS,
@@ -253,6 +256,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     *coordination_catalog.COLUMN_GRANTS,
 }
 POSTURE_OVERRIDES: Final = {
+    **subscriptions_catalog.POSTURE,
     **retention_catalog.POSTURE,
     **journal_catalog.POSTURE,
     **psp_catalog.POSTURE,
@@ -554,6 +558,7 @@ POSTURE_OVERRIDES: Final = {
     **coordination_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
+    *subscriptions_catalog.RESULTS,
     *retention_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
@@ -869,6 +874,7 @@ FUNCTION_SIGNATURES: Final = {
     *psp_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    **subscriptions_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",
@@ -1443,7 +1449,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            name not in journal_catalog.INVOKERS,
+            name not in journal_catalog.INVOKERS | subscriptions_catalog.INVOKERS,
             volatility,
             "u",
             [

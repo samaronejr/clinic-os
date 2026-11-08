@@ -17,6 +17,7 @@
 --cov=apps.retention
 --cov=apps.scheduling
 --cov=apps.scribe
+--cov=apps.subscriptions
 --cov=apps.teleconsult
 --cov=apps.tenancy
 --cov=apps.workflows

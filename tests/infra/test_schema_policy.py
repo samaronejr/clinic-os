@@ -64,6 +64,12 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        # Task 64: exact FORCE-RLS, grants and policies in subscriptions/posture.json.
+        "subscriptions_subscription",
+        "subscriptions_subscriptionevent",
+        "subscriptions_seat",
+        "subscriptions_usageevent",
+        "subscriptions_usagerollup",
         # Exact receipt-only policies and resolver-only writes: retention tests.
         "retention_artifactpurge",
         # Exact capture/consent/token policies: tests/scribe/test_posture.py.

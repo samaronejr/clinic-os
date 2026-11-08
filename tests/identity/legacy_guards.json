@@ -7975,6 +7975,112 @@
       ]
     },
     {
+      "symbol": "apps.subscriptions.collection.bootstrap_synthetic_collection",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.collection.bootstrap_synthetic_collection#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.management.commands.subscription_event.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.management.commands.subscription_event.Command.handle#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services._command",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services._scope",
+      "signals": [
+        "actor",
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services._scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.entitlement_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.entitlement_status#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.receive_synthetic_event",
+      "signals": [
+        "authentication",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.receive_synthetic_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.subscription_snapshot",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.subscription_snapshot#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views._denied",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views._denied#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views._mutate",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views._mutate#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views.commercial",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views.commercial#cut1"
+      ]
+    },
+    {
       "symbol": "apps.teleconsult.participants.authorize_room_topic",
       "signals": [
         "denial",
@@ -9766,6 +9872,16 @@
     "apps.scribe.transcripts.coverage_for#cut1",
     "apps.scribe.views.capture_chunk#cut1",
     "apps.scribe.views.capture_control#cut1",
+    "apps.subscriptions.collection.bootstrap_synthetic_collection#cut1",
+    "apps.subscriptions.management.commands.subscription_event.Command.handle#cut1",
+    "apps.subscriptions.services._command#cut1",
+    "apps.subscriptions.services._scope#cut1",
+    "apps.subscriptions.services.entitlement_status#cut1",
+    "apps.subscriptions.services.receive_synthetic_event#cut1",
+    "apps.subscriptions.services.subscription_snapshot#cut1",
+    "apps.subscriptions.views._denied#cut1",
+    "apps.subscriptions.views._mutate#cut1",
+    "apps.subscriptions.views.commercial#cut1",
     "apps.teleconsult.participants.authorize_room_topic",
     "apps.teleconsult.participants.clinician_session",
     "apps.teleconsult.participants.patient_session#observed",
@@ -15669,6 +15785,11 @@
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_receipt",
           "clinic_app.submit_data_request",
+          "clinic_app.subscription_bootstrap",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_identity_hook",
+          "clinic_app.subscription_platform_event",
+          "clinic_app.subscription_record_usage",
           "clinic_app.workflows_care_park",
           "clinic_app.workflows_release_outcome",
           "clinic_app.workflows_report_urgent"
@@ -15818,6 +15939,7 @@
           "clinic_app.scribe_assigned",
           "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_guard",
+          "clinic_app.subscription_scope",
           "clinic_app.teleconsult_clinician",
           "clinic_app.transition_data_request",
           "clinic_app.workflows_care_guard",
@@ -21160,6 +21282,319 @@
         "resolvers": []
       }
     },
+    "clinic_app.subscription_ai_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_allowance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_meter text, requested_quantity bigint",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_entitled"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_subscription_sql_readers_refuse_an_inactive_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_bootstrap": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_identity_hook"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_clock": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_bootstrap",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_identity_hook",
+          "clinic_app.subscription_platform_event",
+          "clinic_app.subscription_quota"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_command": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_action text, requested_plan text, expected_revision integer, command_key uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_entitled": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_meter text, requested_quantity bigint",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_subscription_sql_readers_refuse_an_inactive_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_identity_hook": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_platform_event": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_subscription uuid, event_key uuid, requested_action text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_trial_active_failure_grace_restriction_cure_and_event_replay"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_quota": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid, requested_meter text, excluded_invocation uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_ai_guard",
+          "clinic_app.subscription_allowance"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_record_usage": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid, requested_meter text, requested_quantity bigint, happened_at timestamp with time zone, source_id uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_source_meter"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, manage boolean",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_allowance",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_platform_event"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_seats": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_command"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_source_meter": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
     "clinic_app.switch_patient_delegate": {
       "discovery": {
         "signatures": [
@@ -21770,13 +22205,20 @@
           "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
         "policies": [
-          "clinic_app.identity_passkey:passkey_owner_only"
+          "clinic_app.identity_passkey:passkey_owner_only",
+          "clinic_app.subscriptions_seat:subscription_read",
+          "clinic_app.subscriptions_subscription:subscription_read",
+          "clinic_app.subscriptions_subscriptionevent:subscription_read",
+          "clinic_app.subscriptions_usageevent:subscription_read",
+          "clinic_app.subscriptions_usagerollup:subscription_read"
         ],
         "resolvers": [
           "clinic_app.identity_passkey_registration_allowed",
           "clinic_app.identity_passkey_session_verified",
           "clinic_app.identity_passkey_use",
-          "clinic_app.identity_session_verify_passkey"
+          "clinic_app.identity_session_verify_passkey",
+          "clinic_app.subscription_scope",
+          "clinic_app.subscription_seats"
         ]
       },
       "kind": "staff_guard",

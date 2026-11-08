@@ -28,6 +28,7 @@ from identity.portal_authority_oracle import run_portal_census
 from identity.prescription_authority_oracle import run_prescription_census
 from identity.retention_authority_census import exercise_retention_authority
 from identity.scribe_authority_census import exercise_scribe_authority
+from identity.subscriptions_authority_oracle import run_subscription_census
 from rbac_fixtures import RbacGraph
 from rbac_fixtures import rbac_graph as seed_graph
 
@@ -349,6 +350,7 @@ def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     run_front_desk_census(proofs, graph, patch)
     run_coordination_census(proofs, graph, patch, secret_root.parent)
     run_billing_census(proofs, graph)
+    run_subscription_census(proofs, graph)
     run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()

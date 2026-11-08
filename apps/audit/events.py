@@ -46,6 +46,9 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "subscriptions.subscription.changed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "subscriptions.subscription", "changed"
+        ),
         **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state

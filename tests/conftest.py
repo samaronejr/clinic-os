@@ -38,6 +38,18 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    *(
+        (table, "subscription_retained_truncate")
+        for table in (
+            "subscriptions_plan",
+            "subscriptions_entitlement",
+            "subscriptions_subscription",
+            "subscriptions_subscriptionevent",
+            "subscriptions_seat",
+            "subscriptions_usageevent",
+            "subscriptions_usagerollup",
+        )
+    ),
     ("ai_evaluationprotocol", "evaluation_no_truncate"),
     ("ai_evaluationrun", "evaluation_no_truncate"),
     ("ai_evaluationrating", "evaluation_no_truncate"),
