@@ -19,6 +19,7 @@ PURPOSE_LABELS: Final = {
     Purpose.ANALYST: _("Operational analysis"),
     Purpose.DECISION_SUPPORT: _("Clinical review aid"),
     Purpose.CARE_COORDINATION: _("Care coordination proposals"),
+    Purpose.REVENUE_CYCLE: _("Revenue-cycle assistant"),
 }
 
 

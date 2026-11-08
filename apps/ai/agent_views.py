@@ -138,6 +138,7 @@ def agent_settings(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         ("front_desk", _("Front desk drafts")),
         ("analyst", _("Operational analysis")),
         ("care_coordination", _("Care coordination proposals")),
+        ("revenue_cycle", _("Revenue-cycle assistant")),
     ):
         current = (
             AgentPolicyVersion.objects.filter(clinic_id=clinic_id, capability=key)

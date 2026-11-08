@@ -114,7 +114,12 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         *(
             (table, policy)
             for table in AGENT_TABLES
-            for policy in ("agent_owner", "agent_staff", "agent_machine")
+            for policy in (
+                "agent_owner",
+                "agent_staff",
+                "agent_machine",
+                "agent_finance",
+            )
         ),
         *(
             (table, policy)

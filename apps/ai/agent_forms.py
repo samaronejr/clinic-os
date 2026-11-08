@@ -27,6 +27,11 @@ class AgentPolicyForm(forms.Form):
         required=False,
         widget=forms.CheckboxSelectMultiple,
         choices=(
+            ("appeal.draft", _("Create an administrative appeal draft")),
+            (
+                "discrepancy.explain",
+                _("Record review of a source-backed discrepancy"),
+            ),
             ("workflows.review_task", _("Create an operational review checklist")),
             ("comms.synthetic_reminder", _("Simulate one logistics reminder")),
             (

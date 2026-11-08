@@ -18,6 +18,8 @@ from apps.ai.contracts import (
 from apps.ai.decision_policy import authorize_decision
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
+from apps.ai.revenue_sources import recheck_context as recheck_revenue_context
+from apps.ai.revenue_sources import require_finance
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id, require_permission
 from apps.identity.models import Clinic
@@ -35,6 +37,10 @@ def check_authority(
             permission = "appointment.read"
         case Purpose.ANALYST:
             permission = "charge.read"
+        case Purpose.REVENUE_CYCLE:
+            if patient_enrollment_id is not None:
+                raise GatewayAccessDeniedError
+            return require_finance(clinic_id=clinic_id)
         case (
             Purpose.SCRIBE_ASR
             | Purpose.SCRIBE_DRAFT
@@ -82,6 +88,10 @@ def create_input(
         authorize_decision(
             clinic_id=clinic_id, content=content, enrollment_id=patient_enrollment_id
         )
+    if purpose is Purpose.REVENUE_CYCLE:
+        if method != "complete":
+            raise GatewayInputError
+        recheck_revenue_context(clinic_id=clinic_id, content=content)
     clinic = Clinic.objects.get(pk=clinic_id)
     artifact = AIArtifact.objects.create(
         organization_id=clinic.organization_id,
@@ -124,6 +134,9 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
             content=artifact.content,
             enrollment_id=artifact.patient_enrollment_id,
         )
+    if purpose is Purpose.REVENUE_CYCLE:
+        enabled_policy(purpose)
+        recheck_revenue_context(clinic_id=clinic_id, content=artifact.content)
     return artifact
 
 
@@ -157,5 +170,19 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
             content=source.content,
             enrollment_id=artifact.patient_enrollment_id,
         )
+    if artifact.purpose == Purpose.REVENUE_CYCLE.value:
+        enabled_policy(Purpose.REVENUE_CYCLE)
+        source = (
+            artifact
+            if artifact.kind == "input"
+            else (
+                artifact.invocation.inputs_ref
+                if artifact.invocation is not None
+                else None
+            )
+        )
+        if source is None:
+            raise GatewayAccessDeniedError
+        recheck_revenue_context(clinic_id=clinic_id, content=source.content)
     content: str = artifact.content
     return content

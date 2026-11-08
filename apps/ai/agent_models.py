@@ -63,13 +63,26 @@ class AgentPolicyVersion(AgentRecord):
                 condition=models.Q(version__gte=1)
                 & models.Q(autonomy_ceiling__in=("A0", "A1", "A2", "A3"))
                 & models.Q(
-                    capability__in=("front_desk", "analyst", "care_coordination")
+                    capability__in=(
+                        "front_desk",
+                        "analyst",
+                        "care_coordination",
+                        "revenue_cycle",
+                    )
                 )
                 & models.Q(budget_actions__gte=1, budget_actions__lte=1000)
                 & models.Q(budget_micros__lte=10**15)
                 & models.Q(timeout_seconds__gte=1, timeout_seconds__lte=60)
                 & models.Q(escalation_queue="administrative"),
                 name="ai_agent_policy_values",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(capability="revenue_cycle")
+                | (
+                    models.Q(autonomy_ceiling__in=("A0", "A1"), principal__isnull=True)
+                    & models.Q(compensation_policy={"mode": "manual", "version": 1})
+                ),
+                name="ai_revenue_drafts_only",
             ),
         ]
 

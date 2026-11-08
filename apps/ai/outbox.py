@@ -29,6 +29,7 @@ from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.output_validation import call_provider, parse_method
 from apps.ai.policy import check_configuration, enabled_policy
 from apps.ai.prompt_registry import load_prompt
+from apps.ai.revenue_sources import parse_context as parse_revenue_context
 from apps.comms.adapters import OperationScope, PermanentSendError, SendResult
 from apps.comms.models import IntegrationOperation
 from apps.identity.current_context import CurrentActorError
@@ -167,7 +168,9 @@ class GatewayActionAdapter:
                 configuration.model_id,
                 configuration.endpoint,
                 prompt,
-                source.content,
+                parse_revenue_context(source.content).facts.encode()
+                if invocation.purpose == Purpose.REVENUE_CYCLE
+                else source.content,
                 Usage(
                     tokens_in=invocation.limit_tokens_in,
                     tokens_out=invocation.limit_tokens_out,

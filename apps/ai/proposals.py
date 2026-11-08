@@ -19,8 +19,9 @@ from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
 from apps.ai.policy import check_configuration, select_configuration
 from apps.ai.prompt_registry import load_prompt
+from apps.ai.revenue_sources import require_finance
 from apps.audit.services import record_phase1_event
-from apps.identity.current_context import current_actor_id
+from apps.identity.current_context import current_actor_id, require_permission
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -68,14 +69,20 @@ def propose_action(
 ) -> ActionProposal:
     """Persist a canonical model output separately from its untrusted input data."""
     actor = current_actor_id()
+    data = payload.data()
     with connection.cursor() as cursor:
         cursor.execute("SELECT clinic_app.agent_staff(%s)", [clinic_id])
         if cursor.fetchone() != (True,):
-            raise ActionAccessDeniedError
+            if closed(data["operation"], {"name", "version"})["name"] not in (
+                "appeal.draft",
+                "discrepancy.explain",
+            ):
+                raise ActionAccessDeniedError
+            require_finance(clinic_id=clinic_id)
+            require_permission("automation.finance", clinic_id=clinic_id)
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended('agent-send-v1',0))"
         )
-    data = payload.data()
     terms = closed(
         data["approval_policy"], {"policy_id", "version", "quorum", "autonomy"}
     )

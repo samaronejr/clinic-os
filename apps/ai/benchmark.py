@@ -46,6 +46,7 @@ CAPABILITY: Final = {
     Purpose.EXTRACTION: "AI-03",
     Purpose.FRONT_DESK: "AI-04",
     Purpose.CARE_COORDINATION: "AI-05",
+    Purpose.REVENUE_CYCLE: "AI-06",
     Purpose.ANALYST: "AI-07",
     Purpose.DECISION_SUPPORT: "AI-08",
 }

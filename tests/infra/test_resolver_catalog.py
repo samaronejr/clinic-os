@@ -316,6 +316,7 @@ POSTURE_OVERRIDES: Final = {
     "scribe_citation_allowed": ("v", False, ["clinic_resolver"]),
     "scribe_draft_guard": ("v", False, ["clinic_resolver"]),
     "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ai_revenue_row": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_organization_policy": (
         "s",
         True,
@@ -606,6 +607,7 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_eval_model_gate", ""),
     ("ai_eval_record_guard", ""),
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
+    ("ai_revenue_row", "clinic uuid, kind text, requested uuid"),
     ("ai_organization_policy", ""),
     ("ai_budget_usage", "requested_purpose text"),
     ("ai_policy_valid", "policy jsonb"),
@@ -942,6 +944,7 @@ FUNCTION_RESULTS: Final = {
     ): "boolean",
     ("scribe_draft_guard", ""): "trigger",
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
+    ("ai_revenue_row", "clinic uuid, kind text, requested uuid"): "boolean",
     ("ai_organization_policy", ""): "jsonb",
     ("ai_budget_usage", "requested_purpose text"): (
         "TABLE(total_micros numeric, purpose_micros numeric)"

@@ -6,6 +6,7 @@
   <div class="actions">
     <a class="button button--secondary" href="{% url 'billing:finance' clinic_id %}" hx-get="{% url 'billing:finance' clinic_id %}" hx-target="#finance-content" hx-swap="outerHTML">{% trans "Refresh stored balances" %}</a>
     <a class="button button--quiet" href="{% url 'billing:charges' clinic_id %}">{% trans "Charges" %}</a>
+    {% if can_review_revenue %}<a class="button button--quiet" href="{% url 'ai:revenue-cycle' clinic_id %}">{% trans "Revenue-cycle assistant" %}</a>{% endif %}
   </div>
   {% for message in messages %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus>{{ message }}</p>{% endfor %}
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}

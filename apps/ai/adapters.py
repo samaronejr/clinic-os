@@ -29,6 +29,8 @@ from apps.ai.extraction_documents import (
     recorded_document_extraction,
     synthetic_document_extraction,
 )
+from apps.ai.revenue_contracts import SCHEMA as REVENUE_SCHEMA
+from apps.ai.revenue_contracts import synthetic_reply as synthetic_revenue_reply
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -107,6 +109,8 @@ class SyntheticProvider(AdapterBase):
             content = synthetic_care_reply(request.content)
         elif schema == SCHEMA:
             content = synthetic_reply(request.content)
+        elif schema == REVENUE_SCHEMA:
+            content = synthetic_revenue_reply(request.content)
         return ProviderResult(
             content,
             Usage(

@@ -1,6 +1,11 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
-from ai import test_agent_execution, test_agent_guards, test_agent_staff_authority
+from ai import (
+    test_agent_execution,
+    test_agent_guards,
+    test_agent_staff_authority,
+    test_revenue_cycle,
+)
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
 from ai.care_oracles import CASES as CARE_CASES
@@ -356,6 +361,11 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    "clinic_app.ai_revenue_row": [
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_finance_scope_resolver_never_opens_another_capability_or_clinic",
+        "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft",
+    ],
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -547,6 +557,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_row"]),
         (
             scribe_draft_authority,
             (

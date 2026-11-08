@@ -32,6 +32,8 @@ REGISTERED_TOOLS: Final = MappingProxyType(
         "workflows.review_task": "A1",
         "comms.synthetic_reminder": "A2",
         "care_action.create": "A1",
+        "appeal.draft": "A1",
+        "discrepancy.explain": "A1",
     }
 )
 
@@ -75,6 +77,10 @@ def execute_draft(*, clinic_id: UUID, payload: ActionPayload) -> UUID:
     """Run one A1 command through the human-authorized domain service."""
     data = payload.data()
     operation = closed(data["operation"], {"name", "version"})
+    if operation["name"] in ("appeal.draft", "discrepancy.explain"):
+        from apps.ai.revenue_cycle import execute_revenue_draft  # noqa: PLC0415
+
+        return execute_revenue_draft(clinic_id=clinic_id, payload=payload)
     if operation["name"] == "care_action.create":
         return _care_action(clinic_id=clinic_id, data=data)
     if operation["name"] != "workflows.review_task":

@@ -102,6 +102,11 @@ def finance_context(
         "book": book,
         "permissions": permissions,
         "can_export": permits(clinic_id=clinic_id, permission="settlement.post"),
+        # AI-06 itself rechecks these exact permissions on every command.
+        "can_review_revenue": all(
+            permits(clinic_id=clinic_id, permission=name)
+            for name in ("charge.read", "tiss.read", "tiss.manage")
+        ),
     }
     if book is None:
         return context, {}

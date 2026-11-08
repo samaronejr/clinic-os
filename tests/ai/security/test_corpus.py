@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from urllib.parse import unquote
+from uuid import uuid4
 
 import pytest
 from apps.ai.action_contracts import OPERATIONS, ActionInputError
@@ -60,9 +61,12 @@ def test_capability_matrix_cannot_silently_omit_a_new_registered_capability() ->
     # Task 53: care coordination has no generic tool. Its one A1 command,
     # care_action.create, is attacked by tests/ai/test_care_coordination.py and
     # tests/ai/test_care_views.py (forgery, injection, staff vs clinician).
+    # Task 60: revenue_cycle has two A1-only drafting commands, attacked by
+    # tests/ai/test_revenue_cycle.py and test_revenue_views.py (fabrication,
+    # upcoding, payer-text injection, cross-scope retrieval, approval bypass).
     assert (
         "capability__in",
-        (*CAPABILITIES, "care_coordination"),
+        (*CAPABILITIES, "care_coordination", "revenue_cycle"),
     ) in constraint.condition.children
     for capability in CAPABILITIES:
         assert (
@@ -73,15 +77,28 @@ def test_capability_matrix_cannot_silently_omit_a_new_registered_capability() ->
         PolicyTerms("care_coordination", "A1", ("care_action.create",)).capability
         == "care_coordination"
     )
+    assert (
+        PolicyTerms(
+            "revenue_cycle", "A1", ("appeal.draft", "discrepancy.explain")
+        ).capability
+        == "revenue_cycle"
+    )
     assert set(OPERATIONS) == {
         "workflows.review_task",
         "comms.synthetic_reminder",
         "care_action.create",
+        "appeal.draft",
+        "discrepancy.explain",
     }
     for capability, tools in (
         ("undeclared-capability", ("workflows.review_task",)),
         ("care_coordination", ("workflows.review_task",)),
         ("front_desk", ("care_action.create",)),
+        ("revenue_cycle", ("workflows.review_task",)),
+        ("revenue_cycle", ("care_action.create",)),
+        ("front_desk", ("appeal.draft",)),
     ):
         with pytest.raises(ActionInputError):
             PolicyTerms(capability, "A1", tools)
+    with pytest.raises(ActionInputError):
+        PolicyTerms("revenue_cycle", "A3", ("appeal.draft",), principal_id=uuid4())
