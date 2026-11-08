@@ -149,6 +149,12 @@ class Batch(InsuranceRow):
     xml = EncryptedTextField(purpose="insurance.batch")
     content_sha256 = models.CharField(max_length=64)
 
+    class Meta(InsuranceRow.Meta):
+        """Distinct reverse names: inventory also has a clinic-scoped Batch."""
+
+        abstract = False
+        default_related_name = "insurance_batches"
+
 
 class Submission(InsuranceRow):
     """One retained export/send attempt; receipt is not adjudication or payment."""
@@ -258,3 +264,9 @@ class CommandReceipt(InsuranceRow):
     subject_id = models.UUIDField()
     kind = models.CharField(max_length=32)
     next_state = models.CharField(max_length=16)
+
+    class Meta(InsuranceRow.Meta):
+        """Distinct reverse names: inventory also has a CommandReceipt."""
+
+        abstract = False
+        default_related_name = "insurance_command_receipts"
