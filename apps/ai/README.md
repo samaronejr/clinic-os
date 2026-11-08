@@ -6,7 +6,9 @@ Default off: `revenue_cycle` has its own organization opt-in, evaluated model
 configuration and A1 agent policy. `request_revenue_cycle`, `collect_revenue_cycle`
 and `propose_revenue_action` are keyword-only and clinic-scoped. Current
 `charge.read`, `tiss.read` and `tiss.manage` are required before any source lookup.
-Finance reviewers additionally need `automation.finance` to approve effects.
+Finance reviewers additionally need `automation.finance` to admit, approve or
+execute an effect; the shared source recheck enforces it on every path,
+including the generic agent queue.
 Policy publication remains an administrator action. Finance gains visibility
 only to this capability's policy/run/proposal/approval/receipt ancestry through
 `ai_revenue_row`; neither the general agent queue nor another capability opens.
@@ -42,8 +44,10 @@ authority; new returns, allocations, reversal, supersession, expiry or revocatio
 refuse stale work. The direct draft bridge also requires the matching executing
 intent and authenticated human approval. Replays retain one receipt/effect.
 An appeal has no new clinical assertions and remains an unsubmitted insurance
-draft; its separate human submission approval is unchanged. An explanation's
-receipt records review only. No claim, clinical record or journal is rewritten.
+draft; its separate human submission approval is unchanged. Its body is only
+the reviewed wording: source identifiers and digests stay in the artifact and
+on the review page, never in payer-facing text. An explanation's receipt
+records review only. No claim, clinical record or journal is rewritten.
 
 Refund, write-off, price change, payout and submission are unrepresentable on this
 A1 path. A material agent command would need a separately registered domain

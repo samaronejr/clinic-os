@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 from uuid import uuid4
 from xml.etree.ElementTree import tostring
 
@@ -17,16 +17,19 @@ from apps.ai.policy import OrganizationPolicy
 from apps.ai.revenue_cycle import collect_revenue_cycle, request_revenue_cycle
 from apps.core.integration import execute_operation
 from apps.identity.clinic_configuration import latest_configuration
+from apps.identity.models import RoleGrant, UserClinicRole
 from apps.insurance.tiss import NS, protocol_hash
 from apps.providers.lifecycle import VersionInput, propose_version
+from django.utils import timezone
 
 from ai.support import model, seed
 from billing.journal_support import finance_scope
-from identity.permission_support import permission_context
+from identity.permission_support import owner_context, permission_context
 from insurance.cycle_support import build_cycle
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
     from pathlib import Path
     from uuid import UUID
 
@@ -35,6 +38,11 @@ if TYPE_CHECKING:
 
     from billing.journal_support import FinanceSetup
     from insurance.cycle_support import Cycle
+
+# SC-15 sentinels planted in protected TISS sources; a TISS card holds 20 chars.
+CARD_SENTINEL: Final = "SINTETICO-SENTINELA"
+PROFESSIONAL_SENTINEL: Final = "SINTETICO-SENTINELA-60-PROFISSIONAL"
+PAYER_SENTINEL: Final = "SINTETICO-SENTINELA-60-OPERADORA"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +59,11 @@ class RevenueWorld:
 def revenue_world(
     setup: FinanceSetup, monkeypatch: pytest.MonkeyPatch, secret_root: Path
 ) -> RevenueWorld:
-    cycle = build_cycle(setup)
+    cycle = build_cycle(
+        setup,
+        membership_number=CARD_SENTINEL,
+        professional_name=PROFESSIONAL_SENTINEL,
+    )
     graph = setup.graph
     gateway = seed(graph, monkeypatch)
     secret = secret_root / "agent-attestation-v1.secret"
@@ -100,8 +112,19 @@ def revenue_world(
     return RevenueWorld(cycle, policy.pk, gateway.administrator)
 
 
-def request_and_collect(world: RevenueWorld) -> RevenueReview:
-    with finance_scope(world.setup):
+def revenue_scope(
+    world: RevenueWorld, actor: UUID | None
+) -> AbstractContextManager[None]:
+    """The requester's Finance scope, or another actor's exact clinic scope."""
+    if actor is None:
+        return finance_scope(world.setup)
+    return permission_context(world.setup.graph, actor)
+
+
+def request_and_collect(
+    world: RevenueWorld, *, actor: UUID | None = None
+) -> RevenueReview:
+    with revenue_scope(world, actor):
         review = request_revenue_cycle(
             clinic_id=world.setup.clinic_id, guide_id=world.cycle.guide.pk
         )
@@ -110,10 +133,42 @@ def request_and_collect(world: RevenueWorld) -> RevenueReview:
     assert operation_id is not None
     with runtime_role():
         execute_operation(operation_id)
-    with finance_scope(world.setup):
+    with revenue_scope(world, actor):
         return collect_revenue_cycle(
             clinic_id=world.setup.clinic_id, invocation_id=review.invocation_id
         )
+
+
+def add_clinic_manager_role(setup: FinanceSetup) -> None:
+    """The requester also manages this clinic, so the generic agent queue opens."""
+    with owner_context(setup.graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=setup.graph.organization_a,
+            clinic_id=setup.clinic_id,
+            user_id=setup.graph.clinic_admin,
+            role=UserClinicRole.Role.CLINIC_MANAGER,
+        )
+
+
+def withdraw_finance_automation(setup: FinanceSetup) -> None:
+    """Owner-provisioned subtraction of automation.finance from Finance here."""
+    with owner_context(setup.graph.organization_a):
+        versions = set(
+            UserClinicRole.objects.filter(
+                clinic_id=setup.clinic_id,
+                role=UserClinicRole.Role.FINANCE,
+                revoked_at__isnull=True,
+            ).values_list("workflow_bundle_version", flat=True)
+        )
+        for version in versions:
+            RoleGrant.objects.create(
+                organization_id=setup.graph.organization_a,
+                clinic_id=setup.clinic_id,
+                role=UserClinicRole.Role.FINANCE,
+                permission="automation.finance",
+                bundle_version=version,
+                valid_from=timezone.now(),
+            )
 
 
 def changed_return(

@@ -32,7 +32,12 @@ class Cycle:
     appeal_id: UUID
 
 
-def build_cycle(setup: FinanceSetup) -> Cycle:
+def build_cycle(
+    setup: FinanceSetup,
+    *,
+    membership_number: str = "SYNTHETIC-001",
+    professional_name: str = "Synthetic Physician",
+) -> Cycle:
     terms = invoice_terms(setup, amount_minor=12345, payer="insurer", completed=False)
     assert terms.invoice.appointment_id is not None
     appointment_id = terms.invoice.appointment_id
@@ -64,7 +69,7 @@ def build_cycle(setup: FinanceSetup) -> Cycle:
             patient_id=appointment.patient_id,
             payer_name="Synthetic Payer",
             ans_number="000001",
-            membership_number="SYNTHETIC-001",
+            membership_number=membership_number,
         )
         service = (
             str(appointment.service_type_id)
@@ -92,7 +97,7 @@ def build_cycle(setup: FinanceSetup) -> Cycle:
                     "cnes": "0000001",
                     "professionals": {
                         str(setup.graph.physician): {
-                            "name": "Synthetic Physician",
+                            "name": professional_name,
                             "council": "06",
                             "number": "123456",
                             "uf": "35",
@@ -167,7 +172,7 @@ def build_cycle(setup: FinanceSetup) -> Cycle:
                 outcome=outcome,
                 command_id=uuid4(),
             )
-        xml = return_xml(guide=guide.number)
+        xml = return_xml(guide=guide.number, card=membership_number)
         source = services.ingest_return(
             clinic_id=setup.clinic_id, batch_id=batch.pk, xml=xml, command_id=uuid4()
         )

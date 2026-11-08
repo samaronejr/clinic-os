@@ -8,7 +8,9 @@ import xmlschema
 from apps.insurance.tiss import NS, protocol_hash
 
 
-def return_xml(*, guide: str = "101", duplicate: bool = False) -> bytes:
+def return_xml(
+    *, guide: str = "101", duplicate: bool = False, card: str | None = None
+) -> bytes:
     root = xmlschema.XMLResource(
         (Path(__file__).parent / "fixtures" / "return.xml").read_bytes(),
         allow="none",
@@ -17,6 +19,9 @@ def return_xml(*, guide: str = "101", duplicate: bool = False) -> bytes:
     number = root.find(f".//{{{NS}}}relacaoGuias/{{{NS}}}numeroGuiaPrestador")
     assert number is not None
     number.text = guide
+    if card is not None:
+        for element in root.iter(f"{{{NS}}}numeroCarteira"):
+            element.text = card
     if duplicate:
         group = root.find(f".//{{{NS}}}relacaoGuias")
         assert group is not None

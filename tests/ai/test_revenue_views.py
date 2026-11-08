@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.ai.models import AIInvocation
+from apps.ai.models import AIInvocation, Approval
 from apps.ai.revenue_cycle import collect_revenue_cycle
 from apps.core.integration import execute_operation
 from apps.insurance.models import Appeal
@@ -15,7 +15,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
-from ai.test_revenue_cycle import finance_setup, world
+from ai.revenue_support import (
+    add_clinic_manager_role,
+    request_and_collect,
+    withdraw_finance_automation,
+)
+from ai.test_revenue_cycle import finance_setup, proposal_for, world
 from billing.journal_support import finance_scope
 from core.test_navigation import _client_for
 from identity.lifecycle_test_support import verified_client
@@ -155,8 +160,6 @@ def test_selectors_are_post_only_and_denials_are_uniform(world: RevenueWorld) ->
 def test_native_review_includes_translated_missing_evidence_warning(
     world: RevenueWorld,
 ) -> None:
-    from ai.revenue_support import request_and_collect  # noqa: PLC0415
-
     review = request_and_collect(world)
     assert review.invocation_id is not None
     with finance_scope(world.setup):
@@ -178,3 +181,35 @@ def test_native_review_includes_translated_missing_evidence_warning(
         ).encode()
         in response.content
     )
+
+
+def test_revenue_page_refuses_decisions_without_automation_finance(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    # Automation staff keep reading the row after losing Finance automation.
+    add_clinic_manager_role(setup)
+    review = request_and_collect(world)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+    withdraw_finance_automation(setup)
+    # A fresh session: the owner's subtraction revoked the earlier ones.
+    client = verified_client(setup.graph)
+    url = reverse("ai:revenue-cycle", args=(setup.clinic_id,))
+    with runtime_role(), fixed_otp_time():
+        assert client.get(url).status_code == 200
+    for command in ("approve", "reject"):
+        response = post(
+            client,
+            url,
+            {
+                "command": command,
+                "proposal_id": str(proposal.pk),
+                "digest": proposal.digest,
+            },
+        )
+        assert response.status_code == 403
+    with finance_scope(setup):
+        proposal.refresh_from_db()
+        assert proposal.state == "validated"
+        assert not Approval.objects.filter(proposal=proposal).exists()

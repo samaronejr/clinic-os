@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -26,11 +27,15 @@ from apps.ai.models import (
     ActionExecution,
     ActionProposal,
     AgentPolicyVersion,
+    AgentRun,
     AIArtifact,
     AIInvocation,
+    Approval,
 )
 from apps.ai.outbox import GatewayActionAdapter
+from apps.ai.proposals import propose_action
 from apps.ai.revenue_cycle import (
+    check_revenue_sources,
     collect_revenue_cycle,
     execute_revenue_draft,
     propose_revenue_action,
@@ -41,17 +46,23 @@ from apps.audit.models import AuditEvent
 from apps.billing.models import JournalEntry
 from apps.comms.models import IntegrationOperation
 from apps.core.integration import execute_operation
+from apps.identity.current_context import CurrentActorError
 from apps.identity.models import RoleGrant, User, UserClinicRole
 from apps.insurance import services
-from apps.insurance.models import Appeal
+from apps.insurance.models import Appeal, Batch
 from django.db import connection, transaction
 from django.utils import timezone
 
 from ai.revenue_support import (
+    CARD_SENTINEL,
+    PAYER_SENTINEL,
+    PROFESSIONAL_SENTINEL,
     RevenueWorld,
+    add_clinic_manager_role,
     changed_return,
     request_and_collect,
     revenue_world,
+    withdraw_finance_automation,
 )
 from auth.stepup_test_support import verified_request
 from billing.journal_support import collected, finance_scope, finance_setup
@@ -66,6 +77,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from apps.ai.revenue_cycle import RevenueReview
+    from django.http import HttpRequest
     from pytest_django.fixtures import SettingsWrapper
 
     from billing.journal_support import FinanceSetup
@@ -113,8 +125,12 @@ def test_suggestions_cite_claim_journal_and_return_without_any_effect(
         "guide",
         "glosa",
     }
-    assert "8345" not in str(review)
-    assert "not retrieved" not in str(review)
+    appeal = next(item for item in review.items if item.kind == "appeal.draft")
+    glosa = str(world.cycle.glosa.pk)
+    assert glosa in {str(source["id"]) for source in appeal.citations}
+    # Reprs never expose rendered wording or the cited source identities.
+    assert appeal.text not in str(review)
+    assert glosa not in str(review)
     with finance_scope(setup):
         assert (Appeal.objects.count(), JournalEntry.objects.count()) == before
         invocation = AIInvocation.objects.get(pk=review.invocation_id)
@@ -182,7 +198,7 @@ def test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft
         assert appeal is not None
         assert (appeal.state, appeal.clinical_assertions) == ("draft", "")
         assert "10101012" in appeal.body
-        assert str(world.cycle.glosa.pk) in appeal.body
+        assert appeal.glosa_id == world.cycle.glosa.pk
 
 
 class FabricatingProvider(SyntheticProvider):
@@ -475,21 +491,303 @@ def test_material_commands_are_unrepresentable_in_an_a1_approval(
         data["operation"]["name"] = operation
         with pytest.raises(ActionInputError):
             parse_payload(json.dumps(data))
-        assert not ActionExecution.objects.filter(proposal=proposal).exists()
+        # Even unparsed, the shared admission/approval/execution recheck binds the
+        # command to the rule-derived kind, and no revenue policy can list it.
+        with pytest.raises(ActionRefusedError, match=Refusal.SOURCE.value):
+            check_revenue_sources(clinic_id=world.setup.clinic_id, data=data)
+        with pytest.raises(ActionInputError):
+            PolicyTerms("revenue_cycle", "A1", (operation,))
 
 
-def test_audit_outbox_and_logs_contain_no_protected_content(
+def approve(
+    world: RevenueWorld, proposal: ActionProposal, request: HttpRequest
+) -> Approval:
+    """Approve the exact digest with fresh evidence from this TOTP session."""
+    return approve_action(
+        clinic_id=world.setup.clinic_id,
+        proposal_id=proposal.pk,
+        expected_digest=proposal.digest,
+        evidence=step_up_evidence(
+            request, clinic_id=world.setup.clinic_id, digest=proposal.digest
+        ),
+    )
+
+
+def test_sentinels_never_reach_prompts_sinks_or_effect_records(
     world: RevenueWorld, caplog: pytest.LogCaptureFixture
 ) -> None:
-    request_and_collect(world)
+    caplog.set_level(logging.INFO)
     setup = world.setup
+    prompts: list[str] = []
+
+    class RecordingProvider(SyntheticProvider):
+        def complete(self, *, request: ProviderRequest) -> ProviderResult:
+            prompts.append(request.content)
+            return super().complete(request=request)
+
+    register_provider(RecordingProvider())
+    xml = changed_return(world, injection=PAYER_SENTINEL)
+    with finance_scope(setup):
+        # Given: each SC-15 sentinel genuinely sits in a protected TISS source.
+        sealed = Batch.objects.get(pk=world.cycle.batch.pk).xml
+        assert f"numeroCarteira>{CARD_SENTINEL}<" in sealed
+        assert f"nomeProfissional>{PROFESSIONAL_SENTINEL}<" in sealed
+        assert PAYER_SENTINEL.encode() in xml
+        services.ingest_return(
+            clinic_id=setup.clinic_id,
+            batch_id=world.cycle.batch.pk,
+            xml=xml,
+            command_id=uuid4(),
+        )
+    # When: the flow runs through human approval to the appeal draft.
+    review = request_and_collect(world)
+    request = verified_request(setup.graph.clinic_admin)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+        approve(world, proposal, request)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        assert result.state == "receipt"
+        appeal = Appeal.objects.exclude(pk=world.cycle.appeal_id).get()
+        approvals = list(Approval.objects.filter(proposal=proposal).values())
+        executions = list(ActionExecution.objects.filter(proposal=proposal).values())
+        assert approvals
+        assert executions
+        records = repr(
+            [
+                approvals,
+                executions,
+                list(ActionProposal.objects.filter(pk=proposal.pk).values("payload")),
+                list(AgentRun.objects.filter(pk=proposal.run_id).values("contract")),
+            ]
+        )
     with owner_context(setup.graph.organization_a):
         sinks = json.dumps(list(AuditEvent.objects.values_list("payload", flat=True)))
         sinks += repr(
             list(IntegrationOperation.objects.values("subject_type", "last_error"))
         )
     sinks += caplog.text
-    assert "SYNTHETIC-001" not in sinks
-    assert "Synthetic Physician" not in sinks
-    assert "10101012" not in sinks
-    assert "Administrative appeal draft" not in sinks
+    # Then: no prompt, display, sink, effect record or payer text holds one.
+    assert prompts
+    for value in (
+        *prompts,
+        *(item.text for item in review.items),
+        records,
+        sinks,
+        appeal.body,
+        appeal.clinical_assertions,
+    ):
+        assert "SINTETICO-SENTINELA" not in value
+    assert appeal.body
+    assert appeal.body not in sinks + records
+
+
+def test_payer_facing_appeal_text_omits_internal_source_identities(
+    world: RevenueWorld,
+) -> None:
+    review = request_and_collect(world)
+    assert review.output_id is not None
+    setup = world.setup
+    item = next(item for item in review.items if item.kind == "appeal.draft")
+    internal = {
+        str(source[key]) for source in item.citations for key in ("id", "sha256")
+    }
+    # The reviewer page keeps the exact cited identities and digests.
+    assert {str(world.cycle.guide.pk), str(world.cycle.glosa.pk)} <= internal
+    request = verified_request(setup.graph.clinic_admin)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+        approve(world, proposal, request)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        assert result.state == "receipt"
+        appeal = Appeal.objects.exclude(pk=world.cycle.appeal_id).get()
+        stored = json.loads(AIArtifact.objects.get(pk=review.output_id).content)
+    # The digest-bound artifact still records exactly this item's citations.
+    assert set(stored["items"][item.position]["citations"]) == {
+        source["alias"] for source in item.citations
+    }
+    # The payer-facing body is exactly the reviewed wording, nothing internal.
+    assert appeal.body == item.text
+    for value in (*internal, str(review.output_id), str(proposal.pk), proposal.digest):
+        assert value not in appeal.body
+
+
+def test_another_finance_reviewer_cannot_approve_or_reach_the_requesters_draft(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    graph = setup.graph
+    review = request_and_collect(world)
+    assert review.invocation_id is not None
+    assert review.output_id is not None
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+    other, _enrollment = permission_actor(graph, "finance")
+    other_request = verified_request(other)
+    with permission_context(graph, other):
+        # Same clinic and bundle, with genuine fresh TOTP evidence for the digest.
+        with pytest.raises(
+            ActionRefusedError,
+            match=f"{Refusal.SOURCE.value}|{Refusal.AUTHORITY.value}",
+        ):
+            approve(world, proposal, other_request)
+        with pytest.raises(GatewayAccessDeniedError):
+            collect_revenue_cycle(
+                clinic_id=setup.clinic_id, invocation_id=review.invocation_id
+            )
+        with pytest.raises(GatewayAccessDeniedError):
+            propose_revenue_action(
+                clinic_id=setup.clinic_id, output_id=review.output_id, position=0
+            )
+        with pytest.raises(GatewayAccessDeniedError):
+            read_artifact(clinic_id=setup.clinic_id, artifact_id=review.output_id)
+    # The requester's own vote still counts, so the refusal was about identity.
+    request = verified_request(graph.clinic_admin)
+    with finance_scope(setup):
+        approve(world, proposal, request)
+        assert list(
+            Approval.objects.filter(proposal=proposal).values_list(
+                "approver_id", flat=True
+            )
+        ) == [graph.clinic_admin]
+
+
+def test_stale_digests_and_reused_or_rebound_evidence_never_approve(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    first = request_and_collect(world)
+    second = request_and_collect(world)
+    request = verified_request(setup.graph.clinic_admin)
+    with finance_scope(setup):
+        older = proposal_for(world, first)
+        current = proposal_for(world, second)
+        assert older.digest != current.digest
+        stale = step_up_evidence(
+            request, clinic_id=setup.clinic_id, digest=older.digest
+        )
+        # A digest displayed for an older proposal never approves the current one.
+        with pytest.raises(ActionRefusedError, match=Refusal.DIGEST.value):
+            approve_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=current.pk,
+                expected_digest=older.digest,
+                evidence=stale,
+            )
+        # Evidence attested for another digest is refused, also when relabelled.
+        for evidence in (stale, replace(stale, digest=current.digest)):
+            with pytest.raises(ActionRefusedError, match=Refusal.ATTESTATION.value):
+                approve_action(
+                    clinic_id=setup.clinic_id,
+                    proposal_id=current.pk,
+                    expected_digest=current.digest,
+                    evidence=evidence,
+                )
+        evidence = step_up_evidence(
+            request, clinic_id=setup.clinic_id, digest=current.digest
+        )
+        votes = [
+            approve_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=current.pk,
+                expected_digest=current.digest,
+                evidence=evidence,
+            ).pk
+            for _replay in range(2)
+        ]
+        # Replaying the same evidence returns the one recorded vote.
+        assert votes[0] == votes[1]
+        assert Approval.objects.filter(proposal=current).count() == 1
+        assert not Approval.objects.filter(proposal=older).exists()
+
+
+def test_a_source_change_before_approval_refuses_the_approval_itself(
+    world: RevenueWorld,
+) -> None:
+    review = request_and_collect(world)
+    setup = world.setup
+    request = verified_request(setup.graph.clinic_admin)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+        before = Appeal.objects.count()
+        services.ingest_return(
+            clinic_id=setup.clinic_id,
+            batch_id=world.cycle.batch.pk,
+            xml=changed_return(world, denied=True),
+            command_id=uuid4(),
+        )
+        with pytest.raises(ActionRefusedError, match=Refusal.SOURCE.value):
+            approve(world, proposal, request)
+        assert not Approval.objects.filter(proposal=proposal).exists()
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        assert result.state == "rejected"
+        assert Appeal.objects.count() == before
+
+
+def test_finance_reviewer_without_automation_finance_cannot_admit_a_draft(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    graph = setup.graph
+    review = request_and_collect(world)
+    with finance_scope(setup):
+        proposal = proposal_for(world, review)
+    reviewer, _enrollment = permission_actor(graph, "finance")
+    withdraw_finance_automation(setup)
+    # Finance review itself stays available without automation authority.
+    own = request_and_collect(world, actor=reviewer)
+    assert own.state == "ready"
+    assert own.output_id is not None
+    with permission_context(graph, reviewer), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.agent_staff(%s), "
+            "clinic_app.ai_revenue_row(%s,'policy',%s)",
+            [setup.clinic_id, setup.clinic_id, world.policy_id],
+        )
+        assert cursor.fetchone() == (False, False)
+        with pytest.raises(ActionRefusedError, match=Refusal.DISABLED.value):
+            propose_revenue_action(
+                clinic_id=setup.clinic_id, output_id=own.output_id, position=0
+            )
+        # The admission boundary refuses even a well-formed payload it is handed.
+        with pytest.raises(CurrentActorError):
+            propose_action(
+                clinic_id=setup.clinic_id, payload=parse_payload(proposal.payload)
+            )
+
+
+def test_automation_staff_without_automation_finance_cannot_approve_or_execute(
+    world: RevenueWorld,
+) -> None:
+    setup = world.setup
+    add_clinic_manager_role(setup)
+    review = request_and_collect(world)
+    assert review.output_id is not None
+    request = verified_request(setup.graph.clinic_admin)
+    with finance_scope(setup):
+        approved = proposal_for(world, review)
+        approve(world, approved, request)
+        pending = propose_revenue_action(
+            clinic_id=setup.clinic_id, output_id=review.output_id, position=0
+        )
+        assert pending.state == "validated"
+        evidence = step_up_evidence(
+            request, clinic_id=setup.clinic_id, digest=pending.digest
+        )
+        before = Appeal.objects.count()
+    withdraw_finance_automation(setup)
+    with finance_scope(setup), connection.cursor() as cursor:
+        # Still automation staff: the generic agent queue lists both proposals and
+        # calls these same approval and A1 execution services.
+        cursor.execute("SELECT clinic_app.agent_staff(%s)", [setup.clinic_id])
+        assert cursor.fetchone() == (True,)
+        with pytest.raises(ActionRefusedError, match=Refusal.AUTHORITY.value):
+            approve_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=pending.pk,
+                expected_digest=pending.digest,
+                evidence=evidence,
+            )
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=approved.pk)
+        assert (result.state, result.reason) == ("rejected", Refusal.AUTHORITY)
+        assert Appeal.objects.count() == before
+        assert not Approval.objects.filter(proposal=pending).exists()
