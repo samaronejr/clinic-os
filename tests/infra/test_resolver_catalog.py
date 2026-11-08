@@ -7,6 +7,7 @@ from infra import (
     comms_inbox_catalog,
     coordination_catalog,
     duplicate_catalog,
+    fiscal_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
     journal_catalog,
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
     *retention_catalog.TABLE_GRANTS,
+    *fiscal_catalog.TABLE_GRANTS,
     *journal_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
@@ -252,6 +254,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
 }
 POSTURE_OVERRIDES: Final = {
     **retention_catalog.POSTURE,
+    **fiscal_catalog.POSTURE,
     **journal_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -552,6 +555,7 @@ POSTURE_OVERRIDES: Final = {
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
+    *fiscal_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
@@ -865,6 +869,7 @@ FUNCTION_SIGNATURES: Final = {
     *journal_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    **fiscal_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",

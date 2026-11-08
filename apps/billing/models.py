@@ -14,6 +14,11 @@ from apps.billing.collection_models import (
     PractitionerPayoutRule,
     SettlementAllocation,
 )
+from apps.billing.fiscal_models import (
+    FiscalConfiguration,
+    FiscalDocument,
+    FiscalTransition,
+)
 from apps.billing.journal_models import (
     Account,
     JournalBook,
@@ -33,6 +38,9 @@ __all__ = (
     "Account",
     "CashSession",
     "CashSessionEvent",
+    "FiscalConfiguration",
+    "FiscalDocument",
+    "FiscalTransition",
     "Invoice",
     "InvoiceRevision",
     "InvoiceTerms",

@@ -53,6 +53,7 @@
   </div>
   {% endtimezone %}
   {% endif %}
+  {% include "billing/partials/finance_fiscal.html" %}
   <section aria-labelledby="financial-actions-title">
     <h2 id="financial-actions-title">{% trans "Record a financial action" %}</h2>
     <p>{% trans "Amounts are reais. Rules use basis points (3000 means 30 percent) or fixed centavos. Discounts and payer adjustments precede PSP fees." %}</p>

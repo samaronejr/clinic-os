@@ -235,3 +235,64 @@ Sending/outcome operations are **local synthetic rehearsals only**.
 PSP, sandbox and live-money legs remain **BLOCKED-ON-EG**. No provider call,
 credentials, activation flag, fiscal tax classification or SaaS book is added.
 Migration rollback after posting is restore, never deletion of financial history.
+
+## Task 58: fiscal documents are not receipts
+
+`FiscalDocument` is separate from `Receipt`, settlement and journal posting.
+Payment never authorizes an NFS-e and fiscal authorization never settles a
+charge. Receipt headings say **Recibo (não é nota fiscal)**. Finance shows a
+separate **NFS-e** history; synthetic authorization remains visibly a rehearsal
+without fiscal validity. No patient identifiers or fiscal payloads enter HTML.
+
+`FiscalConfiguration` is an immutable, owner-written capture of an external
+review for one clinic/book/legal entity: encrypted legal-entity identifiers,
+municipality, service code, tax regime, explicit IBS/CBS applicability and
+encrypted tax groups, opaque reviewer evidence, review kind/date/expiry, and
+the reviewer-supplied cancellation window. The runtime has SELECT only.
+No service here creates an EG-9 approval or chooses a tax classification,
+rate, applicability decision or municipal deadline. An `eg9` reference must
+come from the accountable external fiscal/accounting reviewer. Test-only
+reviews use `synthetic_fixture`, never `eg9`; changing terms requires a new
+configuration record.
+
+`apps.billing.fiscal` services require exact-clinic Finance authority
+(`settlement.post`), not legacy manager/owner equivalence. Unknown and foreign
+selectors have identical denials. Creation binds the immutable review and the
+issued invoice; command receipts make retries content-bound. PostgreSQL owns
+the transitions `draft -> submitted -> authorized/rejected`, and cancellation
+of a draft or an authorized document before its recorded deadline. Timeout or
+an invalid response leaves `submitted`; replay queries the original DPS
+instead of submitting a second one. The database writes immutable transition
+receipts and prohibits deletion/truncation. Every transition appends registered
+metadata-only audit. XML, PDF and cancellation bytes are envelope encrypted;
+their opaque references select those bytes on the same row, not public URLs.
+
+`FiscalProvider` has national and aggregator implementations. The national
+boundary encodes exact DPS/event bytes as gzip/base64, follows DPS lookup to
+the access key, correlates responses and bounds XML inflation. Aggregator
+methods define an internal interface only; no aggregator has been selected.
+Raw provider descriptions are discarded; bounded rejection codes accompany
+fixed pt-BR recovery copy. No XML signing, XSD acceptance, signature validation
+or homologation is claimed by the synthetic fixtures.
+
+Only local deterministic adapters run, with `CLINIC_DATA_MODE=synthetic` and
+explicit `BILLING_SYNTHETIC_NFSE=True` (absent/default: off). Their unsigned
+XML says `SYNTHETIC-NOT-FISCAL`; no provider request, money movement or receipt
+creation occurs. Live submission checks an unexpired `eg9` review and the
+`nfse` lifecycle gate, then still refuses **BLOCKED-ON-EG**. Both adapters keep
+`real_enabled=False`. Production/sandbox transports, certificates, reviewed
+signed DPS/events, municipal acceptance and IBS/CBS schema selection remain
+**BLOCKED-ON-EG-1/EG-5/EG-9**. Future real sends must use the after-commit
+outbox/action-operation boundary; they cannot reuse the local fake's tenant
+transaction. Synthetic evidence never satisfies an external gate.
+
+Official documentation rechecked 2026-11-06 keeps production documentation
+separate from restricted testing with IBS/CBS groups. This lane does not guess
+which restricted tax groups apply in production. Sources and their dates are
+retained in task-58 evidence. Migration `0013_fiscal_documents`
+adds protected fields atomically with their grants inside an irreversible,
+non-atomic migration container; rollback = restore. Foreign keys are installed
+inline on the new empty tables before FORCE RLS, so no existing table's posture
+or grants change. The fiscal functions receive temporary owner installation
+grants, all revoked before migration commit. Local evidence does not authorize
+provider sandbox, external fiscal review or live issuance.

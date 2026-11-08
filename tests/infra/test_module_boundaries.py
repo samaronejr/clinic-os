@@ -10,6 +10,7 @@ from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
+from apps.billing import fiscal
 from apps.billing.journal import post_entry
 from apps.billing.services import create_invoice
 from apps.comms import inbox_services, portal_messages, suggestions
@@ -70,6 +71,28 @@ FOUNDATION_APP_NAMES: Final = frozenset(
 def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None:
     parameters = signature(post_entry).parameters
     assert list(parameters) == ["book_id", "source_fact", "lines"]
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+
+
+@pytest.mark.parametrize(
+    ("service", "names"),
+    [
+        (
+            fiscal.prepare_fiscal_document,
+            ["clinic_id", "invoice_id", "configuration_id", "command_id"],
+        ),
+        (fiscal.submit_fiscal_document, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.submit_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.cancel_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+    ],
+)
+def test_fiscal_services_keep_exact_scope_and_command_contract(
+    service: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(service).parameters
+    assert list(parameters) == names
     assert all(
         parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
     )

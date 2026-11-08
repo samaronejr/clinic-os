@@ -64,6 +64,9 @@ DOMAIN_RELATIONS: Final = (
     "billing_payout",
     "billing_cashsession",
     "billing_cashsessionevent",
+    "billing_fiscalconfiguration",
+    "billing_fiscaldocument",
+    "billing_fiscaltransition",
     "comms_appointmentreminder",
     # Task 51 inbox: threads, messages, notes, templates and provider accounts
     # are durable conversation history; keys are secret files, never rows.

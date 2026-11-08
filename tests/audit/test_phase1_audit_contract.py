@@ -12,6 +12,15 @@ CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
     **{
+        f"billing.fiscal.{status}": (
+            "tenant",
+            "clinic-os-web",
+            "billing.fiscal_document",
+            status,
+        )
+        for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+    },
+    **{
         f"retention.purge.{state}": (
             "tenant",
             "clinic-os-worker",

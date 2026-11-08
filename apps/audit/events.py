@@ -47,6 +47,12 @@ class Phase1AuditEventRejectedError(ValueError):
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
         **{
+            f"billing.fiscal.{status}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.fiscal_document", status
+            )
+            for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+        },
+        **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state
             )

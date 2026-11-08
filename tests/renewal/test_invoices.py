@@ -44,7 +44,7 @@ from django.db.models.functions import Now
 from django.utils import timezone
 from psycopg import sql
 
-from infra import journal_catalog
+from infra import fiscal_catalog, journal_catalog
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
     arrived_synthetic_appointment,
@@ -766,8 +766,9 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             "billing_settlement_receipt",
             "billing_staff_invoice",
             *(name for name, _ in journal_catalog.RESULTS),
+            *(name for name, _ in fiscal_catalog.RESULTS),
         }
-        assert len(functions) == 45
+        assert len(functions) == 45 + len(fiscal_catalog.RESULTS)
         assert all(
             owner
             == ("clinic_owner" if name == "billing_pix_guard" else "clinic_resolver")
@@ -787,6 +788,7 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             AND a.privilege_type = 'EXECUTE' AND a.grantee <> p.proowner""")
         assert set(cursor.fetchall()) == {
             *((name, "clinic_app") for name in journal_catalog.PUBLIC_API),
+            ("billing_fiscal_access", "clinic_app"),
             ("billing_patient_charge", "clinic_app"),
             ("billing_patient_charges", "clinic_app"),
             ("billing_staff_invoice", "clinic_app"),

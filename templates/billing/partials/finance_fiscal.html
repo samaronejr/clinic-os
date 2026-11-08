@@ -1,0 +1,21 @@
+{% load i18n %}
+<section aria-labelledby="fiscal-title" data-fiscal-documents>
+  <h2 id="fiscal-title">{% trans "NFS-e" %}</h2>
+  <p>{% trans "Payment receipts are not tax invoices. Live fiscal issuance remains blocked pending external approvals." %}</p>
+  <p class="hint">{% trans "The fiscal reviewer must record the clinic's legal entity, municipality, service, tax regime, IBS/CBS applicability and cancellation deadline. No tax classification is inferred." %}</p>
+  {% if fiscal_finance %}
+  <div class="table-scroll" role="region" aria-labelledby="fiscal-caption" tabindex="0">
+    <table class="table">
+      <caption id="fiscal-caption">{% trans "Recent fiscal documents" %}</caption>
+      <thead><tr><th scope="col">{% trans "Reference" %}</th><th scope="col">{% trans "Document" %}</th><th scope="col">{% trans "State" %}</th></tr></thead>
+      <tbody>{% for row in fiscal_rows %}
+        <tr data-fiscal-state="{{ row.status }}" data-fiscal-rehearsal="{{ row.rehearsal|yesno:'true,false' }}"><th scope="row">{{ row.reference|truncatechars:12 }}</th><td>{{ row.document_kind }}</td><td>{{ row.label }}{% if row.rejection_code %}<p class="feedback feedback--error"><code>{{ row.rejection_code }}</code>: {{ row.rejection_message }}</p>{% endif %}</td></tr>
+      {% empty %}
+        <tr><td colspan="3" class="table-empty">{% trans "No fiscal document recorded. A payment receipt does not become an NFS-e." %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="feedback" data-fiscal-permission="denied">{% trans "Finance permission is required to view fiscal documents." %}</p>
+  {% endif %}
+</section>

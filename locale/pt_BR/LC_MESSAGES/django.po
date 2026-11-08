@@ -354,6 +354,51 @@ msgstr "Voltar ao atendimento"
 
 msgid "Invalid decision-support request."
 msgstr "Solicitação de apoio à decisão inválida."
+msgid "Receipt (not a tax invoice)"
+msgstr "Recibo (não é nota fiscal)"
+
+msgid "NFS-e"
+msgstr "NFS-e"
+
+msgid "NFS-e rehearsal (not a tax invoice)"
+msgstr "Ensaio de NFS-e (não é nota fiscal)"
+
+msgid "Fiscal draft"
+msgstr "Rascunho fiscal"
+
+msgid "Awaiting fiscal confirmation"
+msgstr "Aguardando confirmação fiscal"
+
+msgid "Fiscal authorization recorded"
+msgstr "Autorização fiscal registrada"
+
+msgid "Fiscal document rejected"
+msgstr "Documento fiscal rejeitado"
+
+msgid "Fiscal document cancelled"
+msgstr "Documento fiscal cancelado"
+
+msgid "The fiscal provider rejected the document. Ask the fiscal reviewer to check the configuration."
+msgstr "O provedor fiscal rejeitou o documento. Peça ao responsável pela revisão fiscal que confira a configuração."
+
+msgid "Payment receipts are not tax invoices. Live fiscal issuance remains blocked pending external approvals."
+msgstr "Recibos de pagamento não são notas fiscais. A emissão fiscal real continua bloqueada até as aprovações externas."
+
+msgid "The fiscal reviewer must record the clinic's legal entity, municipality, service, tax regime, IBS/CBS applicability and cancellation deadline. No tax classification is inferred."
+msgstr "O responsável pela revisão fiscal precisa registrar a pessoa jurídica da clínica, o município, o serviço, o regime tributário, a aplicabilidade de IBS/CBS e o prazo de cancelamento. Nenhuma classificação tributária é presumida."
+
+msgid "Recent fiscal documents"
+msgstr "Documentos fiscais recentes"
+
+msgid "No fiscal document recorded. A payment receipt does not become an NFS-e."
+msgstr "Nenhum documento fiscal registrado. Um recibo de pagamento não se transforma em NFS-e."
+
+msgid "Finance permission is required to view fiscal documents."
+msgstr "É necessária a permissão de Financeiro para consultar documentos fiscais."
+
+msgid "Document"
+msgstr "Documento"
+
 msgid "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close."
 msgstr "A contagem do caixa precisa conferir com o diário selado. Recebimentos não lançados, valores não identificados, valores em apuração e resultados desconhecidos impedem o fechamento."
 
