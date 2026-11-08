@@ -21,6 +21,9 @@ def foreign_key(table: str, name: str, columns: str, target: str, keys: str) -> 
     constraint = _quoted(name)
     column_list = ",".join(_quoted(column) for column in columns.split(","))
     key_list = ",".join(_quoted(key) for key in keys.split(","))
+    # One interpolation for the referenced table and keys: the clock boundary
+    # reads an unresolved name directly before "(" as a dynamic callee.
+    reference = target_name + " (" + key_list + ")"
     return f"""
 DO $constraint$
 DECLARE source_forced boolean; target_forced boolean;
@@ -34,7 +37,7 @@ BEGIN
   ALTER TABLE {source} NO FORCE ROW LEVEL SECURITY;
   ALTER TABLE {target_name} NO FORCE ROW LEVEL SECURITY;
   ALTER TABLE {source} ADD CONSTRAINT {constraint}
-   FOREIGN KEY ({column_list}) REFERENCES {target_name} ({key_list})
+   FOREIGN KEY ({column_list}) REFERENCES {reference}
    NOT DEFERRABLE;
   IF source_forced THEN ALTER TABLE {source} FORCE ROW LEVEL SECURITY; END IF;
   IF target_forced THEN ALTER TABLE {target_name} FORCE ROW LEVEL SECURITY; END IF;
