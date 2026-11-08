@@ -4,6 +4,7 @@ import pytest
 from django.db import connection
 
 from infra import (
+    analytics_catalog,
     comms_inbox_catalog,
     coordination_catalog,
     crm_catalog,
@@ -26,6 +27,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
     *crm_catalog.TABLE_GRANTS,
+    *analytics_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *fiscal_catalog.TABLE_GRANTS,
     *insurance_catalog.TABLE_GRANTS,
@@ -191,6 +193,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *inventory_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *analytics_catalog.COLUMN_GRANTS,
     ("ai_evaluationrun", "status", "UPDATE"),
     ("ai_evaluationrun", "finished_at", "UPDATE"),
     *retention_catalog.COLUMN_GRANTS,
@@ -264,6 +267,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
 }
 POSTURE_OVERRIDES: Final = {
     **crm_catalog.POSTURE,
+    **analytics_catalog.POSTURE,
     **retention_catalog.POSTURE,
     **fiscal_catalog.POSTURE,
     **journal_catalog.POSTURE,
@@ -569,6 +573,7 @@ POSTURE_OVERRIDES: Final = {
 }
 FUNCTION_SIGNATURES: Final = {
     *crm_catalog.RESULTS,
+    *analytics_catalog.RESULTS,
     *retention_catalog.RESULTS,
     *fiscal_catalog.RESULTS,
     ("reception_guard", ""),
@@ -889,6 +894,7 @@ FUNCTION_SIGNATURES: Final = {
 FUNCTION_RESULTS: Final = {
     **crm_catalog.RESULTS,
     **fiscal_catalog.RESULTS,
+    **analytics_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",

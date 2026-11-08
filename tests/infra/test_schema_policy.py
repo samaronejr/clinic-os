@@ -69,6 +69,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         *CRM_CUSTOM_RLS_TABLES,
+        # Requester-bound reporting policies: tests/analytics/test_posture.py.
+        "analytics_metricdefinitionversion",
+        "analytics_readmodelrefresh",
+        "analytics_savedreport",
+        "analytics_analystreview",
         # Exact receipt-only policies and resolver-only writes: retention tests.
         "retention_artifactpurge",
         # Exact capture/consent/token policies: tests/scribe/test_posture.py.

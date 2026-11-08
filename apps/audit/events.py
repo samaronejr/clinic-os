@@ -69,6 +69,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
         },
         **{
+            f"analytics.{kind}.{action}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"analytics.{kind}", action
+            )
+            for kind, action in (
+                ("definition", "registered"),
+                ("read_model", "refreshed"),
+                ("report", "saved"),
+                ("analyst", "accepted"),
+                ("analyst", "rejected"),
+            )
+        },
+        **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state
             )

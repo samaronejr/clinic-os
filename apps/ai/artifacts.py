@@ -14,10 +14,13 @@ from apps.ai.contracts import (
     GatewayInputError,
     Method,
     Purpose,
+    request_schema,
 )
 from apps.ai.decision_policy import authorize_decision
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
+from apps.analytics.analyst_contracts import recheck_request as recheck_analyst_request
+from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id, require_permission
 from apps.identity.models import Clinic
@@ -67,6 +70,8 @@ def create_input(
         patient_enrollment_id=patient_enrollment_id,
     )
     enabled_policy(purpose)
+    if purpose is Purpose.ANALYST and request_schema(content) == ANALYST_SCHEMA:
+        recheck_analyst_request(clinic_id=clinic_id, content=content)
     if (
         type(content) is not str
         or not content
@@ -118,6 +123,11 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
         purpose=purpose,
         patient_enrollment_id=artifact.patient_enrollment_id,
     )
+    if (
+        purpose is Purpose.ANALYST
+        and request_schema(artifact.content) == ANALYST_SCHEMA
+    ):
+        recheck_analyst_request(clinic_id=clinic_id, content=artifact.content)
     if purpose is Purpose.DECISION_SUPPORT:
         authorize_decision(
             clinic_id=clinic_id,
@@ -143,6 +153,15 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         purpose=Purpose(artifact.purpose),
         patient_enrollment_id=artifact.patient_enrollment_id,
     )
+    if artifact.purpose == Purpose.ANALYST.value:
+        invocation = artifact.invocation
+        source = (
+            artifact
+            if artifact.kind == "input"
+            else (invocation.inputs_ref if invocation is not None else None)
+        )
+        if source is not None and request_schema(source.content) == ANALYST_SCHEMA:
+            recheck_analyst_request(clinic_id=clinic_id, content=source.content)
     if artifact.purpose == Purpose.DECISION_SUPPORT.value:
         invocation = artifact.invocation
         source = (

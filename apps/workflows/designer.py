@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
 
+from apps.analytics.catalog import METRICS
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import UserClinicRole
 from apps.identity.otp import privileged_totp_required
@@ -72,6 +73,8 @@ def _authorized_designer(request: HttpRequest, clinic_id: UUID) -> HttpResponseB
         "subject": 0,
         "seconds": 60,
         "offset": 3600,
+        "metric_id": "no_show",
+        "metric_days": 30,
     }
     return render(
         request,
@@ -89,6 +92,9 @@ def _authorized_designer(request: HttpRequest, clinic_id: UUID) -> HttpResponseB
                             **step,
                             "owner_label": UserClinicRole.Role(step["owner_role"]).label
                             if step["handler"] == "task"
+                            else "",
+                            "metric_label": METRICS[step["metric_id"]].label
+                            if step["handler"] == "metrics_refresh"
                             else "",
                         }
                         for step in definition.steps

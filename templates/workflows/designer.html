@@ -30,7 +30,7 @@
     {% for item in definitions %}{% with definition=item.definition %}
     <article class="task-row" data-definition="{{ definition.pk }}" data-definition-state="{{ definition.state }}" data-revision="{{ definition.revision }}">
       <header><h3>{{ definition.key }} · {% trans "Version" %} {{ definition.version }}</h3><p>{{ item.state_label }} · {% trans "Revision" %} {{ definition.revision }}</p></header>
-      <ol>{% for step in item.steps %}<li>{% if step.handler == "task" %}{% trans "Task" %}: {% if step.kind == "checklist" %}{% trans "Checklist" %}{% elif step.kind == "review" %}{% trans "Review" %}{% else %}{% trans "Follow-up" %}{% endif %} · {{ step.owner_label }}{% elif step.handler == "timer" %}{% trans "Timer" %}: {{ step.seconds }} {% trans "seconds" %}{% else %}{% trans "Synthetic external action" %}{% endif %}</li>{% endfor %}</ol>
+      <ol>{% for step in item.steps %}<li>{% if step.handler == "task" %}{% trans "Task" %}: {% if step.kind == "checklist" %}{% trans "Checklist" %}{% elif step.kind == "review" %}{% trans "Review" %}{% else %}{% trans "Follow-up" %}{% endif %} · {{ step.owner_label }}{% elif step.handler == "timer" %}{% trans "Timer" %}: {{ step.seconds }} {% trans "seconds" %}{% elif step.handler == "metrics_refresh" %}{% trans "Refresh metric" %}: {% trans step.metric_label %} · {{ step.days }} {% trans "days" %}{% else %}{% trans "Synthetic external action" %}{% endif %}</li>{% endfor %}</ol>
       {% if definition.state == "draft" %}
       <details><summary>{% trans "Add step" %}</summary>
         <form method="post" class="task-create-form">{% csrf_token %}

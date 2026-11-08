@@ -6,6 +6,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
+from apps.analytics.workflow import refresh_step
 from apps.comms.models import IntegrationOperation
 from apps.core.integration import ActionOperationRequest, enqueue_operation
 from apps.workflows.access import require_manager
@@ -28,6 +29,7 @@ class Handler(StrEnum):
     TASK = "task"
     TIMER = "timer"
     EXTERNAL = "external"
+    METRICS_REFRESH = "metrics_refresh"
 
 
 def operation_digest(step: WorkflowStep) -> str:
@@ -110,4 +112,5 @@ HANDLERS: dict[str, Callable[[WorkflowStep, datetime], HandlerResult]] = {
     Handler.TASK: _task,
     Handler.TIMER: _timer,
     Handler.EXTERNAL: _external,
+    Handler.METRICS_REFRESH: refresh_step,
 }

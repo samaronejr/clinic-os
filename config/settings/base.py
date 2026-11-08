@@ -81,6 +81,7 @@ INSTALLED_APPS: list[str] = [
     "apps.inventory.apps.InventoryConfig",
     "apps.crm.apps.CrmConfig",
     "apps.insurance.apps.InsuranceConfig",
+    "apps.analytics.apps.AnalyticsConfig",
 ]
 
 # Capture is an explicit synthetic rehearsal until the provider lifecycle and

@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
+from apps.analytics.contracts import Query
+from apps.analytics.services import refresh_metric
 from apps.audit.models import AuditEvent
 from apps.comms.inbox_services import open_conversation, send_message
 from apps.comms.portal_messages import reply_to_portal_conversation
@@ -37,6 +39,7 @@ from apps.workflows.care.models import (
     Referral,
 )
 from apps.workflows.care.validation import CareActionSpec, PROSpec, ReferralSpec
+from apps.workflows.engine import claim_step
 from apps.workflows.models import (
     Task,
     TaskComment,
@@ -60,6 +63,7 @@ from apps.workflows.urgent_models import UrgentConcern, UrgentCoveragePolicy
 from django.db import DatabaseError, connection, transaction
 from django.db.models import F, Model
 from django.utils import timezone
+from psycopg import sql
 
 from ehr.longitudinal_support import ChartWorld, finalized, second_draft
 from identity.permission_support import (
@@ -1435,6 +1439,59 @@ def care_refusal_read(w: World) -> None:
         assert care_visible(CareRefusal) == {refusal.pk}
 
 
+def metric_receipt_authority(w: World) -> None:
+    """A real receipt permits completion only under its current authority."""
+    with w.acting(w.manager):
+        definition = publish_definition(
+            clinic_id=w.clinic,
+            key="sql-metric-receipt",
+            steps=[{"handler": "metrics_refresh", "metric_id": "no_show", "days": 30}],
+            idempotency_key=uuid4(),
+        )
+        run = start_run(
+            clinic_id=w.clinic,
+            definition_version_id=definition.pk,
+            context_refs=[w.reference],
+            idempotency_key=uuid4(),
+        )
+        step = WorkflowStep.objects.get(run=run)
+        assert claim_step(step_id=step.pk) is not None
+        refresh_metric(
+            clinic_id=w.clinic,
+            query=Query(
+                "no_show",
+                run.created_at - timedelta(days=30),
+                run.created_at,
+                "America/Sao_Paulo",
+            ),
+            command_id=step.pk,
+        )
+        with transaction.atomic():
+            assert (
+                WorkflowStep.objects.filter(pk=step.pk).update(
+                    state="completed", claim_until=None
+                )
+                == 1
+            )
+            transaction.set_rollback(True)
+    with owner_context(w.graph.organization_a):
+        RoleGrant.objects.create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            role="clinic_manager",
+            permission="appointment.book",
+            bundle_version=1,
+            valid_from=timezone.now() - timedelta(days=1),
+        )
+    with w.acting(w.manager):
+        refused(
+            ("23514", "workflow effect is missing"),
+            lambda: WorkflowStep.objects.filter(pk=step.pk).update(
+                state="completed", claim_until=None
+            ),
+        )
+
+
 CARE_GUARD = "branch:workflows_care_guard():"
 CARE_CASES: dict[str, Callable[[World], None]] = {
     "policy:workflows_careplan.care_read": care_plan_read,
@@ -2051,6 +2108,9 @@ COORDINATION_CONDITIONS: dict[str, Callable[[World], None]] = {
 
 GUARD = "branch:workflows_guard():"
 CASES: dict[str, Callable[[World], None]] = {
+    "branch:analytics_workflow_receipt():workflow effect is missing": (
+        metric_receipt_authority
+    ),
     "policy:workflows_task.workflow_read": task_read,
     "policy:workflows_task.workflow_update": task_update,
     "policy:workflows_taskcomment.workflow_read": comment_read,
@@ -2085,6 +2145,51 @@ CASES: dict[str, Callable[[World], None]] = {
 def test_every_derived_sql_decision_has_a_behavioural_case() -> None:
     """Fail closed: a new actor-reading SQL decision needs a case here."""
     assert set(discover_sql_sites()) == set(CASES)
+
+
+def test_registered_analytics_view_cannot_change_its_reviewed_definition() -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_get_viewdef('clinic_app.analytics_metricfact'::regclass)"
+        )
+        source = str(cursor.fetchone()[0]).strip().removesuffix(";")
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(
+            sql.SQL(
+                "CREATE OR REPLACE VIEW clinic_app.analytics_metricfact "
+                "WITH (security_barrier=true) AS SELECT * FROM ({}) v WHERE false"
+            ).format(sql.SQL(source))
+        )
+        with pytest.raises(
+            AssertionError, match="registered analytics view definition changed"
+        ):
+            discover_sql_sites()
+        transaction.set_rollback(True)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "PERFORM current_setting('app.current_user_id',true);",
+        "PERFORM clinic_app.analytics_authorization(NEW.clinic_id);",
+    ],
+)
+def test_receipt_actor_reads_cannot_escape_classified_decisions(statement: str) -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_get_functiondef(oid),prosrc FROM pg_proc "
+            "WHERE oid='clinic_app.analytics_workflow_receipt()'::regprocedure"
+        )
+        definition, source = cursor.fetchone()
+        changed = source.replace("\nBEGIN", "\nBEGIN\n" + statement, 1)
+        assert changed != source
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(sql.SQL(definition.replace(source, changed)))
+        with pytest.raises(
+            AssertionError, match=r"actor binding not found|actor read outside"
+        ):
+            discover_sql_sites()
+        transaction.set_rollback(True)
 
 
 @pytest.mark.parametrize("site", sorted(CASES))
@@ -2236,6 +2341,10 @@ def _cancel_step_without(permission: str) -> Callable[[World], None]:
 
 
 CONDITIONS: dict[str, Callable[[World], None]] = {
+    (
+        "branch:analytics_workflow_receipt():workflow effect is missing"
+        "#1:helper:analytics_authorization"
+    ): metric_receipt_authority,
     "invalid task#1:permission:tasks.assign": task_without_assign,
     "invalid task#2:actor:NEW.created_by_id IS DISTINCT FROM actor": invalid_task,
     "task assignment denied#1:helper:workflows_owner_valid": (

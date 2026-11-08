@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "The only permitted analyst response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["metric_id", "version", "dimensions", "filters", "window", "tz"],
+  "allOf": [{
+    "if": {"properties": {"metric_id": {"enum": ["utilization", "receivables", "payout_liabilities", "activation", "retained_usage"]}}},
+    "then": {"properties": {
+      "dimensions": {"const": []},
+      "filters": {"properties": {"weekdays": {"maxItems": 0}}}
+    }}
+  }],
+  "properties": {
+    "metric_id": {"enum": ["utilization", "no_show", "waiting_time", "task_turnaround", "receivables", "verified_collections", "net_collections", "denials", "payout_liabilities", "result_ack_latency", "follow_up_overdue", "support_load", "ai_correction_time", "activation", "retained_usage"]},
+    "version": {"type": "integer", "const": 1},
+    "dimensions": {"enum": [[], ["day"]]},
+    "filters": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"weekdays": {"type": "array", "maxItems": 7, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 6}}}
+    },
+    "window": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-](0[0-9]|1[0-4]):[0-5][0-9])$"},
+        "end": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-](0[0-9]|1[0-4]):[0-5][0-9])$"}
+      }
+    },
+    "tz": {"type": "string", "minLength": 1, "maxLength": 63}
+  }
+}

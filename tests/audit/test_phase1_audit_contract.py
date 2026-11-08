@@ -38,6 +38,21 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
     },
     **{
+        f"analytics.{kind}.{action}": (
+            "tenant",
+            "clinic-os-web",
+            f"analytics.{kind}",
+            action,
+        )
+        for kind, action in (
+            ("definition", "registered"),
+            ("read_model", "refreshed"),
+            ("report", "saved"),
+            ("analyst", "accepted"),
+            ("analyst", "rejected"),
+        )
+    },
+    **{
         f"retention.purge.{state}": (
             "tenant",
             "clinic-os-worker",

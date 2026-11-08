@@ -41,6 +41,9 @@ from ai.extraction_oracles import (
 from ai.front_desk_oracles import (
     ACTOR_PROTOCOL_ORACLES as FRONT_DESK_ACTOR_PROTOCOL_ORACLES,
 )
+from analytics.sql_oracles import (
+    ACTOR_PROTOCOL_ORACLES as ANALYTICS_ACTOR_PROTOCOL_ORACLES,
+)
 from billing.fiscal_oracles import (
     ACTOR_PROTOCOL_ORACLES as FISCAL_ACTOR_PROTOCOL_ORACLES,
 )
@@ -444,6 +447,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | PSP_ACTOR_PROTOCOL_ORACLES
         | FISCAL_ACTOR_PROTOCOL_ORACLES
         | INSURANCE_ACTOR_PROTOCOL_ORACLES
+        | ANALYTICS_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

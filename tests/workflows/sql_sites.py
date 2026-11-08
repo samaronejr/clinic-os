@@ -24,9 +24,11 @@ from typing import TYPE_CHECKING
 from django.apps import apps
 from django.db import connection
 
+from analytics.sql_oracles import VIEW_ORACLES
 from identity.authority_catalog import Catalog
 from identity.authority_sql import references
 from identity.legacy_sql_inventory import migration_definitions
+from infra.analytics_catalog import SOURCE_VIEW_DIGESTS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -75,8 +77,20 @@ def _branches(
     signature: str, source: str, catalog: Catalog, *, bypass: bool
 ) -> dict[str, SqlSite]:
     declared = re.search(r"\bactor\s+uuid\s*:=\s*([^;]+);", source)
-    assert declared is not None, (signature, "trigger actor binding not found")
-    assert ACTOR in catalog.statement("SELECT " + declared.group(1)).settings
+    if declared is None:
+        parsed = references(source)
+        assert ACTOR not in parsed.settings, (
+            signature,
+            "trigger actor binding not found",
+        )
+        assert ("actor",) not in parsed.names, (
+            signature,
+            "trigger actor binding not found",
+        )
+        declaration_end = 0
+    else:
+        assert ACTOR in catalog.statement("SELECT " + declared.group(1)).settings
+        declaration_end = declared.end()
     spans: list[tuple[int, int]] = []
     sites: dict[str, SqlSite] = {}
     for match in RAISE.finditer(source):
@@ -106,8 +120,8 @@ def _branches(
         if ACTOR in catalog.statement(f"SELECT clinic_app.{name}()").settings
     }
     uses = [
-        declared.end() + m.start()
-        for m in re.finditer(r"\bactor\b", source[declared.end() :])
+        declaration_end + m.start()
+        for m in re.finditer(r"\bactor\b", source[declaration_end:])
     ]
     uses += [
         m.start()
@@ -188,7 +202,31 @@ def discover_conditions() -> dict[str, Condition]:
                     if permission
                     else f"helper:{name}"
                 )
-                found.append((match.start(), stop, kind, "true"))
+                cursor.execute(
+                    "SELECT bool_and(p.prorettype='pg_catalog.bool'::regtype) "
+                    "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+                    "WHERE n.nspname='clinic_app' AND p.proname=%s",
+                    [name],
+                )
+                result_type = cursor.fetchone()
+                assert result_type is not None
+                first = match.start()
+                if result_type[0] is not True:
+                    # A value-returning authority helper is a decision only
+                    # through its complete equality predicate. Mutate that
+                    # predicate, not its text result into a boolean.
+                    equality = re.search(
+                        r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*=\s*$",
+                        text[:first],
+                    )
+                    assert equality is not None, (
+                        site.sid,
+                        "unclassified value-returning authority helper",
+                        name,
+                    )
+                    assert re.match(r"\s*(?:AND\b|OR\b|\)|$)", text[stop:])
+                    first = equality.start()
+                found.append((first, stop, kind, "true"))
             for match in COMPARISON.finditer(text):
                 operator = " ".join((match.group("op") or match.group("rop")).split())
                 granted = (
@@ -458,9 +496,9 @@ def discover_sql_sites() -> dict[str, SqlSite]:
 def _require_no_actor_surfaces(catalog: Catalog, tables: list[str]) -> None:
     """Fail closed on actor reads in constraints, defaults, indexes and views.
 
-    None of these surfaces may decide on the actor in the workflows closure:
-    there is no behavioural oracle for them, so any such expression (including
-    one reached through a helper or relation) is refused as unclassified.
+    Cross-domain analytics views have an independent definition fingerprint and
+    a raw-runtime active/inactive role matrix. Every other actor-reading
+    surface remains unclassified and is refused.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -491,6 +529,13 @@ def _require_no_actor_surfaces(catalog: Catalog, tables: list[str]) -> None:
         surfaces = cursor.fetchall()
     for label, expression in surfaces:
         text = str(expression)
+        if label.startswith("view ") and label.removeprefix("view ") in VIEW_ORACLES:
+            view = label.removeprefix("view ")
+            assert callable(VIEW_ORACLES[view])
+            assert (
+                hashlib.sha256(text.encode()).hexdigest() == SOURCE_VIEW_DIGESTS[view]
+            ), (view, "registered analytics view definition changed")
+            continue
         if text.upper().startswith("CHECK "):
             text = text[len("CHECK ") :].removesuffix(" NOT VALID")
         reads = catalog.statement(

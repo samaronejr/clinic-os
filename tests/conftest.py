@@ -60,6 +60,10 @@ TRUNCATE_GUARDS = (
             "billing_fiscaltransition",
         )
     ),
+    ("analytics_metricdefinitionversion", "analytics_immutable"),
+    ("analytics_readmodelrefresh", "analytics_immutable"),
+    ("analytics_savedreport", "analytics_immutable"),
+    ("analytics_analystreview", "analytics_immutable"),
     ("ai_evaluationprotocol", "evaluation_no_truncate"),
     ("ai_evaluationrun", "evaluation_no_truncate"),
     ("ai_evaluationrating", "evaluation_no_truncate"),

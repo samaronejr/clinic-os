@@ -76,7 +76,15 @@ PRIVILEGED: Final = frozenset(
 # org admin also holds "org" authority, but is not a workspace shell role: with
 # no landing clinic its navigation is the Settings fallback and has no palette.
 EXPECTED: Final = {
-    "owner": ["agenda", "patients", "finance", "operations", "automations", "settings"],
+    "owner": [
+        "agenda",
+        "patients",
+        "finance",
+        "operations",
+        "automations",
+        "reports",
+        "settings",
+    ],
     "clinic_admin": [
         "agenda",
         "patients",
@@ -85,6 +93,7 @@ EXPECTED: Final = {
         "finance",
         "operations",
         "automations",
+        "reports",
         "settings",
     ],
     "receptionist": [
@@ -119,13 +128,14 @@ EXPECTED: Final = {
         "messages",
         "finance",
         "automations",
+        "reports",
         "settings",
     ],
     "finance": [],
     "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"reports"})
+UNDELIVERED: Final[frozenset[str]] = frozenset()
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
@@ -294,6 +304,17 @@ def test_destination_links_lead_to_the_first_open_place(
     assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/finance/"
 
 
+@pytest.mark.parametrize("role", ["owner", "clinic_admin", "clinic_manager"])
+def test_reporting_roles_open_their_governed_reports_destination(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    home = _get(client, "/auth/protected/")
+    links = {module: href for href, module in NAV_LINK.findall(home.content.decode())}
+    assert links["reports"] == f"/reports/clinics/{rbac_graph.clinic_a}/"
+    assert _get(client, links["reports"]).status_code == OK
+
+
 @pytest.mark.parametrize(
     "role", ["nurse", "allied_professional", "scheduler", "clinic_manager", "finance"]
 )
@@ -317,6 +338,7 @@ def test_workflow_candidate_opens_only_delivered_operations(
             "finance",
             "operations",
             "automations",
+            "reports",
             "settings",
         ]
         if role == "clinic_manager"
@@ -326,7 +348,7 @@ def test_workflow_candidate_opens_only_delivered_operations(
         if role == "nurse"
         else ["inbox", "operations"]
         if role == "allied_professional"
-        else ["finance", "operations"]
+        else ["finance", "operations", "reports"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
 
@@ -436,7 +458,6 @@ def test_registry_never_renders_an_undelivered_destination() -> None:
     undelivered = {d.key for d in DESTINATIONS if d.url_name is None}
     assert undelivered == {
         "operations",
-        "reports",
     }
     assert [d.key for d in DESTINATIONS] == [
         "today",

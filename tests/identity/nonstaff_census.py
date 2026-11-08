@@ -18,6 +18,7 @@ from identity.delegation_probes import delegation_probes
 from identity.lifecycle_differential_probes import lifecycle_probes
 from identity.nonstaff_agenda_board_probes import agenda_board_probes
 from identity.nonstaff_agenda_grid_probes import agenda_grid_probes
+from identity.nonstaff_analytics_probes import analytics_probes
 from identity.nonstaff_care_probes import care_probes
 from identity.nonstaff_decision_support_probes import decision_probes
 from identity.nonstaff_differential import (
@@ -90,6 +91,7 @@ def run_nonstaff_census(
             )
         probes: dict[str, list[DifferentialProbe]] = {}
         for probe in [
+            *analytics_probes(),
             *draft_probes(data, graph),
             *patient_probes(data),
             *infrastructure_probes(data, patch),
