@@ -248,3 +248,61 @@ Registration requests no attestation, a resident platform credential and user
 verification. Credential material never enters audit payloads. TOTP remains
 the native unsupported-device/no-JavaScript fallback. Real device and other
 live/provider evidence remain external-gate work, not synthetic acceptance.
+
+## In-database TOTP verification boundary (0048)
+
+The TOTP secret is resolver-owned and unreadable by the runtime or owner roles:
+it lives in `identity_totpsecret` (owner `clinic_resolver`, FORCE RLS, no
+`clinic_app`/`clinic_owner` `SELECT`; the owner holds only `INSERT`/`TRUNCATE`
+for provisioning and test teardown), and `otp_totp_totpdevice.key` is cleared.
+`identity_totp_verify(device, code)` is the single `clinic_resolver` SECURITY
+DEFINER that checks the RFC 6238 code with pgcrypto against that secret,
+reproducing django-otp (step, drift window, ThrottlingMixin backoff). It is the
+only writer of the device's `last_t`, `last_used_at`, `drift`, throttling
+columns and `confirmed`, refuses a replayed time step (`last_t` monotonicity),
+refuses another user's device, and refuses an inactive account except for the
+device of its own pending staff invitation (confirmation precedes activation).
+A device-table guard trigger (`identity_totp_device_boundary`) refuses every
+other role's change to those columns and any code-less confirmed insert;
+deleting a device stays allowed (it removes an authenticator, it cannot forge a
+use) and the foreign key cascades to the hidden secret. `identity_totp_enroll()`
+generates the seed inside the resolver; the staff-invitation writer stores the
+seed it receives in the hidden table and clears `key`. A provisioning secret is
+returned only for the enrolling user's own unconfirmed device, for its QR (again
+on re-render, and on invitation resume through
+`identity_invitation_device_secret`), never once the device is confirmed.
+`identity_session_verify` now stamps a session only inside the transaction in
+which `identity_totp_verify` accepted a genuine code for that device, and it
+consumes that acceptance (`identity_totpsecret.verified_xact`): one code
+verifies one session, and a real user's fresh use can never verify a session
+registered on another connection. The SQL step-up consumers (ai agent
+approvals, billing finance sessions, intake merge authority) can therefore no
+longer be driven by a forged device write or by a borrowed genuine one.
+`apps.identity.otp.verify_totp_code` / `start_enrollment` are the Python
+adapters; login, step-up, enrollment, invitation acceptance and the owner CLI
+verify through them instead of django-otp's Python `verify_token`.
+
+Passkey step-up stays Python-verified: pgcrypto cannot verify a WebAuthn
+ECDSA/EdDSA assertion, so `identity_passkey_use`/`identity_session_verify_passkey`
+trust that `passkey_authentication.verify_assertion` checked the signature (and
+the guarded passkey registration insert trusts the attestation check). The
+verification row itself is not forgeable: `identity_session_change_guard`
+refuses any non-resolver change to a session's `verification_device_id`,
+`verification_passkey_id` or `verified_at`, `clinic_app` has no `INSERT` on
+`identity_sessionrecord`, and `identity_passkey_guard` plus the column ACL keep
+`sign_count`/`last_used` resolver-only (pinned by
+`test_runtime_cannot_write_a_session_or_passkey_verification_row`). That
+residual is irreducible without a WebAuthn verifier in the database (a
+resolver-held challenge ledger is a separate decision); its reach is bounded
+because billing and intake accept only the TOTP path and the ai gate accepts the
+passkey path only under `Organization.passkey_step_up_enabled`, enabled solely
+through a now-TOTP-sound step-up. See `docs/SECURITY.md`.
+
+Migration 0048 is reversible without loss. The forward pass refuses a non-hex
+`key` before anything moves, copies each seed into the store and clears `key`;
+the reverse writes every seed back into `key` as `clinic_resolver` before it
+drops the store, verifier and guard. Rolling back therefore returns exactly to
+the pre-0048 posture (the runtime role can read the seed again) and never
+strands a user. Irreversibility was rejected: identity migration tests and
+rollback rehearsals migrate past 0048 on populated databases, and a reverse that
+dropped the seeds would lock every TOTP user out of code that verifies in Python.

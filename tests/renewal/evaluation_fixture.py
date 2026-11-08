@@ -40,14 +40,25 @@ def seed(organization: UUID, clinic: UUID, theme: str) -> dict[str, str]:
             tenant_context(user_id, organization),
             connection.cursor() as cursor,
         ):
+            # Only the resolver writes a device's verification state and holds
+            # its secret (identity 0048); the owner holds SET on that role.
+            cursor.execute("SET LOCAL ROLE clinic_resolver")
             cursor.execute(
                 "INSERT INTO clinic_app.otp_totp_totpdevice "
                 "(name,confirmed,key,step,t0,digits,tolerance,drift,last_t,"
                 "user_id,throttling_failure_count,created_at) VALUES "
-                "('Synthetic evaluation authenticator',true,%s,"
-                "30,0,6,1,0,-1,%s,0,now())",
-                [key, user_id],
+                "('Synthetic evaluation authenticator',true,'',"
+                "30,0,6,1,0,-1,%s,0,now()) RETURNING id",
+                [user_id],
             )
+            device = cursor.fetchone()
+            assert device is not None
+            cursor.execute(
+                "INSERT INTO clinic_app.identity_totpsecret (device_id,secret) "
+                "VALUES (%s,decode(%s,'hex'))",
+                [device[0], key],
+            )
+            cursor.execute("SET LOCAL ROLE clinic_app")
             cursor.execute(
                 "INSERT INTO clinic_app.identity_userpreference "
                 "(user_id,theme,density,updated_at) VALUES (%s,%s,'compact',now())",

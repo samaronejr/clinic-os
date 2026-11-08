@@ -9357,6 +9357,30 @@
         "apps.insurance.access.authority"
       ],
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.identity.invitations._resumed_device_secret",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Reads, through the resolver, the QR seed of the caller's own unconfirmed invitation device after the pending token, username and password were rechecked; a factor provisioning read, not a staff-role decision. The exact-context SQL oracle executes its refusals."
+    },
+    {
+      "symbol": "apps.identity.otp.start_enrollment",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Enrols the GUC actor's own pending TOTP device through the resolver definer; an authentication-factor operation, not a staff-role decision. The active/inactive/foreign SQL oracle executes its refusals."
+    },
+    {
+      "symbol": "apps.identity.otp.verify_totp_code",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Checks one code for the GUC actor's own device through the resolver verifier, the only writer of the device's verification state; a factor check, not a staff-role grant. Forgery, replay and active/inactive/foreign SQL oracles execute its refusals."
     }
   ],
   "probes": [
@@ -14230,6 +14254,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.identity_totp_enroll",
           "clinic_app.tenant_dek_issue"
         ],
         "signatures": [
@@ -14486,6 +14511,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.identity_totp_verify",
           "clinic_app.prescription_verify_synthetic",
           "clinic_app.protected_blind_index"
         ],
@@ -15477,7 +15503,8 @@
       "discovery": {
         "migrations": [
           "apps/identity/migrations/_lifecycle_sessions_sql.py",
-          "apps/identity/migrations/_passkey_retirement_sql.py"
+          "apps/identity/migrations/_passkey_retirement_sql.py",
+          "apps/identity/migrations/_totp_secret_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -22969,6 +22996,97 @@
         "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft"
       ],
       "reason": "Current Finance authority and exact policy ancestry admit only AI-06 rows; real active/inactive, foreign-clinic, unrelated-capability and human-approval oracles execute this SQL resolver."
+    },
+    "clinic_app.identity_totp_device_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_totp_secret_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
+        "identity.test_sql_totp_boundary.test_runtime_cannot_write_device_verification_state",
+        "identity.test_sql_totp_boundary.test_runtime_cannot_insert_a_confirmed_device"
+      ],
+      "reason": "Device-table verification boundary: only the clinic_resolver definers may change a TOTP device's secret, counters, use stamp, confirmation or parameters, and any other writer may insert only a fresh pending device; installed-trigger and forged-write oracles bind it."
+    },
+    "clinic_app.identity_totp_enroll": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_totp_secret_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_totp_sql_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Resolver-held TOTP enrolment: creates or reuses the GUC-bound active actor's own pending device and hidden secret, refuses once a confirmed device exists, and a direct clinic_app active/inactive/foreign SQL oracle backs this classification."
+    },
+    "clinic_app.identity_totp_verify": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_totp_secret_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_device integer, requested_code text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_totp_sql_gates_refuse_inactive_and_foreign_actors",
+        "identity.test_lifecycle_sql_readers.test_pending_accept_rechecks_the_stored_sender"
+      ],
+      "reason": "Resolver-held RFC 6238 verifier and the only writer of a device's verification state: checks a code against the hidden secret for the GUC-bound actor's own non-retired device, refuses replay, throttles failures, and admits an inactive account only for its pending invitation device; direct clinic_app active/inactive/foreign and invitation oracles back this classification."
+    },
+    "clinic_app.identity_invitation_device_secret": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_totp_secret_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_invitation_secret_is_shown_only_in_its_exact_context"
+      ],
+      "reason": "Pending staff-invitation resume: returns the hidden secret of the exact invitation's own unconfirmed, non-retired device only under the bound pending actor and tenant with no ambient principal, so the invitee sees the same QR again; a direct clinic_app exact-context SQL oracle backs this classification."
     }
   },
   "sql_method": [

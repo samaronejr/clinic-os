@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit, urlunsplit
 
 import pytest
+from apps.identity.otp import verify_totp_code
 from django.conf import settings
 from ops.testing.totp_test_driver import (
     TotpDriverError,
@@ -16,7 +17,12 @@ from ops.testing.totp_test_driver import (
     read_context,
 )
 
-from otp_test_support import create_totp_device, fixed_otp_time, runtime_role
+from otp_test_support import (
+    create_totp_device,
+    current_user_guc,
+    fixed_otp_time,
+    runtime_role,
+)
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -30,9 +36,9 @@ DRIVER: Final = ("-m", "ops.testing.totp_test_driver")
 REJECTED: Final = 2
 
 
-def _app_dsn() -> str:
+def _dsn(variable: str) -> str:
     database = settings.DATABASES["default"]
-    configured = urlsplit(os.environ["APP_DATABASE_URL"])
+    configured = urlsplit(os.environ[variable])
     return urlunsplit(configured._replace(path=f"/{database['NAME']}"))
 
 
@@ -41,10 +47,14 @@ def _context(
     user_id: UUID,
     mode: str,
     last_t: int = -1,
+    *,
+    dsn_variable: str = "MIGRATION_DATABASE_URL",
 ) -> bytes:
+    # The seed is resolver-held (identity 0048): the helper needs a fixture
+    # login that holds SET on clinic_resolver, never the runtime login.
     return json.dumps(
         {
-            "dsn": _app_dsn(),
+            "dsn": _dsn(dsn_variable),
             "last_t": last_t,
             "mode": mode,
             "tenant_id": str(graph.organization_a),
@@ -128,6 +138,42 @@ def test_confirmed_next_counter_requires_a_strictly_increasing_counter(
     assert len(emitted) == 6
     assert reused == REJECTED
     assert replayed == b""
+    assert stderr == b""
+
+
+def test_emitted_code_is_accepted_by_the_database_verifier(
+    rbac_graph: RbacGraph,
+) -> None:
+    with runtime_role():
+        device = create_totp_device(rbac_graph.physician, confirmed=True)
+
+    code, emitted, _, _ = _invoke(
+        "confirmed-next-counter",
+        _context(rbac_graph, rbac_graph.physician, "confirmed-next-counter"),
+    )
+
+    assert code == 0
+    with runtime_role(), current_user_guc(rbac_graph.physician):
+        assert verify_totp_code(device.pk, emitted.decode("ascii")) == 1
+
+
+def test_runtime_login_cannot_derive_a_code(rbac_graph: RbacGraph) -> None:
+    with runtime_role():
+        create_totp_device(rbac_graph.physician, confirmed=True)
+
+    code, emitted, stdout, stderr = _invoke(
+        "confirmed-next-counter",
+        _context(
+            rbac_graph,
+            rbac_graph.physician,
+            "confirmed-next-counter",
+            dsn_variable="APP_DATABASE_URL",
+        ),
+    )
+
+    assert code == REJECTED
+    assert emitted == b""
+    assert stdout == b""
     assert stderr == b""
 
 

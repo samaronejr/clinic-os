@@ -60,6 +60,7 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser._totp_devices import reset_totp_device, seed_totp_device
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
     full_page_screenshot,
@@ -253,19 +254,7 @@ def agenda_staff(renewal_base_url: str) -> dict[str, str]:
                 "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, values["organization"], clinic_id, role],
             )
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [values["physician_a_id"]],
-        )
-        connection.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [values["totp_key"], values["physician_a_id"]],
-        )
+        seed_totp_device(connection, values["physician_a_id"], values["totp_key"])
     return values
 
 
@@ -355,16 +344,7 @@ def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None
     # Independent scenes get fresh authenticator fixtures, not timing waits.
     staff["totp_key"] = new_totp_key()
     with psycopg.connect(staff["dsn"]) as connection:
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [staff["physician_a_id"]],
-        )
-        connection.execute(
-            "UPDATE clinic_app.otp_totp_totpdevice SET key = %s, last_t = -1 "
-            "WHERE user_id = %s",
-            [staff["totp_key"], staff["physician_a_id"]],
-        )
+        reset_totp_device(connection, staff["physician_a_id"], staff["totp_key"])
     _sign_in(page, base_url, staff["physician_a"], staff["password"])
     page.wait_for_url("**/auth/verify/**")
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 0).token()
@@ -1940,19 +1920,7 @@ def lifecycle_staff(
                     role,
                 ],
             )
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [staff["physician_a_id"]],
-        )
-        connection.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [staff["totp_key"], staff["physician_a_id"]],
-        )
+        seed_totp_device(connection, staff["physician_a_id"], staff["totp_key"])
     return staff
 
 

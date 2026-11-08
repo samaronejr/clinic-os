@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib.auth import logout as session_logout
-from django.db import connection, transaction
+from django.db import connection
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -120,35 +120,54 @@ def pending_devices(
     return cast("tuple[TotpDevice, ...]", tuple(devices))
 
 
-def get_or_create_pending_device(user_id: UUID) -> TotpDevice:
-    """Serialize enrollment starts so one user receives one pending device."""
-    with transaction.atomic(), connection.cursor() as cursor:
+def verify_totp_code(device_pk: int, token: str) -> int:
+    """Check one code at the resolver boundary: 1 ok, 0 invalid, -1 throttled.
+
+    The RFC 6238 code is verified in PostgreSQL against a secret the runtime
+    role cannot read, and the resolver function is the only writer of the
+    device's ``last_t``/``last_used_at``/throttling state, so a fresh use can
+    only follow a genuine code.
+    """
+    with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT pg_catalog.pg_advisory_xact_lock("
-            "pg_catalog.hashtextextended(%s, 0))",
-            [f"clinic-totp:{user_id}"],
+            "SELECT clinic_app.identity_totp_verify(%s, %s)", [device_pk, token]
         )
-        existing = pending_devices(user_id, for_update=True)
-        if existing:
-            return existing[0]
-        return cast(
-            "TotpDevice",
-            TOTPDevice.objects.create(
-                user_id=user_id,
-                name="Clinic OS authenticator",
-                confirmed=False,
-            ),
+        row = cursor.fetchone()
+    return int(row[0]) if row is not None and row[0] is not None else 0
+
+
+def start_enrollment(user_id: UUID) -> tuple[TotpDevice, str] | None:
+    """Create or reuse one pending device and return it with its QR secret.
+
+    The secret is generated and held by the resolver; it is returned only for
+    the enrolling user's own pending device (again on a re-render, so the same
+    QR shows) and never once that user holds a confirmed device.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT device_id, provisioning_secret "
+            "FROM clinic_app.identity_totp_enroll()"
         )
+        row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return None
+    device_pk, secret_hex = int(row[0]), str(row[1])
+    device = cast(
+        "TotpDevice",
+        cast("object", TOTPDevice.objects.get(pk=device_pk, user_id=user_id)),
+    )
+    return device, secret_hex
 
 
 @sensitive_variables()
 def provisioning_qr_data_uri(
     device: TotpDevice,
     username: str,
+    secret_hex: str,
 ) -> str:
-    """Build an in-memory QR image without dereferencing the device user."""
+    """Build an in-memory QR image from the resolver-issued provisioning secret."""
     issuer = str(settings.OTP_TOTP_ISSUER).replace(":", "")
-    secret = base64.b32encode(device.bin_key).decode("ascii")
+    secret = base64.b32encode(bytes.fromhex(secret_hex)).decode("ascii")
     label = quote(f"{issuer}:{username}", safe="")
     parameters = urlencode(
         {

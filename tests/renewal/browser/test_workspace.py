@@ -32,6 +32,7 @@ from renewal.browser._navigation import (
     wait_for_signed_in,
 )
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
+from renewal.browser._totp_devices import seed_totp_device
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
     full_page_screenshot,
@@ -116,19 +117,7 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
                 "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, values["organization"], clinic_id, role],
             )
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [values["physician_id"]],
-        )
-        connection.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [values["totp_key"], values["physician_id"]],
-        )
+        seed_totp_device(connection, values["physician_id"], values["totp_key"])
     return values
 
 

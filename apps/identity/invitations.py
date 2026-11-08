@@ -29,9 +29,12 @@ from apps.identity.lifecycle_authority import (
     require_staff_management,
 )
 from apps.identity.models import StaffInvitation, UserClinicRole
+from apps.identity.otp import verify_totp_code
 from apps.tenancy.envelope import protect, reveal
 
 if TYPE_CHECKING:
+    from django.db.backends.utils import CursorWrapper
+
     from apps.identity.otp import TotpDevice
 
 EMAIL_PROVIDER = "identity-email-v1"
@@ -46,6 +49,14 @@ class InvitationEnrollment:
 
     device: TotpDevice
     accepted_user_id: UUID | None
+    secret_hex: str | None = None
+
+
+def _resumed_device_secret(cursor: CursorWrapper, digest: bytes) -> str | None:
+    """Return the unconfirmed invitation device's secret for its QR, if any."""
+    cursor.execute("SELECT clinic_app.identity_invitation_device_secret(%s)", [digest])
+    row = cursor.fetchone()
+    return row[0] if row is not None else None
 
 
 def invitation_token(invitation: StaffInvitation) -> str:
@@ -174,7 +185,11 @@ def enroll_invitation(
             )
             try:
                 with transaction.atomic():
+                    secret_hex: str | None = None
                     if device_id is None:
+                        # The secret is generated here and stored hidden by the
+                        # writer; only the QR of the unconfirmed device shows it.
+                        device_secret = secrets.token_hex(20)
                         cursor.execute(
                             "SELECT clinic_app.identity_invitation_password"
                             "(%s, %s, %s, %s)",
@@ -185,13 +200,14 @@ def enroll_invitation(
                                     plaintext=normalized_username.encode("utf-8"),
                                 ),
                                 make_password(password),
-                                secrets.token_hex(20),
+                                device_secret,
                             ],
                         )
                         result = cursor.fetchone()
                         if result is None or result[0] is None:
                             raise LifecycleDeniedError
                         device_id = result[0]
+                        secret_hex = device_secret
                     else:
                         if desired_username is None:
                             raise LifecycleDeniedError
@@ -203,19 +219,34 @@ def enroll_invitation(
                             password, encoded_password
                         ):
                             raise LifecycleDeniedError
+                        # A resumed enrolment shows the same QR again while the
+                        # device is unconfirmed; the resolver holds the secret.
+                        secret_hex = _resumed_device_secret(cursor, digest)
                     device = cast(
                         "TotpDevice",
                         cast(
                             "object",
-                            TOTPDevice.objects.select_for_update().get(
+                            TOTPDevice.objects.get(
                                 pk=device_id, user_id=pending_user_id
                             ),
                         ),
                     )
                     accepted_id = None
-                    if otp_token is not None and device.verify_token(otp_token):
-                        device.confirmed = True
-                        device.save(update_fields=("confirmed",))
+                    # The resolver boundary checks the code against the hidden
+                    # secret and confirms the device; it is the only writer.
+                    if (
+                        otp_token is not None
+                        and verify_totp_code(device_id, otp_token) == 1
+                    ):
+                        device = cast(
+                            "TotpDevice",
+                            cast(
+                                "object",
+                                TOTPDevice.objects.get(
+                                    pk=device_id, user_id=pending_user_id
+                                ),
+                            ),
+                        )
                         cursor.execute(
                             "SELECT clinic_app.identity_invitation_accept(%s, %s)",
                             [digest, normalized_username],
@@ -230,7 +261,9 @@ def enroll_invitation(
                             affected_record_id=invitation_id,
                         )
                     return InvitationEnrollment(
-                        device=device, accepted_user_id=accepted_id
+                        device=device,
+                        accepted_user_id=accepted_id,
+                        secret_hex=secret_hex,
                     )
             finally:
                 cursor.execute(

@@ -24,11 +24,13 @@ from apps.identity import (
 from apps.identity.lifecycle_authority import require_staff_management
 from apps.identity.models import SessionRecord, UserClinicRole
 from apps.identity.offboarding import offboard_staff
+from apps.identity.otp import verify_totp_code
 from apps.identity.staff_directory import staff_directory
 from apps.tenancy.db import tenant_context
 from django.db import connection
 from django.test import RequestFactory
 from django.utils import timezone
+from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from auth.stepup_test_support import create_role_actor, logged_in_client
 from auth.test_recovery_codes import _deliver
@@ -41,7 +43,13 @@ from identity.legacy_parity_support import (
 )
 from identity.lifecycle_test_support import session_key, verified_client
 from identity.permission_support import owner_context
-from otp_test_support import create_totp_device, fixed_otp_time, runtime_role, token_for
+from otp_test_support import (
+    create_totp_device,
+    fixed_otp_time,
+    fresh_token_for,
+    runtime_role,
+    token_for,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -160,6 +168,10 @@ def _email(subject: LegacyWorld, valid: bool) -> notifications.IdentityEmail:
 def _verified(subject: LegacyWorld, valid: bool) -> None:
     device_id = _record(subject).verification_device_id
     assert device_id is not None
+    # As in the web flow, the stamp binds only inside the transaction in which
+    # the resolver verifier accepted a genuine code for this device.
+    device = TOTPDevice.objects.get(pk=device_id)
+    assert verify_totp_code(device_id, fresh_token_for(device)) == 1
     session_inventory.record_verified_session(
         request=subject.request,
         device_id=device_id if valid else -1,

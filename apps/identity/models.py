@@ -758,6 +758,37 @@ class AuthenticatorRetirement(models.Model):
         return str(self.pk)
 
 
+class TotpSecret(models.Model):
+    """Resolver-owned TOTP seed, unreadable by the runtime or owner roles.
+
+    The table is created and locked down (resolver ownership, FORCE RLS, no
+    runtime or owner SELECT) by migration 0048; this model exists only so the
+    table is part of the ORM state and the test-teardown TRUNCATE set.
+    """
+
+    device_id: int
+    device = models.OneToOneField(
+        "otp_totp.TOTPDevice",
+        # The database foreign key cascades (0048); DO_NOTHING keeps the ORM
+        # delete collector from touching this resolver-only table, which the
+        # runtime role cannot read.
+        on_delete=models.DO_NOTHING,
+        primary_key=True,
+        db_column="device_id",
+        related_name="clinic_totp_secret",
+    )
+    secret = models.BinaryField()
+
+    class Meta:
+        """Name the migration-owned table the resolver locks down."""
+
+        db_table = "identity_totpsecret"
+
+    def __str__(self) -> str:
+        """Return only the device id; never the secret."""
+        return str(self.device_id)
+
+
 class AuthenticatorReset(TenantScopedModel):
     """Audited reset whose full delay starts only after actual user notification."""
 

@@ -31,6 +31,7 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import await_autofocus, evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt, kek
+from renewal.browser._totp_devices import reset_totp_device, seed_totp_device
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_encounter import press
@@ -267,22 +268,10 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
                     secrets.token_bytes(32),
                 ],
             )
-        connection.execute("SET ROLE clinic_app")
         for role in PRIVILEGED:
             key = new_totp_key()
             values[f"{role}_totp"] = key
-            connection.execute(
-                "SELECT set_config('app.current_user_id', %s, true)",
-                [values[f"{role}_id"]],
-            )
-            connection.execute(
-                "INSERT INTO clinic_app.otp_totp_totpdevice "
-                "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-                "user_id, throttling_failure_count, created_at) "
-                "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-                "%s, 0, now())",
-                [key, values[f"{role}_id"]],
-            )
+            seed_totp_device(connection, values[f"{role}_id"], key)
     return values
 
 
@@ -321,16 +310,7 @@ def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
     )
     if privileged:
         with psycopg.connect(fixture_dsn()) as connection:
-            connection.execute("SET ROLE clinic_app")
-            connection.execute(
-                "SELECT set_config('app.current_user_id', %s, true)",
-                [staff[f"{role}_id"]],
-            )
-            connection.execute(
-                "UPDATE clinic_app.otp_totp_totpdevice SET last_t = -1 "
-                "WHERE user_id = %s",
-                [staff[f"{role}_id"]],
-            )
+            reset_totp_device(connection, staff[f"{role}_id"])
         key = bytes.fromhex(staff[f"{role}_totp"])
         page.locator("#id_otp_token").fill(f"{TOTP(key, 30, 0, 6, 0).token():06d}")
         click_to_navigate(page.locator("button[type=submit]"))

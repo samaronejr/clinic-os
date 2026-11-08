@@ -13,6 +13,7 @@ from apps.identity.management.context import (
     assume_runtime_owner,
     scoped_owner_gucs,
 )
+from apps.identity.otp import verify_totp_code
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,19 +59,13 @@ def verify_management_totp(
         scoped_owner_gucs(context),
         assume_runtime_owner(context),
     ):
-        loaded = (
-            TOTPDevice.objects.select_for_update()
-            .filter(
-                pk=device.pk,
-                user_id=context.operator_id,
-                confirmed=True,
-            )
-            .first()
-        )
-        if loaded is None:
-            verification_failed = True
-        else:
-            allowed, _details = loaded.verify_is_allowed()
-            verification_failed = not allowed or not loaded.verify_token(token)
+        confirmed = TOTPDevice.objects.filter(
+            pk=device.pk,
+            user_id=context.operator_id,
+            confirmed=True,
+        ).exists()
+        # The resolver boundary checks the code and advances replay/throttle
+        # state against a secret this role cannot read.
+        verification_failed = not confirmed or verify_totp_code(device.pk, token) != 1
     if verification_failed:
         raise LifecycleCommandError

@@ -34,11 +34,15 @@ from ops.testing.browser_totp_code import TotpContext, confirmed_code
 AVAILABLE_SUITES: Final = ["availability", "patient", "scheduling"]
 PHYSICIAN_SUITES: Final = frozenset({"availability", "scheduling"})
 PHYSICIAN_ENVIRONMENT: Final = (
+    "CLINIC_BROWSER_FIXTURE_DATABASE_URL",
     "CLINIC_BROWSER_ORG_ID",
     "CLINIC_BROWSER_PHYSICIAN_ID",
     "CLINIC_BROWSER_PHYSICIAN_PASSWORD",
     "CLINIC_BROWSER_PHYSICIAN_USERNAME",
 )
+# The TOTP seed is resolver-held (identity 0048), so only a fixture login that
+# holds SET on clinic_resolver can derive a code; Gunicorn never receives it.
+FIXTURE_DATABASE_VARIABLE: Final = "CLINIC_BROWSER_FIXTURE_DATABASE_URL"
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
 TERMINATION_GRACE_SECONDS: Final = 10
@@ -182,7 +186,7 @@ def build_suite(suite_id: str, base_url: str) -> Callable[[], dict[str, bytes]]:
         if not os.environ.get(name):
             _fail(f"missing {name}")
     context = TotpContext(
-        dsn=os.environ["APP_DATABASE_URL"],
+        dsn=os.environ[FIXTURE_DATABASE_VARIABLE],
         tenant_id=os.environ["CLINIC_BROWSER_ORG_ID"],
         user_id=os.environ["CLINIC_BROWSER_PHYSICIAN_ID"],
     )
@@ -221,6 +225,7 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     evidence_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     port = reserve_port()
     environment = dict(os.environ)
+    environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
     server = start_server(port, environment, server_log)

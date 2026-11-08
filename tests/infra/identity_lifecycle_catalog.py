@@ -15,14 +15,17 @@ TABLE_GRANTS: Final = {
     (table, privilege)
     for table in TABLES
     for privilege in ("SELECT", "INSERT", "UPDATE")
+} | {
+    # The TOTP definers (identity_totp_verify/enroll) read and write the device
+    # table as clinic_resolver; the secret itself lives in identity_totpsecret.
+    ("otp_totp_totpdevice", privilege)
+    for privilege in ("SELECT", "INSERT", "UPDATE")
 }
 COLUMN_GRANTS: Final = {
     (table, column, "SELECT")
     for table, columns in (
-        (
-            "otp_totp_totpdevice",
-            ("id", "user_id", "confirmed", "last_t", "last_used_at"),
-        ),
+        # otp_totp_totpdevice swapped its narrow lifecycle column SELECT for the
+        # table privileges above in 0048_totp_secret_boundary.
         ("otp_static_staticdevice", ("id", "user_id", "confirmed")),
     )
     for column in columns
@@ -106,6 +109,14 @@ RESULTS: Final = {
         "identity_session_verify",
         "requested_hash bytea, requested_device integer",
     ): "boolean",
+    (
+        "identity_totp_verify",
+        "requested_device integer, requested_code text",
+    ): "integer",
+    ("identity_totp_enroll", ""): (
+        "TABLE(device_id integer, provisioning_secret text)"
+    ),
+    ("identity_invitation_device_secret", "requested_hash bytea"): "text",
     ("identity_staff_directory", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text, bundle text)"
     ),
@@ -122,6 +133,7 @@ NO_APP_EXECUTE: Final = {
     "identity_revoke_changed_sessions",
 }
 STABLE: Final = {
+    "identity_invitation_device_secret",
     "identity_reset_recipient",
     "identity_reset_target",
     "identity_session_active",

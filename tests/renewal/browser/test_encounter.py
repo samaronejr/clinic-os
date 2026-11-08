@@ -25,6 +25,7 @@ from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
+from renewal.browser._totp_devices import seed_totp_device
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box, full_page_screenshot, new_context
 from renewal.browser.support_managers import seed_ai_admin
@@ -1108,16 +1109,7 @@ def registered_physician(staff: dict[str, str]) -> dict[str, str]:
             ],
         )
         assert registered.rowcount == 1
-        conn.execute("SET ROLE clinic_app")
-        conn.execute("SELECT set_config('app.current_user_id', %s, true)", [user])
-        conn.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [new_totp_key(), user],
-        )
+        seed_totp_device(conn, user, new_totp_key())
     return {**staff, "physician_a": username, "physician_a_id": user}
 
 

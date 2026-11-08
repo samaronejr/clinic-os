@@ -137,8 +137,8 @@ def test_qr_generation_failure_exposes_no_seed_or_provisioning_material(
 
     with (
         patch(
-            "apps.identity.otp_views.get_or_create_pending_device",
-            return_value=device,
+            "apps.identity.otp_views.start_enrollment",
+            return_value=(device, "00" * 20),
         ),
         patch("apps.identity.otp.QRCODE.QRCode", FailingQrCode),
         runtime_role(),
@@ -159,8 +159,8 @@ def test_enrollment_render_failure_exposes_no_qr_data_uri(
 
     with (
         patch(
-            "apps.identity.otp_views.get_or_create_pending_device",
-            return_value=device,
+            "apps.identity.otp_views.start_enrollment",
+            return_value=(device, "00" * 20),
         ),
         patch(
             "apps.identity.otp_views.provisioning_qr_data_uri",
