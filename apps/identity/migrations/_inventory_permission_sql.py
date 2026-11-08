@@ -32,7 +32,9 @@ if FUNCTION.count(ANCHOR) != 1:  # pragma: no cover - import-time contract
     message = "prior privacy permission anchor moved"
     raise RuntimeError(message)
 CHECK_START = prior.SQL.index("ADD CONSTRAINT identity_rolegrant_bundle\n CHECK (")
-CHECK = prior.SQL[CHECK_START:].split("CHECK (", 1)[1].rsplit(");", 1)[0]
+# The clock census's finite RunSQL decoder has no str.rsplit: rejoin every part
+# before the constraint's final ");" instead.
+CHECK = ");".join(prior.SQL[CHECK_START:].split("CHECK (", 1)[1].split(");")[:-1])
 SQL = _evaluator(FUNCTION.replace(ANCHOR, BRANCH + ANCHOR, 1)) + _bundle(
     f"({CHECK}) OR (bundle_version=2 AND ("
     "(role IN ('clinic_manager','clinic_admin') AND permission IN "

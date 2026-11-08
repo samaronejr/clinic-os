@@ -13424,6 +13424,8 @@
       "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.text(\"char\")",
       "function:pg_catalog.text(boolean)",
       "function:pg_catalog.text(character)",
