@@ -1,13 +1,13 @@
 """Add one v2 permission to the installed evaluator without replaying old SQL."""
 
-from psycopg import sql
-
 from apps.identity.migrations._encounter_permission_sql import _V2_BRANCH
 
 _ANCHOR = " IF perm='reception.queue' THEN"
-_BRANCH = _V2_BRANCH[
-    _V2_BRANCH.index(" IF perm=") : _V2_BRANCH.rindex(" RETURN EXISTS (")
-].replace(
+# The clock census's finite RunSQL decoder has neither str.rindex nor psycopg
+# composition: keep everything before the branch template's last RETURN EXISTS.
+_BRANCH = " RETURN EXISTS (".join(
+    _V2_BRANCH[_V2_BRANCH.index(" IF perm=") :].split(" RETURN EXISTS (")[:-1]
+).replace(
     "perm=ANY(ARRAY['encounter.open_unscheduled']::text[])",
     "perm='tiss.clinical_approve'",
 )
@@ -15,12 +15,14 @@ _BRANCH = _V2_BRANCH[
 # Read the installed definitions so independently additive v2 permissions and
 # the shared human/agent evaluator survive this migration in either lane order.
 # The fixed anchor is checked before replacing; a changed contract fails closed.
-SQL = (
-    sql.SQL(
-        """
+# String literals quoted exactly as psycopg's sql.Literal renders text that
+# contains no backslash: single quotes doubled inside single quotes.
+_ANCHOR_SQL = "'" + _ANCHOR.replace("'", "''") + "'"
+_BRANCH_SQL = "'" + _BRANCH.replace("'", "''") + "'"
+SQL = f"""
 SET LOCAL ROLE clinic_resolver;
 DO $migration$
-DECLARE definition text; anchor text := {anchor}; branch text := {branch};
+DECLARE definition text; anchor text := {_ANCHOR_SQL}; branch text := {_BRANCH_SQL};
 BEGIN
  SELECT pg_get_functiondef(
   'clinic_app.identity_actor_permission(text,uuid,uuid,uuid,uuid)'::regprocedure)
@@ -49,8 +51,4 @@ BEGIN
    ||'AND permission=''tiss.clinical_approve''))';
  END IF;
 END $migration$;
-"""
-    )
-    .format(anchor=sql.Literal(_ANCHOR), branch=sql.Literal(_BRANCH))
-    .as_string()
-)
+"""  # noqa: S608 - fixed, pre-quoted module literals; no runtime input.
