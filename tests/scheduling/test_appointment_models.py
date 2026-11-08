@@ -30,15 +30,18 @@ def test_appointment_exposes_the_buffered_resource_schema_contract() -> None:
         "status",
         "updated_at",
         # Lifecycle v2 (D-9): database-owned lifecycle columns, series binding and
-        # insurer placeholders (plan item 59 adds the payer FK).
+        # the insurer reference; plan item 59 adds the payer and coverage FKs.
         "revision",
         "hold_expires_at",
         "transitioned_at",
         "last_command_id",
         "series",
         "series_index",
-        "payer_membership_id",
         "authorization_reference",
+        "payer_membership",
+        "payer_contract",
+        "eligibility_check",
+        "authorization_check",
     }
     assert appointment_model._meta.get_field("patient").remote_field.model is Patient
     for field_name in ("clinic", "patient", "practitioner", "service_type"):
