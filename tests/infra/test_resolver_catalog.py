@@ -9,6 +9,7 @@ from infra import (
     duplicate_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
+    inventory_catalog,
     longitudinal_catalog,
     orders_catalog,
     portal_catalog,
@@ -177,6 +178,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *portal_messages_catalog.TABLE_GRANTS,
     *front_desk_catalog.TABLE_GRANTS,
     *coordination_catalog.TABLE_GRANTS,
+    *inventory_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_evaluationrun", "status", "UPDATE"),
@@ -187,6 +189,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "observation_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
+    *inventory_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("ehr_drafteditstate", "version_id", "SELECT"),
     ("ehr_drafteditstate", "section_edit_epochs", "SELECT"),
@@ -545,6 +548,7 @@ POSTURE_OVERRIDES: Final = {
     **portal_messages_catalog.POSTURE,
     **front_desk_catalog.POSTURE,
     **coordination_catalog.POSTURE,
+    **inventory_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *retention_catalog.RESULTS,
@@ -858,6 +862,7 @@ FUNCTION_SIGNATURES: Final = {
     *portal_messages_catalog.RESULTS,
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
+    *inventory_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
@@ -1340,6 +1345,7 @@ FUNCTION_RESULTS: Final = {
     **portal_messages_catalog.RESULTS,
     **front_desk_catalog.RESULTS,
     **coordination_catalog.RESULTS,
+    **inventory_catalog.RESULTS,
 }
 
 

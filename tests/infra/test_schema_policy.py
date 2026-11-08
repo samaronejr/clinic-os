@@ -13,6 +13,8 @@ from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
 from django.db import connection
 
+from infra.inventory_catalog import TABLES as INVENTORY_TABLES
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 # The expected tenant surface is derived from the per-app posture
@@ -251,6 +253,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "orders_resultacknowledgment",
         "orders_resultrelease",
         "orders_resultworkitem",
+        *INVENTORY_TABLES,
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS

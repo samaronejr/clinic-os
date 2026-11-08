@@ -633,6 +633,14 @@ GUARD_PROBES = {
 # eligibility), rather than being classified solely through a delegated gate.
 # Their native INSERT still has to prove the current actor's refusal.
 OWN_GUARD_PROBES = {
+    "clinic_app.inventory_guard()": GuardProbe(
+        "INSERT INTO clinic_app.inventory_item "
+        "(id, organization_id, clinic_id, created_at, name, unit) "
+        "VALUES (%(id)s, %(organization)s, %(clinic)s, now(), "
+        "'Synthetic inactive actor material', 'each')",
+        "inventory_denied",
+        inactive_denial=("42501", "inventory_denied"),
+    ),
     "clinic_app.reception_guard()": GuardProbe(
         "INSERT INTO clinic_app.scheduling_displaydevice "
         "(id, organization_id, clinic_id, token_hash, active, created_at) "

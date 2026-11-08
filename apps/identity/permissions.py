@@ -149,6 +149,15 @@ BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
             else frozenset()
         )
         | (PRIVACY_PERMISSIONS_V2 if role in PRIVACY_ROLES_V2 else frozenset())
+        | (
+            {"inventory.read", "inventory.use", "inventory.manage"}
+            if role in {"clinic_manager", "clinic_admin"}
+            else {"inventory.read", "inventory.use"}
+            if role == "nurse"
+            else {"inventory.transfer_org"}
+            if role in {"owner", "org_admin"}
+            else set()
+        )
         for role, permissions in BUNDLES_V1.items()
     }
 )

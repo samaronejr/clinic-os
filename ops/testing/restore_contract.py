@@ -241,6 +241,19 @@ DOMAIN_RELATIONS: Final = (
     "orders_resultacknowledgment",
     "orders_resultrelease",
     "orders_resultworkitem",
+    # Inventory (plan 61): retained source relations; live census is pending.
+    "inventory_supplier",
+    "inventory_item",
+    "inventory_batch",
+    "inventory_location",
+    "inventory_minimumstock",
+    "inventory_purchasebudget",
+    "inventory_purchaserequest",
+    "inventory_stockmovement",
+    "inventory_equipment",
+    "inventory_calibration",
+    "inventory_maintenance",
+    "inventory_commandreceipt",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

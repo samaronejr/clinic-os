@@ -117,6 +117,60 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "prescription.draft.renewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.draft", "renewed"
         ),
+        "inventory.receive": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "receive"
+        ),
+        "inventory.use": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "use"
+        ),
+        "inventory.return_stock": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "return_stock"
+        ),
+        "inventory.write_off": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "write_off"
+        ),
+        "inventory.transfer": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "transfer"
+        ),
+        "inventory.create_purchase_request": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_purchase_request"
+        ),
+        "inventory.propose_replenishment": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "propose_replenishment"
+        ),
+        "inventory.approve_purchase": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "approve_purchase"
+        ),
+        "inventory.receive_purchase": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "receive_purchase"
+        ),
+        "inventory.approve_budget": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "approve_budget"
+        ),
+        "inventory.register_equipment": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "register_equipment"
+        ),
+        "inventory.record_calibration": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "record_calibration"
+        ),
+        "inventory.record_maintenance": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "record_maintenance"
+        ),
+        "inventory.create_item": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_item"
+        ),
+        "inventory.create_batch": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_batch"
+        ),
+        "inventory.create_location": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_location"
+        ),
+        "inventory.create_supplier": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_supplier"
+        ),
+        "inventory.set_minimum_stock": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "set_minimum_stock"
+        ),
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"
         ),
