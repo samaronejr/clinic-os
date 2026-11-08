@@ -14428,18 +14428,12 @@
     "clinic_app.ehr_longitudinal_guard": {
       "discovery": {
         "migrations": [
+          "apps/ehr/migrations/_longitudinal_split_sql.py",
           "apps/ehr/migrations/_longitudinal_sql.py"
         ],
         "policies": [],
         "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "signatures": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -23516,7 +23510,7 @@
       "discovery": {
         "signatures": [
           {
-            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid",
+            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid, due_dates date[]",
             "returns": "record",
             "set_returning": true,
             "security_definer": true
@@ -23539,7 +23533,7 @@
       "discovery": {
         "signatures": [
           {
-            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid",
+            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid, due_dates date[]",
             "returns": "uuid",
             "set_returning": false,
             "security_definer": true
@@ -24276,7 +24270,7 @@
       "discovery": {
         "signatures": [
           {
-            "arguments": "requested_clinic uuid, query jsonb, command uuid",
+            "arguments": "requested_clinic uuid, query jsonb, command uuid, window_start timestamp with time zone, window_end timestamp with time zone",
             "returns": "record",
             "set_returning": true,
             "security_definer": true
@@ -24298,7 +24292,7 @@
       "discovery": {
         "signatures": [
           {
-            "arguments": "requested_clinic uuid, query jsonb",
+            "arguments": "requested_clinic uuid, query jsonb, window_start timestamp with time zone, window_end timestamp with time zone",
             "returns": "void",
             "set_returning": false,
             "security_definer": true
@@ -24889,6 +24883,52 @@
         "identity.test_lifecycle_sql_readers.test_pending_invitation_secret_is_shown_only_in_its_exact_context"
       ],
       "reason": "Pending staff-invitation resume: returns the hidden secret of the exact invitation's own unconfirmed, non-retired device only under the bound pending actor and tenant with no ambient principal, so the invitee sees the same QR again; a direct clinic_app exact-context SQL oracle backs this classification."
+    },
+    "clinic_app.ehr_medicationstatement_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ehr/migrations/_longitudinal_split_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_medication_guard_uses_current_role_and_actor",
+        "test_longitudinal_functions_keep_exact_execute_privileges"
+      ],
+      "reason": "Trigger enforces source identity, the medication envelope, monotone revision and explicit current-actor reconciliation stamps. All-role active/inactive UPDATE probes preserve the row on refusal and a forged reviewer is rejected by the actual trigger; insert/provenance tests cover the initial state."
+    },
+    "clinic_app.ehr_observation_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ehr/migrations/_longitudinal_split_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_longitudinal_sql_uses_current_role_and_actor",
+        "test_longitudinal_functions_keep_exact_execute_privileges"
+      ],
+      "reason": "Trigger enforces source identity, envelope/unit binding, monotone revision and explicit current-actor review stamps. All-role active/inactive UPDATE probes preserve the row on refusal and a forged reviewer is rejected by the actual trigger; insert/provenance tests cover the initial state."
     }
   },
   "sql_method": [

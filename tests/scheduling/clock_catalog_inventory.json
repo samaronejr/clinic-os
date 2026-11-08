@@ -14768,7 +14768,7 @@
       "constraint:analytics_metricdefinitionversion.analytics_metricdefi_organization_id_543134f1_fk_identity_",
       "constraint:analytics_metricdefinitionversion.analytics_metricdefinitionversion_version_check",
       "function:clinic_app.analytics_authorization(uuid)",
-      "function:clinic_app.analytics_validate(uuid, jsonb)",
+      "function:clinic_app.analytics_validate(uuid, jsonb, timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.version()",
@@ -14781,14 +14781,13 @@
       "trigger:analytics_metricdefinitionversion.analytics_immutable"
     ]
   },
-  "function:clinic_app.analytics_validate(uuid, jsonb)": {
+  "function:clinic_app.analytics_validate(uuid, jsonb, timestamp with time zone, timestamp with time zone)": {
     "direct": {
       "pg_catalog.timestamptz(date)": 1,
       "pg_catalog.timestamptz(date, time without time zone)": 1,
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 4,
-      "pg_catalog.timezone(text, time with time zone)": 1,
-      "unresolved-temporal-coercion": 4
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
       "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
@@ -14818,16 +14817,20 @@
       "function:pg_catalog.timezone(interval, timestamp without time zone)",
       "function:pg_catalog.timezone(text, timestamp with time zone)",
       "function:pg_catalog.timezone(text, timestamp without time zone)",
+      "function:pg_catalog.to_char(bigint, text)",
+      "function:pg_catalog.to_char(double precision, text)",
+      "function:pg_catalog.to_char(integer, text)",
+      "function:pg_catalog.to_char(interval, text)",
+      "function:pg_catalog.to_char(numeric, text)",
+      "function:pg_catalog.to_char(real, text)",
+      "function:pg_catalog.to_char(timestamp with time zone, text)",
+      "function:pg_catalog.to_char(timestamp without time zone, text)",
       "policy:identity_clinic.tenant_isolation"
     ]
   },
   "function:clinic_app.analytics_workflow_receipt()": {
     "direct": {
-      "pg_catalog.timestamptz(date)": 1,
-      "pg_catalog.timestamptz(date, time without time zone)": 1,
-      "pg_catalog.timestamptz(timestamp without time zone)": 1,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1,
-      "unresolved-temporal-coercion": 2
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1
     },
     "via": [
       "constraint:analytics_readmodelrefresh.analytics_readmodelr_clinic_id_28c35d4d_fk_identity_",
@@ -14859,8 +14862,6 @@
       "function:pg_catalog.position(bit, bit)",
       "function:pg_catalog.position(bytea, bytea)",
       "function:pg_catalog.position(text, text)",
-      "function:pg_catalog.timestamptz(date, time with time zone)",
-      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
       "policy:analytics_readmodelrefresh.analytics_scope",
       "policy:workflows_workflowdefinitionversion.workflow_insert",
       "policy:workflows_workflowdefinitionversion.workflow_owner",
@@ -14998,7 +14999,7 @@
       "function:clinic_app.billing_book_access(uuid, text)",
       "function:clinic_app.billing_line(text, text, bigint, uuid)",
       "function:clinic_app.billing_lock_book(uuid)",
-      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid)",
+      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid, date[])",
       "function:clinic_app.billing_refunded_prepayments(uuid)",
       "function:clinic_app.billing_round_ratio(numeric, numeric)",
       "function:pg_catalog.abs(bigint)",
@@ -15719,7 +15720,7 @@
       "function:clinic_app.billing_finance_session(uuid)",
       "function:clinic_app.billing_line(text, text, bigint, uuid)",
       "function:clinic_app.billing_lock_book(uuid)",
-      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid)",
+      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid, date[])",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.numeric(bigint)",
@@ -15754,13 +15755,13 @@
       "trigger:billing_payout.billing_journal_guard"
     ]
   },
-  "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid)": {
+  "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid, date[])": {
     "direct": {
       "pg_catalog.date(timestamp with time zone)": 1,
       "pg_catalog.statement_timestamp()": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 6,
       "unresolved-identifier:C": 1,
-      "unresolved-temporal-coercion": 1
+      "unresolved-identifier:foreach": 1
     },
     "via": [
       "constraint:billing_account.billing_account_book_id_f58c3fe5_fk_billing_journalbook_id",
@@ -15791,6 +15792,7 @@
       "function:pg_catalog.text(inet)",
       "function:pg_catalog.text(name)",
       "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
       "policy:billing_account.billing_journal_scope",
       "policy:billing_journalbook.billing_journal_scope",
       "policy:billing_journalentry.billing_journal_scope",
@@ -15858,7 +15860,7 @@
       "function:clinic_app.billing_finance_session(uuid)",
       "function:clinic_app.billing_line(text, text, bigint, uuid)",
       "function:clinic_app.billing_lock_book(uuid)",
-      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid)",
+      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid, date[])",
       "function:clinic_app.billing_round_ratio(numeric, numeric)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -16063,7 +16065,7 @@
       "function:clinic_app.billing_collection_authorized(uuid)",
       "function:clinic_app.billing_line(text, text, bigint, uuid)",
       "function:clinic_app.billing_lock_book(uuid)",
-      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid)",
+      "function:clinic_app.billing_post_internal(uuid, text, uuid, jsonb, uuid, date[])",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.text(\"char\")",
@@ -17805,7 +17807,7 @@
       "trigger:identity_user.identity_password_session_rejection"
     ]
   },
-  "function:clinic_app.ehr_longitudinal_guard()": {
+  "function:clinic_app.ehr_medicationstatement_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
       "pg_catalog.timestamptz(date)": 1,
@@ -17813,8 +17815,7 @@
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
-      "unanalysed-plpgsql:unanalysed-declaration-form:allowed": 1,
-      "unresolved-temporal-coercion": 2
+      "unanalysed-plpgsql:unanalysed-declaration-form:allowed": 1
     },
     "via": [
       "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
@@ -18095,6 +18096,41 @@
       "trigger:ehr_noteaccessgrant.ehr_note_binding",
       "trigger:ehr_noteaccessgrant.ehr_note_revocation_audit",
       "trigger:ehr_restrictednote.ehr_note_binding"
+    ]
+  },
+  "function:clinic_app.ehr_observation_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
+      "unanalysed-plpgsql:unanalysed-declaration-form:allowed": 1
+    },
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
     ]
   },
   "function:clinic_app.ehr_pack_guard()": {
@@ -32891,7 +32927,7 @@
   "trigger:ehr_medicationstatement.ehr_longitudinal_binding": {
     "direct": {},
     "via": [
-      "function:clinic_app.ehr_longitudinal_guard()"
+      "function:clinic_app.ehr_medicationstatement_guard()"
     ]
   },
   "trigger:ehr_medicationstatement.ehr_timeline_changed": {
@@ -32915,7 +32951,7 @@
   "trigger:ehr_observation.ehr_longitudinal_binding": {
     "direct": {},
     "via": [
-      "function:clinic_app.ehr_longitudinal_guard()"
+      "function:clinic_app.ehr_observation_guard()"
     ]
   },
   "trigger:ehr_observation.ehr_timeline_changed": {
