@@ -18744,8 +18744,7 @@
       "pg_catalog.date(timestamp with time zone)": 1,
       "pg_catalog.time(timestamp with time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timezone(text, time with time zone)": 1,
-      "unresolved-temporal-coercion": 1
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
       "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
@@ -24603,8 +24602,7 @@
       "pg_catalog.date(timestamp with time zone)": 1,
       "pg_catalog.date_trunc(text, timestamp with time zone)": 2,
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
-      "unresolved-temporal-coercion": 1
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
     },
     "via": [
       "constraint:ai_aiinvocation.ai_aiinvocation_audio_seconds_check",

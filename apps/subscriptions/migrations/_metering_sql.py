@@ -35,7 +35,7 @@ BEGIN
  INTO reserved FROM clinic_app.ai_aiinvocation i
  WHERE i.organization_id=requested_org AND i.status='reserved'
  AND (excluded_invocation IS NULL OR i.id<>excluded_invocation)
- AND date_trunc('month',i.created_at AT TIME ZONE 'UTC')::date=current_month;
+ AND date_trunc('month',i.created_at AT TIME ZONE 'UTC')=current_month;
  used:=used+reserved;
  quota:=COALESCE(allowance.quota,0);
  enabled:=COALESCE(allowance.enabled,false);

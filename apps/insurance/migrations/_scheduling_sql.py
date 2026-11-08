@@ -365,7 +365,7 @@ DECLARE m clinic_app.insurance_insurancemembership;
  r clinic_app.intake_insurancemembership;
  eligible clinic_app.insurance_payerrequest;
  authorized clinic_app.insurance_payerrequest;
- day date; confirming boolean; booking boolean; binding text;
+ day date; confirming boolean; booking boolean; binding text; clinic_zone text;
 BEGIN
  IF TG_OP='UPDATE' AND ROW(NEW.eligibility_check_id,NEW.authorization_check_id,
   NEW.authorization_reference) IS DISTINCT FROM
@@ -395,8 +395,9 @@ BEGIN
    AND patient_id=NEW.patient_id;
  IF m.id IS NULL OR c.id IS NULL OR e.id IS NULL OR r.id IS NULL THEN
   RAISE EXCEPTION 'insurance access denied' USING ERRCODE='42501'; END IF;
- SELECT (NEW.start_at AT TIME ZONE timezone)::date INTO day
-  FROM clinic_app.identity_clinic WHERE id=NEW.clinic_id;
+ SELECT timezone INTO clinic_zone FROM clinic_app.identity_clinic
+  WHERE id=NEW.clinic_id;
+ day:=(NEW.start_at AT TIME ZONE clinic_zone)::date;
  binding:=__APPOINTMENT_BINDING__;
  IF day<c.starts_on OR (c.ends_on IS NOT NULL AND day>c.ends_on)
   OR NOT EXISTS(SELECT 1 FROM clinic_app.insurance_commandreceipt proof
