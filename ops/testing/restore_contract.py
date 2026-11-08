@@ -153,6 +153,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_sessionrecord",
     "identity_signupregistration",
     "identity_staffinvitation",
+    # Resolver-owned TOTP secret store (0050); durable, restored with its device.
+    "identity_totpsecret",
     "identity_user",
     "identity_userclinicrole",
     "identity_userpreference",

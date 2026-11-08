@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from apps.identity.models import User, UserClinicRole
+from apps.identity.otp import verify_totp_code
 from apps.identity.session_inventory import record_verified_session
 from apps.identity.stepup import stamp_step_up_verification
 from django.contrib.auth.hashers import make_password
@@ -11,16 +12,21 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.db import connection, transaction
 from django.http import HttpRequest, HttpResponse
 from django.test import Client
-from django.utils import timezone
 from django_otp import DEVICE_ID_SESSION_KEY
 from django_otp.middleware import OTPMiddleware
-from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from otp_test_support import create_totp_device, current_user_guc, runtime_role
+from otp_test_support import (
+    create_totp_device,
+    current_user_guc,
+    runtime_role,
+    token_for,
+)
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from django_otp.plugins.otp_totp.models import TOTPDevice
 
     from rbac_fixtures import RbacGraph
 
@@ -95,12 +101,14 @@ def verified_request(
 def _persist_verification(request: HttpRequest, device: TOTPDevice) -> None:
     """Record the device use a real token check writes, then bind the session."""
     request.session.save()
-    now = timezone.now()
+    # clinic_app can no longer stamp last_used_at directly; drive a genuine code
+    # through the resolver verifier and bind the session in that same
+    # transaction, exactly as the production boundary does: the stamp needs the
+    # verifier's acceptance in this transaction and consumes it.
     with runtime_role(), current_user_guc(device.user_id):
-        TOTPDevice.objects.filter(pk=device.pk).update(
-            last_t=int(now.timestamp()) // device.step, last_used_at=now
-        )
-    with runtime_role():
+        if verify_totp_code(device.pk, token_for(device)) != 1:
+            message = "persisted verification requires a genuine TOTP code"
+            raise RuntimeError(message)
         record_verified_session(request=request, device_id=device.pk, old_key=None)
 
 

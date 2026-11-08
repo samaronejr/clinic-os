@@ -12,8 +12,8 @@ from apps.ehr import views as ehr_views
 from apps.prescription import document_views as clinical_document_views
 from apps.prescription import views as prescription_views
 from django.contrib.auth.models import AnonymousUser
+from django.db import connection
 from django.test import RequestFactory
-from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from identity.legacy_parity_support import (
     ADMINS,
@@ -131,7 +131,17 @@ def _view(
     if symbol.startswith("apps.identity.otp_views."):
         request.user = w.actor  # A password-authenticated, not yet OTP-verified user.
         if symbol.endswith(".enroll_view"):
-            TOTPDevice.objects.filter(user_id=w.actor.pk).update(confirmed=False)
+            # Only the resolver may change a device's verification state (0050),
+            # so the arrangement runs as it inside this savepoint and then
+            # returns to the runtime role the view itself runs under.
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL ROLE clinic_resolver")
+                cursor.execute(
+                    "UPDATE clinic_app.otp_totp_totpdevice SET confirmed = false "
+                    "WHERE user_id = %s",
+                    [w.actor.pk],
+                )
+                cursor.execute("SET LOCAL ROLE clinic_app")
     if symbol == "apps.identity.stepup_views.step_up_view":
         request.session.pop("otp_verified_at", None)
     if not valid:

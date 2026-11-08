@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import os
-import time
 from uuid import uuid4
 
 import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
-from django_otp.oath import TOTP
 
 from database_urls import database_url_for_name
 from infra.management_command_support import generated_password, run_management_command
-from otp_test_support import create_totp_device, get_totp_device
+from otp_test_support import create_totp_device, get_totp_device, totp_generator
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -53,14 +51,7 @@ def test_numeric_staff_password_is_rejected_before_identity_or_audit_write() -> 
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     numeric_password = str(uuid4().int)
     database_url = database_url_for_name(

@@ -15,7 +15,6 @@ from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.scheduling.locks import identity_lock_keys
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
-from django_otp.oath import TOTP
 
 from database_urls import database_url_for_name
 from infra.management_command_support import (
@@ -23,7 +22,7 @@ from infra.management_command_support import (
     generated_password,
     run_management_command,
 )
-from otp_test_support import create_totp_device
+from otp_test_support import create_totp_device, totp_generator
 
 if TYPE_CHECKING:
     from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -73,14 +72,7 @@ def _owner_setup(label: str) -> OwnerSetup:
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     return OwnerSetup(
         organization_id=organization_id,
         clinic_id=clinic_id,

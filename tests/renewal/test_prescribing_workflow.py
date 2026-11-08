@@ -38,10 +38,14 @@ from apps.prescription.signature_provider import (
 from apps.tenancy.db import tenant_context
 from django.test import Client, override_settings
 from django.utils.timezone import now as real_now
-from django_otp.oath import TOTP
 
 from auth.stepup_test_support import clear_freshness
-from otp_test_support import OTP_FIXED_TIME, get_totp_device, runtime_role
+from otp_test_support import (
+    OTP_FIXED_TIME,
+    get_totp_device,
+    runtime_role,
+    totp_generator,
+)
 from renewal.test_document_artifacts import ITEM, seed, seed_rendered
 from renewal.test_encounters import physician_client
 from renewal.test_signatures import owner_scope, physician_anonymous_post
@@ -299,12 +303,11 @@ def test_stale_step_up_routes_through_identity_with_context_and_back_to_review(
         assert elsewhere.status_code == 200
         assert b"data-step-up-intent" not in elsewhere.content
         device = get_totp_device(rbac_graph.physician, confirmed=True)
-        generator = TOTP(
-            device.bin_key, device.step, device.t0, device.digits, device.drift
-        )
-        generator.time = OTP_FIXED_TIME + STEP
-        # One TOTP step later: a fresh code, and the freshness clock (which
-        # shares ``time.time``) advances with it for the rest of the journey.
+        # One TOTP step after the sign-in code at the verifier's database clock
+        # (its tolerance admits it), and the freshness clock (which shares
+        # ``time.time``) advances with it for the rest of the journey.
+        generator = totp_generator(device)
+        generator.time += STEP
         with patch(
             "django_otp.plugins.otp_totp.models.time.time",
             return_value=OTP_FIXED_TIME + STEP,

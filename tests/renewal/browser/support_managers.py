@@ -9,6 +9,7 @@ import psycopg
 from django.contrib.auth.hashers import make_password
 
 from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._totp_devices import seed_totp_device
 
 
 def seed_manager(staff: dict[str, str]) -> dict[str, str]:
@@ -36,18 +37,7 @@ def seed_manager(staff: dict[str, str]) -> dict[str, str]:
             "workflow_bundle_version) VALUES (%s, %s, %s, %s, 'clinic_admin', 1)",
             [str(uuid4()), manager["id"], staff["organization"], staff["clinic_a"]],
         )
-        conn.execute("SET ROLE clinic_app")
-        conn.execute(
-            "SELECT set_config('app.current_user_id', %s, true)", [manager["id"]]
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [manager["totp_key"], manager["id"]],
-        )
+        seed_totp_device(conn, manager["id"], manager["totp_key"])
     return manager
 
 

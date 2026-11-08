@@ -80,7 +80,9 @@ def test_enrollment_and_verification_grant_privileged_access(
     assert b"data:image/png;base64," not in enrollment.content
     assert started.status_code == 200
     assert b"data:image/png;base64," in started.content
-    assert device.key.encode() not in started.content
+    # The device seed no longer lives in otp_totp_totpdevice.key; it is
+    # resolver-held, and no provisioning material leaks into the HTML.
+    assert device.key == ""
     assert b"otpauth://" not in started.content
     assert confirmation.status_code == 302
     assert confirmation.headers["Location"] == "/auth/protected/"

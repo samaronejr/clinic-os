@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 from uuid import uuid4
 
 import pytest
@@ -19,7 +18,6 @@ from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
-from django_otp.oath import TOTP
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from database_urls import database_url_for_name
@@ -28,6 +26,7 @@ from otp_test_support import (
     create_totp_device,
     current_user_guc,
     runtime_role,
+    totp_generator,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -152,14 +151,7 @@ def test_set_clinic_timezone_changes_an_empty_clinic_with_tenant_audit() -> None
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     database_url = database_url_for_name(
         os.environ["MIGRATION_DATABASE_URL"],
@@ -240,14 +232,7 @@ def test_management_token_replay_is_rejected_after_successful_commit() -> None:
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     context = LifecycleContext(owner_id, organization_id, clinic_id)
     selected = confirmed_device_preflight(context)

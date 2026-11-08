@@ -153,6 +153,50 @@ The step-up API is a reusable extension point only. Prescription issuance,
 consent capture, document issuance, and other sensitive product operations are
 not implemented in Phase 0 and must not be represented as available.
 
+### In-database verification boundary
+
+The recent-verification check is also enforced in PostgreSQL, and the runtime
+role cannot forge it. The TOTP secret lives in the resolver-owned
+`identity_totpsecret` table: `clinic_app` and `clinic_owner` have no `SELECT` on
+it, and `otp_totp_totpdevice.key` is cleared. One `clinic_resolver` SECURITY
+DEFINER, `identity_totp_verify(device, code)`, computes the RFC 6238 code with
+pgcrypto against that hidden secret, reproducing django-otp exactly (same step,
+drift window and ThrottlingMixin backoff). It is the only writer of the device's
+`last_t`, `last_used_at`, `drift`, throttling columns and `confirmed`; it refuses
+a replayed time step through `last_t` monotonicity, another user's device, and an
+inactive account except for its own pending staff-invitation device; and a
+device-table guard trigger refuses every other role's change to those columns
+and any code-less confirmed insert. `identity_session_verify` stamps a session
+only inside the transaction in which the verifier accepted a genuine code for
+that device and consumes that acceptance, so one code verifies one session and
+a real user's fresh use cannot verify a session registered elsewhere. The SQL
+step-up consumers — agent-approval votes (`apps/ai`), the billing finance
+session and the intake merge authority — can no longer be driven by a forged
+device write or a borrowed genuine one. Self-enrollment generates the
+secret inside the resolver and the staff-invitation writer stores the one it
+receives in the hidden table; a provisioning seed is returned only for the
+enrolling user's own unconfirmed device (its QR), never once the device is
+confirmed.
+
+Passkey step-up stays Python-verified: pgcrypto cannot verify a WebAuthn
+ECDSA/EdDSA assertion, and the server process runs as `clinic_app` throughout,
+so the `identity_passkey_use` / `identity_session_verify_passkey` writers trust
+that `apps/identity/passkeys` and `passkey_authentication.verify_assertion`
+checked the signature first (and the guarded registration insert trusts the
+attestation check). The verification row itself cannot be forged at the SQL
+level: `identity_session_change_guard` refuses any non-resolver change to a
+session's `verification_device_id`, `verification_passkey_id` or `verified_at`,
+`clinic_app` has no `INSERT` on `identity_sessionrecord`, and the passkey guard
+and column ACL keep `sign_count`/`last_used` resolver-only. A runtime-role
+caller that fully controls the process can still record a passkey verification
+through those two writers without a genuine signature; this residual is
+irreducible without a WebAuthn verifier in the database (a resolver-held
+challenge ledger is a separate decision, `b1-options.md`). Its
+blast radius is bounded: the billing and intake SQL step-up gates accept only the
+TOTP path, and the agent-approval gate accepts the passkey path only under
+`Organization.passkey_step_up_enabled`, which is turned on only through a step-up
+that is now itself TOTP-sound.
+
 ## Content-Security-Policy and the internal UI API
 
 `ContentSecurityPolicyMiddleware` (`apps/core/middleware.py`) sets one strict

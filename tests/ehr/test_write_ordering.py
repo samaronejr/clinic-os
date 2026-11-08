@@ -41,8 +41,6 @@ from apps.ehr.services import (
 from apps.identity.models import User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection
-from django.utils import timezone
-from django_otp.oath import TOTP
 
 from auth.stepup_test_support import verified_request
 from database_urls import database_url_for_name
@@ -66,7 +64,7 @@ from infra.management_command_support import (
     generated_password,
     run_management_command,
 )
-from otp_test_support import create_totp_device
+from otp_test_support import create_totp_device, totp_generator
 from renewal.test_encounters import physician_client, seed
 
 if TYPE_CHECKING:
@@ -243,10 +241,7 @@ def wall_clock_code(device: TOTPDevice) -> str:
     ``fixed_otp_time`` pins ``time.time`` for this whole process while a
     physician session is open; the owner command runs in its own process.
     """
-    generator = TOTP(
-        device.bin_key, device.step, device.t0, device.digits, device.drift
-    )
-    generator.time = timezone.now().timestamp()
+    generator = totp_generator(device)
     return f"{generator.token():0{device.digits}d}"
 
 

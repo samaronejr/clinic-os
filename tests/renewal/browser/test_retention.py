@@ -28,6 +28,7 @@ from renewal.browser._navigation import (
     wait_for_signed_in,
 )
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser._totp_devices import reset_totp_device
 from renewal.browser.engines import (
     failed_responses_logged,
     full_page_screenshot,
@@ -308,16 +309,7 @@ def sign_in_manager(
     # Independent scenes share one device; reset its replay marker so a
     # second sign-in inside the same 30-second window is never rejected.
     with psycopg.connect(staff["dsn"]) as connection:
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [manager["id"]],
-        )
-        connection.execute(
-            "UPDATE clinic_app.otp_totp_totpdevice SET last_t = -1, drift = 0 "
-            "WHERE user_id = %s",
-            [manager["id"]],
-        )
+        reset_totp_device(connection, manager["id"])
     _sign_in(page, base, manager["username"], staff["password"])
     page.wait_for_url("**/auth/verify/**")
     # The next-window token is accepted through the device's tolerance and

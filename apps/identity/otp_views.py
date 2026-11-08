@@ -13,13 +13,13 @@ from apps.identity.otp import (
     auth_response,
     confirmed_devices,
     flow_redirect,
-    get_or_create_pending_device,
     is_confirmed_verified_user,
     is_privileged_user,
     pending_devices,
     provisioning_qr_data_uri,
     record_otp_verification,
     safe_next_url,
+    start_enrollment,
 )
 
 
@@ -81,14 +81,18 @@ def enroll_view(request: HttpRequest) -> HttpResponseBase:
 
     action = request.POST.get("action")
     if action == "start":
-        device = get_or_create_pending_device(user.pk)
-        form = ExplicitOTPTokenForm(user, [device], request=request)
-        return _render_enrollment(
-            request,
-            form=form,
-            qr_data_uri=provisioning_qr_data_uri(device, user.get_username()),
-            target=target,
-        )
+        started = start_enrollment(user.pk)
+        if started is not None:
+            device, secret_hex = started
+            form = ExplicitOTPTokenForm(user, [device], request=request)
+            return _render_enrollment(
+                request,
+                form=form,
+                qr_data_uri=provisioning_qr_data_uri(
+                    device, user.get_username(), secret_hex
+                ),
+                target=target,
+            )
     devices = list(pending_devices(user.pk))
     form = ExplicitOTPTokenForm(
         user,
@@ -98,15 +102,18 @@ def enroll_view(request: HttpRequest) -> HttpResponseBase:
     )
     is_confirmation = action == "confirm" or bool(request.POST.get("otp_device"))
     if is_confirmation and form.is_valid():
+        # The resolver boundary confirmed the device while checking the code.
         verified_device = form.selected_device()
-        if verified_device is not None and not verified_device.confirmed:
-            verified_device.confirmed = True
-            verified_device.save(update_fields=("confirmed",))
+        if verified_device is not None:
             record_otp_verification(request, verified_device)
             return auth_redirect(request, target)
-    qr_data_uri = (
-        provisioning_qr_data_uri(devices[0], user.get_username()) if devices else None
-    )
+    qr_data_uri = None
+    if devices:
+        started = start_enrollment(user.pk)
+        if started is not None:
+            qr_data_uri = provisioning_qr_data_uri(
+                started[0], user.get_username(), started[1]
+            )
     return _render_enrollment(
         request,
         form=form,

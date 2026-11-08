@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 from uuid import uuid4
 
 import pytest
@@ -17,7 +16,6 @@ from apps.identity.management.totp import (
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
-from django_otp.oath import TOTP
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from database_urls import database_url_for_name
@@ -27,6 +25,7 @@ from otp_test_support import (
     current_user_guc,
     get_totp_device,
     runtime_role,
+    totp_generator,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -66,14 +65,7 @@ def test_provision_staff_uses_current_owner_totp_before_password_and_write() -> 
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     password = generated_password()
     database_url = database_url_for_name(
@@ -185,14 +177,7 @@ def test_failed_token_commits_throttle_and_restores_role_and_gucs() -> None:
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     valid_token = generator.token()
     wrong_token = f"{(valid_token + 1) % (10**device.digits):0{device.digits}d}"
     context = LifecycleContext(
