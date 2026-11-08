@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.ai import revenue_views
 from apps.ai.models import AIInvocation, Approval
-from apps.ai.revenue_cycle import collect_revenue_cycle
+from apps.ai.revenue_cycle import collect_revenue_cycle, propose_revenue_action
 from apps.core.integration import execute_operation
 from apps.insurance.models import Appeal
 from django.conf import settings
@@ -28,6 +29,9 @@ from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
+    from apps.ai.models import ActionProposal
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
@@ -214,3 +218,51 @@ def test_revenue_page_refuses_decisions_without_automation_finance(
         proposal.refresh_from_db()
         assert proposal.state == "validated"
         assert not Approval.objects.filter(proposal=proposal).exists()
+
+
+def test_revenue_decisions_on_an_unknown_proposal_refuse_uniformly(
+    world: RevenueWorld,
+) -> None:
+    client = verified_client(world.setup.graph)
+    url = reverse("ai:revenue-cycle", args=(world.setup.clinic_id,))
+    with runtime_role(), fixed_otp_time():
+        assert client.get(url).status_code == 200
+    for command in ("approve", "reject"):
+        values = {"command": command, "proposal_id": str(uuid4()), "digest": "0" * 64}
+        assert post(client, url, values).status_code == 403
+
+
+@pytest.mark.parametrize("inconsistency", ["capability", "output"])
+def test_revenue_preview_refuses_a_proposal_it_cannot_bind(
+    world: RevenueWorld, monkeypatch: pytest.MonkeyPatch, inconsistency: str
+) -> None:
+    """A preview binds only a revenue proposal to this clinic's own output."""
+    review = request_and_collect(world)
+    item = next(item for item in review.items if item.kind == "appeal.draft")
+    client = verified_client(world.setup.graph)
+    url = reverse("ai:revenue-cycle", args=(world.setup.clinic_id,))
+    with runtime_role(), fixed_otp_time():
+        assert client.get(url).status_code == 200
+    if inconsistency == "capability":
+        original = propose_revenue_action
+
+        def other_capability(
+            *, clinic_id: UUID, output_id: UUID, position: int
+        ) -> ActionProposal:
+            # Only the view's copy differs; the stored policy stays revenue_cycle.
+            proposal = original(
+                clinic_id=clinic_id, output_id=output_id, position=position
+            )
+            proposal.run.policy.capability = "front_desk"
+            return proposal
+
+        monkeypatch.setattr(revenue_views, "propose_revenue_action", other_capability)
+    else:
+        # The previewed subject resolves to no output artifact of this clinic.
+        monkeypatch.setattr(revenue_views, "identifier", lambda _value: uuid4())
+    values = {
+        "command": "propose",
+        "output_id": str(review.output_id),
+        "position": str(item.position),
+    }
+    assert post(client, url, values).status_code == 403
