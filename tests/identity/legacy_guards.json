@@ -152,7 +152,8 @@
       "symbol": "apps.ai.approvals.approve_action",
       "signals": [
         "actor",
-        "denial"
+        "denial",
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
@@ -15542,6 +15543,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_record_approval",
           "clinic_app.identity_session_authenticator_verified"
         ],
         "signatures": [
@@ -16095,6 +16097,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_record_approval",
           "clinic_app.billing_finance_session",
           "clinic_app.billing_psp_dispatchable",
           "clinic_app.identity_session_authenticator_verified",
@@ -20697,7 +20700,9 @@
           "apps/ai/migrations/_agent_access_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.agent_votes_current"
+        ],
         "signatures": [
           {
             "arguments": "requested uuid, approval_id uuid",
@@ -20719,7 +20724,16 @@
         "test_sql_refuses_a_forged_vote_without_finance_automation",
         "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
         "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
-        "test_inactive_actor_is_refused_by_revenue_sql_itself"
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+        "test_sql_never_counts_a_vote_without_verified_step_up",
+        "test_sql_refuses_raw_approval_without_current_verified_votes",
+        "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+        "test_python_approval_still_records_one_counted_vote",
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
+        "test_vote_writer_refuses_an_inactive_approver",
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20923,7 +20937,16 @@
         "test_sql_refuses_a_forged_vote_without_finance_automation",
         "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
         "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
-        "test_inactive_actor_is_refused_by_revenue_sql_itself"
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+        "test_sql_never_counts_a_vote_without_verified_step_up",
+        "test_sql_refuses_raw_approval_without_current_verified_votes",
+        "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+        "test_python_approval_still_records_one_counted_vote",
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
+        "test_vote_writer_refuses_an_inactive_approver",
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
@@ -20999,6 +21022,7 @@
         "resolvers": [
           "clinic_app.agent_approval_current",
           "clinic_app.agent_controls",
+          "clinic_app.agent_record_approval",
           "clinic_app.ai_care_staff"
         ],
         "signatures": [
@@ -24305,6 +24329,7 @@
         ],
         "resolvers": [
           "clinic_app.agent_approval_current",
+          "clinic_app.agent_record_approval",
           "clinic_app.agent_record_guard"
         ],
         "signatures": [
@@ -24359,7 +24384,8 @@
         ],
         "resolvers": [
           "clinic_app.agent_approval_current",
-          "clinic_app.agent_controls"
+          "clinic_app.agent_controls",
+          "clinic_app.agent_record_approval"
         ]
       },
       "kind": "domain_protocol",
@@ -24682,6 +24708,68 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.agent_record_approval": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_approval_attestation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, approval_id uuid, approval_digest text, snapshot jsonb, evidence_ref uuid, evidence jsonb, attestation text, session_digest bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+        "test_sql_never_counts_a_vote_without_verified_step_up",
+        "test_sql_refuses_raw_approval_without_current_verified_votes",
+        "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+        "test_python_approval_still_records_one_counted_vote",
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
+        "test_vote_writer_refuses_an_inactive_approver",
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
+      ],
+      "reason": "ai.0012 vote writer and the only INSERT path into ai_approval: the caller's agent_staff or AI-06 Finance scope, this approver's own persisted fresh TOTP or passkey session verification and evidence facts naming the same actor, clinic, digest and evidence id; it records the verified instant. Forged inserts, unverified votes and raw approvals are executed on 0011 (red) and 0012 (green)."
+    },
+    "clinic_app.agent_votes_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_approval_attestation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid, dispatch boolean",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+        "test_sql_never_counts_a_vote_without_verified_step_up",
+        "test_sql_refuses_raw_approval_without_current_verified_votes",
+        "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+        "test_python_approval_still_records_one_counted_vote",
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
+        "test_vote_writer_refuses_an_inactive_approver",
+        "test_proposals_without_a_declared_quorum_never_advance",
+        "test_zero_vote_dispatch_needs_the_bound_machine_principal"
+      ],
+      "reason": "Private to agent_record_guard: the declared quorum of digest-bound votes, every one counted by agent_approval_current, before approval, an execution claim or a send; zero votes only under a bounded policy, and only its machine principal may claim, start or send."
     }
   },
   "sql_method": [

@@ -13,7 +13,7 @@ from apps.ai.action_contracts import (
     ActionRefusedError,
     Refusal,
 )
-from apps.ai.action_payload import JSON, ActionPayload, closed, identifier
+from apps.ai.action_payload import JSON, ActionPayload, closed, identifier, integer
 from apps.ai.action_validation import validate_current
 from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
@@ -162,6 +162,7 @@ def propose_action(
         payload=payload.canonical.decode(),
         digest=payload.digest,
         idempotency_key=identifier(data["idempotency_key"]),
+        quorum=integer(terms["quorum"], minimum=0, maximum=2),
     )
     record_phase1_event(
         "ai.agent_run.created", clinic_id=clinic_id, affected_record_id=run.pk

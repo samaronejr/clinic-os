@@ -155,6 +155,13 @@ ACTOR_PROTOCOL_ORACLES = {
         "ai.test_agent_execution.test_superseded_source_publication_blocks_execution",
         "ai.test_agent_guards.test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
     ),
+    # ai.0012's vote writer binds the actor; its own session predicates refuse an
+    # inactive, revoked, foreign or unverified approver.
+    "clinic_app.agent_record_approval(uuid,uuid,text,jsonb,uuid,jsonb,text,bytea)": (
+        "ai.test_vote_attestation.test_vote_writer_refuses_an_inactive_approver",
+        "ai.test_vote_attestation."
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
+    ),
     "clinic_app.agent_snapshot(uuid,text)": (
         "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
     ),
@@ -224,6 +231,8 @@ SQL_PROTOCOL_ORACLES = (
             "clinic_app.identity_reset_guard()",
             # Sealed staff/domain oracles already classify these SQL guards;
             # actor protocols add independent inactive-caller proof.
+            "clinic_app.agent_record_approval("
+            "uuid,uuid,text,jsonb,uuid,jsonb,text,bytea)",
             "clinic_app.agent_record_guard()",
             "clinic_app.agent_snapshot(uuid,text)",
             "clinic_app.has_permission(text,uuid,uuid)",

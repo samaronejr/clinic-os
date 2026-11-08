@@ -66,7 +66,7 @@ def request_for(
     route: str,
     data: dict[str, str] | None = None,
 ) -> HttpRequest:
-    verified = verified_request(actor)
+    verified = verified_request(actor, persisted=True)
     path = reverse(route, args=(clinic,))
     request = (
         RequestFactory().get(path)

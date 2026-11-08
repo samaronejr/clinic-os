@@ -5,6 +5,7 @@ from ai import (
     test_agent_guards,
     test_agent_staff_authority,
     test_revenue_cycle,
+    test_vote_attestation,
 )
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
@@ -390,6 +391,19 @@ REVENUE_BOUND_ORACLES = [
     "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
     "test_inactive_actor_is_refused_by_revenue_sql_itself",
 ]
+# ai.0012 vote writer, counted-vote rule and quorum guard, for an A3 reminder and
+# an AI-06 draft; the forged-vote and raw-approval oracles fail on ai.0011.
+VOTE_ORACLES = [
+    "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+    "test_sql_never_counts_a_vote_without_verified_step_up",
+    "test_sql_refuses_raw_approval_without_current_verified_votes",
+    "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+    "test_python_approval_still_records_one_counted_vote",
+    "test_vote_writer_requires_this_approvers_fresh_verified_session",
+    "test_vote_writer_refuses_an_inactive_approver",
+    "test_proposals_without_a_declared_quorum_never_advance",
+    "test_zero_vote_dispatch_needs_the_bound_machine_principal",
+]
 
 PROTOCOL_ORACLES = {
     **CRM_PROTOCOLS,
@@ -433,14 +447,18 @@ PROTOCOL_ORACLES = {
         ),
         AGENT_PROTOCOL_ORACLES,
     ),
+    "clinic_app.agent_controls": [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES],
     **{
-        name: [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES]
+        name: [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES, *VOTE_ORACLES]
         for name in (
             "clinic_app.agent_approval_current",
-            "clinic_app.agent_controls",
             "clinic_app.agent_record_guard",
         )
     },
+    **dict.fromkeys(
+        ("clinic_app.agent_record_approval", "clinic_app.agent_votes_current"),
+        VOTE_ORACLES,
+    ),
     "clinic_app.agent_staff": [
         "test_agent_scope_and_approval_refusals_are_side_effect_free",
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
@@ -628,6 +646,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     for module, names in (
         (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_row"]),
         (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_ancestry"]),
+        (test_vote_attestation, VOTE_ORACLES),
         (
             scribe_draft_authority,
             (

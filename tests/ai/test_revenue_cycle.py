@@ -94,6 +94,8 @@ if TYPE_CHECKING:
 
 __all__ = ("finance_setup",)
 pytestmark = pytest.mark.django_db(transaction=True)
+# ai.0012 revokes runtime INSERT on votes; agent_record_approval is the writer.
+VOTE_INSERT_REFUSED = "permission denied for table ai_approval"
 
 
 @pytest.fixture
@@ -180,7 +182,7 @@ def test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft
         assert result.state == "rejected"
     # A fresh preview after the rejected attempt is still bound to its exact run.
     review = request_and_collect(world)
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         evidence = step_up_evidence(
@@ -337,7 +339,7 @@ def test_new_return_invalidates_the_exact_previous_proposal(
     review = request_and_collect(world)
     setup = world.setup
     assert review.invocation_id is not None
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         evidence = step_up_evidence(
@@ -397,7 +399,7 @@ def test_inactive_actor_is_refused_by_revenue_sql_itself(world: RevenueWorld) ->
     graph = setup.graph
     review = request_and_collect(world)
     assert review.output_id is not None
-    request = verified_request(graph.clinic_admin)
+    request = verified_request(graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         vote = approve(world, proposal, request)
@@ -570,7 +572,7 @@ def test_sentinels_never_reach_prompts_sinks_or_effect_records(
         )
     # When: the flow runs through human approval to the appeal draft.
     review = request_and_collect(world)
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         approve(world, proposal, request)
@@ -622,7 +624,7 @@ def test_payer_facing_appeal_text_omits_internal_source_identities(
     }
     # The reviewer page keeps the exact cited identities and digests.
     assert {str(world.cycle.guide.pk), str(world.cycle.glosa.pk)} <= internal
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         approve(world, proposal, request)
@@ -651,7 +653,7 @@ def test_another_finance_reviewer_cannot_approve_or_reach_the_requesters_draft(
     with finance_scope(setup):
         proposal = proposal_for(world, review)
     other, _enrollment = permission_actor(graph, "finance")
-    other_request = verified_request(other)
+    other_request = verified_request(other, persisted=True)
     with permission_context(graph, other):
         # Same clinic and bundle, with genuine fresh TOTP evidence for the digest.
         with pytest.raises(
@@ -670,7 +672,7 @@ def test_another_finance_reviewer_cannot_approve_or_reach_the_requesters_draft(
         with pytest.raises(GatewayAccessDeniedError):
             read_artifact(clinic_id=setup.clinic_id, artifact_id=review.output_id)
     # The requester's own vote still counts, so the refusal was about identity.
-    request = verified_request(graph.clinic_admin)
+    request = verified_request(graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         approve(world, proposal, request)
         assert list(
@@ -686,7 +688,7 @@ def test_stale_digests_and_reused_or_rebound_evidence_never_approve(
     setup = world.setup
     first = request_and_collect(world)
     second = request_and_collect(world)
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         older = proposal_for(world, first)
         current = proposal_for(world, second)
@@ -734,7 +736,7 @@ def test_a_source_change_before_approval_refuses_the_approval_itself(
 ) -> None:
     review = request_and_collect(world)
     setup = world.setup
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         before = Appeal.objects.count()
@@ -800,7 +802,7 @@ def unbound(world: RevenueWorld) -> Unbound:
     add_clinic_manager_role(setup)
     review = request_and_collect(world)
     assert review.output_id is not None
-    request = verified_request(setup.graph.clinic_admin)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         approved = proposal_for(world, review)
         vote = approve(world, approved, request)
@@ -839,6 +841,37 @@ def current_snapshot(cursor: CursorWrapper, clinic_id: UUID, permission: str) ->
     # Django leaves raw jsonb as text; the forged row must carry the real object.
     assert isinstance(row[0], str)
     return json.loads(row[0])
+
+
+def writer_vote(
+    world: RevenueWorld,
+    proposal: ActionProposal,
+    snapshot: object,
+    request: HttpRequest,
+) -> bool:
+    """Call the only vote writer (ai.0012) with genuine step-up for this digest."""
+    evidence = step_up_evidence(
+        request, clinic_id=world.setup.clinic_id, digest=proposal.digest
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.agent_record_approval("
+            "%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s)",
+            [
+                proposal.pk,
+                uuid4(),
+                proposal.digest,
+                json.dumps(snapshot),
+                evidence.evidence_id,
+                json.dumps(
+                    {"facts": evidence.value(), "signature": evidence.signature}
+                ),
+                "0" * 64,
+                evidence.session,
+            ],
+        )
+        row = cursor.fetchone()
+    return row is not None and row[0] is True
 
 
 def test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation(
@@ -891,7 +924,7 @@ def test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation(
             role=UserClinicRole.Role.FINANCE,
         ).update(workflow_bundle_version=2)
     review = request_and_collect(world)
-    request = verified_request(graph.clinic_admin)
+    request = verified_request(graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
         vote = approve(world, proposal, request)
@@ -911,13 +944,18 @@ def test_sql_refuses_a_forged_vote_without_finance_automation(
     world: RevenueWorld, unbound: Unbound
 ) -> None:
     setup = world.setup
+    # Verified after the withdrawal, which revoked the approver's sessions.
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup), connection.cursor() as cursor:
         snapshot = current_snapshot(cursor, setup.clinic_id, "tiss.manage")
+        # ai.0012: runtime holds no vote INSERT at all.
         with (
             transaction.atomic(),
-            pytest.raises(DatabaseError, match="agent approval refused"),
+            pytest.raises(DatabaseError, match=VOTE_INSERT_REFUSED),
         ):
             forge_vote(world, unbound.pending, snapshot)
+        # The only vote writer refuses it too, despite genuine fresh step-up.
+        assert not writer_vote(world, unbound.pending, snapshot, request)
     with owner_context(setup.graph.organization_a):
         votes = Approval.objects.filter(
             proposal_id__in=(unbound.approved.pk, unbound.pending.pk)
@@ -931,15 +969,22 @@ def test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes(
     setup = world.setup
     add_clinic_manager_role(setup)
     review = request_and_collect(world)
+    request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup), connection.cursor() as cursor:
         proposal = proposal_for(world, review)
         # Automation authority is a real snapshot here, but not a revenue vote.
         snapshot = current_snapshot(cursor, setup.clinic_id, "automation.admin")
         with (
             transaction.atomic(),
-            pytest.raises(DatabaseError, match="agent approval refused"),
+            pytest.raises(DatabaseError, match=VOTE_INSERT_REFUSED),
         ):
             forge_vote(world, proposal, snapshot)
+        # Through the only vote writer, with genuine step-up, the guard refuses it.
+        with (
+            pytest.raises(DatabaseError, match="agent approval refused"),
+            transaction.atomic(),
+        ):
+            writer_vote(world, proposal, snapshot, request)
         assert not Approval.objects.filter(proposal=proposal).exists()
 
 

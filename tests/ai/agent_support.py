@@ -60,7 +60,6 @@ def agent_world(
     secret.write_text(secrets.token_hex(32))
     secret.chmod(0o600)
     gateway = seed(graph, monkeypatch)
-    request = verified_request(gateway.administrator)
     with owner_context(graph.organization_a):
         UserClinicRole.objects.filter(user_id=gateway.administrator).update(
             workflow_bundle_version=2
@@ -162,6 +161,8 @@ def agent_world(
             data["parameters"] = {
                 "due_at": (now + timedelta(days=1)).isoformat().replace("+00:00", "Z")
             }
+    # Built after the bundle update above, which revokes earlier sessions.
+    request = verified_request(gateway.administrator, persisted=True)
     return AgentWorld(
         gateway, principal, policy, source.pk, parse_payload(json.dumps(data)), request
     )
@@ -184,12 +185,15 @@ def propose(
 
 def approve(world: AgentWorld, proposal: ActionProposal) -> Approval:
     graph = world.gateway.graph
+    # A fresh verified session, as after a real step-up: role changes made
+    # since the world was built revoke the administrator's earlier sessions.
+    request = verified_request(world.gateway.administrator, persisted=True)
     with (
         runtime_role(),
         tenant_context(world.gateway.administrator, graph.organization_a),
     ):
         evidence = step_up_evidence(
-            world.request,
+            request,
             clinic_id=graph.clinic_a,
             digest=proposal.digest,
         )
