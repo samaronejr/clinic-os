@@ -41,7 +41,8 @@ def _denied() -> JsonResponse:
 
 
 def _body(request: HttpRequest) -> dict[str, object]:
-    if len(request.body) > MAX_BODY_BYTES:
+    # Commands are JSON only; a multipart body is already consumed as POST data.
+    if request.content_type != "application/json" or len(request.body) > MAX_BODY_BYTES:
         raise SubscriptionInputError
     body = json.loads(request.body)
     if not isinstance(body, dict):
