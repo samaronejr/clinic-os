@@ -1,15 +1,16 @@
 {
   "todo": 57,
   "status": "ready_for_native_gates",
-  "committed_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
-  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "current_evidence_manifest": "../inactive-actor-r3/SHA256SUMS",
+  "committed_head": "5a52514fe97b750eb8c41f4f7cc902ce1daeaad1",
+  "base_commit": "914dd542e2207c8c53b277c878b51691c15c2a2f",
   "branch": "ulw/cpi-e-t57-r2",
   "source_clean": true,
-  "staged_tree": "640557d398505b946326971f9d478931196802a4",
+  "staged_tree": "b801c84fd7101832894a3279d5635e5637831688",
   "canonical_clone": "/home/samarone/.c9/t57-st01a1b176",
   "canonical_clone_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
   "canonical_source_receipt": "canonical-source.json",
-  "canonical_source_refresh": "Git only; no ledger admission or browser gate ran",
+  "canonical_source_refresh": "Historical clone at 6a3c7666; Root host-quiet batch must refresh to the delivered source.",
   "browser_evidence_head": null,
   "browser_gate": "deferred-to-host-quiet-batch",
   "browser_suites": [
@@ -25,17 +26,24 @@
   "refused_browser_unit": "browser-refused-unit-readback.txt",
   "native_R": "deferred-to-host-quiet-batch",
   "upgrade": "excluded-by-Root",
-  "review": "native production fixes confirmed; T57-R2-B1 red proof supplied",
-  "serial_summary": "serial-summary.json",
-  "affected_summary": "affected-summary.json",
-  "cleanup": "cleanup-receipt.json",
+  "review": "confirmed-pending-R; gate-review-r2.md includes the inactive-actor delta",
+  "review_report": "../gate-review-r2.md",
+  "serial_summary": "../inactive-actor-r3/serial-summary.json",
+  "affected_summary": "../inactive-actor-r3/native-results.json",
+  "cleanup": "../inactive-actor-r3/cleanup-receipt.json",
   "runtime_equivalence": "component-source-reuse.json",
   "DoneClaim": "../DoneClaim.json",
   "external_provider_gates": [
     "BLOCKED-ON-EG-1",
     "BLOCKED-ON-EG-5"
   ],
-  "review_report": "../gate-review-r2.md",
+  "review_report": "../inactive-actor-r3/SQL_AUTHORITY_REVIEW.md",
   "statement_regression": "statement-red-green.json",
-  "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R"
+  "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R",
+  "canonical_clone_current": false,
+  "inactive_actor_results": "../inactive-actor-r3/native-results.json",
+  "historical_review": "../gate-review-r2.md",
+  "preexisting_uncommitted_files": [
+    ".omo/evidence/clinic-ops-premium-intelligence/task-57/gate-review-r2.md"
+  ]
 }

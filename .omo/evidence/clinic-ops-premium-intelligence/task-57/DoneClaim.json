@@ -1,24 +1,566 @@
 {
   "schema_version": 1,
   "todo": 57,
-  "date": "2026-11-06T19:52:20.257Z",
+  "date": "2026-11-06T23:01:42.595Z",
   "status": "ready_for_native_gates",
+  "current_evidence_manifest": "inactive-actor-r3/SHA256SUMS",
+  "manifest_working_directory": "task-57 evidence root",
+  "historical_manifest": "SHA256SUMS binds the archived pre-delta package; current delta uses current_evidence_manifest",
   "serial_scope": "lane serial scope = 18 required selectors / 109 tests; full ci-serial manifest deferred to native R",
-  "base_commit": "63240e99aad2fa749decefa9e557e4916a00084b",
+  "base_commit": "914dd542e2207c8c53b277c878b51691c15c2a2f",
   "original_base_commit": "ae1b3e4cc8dc0557abf7fb2db8b4e9599099b6ff",
   "branch": "ulw/cpi-e-t57-r2",
   "worktree": "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2",
-  "committed_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+  "committed_head": "5a52514fe97b750eb8c41f4f7cc902ce1daeaad1",
   "commits": [
-    "6a3c7666c9eb5f7736d21afa58e2a7be95425876"
+    "2378457963c4ce78543caba22a264292a1b4b38b",
+    "7e755511e864f950c33e2302982a169c5695bd33",
+    "5a52514fe97b750eb8c41f4f7cc902ce1daeaad1"
   ],
-  "staged_tree": "640557d398505b946326971f9d478931196802a4",
+  "staged_tree": "b801c84fd7101832894a3279d5635e5637831688",
   "source_clean": true,
   "canonical_clone": "/home/samarone/.c9/t57-st01a1b176",
   "browser_evidence_head": null,
   "browser_reports": [],
   "browser_total_tests": 0,
   "checks": {
+    "pre-fix-postgres-ready": {
+      "time": "2026-11-06T22:27:13.361161+00:00",
+      "name": "pre-fix-postgres-ready",
+      "argv": [
+        "docker",
+        "exec",
+        "cpi-t57-st01a1b176-pg",
+        "sh",
+        "-c",
+        "until pg_isready -U postgres -d clinic >/dev/null 2>&1; do sleep 1; done"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/pre-fix-postgres-ready.log"
+    },
+    "pre-fix-bootstrap": {
+      "time": "2026-11-06T22:27:13.737824+00:00",
+      "name": "pre-fix-bootstrap",
+      "argv": [
+        "make",
+        "db-bootstrap"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/pre-fix-bootstrap.log"
+    },
+    "red-native-probes": {
+      "time": "2026-11-06T22:28:50.241911+00:00",
+      "name": "red-native-probes",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_inactive_actor.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/red-native-probes.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/pytest-temp"
+      ],
+      "exit": 1,
+      "expected_exit": 1,
+      "log": "inactive-actor-r3/red-native-probes.log"
+    },
+    "pre-fix-remove-private-postgres": {
+      "time": "2026-11-06T22:29:36.891667+00:00",
+      "name": "pre-fix-remove-private-postgres",
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "cpi-t57-st01a1b176-pg"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/pre-fix-remove-private-postgres.log"
+    },
+    "pre-fix-remove-private-volume": {
+      "time": "2026-11-06T22:29:37.190114+00:00",
+      "name": "pre-fix-remove-private-volume",
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "cpi-t57-st01a1b176-data"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/pre-fix-remove-private-volume.log"
+    },
+    "corrected-postgres-ready": {
+      "time": "2026-11-06T22:30:30.153536+00:00",
+      "name": "corrected-postgres-ready",
+      "argv": [
+        "docker",
+        "exec",
+        "cpi-t57-st01a1b176-pg",
+        "sh",
+        "-c",
+        "until pg_isready -U postgres -d clinic >/dev/null 2>&1; do sleep 1; done"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/corrected-postgres-ready.log"
+    },
+    "corrected-bootstrap": {
+      "time": "2026-11-06T22:30:30.423531+00:00",
+      "name": "corrected-bootstrap",
+      "argv": [
+        "make",
+        "db-bootstrap"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/corrected-bootstrap.log"
+    },
+    "ruff-check": {
+      "time": "2026-11-06T22:31:58.151654+00:00",
+      "name": "ruff-check",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "check",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/ruff-check.log"
+    },
+    "ruff-format": {
+      "time": "2026-11-06T22:31:58.169968+00:00",
+      "name": "ruff-format",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/ruff",
+        "format",
+        "--check",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/ruff-format.log"
+    },
+    "mypy": {
+      "time": "2026-11-06T22:32:01.538474+00:00",
+      "name": "mypy",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/mypy",
+        "."
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/mypy.log"
+    },
+    "green-native-probes": {
+      "time": "2026-11-06T22:33:06.291158+00:00",
+      "name": "green-native-probes",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_inactive_actor.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/green-native-probes.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/pytest-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/green-native-probes.log"
+    },
+    "fresh-migrate": {
+      "time": "2026-11-06T22:34:12.355571+00:00",
+      "name": "fresh-migrate",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "migrate",
+        "--noinput"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/fresh-migrate.log"
+    },
+    "django-check": {
+      "time": "2026-11-06T22:34:13.369315+00:00",
+      "name": "django-check",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "check"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/django-check.log"
+    },
+    "migration-drift": {
+      "time": "2026-11-06T22:34:14.634042+00:00",
+      "name": "migration-drift",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "manage.py",
+        "makemigrations",
+        "--check",
+        "--dry-run"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/migration-drift.log"
+    },
+    "db-posture": {
+      "time": "2026-11-06T22:34:14.766936+00:00",
+      "name": "db-posture",
+      "argv": [
+        "make",
+        "db-posture"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/db-posture.log"
+    },
+    "discovery": {
+      "time": "2026-11-06T22:34:29.997904+00:00",
+      "name": "discovery",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/generate_psp_inventory.py"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/discovery.log"
+    },
+    "sql-registries": {
+      "time": "2026-11-06T22:39:22.733203+00:00",
+      "name": "sql-registries",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/identity/test_sql_denial_contracts.py",
+        "tests/identity/test_sql_dml_contracts.py",
+        "tests/identity/test_sql_guard_inventory.py",
+        "tests/identity/test_sql_inactive_actor.py",
+        "tests/identity/test_sql_probe_catalog.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/sql-registries.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/pytest-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/sql-registries.log"
+    },
+    "lane-serial": {
+      "time": "2026-11-06T22:56:17.721935+00:00",
+      "name": "lane-serial",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for",
+        "tests/identity/test_active_tenant_actor.py::test_active_actor_migration_reverses_without_changing_membership_or_posture",
+        "tests/identity/test_identity_acl_migration.py::test_canonicalization_failure_aborts_before_any_update",
+        "tests/identity/test_identity_acl_migration.py::test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role",
+        "tests/identity/test_identity_acl_migration.py::test_identity_migration_reverses_and_reapplies",
+        "tests/infra/test_clinic_timezone_migration.py::test_failed_backfill_restores_role_and_gucs",
+        "tests/infra/test_clinic_timezone_migration.py::test_timezone_migration_reverses_reapplies_and_installs_named_check",
+        "tests/infra/test_clinic_timezone_migration.py::test_two_tenant_backfill_restores_role_and_gucs",
+        "tests/identity/test_service_principals.py",
+        "tests/identity/test_decision_support_probes.py::test_decision_adapters_compose_with_primary_nonstaff_census",
+        "tests/identity/test_scribe_census.py::test_real_nonstaff_census_observes_the_note_reader",
+        "tests/retention/test_execution.py",
+        "tests/retention/test_principal_migrations.py",
+        "tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action",
+        "tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write",
+        "tests/renewal/test_browser_runner.py::test_ci_interruption_stops_later_gates_and_exits_130",
+        "tests/renewal/test_browser_runner.py::test_provision_teardown_completes_through_a_second_interrupt",
+        "tests/renewal/test_browser_runner.py::test_teardown_interrupt_is_reaped_then_propagated",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/lane-serial.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/pytest-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/lane-serial.log"
+    },
+    "psp-affected": {
+      "time": "2026-11-06T22:57:49.461139+00:00",
+      "name": "psp-affected",
+      "argv": [
+        "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "junit_family=xunit1",
+        "--reuse-db",
+        "-q",
+        "--tb=short",
+        "--no-showlocals",
+        "tests/billing/test_psp_adapter.py",
+        "tests/billing/test_psp_inactive_actor.py",
+        "tests/billing/test_psp_outbox.py",
+        "tests/billing/test_psp_patient.py",
+        "tests/billing/test_psp_policy.py",
+        "tests/billing/test_psp_posture.py",
+        "tests/billing/test_psp_reconciliation.py",
+        "tests/billing/test_psp_refunds.py",
+        "tests/billing/test_psp_review.py",
+        "tests/billing/test_psp_statement.py",
+        "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/psp-affected.junit.xml",
+        "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/inactive-actor-r3/pytest-temp"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/psp-affected.log"
+    },
+    "corrected-remove-private-postgres": {
+      "time": "2026-11-06T22:59:59.676167+00:00",
+      "name": "corrected-remove-private-postgres",
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "cpi-t57-st01a1b176-pg"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/corrected-remove-private-postgres.log"
+    },
+    "corrected-remove-private-volume": {
+      "time": "2026-11-06T23:00:01.915036+00:00",
+      "name": "corrected-remove-private-volume",
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "cpi-t57-st01a1b176-data"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "log": "inactive-actor-r3/corrected-remove-private-volume.log"
+    }
+  },
+  "targeted_cases": {
+    "native_inactive_actor": 5,
+    "sql_registry_modules": 99,
+    "required_lane_serial": 109,
+    "affected_psp": 57,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "expected_red": {
+      "failures": 3,
+      "passed": 2,
+      "exit": 1
+    }
+  },
+  "dependency_sync": {
+    "status": "passed",
+    "command": "uv sync --locked --all-groups; manage.py compilemessages -l pt_BR",
+    "observed_exit": 0,
+    "evidence": "retained task tool transcript: DEPS_AND_MESSAGES_PASS"
+  },
+  "discovery": {
+    "receipt": "takeover/discovery-receipt.json",
+    "base_preservation": "takeover/base-preservation.json",
+    "added_python": 11,
+    "added_sql": 7,
+    "preserved_base_python": 824,
+    "preserved_base_sql_classifications": 465,
+    "domain_relations": 223,
+    "unclassified": [],
+    "stale_entries": [],
+    "current_delta": "inactive-actor-r3/discovery-receipt.json",
+    "inherited_python_changes": [],
+    "inherited_sql_classification_changes": [],
+    "non_psp_entries_changed_by_delta": [],
+    "original_psp_discovery_extensions": [
+      "clinic_app.billing_patient_charges",
+      "clinic_app.identity_session_verified",
+      "clinic_app.billing_book_access",
+      "clinic_app.billing_finance_session",
+      "clinic_app.billing_lock_book"
+    ]
+  },
+  "live_catalog": {
+    "path": "takeover/live-catalog.json",
+    "origin": "fresh PostgreSQL 16.14 live catalog",
+    "domain_relations": 223
+  },
+  "manual_qa": {
+    "report": "Manual-QA.md",
+    "passing_probes": 4,
+    "happy": "pix.json",
+    "timeout": "timeout.json",
+    "refund_replay": "refund.json",
+    "adversarial": "adversarial.json",
+    "broker": "takeover/broker-r3-psp-broker.log"
+  },
+  "heavy_run_limits": {
+    "systemd_MemoryMax": "12G",
+    "systemd_MemorySwapMax": 0,
+    "postgres_memory": "3G",
+    "postgres_swap": 0,
+    "redis_memory": "256M",
+    "redis_swap": 0,
+    "active_unit_readbacks": "takeover/*-unit.txt"
+  },
+  "privacy": {
+    "data": "synthetic fixtures only",
+    "raw_callback_authenticated_before_scope": true,
+    "payload_tenant_ignored": true,
+    "audit_outbox_logs_sentinel_free": true,
+    "private_runtime_password_scan": "takeover/cleanup-receipt.json",
+    "private_runtime_password_leaks": []
+  },
+  "cleanup": {
+    "owner": "st_01a1b176",
+    "postgres_container_id": "a58593098f34bd67071aa178253d1d34bf39e674c8b7fae253c5a748a24026b9",
+    "postgres_removed": true,
+    "volume_removed": true,
+    "runtime_secrets_removed": true,
+    "temporary_evidence_directories_removed": [
+      "pytest-temp"
+    ],
+    "remaining_owned_containers": [],
+    "private_password_scan_checked_files": 225,
+    "private_password_scan_leaks": [],
+    "path": "inactive-actor-r3/cleanup-receipt.json"
+  },
+  "external_provider_gates": {
+    "psp_pix": "BLOCKED-ON-EG-1/EG-5",
+    "psp_card": "BLOCKED-ON-EG-1/EG-5",
+    "environment": "recorded sandbox only",
+    "real_enabled": false,
+    "live_data_approval_claimed": false
+  },
+  "native_gates": {
+    "browser": "deferred-to-host-quiet-batch",
+    "R": "deferred-to-host-quiet-batch",
+    "full_coverage_and_full_sink_scan": "Belong to the deferred native R.",
+    "migration_upgrade": "excluded-by-Root",
+    "full_ci_serial_manifest": "deferred-to-native-R"
+  },
+  "visual_inspection": {
+    "status": "deferred-to-host-quiet-batch",
+    "native_instruction_cases_passed": 3,
+    "note": "No three-engine or desktop/mobile visual approval is claimed."
+  },
+  "review": {
+    "verdict": "native-required-checks-passed; pending Root delta re-review",
+    "local_assessment": "inactive-actor-r3/SQL_AUTHORITY_REVIEW.md",
+    "prior_independent_review": "gate-review-r2.md",
+    "prior_review_scope": "6a3c7666/8eea8b34 only",
+    "current_review_status": "confirmed-pending-R",
+    "current_review_report": "gate-review-r2.md",
+    "current_review_scope": "prior PSP review findings and inactive-actor-r3 delta",
+    "independent_approval_claimed": false
+  },
+  "rollback": {
+    "migration": "billing.0012_sandbox_psp",
+    "strategy": "forward-only additive schema; retain immutable money facts and disable rehearsal configuration",
+    "upgrade_gate_run": false
+  },
+  "runtime_equivalence": "takeover/component-source-reuse.json",
+  "history": {
+    "preserved_october_wip": "wip/cpi-e-t57-oct",
+    "component_checkpoint": "68fb3ad73ae18d39d4666bae5de2ee86670ee5da",
+    "refused_browser_head": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
+    "refused_browser_log": "takeover/canonical-billing-chromium.log",
+    "red_guard_proof": "takeover/red-evidence-authority.log",
+    "resolved_serial_fixture_error": "takeover/serial-summary.json",
+    "resolved_cleanup_pointer_error": "takeover/resource-pointer-reconciliation.json",
+    "broad_pre_review": {
+      "passed": 3010,
+      "optional_broker_skipped": 1,
+      "receipt": {
+        "time": "2026-11-06T15:58:43.958655+00:00",
+        "name": "r2-targeted",
+        "argv": [
+          "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
+          "-m",
+          "pytest",
+          "--reuse-db",
+          "-q",
+          "--tb=short",
+          "--no-showlocals",
+          "tests/billing",
+          "tests/renewal/test_invoices.py",
+          "tests/renewal/test_billing_views.py",
+          "tests/renewal/test_payment_reconciliation.py",
+          "tests/renewal/test_pix_adapter.py",
+          "tests/renewal/test_live_activation.py::test_live_preflight_rejects_invalid_environment",
+          "tests/renewal/test_browser_runner.py",
+          "tests/renewal/test_action_operations.py",
+          "tests/renewal/test_integration_boundary.py",
+          "tests/infra/test_schema_policy.py",
+          "tests/infra/test_resolver_catalog.py",
+          "tests/infra/test_module_boundaries.py",
+          "tests/infra/test_recovery_manifest.py",
+          "tests/audit/test_phase1_audit_contract.py",
+          "tests/isolation/test_backup_restore_guard.py",
+          "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/targeted.junit.xml",
+          "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/pytest-temp"
+        ],
+        "exit": 0,
+        "expected_exit": 0,
+        "log": "takeover/r2-targeted.log"
+      },
+      "source_checkpoint": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
+      "reused_unchanged_harness_paths": [
+        "ops/testing/renewal_runner.py",
+        "apps/core/integration.py",
+        "apps/comms/adapters.py",
+        "tests/renewal/test_browser_runner.py",
+        "tests/renewal/test_action_operations.py",
+        "tests/renewal/test_integration_boundary.py"
+      ],
+      "note": "Current PSP acceptance uses the 366-case affected and 109-case serial qualifications; the required broker variant passed separately."
+    }
+  },
+  "remaining_implementation_blockers": [],
+  "implementation_head": "5a52514fe97b750eb8c41f4f7cc902ce1daeaad1",
+  "evidence_only_update": {
+    "date": "2026-11-06T20:34:46.533Z",
+    "finding": "T57-R2-B1",
+    "production_source_unchanged": true,
+    "source_basis": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
+    "proof": "takeover/statement-red-green.json",
+    "red_exit": 1,
+    "expected_exit": 1,
+    "red_output": "F                                                                        [100%]\n=================================== FAILURES ===================================\n________ test_corrected_statement_at_the_same_provider_version_can_post ________\ntests/billing/test_psp_review.py:141: in test_corrected_statement_at_the_same_provider_version_can_post\n    assert reconcile_psp_statement(intent_id=intent.pk) == (decision,)\nE   AssertionError: assert ('superseded',) == ('matched',)\nE     \nE     At index 0 diff: 'superseded' != 'matched'\nE     Use -v to get more diff\nREFUSAL_GUARD {\"client_requests\": 0, \"elapsed_ns\": 5320, \"evaluated_requests\": 0, \"integrity_ns\": 775523, \"refusals\": 0, \"responses\": 0, \"trace_ns\": 0, \"violations\": 0}\n=========================== short test summary info ============================\nFAILED tests/billing/test_psp_review.py::test_corrected_statement_at_the_same_provider_version_can_post\n1 failed in 30.36s\n",
+    "green_receipts": [
+      "takeover/affected.junit.xml",
+      "takeover/green-review.junit.xml"
+    ],
+    "green_rerun": false,
+    "scope": "Historical statement-correction proof on 6a3c7666/8eea8b34; preserved by tag."
+  },
+  "preexisting_uncommitted_files": [
+    ".omo/evidence/clinic-ops-premium-intelligence/task-57/gate-review-r2.md"
+  ],
+  "historical_checks": {
     "review-fresh-migrate": {
       "time": "2026-11-06T16:08:47.738622+00:00",
       "name": "review-fresh-migrate",
@@ -374,197 +916,29 @@
       "log": "takeover/remove-private-volume.log"
     }
   },
-  "targeted_cases": {
-    "qualified_unique_affected": 366,
-    "affected_run": 365,
-    "strengthened_reader_owner_collector_run": 3,
-    "ci_serial_unique": 109,
-    "ci_serial_prefixes": 18,
-    "serial_summary": "takeover/serial-summary.json",
-    "affected_summary": "takeover/affected-summary.json",
-    "current_failures": 0,
-    "current_errors": 0,
-    "current_skips": 0
-  },
-  "dependency_sync": {
-    "status": "passed",
-    "command": "uv sync --locked --all-groups; manage.py compilemessages -l pt_BR",
-    "observed_exit": 0,
-    "evidence": "retained task tool transcript: DEPS_AND_MESSAGES_PASS"
-  },
-  "discovery": {
-    "receipt": "takeover/discovery-receipt.json",
-    "base_preservation": "takeover/base-preservation.json",
-    "added_python": 11,
-    "added_sql": 7,
-    "preserved_base_python": 824,
-    "preserved_base_sql_classifications": 465,
-    "domain_relations": 223,
-    "unclassified": [],
-    "stale_entries": []
-  },
-  "live_catalog": {
-    "path": "takeover/live-catalog.json",
-    "origin": "fresh PostgreSQL 16.14 live catalog",
-    "domain_relations": 223
-  },
-  "manual_qa": {
-    "report": "Manual-QA.md",
-    "passing_probes": 4,
-    "happy": "pix.json",
-    "timeout": "timeout.json",
-    "refund_replay": "refund.json",
-    "adversarial": "adversarial.json",
-    "broker": "takeover/broker-r3-psp-broker.log"
-  },
-  "heavy_run_limits": {
-    "systemd_MemoryMax": "12G",
-    "systemd_MemorySwapMax": 0,
-    "postgres_memory": "3G",
-    "postgres_swap": 0,
-    "redis_memory": "256M",
-    "redis_swap": 0,
-    "active_unit_readbacks": "takeover/*-unit.txt"
-  },
-  "privacy": {
-    "data": "synthetic fixtures only",
-    "raw_callback_authenticated_before_scope": true,
-    "payload_tenant_ignored": true,
-    "audit_outbox_logs_sentinel_free": true,
-    "private_runtime_password_scan": "takeover/cleanup-receipt.json",
-    "private_runtime_password_leaks": []
-  },
-  "cleanup": {
-    "owner": "st_01a1b176",
-    "postgres_container_id": "4e56b56ac588892f1804661b7469e0bd9bacc1ac3da7d1d7d02342ca43b688b4",
-    "postgres_removed": true,
-    "volume_removed": true,
-    "runtime_secrets_removed": true,
-    "temporary_evidence_directories_removed": [
-      "review-temp"
+  "inactive_actor_delta": {
+    "base": "914dd542e2207c8c53b277c878b51691c15c2a2f",
+    "source_commit": "5a52514fe97b750eb8c41f4f7cc902ce1daeaad1",
+    "root_cause": "Stored-requester self-access bypassed the active-actor book gate; binding/evidence inserts inherited that bypass.",
+    "fix": "Unshipped 0012 requires a matching active user before self-access or book authority.",
+    "oracles": [
+      "clinic_app.billing_psp_access(uuid)",
+      "clinic_app.billing_psp_guard()",
+      "clinic_app.billing_psp_dispatchable(uuid,boolean)"
     ],
-    "remaining_owned_containers": [],
-    "private_password_scan_checked_files": 163,
-    "private_password_scan_leaks": [],
-    "receipt": "takeover/cleanup-receipt.json",
-    "identity_reconciliation": "takeover/resource-pointer-reconciliation.json",
-    "canonical_clone_retained": "source and refused-attempt evidence for Root batch",
-    "native_monitor_disposition": "Root explicitly allowed the native subscriptions to expire",
-    "regression_runtime_removed": true
-  },
-  "external_provider_gates": {
-    "psp_pix": "BLOCKED-ON-EG-1/EG-5",
-    "psp_card": "BLOCKED-ON-EG-1/EG-5",
-    "environment": "recorded sandbox only",
-    "real_enabled": false,
-    "live_data_approval_claimed": false
-  },
-  "native_gates": {
-    "browser": "deferred-to-host-quiet-batch",
-    "R": "deferred-to-host-quiet-batch",
-    "full_coverage_and_full_sink_scan": "Belong to the deferred native R.",
-    "migration_upgrade": "excluded-by-Root"
-  },
-  "visual_inspection": {
-    "status": "deferred-to-host-quiet-batch",
-    "native_instruction_cases_passed": 3,
-    "note": "No three-engine or desktop/mobile visual approval is claimed."
-  },
-  "review": {
-    "verdict": "needs-fix-evidence-only; missing red proof now supplied",
-    "resolution": "SOURCE_REVIEW_RESOLUTION.md",
-    "resolved": [
-      "stored-actor-only evidence and binding writes",
-      "same-version corrected statements without suppressing newer reversals",
-      "lookup-only recovery using the original approved sandbox version"
+    "native_phases": [
+      "active",
+      "inactive",
+      "active"
     ],
-    "strong_role_proof": "takeover/reader-writer-regression.junit.xml",
-    "independent_approval_claimed": false,
-    "report": "gate-review-r2.md",
-    "production_fixes_confirmed_by_native_review": true,
-    "evidence_finding": {
-      "id": "T57-R2-B1",
-      "status": "requested-red-proof-recorded",
-      "proof": "takeover/statement-red-green.json"
-    }
+    "probe": "tests/billing/test_psp_inactive_actor.py::test_psp_sql_requires_current_active_actor",
+    "results": "inactive-actor-r3/native-results.json",
+    "serial": "inactive-actor-r3/serial-summary.json",
+    "preservation": "inactive-actor-r3/base-preservation.json",
+    "local_judgment": "inactive-actor-r3/SQL_AUTHORITY_REVIEW.md",
+    "no_justified_bypass": true,
+    "preserved_tag": "wip/cpi-e-t57-pre-inactive-actor"
   },
-  "rollback": {
-    "migration": "billing.0012_sandbox_psp",
-    "strategy": "forward-only additive schema; retain immutable money facts and disable rehearsal configuration",
-    "upgrade_gate_run": false
-  },
-  "runtime_equivalence": "takeover/component-source-reuse.json",
-  "history": {
-    "preserved_october_wip": "wip/cpi-e-t57-oct",
-    "component_checkpoint": "68fb3ad73ae18d39d4666bae5de2ee86670ee5da",
-    "refused_browser_head": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
-    "refused_browser_log": "takeover/canonical-billing-chromium.log",
-    "red_guard_proof": "takeover/red-evidence-authority.log",
-    "resolved_serial_fixture_error": "takeover/serial-summary.json",
-    "resolved_cleanup_pointer_error": "takeover/resource-pointer-reconciliation.json",
-    "broad_pre_review": {
-      "passed": 3010,
-      "optional_broker_skipped": 1,
-      "receipt": {
-        "time": "2026-11-06T15:58:43.958655+00:00",
-        "name": "r2-targeted",
-        "argv": [
-          "/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.venv/bin/python",
-          "-m",
-          "pytest",
-          "--reuse-db",
-          "-q",
-          "--tb=short",
-          "--no-showlocals",
-          "tests/billing",
-          "tests/renewal/test_invoices.py",
-          "tests/renewal/test_billing_views.py",
-          "tests/renewal/test_payment_reconciliation.py",
-          "tests/renewal/test_pix_adapter.py",
-          "tests/renewal/test_live_activation.py::test_live_preflight_rejects_invalid_environment",
-          "tests/renewal/test_browser_runner.py",
-          "tests/renewal/test_action_operations.py",
-          "tests/renewal/test_integration_boundary.py",
-          "tests/infra/test_schema_policy.py",
-          "tests/infra/test_resolver_catalog.py",
-          "tests/infra/test_module_boundaries.py",
-          "tests/infra/test_recovery_manifest.py",
-          "tests/audit/test_phase1_audit_contract.py",
-          "tests/isolation/test_backup_restore_guard.py",
-          "--junitxml=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/targeted.junit.xml",
-          "--basetemp=/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2/.omo/evidence/clinic-ops-premium-intelligence/task-57/takeover/pytest-temp"
-        ],
-        "exit": 0,
-        "expected_exit": 0,
-        "log": "takeover/r2-targeted.log"
-      },
-      "source_checkpoint": "7193de9245b32a5ec2c67b2c13ae5a0f2205921a",
-      "reused_unchanged_harness_paths": [
-        "ops/testing/renewal_runner.py",
-        "apps/core/integration.py",
-        "apps/comms/adapters.py",
-        "tests/renewal/test_browser_runner.py",
-        "tests/renewal/test_action_operations.py",
-        "tests/renewal/test_integration_boundary.py"
-      ],
-      "note": "Current PSP acceptance uses the 366-case affected and 109-case serial qualifications; the required broker variant passed separately."
-    }
-  },
-  "remaining_implementation_blockers": [],
-  "implementation_head": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
-  "evidence_only_update": {
-    "date": "2026-11-06T20:34:46.533Z",
-    "finding": "T57-R2-B1",
-    "production_source_unchanged": true,
-    "source_basis": "6a3c7666c9eb5f7736d21afa58e2a7be95425876",
-    "proof": "takeover/statement-red-green.json",
-    "red_exit": 1,
-    "expected_exit": 1,
-    "red_output": "F                                                                        [100%]\n=================================== FAILURES ===================================\n________ test_corrected_statement_at_the_same_provider_version_can_post ________\ntests/billing/test_psp_review.py:141: in test_corrected_statement_at_the_same_provider_version_can_post\n    assert reconcile_psp_statement(intent_id=intent.pk) == (decision,)\nE   AssertionError: assert ('superseded',) == ('matched',)\nE     \nE     At index 0 diff: 'superseded' != 'matched'\nE     Use -v to get more diff\nREFUSAL_GUARD {\"client_requests\": 0, \"elapsed_ns\": 5320, \"evaluated_requests\": 0, \"integrity_ns\": 775523, \"refusals\": 0, \"responses\": 0, \"trace_ns\": 0, \"violations\": 0}\n=========================== short test summary info ============================\nFAILED tests/billing/test_psp_review.py::test_corrected_statement_at_the_same_provider_version_can_post\n1 failed in 30.36s\n",
-    "green_receipts": [
-      "takeover/affected.junit.xml",
-      "takeover/green-review.junit.xml"
-    ],
-    "green_rerun": false
-  }
+  "historical_receipts_note": "Pre-delta broker, Manual-QA, live catalog and broader baseline receipts remain historical at 6a3c7666/8eea8b34. Current delta qualification is recorded only under inactive-actor-r3.",
+  "canonical_clone_current": false
 }

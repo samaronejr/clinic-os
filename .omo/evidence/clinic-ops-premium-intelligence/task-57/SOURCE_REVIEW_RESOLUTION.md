@@ -74,3 +74,19 @@ grant runtime resolver authority to `clinic_owner`.
 Recorded fixtures remain the only provider implementation accepted by this
 lane. Real provider legs remain `BLOCKED-ON-EG-1/EG-5`. Browser and full native R
 qualification are deferred to the root's exclusive host window.
+
+The subsequent inactive-actor delta is committed at
+`5a52514fe97b750eb8c41f4f7cc902ce1daeaad1` on confirmed base `914dd542`.
+Native probes exposed stored-requester self-access and its binding/evidence
+inserts accepting an inactive actor. The unshipped 0012 access predicate now
+requires an active user before either self-access or book authority.
+Dispatch already used checked book authority. All three signatures have
+executable direct-GUC active/inactive/active protocols, without JUSTIFIED.
+
+The pre-fix run captured three failures and two dispatch passes. The corrected
+fresh schema passed all five cases; the five sibling SQL registry modules
+passed 99 tests; all 18 required serial selectors passed 109 tests with xunit1;
+affected PSP regressions passed 57 tests. Static, fresh migration, drift and
+posture checks passed. See `inactive-actor-r3/native-results.json` and
+`inactive-actor-r3/SQL_AUTHORITY_REVIEW.md`. This is native execution evidence,
+not independent approval of the new delta; Root's delta re-review is pending.

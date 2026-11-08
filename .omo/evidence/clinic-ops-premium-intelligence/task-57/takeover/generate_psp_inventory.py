@@ -1,6 +1,7 @@
 """Generate only todo 57 metadata from the repository's discovery functions."""
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -8,7 +9,12 @@ from pathlib import Path
 import django
 
 LANE = Path("/home/samarone/Documents/clinic-ops-new-roadmap/clinic-os-wt/cpi-e-t57-r2")
-E = LANE / ".omo/evidence/clinic-ops-premium-intelligence/task-57/takeover"
+E = Path(
+    os.environ.get(
+        "T57_DISCOVERY_ROOT",
+        str(LANE / ".omo/evidence/clinic-ops-premium-intelligence/task-57/takeover"),
+    )
+)
 sys.path[:0] = [str(LANE), str(LANE / "tests")]
 django.setup()
 
@@ -74,8 +80,16 @@ assert all(name.startswith("clinic_app.billing_psp_") or name ==
 assert not (set(data["sql_guards"]) - set(sql))
 for name, discovery in sql.items():
     if name in data["sql_guards"]:
-        # PSP callers legitimately extend existing resolver dependency sets.
-        data["sql_guards"][name]["discovery"] = discovery
+        if name.startswith("clinic_app.billing_psp_") or name == (
+            "clinic_app.billing_patient_psp_instructions"
+        ):
+            data["sql_guards"][name]["discovery"] = discovery
+            if name in SQL_PROTOCOL_ORACLES:
+                data["sql_guards"][name]["probes"] = SQL_PROTOCOL_ORACLES[name]
+        else:
+            assert data["sql_guards"][name]["discovery"] == discovery, (
+                "refusing another lane's SQL discovery drift", name
+            )
     elif name in SQL_PROTOCOL_ORACLES:
         data["sql_guards"][name] = {
             "discovery": discovery,
