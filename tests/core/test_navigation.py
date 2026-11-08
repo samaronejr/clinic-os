@@ -356,11 +356,12 @@ def test_workflow_candidate_opens_only_delivered_operations(
 @pytest.mark.parametrize(
     ("role", "modules", "home"),
     [
-        ("finance", ["finance"], "/billing/clinics/{clinic}/finance/"),
+        # Task 63: Reports follows charge.read into both bundles.
+        ("finance", ["finance", "reports"], "/billing/clinics/{clinic}/finance/"),
         # Task 50: privacy.requests opens Patients > Data-subject requests.
         (
             "org_admin",
-            ["patients", "finance", "automations", "settings"],
+            ["patients", "finance", "automations", "reports", "settings"],
             "/scheduling/clinics/{clinic}/settings/",
         ),
     ],
