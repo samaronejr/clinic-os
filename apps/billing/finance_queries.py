@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 ROW_LIMIT: Final = 100
+# Every other command takes clinic_app.billing_lock_book, which PostgreSQL
+# admits for a financial role only together with charge.read.
+LOCK_FREE_ACTIONS: Final = frozenset({"create_book"})
 ACTION_PERMISSIONS: Final = {
     "create_book": ("finance.policy",),
     "opening_balance": ("finance.policy",),
@@ -67,18 +70,27 @@ def permits(*, clinic_id: UUID, permission: str) -> bool:
 
 
 def finance_permissions(clinic_id: UUID) -> dict[str, bool]:
-    """No clinician-only or patient identity acquires clinic-wide financial access."""
+    """Admit financial roles; only a charge reader is offered book commands.
+
+    No clinician-only or patient identity acquires clinic-wide financial access.
+    A role whose clinic narrowed charge.read keeps the workspace, which states
+    the denial, but no command the book lock would refuse.
+    """
     cache = {
         permission: permits(clinic_id=clinic_id, permission=permission)
-        for permission in {p for values in ACTION_PERMISSIONS.values() for p in values}
+        for permission in {"charge.read"}
+        | {p for values in ACTION_PERMISSIONS.values() for p in values}
     }
-    result = {
+    held = {
         action: any(cache[p] for p in permissions)
         for action, permissions in ACTION_PERMISSIONS.items()
     }
-    if not any(result.values()):
+    if not any(held.values()):
         raise BillingAccessDeniedError
-    return result
+    return {
+        action: allowed and (cache["charge.read"] or action in LOCK_FREE_ACTIONS)
+        for action, allowed in held.items()
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,17 +109,18 @@ def finance_context(
     """Read recent financial records; exports cover the full date window."""
     permissions = finance_permissions(clinic_id)
     book = JournalBook.objects.filter(clinic_id=clinic_id).first()
-    # The RP charges/settlements "view" cell: collection alone opens the
-    # workspace's forms, never its charge, balance or journal panels.
+    # The RP charges/settlements "view" cell: without charge.read no charge,
+    # balance, journal record or record-bearing choice is read at all.
     can_read = permits(clinic_id=clinic_id, permission="charge.read")
     context: dict[str, object] = {
         "clinic_id": clinic_id,
         "book": book,
         "permissions": permissions,
-        "can_export": permits(clinic_id=clinic_id, permission="settlement.post"),
+        "can_export": can_read
+        and permits(clinic_id=clinic_id, permission="settlement.post"),
         "can_read": can_read,
     }
-    if book is None:
+    if book is None or not can_read:
         return context, {}
     terms = tuple(
         InvoiceTerms.objects.filter(book=book)
@@ -196,8 +209,6 @@ def finance_context(
             for row in sessions
         ],
     }
-    if not can_read:
-        return context, choices
     totals = account_balances(book=book)
     receivables = receivable_balances(book=book, terms=terms)
     context.update(

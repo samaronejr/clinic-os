@@ -77,9 +77,11 @@ def book_write(*, clinic_id: UUID, permission: str) -> Iterator[JournalBook]:
     """Order clinic, audit, book and child locks; keep failed commands in savepoints."""
     with transaction.atomic():
         book = scoped_book(clinic_id=clinic_id, permission=permission)
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT clinic_app.billing_lock_book(%s)", [book.pk])
         try:
+            # The lock refuses a role without charge.read (42501): the same
+            # permission denial as any refused write it guards.
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT clinic_app.billing_lock_book(%s)", [book.pk])
             with transaction.atomic():
                 yield book
         except IntegrityError as error:

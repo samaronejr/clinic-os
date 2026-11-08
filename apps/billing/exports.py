@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from apps.audit.services import record_phase1_event
 from apps.billing.models import JournalLine
 from apps.billing.money_types import JournalInputError
-from apps.billing.security import scoped_book
+from apps.billing.security import financial_actor, scoped_book
 
 if TYPE_CHECKING:
     from datetime import date
@@ -39,6 +39,8 @@ def export_journal(
     *, clinic_id: UUID, start: date, end: date, output_format: str
 ) -> bytes:
     """Export one inclusive clinic-local date window, never SaaS or other clinics."""
+    # Sealed lines are journal records: their poster must also read charges.
+    financial_actor(clinic_id=clinic_id, permission="charge.read")
     book = scoped_book(clinic_id=clinic_id, permission="settlement.post")
     if (
         output_format not in {"csv", "journal"}

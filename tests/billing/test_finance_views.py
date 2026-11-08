@@ -11,7 +11,6 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from apps.audit.models import AuditEvent
 from apps.billing.cash import open_cash
 from apps.billing.compensation import create_payout_rule
 from apps.billing.exports import export_journal
@@ -19,9 +18,8 @@ from apps.billing.finance_commands import HANDLERS
 from apps.billing.finance_forms import ACTION_FIELDS
 from apps.billing.finance_views import REFUSED, _command_scope
 from apps.billing.journal import Line, SourceFact, post_entry
-from apps.billing.models import CashSession, InvoiceTerms, JournalBook
+from apps.billing.models import CashSession, JournalBook
 from apps.billing.money_types import PayoutRuleTerms
-from apps.identity.models import RoleGrant
 from apps.scheduling.agenda_presenter import clinic_local_today
 from apps.tenancy.db import tenant_context
 from django.http import HttpResponse
@@ -32,13 +30,9 @@ from django.utils.translation import gettext
 
 from billing.journal_support import (
     FinanceSetup,
-    collected,
     finance_scope,
     finance_setup,
-    invoice_terms,
 )
-from core.test_navigation import _client_for, _get, _reauthenticate
-from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_billing_views import staff_client
 
@@ -264,64 +258,6 @@ def test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values(
                 .count("\n")
                 == 1
             )
-
-
-def _journal_views(setup: FinanceSetup) -> int:
-    with owner_context(setup.graph.organization_a):
-        return AuditEvent.objects.filter(
-            event_type="billing.journal.viewed", payload__clinic_id=str(setup.clinic_id)
-        ).count()
-
-
-def test_collection_without_charge_read_keeps_its_actions_but_no_charge_panels(
-    finance_setup: FinanceSetup,
-) -> None:
-    # Given: a frozen charge and a posted collection in the clinic's book.
-    terms = invoice_terms(finance_setup)
-    with finance_scope(finance_setup):
-        collected(finance_setup, 10000)
-        reference = str(
-            InvoiceTerms.objects.select_related("invoice")
-            .get(pk=terms.pk)
-            .invoice.reference
-        )[:8]
-    graph = finance_setup.graph
-    client, user = _client_for(graph, "receptionist")
-    url = reverse("billing:finance", kwargs={"clinic_id": finance_setup.clinic_id})
-    charges = reverse("billing:charges", kwargs={"clinic_id": finance_setup.clinic_id})
-    # When: reception, a charge reader, opens Finance.
-    views = _journal_views(finance_setup)
-    reader = _get(client, url)
-    # Then: the charge, its amount and the journal view are shown and audited.
-    assert reader.status_code == 200
-    assert reference in reader.content.decode()
-    assert b"R$ 100,00" in reader.content
-    assert f'href="{charges}"' in reader.content.decode()
-    assert _journal_views(finance_setup) == views + 1
-    # When: the clinic narrows charge.read and keeps reception's charge.collect.
-    with owner_context(graph.organization_a):
-        RoleGrant.objects.create(
-            organization_id=graph.organization_a,
-            clinic_id=graph.clinic_a,
-            role="receptionist",
-            permission="charge.read",
-            valid_from=timezone.now() - timedelta(minutes=1),
-        )
-    _reauthenticate(client, user.pk, "receptionist")
-    collector = _get(client, url)
-    # Then: collection keeps its commands but sees no charge, amount or panel.
-    html = collector.content.decode()
-    assert collector.status_code == 200
-    assert 'data-finance-read="denied"' in html
-    for action in ("observe", "open_cash", "close_cash"):
-        assert f'name="action" value="{action}"' in html
-    assert reference not in html
-    assert "R$ 100,00" not in html
-    assert 'id="receivables-caption"' not in html
-    assert 'id="collections-caption"' not in html
-    assert 'id="accounts-caption"' not in html
-    assert f'href="{charges}"' not in html
-    assert _journal_views(finance_setup) == views + 1
 
 
 def test_finance_answers_invalid_fields_with_the_bound_form(

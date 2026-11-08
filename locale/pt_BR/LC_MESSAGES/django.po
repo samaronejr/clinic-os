@@ -414,8 +414,8 @@ msgstr "Caixas físicos"
 msgid "Chargeback"
 msgstr "Contestação de pagamento"
 
-msgid "Charges, balances and journal records need permission to view charges. The actions below remain available to your role."
-msgstr "Cobranças, saldos e registros do diário exigem permissão para ver cobranças. As ações abaixo continuam disponíveis para o seu perfil."
+msgid "Charges, balances, journal records and financial actions need permission to view charges."
+msgstr "Cobranças, saldos, registros do diário e ações financeiras exigem permissão para ver cobranças."
 
 msgid "Check the export dates."
 msgstr "Confira as datas da exportação."
@@ -470,6 +470,9 @@ msgstr "Informe um valor exato em reais, igual ou maior que zero."
 
 msgid "Export format"
 msgstr "Formato da exportação"
+
+msgid "Financial action not permitted for your role in this clinic."
+msgstr "Ação financeira não permitida para o seu perfil nesta clínica."
 
 msgid "Financial action refused. Reload the current state before trying again."
 msgstr "A ação financeira não foi concluída. Atualize o estado atual antes de tentar novamente."

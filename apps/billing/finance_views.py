@@ -21,10 +21,14 @@ from apps.billing.errors import BillingAccessDeniedError
 from apps.billing.exports import export_journal
 from apps.billing.finance_commands import execute_command
 from apps.billing.finance_forms import ACTION_FIELDS, FinanceForm, JournalExportForm
-from apps.billing.finance_queries import finance_context, finance_permissions, permits
+from apps.billing.finance_queries import finance_context, finance_permissions
 from apps.billing.models import JournalBook
 from apps.billing.money_types import JournalConflictError, JournalInputError
-from apps.billing.security import OutgoingMoneyUnavailableError, finance_session
+from apps.billing.security import (
+    OutgoingMoneyUnavailableError,
+    finance_session,
+    financial_actor,
+)
 from apps.identity.otp import privileged_totp_required
 from apps.identity.stepup import StepUpRequired
 
@@ -44,6 +48,7 @@ SUCCESS: Final = (
 REFUSED: Final = (
     "Financial action refused. Reload the current state before trying again."
 )
+DENIED: Final = "Financial action not permitted for your role in this clinic."
 STEP_UP: Final = "Verify your authenticator again before approving or reopening."
 UNAVAILABLE: Final = "PSP and live-money actions remain blocked by external gates."
 
@@ -57,6 +62,12 @@ def _render(
     bound: FinanceForm | None = None,
 ) -> HttpResponse:
     context, choices = finance_context(clinic_id=clinic_id)
+    book = context["book"]
+    # Every response that shows journal records, re-renders included, is a view.
+    if context["can_read"] and isinstance(book, JournalBook):
+        record_phase1_event(
+            "billing.journal.viewed", clinic_id=clinic_id, affected_record_id=book.pk
+        )
     permissions = finance_permissions(clinic_id)
     forms = []
     for action in ACTION_FIELDS:
@@ -107,7 +118,7 @@ def _apply_form(
     except StepUpRequired:
         error, status = _(STEP_UP), HTTPStatus.FORBIDDEN
     except BillingAccessDeniedError:
-        error, status = _(REFUSED), HTTPStatus.FORBIDDEN
+        error, status = _(DENIED), HTTPStatus.FORBIDDEN
     except (JournalConflictError, JournalInputError, DatabaseError):
         error, status = _(REFUSED), HTTPStatus.CONFLICT
     except OutgoingMoneyUnavailableError:
@@ -120,9 +131,7 @@ def _post(
 ) -> HttpResponseBase:
     action = request.POST.get("action", "")
     if action not in ACTION_FIELDS or not permissions[action]:
-        return _render(
-            request, clinic_id, error=_(REFUSED), status=HTTPStatus.FORBIDDEN
-        )
+        return _render(request, clinic_id, error=_(DENIED), status=HTTPStatus.FORBIDDEN)
     _context, choices = finance_context(clinic_id=clinic_id)
     form = FinanceForm(request.POST, action=action, choices=choices)
     if not form.is_valid():
@@ -159,13 +168,17 @@ def finance_workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
         return render(request, "403.html", status=HTTPStatus.FORBIDDEN)
     if request.method == "POST":
         return _post(request, clinic_id, permissions)
-    book = JournalBook.objects.filter(clinic_id=clinic_id).first()
-    # Only a charge reader is shown journal records (finance_context).
-    if book is not None and permits(clinic_id=clinic_id, permission="charge.read"):
-        record_phase1_event(
-            "billing.journal.viewed", clinic_id=clinic_id, affected_record_id=book.pk
-        )
     return _render(request, clinic_id)
+
+
+def _export_window(request: HttpRequest, clinic_id: UUID) -> JournalExportForm:
+    """Refuse before reading the window: sealed lines are journal records."""
+    financial_actor(clinic_id=clinic_id, permission="charge.read")
+    financial_actor(clinic_id=clinic_id, permission="settlement.post")
+    form = JournalExportForm(request.POST)
+    if not form.is_valid():
+        raise JournalInputError
+    return form
 
 
 @never_cache
@@ -174,10 +187,8 @@ def finance_workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
 @require_POST
 def journal_export(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     """Download a journal projection by POST, never a cached identifier-bearing URL."""
-    form = JournalExportForm(request.POST)
-    if not form.is_valid():
-        return HttpResponse(_("Check the export dates."), status=HTTPStatus.BAD_REQUEST)
     try:
+        form = _export_window(request, clinic_id)
         content = export_journal(
             clinic_id=clinic_id,
             start=form.cleaned_data["start"],
