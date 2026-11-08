@@ -33,6 +33,7 @@ from apps.ai.revenue_sources import parse_context as parse_revenue_context
 from apps.comms.adapters import OperationScope, PermanentSendError, SendResult
 from apps.comms.models import IntegrationOperation
 from apps.identity.current_context import CurrentActorError
+from apps.subscriptions.services import entitlement_status
 from apps.tenancy.db import tenant_context
 
 if TYPE_CHECKING:
@@ -98,6 +99,9 @@ def eligible(scope: OperationScope) -> bool:
         return False
     try:
         enabled_policy(Purpose(invocation.purpose))
+        available = entitlement_status(
+            clinic_id=scope.clinic_id, meter="ai_tokens_in", quantity=0
+        ).available
         check_configuration(invocation.configuration, scope.clinic_id)
         source = input_for(
             clinic_id=scope.clinic_id,
@@ -123,7 +127,9 @@ def eligible(scope: OperationScope) -> bool:
             else "authority_revoked",
         )
         return False
-    return True
+    if not available:
+        finish_failure(invocation, reason="budget_exhausted")
+    return available
 
 
 def organization_lock_key(scope: OperationScope, _subject_id: UUID) -> str:

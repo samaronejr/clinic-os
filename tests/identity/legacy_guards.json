@@ -116,6 +116,18 @@
       ]
     },
     {
+      "symbol": "apps.ai.agent_policies.publish_agent_policy",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.agent_policies.policy_administrator",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Publishing needs automation administration through policy_administrator; any AI-06 version also needs the publisher's exact-clinic automation.finance through require_permission, and ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
       "symbol": "apps.ai.agent_views.agent_queue",
       "signals": [
         "decorator",
@@ -254,6 +266,134 @@
       "probes": [
         "apps.ai.brief_views.chart_assistant#cut1"
       ]
+    },
+    {
+      "symbol": "apps.ai.care_coordination._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.ai_care_staff: agent_staff (automation.admin/.organization through has_permission) and has_permission('tasks.assign'); the care SQL protocol oracles execute it."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._decide",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Attribution only: stamps the deciding actor after its callers decided authority (require_clinician for clinicians, approve_action for staff bundles); the ai_care_guard trigger repeats the decider binding and permissions."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._requested",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.input_for",
+        "apps.workflows.care.access.require_clinician"
+      ],
+      "reason": "The requester-bound gateway input reader and patient-scoped clinical.write decide; foreign, unknown and another user's runs share one denial."
+    },
+    {
+      "symbol": "apps.ai.care_coordination.request_care_coordination",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.workflows.care.access.load_plan",
+        "apps.workflows.care.access.require_clinician",
+        "apps.ehr.services.view_version",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "Only the plan's clinician asks: care plan visibility, patient-scoped clinical.write, the EHR version reader and the governed gateway admission decide; the actor id only names the requester."
+    },
+    {
+      "symbol": "apps.ai.care_views._approve",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.stepup.assert_step_up",
+        "apps.ai.attestations.step_up_evidence",
+        "apps.ai.approvals.approve_action"
+      ],
+      "reason": "A recent TOTP step-up mints one exact-digest receipt per proposal; approve_action verifies it and the approver's current authority."
+    },
+    {
+      "symbol": "apps.ai.care_views._automation",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.agent_staff, which is has_permission('automation.admin'/'automation.organization')."
+    },
+    {
+      "symbol": "apps.ai.care_views._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Presentation probe of clinic_app.ai_care_staff (agent_staff plus tasks.assign through has_permission); every command rechecks it in the service and the guard."
+    },
+    {
+      "symbol": "apps.ai.care_views._clinician",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Clinic-scoped automation.propose_clinical through require_permission/has_permission; patient-scoped clinical authority is decided again by every command."
+    },
+    {
+      "symbol": "apps.ai.care_views._context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; rows stay bounded by the care proposal policy."
+    },
+    {
+      "symbol": "apps.ai.care_views._plans",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Lists only the actor's own active plans; care plan row security (tasks.view through has_permission) decides visibility."
+    },
+    {
+      "symbol": "apps.ai.care_views.care_coordination",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required"
+      ],
+      "reason": "TOTP-protected staff view; each command delegates to the care services, whose authority is decided in Python and SQL."
     },
     {
       "symbol": "apps.ai.context.recheck_context",
@@ -594,286 +734,6 @@
       "reason": "The existing TOTP decorator and the reachable clinic-scoped native command boundary enforce staff access."
     },
     {
-      "symbol": "apps.ai.management.commands.ai_benchmark.Command.handle",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.management.base.assert_owner_database_role"
-      ],
-      "reason": "Owner-connection benchmark command, not a staff-role grant. Recording selections directly checks the executable database-role guard; the owner-only refusal is covered by tests/ai/test_benchmark_report.py."
-    },
-    {
-      "symbol": "apps.ai.management.commands.ai_eval.Command.handle",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.management.commands.ai_eval.Command.handle#cut1",
-        "apps.ai.management.commands.ai_eval.Command.handle#observed"
-      ],
-      "observe": true,
-      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
-    },
-    {
-      "symbol": "apps.ai.management.commands.ai_gateway.Command.handle",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.management.commands.ai_gateway.Command.handle#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.outbox.GatewayActionAdapter.send",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.outbox.GatewayActionAdapter.send#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.owner.propose_model",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.owner.propose_model#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.owner.reset_circuit",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.owner.reset_circuit#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.owner.set_global_switch",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.owner.set_global_switch#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.owner.transition_model",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.owner.transition_model#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.policy.check_configuration",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.policy.check_configuration#cut1",
-        "apps.ai.policy.check_configuration#observed"
-      ],
-      "observe": true,
-      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
-    },
-    {
-      "symbol": "apps.ai.policy.organization_policy",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.policy.organization_policy#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.proposals.propose_action",
-      "signals": [
-        "actor",
-        "denial",
-        "permission",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.proposals.propose_action#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.services.invoke",
-      "signals": [
-        "actor",
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.services.invoke#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.tasks.run_agent",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.tasks.run_agent#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.views.settings_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.views.settings_view#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.ai.care_coordination._care_staff",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "Asks clinic_app.ai_care_staff: agent_staff (automation.admin/.organization through has_permission) and has_permission('tasks.assign'); the care SQL protocol oracles execute it."
-    },
-    {
-      "symbol": "apps.ai.care_coordination.request_care_coordination",
-      "signals": [
-        "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.workflows.care.access.load_plan",
-        "apps.workflows.care.access.require_clinician",
-        "apps.ehr.services.view_version",
-        "apps.ai.artifacts.check_authority",
-        "apps.ai.services.invoke"
-      ],
-      "reason": "Only the plan's clinician asks: care plan visibility, patient-scoped clinical.write, the EHR version reader and the governed gateway admission decide; the actor id only names the requester."
-    },
-    {
-      "symbol": "apps.ai.care_coordination._requested",
-      "signals": [
-        "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ai.artifacts.input_for",
-        "apps.workflows.care.access.require_clinician"
-      ],
-      "reason": "The requester-bound gateway input reader and patient-scoped clinical.write decide; foreign, unknown and another user's runs share one denial."
-    },
-    {
-      "symbol": "apps.ai.care_coordination._decide",
-      "signals": [
-        "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id"
-      ],
-      "reason": "Attribution only: stamps the deciding actor after its callers decided authority (require_clinician for clinicians, approve_action for staff bundles); the ai_care_guard trigger repeats the decider binding and permissions."
-    },
-    {
-      "symbol": "apps.ai.care_views._care_staff",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "Presentation probe of clinic_app.ai_care_staff (agent_staff plus tasks.assign through has_permission); every command rechecks it in the service and the guard."
-    },
-    {
-      "symbol": "apps.ai.care_views._clinician",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "Clinic-scoped automation.propose_clinical through require_permission/has_permission; patient-scoped clinical authority is decided again by every command."
-    },
-    {
-      "symbol": "apps.ai.care_views._plans",
-      "signals": [
-        "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id"
-      ],
-      "reason": "Lists only the actor's own active plans; care plan row security (tasks.view through has_permission) decides visibility."
-    },
-    {
-      "symbol": "apps.ai.care_views._automation",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "Asks clinic_app.agent_staff, which is has_permission('automation.admin'/'automation.organization')."
-    },
-    {
-      "symbol": "apps.ai.care_views._context",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; rows stay bounded by the care proposal policy."
-    },
-    {
-      "symbol": "apps.ai.care_views.care_coordination",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.otp.privileged_totp_required"
-      ],
-      "reason": "TOTP-protected staff view; each command delegates to the care services, whose authority is decided in Python and SQL."
-    },
-    {
-      "symbol": "apps.ai.care_views._approve",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.stepup.assert_step_up",
-        "apps.ai.attestations.step_up_evidence",
-        "apps.ai.approvals.approve_action"
-      ],
-      "reason": "A recent TOTP step-up mints one exact-digest receipt per proposal; approve_action verifies it and the approver's current authority."
-    },
-    {
       "symbol": "apps.ai.front_desk._appointment_step",
       "signals": [
         "resolver"
@@ -1108,6 +968,386 @@
       "reason": "Decides configuration.clinic before the auth decorators; every refusal is the shared 403 page."
     },
     {
+      "symbol": "apps.ai.management.commands.ai_benchmark.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.management.base.assert_owner_database_role"
+      ],
+      "reason": "Owner-connection benchmark command, not a staff-role grant. Recording selections directly checks the executable database-role guard; the owner-only refusal is covered by tests/ai/test_benchmark_report.py."
+    },
+    {
+      "symbol": "apps.ai.management.commands.ai_eval.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.management.commands.ai_eval.Command.handle#cut1",
+        "apps.ai.management.commands.ai_eval.Command.handle#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.management.commands.ai_gateway.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.management.commands.ai_gateway.Command.handle#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.outbox.GatewayActionAdapter.send",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.outbox.GatewayActionAdapter.send#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.owner.propose_model",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.owner.propose_model#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.owner.reset_circuit",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.owner.reset_circuit#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.owner.set_global_switch",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.owner.set_global_switch#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.owner.transition_model",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.owner.transition_model#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.policy.check_configuration",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.policy.check_configuration#cut1",
+        "apps.ai.policy.check_configuration#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.policy.organization_policy",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.policy.organization_policy#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.proposals.propose_action",
+      "signals": [
+        "actor",
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.proposals.propose_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle._ready",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.input_for",
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.check_revenue_sources",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "AI-06 admission, approval and execution recheck the caller's exact-clinic automation.finance through require_permission; ai.0011 enforces the same rule in PostgreSQL."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.collect_revenue_cycle",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_cycle.request_revenue_cycle",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.recheck_context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.require_finance",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.retrieve_context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views._command",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.insurance.access.authority",
+        "apps.ai.approvals.approve_action"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views._review_for_proposal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.revenue_views.revenue_cycle_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required",
+        "apps.insurance.access.authority"
+      ],
+      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+    },
+    {
+      "symbol": "apps.ai.services.invoke",
+      "signals": [
+        "actor",
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.services.invoke#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.tasks.run_agent",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.tasks.run_agent#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.views.settings_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.views.settings_view#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.analytics.analyst.display_proposal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.analyst_contracts.question_metric",
+      "signals": [
+        "denial"
+      ],
+      "kind": "nonstaff",
+      "reason": "Pure closed-catalog question classification; the real positive and cross-clinic refusal paths are observed and replayed against every staff state by nonstaff_analytics_probes."
+    },
+    {
+      "symbol": "apps.analytics.analyst_contracts.recheck_request",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services._checked",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services.authorize",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.analytics.services.authorize"
+      ]
+    },
+    {
+      "symbol": "apps.analytics.services.load_report",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.services.refresh_metric",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.analytics.services.refresh_metric"
+      ]
+    },
+    {
+      "symbol": "apps.analytics.services.require_snapshot",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.views.reports",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.authorize"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
+      "symbol": "apps.analytics.workflow.refresh_step",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.analytics.services.refresh_metric"
+      ],
+      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
+    },
+    {
       "symbol": "apps.audit.services._record_comms_ingest_event",
       "signals": [
         "resolver"
@@ -1179,6 +1419,263 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
+      "symbol": "apps.billing.allocation_splits.allocate_proportionally",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.cash.close_cash",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.cash.reopen_cash",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.collections._settlement_state",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.collections.allocate_settlement",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.compensation.bridge_legacy_settlement",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.compensation.bridge_legacy_settlement#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.compensation.prepare_invoice_terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.compensation.record_appointment_completion",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.compensation.record_appointment_completion#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.compensation.record_completion",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.finance_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.finance_queries.permits"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.finance_permissions",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.finance_queries.permits"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.permits",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.finance_queries.permits#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.finance_views._command_scope",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_views.finance_workspace",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_views.journal_export",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.fiscal._document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
+    },
+    {
+      "symbol": "apps.billing.fiscal.prepare_fiscal_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.billing.fiscal_policy.require_fiscal_issuance",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
+    },
+    {
+      "symbol": "apps.billing.fiscal_policy.require_transition",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
+    },
+    {
+      "symbol": "apps.billing.journal.create_book",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.journal.post_entry",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.opening.record_opening_balance",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.payouts.approve_payout",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.payouts.transition_payout",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
       "symbol": "apps.billing.pix.prepare_pix_charge",
       "signals": [
         "role_helper"
@@ -1199,6 +1696,115 @@
       "probes": [
         "apps.billing.presentation.patient_charge#observed"
       ]
+    },
+    {
+      "symbol": "apps.billing.psp_gate.require_psp_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_gate.require_psp_sandbox",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_posting.apply_psp_evidence",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_presentation.patient_psp_payment",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_presentation.patient_psp_payment#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
+    },
+    {
+      "symbol": "apps.billing.psp_services.prepare_psp_charge",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_services.prepare_psp_outgoing",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.record_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.resolve_intent",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_worker.PspSendAdapter.send",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_worker.PspSendAdapter.send#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
+    },
+    {
+      "symbol": "apps.billing.psp_worker._eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_worker._eligible#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
     },
     {
       "symbol": "apps.billing.reconciliation._event_seen",
@@ -1231,6 +1837,114 @@
       ],
       "kind": "provider",
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+    },
+    {
+      "symbol": "apps.billing.refunds.approve_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.request_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.request_unallocated_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.transition_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.security.book_write",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.security.financial_actor",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.security.financial_actor#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.security.lock_clinic_book",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Tenant-scoped transaction lock rejects patient/machine context but grants no staff permission; the financial writer rechecks authority."
+    },
+    {
+      "symbol": "apps.billing.security.require_finance_step_up",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.security.require_finance_step_up#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.security.require_money_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Synthetic data-mode gate for outgoing-money rehearsal; grants no staff authority."
+    },
+    {
+      "symbol": "apps.billing.security.scoped_book",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
     },
     {
       "symbol": "apps.billing.services._clinic",
@@ -1477,24 +2191,6 @@
       ]
     },
     {
-      "symbol": "apps.comms.suggestions._suggestion",
-      "signals": [
-        "denial"
-      ],
-      "kind": "data_operation",
-      "reason": "Locks a proposed suggestion in the clinic; unknown, foreign and already-decided suggestions raise the shared inbox denial. Every caller then decides authority through _conversation before any write (use_suggestion through send_message, discard_suggestion directly), inside the same transaction, so the lookup grants nothing."
-    },
-    {
-      "symbol": "apps.comms.views.reminders_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.comms.views.reminders_view"
-      ]
-    },
-    {
       "symbol": "apps.comms.portal_messages._audit",
       "signals": [
         "resolver"
@@ -1559,6 +2255,24 @@
         "apps.comms.portal_messages.reply_to_portal_conversation#cut1"
       ],
       "reason": "Task-50 portal message oracles execute this patient-session reply boundary (closed threads refuse, a repeated form key returns its receipt, other patients' and other clinics' threads get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.suggestions._suggestion",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Locks a proposed suggestion in the clinic; unknown, foreign and already-decided suggestions raise the shared inbox denial. Every caller then decides authority through _conversation before any write (use_suggestion through send_message, discard_suggestion directly), inside the same transaction, so the lookup grants nothing."
+    },
+    {
+      "symbol": "apps.comms.views.reminders_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.views.reminders_view"
+      ]
     },
     {
       "symbol": "apps.consent.services._patient_audit",
@@ -2039,6 +2753,151 @@
       "probes": [
         "apps.core.workspace_access.workspace_denial"
       ]
+    },
+    {
+      "symbol": "apps.crm.access.manager",
+      "signals": [
+        "denial",
+        "permission",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.access.manager#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns._campaign",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns._campaign#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns._template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns._template#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.campaigns.campaign_audience",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.campaigns.campaign_audience#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.patient._audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.patient._audit#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.patient.set_marketing_preference",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.patient.set_marketing_preference#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.services.convert_lead",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.services.convert_lead#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.services.create_lead",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.services.create_lead#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._booking_fields",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._booking_fields#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._brand",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._brand#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views._public_patient_screen",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views._public_patient_screen#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views.manager_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views.manager_page#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.crm.views.public_access",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.crm.views.public_access#cut1"
+      ],
+      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
     },
     {
       "symbol": "apps.ehr.addenda._authorized",
@@ -4008,6 +4867,90 @@
       ]
     },
     {
+      "symbol": "apps.insurance.access.authority",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "reason": "Requires the exact clinic permission through the shared current evaluator.",
+      "probes": [
+        "apps.insurance.access.authority#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.booking_coverage",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The booking resolver requires current appointment book or move authority for the exact clinic before projecting membership and contract coverage.",
+      "probes": [
+        "apps.insurance.appointment_coverage.booking_coverage#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.record_booking_coverage",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Uses the existing envelope call path for the fixed coverage receipt command; that command rechecks the exact clinic, current source versions and encrypted coverage before issuing a receipt that runtime RLS cannot forge.",
+      "probes": [
+        "apps.insurance.appointment_coverage.record_booking_coverage#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.appointment_coverage.validate_insured_booking",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Validates the exact identifiers and dates returned by the booking-authorized insurance resolver; it grants no independent role.",
+      "probes": [
+        "apps.insurance.appointment_coverage.validate_insured_booking#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.batches.require_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Checks synthetic mode and the explicit rehearsal flag; no staff state or provider activation is granted. Every caller separately authorizes its clinic."
+    },
+    {
+      "symbol": "apps.insurance.guides.draft_guide",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The insurance write boundary requires tiss.manage and the source resolver rechecks it before exposing completed insurer charge facts.",
+      "probes": [
+        "apps.insurance.guides.draft_guide#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.memberships.backfill_membership_payers",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Requires tiss.manage in the write boundary and the exact-ANS linkage resolver.",
+      "probes": [
+        "apps.insurance.memberships.backfill_membership_payers#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.insurance.states.require_transition",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Checks the closed insurance state graph on an already authorized row. It reads no staff state and cannot grant permission."
+    },
+    {
       "symbol": "apps.intake.access.authorized_enrollment",
       "signals": [
         "denial",
@@ -4747,6 +5690,89 @@
       ]
     },
     {
+      "symbol": "apps.inventory.access.authority",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.authority#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.execute",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.execute#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.organization",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.organization#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.record",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.record#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.today",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.today#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.purchasing.request",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.purchasing.request#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.stock.balance",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.stock.balance#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.stock.stock_alerts",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.stock.stock_alerts#cut1"
+      ]
+    },
+    {
       "symbol": "apps.orders.access.current_version",
       "signals": [
         "denial"
@@ -4917,28 +5943,6 @@
       ]
     },
     {
-      "symbol": "apps.orders.queries.patient_sources",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.orders.queries.patient_sources#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.orders.queries.result_rows",
-      "signals": [
-        "denial",
-        "permission",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.orders.queries.result_rows#cut1"
-      ]
-    },
-    {
       "symbol": "apps.orders.patient_results._audit",
       "signals": [
         "denial",
@@ -4960,6 +5964,28 @@
         "apps.orders.patient_results.patient_result_file#cut1"
       ],
       "reason": "Task-50 result-download oracles execute this released-source boundary (unreleased, unknown and staff contexts share one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.orders.queries.patient_sources",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.queries.patient_sources#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.queries.result_rows",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.queries.result_rows#cut1"
+      ]
     },
     {
       "symbol": "apps.orders.review.acknowledge_result",
@@ -7426,6 +8452,97 @@
       ]
     },
     {
+      "symbol": "apps.scribe.tasks.run_transcription",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 resolves the stored media operation and reaches recording_scope before preparing or admitting audio; no broker actor or tenant claim supplies authority."
+    },
+    {
+      "symbol": "apps.scribe.transcript_views._recording",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 selected recording lookup rechecks recording_scope; the additional denial binds it to the encounter selected by the browser."
+    },
+    {
+      "symbol": "apps.scribe.transcript_views.transcript_review",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.encounter_scope"
+      ],
+      "reason": "Todo 41 native review rechecks the selected encounter through browser_binding and encounter_scope before reading, queueing or reviewing a transcript."
+    },
+    {
+      "symbol": "apps.scribe.transcription._consented",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 recording_scope decides current assignment and clinical authority; additional checks narrow future processing to accepted audio, exact recording consent, disclosure and separate AI assistance consent."
+    },
+    {
+      "symbol": "apps.scribe.transcription._unseal_audio",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 rechecks the consented recording boundary immediately before decrypting; remaining denials authenticate ciphertext and immutable chunk identity."
+    },
+    {
+      "symbol": "apps.scribe.transcription.materialize_input",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 validates the retained ciphertext reference and reaches recording_scope before producing ephemeral provider audio; no second raw-audio artifact survives object-key shredding."
+    },
+    {
+      "symbol": "apps.scribe.transcripts.authorized_recording",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 all transcript reads and human successors delegate current clinical authority to recording_scope; discarded recordings additionally refuse."
+    },
+    {
+      "symbol": "apps.scribe.transcripts.coverage_for",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.transcripts.coverage_for#cut1"
+      ],
+      "reason": "The executed census enters this actual callable on populated native coverage and verifies assigned active admission, another actor, another tenant, inactive assignment and unknown-record refusal under clinic_app. No staff-independence exemption is claimed."
+    },
+    {
       "symbol": "apps.scribe.views.capture_chunk",
       "signals": [
         "decorator"
@@ -7443,6 +8560,112 @@
       "kind": "direct",
       "probes": [
         "apps.scribe.views.capture_control#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.collection.bootstrap_synthetic_collection",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.collection.bootstrap_synthetic_collection#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.management.commands.subscription_event.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.management.commands.subscription_event.Command.handle#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services._command",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services._scope",
+      "signals": [
+        "actor",
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services._scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.entitlement_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.entitlement_status#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.receive_synthetic_event",
+      "signals": [
+        "authentication",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.receive_synthetic_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.services.subscription_snapshot",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.services.subscription_snapshot#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views._denied",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views._denied#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views._mutate",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views._mutate#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.subscriptions.views.commercial",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.subscriptions.views.commercial#cut1"
       ]
     },
     {
@@ -7925,336 +9148,6 @@
       ]
     },
     {
-      "symbol": "apps.workflows.chart_sources.read_task_sources",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.chart_sources.read_task_sources#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.definition_services._definition",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.definition_services._definition#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.designer._authorized_designer",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.designer._authorized_designer#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.designer._command",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.designer._command#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.engine._locked_step",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.engine._locked_step#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.engine._step_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.engine._step_scope#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.engine.due_steps",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.engine.due_steps#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.engine.execute_step",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.engine.execute_step#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.engine.utc_now",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.engine.utc_now#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.external.step_send_eligible",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.external.step_send_eligible#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox.require_inbox",
-      "signals": [
-        "permission",
-        "role_helper",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox.require_inbox#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox_views._authorized_inbox",
-      "signals": [
-        "decorator",
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox_views._authorized_inbox#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox_views._authorized_today",
-      "signals": [
-        "decorator",
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox_views._authorized_today#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox_views._selected_versions",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox_views._selected_versions#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox_views._terms",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox_views._terms#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox_views.today",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox_views.today#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.run_control.retry_run",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.run_control.retry_run#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.run_services.cancel_run",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.run_services.cancel_run#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.run_services.start_run",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.run_services.start_run#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.run_views._authorized_runs",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.run_views._authorized_runs#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.run_views._command",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.run_views._command#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_commands._action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_commands._action#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_commands._bulk_action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_commands._bulk_action#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_commands._submit",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_commands._submit#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_feed.task_items",
-      "signals": [
-        "permission",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_feed.task_items#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_services._command",
-      "signals": [
-        "actor"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_services._command#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.task_services._dependency",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.task_services._dependency#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.tasks.escalate",
-      "signals": [
-        "resolver",
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.tasks.escalate#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.tasks.scan_due",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.tasks.scan_due#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.today.view_today",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.today.view_today#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.views._authorized_tasks",
-      "signals": [
-        "decorator",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.views._authorized_tasks#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.views._staff_catalog",
-      "signals": [
-        "permission",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.views._staff_catalog#cut1"
-      ]
-    },
-    {
       "symbol": "apps.workflows.care.access.bind_command",
       "signals": [
         "actor"
@@ -8496,6 +9389,16 @@
       ]
     },
     {
+      "symbol": "apps.workflows.chart_sources.read_task_sources",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.chart_sources.read_task_sources#cut1"
+      ]
+    },
+    {
       "symbol": "apps.workflows.coordination_views._release_notices",
       "signals": [
         "decorator",
@@ -8565,6 +9468,162 @@
       "reason": "Decides configuration.clinic before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
     },
     {
+      "symbol": "apps.workflows.definition_services._definition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.definition_services._definition#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.designer._authorized_designer",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.designer._authorized_designer#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.designer._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.designer._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine._locked_step",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine._locked_step#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine._step_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine._step_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.due_steps",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.due_steps#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.execute_step",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.execute_step#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.utc_now",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.utc_now#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.external.step_send_eligible",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.external.step_send_eligible#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox.require_inbox",
+      "signals": [
+        "permission",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox.require_inbox#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._authorized_inbox",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._authorized_inbox#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._authorized_today",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._authorized_today#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._selected_versions",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._selected_versions#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._terms#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views.today",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views.today#cut1"
+      ]
+    },
+    {
       "symbol": "apps.workflows.release.current_notice",
       "signals": [
         "permission"
@@ -8619,6 +9678,148 @@
         "apps.workflows.release.release_result_to_patient#cut1"
       ],
       "reason": "configuration.propose first, then patient-scoped result.release and clinical.read before any write; unknown and foreign versions share ReleaseAccessDeniedError; the coordination guard binds the releaser, the release, the template and the portal message."
+    },
+    {
+      "symbol": "apps.workflows.run_control.retry_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_control.retry_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_services.cancel_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_services.cancel_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_services.start_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_services.start_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_views._authorized_runs",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_views._authorized_runs#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_views._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_views._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._bulk_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._bulk_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._submit",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._submit#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_feed.task_items",
+      "signals": [
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_feed.task_items#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_services._command",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_services._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_services._dependency",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_services._dependency#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.tasks.escalate",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.tasks.escalate#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.tasks.scan_due",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.tasks.scan_due#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.today.view_today",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.today.view_today#cut1"
+      ]
     },
     {
       "symbol": "apps.workflows.urgent._decide",
@@ -8720,1121 +9921,26 @@
       "reason": "Lists the clinic's concerns for the current actor after the caller decided demographics.read; responsibility comes from the SQL helper and overdue concerns rise for managers; rows hold no message text."
     },
     {
-      "symbol": "apps.scribe.tasks.run_transcription",
+      "symbol": "apps.workflows.views._authorized_tasks",
       "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 resolves the stored media operation and reaches recording_scope before preparing or admitting audio; no broker actor or tenant claim supplies authority."
-    },
-    {
-      "symbol": "apps.scribe.transcript_views._recording",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 selected recording lookup rechecks recording_scope; the additional denial binds it to the encounter selected by the browser."
-    },
-    {
-      "symbol": "apps.scribe.transcript_views.transcript_review",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.encounter_scope"
-      ],
-      "reason": "Todo 41 native review rechecks the selected encounter through browser_binding and encounter_scope before reading, queueing or reviewing a transcript."
-    },
-    {
-      "symbol": "apps.scribe.transcription._consented",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 recording_scope decides current assignment and clinical authority; additional checks narrow future processing to accepted audio, exact recording consent, disclosure and separate AI assistance consent."
-    },
-    {
-      "symbol": "apps.scribe.transcription._unseal_audio",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 rechecks the consented recording boundary immediately before decrypting; remaining denials authenticate ciphertext and immutable chunk identity."
-    },
-    {
-      "symbol": "apps.scribe.transcription.materialize_input",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 validates the retained ciphertext reference and reaches recording_scope before producing ephemeral provider audio; no second raw-audio artifact survives object-key shredding."
-    },
-    {
-      "symbol": "apps.scribe.transcripts.authorized_recording",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.scribe.authority.recording_scope"
-      ],
-      "reason": "Todo 41 all transcript reads and human successors delegate current clinical authority to recording_scope; discarded recordings additionally refuse."
-    },
-    {
-      "symbol": "apps.scribe.transcripts.coverage_for",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scribe.transcripts.coverage_for#cut1"
-      ],
-      "reason": "The executed census enters this actual callable on populated native coverage and verifies assigned active admission, another actor, another tenant, inactive assignment and unknown-record refusal under clinic_app. No staff-independence exemption is claimed."
-    },
-    {
-      "symbol": "apps.inventory.access.authority",
-      "signals": [
-        "denial",
+        "decorator",
         "permission"
       ],
       "kind": "direct",
       "probes": [
-        "apps.inventory.access.authority#cut1"
+        "apps.workflows.views._authorized_tasks#cut1"
       ]
     },
     {
-      "symbol": "apps.inventory.access.execute",
+      "symbol": "apps.workflows.views._staff_catalog",
       "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.access.execute#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.access.organization",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.access.organization#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.access.record",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.access.record#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.access.today",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.access.today#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.purchasing.request",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.purchasing.request#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.stock.balance",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.stock.balance#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.inventory.stock.stock_alerts",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.inventory.stock.stock_alerts#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.crm.access.manager",
-      "signals": [
-        "denial",
-        "permission",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.access.manager#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.campaigns._campaign",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.campaigns._campaign#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.campaigns._template",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.campaigns._template#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.campaigns.campaign_audience",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.campaigns.campaign_audience#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.patient._audit",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.patient._audit#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.patient.set_marketing_preference",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.patient.set_marketing_preference#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.services.convert_lead",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.services.convert_lead#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.services.create_lead",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.services.create_lead#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.views._booking_fields",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.views._booking_fields#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.views._brand",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.views._brand#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.views._public_patient_screen",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.views._public_patient_screen#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.views.manager_page",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.views.manager_page#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.crm.views.public_access",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.crm.views.public_access#cut1"
-      ],
-      "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
-    },
-    {
-      "symbol": "apps.billing.allocation_splits.allocate_proportionally",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.cash.close_cash",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.cash.reopen_cash",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.collections._settlement_state",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.collections.allocate_settlement",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.compensation.prepare_invoice_terms",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.compensation.record_completion",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.compensation.record_appointment_completion",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.billing.compensation.record_appointment_completion#cut1"
-      ],
-      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
-    },
-    {
-      "symbol": "apps.billing.compensation.bridge_legacy_settlement",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.billing.compensation.bridge_legacy_settlement#cut1"
-      ],
-      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
-    },
-    {
-      "symbol": "apps.billing.finance_queries.permits",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.billing.finance_queries.permits#cut1"
-      ],
-      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
-    },
-    {
-      "symbol": "apps.billing.finance_queries.finance_permissions",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.finance_queries.permits"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.finance_queries.finance_context",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.finance_queries.permits"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.finance_views._command_scope",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.finance_views.finance_workspace",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.finance_views.journal_export",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.journal.create_book",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.journal.post_entry",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.opening.record_opening_balance",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.payouts.approve_payout",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.payouts.transition_payout",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.refunds.request_refund",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.refunds.request_unallocated_refund",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.refunds.approve_refund",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.refunds.transition_refund",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.security.require_money_rehearsal",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "provider",
-      "reason": "Synthetic data-mode gate for outgoing-money rehearsal; grants no staff authority."
-    },
-    {
-      "symbol": "apps.billing.security.financial_actor",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.billing.security.financial_actor#cut1"
-      ],
-      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
-    },
-    {
-      "symbol": "apps.billing.security.scoped_book",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.security.lock_clinic_book",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "data_operation",
-      "reason": "Tenant-scoped transaction lock rejects patient/machine context but grants no staff permission; the financial writer rechecks authority."
-    },
-    {
-      "symbol": "apps.billing.security.book_write",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
-    },
-    {
-      "symbol": "apps.billing.security.require_finance_step_up",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.billing.security.require_finance_step_up#cut1"
-      ],
-      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
-    },
-    {
-      "symbol": "apps.billing.psp_gate.require_psp_rehearsal",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "provider",
-      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
-    },
-    {
-      "symbol": "apps.billing.psp_gate.require_psp_sandbox",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "provider",
-      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
-    },
-    {
-      "symbol": "apps.billing.psp_posting.apply_psp_evidence",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
-    },
-    {
-      "symbol": "apps.billing.psp_presentation.patient_psp_payment",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "observe": true,
-      "probes": [
-        "apps.billing.psp_presentation.patient_psp_payment#observed"
-      ],
-      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
-    },
-    {
-      "symbol": "apps.billing.psp_services.prepare_psp_charge",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
-    },
-    {
-      "symbol": "apps.billing.psp_services.prepare_psp_outgoing",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
-    },
-    {
-      "symbol": "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "provider",
-      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
-    },
-    {
-      "symbol": "apps.billing.psp_storage.record_status",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "provider",
-      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
-    },
-    {
-      "symbol": "apps.billing.psp_storage.resolve_intent",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "provider",
-      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
-    },
-    {
-      "symbol": "apps.billing.psp_worker.PspSendAdapter.send",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "observe": true,
-      "probes": [
-        "apps.billing.psp_worker.PspSendAdapter.send#observed"
-      ],
-      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
-    },
-    {
-      "symbol": "apps.billing.psp_worker._eligible",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "observe": true,
-      "probes": [
-        "apps.billing.psp_worker._eligible#observed"
-      ],
-      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
-    },
-    {
-      "symbol": "apps.billing.fiscal._document",
-      "signals": [
-        "denial"
-      ],
-      "kind": "data_operation",
-      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
-    },
-    {
-      "symbol": "apps.billing.fiscal.prepare_fiscal_document",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ]
-    },
-    {
-      "symbol": "apps.billing.fiscal_policy.require_fiscal_issuance",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "data_operation",
-      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
-    },
-    {
-      "symbol": "apps.billing.fiscal_policy.require_transition",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "data_operation",
-      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
-    },
-    {
-      "symbol": "apps.insurance.access.authority",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "reason": "Requires the exact clinic permission through the shared current evaluator.",
-      "probes": [
-        "apps.insurance.access.authority#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.insurance.appointment_coverage.booking_coverage",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "The booking resolver requires current appointment book or move authority for the exact clinic before projecting membership and contract coverage.",
-      "probes": [
-        "apps.insurance.appointment_coverage.booking_coverage#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.insurance.appointment_coverage.validate_insured_booking",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "reason": "Validates the exact identifiers and dates returned by the booking-authorized insurance resolver; it grants no independent role.",
-      "probes": [
-        "apps.insurance.appointment_coverage.validate_insured_booking#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.insurance.batches.require_rehearsal",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "data_operation",
-      "reason": "Checks synthetic mode and the explicit rehearsal flag; no staff state or provider activation is granted. Every caller separately authorizes its clinic."
-    },
-    {
-      "symbol": "apps.insurance.guides.draft_guide",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "The insurance write boundary requires tiss.manage and the source resolver rechecks it before exposing completed insurer charge facts.",
-      "probes": [
-        "apps.insurance.guides.draft_guide#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.insurance.memberships.backfill_membership_payers",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Requires tiss.manage in the write boundary and the exact-ANS linkage resolver.",
-      "probes": [
-        "apps.insurance.memberships.backfill_membership_payers#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.insurance.states.require_transition",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "data_operation",
-      "reason": "Checks the closed insurance state graph on an already authorized row. It reads no staff state and cannot grant permission."
-    },
-    {
-      "symbol": "apps.insurance.appointment_coverage.record_booking_coverage",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Uses the existing envelope call path for the fixed coverage receipt command; that command rechecks the exact clinic, current source versions and encrypted coverage before issuing a receipt that runtime RLS cannot forge.",
-      "probes": [
-        "apps.insurance.appointment_coverage.record_booking_coverage#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.analytics.analyst.display_proposal",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.analyst_contracts.question_metric",
-      "signals": [
-        "denial"
-      ],
-      "kind": "nonstaff",
-      "reason": "Pure closed-catalog question classification; the real positive and cross-clinic refusal paths are observed and replayed against every staff state by nonstaff_analytics_probes."
-    },
-    {
-      "symbol": "apps.analytics.analyst_contracts.recheck_request",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.services._checked",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.services.authorize",
-      "signals": [
-        "denial",
         "permission",
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.analytics.services.authorize"
+        "apps.workflows.views._staff_catalog#cut1"
       ]
-    },
-    {
-      "symbol": "apps.analytics.services.load_report",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.services.refresh_metric",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.analytics.services.refresh_metric"
-      ]
-    },
-    {
-      "symbol": "apps.analytics.services.require_snapshot",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.views.reports",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.authorize"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.analytics.workflow.refresh_step",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.analytics.services.refresh_metric"
-      ],
-      "reason": "Requester-bound analytics uses the executable clinic reporting authority boundary before reading, writing, decrypting or rendering data."
-    },
-    {
-      "symbol": "apps.ai.agent_policies.publish_agent_policy",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ai.agent_policies.policy_administrator",
-        "clinic_app.has_permission"
-      ],
-      "reason": "Publishing needs automation administration through policy_administrator; any AI-06 version also needs the publisher's exact-clinic automation.finance through require_permission, and ai.0011 enforces the same rule in PostgreSQL."
-    },
-    {
-      "symbol": "apps.ai.revenue_cycle._ready",
-      "signals": [
-        "actor",
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ai.artifacts.input_for",
-        "apps.ai.artifacts.read_artifact"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_cycle.check_revenue_sources",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "clinic_app.has_permission"
-      ],
-      "reason": "AI-06 admission, approval and execution recheck the caller's exact-clinic automation.finance through require_permission; ai.0011 enforces the same rule in PostgreSQL."
-    },
-    {
-      "symbol": "apps.ai.revenue_cycle.collect_revenue_cycle",
-      "signals": [
-        "actor",
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority",
-        "apps.ai.artifacts.read_artifact"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_cycle.request_revenue_cycle",
-      "signals": [
-        "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ai.artifacts.check_authority",
-        "apps.ai.services.invoke"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_sources.recheck_context",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_sources.require_finance",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_sources.retrieve_context",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority",
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_views._command",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority",
-        "apps.ai.approvals.approve_action"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_views._review_for_proposal",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ai.artifacts.read_artifact"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
-    },
-    {
-      "symbol": "apps.ai.revenue_views.revenue_cycle_page",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.otp.privileged_totp_required",
-        "apps.insurance.access.authority"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     }
   ],
   "probes": [
@@ -10383,6 +10489,16 @@
     "apps.scribe.transcripts.coverage_for#cut1",
     "apps.scribe.views.capture_chunk#cut1",
     "apps.scribe.views.capture_control#cut1",
+    "apps.subscriptions.collection.bootstrap_synthetic_collection#cut1",
+    "apps.subscriptions.management.commands.subscription_event.Command.handle#cut1",
+    "apps.subscriptions.services._command#cut1",
+    "apps.subscriptions.services._scope#cut1",
+    "apps.subscriptions.services.entitlement_status#cut1",
+    "apps.subscriptions.services.receive_synthetic_event#cut1",
+    "apps.subscriptions.services.subscription_snapshot#cut1",
+    "apps.subscriptions.views._denied#cut1",
+    "apps.subscriptions.views._mutate#cut1",
+    "apps.subscriptions.views.commercial#cut1",
     "apps.teleconsult.participants.authorize_room_topic",
     "apps.teleconsult.participants.clinician_session",
     "apps.teleconsult.participants.patient_session#observed",
@@ -14761,6 +14877,11 @@
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_receipt",
           "clinic_app.submit_data_request",
+          "clinic_app.subscription_bootstrap",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_identity_hook",
+          "clinic_app.subscription_platform_event",
+          "clinic_app.subscription_record_usage",
           "clinic_app.workflows_care_park",
           "clinic_app.workflows_release_outcome",
           "clinic_app.workflows_report_urgent"
@@ -14966,6 +15087,7 @@
           "clinic_app.scribe_assigned",
           "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_guard",
+          "clinic_app.subscription_scope",
           "clinic_app.teleconsult_clinician",
           "clinic_app.transition_data_request",
           "clinic_app.workflows_care_guard",
@@ -19195,27 +19317,34 @@
     },
     "clinic_app.user_has_org": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/tenancy/migrations/0002_rls_and_resolvers.py",
           "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
         "policies": [
-          "clinic_app.identity_passkey:passkey_owner_only"
+          "clinic_app.identity_passkey:passkey_owner_only",
+          "clinic_app.subscriptions_seat:subscription_read",
+          "clinic_app.subscriptions_subscription:subscription_read",
+          "clinic_app.subscriptions_subscriptionevent:subscription_read",
+          "clinic_app.subscriptions_usageevent:subscription_read",
+          "clinic_app.subscriptions_usagerollup:subscription_read"
         ],
         "resolvers": [
           "clinic_app.identity_passkey_registration_allowed",
           "clinic_app.identity_passkey_session_verified",
           "clinic_app.identity_passkey_use",
-          "clinic_app.identity_session_verify_passkey"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_org uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+          "clinic_app.identity_session_verify_passkey",
+          "clinic_app.subscription_scope",
+          "clinic_app.subscription_seats"
         ]
       },
       "kind": "staff_guard",
@@ -24240,6 +24369,319 @@
         "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft"
       ],
       "reason": "Current Finance authority and exact policy ancestry admit only AI-06 rows; real active/inactive, foreign-clinic, unrelated-capability and human-approval oracles execute this SQL resolver."
+    },
+    "clinic_app.subscription_ai_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_allowance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_meter text, requested_quantity bigint",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_entitled"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_subscription_sql_readers_refuse_an_inactive_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_bootstrap": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_identity_hook"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_clock": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_bootstrap",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_identity_hook",
+          "clinic_app.subscription_platform_event",
+          "clinic_app.subscription_quota"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_command": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_action text, requested_plan text, expected_revision integer, command_key uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_entitled": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_meter text, requested_quantity bigint",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_subscription_sql_readers_refuse_an_inactive_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_identity_hook": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_platform_event": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_subscription uuid, event_key uuid, requested_action text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_trial_active_failure_grace_restriction_cure_and_event_replay"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_quota": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid, requested_meter text, excluded_invocation uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_ai_guard",
+          "clinic_app.subscription_allowance"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_record_usage": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid, requested_meter text, requested_quantity bigint, happened_at timestamp with time zone, source_id uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_source_meter"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
+    },
+    "clinic_app.subscription_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, manage boolean",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_allowance",
+          "clinic_app.subscription_command",
+          "clinic_app.subscription_platform_event"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_seats": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_subscription_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.subscription_command"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_scope_and_commands_check_every_role_and_current_actor"
+      ],
+      "reason": "Todo 64 exact current-role, inactive-actor, tenant, lifecycle and replay protocols; only the owner platform bridge accepts simulated provider events."
+    },
+    "clinic_app.subscription_source_meter": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/subscriptions/migrations/_metering_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Todo 64 private resolver-only clock, retained-row, source-metering, reservation or identity-bootstrap integrity helper; runtime has no direct EXECUTE. Source and lifetime tests exercise it through the owning guarded command."
     }
   },
   "sql_method": [

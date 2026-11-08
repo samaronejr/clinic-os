@@ -53,10 +53,16 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
     with as_owner():
         executor = MigrationExecutor(connection)
         installed = frozenset(executor.loader.applied_migrations)
+        installed_targets = executor.loader.graph.leaf_nodes()
         # Protected transcript/note storage is a descendant of these guards.
         # A graph rollback must refuse without touching the catalog or history.
-        with pytest.raises(IrreversibleError):
-            executor.migrate([("teleconsult", "0004_teleconsult_v2")])
+        try:
+            with pytest.raises(IrreversibleError):
+                executor.migrate([("teleconsult", "0004_teleconsult_v2")])
+        finally:
+            # Reversible descendants can precede the protected migration in
+            # the rollback plan. Restore the full graph before checking it.
+            MigrationExecutor(connection).migrate(installed_targets)
         assert guard_definition()[0] == before
         assert catalog_hash() == original_catalog
         assert history_hash(w.organization) == original_history

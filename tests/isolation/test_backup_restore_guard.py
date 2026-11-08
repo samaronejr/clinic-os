@@ -34,9 +34,10 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         == restore_contract.TABLE_DATA
     )
     # The Wave D catalog plus 12 journal, 5 PSP, 3 fiscal, 16 insurance, 4
-    # analytics, 12 inventory and 7 CRM tables has 265 domain relations;
+    # analytics, 7 subscription, 12 inventory and 7 CRM tables has 272 domain
+    # relations;
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 265
+    assert len(restore_contract.DOMAIN_RELATIONS) == 272
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(

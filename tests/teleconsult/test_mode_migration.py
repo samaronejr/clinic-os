@@ -87,8 +87,13 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
     installed = frozenset(executor.loader.applied_migrations)
     # A graph rollback now crosses protected transcript storage. Prove that it
     # refuses, then test the exact reversible teleconsult migrations in place.
-    with pytest.raises(IrreversibleError):
-        executor.migrate(OLD)
+    try:
+        with pytest.raises(IrreversibleError):
+            executor.migrate(OLD)
+    finally:
+        # A failed graph rollback may already have removed reversible
+        # descendants. Reinstall them before comparing the protected graph.
+        MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
     assert catalog_hash() == new_catalog
     assert history_hash(w.organization) == original
     reversed_modes = False

@@ -106,6 +106,8 @@ from scribe import test_refusals as scribe_refusals
 from scribe import test_room_capture as scribe_room
 from scribe import test_transcript_concurrency as scribe_transcript_native
 from scribe import test_transcript_runtime as scribe_transcript
+from subscriptions.sql_oracles import CASES as SUBSCRIPTIONS_CASES
+from subscriptions.sql_oracles import SQL_PROTOCOL_ORACLES as SUBSCRIPTIONS_PROTOCOLS
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -391,6 +393,7 @@ REVENUE_BOUND_ORACLES = [
 
 PROTOCOL_ORACLES = {
     **CRM_PROTOCOLS,
+    **{name: list(cases) for name, cases in SUBSCRIPTIONS_PROTOCOLS.items()},
     **PSP_PROTOCOLS,
     **ANALYTICS_PROTOCOLS,
     "clinic_app.ai_revenue_ancestry": [
@@ -514,6 +517,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(
         callable(FISCAL_CASES[name])
         for names in FISCAL_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(SUBSCRIPTIONS_CASES[name])
+        for names in SUBSCRIPTIONS_PROTOCOLS.values()
         for name in names
     )
     assert all(

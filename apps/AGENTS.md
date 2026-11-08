@@ -26,6 +26,7 @@
 | inventory | immutable stock movements, batch expiry, procedure links, approved purchasing and equipment evidence | new | inventory/README.md |
 | crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
 | analytics | versioned clinic metrics, journal-only money projections, requester-bound snapshots and a reviewed synthetic analyst | new | analytics/README.md |
+| subscriptions | Clinic Ops packaging, membership seats, lifecycle and source-derived usage, separate from clinic journals | new | subscriptions/README.md |
 
 ## REQUEST AUTHORITY FLOW
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.

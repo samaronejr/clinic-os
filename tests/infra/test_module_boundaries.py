@@ -73,6 +73,7 @@ from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy, release_version
 from apps.scheduling import services as scheduling_services
 from apps.scribe import services as scribe_services
+from apps.subscriptions import services as subscription_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from apps.workflows import release as release_services
@@ -178,6 +179,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.analytics.apps.AnalyticsConfig",
         "apps.ai.apps.AiConfig",
         "apps.scribe.apps.ScribeConfig",
+        "apps.subscriptions.apps.SubscriptionsConfig",
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
@@ -453,6 +455,36 @@ def test_crm_marketing_callback_preserves_the_inbox_contract() -> None:
         parameter.kind is Parameter.POSITIONAL_OR_KEYWORD
         and parameter.default is Parameter.empty
         for parameter in parameters.values()
+    )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (subscription_services.subscription_snapshot, ["clinic_id"]),
+        (subscription_services.usage_report, ["clinic_id"]),
+        (subscription_services.entitlement_status, ["clinic_id", "meter", "quantity"]),
+        (
+            subscription_services.change_plan,
+            ["clinic_id", "plan_code", "expected_revision", "command_id"],
+        ),
+        (
+            subscription_services.cancel_subscription,
+            ["clinic_id", "expected_revision", "command_id"],
+        ),
+        (
+            subscription_services.receive_synthetic_event,
+            ["clinic_id", "subscription_id", "event_id", "action"],
+        ),
+    ],
+)
+def test_subscription_services_keep_explicit_scope_and_keyword_only_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
     )
 
 
