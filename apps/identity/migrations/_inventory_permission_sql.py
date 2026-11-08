@@ -10,11 +10,12 @@ START = prior.SQL.index(
 END = prior.SQL.index("END $f$;", START) + len("END $f$;")
 FUNCTION = prior.SQL[START:END]
 ANCHOR = " IF perm='privacy.requests' THEN"
+# The shared evaluator reads only the actor and tenant settings (the authority
+# observer's channel contract). Inventory refuses an active machine context in
+# its own resolvers, guard trigger and policies (_inventory_sql.py).
 BRANCH = """
  IF perm=ANY(ARRAY['inventory.read','inventory.use','inventory.manage',
  'inventory.transfer_org']::text[]) THEN
-  IF NULLIF(current_setting('app.current_principal',true),'') IS NOT NULL
-  THEN RETURN false; END IF;
   RETURN EXISTS(SELECT 1 FROM clinic_app.identity_userclinicrole r
    WHERE r.organization_id=tenant AND r.clinic_id=clinic AND r.user_id=actor
    AND r.revoked_at IS NULL AND (

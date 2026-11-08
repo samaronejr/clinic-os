@@ -28,7 +28,10 @@ Organization-wide policy is not a clinic stock-use grant.
 Permissions extend the current v2 bundle mechanism: `inventory.read`,
 `inventory.use`, `inventory.manage` and `inventory.transfer_org`. Released v1
 terms remain unchanged. Both Python and SQL honor current membership and v2
-RoleGrant subtraction.
+RoleGrant subtraction. Both also refuse an active machine context: Python in
+`current_context`, SQL by conjoining `NO_MACHINE_CONTEXT` with every Inventory
+resolver, guard and policy decision. The shared evaluator reads only the actor
+and tenant.
 Removing `inventory.use` does not subtract `inventory.manage`: catalog
 publication, receipt, disposal, transfer and purchase approval use their exact
 management permission in services, policies and triggers.

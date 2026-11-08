@@ -13,15 +13,17 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 # Captured from the fresh PG16 catalog after reviewing the full snapshot in
 # task-61/catalog-reviewed.json. Each category includes all roles and unexpected rows.
+# Policies and functions were re-captured when the machine-context refusal moved
+# into them; the reviewed delta adds only NO_MACHINE_CONTEXT.
 EXPECTED: Final = {
     "flags": "84a7e5f98df00cadbccaec616533fdb9ef2e2282befca48e0cd2abf74fb0c18a",
-    "policies": "dc1148b2fc71a4c4290cd1e31d52cbb7b849df54429e04005bbf33304172dcaf",
+    "policies": "231125c13dab1d8fa735ecdd53fef546708137a96278705929438c6e50465ffb",
     "grants": "e60d7d454baeebbccd2312d35861244a51d8fbd69ed2ef49045e9f984c93dc8a",
     "columns": "e69fdd5580a038337521c41c7d30e32f024fade4497944851e805fe43fa9d734",
     "types": "44ea7433271df3ec120d30edbe8786106ff59e8a7afc23bfe609273fd45eef38",
     "triggers": "a14dead95a4f86fb2c064d6b6935d28e4b0277b6987025b7bbec2c53cb6030ae",
     "constraints": "bddf9d2aca1185af9001bec9e94f410cc6c4fae9b27d51558ac4de66683d3de1",
-    "functions": "b44f25971d9e768c425ca2af02be7b83e9d5c804241ed5f17d7e6418de198085",
+    "functions": "c0b55b7ad828479e7b9d56450a8385910a10ee74ed83ba6c5876c28b6c430e81",
 }
 
 

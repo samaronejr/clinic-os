@@ -14,6 +14,10 @@ TABLES = (
     "inventory_maintenance",
     "inventory_commandreceipt",
 )
+# Staff guards refuse an active machine context (identity README, service
+# principals). The shared permission evaluator reads only the actor and tenant,
+# so every Inventory decision that consults has_permission conjoins this itself.
+NO_MACHINE_CONTEXT = "NULLIF(current_setting('app.current_principal',true),'') IS NULL"
 
 FUNCTIONS = """
 SET LOCAL ROLE clinic_resolver;
@@ -23,13 +27,14 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT (statement_timestamp() AT TIME ZONE c.timezone)::date
  FROM clinic_app.identity_clinic c WHERE c.id=clinic
  AND c.organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
- AND clinic_app.has_permission('inventory.read',clinic,NULL)
+ AND __NO_MACHINE__ AND clinic_app.has_permission('inventory.read',clinic,NULL)
 $f$;
 
 CREATE FUNCTION clinic_app.inventory_batch_allowed(batch uuid,clinic uuid)
 RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
- SELECT clinic_app.has_permission('inventory.read',clinic,NULL) AND EXISTS(
+ SELECT __NO_MACHINE__ AND clinic_app.has_permission('inventory.read',clinic,NULL)
+ AND EXISTS(
  SELECT 1 FROM clinic_app.inventory_batch b WHERE b.id=batch
  AND b.organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
  AND (b.clinic_id=clinic OR EXISTS(
@@ -103,7 +108,8 @@ BEGIN
   IF NEW.kind IN ('use','return') THEN permission:='inventory.use'; END IF;
  END IF;
  IF TG_OP='UPDATE' THEN permission:='inventory.manage'; END IF;
- IF runtime AND NOT clinic_app.has_permission(permission,NEW.clinic_id,NULL) THEN
+ IF runtime AND NOT (__NO_MACHINE__
+ AND clinic_app.has_permission(permission,NEW.clinic_id,NULL)) THEN
  RAISE EXCEPTION 'inventory_denied' USING ERRCODE='42501'; END IF;
  -- Every foreign binding is checked under the resolver, never around RLS
  -- from Python. Optional absent fields do not weaken populated bindings.
@@ -277,8 +283,8 @@ BEGIN
     WHERE l.id=NEW.destination_location_id AND l.organization_id=tenant;
    IF destination.id IS NULL OR destination.id=NEW.location_id THEN
     RAISE EXCEPTION 'inventory_denied' USING ERRCODE='42501'; END IF;
-   IF destination.clinic_id<>NEW.clinic_id AND NOT (
-    clinic_app.has_permission('inventory.transfer_org',NEW.clinic_id,NULL)
+   IF destination.clinic_id<>NEW.clinic_id AND NOT (__NO_MACHINE__
+    AND clinic_app.has_permission('inventory.transfer_org',NEW.clinic_id,NULL)
     AND clinic_app.has_permission('inventory.transfer_org',destination.clinic_id,NULL)
     AND clinic_app.has_permission('inventory.manage',destination.clinic_id,NULL))
    THEN RAISE EXCEPTION 'inventory_denied' USING ERRCODE='42501'; END IF;
@@ -315,7 +321,7 @@ BEGIN
  RAISE EXCEPTION 'inventory_immutable' USING ERRCODE='23514';
 END $f$;
 RESET ROLE;
-"""
+""".replace("__NO_MACHINE__", NO_MACHINE_CONTEXT)
 
 
 def contract_sql() -> str:
@@ -374,21 +380,23 @@ CREATE POLICY inventory_owner ON clinic_app.{table} TO clinic_owner
  CHECK(organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid);
 CREATE POLICY inventory_read ON clinic_app.{table} FOR SELECT TO clinic_app
  USING(organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
- AND {read});
+ AND {NO_MACHINE_CONTEXT} AND {read});
 CREATE POLICY inventory_insert ON clinic_app.{table} FOR INSERT TO clinic_app
  WITH CHECK(organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
- AND clinic_app.has_permission({write},clinic_id,NULL));
+ AND {NO_MACHINE_CONTEXT} AND clinic_app.has_permission({write},clinic_id,NULL));
 CREATE TRIGGER inventory_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.{table} FOR EACH ROW EXECUTE FUNCTION clinic_app.inventory_guard();
 CREATE TRIGGER inventory_no_truncate BEFORE TRUNCATE ON clinic_app.{table}
  FOR EACH STATEMENT EXECUTE FUNCTION clinic_app.inventory_no_truncate();
 """
-    sql += """
+    sql += f"""
 CREATE POLICY inventory_update ON clinic_app.inventory_purchaserequest
  FOR UPDATE TO clinic_app
- USING(clinic_app.has_permission('inventory.manage',clinic_id,NULL)
+ USING({NO_MACHINE_CONTEXT}
+ AND clinic_app.has_permission('inventory.manage',clinic_id,NULL)
  AND organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid)
- WITH CHECK(clinic_app.has_permission('inventory.manage',clinic_id,NULL));
+ WITH CHECK({NO_MACHINE_CONTEXT}
+ AND clinic_app.has_permission('inventory.manage',clinic_id,NULL));
 CREATE TRIGGER inventory_received AFTER INSERT ON clinic_app.inventory_stockmovement
  FOR EACH ROW EXECUTE FUNCTION clinic_app.inventory_received();
 """
