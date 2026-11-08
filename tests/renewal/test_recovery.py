@@ -17,7 +17,7 @@ from apps.tenancy.db import tenant_context
 from django.db import connection
 from ops.testing import restore_rehearsal, restore_verification
 from ops.testing.restore_contract import RestoreContractError
-from ops.testing.restore_queries import TARGET_SEED_SQL
+from ops.testing.restore_queries import POSTURE_SQL, TARGET_SEED_SQL
 from psycopg import sql
 
 from otp_test_support import runtime_role
@@ -169,7 +169,7 @@ def test_audit_content_verification_rejects_fabricated_rows(
 def test_posture_rejects_role_and_acl_drift(
     rbac_graph: RbacGraph, superuser_database_url: str
 ) -> None:
-    """BYPASSRLS drift and closed-table grants must fail the posture proof."""
+    """Role, closed-table grant and owner drift must fail the posture proof."""
     client = SuperuserClient(superuser_database_url)
     restore_verification.require_owner_rls_acl_posture(client)
     with psycopg.connect(superuser_database_url, autocommit=True) as raw:
@@ -195,6 +195,16 @@ def test_posture_rejects_role_and_acl_drift(
                 restore_verification.require_owner_rls_acl_posture(client)
         finally:
             raw.execute("REVOKE SELECT ON clinic_app.tenancy_tenantdatakey FROM PUBLIC")
+        # Owner drift, rolled back so no ACL is rewritten: the TOTP secret
+        # store belongs to clinic_resolver alone (identity 0050) and every
+        # other table stays clinic_owner's.
+        for drift in (
+            "ALTER TABLE clinic_app.identity_totpsecret OWNER TO clinic_owner",
+            "ALTER TABLE clinic_app.tenancy_tenantdatakey OWNER TO clinic_resolver",
+        ):
+            with raw.transaction(force_rollback=True):
+                raw.execute(drift)
+                assert raw.execute(POSTURE_SQL).fetchone() == ("relation-owner",)
 
 
 @pytest.mark.parametrize("relation", ["ai_gatewayswitch", "ai_modelconfiguration"])
