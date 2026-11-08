@@ -124,10 +124,11 @@ _EXECUTION = (
     "   RAISE EXCEPTION 'agent execution refused' USING ERRCODE='23514';\n"
     "  END IF;\n"
 )
-_GUARD = PRIOR_GUARD
+# Each step has its own name: the clock census's finite RunSQL decoder refuses a
+# module-level reassignment.
 # Approval and execution need the declared quorum of current votes.
-_GUARD = _edit(
-    _GUARD,
+_GUARD_QUORUM = _edit(
+    PRIOR_GUARD,
     _TRANSITION,
     _TRANSITION + "  IF TG_TABLE_NAME='ai_actionproposal' THEN\n"
     "   IF OLD.state<>NEW.state AND NEW.state IN ('approved','executing')\n"
@@ -135,8 +136,8 @@ _GUARD = _edit(
     "    THEN\n" + _QUORUM_REFUSED + "   END IF;\n  END IF;\n",
 )
 # So does the send boundary, under the same retained mutation lock.
-_GUARD = _edit(
-    _GUARD,
+_GUARD_SEND = _edit(
+    _GUARD_QUORUM,
     _FENCE,
     _FENCE + "   IF OLD.send_started_at IS NULL AND NEW.send_started_at IS NOT NULL\n"
     "    AND clinic_app.agent_votes_current(NEW.proposal_id,true) IS NOT TRUE THEN\n"
@@ -144,15 +145,15 @@ _GUARD = _edit(
     + "   END IF;\n",
 )
 # A new proposal declares the quorum its digest-bound payload requires.
-_GUARD = _edit(
-    _GUARD,
+_GUARD_DECLARED = _edit(
+    _GUARD_SEND,
     "  IF NEW.state<>'proposal' OR NEW.digest !~ '^[0-9a-f]{64}$' THEN\n",
     "  IF NEW.state<>'proposal' OR NEW.digest !~ '^[0-9a-f]{64}$'\n"
     "   OR NEW.quorum IS NULL OR NEW.quorum>2 THEN\n",
 )
 # A vote carries the verified step-up instant its writer recorded.
-_GUARD = _edit(
-    _GUARD,
+_GUARD_STEP_UP = _edit(
+    _GUARD_DECLARED,
     "    AND NOT clinic_app.has_permission('automation.finance',NEW.clinic_id,NULL))\n"
     "   THEN\n",
     "    AND NOT clinic_app.has_permission('automation.finance',NEW.clinic_id,NULL))\n"
@@ -163,7 +164,7 @@ _GUARD = _edit(
 )
 # Claiming an execution needs the same current votes as the transition.
 _GUARD = _edit(
-    _GUARD,
+    _GUARD_STEP_UP,
     _EXECUTION,
     _EXECUTION + "  IF clinic_app.agent_votes_current(p.id,true) IS NOT TRUE THEN\n"
     "   RAISE EXCEPTION 'agent approval quorum refused' USING ERRCODE='23514';\n"

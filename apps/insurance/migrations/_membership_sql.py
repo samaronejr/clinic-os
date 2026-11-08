@@ -1,48 +1,46 @@
 """Idempotent catalog linkage; original encrypted registration facts never change."""
 
-from psycopg import sql
+
+# Plain quoting, identical to psycopg's sql.Literal and sql.Identifier for these
+# fixed, backslash-free names: the clock census decoder evaluates neither.
+def _literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _quoted(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def foreign_key(table: str, name: str, columns: str, target: str, keys: str) -> str:
     """Install a fixed, validated FK once without changing existing values."""
-    return (
-        sql.SQL("""
+    source_literal = _literal("clinic_app." + table)
+    name_literal = _literal(name)
+    target_literal = _literal("clinic_app." + target)
+    source = _quoted("clinic_app") + "." + _quoted(table)
+    target_name = _quoted("clinic_app") + "." + _quoted(target)
+    constraint = _quoted(name)
+    column_list = ",".join(_quoted(column) for column in columns.split(","))
+    key_list = ",".join(_quoted(key) for key in keys.split(","))
+    return f"""
 DO $constraint$
 DECLARE source_forced boolean; target_forced boolean;
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
-  WHERE conrelid={}::regclass AND conname={}) THEN
+  WHERE conrelid={source_literal}::regclass AND conname={name_literal}) THEN
   SELECT relforcerowsecurity INTO source_forced FROM pg_catalog.pg_class
-   WHERE oid={}::regclass;
+   WHERE oid={source_literal}::regclass;
   SELECT relforcerowsecurity INTO target_forced FROM pg_catalog.pg_class
-   WHERE oid={}::regclass;
-  ALTER TABLE {} NO FORCE ROW LEVEL SECURITY;
-  ALTER TABLE {} NO FORCE ROW LEVEL SECURITY;
-  ALTER TABLE {} ADD CONSTRAINT {}
-   FOREIGN KEY ({}) REFERENCES {} ({})
+   WHERE oid={target_literal}::regclass;
+  ALTER TABLE {source} NO FORCE ROW LEVEL SECURITY;
+  ALTER TABLE {target_name} NO FORCE ROW LEVEL SECURITY;
+  ALTER TABLE {source} ADD CONSTRAINT {constraint}
+   FOREIGN KEY ({column_list}) REFERENCES {target_name} ({key_list})
    NOT DEFERRABLE;
-  IF source_forced THEN ALTER TABLE {} FORCE ROW LEVEL SECURITY; END IF;
-  IF target_forced THEN ALTER TABLE {} FORCE ROW LEVEL SECURITY; END IF;
+  IF source_forced THEN ALTER TABLE {source} FORCE ROW LEVEL SECURITY; END IF;
+  IF target_forced THEN ALTER TABLE {target_name} FORCE ROW LEVEL SECURITY; END IF;
  END IF;
 END $constraint$;
-""")
-        .format(
-            sql.Literal("clinic_app." + table),
-            sql.Literal(name),
-            sql.Literal("clinic_app." + table),
-            sql.Literal("clinic_app." + target),
-            sql.Identifier("clinic_app", table),
-            sql.Identifier("clinic_app", target),
-            sql.Identifier("clinic_app", table),
-            sql.Identifier(name),
-            sql.SQL(",").join(map(sql.Identifier, columns.split(","))),
-            sql.Identifier("clinic_app", target),
-            sql.SQL(",").join(map(sql.Identifier, keys.split(","))),
-            sql.Identifier("clinic_app", table),
-            sql.Identifier("clinic_app", target),
-        )
-        .as_string()
-    )
+"""  # noqa: S608 - fixed migration identifiers, no runtime input.
 
 
 INTAKE_SQL = "".join(

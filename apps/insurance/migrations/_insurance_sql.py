@@ -1,7 +1,5 @@
 """Frozen initial insurance posture and database-enforced cross-domain bindings."""
 
-from psycopg import sql
-
 TABLES = (
     "insurance_payer",
     "insurance_payercontract",
@@ -65,47 +63,51 @@ _LINK_CASES = "".join(
     + ") "
     for table, links in _REFERENCES.items()
 )
+_BOOK_TABLES = {"billing_journalsettlement", "billing_settlementallocation"}
+
+
+# Plain quoting, identical to psycopg's sql.Literal and sql.Identifier for these
+# fixed, backslash-free names: the clock census decoder evaluates neither.
+def _literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _table(name: str) -> str:
+    return '"clinic_app"."' + name.replace('"', '""') + '"'
+
+
 _LINK_MATCHES = "\n".join(
-    sql.SQL(
-        "WHEN {name} THEN EXISTS(SELECT 1 FROM {table} t {book_join} "
-        "WHERE t.id=(row_data->>link.key)::uuid "
-        "AND t.organization_id=NEW.organization_id "
-        "AND {clinic}=NEW.clinic_id)"
+    "WHEN "  # noqa: S608 - fixed migration identifiers, no runtime input.
+    + _literal(table)
+    + " THEN EXISTS(SELECT 1 FROM "
+    + _table(table)
+    + " t "
+    + (
+        "JOIN clinic_app.billing_journalbook b ON b.id=t.book_id"
+        if table in _BOOK_TABLES
+        else ""
     )
-    .format(
-        name=sql.Literal(table),
-        table=sql.Identifier("clinic_app", table),
-        book_join=sql.SQL(
-            "JOIN clinic_app.billing_journalbook b ON b.id=t.book_id"
-            if table in {"billing_journalsettlement", "billing_settlementallocation"}
-            else ""
-        ),
-        clinic=sql.SQL(
-            "b.clinic_id"
-            if table in {"billing_journalsettlement", "billing_settlementallocation"}
-            else "t.clinic_id"
-        ),
-    )
-    .as_string()
+    + " WHERE t.id=(row_data->>link.key)::uuid "
+    "AND t.organization_id=NEW.organization_id "
+    "AND "
+    + ("b.clinic_id" if table in _BOOK_TABLES else "t.clinic_id")
+    + "=NEW.clinic_id)"
     for table in sorted(
-        {target for links in _REFERENCES.values() for target in links.values()}
+        frozenset(target for links in _REFERENCES.values() for target in links.values())
     )
 )
 _RECEIPT_MATCHES = "\n".join(
-    sql.SQL(
-        "WHEN {kind} THEN EXISTS(SELECT 1 FROM {table} "
-        "WHERE id=NEW.subject_id AND organization_id=NEW.organization_id "
-        "AND clinic_id=NEW.clinic_id AND state=NEW.next_state)"
-    )
-    .format(
-        kind=sql.Literal(kind),
-        table=sql.Identifier("clinic_app", "insurance_" + kind),
-    )
-    .as_string()
+    "WHEN "  # noqa: S608 - fixed migration identifiers, no runtime input.
+    + _literal(kind)
+    + " THEN EXISTS(SELECT 1 FROM "
+    + _table("insurance_" + kind)
+    + " WHERE id=NEW.subject_id AND organization_id=NEW.organization_id "
+    "AND clinic_id=NEW.clinic_id AND state=NEW.next_state)"
     for kind in ("guide", "batch", "appeal")
 )
 
-FUNCTIONS = """
+# The clock census decoder refuses module-level reassignment: one name per value.
+_FUNCTION_TEMPLATE = """
 CREATE FUNCTION clinic_app.insurance_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
@@ -346,7 +348,7 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 $f$;
 """
 FUNCTIONS = (
-    FUNCTIONS.replace("__LINK_CASES__", _LINK_CASES)
+    _FUNCTION_TEMPLATE.replace("__LINK_CASES__", _LINK_CASES)
     .replace("__LINK_MATCHES__", _LINK_MATCHES)
     .replace("__RECEIPT_MATCHES__", _RECEIPT_MATCHES)
     .replace("__TENANT__", TENANT)
@@ -395,7 +397,7 @@ def posture() -> str:
                 f"({read} OR (kind='clinical_approved' AND "
                 "clinic_app.has_permission('tiss.clinical_approve',clinic_id,NULL)))"
             )
-        statements.append(
+        statements += [
             f"REVOKE ALL ON clinic_app.{table} FROM clinic_app,clinic_agent,PUBLIC;"
             f"GRANT SELECT,INSERT ON clinic_app.{table} TO clinic_app;"
             f"ALTER TABLE clinic_app.{table} ENABLE ROW LEVEL SECURITY;"
@@ -409,30 +411,25 @@ def posture() -> str:
             f"CREATE TRIGGER insurance_no_truncate BEFORE TRUNCATE "
             f"ON clinic_app.{table} FOR EACH STATEMENT "
             "EXECUTE FUNCTION clinic_app.insurance_guard();"
-        )
+        ]
         if table in {"insurance_guide", "insurance_batch", "insurance_appeal"}:
-            statements.append(
-                f"GRANT UPDATE(state) ON clinic_app.{table} TO clinic_app;"
-            )
-    statements.extend(
-        (
-            "CREATE UNIQUE INDEX insurance_guide_number ON "
-            "clinic_app.insurance_guide(clinic_id,number);",
-            "CREATE UNIQUE INDEX insurance_guide_invoice_root ON "
-            "clinic_app.insurance_guide(clinic_id,invoice_id) "
-            "WHERE predecessor_id IS NULL;",
-            "CREATE UNIQUE INDEX insurance_batch_number ON "
-            "clinic_app.insurance_batch(clinic_id,number);",
-            "CREATE UNIQUE INDEX insurance_glosa_line ON "
-            "clinic_app.insurance_glosa(source_id,guide_id,sequence);",
-            "CREATE UNIQUE INDEX insurance_contract_version ON "
-            "clinic_app.insurance_payercontract(clinic_id,payer_id,version);",
-            "CREATE UNIQUE INDEX insurance_price_version ON "
-            "clinic_app.insurance_pricetable(clinic_id,contract_id,version);",
-            "SET LOCAL ROLE clinic_resolver;",
-            "REVOKE EXECUTE ON FUNCTION clinic_app.insurance_guard() "
-            "FROM clinic_owner;",
-            "RESET ROLE;",
-        )
-    )
+            statements += [f"GRANT UPDATE(state) ON clinic_app.{table} TO clinic_app;"]
+    statements += [
+        "CREATE UNIQUE INDEX insurance_guide_number ON "
+        "clinic_app.insurance_guide(clinic_id,number);",
+        "CREATE UNIQUE INDEX insurance_guide_invoice_root ON "
+        "clinic_app.insurance_guide(clinic_id,invoice_id) "
+        "WHERE predecessor_id IS NULL;",
+        "CREATE UNIQUE INDEX insurance_batch_number ON "
+        "clinic_app.insurance_batch(clinic_id,number);",
+        "CREATE UNIQUE INDEX insurance_glosa_line ON "
+        "clinic_app.insurance_glosa(source_id,guide_id,sequence);",
+        "CREATE UNIQUE INDEX insurance_contract_version ON "
+        "clinic_app.insurance_payercontract(clinic_id,payer_id,version);",
+        "CREATE UNIQUE INDEX insurance_price_version ON "
+        "clinic_app.insurance_pricetable(clinic_id,contract_id,version);",
+        "SET LOCAL ROLE clinic_resolver;",
+        "REVOKE EXECUTE ON FUNCTION clinic_app.insurance_guard() FROM clinic_owner;",
+        "RESET ROLE;",
+    ]
     return "\n".join(statements)

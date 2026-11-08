@@ -115,7 +115,10 @@ RESET ROLE;
             )
             for field, target in APPOINTMENT_REFERENCES.items()
         ),
-        "".join(foreign_key(*spec) for spec in SCOPED_FOREIGN_KEYS),
+        "".join(
+            foreign_key(table, name, columns, target, keys)
+            for table, name, columns, target, keys in SCOPED_FOREIGN_KEYS
+        ),
     )
 )
 
@@ -159,7 +162,8 @@ encode(clinic_app.digest(ROW(
 )::text,'sha256'),'hex')
 """
 
-FUNCTIONS_SQL = """
+# The clock census decoder refuses module-level reassignment: one name per value.
+_FUNCTIONS_TEMPLATE = """
 SET LOCAL ROLE clinic_resolver;
 CREATE OR REPLACE FUNCTION clinic_app.insurance_booking_coverage(
  clinic uuid,patient uuid,membership uuid,contract uuid)
@@ -451,7 +455,7 @@ REVOKE EXECUTE ON FUNCTION clinic_app.insurance_appointment_guard() FROM clinic_
 RESET ROLE;
 """
 FUNCTIONS_SQL = (
-    FUNCTIONS_SQL.replace("__CHECK_UPDATE__", CHECK_UPDATE)
+    _FUNCTIONS_TEMPLATE.replace("__CHECK_UPDATE__", CHECK_UPDATE)
     .replace(
         "__RECORD_BINDING__",
         _COVERAGE_BINDING.replace("__APPOINTMENT__", "appointment")

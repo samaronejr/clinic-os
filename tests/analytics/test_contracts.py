@@ -13,6 +13,16 @@ from apps.analytics.contracts import (
     parse_descriptor,
     render_value,
 )
+from apps.analytics.definitions_v1 import METRICS as V1_METRICS
+
+
+def test_migration_catalog_snapshot_is_the_frozen_v1_definitions() -> None:
+    # The v1 migration embeds its catalog as a literal (the clock census decodes
+    # migration SQL without running code); it must equal the frozen definitions.
+    migration = import_module("apps.analytics.migrations._analytics_v1_sql")
+    assert migration._catalog == json.dumps(
+        {key: value.specification() for key, value in V1_METRICS.items()}
+    )
 
 
 def test_catalog_has_every_initial_metric_and_complete_versioned_definitions() -> None:
