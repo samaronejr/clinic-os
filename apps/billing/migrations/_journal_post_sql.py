@@ -3,18 +3,19 @@
 POST_SQL = """
 CREATE FUNCTION clinic_app.billing_post_internal(
  requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb,
- reversed_entry uuid DEFAULT NULL)
+ reversed_entry uuid DEFAULT NULL, due_dates date[] DEFAULT '{}')
 RETURNS uuid LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE book clinic_app.billing_journalbook; existing clinic_app.billing_journalentry;
  normalized jsonb; fingerprint bytea; result uuid; item jsonb; account_id uuid;
+ due date; candidate date;
 BEGIN
  PERFORM clinic_app.billing_lock_book(requested_book);
  SELECT * INTO book FROM clinic_app.billing_journalbook
  WHERE id=requested_book FOR UPDATE;
  IF book.id IS NULL OR fact_id IS NULL OR fact_kind IS NULL
  OR fact_kind !~ '^[a-z_]{1,32}$' OR jsonb_typeof(proposed_lines)<>'array'
- OR jsonb_array_length(proposed_lines)<2 THEN
+ OR jsonb_array_length(proposed_lines)<2 OR due_dates IS NULL THEN
   RAISE EXCEPTION 'invalid journal input' USING ERRCODE='22023';
  END IF;
  SELECT jsonb_agg(value ORDER BY value::text COLLATE "C") INTO normalized
@@ -50,12 +51,21 @@ BEGIN
   END IF;
   SELECT id INTO account_id FROM clinic_app.billing_account
   WHERE book_id=book.id AND code=item->>'account';
+  due:=NULL;
+  IF item->'due_on' IS NOT NULL AND item->'due_on'<>'null'::jsonb THEN
+   FOREACH candidate IN ARRAY due_dates LOOP
+    IF to_jsonb(candidate)=item->'due_on' THEN due:=candidate; END IF;
+   END LOOP;
+   IF due IS NULL THEN
+    RAISE EXCEPTION 'invalid journal line' USING ERRCODE='22023';
+   END IF;
+  END IF;
   INSERT INTO clinic_app.billing_journalline
   (id,organization_id,entry_id,account_id,side,amount_minor,
   practitioner_id,owner_id,due_on) VALUES
   (gen_random_uuid(),book.organization_id,result,account_id,item->>'side',
   (item->>'amount_minor')::bigint,(item->>'practitioner_id')::uuid,
-  (item->>'owner_id')::uuid,(item->>'due_on')::date);
+  (item->>'owner_id')::uuid,due);
  END LOOP;
  UPDATE clinic_app.billing_journalentry SET state='posted' WHERE id=result;
  RETURN result;
@@ -63,7 +73,7 @@ END $f$;
 
 CREATE FUNCTION clinic_app.billing_post(
  requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb,
- reversed_entry uuid)
+ reversed_entry uuid, due_dates date[] DEFAULT '{}')
 RETURNS TABLE(entry_id uuid, changed boolean)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
@@ -76,7 +86,7 @@ BEGIN
  changed := NOT EXISTS (SELECT 1 FROM clinic_app.billing_journalentry
  WHERE book_id=requested_book AND source_kind=fact_kind AND source_id=fact_id);
  entry_id := clinic_app.billing_post_internal(
- requested_book,fact_kind,fact_id,proposed_lines,reversed_entry);
+ requested_book,fact_kind,fact_id,proposed_lines,reversed_entry,due_dates);
  RETURN NEXT;
 END $f$;
 

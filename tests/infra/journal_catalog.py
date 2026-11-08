@@ -52,12 +52,12 @@ RESULTS: Final = {
     (
         "billing_post_internal",
         "requested_book uuid, fact_kind text, fact_id uuid, "
-        "proposed_lines jsonb, reversed_entry uuid",
+        "proposed_lines jsonb, reversed_entry uuid, due_dates date[]",
     ): "uuid",
     (
         "billing_post",
         "requested_book uuid, fact_kind text, fact_id uuid, "
-        "proposed_lines jsonb, reversed_entry uuid",
+        "proposed_lines jsonb, reversed_entry uuid, due_dates date[]",
     ): "TABLE(entry_id uuid, changed boolean)",
     ("billing_journal_guard", ""): "trigger",
     (

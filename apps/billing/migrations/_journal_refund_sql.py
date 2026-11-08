@@ -137,7 +137,9 @@ BEGIN
      ELSE 'insurer_ar' END,'credit',NEW.amount_minor);
    END IF;
    ignored:=clinic_app.billing_post_internal(book.id,'refund_rejected',NEW.id,
-    lines,OLD.approval_entry_id);
+    lines,OLD.approval_entry_id,ARRAY(SELECT l.due_on
+    FROM clinic_app.billing_journalline l WHERE l.entry_id=OLD.approval_entry_id
+    AND l.due_on IS NOT NULL));
   END IF;
  END IF;
  RETURN NEW;

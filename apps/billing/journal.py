@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, TypedDict, cast
 from uuid import UUID
 
@@ -107,6 +108,9 @@ def post_entry(
         for dimension in (line.practitioner_id, line.owner_id):
             if dimension is not None and type(dimension) is not UUID:
                 raise JournalInputError
+        # SQL receives typed due dates; clock text such as 'now' never reaches it.
+        if line.due_on is not None and type(line.due_on) is not date:
+            raise JournalInputError
         payload.append(
             {
                 "account": line.account,
@@ -127,17 +131,19 @@ def post_entry(
         with connection.cursor() as cursor:
             # Django's cursor stub omits psycopg's supported Jsonb adapter.
             execute = cast(
-                "Callable[[str, Sequence[UUID | str | Jsonb | None]], object]",
+                "Callable[[str, Sequence[UUID | str | Jsonb | list[date] | None]],"
+                " object]",
                 cursor.execute,
             )
             execute(
-                "SELECT * FROM clinic_app.billing_post(%s,%s,%s,%s,%s)",
+                "SELECT * FROM clinic_app.billing_post(%s,%s,%s,%s,%s,%s)",
                 [
                     book_id,
                     source_fact.kind,
                     source_fact.id,
                     Jsonb(payload),
                     source_fact.reversal_of,
+                    [line.due_on for line in lines if line.due_on is not None],
                 ],
             )
             result = cursor.fetchone()
