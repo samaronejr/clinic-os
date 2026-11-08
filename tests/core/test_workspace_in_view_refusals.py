@@ -76,6 +76,20 @@ NO_IN_VIEW_REFUSAL = {
         "body without thread_id and revision is 400. Its own 403 for an unknown "
         "thread is pinned in tests/ai/test_front_desk_views.py."
     ),
+    # Task 63: Reports decides analytics authority inside its transaction.
+    "analytics:reports": (
+        "For the probed roles the registry permission refuses before the view "
+        "(403), or the view answers 200 or 400. Its own read-only 403 for a "
+        "clinic outside the actor's analytics authority, native and enhanced, "
+        "is pinned in tests/analytics/test_views.py."
+    ),
+    # Task 64: the POST-only commercial command API.
+    "subscriptions:commercial": (
+        "Commands are JSON only: the probed form bodies return 400 "
+        "invalid_input before any clinic is named, and GET is 405. Its own 403 "
+        "not_available outside the actor's commercial authority is pinned in "
+        "tests/subscriptions/test_authority.py."
+    ),
 }
 
 
