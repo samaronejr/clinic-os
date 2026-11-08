@@ -332,6 +332,17 @@ def _probe_route(
             for htmx in (False, True)
             if route.name == "ai:care-coordination"
         )
+        # Task 56: the closed export form answers generic bodies with 400; a
+        # valid window reaches the view's own book and settlement.post refusal.
+        requests += tuple(
+            (
+                "POST",
+                {"start": "2033-05-18", "end": "2033-05-18", "format": "csv"},
+                htmx,
+            )
+            for htmx in (False, True)
+            if route.name == "billing:journal-export"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
@@ -495,6 +506,8 @@ def test_authorised_in_view_refusals_are_session_read_only(
         ("identity:passkeys", "receptionist"),
         ("ai:agents", "clinic_admin"),
         ("ai:agent-settings", "clinic_admin"),
+        # Task 56: Finance rechecks its action permissions inside the view.
+        ("billing:finance", "finance"),
     ):
         refused, codes = _membership_page_refusal(
             rbac_graph,

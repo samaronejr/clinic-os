@@ -331,6 +331,34 @@ def test_workflow_candidate_opens_only_delivered_operations(
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
 
 
+@pytest.mark.parametrize(
+    ("role", "modules", "home"),
+    [
+        ("finance", ["finance"], "/billing/clinics/{clinic}/finance/"),
+        # Task 50: privacy.requests opens Patients > Data-subject requests.
+        (
+            "org_admin",
+            ["patients", "finance", "automations", "settings"],
+            "/scheduling/clinics/{clinic}/settings/",
+        ),
+    ],
+)
+def test_finance_resolves_the_shell_for_bundles_without_a_clinical_landing(
+    rbac_graph: RbacGraph, role: str, modules: list[str], home: str
+) -> None:
+    # Task 56 opens Finance to these v1 bundles, which have no clinical, task
+    # or reception landing; on its own pages the shell must still name the
+    # clinic, its destinations and a home the bundle can actually open.
+    client, _user = _client_for(rbac_graph, role)
+    finance = f"/billing/clinics/{rbac_graph.clinic_a}/finance/"
+    response = _get(client, finance)
+    assert response.status_code == OK
+    assert _modules(response) == modules
+    html = response.content.decode()
+    assert f'data-command-next="{finance}"' in html
+    assert f'class="nav-brand" href="{home.format(clinic=rbac_graph.clinic_a)}"' in html
+
+
 def test_section_row_lists_open_places_and_marks_the_current_one(
     rbac_graph: RbacGraph,
 ) -> None:

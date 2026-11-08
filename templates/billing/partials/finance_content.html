@@ -5,12 +5,12 @@
   <p class="feedback feedback--muted" role="status">{% trans "Refund and payout sending is a local rehearsal. No real money is moved. PSP and live legs remain BLOCKED-ON-EG." %}</p>
   <div class="actions">
     <a class="button button--secondary" href="{% url 'billing:finance' clinic_id %}" hx-get="{% url 'billing:finance' clinic_id %}" hx-target="#finance-content" hx-swap="outerHTML">{% trans "Refresh stored balances" %}</a>
-    <a class="button button--quiet" href="{% url 'billing:charges' clinic_id %}">{% trans "Charges" %}</a>
+    {% if can_read %}<a class="button button--quiet" href="{% url 'billing:charges' clinic_id %}">{% trans "Charges" %}</a>{% endif %}
   </div>
   {% for message in messages %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus>{{ message }}</p>{% endfor %}
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
   {% if step_up_required %}<a class="button" href="{% url 'identity:step-up' %}">{% trans "Verify authenticator" %}</a>{% endif %}
-  {% if not book %}<p class="feedback" role="status">{% trans "The organization policy owner must open this clinic's book before financial operations." %}</p>{% else %}
+  {% if not book %}<p class="feedback" role="status">{% trans "The organization policy owner must open this clinic's book before financial operations." %}</p>{% elif not can_read %}<p class="feedback" role="status" data-finance-read="denied">{% trans "Charges, balances and journal records need permission to view charges. The actions below remain available to your role." %}</p>{% else %}
   <p class="hint">{% trans "Recent tables show up to 100 records. Accountant exports include the full selected period." %}</p>
   {% timezone clinic_timezone %}
   <section aria-labelledby="day-close-title">

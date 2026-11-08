@@ -97,11 +97,15 @@ def finance_context(
     """Read recent financial records; exports cover the full date window."""
     permissions = finance_permissions(clinic_id)
     book = JournalBook.objects.filter(clinic_id=clinic_id).first()
+    # The RP charges/settlements "view" cell: collection alone opens the
+    # workspace's forms, never its charge, balance or journal panels.
+    can_read = permits(clinic_id=clinic_id, permission="charge.read")
     context: dict[str, object] = {
         "clinic_id": clinic_id,
         "book": book,
         "permissions": permissions,
         "can_export": permits(clinic_id=clinic_id, permission="settlement.post"),
+        "can_read": can_read,
     }
     if book is None:
         return context, {}
@@ -134,8 +138,6 @@ def finance_context(
             :ROW_LIMIT
         ]
     )
-    totals = account_balances(book=book)
-    receivables = receivable_balances(book=book, terms=terms)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM clinic_app.billing_practitioners(%s)", [clinic_id]
@@ -194,6 +196,10 @@ def finance_context(
             for row in sessions
         ],
     }
+    if not can_read:
+        return context, choices
+    totals = account_balances(book=book)
+    receivables = receivable_balances(book=book, terms=terms)
     context.update(
         {
             "clinic_timezone": book.clinic.timezone,

@@ -21,7 +21,7 @@ from apps.billing.errors import BillingAccessDeniedError
 from apps.billing.exports import export_journal
 from apps.billing.finance_commands import execute_command
 from apps.billing.finance_forms import ACTION_FIELDS, FinanceForm, JournalExportForm
-from apps.billing.finance_queries import finance_context, finance_permissions
+from apps.billing.finance_queries import finance_context, finance_permissions, permits
 from apps.billing.models import JournalBook
 from apps.billing.money_types import JournalConflictError, JournalInputError
 from apps.billing.security import OutgoingMoneyUnavailableError, finance_session
@@ -160,7 +160,8 @@ def finance_workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
     if request.method == "POST":
         return _post(request, clinic_id, permissions)
     book = JournalBook.objects.filter(clinic_id=clinic_id).first()
-    if book is not None:
+    # Only a charge reader is shown journal records (finance_context).
+    if book is not None and permits(clinic_id=clinic_id, permission="charge.read"):
         record_phase1_event(
             "billing.journal.viewed", clinic_id=clinic_id, affected_record_id=book.pk
         )

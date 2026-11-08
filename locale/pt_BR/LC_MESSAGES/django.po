@@ -414,6 +414,9 @@ msgstr "Caixas físicos"
 msgid "Chargeback"
 msgstr "Contestação de pagamento"
 
+msgid "Charges, balances and journal records need permission to view charges. The actions below remain available to your role."
+msgstr "Cobranças, saldos e registros do diário exigem permissão para ver cobranças. As ações abaixo continuam disponíveis para o seu perfil."
+
 msgid "Check the export dates."
 msgstr "Confira as datas da exportação."
 
