@@ -51,6 +51,14 @@ TRUNCATE_GUARDS = (
             "publicbookingprofile",
         )
     ),
+    *(
+        (table, "fiscal_no_truncate")
+        for table in (
+            "billing_fiscalconfiguration",
+            "billing_fiscaldocument",
+            "billing_fiscaltransition",
+        )
+    ),
     ("ai_evaluationprotocol", "evaluation_no_truncate"),
     ("ai_evaluationrun", "evaluation_no_truncate"),
     ("ai_evaluationrating", "evaluation_no_truncate"),

@@ -173,6 +173,11 @@ def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
 
 
 PROBES = {
+    "billing_fiscal_access": SqlProbe(
+        "billing_fiscal_access",
+        ("finance",),
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
     "reception_readiness": SqlProbe(
         "reception_readiness",
         READINESS_ROLES,

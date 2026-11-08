@@ -22,6 +22,7 @@ from apps.billing.exports import export_journal
 from apps.billing.finance_commands import execute_command
 from apps.billing.finance_forms import ACTION_FIELDS, FinanceForm, JournalExportForm
 from apps.billing.finance_queries import finance_context, finance_permissions
+from apps.billing.fiscal_presentation import fiscal_summaries
 from apps.billing.models import JournalBook
 from apps.billing.money_types import JournalConflictError, JournalInputError
 from apps.billing.security import (
@@ -68,6 +69,9 @@ def _render(
         record_phase1_event(
             "billing.journal.viewed", clinic_id=clinic_id, affected_record_id=book.pk
         )
+    context["fiscal_finance"], context["fiscal_rows"] = fiscal_summaries(
+        clinic_id=clinic_id
+    )
     permissions = finance_permissions(clinic_id)
     forms = []
     for action in ACTION_FIELDS:

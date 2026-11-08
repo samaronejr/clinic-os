@@ -29,9 +29,11 @@ import pytest
 from django.utils.translation import gettext
 from playwright.sync_api import ViewportSize, expect
 
+from renewal.browser._fiscal import seed_fiscal_history
 from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._protected import encrypt
+from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import (
     full_page_screenshot,
     grant_clipboard,
@@ -369,6 +371,8 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
             "aria-current", "page"
         )
         expect(admin.locator("[data-finance-workspace]")).to_be_visible()
+        expect(admin.locator("[data-fiscal-documents]")).to_be_visible()
+        expect(admin.locator('[data-fiscal-permission="denied"]')).to_be_visible()
         capture(admin, root, "finance-workspace", width)
         click_to_navigate(
             admin.locator("[data-finance-workspace]").get_by_role(
@@ -447,6 +451,9 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         goto_settled(admin, charge_url)
         confirm_settlement(admin, AMOUNT)
         expect_state(admin, "paid")
+        expect(admin.locator('[data-document-kind="receipt"]')).to_contain_text(
+            gettext("Receipt (not a tax invoice)")
+        )
         receipt = str(admin.locator("[data-receipt]").get_attribute("data-receipt"))
         capture(admin, root, "charge-paid", width)
         goto_settled(patient, f"{base}/patient/charges/{invoice_id}/")
@@ -454,8 +461,29 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         expect(patient.locator("[data-receipt]")).to_have_attribute(
             "data-receipt", receipt
         )
+        expect(patient.locator('[data-document-kind="receipt"]')).to_contain_text(
+            gettext("Receipt (not a tax invoice)")
+        )
         assert CODE_PREFIX not in str(patient.content())
         capture(patient, root, "patient-receipt", width)
+        seed_fiscal_history(staff, manager, invoice_id)
+        goto_settled(admin, f"{base}/billing/clinics/{staff['clinic_a']}/finance/")
+        fiscal = admin.locator("[data-fiscal-documents]")
+        expect(
+            fiscal.locator('[data-fiscal-state="authorized"]').first
+        ).to_contain_text(gettext("NFS-e rehearsal (not a tax invoice)"))
+        rejected = fiscal.locator('[data-fiscal-state="rejected"]').first
+        expect(rejected).to_contain_text("E0004")
+        expect(rejected).to_contain_text(
+            gettext(
+                "The fiscal provider rejected the document. Ask the fiscal reviewer "
+                "to check the configuration."
+            )
+        )
+        assert "SYNTHETIC-SERVICE" not in admin.content()
+        assert "Synthetic clinic" not in admin.content()
+        capture(admin, root, "fiscal-history", width)
+        check_page(admin, base, root, f"fiscal-history-{width}")
 
         # An expired code is refused, regenerated once, and never paid. This
         # second charge repeats the paid one deliberately, through the screen.

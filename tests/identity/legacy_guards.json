@@ -9475,6 +9475,40 @@
         "apps.billing.psp_worker._eligible#observed"
       ],
       "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
+    },
+    {
+      "symbol": "apps.billing.fiscal._document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
+    },
+    {
+      "symbol": "apps.billing.fiscal.prepare_fiscal_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.billing.fiscal_policy.require_fiscal_issuance",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
+    },
+    {
+      "symbol": "apps.billing.fiscal_policy.require_transition",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "data_operation",
+      "reason": "Fiscal record/state/provider validation with no reachable stored staff read. The public finance mutation boundary separately requires the exact clinic's settlement.post permission; recorded providers remain offline."
     }
   ],
   "probes": [
@@ -14363,6 +14397,7 @@
           "clinic_app.ai_review_extraction",
           "clinic_app.billing_cash_receipt",
           "clinic_app.billing_complete_appointment",
+          "clinic_app.billing_fiscal_snapshot",
           "clinic_app.billing_import_legacy",
           "clinic_app.billing_post_internal",
           "clinic_app.billing_revision_snapshot",
@@ -14527,6 +14562,7 @@
           "clinic_app.billing_complete_appointment",
           "clinic_app.billing_definition_guard",
           "clinic_app.billing_finance_read",
+          "clinic_app.billing_fiscal_access",
           "clinic_app.billing_lock_book",
           "clinic_app.billing_practitioners",
           "clinic_app.billing_recognize_completion",
@@ -23297,6 +23333,85 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Stored provider/reference scope and event deduplication confer no staff-role decision; authenticated callbacks resolve these only after exact raw-byte authentication."
+    },
+    "clinic_app.billing_fiscal_access": {
+      "kind": "staff_guard",
+      "probes": [
+        "billing_fiscal_access"
+      ],
+      "reason": "Exact-clinic Finance settlement.post authority, independently exercised across every stored role and unknown/foreign clinics.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_fiscal_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_fiscalconfiguration:fiscal_read",
+          "clinic_app.billing_fiscaldocument:fiscal_insert",
+          "clinic_app.billing_fiscaldocument:fiscal_read",
+          "clinic_app.billing_fiscaldocument:fiscal_update",
+          "clinic_app.billing_fiscaltransition:fiscal_read"
+        ],
+        "resolvers": [
+          "clinic_app.billing_fiscal_guard"
+        ]
+      }
+    },
+    "clinic_app.billing_fiscal_guard": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_fixture_authorization_is_separate_from_receipts_and_posts_no_money",
+        "test_replay_cannot_change_the_invoice_or_fiscal_review",
+        "test_runtime_cannot_forge_review_or_skip_submission",
+        "test_cancellation_records_one_event_across_exact_retries",
+        "test_cancellation_after_the_reviewed_deadline_preserves_authorization"
+      ],
+      "reason": "Fiscal review/charge binding, exact Finance authority, immutable terms, legal transitions and cancellation deadlines are exercised by the registered real PostgreSQL fiscal witnesses.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_fiscal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
+    },
+    "clinic_app.billing_fiscal_snapshot": {
+      "kind": "domain_protocol",
+      "probes": [
+        "test_fixture_authorization_is_separate_from_receipts_and_posts_no_money",
+        "test_cancellation_records_one_event_across_exact_retries"
+      ],
+      "reason": "Database-owned immutable command receipts bind each transition to its stored actor and fiscal document. The registered real PostgreSQL witnesses verify exact replay and that fiscal evidence posts no money.",
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_fiscal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      }
     }
   },
   "sql_method": [

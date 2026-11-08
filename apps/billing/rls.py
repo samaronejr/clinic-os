@@ -8,7 +8,7 @@ policy.
 
 from typing import Final
 
-from apps.billing import journal_posture, psp_posture
+from apps.billing import fiscal_posture, journal_posture, psp_posture
 
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = (
@@ -25,11 +25,13 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = (
     )
     | journal_posture.TABLES
     | psp_posture.TABLES
+    | fiscal_posture.TABLES
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     **journal_posture.RUNTIME_GRANTS,
     **psp_posture.RUNTIME_GRANTS,
+    **fiscal_posture.RUNTIME_GRANTS,
     "billing_invoice": frozenset({"SELECT", "INSERT"}),
     "billing_invoicerevision": frozenset({"SELECT"}),
     "billing_settlement": frozenset({"SELECT", "INSERT"}),
@@ -51,4 +53,5 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = (
         }
     )
     | journal_posture.COLUMN_GRANTS
+    | fiscal_posture.COLUMN_GRANTS
 )

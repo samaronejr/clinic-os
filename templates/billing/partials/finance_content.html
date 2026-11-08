@@ -53,6 +53,7 @@
   </div>
   {% endtimezone %}
   {% endif %}
+  {% include "billing/partials/finance_fiscal.html" %}
   {% if forms %}
   <section aria-labelledby="financial-actions-title">
     <h2 id="financial-actions-title">{% trans "Record a financial action" %}</h2>

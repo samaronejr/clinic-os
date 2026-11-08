@@ -113,11 +113,17 @@ def _charge_fingerprint(clinic_id: UUID, patient_id: UUID, amount_minor: int) ->
 
 
 def _charge_for_key(
-    organization_id: UUID, idempotency_key: UUID, fingerprint: bytes
+    organization_id: UUID,
+    idempotency_key: UUID,
+    fingerprint: bytes,
+    *,
+    clinic_id: UUID,
 ) -> Invoice | None:
     """Return the charge this key already created, or refuse different terms."""
     invoice = Invoice.objects.filter(
-        organization_id=organization_id, idempotency_key=idempotency_key
+        organization_id=organization_id,
+        clinic_id=clinic_id,
+        idempotency_key=idempotency_key,
     ).first()
     if invoice is None:
         return None
@@ -151,7 +157,9 @@ def create_invoice(  # noqa: PLR0913 - exact scope, terms, key and optional sour
     fingerprint = _charge_fingerprint(clinic_id, patient_id, amount_minor)
     with transaction.atomic():
         _, clinic = _clinic(clinic_id)
-        replay = _charge_for_key(clinic.organization_id, idempotency_key, fingerprint)
+        replay = _charge_for_key(
+            clinic.organization_id, idempotency_key, fingerprint, clinic_id=clinic_id
+        )
         if replay is not None:
             return replay
         require_survivor(clinic_id=clinic_id, patient_id=patient_id)
@@ -173,7 +181,10 @@ def create_invoice(  # noqa: PLR0913 - exact scope, terms, key and optional sour
             # returns that exact charge. Every other refused insert - an
             # unenrolled patient, a foreign source - still raises.
             concurrent = _charge_for_key(
-                clinic.organization_id, idempotency_key, fingerprint
+                clinic.organization_id,
+                idempotency_key,
+                fingerprint,
+                clinic_id=clinic_id,
             )
             if concurrent is None:
                 raise
@@ -189,7 +200,9 @@ def charge_for_operation(*, clinic_id: UUID, idempotency_key: UUID) -> Invoice |
     """
     _, clinic = _clinic(clinic_id)
     return Invoice.objects.filter(
-        organization_id=clinic.organization_id, idempotency_key=idempotency_key
+        organization_id=clinic.organization_id,
+        clinic_id=clinic_id,
+        idempotency_key=idempotency_key,
     ).first()
 
 

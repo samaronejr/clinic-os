@@ -176,6 +176,7 @@ CONTRACTS: dict[str, Declared] = {
     "clinic_app.reception_readiness": Declared(Shape.SET),
     "clinic_app.reception_practitioners": Declared(Shape.SET),
     "clinic_app.auth_lookup": Declared(Shape.SET),
+    "clinic_app.billing_fiscal_access": Declared(Shape.BOOLEAN),
     "clinic_app.billing_payment_event_recorder": Declared(Shape.BOOLEAN),
     "clinic_app.billing_staff_invoice": Declared(Shape.BOOLEAN),
     "clinic_app.ehr_assigned": Declared(Shape.BOOLEAN),

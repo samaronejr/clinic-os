@@ -10,6 +10,7 @@ from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
+from apps.billing import fiscal
 from apps.billing.journal import post_entry
 from apps.billing.psp_gate import require_psp_sandbox
 from apps.billing.psp_posting import apply_psp_evidence
@@ -115,6 +116,28 @@ def test_psp_human_boundaries_derive_authority_from_current_context(
     parameters = signature(entrypoint).parameters
     assert list(parameters) == names
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("service", "names"),
+    [
+        (
+            fiscal.prepare_fiscal_document,
+            ["clinic_id", "invoice_id", "configuration_id", "command_id"],
+        ),
+        (fiscal.submit_fiscal_document, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.submit_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.cancel_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+    ],
+)
+def test_fiscal_services_keep_exact_scope_and_command_contract(
+    service: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(service).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
 
 
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(

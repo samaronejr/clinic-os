@@ -29,6 +29,15 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         for verb in verbs
     },
     **{
+        f"billing.fiscal.{status}": (
+            "tenant",
+            "clinic-os-web",
+            "billing.fiscal_document",
+            status,
+        )
+        for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+    },
+    **{
         f"retention.purge.{state}": (
             "tenant",
             "clinic-os-worker",

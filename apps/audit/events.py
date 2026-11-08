@@ -62,6 +62,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             for verb in verbs
         },
         **{
+            f"billing.fiscal.{status}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.fiscal_document", status
+            )
+            for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+        },
+        **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state
             )
