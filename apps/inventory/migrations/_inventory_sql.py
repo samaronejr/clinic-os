@@ -92,8 +92,13 @@ BEGIN
  IF runtime AND current_setting('transaction_isolation')<>'read committed' THEN
  RAISE EXCEPTION 'inventory_isolation' USING ERRCODE='23514'; END IF;
  row_data:=to_jsonb(NEW);
- IF TG_TABLE_NAME IN ('inventory_purchaserequest','inventory_commandreceipt')
+ IF TG_TABLE_NAME='inventory_purchaserequest'
  THEN permission:='inventory.use'; END IF;
+ IF TG_TABLE_NAME='inventory_commandreceipt' THEN
+  IF NEW.operation IN (
+  'use','return_stock','create_purchase_request','propose_replenishment')
+  THEN permission:='inventory.use'; END IF;
+ END IF;
  IF TG_TABLE_NAME='inventory_stockmovement' THEN
   IF NEW.kind IN ('use','return') THEN permission:='inventory.use'; END IF;
  END IF;
@@ -205,10 +210,6 @@ BEGIN
    'equipment','calibration','maintenance','item','batch','location','supplier',
    'minimumstock') OR NEW.recorded_by_id IS DISTINCT FROM actor THEN
    RAISE EXCEPTION 'inventory_invalid' USING ERRCODE='23514'; END IF;
-  IF NEW.operation NOT IN ('use','return_stock','create_purchase_request',
-   'propose_replenishment') AND runtime
-   AND NOT clinic_app.has_permission('inventory.manage',NEW.clinic_id,NULL) THEN
-   RAISE EXCEPTION 'inventory_denied' USING ERRCODE='42501'; END IF;
   SELECT CASE NEW.object_type
    WHEN 'item' THEN (SELECT to_jsonb(p) FROM clinic_app.inventory_item p WHERE
  p.id=NEW.object_id)
@@ -350,16 +351,20 @@ GRANT SELECT ON clinic_app.ehr_specialtyentry TO clinic_resolver;
                 " WHERE l.id=inventory_stockmovement.destination_location_id"
                 " AND clinic_app.has_permission('inventory.read',l.clinic_id,NULL)))"
             ).replace("__READ__", read)
-        write = (
-            "inventory.use"
-            if table
-            in {
-                "inventory_stockmovement",
-                "inventory_purchaserequest",
-                "inventory_commandreceipt",
-            }
-            else "inventory.manage"
-        )
+        write = "'inventory.manage'"
+        if table == "inventory_stockmovement":
+            write = (
+                "CASE WHEN kind IN ('use','return') THEN 'inventory.use'"
+                " ELSE 'inventory.manage' END"
+            )
+        elif table == "inventory_commandreceipt":
+            write = (
+                "CASE WHEN operation IN ('use','return_stock',"
+                "'create_purchase_request','propose_replenishment')"
+                " THEN 'inventory.use' ELSE 'inventory.manage' END"
+            )
+        elif table == "inventory_purchaserequest":
+            write = "'inventory.use'"
         sql += f"""
 ALTER TABLE clinic_app.{table} ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinic_app.{table} FORCE ROW LEVEL SECURITY;
@@ -372,7 +377,7 @@ CREATE POLICY inventory_read ON clinic_app.{table} FOR SELECT TO clinic_app
  AND {read});
 CREATE POLICY inventory_insert ON clinic_app.{table} FOR INSERT TO clinic_app
  WITH CHECK(organization_id=NULLIF(current_setting('app.current_tenant',true),'')::uuid
- AND clinic_app.has_permission('{write}',clinic_id,NULL));
+ AND clinic_app.has_permission({write},clinic_id,NULL));
 CREATE TRIGGER inventory_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.{table} FOR EACH ROW EXECUTE FUNCTION clinic_app.inventory_guard();
 CREATE TRIGGER inventory_no_truncate BEFORE TRUNCATE ON clinic_app.{table}

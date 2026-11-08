@@ -33,6 +33,7 @@ from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
+from apps.inventory import services as inventory_services
 from apps.orders import services as order_services
 from apps.orders.patient_results import patient_result_file
 from apps.prescription.services import create_document_draft, issue_prescription
@@ -92,6 +93,191 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            inventory_services.receive,
+            ["clinic_id", "batch_id", "location_id", "quantity", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.use,
+            [
+                "clinic_id",
+                "batch_id",
+                "location_id",
+                "quantity",
+                "command_id",
+                "procedure_entry_id",
+            ],
+            {"procedure_entry_id": None},
+        ),
+        (
+            inventory_services.return_stock,
+            ["clinic_id", "use_movement_id", "quantity", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.write_off,
+            [
+                "clinic_id",
+                "batch_id",
+                "location_id",
+                "quantity",
+                "reason",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.transfer,
+            [
+                "clinic_id",
+                "batch_id",
+                "source_location_id",
+                "destination_location_id",
+                "quantity",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.balance,
+            ["clinic_id", "batch_id", "location_id"],
+            {},
+        ),
+        (inventory_services.stock_alerts, ["clinic_id"], {}),
+        (
+            inventory_services.create_purchase_request,
+            [
+                "clinic_id",
+                "item_id",
+                "supplier_id",
+                "quantity",
+                "amount_minor",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.propose_replenishment,
+            [
+                "clinic_id",
+                "budget_id",
+                "item_id",
+                "supplier_id",
+                "quantity",
+                "amount_minor",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.approve_budget,
+            ["clinic_id", "amount_minor", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.approve_purchase,
+            ["clinic_id", "purchase_request_id", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.receive_purchase,
+            [
+                "clinic_id",
+                "purchase_request_id",
+                "batch_id",
+                "location_id",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.register_equipment,
+            [
+                "clinic_id",
+                "supplier_id",
+                "location_id",
+                "name",
+                "serial",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.record_calibration,
+            [
+                "clinic_id",
+                "equipment_id",
+                "performed_on",
+                "due_on",
+                "outcome",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.record_maintenance,
+            [
+                "clinic_id",
+                "equipment_id",
+                "performed_on",
+                "due_on",
+                "outcome",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.equipment_status,
+            ["clinic_id", "equipment_id"],
+            {},
+        ),
+        (
+            inventory_services.create_item,
+            ["clinic_id", "name", "unit", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_location,
+            ["clinic_id", "name", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_batch,
+            ["clinic_id", "item_id", "lot", "expires_on", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_supplier,
+            ["clinic_id", "name", "contact", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.set_minimum_stock,
+            ["clinic_id", "item_id", "location_id", "quantity", "command_id"],
+            {},
+        ),
+    ],
+)
+def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert {
+        name: p.default
+        for name, p in parameters.items()
+        if p.default is not Parameter.empty
+    } == defaults
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
 
 
 @pytest.mark.parametrize(

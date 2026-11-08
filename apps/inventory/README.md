@@ -29,6 +29,9 @@ Permissions extend the current v2 bundle mechanism: `inventory.read`,
 `inventory.use`, `inventory.manage` and `inventory.transfer_org`. Released v1
 terms remain unchanged. Both Python and SQL honor current membership and v2
 RoleGrant subtraction.
+Removing `inventory.use` does not subtract `inventory.manage`: catalog
+publication, receipt, disposal, transfer and purchase approval use their exact
+management permission in services, policies and triggers.
 Cross-clinic transfer requires explicit organizational transfer permission plus
 authority at both endpoints; cross-organization transfer is always denied.
 Migration `identity.0044_inventory_permissions` extends the current bound-actor
@@ -107,7 +110,9 @@ integer centavos. Receiving before approval raises `purchase_not_approved`.
 approval using current manager authority and database time.
 `propose_replenishment(clinic_id, budget_id, item_id, supplier_id, quantity,
 amount_minor, command_id)` produces only a draft within remaining approved
-budget. Approval reserves the amount atomically; receipt does not free it for
+budget. A missing or malformed budget selector is refused; it cannot become
+an ordinary unbudgeted request. Approval reserves the amount atomically;
+receipt does not free it for
 double spending. Insufficient remaining funds raises `budget_exceeded`. No
 supplier contact, external order, payment or autonomous purchase is implied.
 

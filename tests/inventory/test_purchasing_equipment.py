@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 import pytest
+from apps.identity.models import RoleGrant
+from apps.inventory import services
 from apps.inventory.models import MinimumStock, PurchaseBudget, PurchaseRequest
 from apps.inventory.services import (
     InventoryAccessDeniedError,
@@ -30,6 +32,8 @@ from identity.permission_support import owner_context
 from inventory.support import stock_world, stocked
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -298,3 +302,111 @@ def test_future_equipment_receipts_cannot_establish_current_usability(
                 outcome="passed" if kind == "calibration" else "completed",
                 command_id=uuid4(),
             )
+
+
+@pytest.mark.parametrize("budget", [None, "not-a-uuid"])
+def test_replenishment_never_creates_an_unbudgeted_proposal(
+    rbac_graph: RbacGraph, budget: object
+) -> None:
+    world = stock_world(rbac_graph)
+    with (
+        as_actor(rbac_graph, world.nurse),
+        pytest.raises(InventoryAccessDeniedError),
+    ):
+        propose_replenishment(
+            clinic_id=rbac_graph.clinic_a,
+            budget_id=cast("UUID", budget),
+            item_id=world.item,
+            supplier_id=world.supplier,
+            quantity=1,
+            amount_minor=100,
+            command_id=uuid4(),
+        )
+    with owner_context(rbac_graph.organization_a):
+        assert PurchaseRequest.objects.count() == 0
+
+
+def test_subtracting_use_preserves_inventory_management_authority(
+    rbac_graph: RbacGraph,
+) -> None:
+    world = stock_world(rbac_graph)
+    with as_actor(rbac_graph, world.nurse):
+        request = create_purchase_request(
+            clinic_id=rbac_graph.clinic_a,
+            item_id=world.item,
+            supplier_id=world.supplier,
+            quantity=3,
+            amount_minor=300,
+            command_id=uuid4(),
+        )
+    with owner_context(rbac_graph.organization_a):
+        RoleGrant.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            role="clinic_manager",
+            permission="inventory.use",
+            bundle_version=2,
+            valid_from=timezone.now(),
+        )
+    with as_actor(rbac_graph, world.manager):
+        item = services.create_item(
+            clinic_id=rbac_graph.clinic_a,
+            name="Synthetic management-only item",
+            unit="each",
+            command_id=uuid4(),
+        )
+        assert item.pk is not None
+        services.approve_budget(
+            clinic_id=rbac_graph.clinic_a, amount_minor=500, command_id=uuid4()
+        )
+        approve_purchase(
+            clinic_id=rbac_graph.clinic_a,
+            purchase_request_id=request.pk,
+            command_id=uuid4(),
+        )
+        receive_purchase(
+            clinic_id=rbac_graph.clinic_a,
+            purchase_request_id=request.pk,
+            batch_id=world.batch,
+            location_id=world.location,
+            command_id=uuid4(),
+        )
+        services.write_off(
+            clinic_id=rbac_graph.clinic_a,
+            batch_id=world.batch,
+            location_id=world.location,
+            quantity=1,
+            reason="damaged",
+            command_id=uuid4(),
+        )
+        services.transfer(
+            clinic_id=rbac_graph.clinic_a,
+            batch_id=world.batch,
+            source_location_id=world.location,
+            destination_location_id=world.other_location,
+            quantity=1,
+            command_id=uuid4(),
+        )
+        services.receive(
+            clinic_id=rbac_graph.clinic_a,
+            batch_id=world.batch,
+            location_id=world.location,
+            quantity=2,
+            command_id=uuid4(),
+        )
+        with pytest.raises(InventoryAccessDeniedError):
+            services.use(
+                clinic_id=rbac_graph.clinic_a,
+                batch_id=world.batch,
+                location_id=world.location,
+                quantity=1,
+                command_id=uuid4(),
+            )
+        assert (
+            balance(
+                clinic_id=rbac_graph.clinic_a,
+                batch_id=world.batch,
+                location_id=world.location,
+            )
+            == 3
+        )

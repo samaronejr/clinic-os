@@ -8806,6 +8806,89 @@
         "apps.scribe.transcripts.coverage_for#cut1"
       ],
       "reason": "The executed census enters this actual callable on populated native coverage and verifies assigned active admission, another actor, another tenant, inactive assignment and unknown-record refusal under clinic_app. No staff-independence exemption is claimed."
+    },
+    {
+      "symbol": "apps.inventory.access.authority",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.authority#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.execute",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.execute#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.organization",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.organization#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.record",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.record#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.access.today",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.access.today#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.purchasing.request",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.purchasing.request#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.stock.balance",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.stock.balance#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.inventory.stock.stock_alerts",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.inventory.stock.stock_alerts#cut1"
+      ]
     }
   ],
   "probes": [
@@ -9153,6 +9236,14 @@
     "apps.intake.views.patient_create_view",
     "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
+    "apps.inventory.access.authority#cut1",
+    "apps.inventory.access.execute#cut1",
+    "apps.inventory.access.organization#cut1",
+    "apps.inventory.access.record#cut1",
+    "apps.inventory.access.today#cut1",
+    "apps.inventory.purchasing.request#cut1",
+    "apps.inventory.stock.balance#cut1",
+    "apps.inventory.stock.stock_alerts#cut1",
     "apps.orders.access.current_version#cut1",
     "apps.orders.access.require_ingest#cut1",
     "apps.orders.access.require_version#cut1",
@@ -10489,11 +10580,11 @@
       "probes": [
         "test_five_confirmations_import_exact_values_without_acknowledgment",
         "test_extraction_sql_rechecks_inactive_and_foreign_actor",
-      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
-      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
-      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
-      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
-      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+        "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+        "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+        "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+        "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+        "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
@@ -10633,11 +10724,11 @@
       "probes": [
         "test_five_confirmations_import_exact_values_without_acknowledgment",
         "test_extraction_sql_rechecks_inactive_and_foreign_actor",
-      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
-      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
-      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
-      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
-      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+        "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+        "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+        "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+        "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+        "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
@@ -10666,11 +10757,11 @@
       "probes": [
         "test_five_confirmations_import_exact_values_without_acknowledgment",
         "test_extraction_sql_rechecks_inactive_and_foreign_actor",
-      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
-      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
-      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
-      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
-      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+        "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+        "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+        "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+        "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+        "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
@@ -10696,11 +10787,11 @@
       "probes": [
         "test_five_confirmations_import_exact_values_without_acknowledgment",
         "test_extraction_sql_rechecks_inactive_and_foreign_actor",
-      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
-      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
-      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
-      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
-      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+        "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+        "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+        "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+        "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+        "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
@@ -10724,11 +10815,11 @@
       "probes": [
         "test_five_confirmations_import_exact_values_without_acknowledgment",
         "test_extraction_sql_rechecks_inactive_and_foreign_actor",
-      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
-      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
-      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
-      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
-      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+        "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+        "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+        "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+        "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+        "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
@@ -13725,6 +13816,31 @@
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
           "clinic_app.intake_datasubjectrequest:privacy_staff_read",
+          "clinic_app.inventory_batch:inventory_insert",
+          "clinic_app.inventory_batch:inventory_read",
+          "clinic_app.inventory_calibration:inventory_insert",
+          "clinic_app.inventory_calibration:inventory_read",
+          "clinic_app.inventory_commandreceipt:inventory_insert",
+          "clinic_app.inventory_commandreceipt:inventory_read",
+          "clinic_app.inventory_equipment:inventory_insert",
+          "clinic_app.inventory_equipment:inventory_read",
+          "clinic_app.inventory_item:inventory_insert",
+          "clinic_app.inventory_item:inventory_read",
+          "clinic_app.inventory_location:inventory_insert",
+          "clinic_app.inventory_location:inventory_read",
+          "clinic_app.inventory_maintenance:inventory_insert",
+          "clinic_app.inventory_maintenance:inventory_read",
+          "clinic_app.inventory_minimumstock:inventory_insert",
+          "clinic_app.inventory_minimumstock:inventory_read",
+          "clinic_app.inventory_purchasebudget:inventory_insert",
+          "clinic_app.inventory_purchasebudget:inventory_read",
+          "clinic_app.inventory_purchaserequest:inventory_insert",
+          "clinic_app.inventory_purchaserequest:inventory_read",
+          "clinic_app.inventory_purchaserequest:inventory_update",
+          "clinic_app.inventory_stockmovement:inventory_insert",
+          "clinic_app.inventory_stockmovement:inventory_read",
+          "clinic_app.inventory_supplier:inventory_insert",
+          "clinic_app.inventory_supplier:inventory_read",
           "clinic_app.orders_labaccount:orders_read",
           "clinic_app.orders_order:orders_insert",
           "clinic_app.orders_order:orders_read",
@@ -13790,6 +13906,9 @@
           "clinic_app.identity_staff_directory",
           "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.intake_merge_authorized",
+          "clinic_app.inventory_batch_allowed",
+          "clinic_app.inventory_guard",
+          "clinic_app.inventory_today",
           "clinic_app.orders_can_read_version",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_allowed",
@@ -19734,7 +19853,8 @@
     "clinic_app.identity_actor_permission": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/_agent_authority_sql.py"
+          "apps/identity/migrations/_agent_authority_sql.py",
+          "apps/identity/migrations/_inventory_permission_sql.py"
         ],
         "policies": [],
         "resolvers": [
@@ -19870,45 +19990,100 @@
     "clinic_app.scribe_asr_allowed": {
       "kind": "domain_protocol",
       "reason": "Todo 41 requires current recording authority and separate exact AI assistance consent before transcription; live execution remains blocked on external gates.",
-      "probes": ["test_governed_completion_review_and_final_are_retained_successors", "test_ai_revocation_refuses_an_already_queued_invocation"],
+      "probes": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_ai_revocation_refuses_an_already_queued_invocation"
+      ],
       "discovery": {
-        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "migrations": [
+          "apps/scribe/migrations/_transcript_sql.py"
+        ],
         "policies": [],
-        "resolvers": ["clinic_app.scribe_transcript_guard"],
-        "signatures": [{"arguments": "requested_session uuid, acceptance uuid", "returns": "bool", "security_definer": true, "set_returning": false}]
+        "resolvers": [
+          "clinic_app.scribe_transcript_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, acceptance uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       }
     },
     "clinic_app.scribe_asr_consent_fence": {
       "kind": "domain_protocol",
       "reason": "Todo 41 serializes recording/AI consent publication and withdrawal with the gateway organization send fence.",
-      "probes": ["test_ai_revocation_refuses_an_already_queued_invocation", "test_native_consent_publication_holds_asr_send_fence"],
+      "probes": [
+        "test_ai_revocation_refuses_an_already_queued_invocation",
+        "test_native_consent_publication_holds_asr_send_fence"
+      ],
       "discovery": {
-        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "migrations": [
+          "apps/scribe/migrations/_transcript_sql.py"
+        ],
         "policies": [],
         "resolvers": [],
-        "signatures": [{"arguments": "", "returns": "trigger", "security_definer": true, "set_returning": false}]
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       }
     },
     "clinic_app.scribe_transcript_coverage": {
       "kind": "domain_protocol",
       "reason": "Todo 41 resolves declared epoch/track/sequence coverage only under current assigned-recording authority and preserves absent or pending chunks.",
-      "probes": ["test_coverage_reader_rechecks_native_assignment_and_active_actor", "test_finalize_without_full_coverage_requires_explicit_disposition", "test_read_unknown_and_foreign_clinic_have_the_same_denial"],
+      "probes": [
+        "test_coverage_reader_rechecks_native_assignment_and_active_actor",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_read_unknown_and_foreign_clinic_have_the_same_denial"
+      ],
       "discovery": {
-        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "migrations": [
+          "apps/scribe/migrations/_transcript_sql.py"
+        ],
         "policies": [],
-        "resolvers": ["clinic_app.scribe_transcript_guard"],
-        "signatures": [{"arguments": "requested_session uuid", "returns": "jsonb", "security_definer": true, "set_returning": false}]
+        "resolvers": [
+          "clinic_app.scribe_transcript_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       }
     },
     "clinic_app.scribe_transcript_guard": {
       "kind": "domain_protocol",
       "reason": "Todo 41 binds immutable requests and transcript successors to their real session, accepted chunk, governed invocation and complete or explicitly acknowledged coverage.",
-      "probes": ["test_governed_completion_review_and_final_are_retained_successors", "test_finalize_without_full_coverage_requires_explicit_disposition", "test_database_coverage_change_is_a_recoverable_transcript_conflict", "test_native_coverage_storage_has_per_version_and_recording_bounds"],
+      "probes": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_database_coverage_change_is_a_recoverable_transcript_conflict",
+        "test_native_coverage_storage_has_per_version_and_recording_bounds"
+      ],
       "discovery": {
-        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "migrations": [
+          "apps/scribe/migrations/_transcript_sql.py"
+        ],
         "policies": [],
         "resolvers": [],
-        "signatures": [{"arguments": "", "returns": "trigger", "security_definer": true, "set_returning": false}]
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       }
     },
     "clinic_app.scribe_consent_fence": {
@@ -21150,6 +21325,170 @@
           }
         ]
       }
+    },
+    "clinic_app.inventory_balance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "batch uuid, location uuid",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_use_is_limited_to_nurse_and_inventory_managers"
+      ],
+      "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
+    },
+    "clinic_app.inventory_batch_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "batch uuid, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [
+          "clinic_app.inventory_batch:inventory_read"
+        ],
+        "resolvers": [
+          "clinic_app.inventory_balance",
+          "clinic_app.inventory_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cross_clinic_transfer_without_org_permission_is_side_effect_free",
+        "test_use_is_limited_to_nurse_and_inventory_managers"
+      ],
+      "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
+    },
+    "clinic_app.inventory_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_write_off_requires_inventory_manager_authority",
+        "test_direct_write_off_cannot_bypass_nurse_authority",
+        "test_direct_runtime_debit_cannot_bypass_nonnegative_stock",
+        "test_subtracting_use_preserves_inventory_management_authority"
+      ],
+      "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
+    },
+    "clinic_app.inventory_no_truncate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Unconditional immutable-history TRUNCATE refusal; no staff-state decision."
+    },
+    "clinic_app.inventory_received": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_purchase_approval_and_receipt_are_separate_idempotent_commands"
+      ],
+      "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
+    },
+    "clinic_app.inventory_sum": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "batch uuid, location uuid",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.inventory_balance",
+          "clinic_app.inventory_guard"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Internal resolver-only tenant stock arithmetic; public callers and movement triggers independently enforce current authority."
+    },
+    "clinic_app.inventory_today": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "date",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/inventory/migrations/_inventory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.inventory_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_expired_batch_is_alerted_and_cannot_be_used"
+      ],
+      "reason": "Inventory authority census executes the real role, scope, permission-subtraction and stock/purchase protocol cases."
     }
   },
   "sql_method": [

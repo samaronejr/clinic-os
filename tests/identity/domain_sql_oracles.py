@@ -30,6 +30,10 @@ from ehr.test_timeline import (
     test_projection_is_after_commit_and_replay_safe,
     test_restricted_note_does_not_leak_a_timeline_count,
 )
+from identity.inventory_authority_oracle import (
+    INVENTORY_CASES,
+    INVENTORY_SQL_ORACLES,
+)
 from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
@@ -431,6 +435,7 @@ PROTOCOL_ORACLES = {
         "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
     ],
     **ORDERS_PROTOCOLS,
+    **INVENTORY_SQL_ORACLES,
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
@@ -461,6 +466,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
     assert all(callable(case) for case in SERVICE_BOOKING_CASES.values())
     assert all(callable(case) for case in SQL_CASES.values())
+    assert all(
+        callable(INVENTORY_CASES[name])
+        for names in INVENTORY_SQL_ORACLES.values()
+        for name in names
+    )
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())

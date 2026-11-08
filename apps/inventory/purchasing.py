@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from uuid import UUID
 
 from django.db import connection
 
 from apps.inventory.access import (
     MAX_AMOUNT,
+    InventoryAccessDeniedError,
     InventoryConflictError,
     authority,
     execute,
@@ -19,9 +20,6 @@ from apps.inventory.models import (
     PurchaseRequest,
     StockMovement,
 )
-
-if TYPE_CHECKING:
-    from uuid import UUID
 
 
 def request(  # noqa: PLR0913 - closed procurement command
@@ -37,6 +35,8 @@ def request(  # noqa: PLR0913 - closed procurement command
 ) -> PurchaseRequest:
     """Retain only a draft; never authorize, contact suppliers or move stock."""
     authority(clinic_id=clinic_id, permission="inventory.use")
+    if operation == "propose_replenishment" and not isinstance(budget_id, UUID):
+        raise InventoryAccessDeniedError
     positive(quantity)
     positive(amount_minor, maximum=MAX_AMOUNT)
 
