@@ -10,12 +10,15 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from importlib import import_module
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import psycopg
 import pytest
 from apps.ehr.migrations import _arrival_sql as arrival
+from apps.identity.models import Clinic
 from apps.scheduling.migrations import _expiry_audit_sql as expiry_audit
 from apps.scheduling.migrations import _lifecycle_sql as lifecycle
+from apps.scheduling.timezones import parse_local_minute
 from apps.tenancy.db import tenant_context
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
@@ -25,10 +28,7 @@ from database_urls import database_url_for_name
 from patient_service_support import runtime_role
 from patients.test_intake_migrations import _default_connection, _scratch_database
 from rbac_fixtures import rbac_graph as historical_graph
-from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
-    seed_appointment_setup,
-)
+from scheduling.appointment_service_support import seed_appointment_setup
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -97,8 +97,22 @@ def test_populated_upgrade_and_rollback_refusal(
     rbac_graph, wrapper, superuser_database_url = historical_database
     with _default_connection(wrapper):
         setup = seed_appointment_setup(rbac_graph)
+        loader = MigrationExecutor(connection).loader
+        historical_apps = loader.project_state(list(loader.applied_migrations)).apps
+        appointment_model = historical_apps.get_model("scheduling", "Appointment")
         with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
-            legacy = create_synthetic_appointment(setup)
+            timezone_key = Clinic.objects.get(pk=setup.clinic_id).timezone
+            assert timezone_key is not None
+            legacy = appointment_model.objects.create(
+                organization_id=setup.organization_id,
+                clinic_id=setup.clinic_id,
+                patient_id=setup.patient_id,
+                practitioner_id=setup.practitioner_id,
+                start_at=parse_local_minute("2035-06-02T09:00", timezone_key),
+                end_at=parse_local_minute("2035-06-02T10:00", timezone_key),
+                idempotency_key=uuid4(),
+                create_fingerprint=b"h" * 32,
+            )
         with psycopg.connect(superuser_database_url, autocommit=True) as superuser:
 
             def snapshot() -> tuple[object, ...]:

@@ -284,6 +284,22 @@ DOMAIN_RELATIONS: Final = (
     "crm_campaignsend",
     "crm_satisfactionsurvey",
     "crm_publicbookingprofile",
+    "insurance_payer",
+    "insurance_payercontract",
+    "insurance_tussterm",
+    "insurance_pricetable",
+    "insurance_insurancemembership",
+    "insurance_guide",
+    "insurance_batch",
+    "insurance_batchguide",
+    "insurance_submission",
+    "insurance_return",
+    "insurance_glosa",
+    "insurance_appeal",
+    "insurance_clinicalapproval",
+    "insurance_paymentmatch",
+    "insurance_payerrequest",
+    "insurance_commandreceipt",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

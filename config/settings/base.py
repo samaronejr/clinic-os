@@ -80,6 +80,7 @@ INSTALLED_APPS: list[str] = [
     "apps.scribe.apps.ScribeConfig",
     "apps.inventory.apps.InventoryConfig",
     "apps.crm.apps.CrmConfig",
+    "apps.insurance.apps.InsuranceConfig",
 ]
 
 # Capture is an explicit synthetic rehearsal until the provider lifecycle and
@@ -105,6 +106,17 @@ PRESCRIPTION_SYNTHETIC_ISSUANCE: bool = env.bool(
 )
 # Portal v2 rollback switch: false serves the retained v1 patient home.
 PATIENT_PORTAL_V2: bool = env.bool("PATIENT_PORTAL_V2", default=True)
+INSURANCE_SYNTHETIC_ENABLED: bool = env.bool(
+    "INSURANCE_SYNTHETIC_ENABLED", default=False
+)
+# Historical component pins; adding another release requires its own reviewed XSD.
+TISS_COMPONENT_VERSIONS: dict[str, str] = {
+    "organizational": "202601",
+    "content": "202511",
+    "tuss": "202601",
+    "security": "202511",
+    "communication": "04.03.00",
+}
 
 AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [

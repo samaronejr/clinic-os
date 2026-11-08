@@ -118,6 +118,7 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
             "inventory.use",
             "inventory.manage",
             "inventory.transfer_org",
+            "tiss.clinical_approve",
         }
         == PERMISSIONS
     )
@@ -128,6 +129,7 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
             added.add("tasks.reassign")
         if role == "physician":
             added.add("encounter.open_unscheduled")
+            added.add("tiss.clinical_approve")
         if role in {"receptionist", "nurse"}:
             added.add("reception.queue")
         # Task 50: management answers LGPD data-subject requests.

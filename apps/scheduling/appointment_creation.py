@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from django.db import transaction
 
+from apps.insurance.appointment_coverage import validate_insured_booking
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentPractitionerError,
@@ -134,6 +135,8 @@ class ServiceBooking:
     local_range: AppointmentLocalRange
     service_type_id: UUID
     resource_ids: tuple[UUID, ...] = ()
+    payer_membership_id: UUID | None = None
+    payer_contract_id: UUID | None = None
 
 
 def create_service_appointment(
@@ -154,6 +157,8 @@ def create_service_appointment(
             idempotency_key,
             booking.service_type_id,
             booking.resource_ids,
+            payer_membership_id=booking.payer_membership_id,
+            payer_contract_id=booking.payer_contract_id,
         )
     )
 
@@ -229,6 +234,8 @@ def create_service_hold(
             booking.resource_ids,
             initial_status="held",
             permission_authority=True,
+            payer_membership_id=booking.payer_membership_id,
+            payer_contract_id=booking.payer_contract_id,
         )
     )
 
@@ -315,6 +322,7 @@ def _create_appointment(request: CreateAppointmentRequest) -> Appointment:
         if replay is not None:
             return replay
         validate_new_appointment(request, prepared)
+        validate_insured_booking(clinic=clinic, request=request, prepared=prepared)
         target = AppointmentWriteTarget(
             organization_id=clinic.organization_id,
             clinic_id=clinic_id,
@@ -347,6 +355,7 @@ def _create_appointment(request: CreateAppointmentRequest) -> Appointment:
         clinic, prepared, replay = _post_lock_revalidate(request, prepared, rows)
         if replay is not None:
             return replay
+        validate_insured_booking(clinic=clinic, request=request, prepared=prepared)
         appointment, created = insert_appointment(clinic, request, prepared)
         if not created:
             return appointment

@@ -11,6 +11,7 @@ from infra import (
     fiscal_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
+    insurance_catalog,
     inventory_catalog,
     journal_catalog,
     longitudinal_catalog,
@@ -27,6 +28,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *crm_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *fiscal_catalog.TABLE_GRANTS,
+    *insurance_catalog.TABLE_GRANTS,
     *journal_catalog.TABLE_GRANTS,
     *psp_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
@@ -198,6 +200,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
     *inventory_catalog.COLUMN_GRANTS,
+    *insurance_catalog.COLUMN_GRANTS,
     *journal_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("ehr_drafteditstate", "version_id", "SELECT"),
@@ -562,6 +565,7 @@ POSTURE_OVERRIDES: Final = {
     **front_desk_catalog.POSTURE,
     **coordination_catalog.POSTURE,
     **inventory_catalog.POSTURE,
+    **insurance_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     *crm_catalog.RESULTS,
@@ -878,6 +882,7 @@ FUNCTION_SIGNATURES: Final = {
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
     *inventory_catalog.RESULTS,
+    *insurance_catalog.RESULTS,
     *journal_catalog.RESULTS,
     *psp_catalog.RESULTS,
 }
@@ -1367,6 +1372,7 @@ FUNCTION_RESULTS: Final = {
     **front_desk_catalog.RESULTS,
     **coordination_catalog.RESULTS,
     **inventory_catalog.RESULTS,
+    **insurance_catalog.RESULTS,
 }
 
 

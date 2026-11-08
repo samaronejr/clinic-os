@@ -10,6 +10,8 @@ class SchedulingRuleError(Exception):
     """Expose a machine code without naming an occupied resource or patient."""
 
     MESSAGES: ClassVar[dict[str, Promise]] = {
+        "payer_refused": _("The payer refused this coverage or authorization."),
+        "payer_pending": _("Complete the required payer checks before confirming."),
         "resource_conflict": _("A required resource is unavailable for this window."),
         "outside_template": _(
             "Choose a window inside the resource availability template."
