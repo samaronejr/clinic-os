@@ -7,6 +7,7 @@ from billing import (
     test_collection_recovery,
     test_finance_views,
     test_journal,
+    test_journal_read_policy,
     test_legacy_bridge,
     test_legacy_replay_scope,
     test_outgoing_sessions,
@@ -69,6 +70,7 @@ CASES = {
         test_collection_recovery.test_refunded_prepayment_can_settle_the_completion_receivable_again,
         test_finance_views.test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values,
         test_journal.test_unbalanced_entry_is_rejected_only_when_transaction_commits,
+        test_journal_read_policy.test_narrowed_charge_read_returns_no_journal_record_row,
         test_legacy_bridge.test_first_legacy_receipt_prepares_missing_terms_and_commits_the_bridge,
         test_legacy_replay_scope.test_legacy_import_preflight_uses_the_requested_clinic,
         test_outgoing_sessions.test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation,
@@ -79,6 +81,9 @@ CASES = {
 _READERS = [
     "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
 ]
+# The record read predicates and choices also run with charge.read narrowed.
+_NARROWED_READ = "test_narrowed_charge_read_returns_no_journal_record_row"
+_RECORD_READERS = [*_READERS, _NARROWED_READ]
 _POSTING = [
     "test_source_fact_replay_is_exact_and_different_content_is_refused",
     "test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid",
@@ -94,7 +99,7 @@ SQL_PROTOCOL_ORACLES = {
     "clinic_app.billing_account_balance": _CASH,
     "clinic_app.billing_allocation_guard": _COMPLETION,
     "clinic_app.billing_allocation_paid": _COMPLETION,
-    "clinic_app.billing_book_access": _READERS,
+    "clinic_app.billing_book_access": _RECORD_READERS,
     "clinic_app.billing_cash_guard": _CASH,
     "clinic_app.billing_cash_receipt": _CASH,
     "clinic_app.billing_charge_authorized": _READERS,
@@ -106,8 +111,9 @@ SQL_PROTOCOL_ORACLES = {
     ],
     "clinic_app.billing_entry_readable": [
         "test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values",
+        _NARROWED_READ,
     ],
-    "clinic_app.billing_finance_read": _READERS,
+    "clinic_app.billing_finance_read": _RECORD_READERS,
     "clinic_app.billing_finance_session": [
         *_CASH,
         "test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation",
@@ -131,7 +137,7 @@ SQL_PROTOCOL_ORACLES = {
     ],
     "clinic_app.billing_post": _POSTING,
     "clinic_app.billing_post_internal": _POSTING,
-    "clinic_app.billing_practitioners": _READERS,
+    "clinic_app.billing_practitioners": _RECORD_READERS,
     "clinic_app.billing_recognize_completion": _COMPLETION,
     "clinic_app.billing_refund_guard": [
         "test_split_refunds_reverse_exact_total_entitlement_with_cumulative_half_even",

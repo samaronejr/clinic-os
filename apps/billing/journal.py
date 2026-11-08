@@ -50,9 +50,14 @@ class _LinePayload(TypedDict):
 
 
 def create_book(*, clinic_id: UUID) -> JournalBook:
-    """Record the explicit completion-net-v1 clinic policy and seed its chart once."""
+    """Record the explicit completion-net-v1 clinic policy and seed its chart once.
+
+    Seeding the chart takes billing_lock_book, so the policy owner needs
+    charge.read as well, like every other Finance command.
+    """
     with transaction.atomic():
         financial_actor(clinic_id=clinic_id, permission="finance.policy")
+        financial_actor(clinic_id=clinic_id, permission="charge.read")
         try:
             clinic = Clinic.objects.get(pk=clinic_id)
         except Clinic.DoesNotExist as error:

@@ -231,6 +231,14 @@ Operational financial rows exclude clinician-only and patient identities.
 Audit events contain only registered metadata keys. Presentation uses English
 msgids and the pt-BR catalog; selectors remain in POST bodies.
 
+PostgreSQL applies the RP charges/settlements view cell itself. Every journal
+record row, from accounts and entries to cash events, and the practitioner
+choices need charge.read together with a Finance command in the exact clinic.
+The book row needs only the command, so a role whose clinic narrowed
+charge.read still resolves its book and is shown the permission denial;
+clinician-only roles see no book. Seeding the chart takes the book lock, so
+opening the book needs charge.read like every other Finance command.
+
 Sending/outcome operations are **local synthetic rehearsals only**.
 PSP, sandbox and live-money legs remain **BLOCKED-ON-EG**. No provider call,
 credentials, activation flag, fiscal tax classification or SaaS book is added.

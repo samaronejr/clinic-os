@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 __all__ = ("finance_setup",)
 
-# Every command but opening the book takes clinic_app.billing_lock_book.
+# Every command offered once the book is open; each takes billing_lock_book.
 BOOK_COMMANDS: Final = tuple(sorted(set(ACTION_FIELDS) - {"create_book"}))
 # Every row a refused command could have written.
 LEDGER: Final[Mapping[type[Model], tuple[str, ...]]] = {
@@ -232,7 +232,8 @@ def test_book_lock_refusal_is_a_permission_denial_in_every_command_service(
     for action, form in forms.items():
         before = _ledger(finance_setup)
         # When: a holder without charge.read runs the actual command service,
-        # bypassing the view: only PostgreSQL's book lock can refuse it there.
+        # bypassing the view: the refund and payout requests' own charge.read
+        # check or else PostgreSQL's book lock refuses it there.
         with (
             runtime_role(),
             tenant_context(holders[_holder(action)].pk, graph.organization_a),

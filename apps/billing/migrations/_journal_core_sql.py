@@ -63,6 +63,7 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  AND NULLIF(current_setting('app.current_principal',true),'') IS NULL
  AND (CASE WHEN permission='journal.read'
  THEN clinic_app.billing_finance_read(b.clinic_id)
+ AND clinic_app.has_permission('charge.read',b.clinic_id,NULL)
  ELSE clinic_app.has_permission(permission,b.clinic_id,NULL) END))
 $f$;
 
@@ -80,6 +81,7 @@ LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT DISTINCT u.id,u.username::text FROM clinic_app.identity_user u
  WHERE clinic_app.billing_finance_read(requested_clinic)
+ AND clinic_app.has_permission('charge.read',requested_clinic,NULL)
  AND (EXISTS (SELECT 1 FROM clinic_app.identity_userclinicrole r
  WHERE r.clinic_id=requested_clinic AND r.user_id=u.id
  AND r.role IN ('physician','allied_professional'))

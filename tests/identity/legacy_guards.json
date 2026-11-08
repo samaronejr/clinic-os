@@ -14128,6 +14128,7 @@
           "clinic_app.billing_definition_guard",
           "clinic_app.billing_finance_read",
           "clinic_app.billing_lock_book",
+          "clinic_app.billing_practitioners",
           "clinic_app.billing_recognize_completion",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
@@ -21671,7 +21672,8 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles"
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
     },
@@ -21861,7 +21863,8 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values"
+        "test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
     },
@@ -21888,7 +21891,8 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles"
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
     },
@@ -22170,7 +22174,8 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles"
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
     },

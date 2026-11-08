@@ -31,9 +31,6 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 ROW_LIMIT: Final = 100
-# Every other command takes clinic_app.billing_lock_book, which PostgreSQL
-# admits for a financial role only together with charge.read.
-LOCK_FREE_ACTIONS: Final = frozenset({"create_book"})
 ACTION_PERMISSIONS: Final = {
     "create_book": ("finance.policy",),
     "opening_balance": ("finance.policy",),
@@ -70,11 +67,13 @@ def permits(*, clinic_id: UUID, permission: str) -> bool:
 
 
 def finance_permissions(clinic_id: UUID) -> dict[str, bool]:
-    """Admit financial roles; only a charge reader is offered book commands.
+    """Admit financial roles; only a charge reader is offered any command.
 
     No clinician-only or patient identity acquires clinic-wide financial access.
-    A role whose clinic narrowed charge.read keeps the workspace, which states
-    the denial, but no command the book lock would refuse.
+    Every command takes clinic_app.billing_lock_book, which PostgreSQL admits
+    for a financial role only together with charge.read; opening the book takes
+    it when the chart is seeded. A role whose clinic narrowed charge.read keeps
+    the workspace, which states the denial, but no command.
     """
     cache = {
         permission: permits(clinic_id=clinic_id, permission=permission)
@@ -88,8 +87,7 @@ def finance_permissions(clinic_id: UUID) -> dict[str, bool]:
     if not any(held.values()):
         raise BillingAccessDeniedError
     return {
-        action: allowed and (cache["charge.read"] or action in LOCK_FREE_ACTIONS)
-        for action, allowed in held.items()
+        action: allowed and cache["charge.read"] for action, allowed in held.items()
     }
 
 
