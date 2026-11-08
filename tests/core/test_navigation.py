@@ -109,9 +109,18 @@ EXPECTED: Final = {
     ],
     "nurse": ["today", "inbox", "messages"],
     "allied_professional": ["inbox"],
-    "scheduler": ["inbox", "messages", "settings"],
+    # Task 56: Finance opens for any holder of a finance-workspace permission:
+    # charge.collect (scheduler) or refund/payout.request (clinic manager).
+    "scheduler": ["inbox", "messages", "finance", "settings"],
     # Task 50: privacy.requests opens Patients > Data-subject requests.
-    "clinic_manager": ["patients", "inbox", "messages", "automations", "settings"],
+    "clinic_manager": [
+        "patients",
+        "inbox",
+        "messages",
+        "finance",
+        "automations",
+        "settings",
+    ],
     "finance": [],
     "org_admin": ["settings"],
 }
@@ -282,7 +291,7 @@ def test_destination_links_lead_to_the_first_open_place(
     assert physician_links["patients"] == f"/clinics/{clinic}/consent/"
     assert receptionist_links["patients"] == f"/intake/clinics/{clinic}/patients/"
     assert receptionist_links["operations"] == f"/retention/clinics/{clinic}/"
-    assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/charges/"
+    assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/finance/"
 
 
 @pytest.mark.parametrize(
@@ -301,17 +310,53 @@ def test_workflow_candidate_opens_only_delivered_operations(
     assert response.status_code == OK
     # Task 50: privacy.requests opens Patients for the clinic manager.
     assert _modules(response) == (
-        ["patients", "inbox", "messages", "operations", "automations", "settings"]
+        [
+            "patients",
+            "inbox",
+            "messages",
+            "finance",
+            "operations",
+            "automations",
+            "settings",
+        ]
         if role == "clinic_manager"
-        else ["inbox", "messages", "operations", "settings"]
+        else ["inbox", "messages", "finance", "operations", "settings"]
         if role == "scheduler"
         else ["today", "inbox", "messages", "operations"]
         if role == "nurse"
         else ["inbox", "operations"]
         if role == "allied_professional"
-        else ["operations"]
+        else ["finance", "operations"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
+
+
+@pytest.mark.parametrize(
+    ("role", "modules", "home"),
+    [
+        ("finance", ["finance"], "/billing/clinics/{clinic}/finance/"),
+        # Task 50: privacy.requests opens Patients > Data-subject requests.
+        (
+            "org_admin",
+            ["patients", "finance", "automations", "settings"],
+            "/scheduling/clinics/{clinic}/settings/",
+        ),
+    ],
+)
+def test_finance_resolves_the_shell_for_bundles_without_a_clinical_landing(
+    rbac_graph: RbacGraph, role: str, modules: list[str], home: str
+) -> None:
+    # Task 56 opens Finance to these v1 bundles, which have no clinical, task
+    # or reception landing; on its own pages the shell must still name the
+    # clinic, its destinations and a home the bundle can actually open.
+    client, _user = _client_for(rbac_graph, role)
+    finance = f"/billing/clinics/{rbac_graph.clinic_a}/finance/"
+    response = _get(client, finance)
+    assert response.status_code == OK
+    assert _modules(response) == modules
+    html = response.content.decode()
+    assert f'data-command-next="{finance}"' in html
+    assert f'class="nav-brand" href="{home.format(clinic=rbac_graph.clinic_a)}"' in html
 
 
 def test_section_row_lists_open_places_and_marks_the_current_one(
@@ -341,16 +386,20 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
     client, user = _client_for(rbac_graph, "receptionist")
     assert "finance" in _modules(_get(client, "/auth/protected/"))
 
-    with owner_context(rbac_graph.organization_a):
-        RoleGrant.objects.create(
-            organization_id=rbac_graph.organization_a,
-            clinic_id=rbac_graph.clinic_a,
-            role="receptionist",
-            permission="charge.read",
-            valid_from=timezone.now() - timedelta(minutes=1),
-        )
+    # Finance opens on charge.collect too, so narrowing charge.read alone keeps it.
+    for permission in ("charge.read", "charge.collect"):
+        with owner_context(rbac_graph.organization_a):
+            RoleGrant.objects.create(
+                organization_id=rbac_graph.organization_a,
+                clinic_id=rbac_graph.clinic_a,
+                role="receptionist",
+                permission=permission,
+                valid_from=timezone.now() - timedelta(minutes=1),
+            )
+        _reauthenticate(client, user.pk, "receptionist")
+        if permission == "charge.read":
+            assert "finance" in _modules(_get(client, "/auth/protected/"))
 
-    _reauthenticate(client, user.pk, "receptionist")
     assert _modules(_get(client, "/auth/protected/")) == [
         "today",
         "agenda",

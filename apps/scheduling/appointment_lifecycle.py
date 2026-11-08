@@ -21,6 +21,7 @@ import psycopg
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.utils.translation import gettext_lazy as _
 
+from apps.billing.compensation import record_appointment_completion
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.intake.alias_access import require_survivor
 from apps.scheduling.access import AppointmentAccessDeniedError
@@ -269,6 +270,10 @@ def _transition(
         _save(current, fields)
         current.refresh_from_db()
         synchronize_queue(appointment=current)
+        if action == "complete":
+            record_appointment_completion(
+                clinic_id=clinic_id, appointment_id=current.pk
+            )
         record_appointment_event(
             AUDIT_EVENTS[action], clinic_id=clinic_id, affected_record_id=current.pk
         )

@@ -51,6 +51,19 @@ DOMAIN_RELATIONS: Final = (
     "billing_pixoperation",
     "billing_receipt",
     "billing_settlement",
+    # Task 56: every operational fact, reservation and counted close is durable.
+    "billing_journalbook",
+    "billing_account",
+    "billing_journalentry",
+    "billing_journalline",
+    "billing_practitionerpayoutrule",
+    "billing_invoiceterms",
+    "billing_journalsettlement",
+    "billing_settlementallocation",
+    "billing_refund",
+    "billing_payout",
+    "billing_cashsession",
+    "billing_cashsessionevent",
     "comms_appointmentreminder",
     # Task 51 inbox: threads, messages, notes, templates and provider accounts
     # are durable conversation history; keys are secret files, never rows.

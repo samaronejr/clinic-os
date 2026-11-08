@@ -112,7 +112,8 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
     assert modules == {
         "today": (f"/scheduling/clinics/{rbac_graph.clinic_a}/reception/", False),
         "agenda": (agenda, True),
-        "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
+        # Task 56: Finance opens its workspace (charge.collect) before Charges.
+        "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/finance/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),
         "inbox": (f"/clinics/{rbac_graph.clinic_a}/results/", False),
         "messages": (f"/clinics/{rbac_graph.clinic_a}/messages/", False),

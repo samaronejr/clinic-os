@@ -15,7 +15,6 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 
 from identity.lifecycle_test_support import session_key, verified_client
-from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from patients.duplicate_adjudication_cases import (
     test_choices_change_only_a_new_survivor_version_and_keep_source_history,
@@ -240,7 +239,7 @@ def test_new_charge_for_an_aliased_identity_is_rejected(
 ) -> None:
     services = importlib.import_module("apps.intake.services")
     # Given: a deliberately unified identity.
-    _first, second, _decision, _key = _merged_pair(rbac_graph, services)
+    first, second, _decision, _key = _merged_pair(rbac_graph, services)
     with (
         runtime_role(),
         tenant_context(rbac_graph.clinic_admin, rbac_graph.organization_a),
@@ -253,13 +252,20 @@ def test_new_charge_for_an_aliased_identity_is_rejected(
             amount_minor=12345,
             idempotency_key=uuid4(),
         )
-    # Then: there is no new charge bound to that aliased identity.
-    with owner_context(rbac_graph.organization_a):
-        assert not Invoice.objects.filter(patient_id=second.patient.pk).exists()
     with (
         runtime_role(),
         tenant_context(rbac_graph.clinic_admin, rbac_graph.organization_a),
     ):
+        # The current billing reader must see a positive control, so absence
+        # cannot pass merely because FORCE RLS hid every invoice.
+        visible = create_invoice(
+            clinic_id=rbac_graph.clinic_a,
+            patient_id=first.patient.pk,
+            amount_minor=12345,
+            idempotency_key=uuid4(),
+        )
+        assert Invoice.objects.filter(pk=visible.pk).exists()
+        assert not Invoice.objects.filter(patient_id=second.patient.pk).exists()
         with pytest.raises(DatabaseError) as native, transaction.atomic():
             Invoice.objects.create(
                 organization_id=rbac_graph.organization_a,

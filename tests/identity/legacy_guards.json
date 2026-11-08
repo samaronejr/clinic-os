@@ -1234,6 +1234,7 @@
       "symbol": "apps.billing.services._clinic",
       "signals": [
         "denial",
+        "permission",
         "role_helper"
       ],
       "kind": "direct",
@@ -9034,6 +9035,337 @@
         "apps.crm.views.public_access#cut1"
       ],
       "reason": "Conservative CRM protocol boundary, not a nonstaff exemption. The cut1 census requires entry through passing real-role, patient-consent, public-projection and booking witnesses."
+    },
+    {
+      "symbol": "apps.billing.allocation_splits.allocate_proportionally",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.cash.close_cash",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.cash.reopen_cash",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.collections._settlement_state",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.collections.allocate_settlement",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.compensation.prepare_invoice_terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.compensation.record_completion",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.compensation.record_appointment_completion",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.compensation.record_appointment_completion#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.compensation.bridge_legacy_settlement",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.compensation.bridge_legacy_settlement#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.permits",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.finance_queries.permits#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.finance_permissions",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.finance_queries.permits"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_queries.finance_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.finance_queries.permits"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_views._command_scope",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_views.finance_workspace",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.finance_views.journal_export",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.journal.create_book",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.journal.post_entry",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.opening.record_opening_balance",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.payouts.approve_payout",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.payouts.transition_payout",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.request_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.request_unallocated_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.approve_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.refunds.transition_refund",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.security.require_money_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Synthetic data-mode gate for outgoing-money rehearsal; grants no staff authority."
+    },
+    {
+      "symbol": "apps.billing.security.financial_actor",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.security.financial_actor#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.security.scoped_book",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.security.lock_clinic_book",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Tenant-scoped transaction lock rejects patient/machine context but grants no staff permission; the financial writer rechecks authority."
+    },
+    {
+      "symbol": "apps.billing.security.book_write",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "Journal authority delegates to the named source-reachable, executed permission root; this is not an exemption from staff-state coverage."
+    },
+    {
+      "symbol": "apps.billing.security.require_finance_step_up",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.billing.security.require_finance_step_up#cut1"
+      ],
+      "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
     }
   ],
   "probes": [
@@ -9135,8 +9467,13 @@
     "apps.audit.services._record_retention_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
+    "apps.billing.compensation.bridge_legacy_settlement#cut1",
+    "apps.billing.compensation.record_appointment_completion#cut1",
+    "apps.billing.finance_queries.permits#cut1",
     "apps.billing.pix.prepare_pix_charge",
     "apps.billing.presentation.patient_charge#observed",
+    "apps.billing.security.financial_actor#cut1",
+    "apps.billing.security.require_finance_step_up#cut1",
     "apps.billing.services._clinic",
     "apps.billing.services._invoice",
     "apps.billing.services.patient_charges#observed",
@@ -11739,7 +12076,8 @@
     "clinic_app.billing_invoice_guard": {
       "discovery": {
         "migrations": [
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_journal_legacy_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -11747,8 +12085,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -11951,7 +12289,8 @@
     "clinic_app.billing_revision_snapshot": {
       "discovery": {
         "migrations": [
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_journal_legacy_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -11959,8 +12298,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -11971,7 +12310,8 @@
     "clinic_app.billing_settlement_guard": {
       "discovery": {
         "migrations": [
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_journal_legacy_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -11979,8 +12319,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -11991,7 +12331,8 @@
     "clinic_app.billing_settlement_receipt": {
       "discovery": {
         "migrations": [
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_journal_legacy_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -11999,8 +12340,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -12011,7 +12352,8 @@
     "clinic_app.billing_staff_invoice": {
       "discovery": {
         "migrations": [
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_journal_legacy_sql.py"
         ],
         "policies": [
           "clinic_app.billing_invoicerevision:billing_staff",
@@ -12028,8 +12370,8 @@
           {
             "arguments": "requested_invoice uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -13905,7 +14247,12 @@
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_review_extraction",
+          "clinic_app.billing_cash_receipt",
+          "clinic_app.billing_complete_appointment",
+          "clinic_app.billing_import_legacy",
+          "clinic_app.billing_post_internal",
           "clinic_app.billing_revision_snapshot",
+          "clinic_app.billing_seed_chart",
           "clinic_app.billing_settlement_receipt",
           "clinic_app.comms_patient_reply",
           "clinic_app.ehr_timeline_enqueue",
@@ -13933,8 +14280,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
         ]
       },
@@ -14060,6 +14407,15 @@
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
+          "clinic_app.billing_book_access",
+          "clinic_app.billing_charge_authorized",
+          "clinic_app.billing_collection_authorized",
+          "clinic_app.billing_complete_appointment",
+          "clinic_app.billing_definition_guard",
+          "clinic_app.billing_finance_read",
+          "clinic_app.billing_lock_book",
+          "clinic_app.billing_practitioners",
+          "clinic_app.billing_recognize_completion",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
           "clinic_app.crm_manager",
@@ -15094,6 +15450,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.billing_finance_session",
           "clinic_app.identity_session_authenticator_verified",
           "clinic_app.intake_merge_authorized"
         ],
@@ -15101,8 +15458,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -16953,7 +17310,6 @@
           "apps/intake/migrations/_questionnaire_sql.py"
         ],
         "policies": [
-          "clinic_app.billing_invoice:billing_staff",
           "clinic_app.ehr_encounter:clinical_insert",
           "clinic_app.ehr_encounter:clinical_read",
           "clinic_app.ehr_specialtypack:pack_insert",
@@ -16990,8 +17346,8 @@
         ],
         "resolvers": [
           "clinic_app.ai_eval_staff",
-          "clinic_app.billing_settlement_guard",
-          "clinic_app.billing_staff_invoice",
+          "clinic_app.billing_charge_authorized",
+          "clinic_app.billing_collection_authorized",
           "clinic_app.configuration_guard",
           "clinic_app.ehr_assigned",
           "clinic_app.ehr_care",
@@ -17011,8 +17367,8 @@
           {
             "arguments": "requested_clinic uuid, roles text[]",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -21889,6 +22245,768 @@
         "policies": [],
         "resolvers": []
       }
+    },
+    "clinic_app.billing_account_balance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid, requested_account text",
+            "returns": "numeric",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_cash_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_cash_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cash_close_has_zero_unexplained_balance_and_reopen_requires_persisted_step_up"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_allocation_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_collection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_allocation_paid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_legacy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_book_access": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid, permission text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_account:billing_journal_scope",
+          "clinic_app.billing_cashsession:billing_journal_scope",
+          "clinic_app.billing_cashsessionevent:billing_journal_scope",
+          "clinic_app.billing_invoiceterms:billing_journal_scope",
+          "clinic_app.billing_journalentry:billing_journal_scope",
+          "clinic_app.billing_journalsettlement:billing_journal_scope",
+          "clinic_app.billing_payout:billing_journal_scope",
+          "clinic_app.billing_practitionerpayoutrule:billing_journal_scope",
+          "clinic_app.billing_refund:billing_journal_scope",
+          "clinic_app.billing_settlementallocation:billing_journal_scope"
+        ],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_cash_guard",
+          "clinic_app.billing_definition_guard",
+          "clinic_app.billing_entry_readable",
+          "clinic_app.billing_opening_balance",
+          "clinic_app.billing_payout_guard",
+          "clinic_app.billing_post",
+          "clinic_app.billing_recognize_completion",
+          "clinic_app.billing_refund_guard",
+          "clinic_app.billing_settlement_journal_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_cash_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_cash_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cash_close_has_zero_unexplained_balance_and_reopen_requires_persisted_step_up"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_cash_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_cash_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cash_close_has_zero_unexplained_balance_and_reopen_requires_persisted_step_up"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_charge_authorized": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_legacy_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_invoice:billing_staff"
+        ],
+        "resolvers": [
+          "clinic_app.billing_definition_guard",
+          "clinic_app.billing_staff_invoice"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_collection_authorized": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_legacy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_import_legacy",
+          "clinic_app.billing_recognize_completion",
+          "clinic_app.billing_settlement_guard",
+          "clinic_app.billing_settlement_journal_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_complete_appointment": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_appointment uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_recognition_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_definition_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_definitions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_entry_balance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unbalanced_entry_is_rejected_only_when_transaction_commits"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_entry_readable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_entry uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_journalline:billing_journal_scope"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_scoped_csv_and_ofx_like_exports_have_identical_exact_line_values",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_finance_read": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_journalbook:billing_journal_scope"
+        ],
+        "resolvers": [
+          "clinic_app.billing_book_access",
+          "clinic_app.billing_practitioners"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_finance_session": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_cash_guard",
+          "clinic_app.billing_cash_receipt",
+          "clinic_app.billing_payout_guard",
+          "clinic_app.billing_refund_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cash_close_has_zero_unexplained_balance_and_reopen_requires_persisted_step_up",
+        "test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_import_legacy": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_settlement uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_legacy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_first_legacy_receipt_prepares_missing_terms_and_commits_the_bridge",
+        "test_legacy_import_preflight_uses_the_requested_clinic"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_journal_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_fact_replay_is_exact_and_different_content_is_refused",
+        "test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_line": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "code text, side text, amount bigint, practitioner uuid",
+            "returns": "jsonb",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_opening_balance",
+          "clinic_app.billing_payout_guard",
+          "clinic_app.billing_recognize_completion",
+          "clinic_app.billing_refund_guard",
+          "clinic_app.billing_settlement_journal_guard"
+        ]
+      },
+      "kind": "data_allocator",
+      "probes": [],
+      "reason": "Immutable exact-money value transformation with no database reads or authority grant; journal arithmetic and posting tests cover it."
+    },
+    "clinic_app.billing_lock_book": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_cash_guard",
+          "clinic_app.billing_complete_appointment",
+          "clinic_app.billing_definition_guard",
+          "clinic_app.billing_import_legacy",
+          "clinic_app.billing_journal_guard",
+          "clinic_app.billing_opening_balance",
+          "clinic_app.billing_payout_guard",
+          "clinic_app.billing_post",
+          "clinic_app.billing_post_internal",
+          "clinic_app.billing_recognize_completion",
+          "clinic_app.billing_refund_guard",
+          "clinic_app.billing_settlement_journal_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_fact_replay_is_exact_and_different_content_is_refused",
+        "test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_lock_clinic_book": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_first_legacy_receipt_prepares_missing_terms_and_commits_the_bridge",
+        "test_legacy_import_preflight_uses_the_requested_clinic"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_opening_balance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid, requested_account text, amount bigint, evidence uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_post_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_first_cash_count_requires_an_explicit_retained_opening_fact"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_payout_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_payout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_payout_reserves_only_earned_payable_and_unknown_stays_in_transit",
+        "test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_post": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_post_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_fact_replay_is_exact_and_different_content_is_refused",
+        "test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_post_internal": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_book uuid, fact_kind text, fact_id uuid, proposed_lines jsonb, reversed_entry uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_post_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_opening_balance",
+          "clinic_app.billing_payout_guard",
+          "clinic_app.billing_post",
+          "clinic_app.billing_recognize_completion",
+          "clinic_app.billing_refund_guard",
+          "clinic_app.billing_settlement_journal_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_fact_replay_is_exact_and_different_content_is_refused",
+        "test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_practitioners": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_journal_sql_readers_and_legacy_charge_roots_use_exact_roles",
+        "test_narrowed_charge_read_returns_no_journal_record_row"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_recognize_completion": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_invoice uuid, evidence uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_recognition_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_complete_appointment",
+          "clinic_app.billing_import_legacy"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_refund_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_refund_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_split_refunds_reverse_exact_total_entitlement_with_cumulative_half_even",
+        "test_finance_approval_does_not_inherit_legacy_manager_equivalence"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_refunded_prepayments": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_terms uuid",
+            "returns": "numeric",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_collection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_allocation_paid",
+          "clinic_app.billing_import_legacy",
+          "clinic_app.billing_invoice_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_refunded_prepayment_can_settle_the_completion_receivable_again"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_round_ratio": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "numerator numeric, denominator numeric",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_core_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_allocation_guard",
+          "clinic_app.billing_refund_guard"
+        ]
+      },
+      "kind": "data_allocator",
+      "probes": [],
+      "reason": "Immutable exact-money value transformation with no database reads or authority grant; journal arithmetic and posting tests cover it."
+    },
+    "clinic_app.billing_seed_chart": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_definitions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_settlement_journal_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_journal_collection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_charge_issue_posts_nothing_and_completion_recognizes_accrual",
+        "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
+      ],
+      "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
     }
   },
   "sql_method": [

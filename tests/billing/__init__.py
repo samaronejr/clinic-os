@@ -1,0 +1,1 @@
+"""Operational accounting acceptance tests."""

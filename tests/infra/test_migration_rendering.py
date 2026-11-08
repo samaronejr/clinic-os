@@ -490,3 +490,65 @@ def test_authority_batch_preserves_fk_sql_and_historical_relations(
             getattr(relation, "field", None) is field
             for relation in target._meta.get_fields(include_hidden=True)
         )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_journal_batch_preserves_sql_and_historical_relations() -> None:
+    # Given: billing 0011's batched journal models and Django's separated form.
+    loader = MigrationLoader(None)
+    migration = loader.disk_migrations["billing", "0011_operational_journal"]
+    batch = migration.operations[0]
+    assert isinstance(batch, SchemaStateBatch)
+    separated = migrations.SeparateDatabaseAndState(
+        database_operations=batch.database_operations,
+        state_operations=batch.state_operations,
+    )
+    before = loader.project_state(migration.dependencies)
+    _ = before.apps
+    statements = []
+    states = []
+    definitions = []
+    for operation in (separated, batch):
+        # When: each applies its state and runs both database directions.
+        after = before.clone()
+        operation.state_forwards("billing", after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
+            operation.database_forwards("billing", forward, before.clone(), after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as backward:
+            operation.database_backwards("billing", backward, after, before.clone())
+        statements.append([*forward.collected_sql, *backward.collected_sql])
+        after.clear_delayed_apps_cache()
+        _ = after.apps
+        states.append(after)
+        definitions.append(
+            MigrationWriter.serialize(
+                [
+                    (
+                        key,
+                        state.name,
+                        sorted(state.fields.items()),
+                        state.options,
+                        state.bases,
+                        state.managers,
+                    )
+                    for key, state in sorted(after.models.items())
+                ]
+            )
+        )
+
+    # Then: the same DDL both ways, the same definitions and live relations.
+    assert statements[0] == statements[1]
+    assert definitions[0] == definitions[1]
+    for created in batch.state_operations:
+        assert isinstance(created, migrations.CreateModel)
+        model = states[1].apps.get_model("billing", created.name)
+        for field in model._meta.concrete_fields:
+            if field.remote_field is None:
+                continue
+            target = field.remote_field.model
+            assert not isinstance(target, str)
+            assert target is states[1].apps.get_model(target._meta.label_lower)
+            assert any(
+                getattr(relation, "field", None) is field
+                for relation in target._meta.get_fields(include_hidden=True)
+            )

@@ -10,6 +10,7 @@ from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
+from apps.billing.journal import post_entry
 from apps.billing.services import create_invoice
 from apps.comms import inbox_services, portal_messages, suggestions
 from apps.comms.services import reminder_send_eligible
@@ -68,6 +69,16 @@ FOUNDATION_APP_NAMES: Final = frozenset(
         "rest_framework",
     }
 )
+
+
+def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None:
+    parameters = signature(post_entry).parameters
+    assert list(parameters) == ["book_id", "source_fact", "lines"]
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+
+
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
         "apps.ai.apps.AiConfig",

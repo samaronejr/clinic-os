@@ -1,0 +1,13 @@
+{% load i18n billing_money %}
+<div class="table-scroll" role="region" aria-labelledby="refunds-caption" tabindex="0">
+  <table class="table"><caption id="refunds-caption">{% trans "Refunds and chargebacks" %}</caption>
+    <thead><tr><th scope="col">{% trans "Reference" %}</th><th scope="col">{% trans "Amount" %}</th><th scope="col">{% trans "State" %}</th><th scope="col">{% trans "Repasse reversed" %}</th></tr></thead>
+    <tbody>{% for row in refunds %}<tr data-refund-state="{{ row.state }}"><th scope="row">{{ row.pk|truncatechars:12 }}</th><td>{{ row.amount_minor|minor_brl }}</td><td>{{ row.state|money_state }}</td><td>{{ row.repasse_reversed_minor|minor_brl }}</td></tr>{% empty %}<tr><td colspan="4" class="table-empty">{% trans "No refund reservation. Finance approval and fresh verification are required before sending." %}</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+<div class="table-scroll" role="region" aria-labelledby="payouts-caption" tabindex="0">
+  <table class="table"><caption id="payouts-caption">{% trans "Practitioner payouts" %}</caption>
+    <thead><tr><th scope="col">{% trans "Reference" %}</th><th scope="col">{% trans "Amount" %}</th><th scope="col">{% trans "State" %}</th></tr></thead>
+    <tbody>{% for row in payouts %}<tr data-payout-state="{{ row.state }}"><th scope="row">{{ row.pk|truncatechars:12 }}</th><td>{{ row.amount_minor|minor_brl }}</td><td>{{ row.state|money_state }}</td></tr>{% empty %}<tr><td colspan="3" class="table-empty">{% trans "No payout reservation. Only verified net collection earns a practitioner payable." %}</td></tr>{% endfor %}</tbody>
+  </table>
+</div>

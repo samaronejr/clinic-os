@@ -70,6 +70,23 @@ TRUNCATE_GUARDS = (
     ("scribe_draftactionproposal", "draft_no_truncate"),
     ("scribe_reviewdecision", "draft_no_truncate"),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
+    *(
+        (table, "billing_no_truncate")
+        for table in (
+            "billing_journalbook",
+            "billing_account",
+            "billing_journalentry",
+            "billing_journalline",
+            "billing_practitionerpayoutrule",
+            "billing_invoiceterms",
+            "billing_journalsettlement",
+            "billing_settlementallocation",
+            "billing_refund",
+            "billing_payout",
+            "billing_cashsession",
+            "billing_cashsessionevent",
+        )
+    ),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
     ("scribe_chunktranscription", "transcript_no_truncate"),

@@ -11,6 +11,8 @@ from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
+from billing.journal_oracles import CASES as BILLING_CASES
+from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
 from comms import test_portal_messages
 from crm.sql_oracles import CASES as CRM_CASES
 from crm.sql_oracles import SQL_PROTOCOL_ORACLES as CRM_PROTOCOLS
@@ -439,6 +441,7 @@ PROTOCOL_ORACLES = {
     ],
     **ORDERS_PROTOCOLS,
     **INVENTORY_SQL_ORACLES,
+    **BILLING_PROTOCOLS,
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
@@ -462,6 +465,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert observed == PROTOCOL_ORACLES
     assert all(
         callable(CRM_CASES[name]) for names in CRM_PROTOCOLS.values() for name in names
+    )
+    assert all(
+        callable(BILLING_CASES[name])
+        for names in BILLING_PROTOCOLS.values()
+        for name in names
     )
     assert all(
         callable(RETENTION_CASES[name])

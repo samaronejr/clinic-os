@@ -9,11 +9,21 @@ resolves to nothing.
 from django.urls import path
 from django.urls.resolvers import URLPattern
 
-from apps.billing import views
+from apps.billing import finance_views, views
 
 app_name = "billing"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "billing/clinics/<uuid:clinic_id>/finance/",
+        finance_views.finance_workspace,
+        name="finance",
+    ),
+    path(
+        "billing/clinics/<uuid:clinic_id>/journal-export/",
+        finance_views.journal_export,
+        name="journal-export",
+    ),
     path(
         "billing/clinics/<uuid:clinic_id>/charges/",
         views.charges_workspace,

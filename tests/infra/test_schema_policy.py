@@ -216,6 +216,19 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_pixcharge",
         # Append-only authenticated payment events: test_payment_reconciliation.
         "billing_paymentevent",
+        # Task 56: exact custom policies and immutable money posture.
+        "billing_journalbook",
+        "billing_account",
+        "billing_journalentry",
+        "billing_journalline",
+        "billing_practitionerpayoutrule",
+        "billing_invoiceterms",
+        "billing_journalsettlement",
+        "billing_settlementallocation",
+        "billing_refund",
+        "billing_payout",
+        "billing_cashsession",
+        "billing_cashsessionevent",
         # Exact owner/task/run policies and ACLs: tests/workflows/test_posture.py.
         "workflows_task",
         "workflows_taskcomment",

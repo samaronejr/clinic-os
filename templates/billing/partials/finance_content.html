@@ -1,0 +1,84 @@
+{% load i18n tz billing_money %}
+<section class="billing-shell" id="finance-content" aria-labelledby="finance-title" data-finance-workspace>
+  <h1 id="finance-title">{% trans "Finance" %}</h1>
+  <p class="lede">{% trans "Close the day from verified money and a sealed journal." %}</p>
+  <p class="feedback feedback--muted" role="status">{% trans "Refund and payout sending is a local rehearsal. No real money is moved. PSP and live legs remain BLOCKED-ON-EG." %}</p>
+  <div class="actions">
+    <a class="button button--secondary" href="{% url 'billing:finance' clinic_id %}" hx-get="{% url 'billing:finance' clinic_id %}" hx-target="#finance-content" hx-swap="outerHTML">{% trans "Refresh stored balances" %}</a>
+    {% if can_read %}<a class="button button--quiet" href="{% url 'billing:charges' clinic_id %}">{% trans "Charges" %}</a>{% endif %}
+  </div>
+  {% for message in messages %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus>{{ message }}</p>{% endfor %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  {% if step_up_required %}<a class="button" href="{% url 'identity:step-up' %}">{% trans "Verify authenticator" %}</a>{% endif %}
+  {% if not book %}<p class="feedback" role="status">{% trans "The organization policy owner must open this clinic's book before financial operations." %}</p>{% elif not can_read %}<p class="feedback" role="status" data-finance-read="denied">{% trans "Charges, balances, journal records and financial actions need permission to view charges." %}</p>{% else %}
+  <p class="hint">{% trans "Recent tables show up to 100 records. Accountant exports include the full selected period." %}</p>
+  {% timezone clinic_timezone %}
+  <section aria-labelledby="day-close-title">
+    <h2 id="day-close-title">{% trans "Day close" %}</h2>
+    <p>{% trans "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close." %}</p>
+    <div class="table-scroll" role="region" aria-labelledby="cash-caption" tabindex="0">
+      <table class="table">
+        <caption id="cash-caption">{% trans "Cash drawers" %}</caption>
+        <thead><tr><th scope="col">{% trans "Reference" %}</th><th scope="col">{% trans "State" %}</th><th scope="col">{% trans "Revision" %}</th><th scope="col">{% trans "Counted" %}</th><th scope="col">{% trans "Journal balance" %}</th></tr></thead>
+        <tbody>{% for row in cash_sessions %}<tr data-cash-state="{{ row.state }}"><th scope="row">{{ row.pk|truncatechars:12 }}</th><td>{{ row.state|money_state }}</td><td>{{ row.revision }}</td><td>{{ row.counted_minor|minor_brl }}</td><td>{{ row.expected_minor|minor_brl }}</td></tr>{% empty %}<tr><td colspan="5" class="table-empty">{% trans "No drawer opened. Count the physical cash, then use Open cash drawer below." %}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+  <div class="table-scroll" role="region" aria-labelledby="receivables-caption" tabindex="0">
+    <table class="table">
+      <caption id="receivables-caption">{% trans "Receivables" %}</caption>
+      <thead><tr><th scope="col">{% trans "Charge" %}</th><th scope="col">{% trans "Net terms" %}</th><th scope="col">{% trans "Outstanding" %}</th><th scope="col">{% trans "Recognition" %}</th></tr></thead>
+      <tbody>{% for row in receivables %}<tr><th scope="row">{{ row.reference|truncatechars:16 }}</th><td>{{ row.net_minor|minor_brl }}</td><td>{{ row.outstanding_minor|minor_brl }}</td><td>{% if row.completed %}{% trans "Service completed" %}{% else %}{% trans "Awaiting service completion" %}{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="table-empty">{% trans "No frozen invoice terms. Issue a charge and record its net terms before allocating money." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="table-scroll" role="region" aria-labelledby="collections-caption" tabindex="0">
+    <table class="table">
+      <caption id="collections-caption">{% trans "Collections" %}</caption>
+      <thead><tr><th scope="col">{% trans "Reference" %}</th><th scope="col">{% trans "Amount" %}</th><th scope="col">{% trans "State" %}</th><th scope="col">{% trans "Recorded at" %}</th></tr></thead>
+      <tbody>{% for row in settlements %}<tr data-collection-state="{{ row.state }}"><th scope="row">{{ row.pk|truncatechars:12 }}</th><td>{{ row.amount_minor|minor_brl }}</td><td>{{ row.state|money_state }}</td><td>{{ row.created_at|date:"d/m/Y H:i" }}</td></tr>{% empty %}<tr><td colspan="4" class="table-empty">{% trans "No collection recorded. Observed money still needs independent verification before posting." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <section aria-labelledby="exceptions-title">
+    <h2 id="exceptions-title">{% trans "Exceptions" %}</h2>
+    {% for row in exceptions %}<p class="feedback">{{ row.pk|truncatechars:12 }}: {{ row.state|money_state }} - {{ row.amount_minor|minor_brl }}</p>{% empty %}<p>{% trans "No observed or quarantined receipt in the recent list." %}</p>{% endfor %}
+    {% for row in suspense_lines %}<p class="feedback">{{ "suspense"|account_label }}: {{ row.amount_minor|minor_brl }} - {% trans "Owner" %} {{ row.owner_id }} - {% trans "Due" %} {{ row.due_on|date:"d/m/Y" }}</p>{% endfor %}
+    <p class="hint">{% trans "An unknown refund or payout keeps its reservation. Reconcile evidence; do not send it again." %}</p>
+  </section>
+  {% include "billing/partials/finance_outgoing.html" %}
+  <div class="table-scroll" role="region" aria-labelledby="accounts-caption" tabindex="0">
+    <table class="table"><caption id="accounts-caption">{% trans "Journal balances" %}</caption>
+      <thead><tr><th scope="col">{% trans "Account" %}</th><th scope="col">{% trans "Debit balance; credits are negative" %}</th></tr></thead>
+      <tbody>{% for code, amount in accounts %}<tr><th scope="row">{{ code|account_label }}</th><td>{{ amount|minor_brl }}</td></tr>{% empty %}<tr><td colspan="2" class="table-empty">{% trans "No posted economic fact." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endtimezone %}
+  {% endif %}
+  {% if forms %}
+  <section aria-labelledby="financial-actions-title">
+    <h2 id="financial-actions-title">{% trans "Record a financial action" %}</h2>
+    <p>{% trans "Amounts are reais. Rules use basis points (3000 means 30 percent) or fixed centavos. Discounts and payer adjustments precede PSP fees." %}</p>
+    {% for form in forms %}
+    <details class="panel"{% if form.is_bound %} open{% endif %}>
+      <summary>{{ form.action_label }}</summary>
+      <form method="post" action="{% url 'billing:finance' clinic_id %}" novalidate>
+        {% csrf_token %}<input type="hidden" name="action" value="{{ form.action }}">
+        {% if form.non_field_errors %}<div class="feedback feedback--error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        {% for field in form %}{% if field.is_hidden %}{{ field }}{% else %}{% include "includes/field.html" with field=field %}{% endif %}{% endfor %}
+        {% if not form.available %}<p class="hint">{% trans "Record the required source first; this action has no available selection yet." %}</p>{% endif %}
+        <div class="actions"><button class="button" type="submit"{% if not form.available %} disabled{% endif %}>{{ form.action_label }}</button></div>
+      </form>
+    </details>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if book and can_export %}
+  <section class="panel" aria-labelledby="accountant-export-title">
+    <h2 id="accountant-export-title">{% trans "Accountant export" %}</h2>
+    <p>{% trans "CSV and the documented OFX-like journal contain the same sealed centavo lines. This is not a bank statement or a fiscal document." %}</p>
+    <form method="post" action="{% url 'billing:journal-export' clinic_id %}" novalidate>{% csrf_token %}
+      {% for field in export_form %}{% include "includes/field.html" with field=field %}{% endfor %}
+      <button class="button button--secondary" type="submit">{% trans "Download journal" %}</button>
+    </form>
+  </section>
+  {% endif %}
+</section>

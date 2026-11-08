@@ -44,6 +44,7 @@ from django.db.models.functions import Now
 from django.utils import timezone
 from psycopg import sql
 
+from infra import journal_catalog
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
     arrived_synthetic_appointment,
@@ -711,7 +712,7 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             assert "organization_id" in using
             assert "app.current_tenant" in using
             assert (
-                "questionnaire_staff"
+                "billing_charge_authorized"
                 if table == "billing_invoice"
                 else "billing_staff_invoice"
             ) in using
@@ -748,14 +749,35 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'clinic_app' AND p.proname LIKE 'billing_%%'""")
         functions = cursor.fetchall()
-        # Thirteen task-37/38/39 functions plus the task-40 patient payment
-        # resolver; every one stays resolver-owned with a fixed search path.
-        assert len(functions) == 15
+        assert {name for name, _, _, _ in functions} == {
+            "billing_immutable",
+            "billing_invoice_guard",
+            "billing_patient_charge",
+            "billing_patient_charges",
+            "billing_payment_event_guard",
+            "billing_payment_event_recorder",
+            "billing_payment_event_recovered",
+            "billing_payment_event_scope",
+            "billing_payment_event_seen",
+            "billing_payment_event_superseded",
+            "billing_pix_guard",
+            "billing_revision_snapshot",
+            "billing_settlement_guard",
+            "billing_settlement_receipt",
+            "billing_staff_invoice",
+            *(name for name, _ in journal_catalog.RESULTS),
+        }
+        assert len(functions) == 45
         assert all(
             owner
             == ("clinic_owner" if name == "billing_pix_guard" else "clinic_resolver")
-            and config == ["search_path=pg_catalog, clinic_app, pg_temp"]
-            and secure == (name != "billing_pix_guard")
+            and config
+            == (
+                ["search_path=pg_catalog, pg_temp"]
+                if name in journal_catalog.PG_ONLY
+                else ["search_path=pg_catalog, clinic_app, pg_temp"]
+            )
+            and secure == (name not in {"billing_pix_guard", *journal_catalog.INVOKERS})
             for name, owner, secure, config in functions
         )
         cursor.execute("""SELECT p.proname, a.grantee::regrole::text
@@ -764,6 +786,7 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             WHERE n.nspname = 'clinic_app' AND p.proname LIKE 'billing_%%'
             AND a.privilege_type = 'EXECUTE' AND a.grantee <> p.proowner""")
         assert set(cursor.fetchall()) == {
+            *((name, "clinic_app") for name in journal_catalog.PUBLIC_API),
             ("billing_patient_charge", "clinic_app"),
             ("billing_patient_charges", "clinic_app"),
             ("billing_staff_invoice", "clinic_app"),
@@ -772,4 +795,5 @@ def test_exact_billing_database_policies_grants_and_function_ownership() -> None
             ("billing_payment_event_recorder", "clinic_app"),
             ("billing_payment_event_superseded", "clinic_app"),
             ("billing_payment_event_recovered", "clinic_app"),
+            *((name, "clinic_owner") for name in journal_catalog.OWNER_POLICY),
         }
