@@ -105,8 +105,8 @@ def refresh_metric(*, clinic_id: UUID, query: Query, command_id: UUID) -> Result
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s)",
-                [clinic_id, query.encode(), command_id],
+                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                [clinic_id, query.encode(), command_id, query.start, query.end],
             )
             receipt = cursor.fetchone()
     except DatabaseError as error:
@@ -191,6 +191,8 @@ def save_report(*, clinic_id: UUID, query: Query) -> SavedReport:
         user_id=actor,
         definition=definition,
         descriptor=query.payload(),
+        window_start=query.start,
+        window_end=query.end,
     )
     record_phase1_event(
         "analytics.report.saved", clinic_id=clinic_id, affected_record_id=saved.pk

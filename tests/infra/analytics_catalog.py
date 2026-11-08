@@ -29,9 +29,14 @@ RESULTS: Final = {
     ("analytics_guard", ""): "trigger",
     (
         "analytics_refresh",
-        "requested_clinic uuid, query jsonb, command uuid",
+        "requested_clinic uuid, query jsonb, command uuid, "
+        "window_start timestamp with time zone, window_end timestamp with time zone",
     ): "TABLE(refresh_id uuid, changed boolean, registered boolean)",
-    ("analytics_validate", "requested_clinic uuid, query jsonb"): "void",
+    (
+        "analytics_validate",
+        "requested_clinic uuid, query jsonb, "
+        "window_start timestamp with time zone, window_end timestamp with time zone",
+    ): "void",
     ("analytics_workflow_receipt", ""): "trigger",
 }
 POSTURE: Final = {

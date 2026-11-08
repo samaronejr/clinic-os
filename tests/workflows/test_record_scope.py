@@ -11,11 +11,12 @@ from __future__ import annotations
 import ast
 import copy
 import inspect
+import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from urllib.parse import urlencode
 from uuid import UUID, uuid4, uuid5
 
@@ -1767,6 +1768,8 @@ def sql_metric_receipt_scope(s: Scoped) -> None:
             definition_id=foreign.definition_id,
             authorization_version=version,
             descriptor=query.payload(),
+            window_start=query.start,
+            window_end=query.end,
             command_id=step.pk,
             rows=foreign.rows,
             quality=foreign.quality,
@@ -2291,3 +2294,41 @@ def test_sql_scope_derivation_admits_only_a_trigger_rows_own_scope_in_values(
             with pytest.raises(AssertionError, match="unclassified record-scope use"):
                 discover_scope_conditions()
         transaction.set_rollback(True)
+
+
+def _metric_receipt_window(s: Scoped, text: str) -> None:
+    step = _claimed_step(s, handler="metrics_refresh")
+    with permission_context(s.graph, s.manager):
+        query = Query(
+            "no_show",
+            step.run.created_at - timedelta(days=30),
+            step.run.created_at,
+            "America/Sao_Paulo",
+        )
+        window = cast("dict[str, str]", query.payload()["window"])
+        forged = query.payload() | {"window": window | {"end": text}}
+        # When: the step's own refresh names its window end as clock text.
+        with (
+            pytest.raises(DatabaseError, match="invalid metric query"),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                [s.a, json.dumps(forged), step.pk, query.start, query.end],
+            )
+        # Then: no effect exists, so the workflow receipt refuses the step.
+        refused(
+            ("23514", "workflow effect is missing"),
+            lambda: WorkflowStep.objects.filter(pk=step.pk).update(
+                state="completed", claim_until=None
+            ),
+        )
+
+
+@pytest.mark.parametrize("text", ["now", "today"])
+def test_receipt_refuses_a_projection_whose_window_is_clock_text(
+    scoped: Scoped, text: str
+) -> None:
+    # Given a claimed refresh step whose refresh names clock text, the receipt refuses.
+    _metric_receipt_window(scoped, text)

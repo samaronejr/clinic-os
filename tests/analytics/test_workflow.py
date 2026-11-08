@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -63,7 +64,10 @@ def test_refresh_step_requires_its_exact_effect_and_replays_once(
         assert apply_claim(step_id=step.pk, fencing_token=fence) == "completed"
         assert apply_claim(step_id=step.pk, fencing_token=fence) == "stale"
         refresh = ReadModelRefresh.objects.get(command_id=step.pk)
-        assert refresh.descriptor["window"]["end"] == run.created_at.isoformat()
+        assert refresh.window_end == run.created_at
+        assert refresh.descriptor["window"]["end"] == run.created_at.astimezone(
+            UTC
+        ).isoformat(timespec="microseconds").replace("+00:00", "Z")
         run.refresh_from_db()
         assert run.state == "completed"
 

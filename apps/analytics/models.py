@@ -39,6 +39,8 @@ class ReadModelRefresh(TenantScopedModel):
     definition = models.ForeignKey(MetricDefinitionVersion, on_delete=models.PROTECT)
     authorization_version = models.CharField(max_length=64)
     descriptor = models.JSONField()
+    window_start = models.DateTimeField()
+    window_end = models.DateTimeField()
     command_id = models.UUIDField()
     rows = models.JSONField()
     quality = models.CharField(max_length=16)
@@ -69,6 +71,8 @@ class SavedReport(TenantScopedModel):
     user = models.ForeignKey("identity.User", on_delete=models.PROTECT)
     definition = models.ForeignKey(MetricDefinitionVersion, on_delete=models.PROTECT)
     descriptor = models.JSONField()
+    window_start = models.DateTimeField()
+    window_end = models.DateTimeField()
     created_at = models.DateTimeField(default=timezone.now)
 
 
@@ -80,6 +84,8 @@ class AnalystReview(TenantScopedModel):
     user = models.ForeignKey("identity.User", on_delete=models.PROTECT)
     invocation = models.OneToOneField("ai.AIInvocation", on_delete=models.PROTECT)
     descriptor = models.JSONField()
+    window_start = models.DateTimeField()
+    window_end = models.DateTimeField()
     authorization_version = models.CharField(max_length=64)
     decision = models.CharField(max_length=8)
     created_at = models.DateTimeField(default=timezone.now)

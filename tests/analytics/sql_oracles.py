@@ -36,7 +36,8 @@ ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.analytics_authorization(uuid)": (
         "analytics.test_posture.test_sql_reporting_boundary_matrix",
     ),
-    "clinic_app.analytics_refresh(uuid,jsonb,uuid)": (
+    "clinic_app.analytics_refresh(uuid,jsonb,uuid,timestamp with time zone,"
+    "timestamp with time zone)": (
         "analytics.test_posture.test_sql_reporting_boundary_matrix",
     ),
     "clinic_app.analytics_guard()": (

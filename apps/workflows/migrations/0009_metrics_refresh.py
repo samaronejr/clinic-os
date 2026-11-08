@@ -69,9 +69,8 @@ BEGIN
   AND r.descriptor->>'metric_id'=item->>'metric_id'
   AND r.descriptor->'version'='1'
   AND r.descriptor->'filters'='{}' AND r.descriptor->'dimensions'='[]'
-  AND (r.descriptor->'window'->>'end')::timestamptz=run.created_at
-  AND (r.descriptor->'window'->>'start')::timestamptz
-      =run.created_at-(item->>'days')::int*interval '24 hours'
+  AND r.window_end=run.created_at
+  AND r.window_start=run.created_at-(item->>'days')::int*interval '24 hours'
  ) THEN RAISE EXCEPTION 'workflow effect is missing' USING ERRCODE='23514';
  END IF;
  RETURN NEW;

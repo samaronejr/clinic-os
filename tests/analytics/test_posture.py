@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 import psycopg
@@ -99,6 +100,7 @@ def test_sql_reporting_boundary_matrix(
     finance_setup: FinanceSetup, role: str, state: str
 ) -> None:
     rbac_graph = finance_setup.graph
+    query = metric_query("no_show")
     invoice_terms(finance_setup)
     actor, _enrollment = permission_actor(rbac_graph, role)
     if state == "inactive":
@@ -128,8 +130,8 @@ def test_sql_reporting_boundary_matrix(
         assert cursor.fetchone() == (int(allowed),)
         if allowed:
             cursor.execute(
-                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s)",
-                [rbac_graph.clinic_a, metric_query("no_show").encode(), uuid4()],
+                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                [rbac_graph.clinic_a, query.encode(), uuid4(), query.start, query.end],
             )
             assert cursor.fetchone() is not None
         else:
@@ -140,8 +142,14 @@ def test_sql_reporting_boundary_matrix(
                 )
             with pytest.raises(DatabaseError), transaction.atomic():
                 cursor.execute(
-                    "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s)",
-                    [rbac_graph.clinic_a, metric_query("no_show").encode(), uuid4()],
+                    "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                    [
+                        rbac_graph.clinic_a,
+                        query.encode(),
+                        uuid4(),
+                        query.start,
+                        query.end,
+                    ],
                 )
         for clinic in (rbac_graph.clinic_c, uuid4()):
             cursor.execute(
@@ -165,6 +173,8 @@ def test_saved_report_trigger_rejects_forged_scope_and_owner_history_is_immutabl
                 user_id=setup.graph.physician,
                 definition=definition,
                 descriptor=query.payload(),
+                window_start=query.start,
+                window_end=query.end,
             )
         refresh_metric(
             clinic_id=setup.clinic_id,
@@ -182,6 +192,8 @@ def test_saved_report_trigger_rejects_forged_scope_and_owner_history_is_immutabl
                 user_id=setup.graph.clinic_admin,
                 definition=wrong_definition,
                 descriptor=query.payload(),
+                window_start=query.start,
+                window_end=query.end,
             )
     with owner_context(setup.graph.organization_a), connection.cursor() as cursor:
         for table in sorted(TABLES):
@@ -216,8 +228,8 @@ def test_saved_report_trigger_itself_rejects_an_inactive_actor(
         statement = (
             "INSERT INTO clinic_app.analytics_savedreport "
             "(id,organization_id,clinic_id,user_id,definition_id,"
-            "descriptor,created_at) "
-            "VALUES (%s,%s,%s,%s,%s,%s,clock_timestamp())"
+            "descriptor,window_start,window_end,created_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,clock_timestamp())"
         )
         values = (
             setup.graph.organization_a,
@@ -225,6 +237,8 @@ def test_saved_report_trigger_itself_rejects_an_inactive_actor(
             setup.graph.clinic_admin,
             definition.pk,
             Jsonb(query.payload()),
+            query.start,
+            query.end,
         )
         raw.execute(statement, (uuid4(), *values))
         raw.execute(
@@ -236,3 +250,42 @@ def test_saved_report_trigger_itself_rejects_an_inactive_actor(
             raw.transaction(),
         ):
             raw.execute(statement, (uuid4(), *values))
+
+
+@pytest.mark.parametrize("text", ["now", "today"])
+def test_window_clock_text_is_refused_even_beside_typed_bounds(
+    finance_setup: FinanceSetup, text: str
+) -> None:
+    # Given: a descriptor whose window start is clock text, beside typed bounds.
+    setup = finance_setup
+    query = metric_query("no_show")
+    payload = query.payload()
+    window = cast("dict[str, str]", payload["window"])
+    forged = payload | {"window": window | {"start": text}}
+    with finance_scope(setup):
+        refresh_metric(clinic_id=setup.clinic_id, query=query, command_id=uuid4())
+        definition = MetricDefinitionVersion.objects.get(clinic_id=setup.clinic_id)
+        # When/Then: the refresh never parses window text and refuses it.
+        with (
+            pytest.raises(DatabaseError, match="invalid metric query"),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                [setup.clinic_id, json.dumps(forged), uuid4(), query.start, query.end],
+            )
+        # And: the history guard refuses the same descriptor on a saved report.
+        with (
+            pytest.raises(DatabaseError, match="invalid metric query"),
+            transaction.atomic(),
+        ):
+            SavedReport.objects.create(
+                organization_id=setup.graph.organization_a,
+                clinic_id=setup.clinic_id,
+                user_id=setup.graph.clinic_admin,
+                definition=definition,
+                descriptor=forged,
+                window_start=query.start,
+                window_end=query.end,
+            )

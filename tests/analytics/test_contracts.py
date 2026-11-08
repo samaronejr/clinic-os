@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
+from typing import cast
 
 import pytest
 from apps.analytics.catalog import METRICS
@@ -134,3 +135,19 @@ def test_nl_datetimes_reject_non_schema_isoformat_extensions(start: str) -> None
 def test_journal_aggregates_keep_exact_cents_beyond_decimal_precision() -> None:
     amount = "9223372036854775807000000000000000000000"
     assert render_value("receivables", amount, "1") == amount
+
+
+@pytest.mark.parametrize("text", ["now", "today"])
+@pytest.mark.parametrize("bound", ["start", "end"])
+def test_clock_text_window_bounds_are_refused_before_sql(bound: str, text: str) -> None:
+    # Given: a valid descriptor whose window bound is clock text.
+    value = descriptor(
+        metric_id="no_show",
+        start=datetime(2026, 11, 1, tzinfo=UTC),
+        end=datetime(2026, 11, 7, tzinfo=UTC),
+        tz="America/Sao_Paulo",
+    )
+    window = cast("dict[str, str]", value["window"])
+    # When/Then: Python refuses it, so SQL only ever receives typed bounds.
+    with pytest.raises(AnalyticsInputError):
+        parse_descriptor(json.dumps(value | {"window": window | {bound: text}}))

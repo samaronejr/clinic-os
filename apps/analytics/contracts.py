@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -67,6 +67,13 @@ def decode(raw: str) -> object:
         raise AnalyticsInputError from error
 
 
+def _instant(value: datetime) -> str:
+    """Render an instant exactly as SQL's typed window comparison does."""
+    return (
+        value.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Query:
     """Only code selects a source view; the model selects these bounded values."""
@@ -85,7 +92,7 @@ class Query:
             "version": 1,
             "dimensions": list(self.dimensions),
             "filters": {"weekdays": list(self.weekdays)} if self.weekdays else {},
-            "window": {"start": self.start.isoformat(), "end": self.end.isoformat()},
+            "window": {"start": _instant(self.start), "end": _instant(self.end)},
             "tz": self.tz,
         }
 

@@ -298,7 +298,8 @@ BEGIN
  RETURN result;
 END $f$;
 
-CREATE FUNCTION clinic_app.analytics_validate(requested_clinic uuid, query jsonb)
+CREATE FUNCTION clinic_app.analytics_validate(requested_clinic uuid, query jsonb,
+ window_start timestamptz, window_end timestamptz)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE first_at timestamptz; last_at timestamptz; day jsonb; days jsonb;
@@ -327,9 +328,14 @@ BEGIN
  OR query->'window'->>'end' !~ (
  '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
  '([.][0-9]{1,6})?(Z|[+-](0[0-9]|1[0-4]):[0-5][0-9])$')
+ OR window_start IS NULL OR window_end IS NULL
+ OR query->'window'->>'start'<>to_char(window_start AT TIME ZONE 'UTC',
+ 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+ OR query->'window'->>'end'<>to_char(window_end AT TIME ZONE 'UTC',
+ 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
  THEN RAISE EXCEPTION 'invalid metric query' USING ERRCODE='22023'; END IF;
- first_at:=(query->'window'->>'start')::timestamptz;
- last_at:=(query->'window'->>'end')::timestamptz;
+ first_at:=window_start;
+ last_at:=window_end;
  IF NOT isfinite(first_at) OR NOT isfinite(last_at) OR last_at<=first_at
  OR last_at-first_at>interval '366 days' THEN
  RAISE EXCEPTION 'invalid metric query' USING ERRCODE='22023'; END IF;
@@ -350,7 +356,7 @@ END $f$;
 SQL += SOURCES_SQL
 SQL += """
 CREATE FUNCTION clinic_app.analytics_refresh(requested_clinic uuid, query jsonb,
- command uuid)
+ command uuid, window_start timestamptz, window_end timestamptz)
 RETURNS TABLE(refresh_id uuid, changed boolean, registered boolean)
 LANGUAGE plpgsql VOLATILE SECURITY
  DEFINER
@@ -361,7 +367,7 @@ DECLARE actor uuid:=NULLIF(current_setting('app.current_user_id',true),'')::uuid
  first_at timestamptz; last_at timestamptz; observed timestamptz:=statement_timestamp();
  rows jsonb; top numeric; bottom numeric; missing bigint; state text; catalog jsonb;
 BEGIN
- PERFORM clinic_app.analytics_validate(requested_clinic,query);
+ PERFORM clinic_app.analytics_validate(requested_clinic,query,window_start,window_end);
  IF command IS NULL THEN RAISE EXCEPTION 'invalid metric query' USING ERRCODE='22023';
  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('clinic-audit:'||tenant::text,0));
@@ -387,8 +393,8 @@ BEGIN
   VALUES(definition,tenant,requested_clinic,query->>'metric_id',1,
   catalog->(query->>'metric_id'),observed);
  END IF;
- first_at:=(query->'window'->>'start')::timestamptz;
- last_at:=(query->'window'->>'end')::timestamptz;
+ first_at:=window_start;
+ last_at:=window_end;
  state:='complete';
  IF query->>'metric_id' IN ('denials','support_load','retained_usage') THEN
   rows:='[{"dimension":"","numerator":"0","denominator":"0","missing":"1"}]';
@@ -442,9 +448,9 @@ BEGIN
  refresh_id:=gen_random_uuid(); changed:=true;
  INSERT INTO clinic_app.analytics_readmodelrefresh
  (id,organization_id,clinic_id,user_id,definition_id,authorization_version,
- descriptor,command_id,rows,quality,as_of)
- VALUES(refresh_id,tenant,requested_clinic,actor,definition,auth,query,command,rows,
- state,observed);
+ descriptor,window_start,window_end,command_id,rows,quality,as_of)
+ VALUES(refresh_id,tenant,requested_clinic,actor,definition,auth,query,window_start,
+ window_end,command,rows,state,observed);
  RETURN NEXT;
 END $f$;
 
@@ -460,7 +466,8 @@ BEGIN
  OR NEW.user_id IS DISTINCT FROM NULLIF(current_setting('app.current_user_id',true),
  '')::uuid
  THEN RAISE EXCEPTION 'metric access denied' USING ERRCODE='42501'; END IF;
- PERFORM clinic_app.analytics_validate(NEW.clinic_id,NEW.descriptor);
+ PERFORM clinic_app.analytics_validate(NEW.clinic_id,NEW.descriptor,
+ NEW.window_start,NEW.window_end);
  IF TG_TABLE_NAME='analytics_savedreport' THEN
   IF NOT EXISTS(SELECT 1 FROM clinic_app.analytics_metricdefinitionversion d
   WHERE d.id=NEW.definition_id AND d.clinic_id=NEW.clinic_id
@@ -513,8 +520,8 @@ SQL += "SET LOCAL ROLE clinic_resolver;\n"
 for _signature, _public in (
     ("analytics_allowed(uuid,text)", True),
     ("analytics_authorization(uuid)", True),
-    ("analytics_validate(uuid,jsonb)", False),
-    ("analytics_refresh(uuid,jsonb,uuid)", True),
+    ("analytics_validate(uuid,jsonb,timestamptz,timestamptz)", False),
+    ("analytics_refresh(uuid,jsonb,uuid,timestamptz,timestamptz)", True),
     ("analytics_guard()", False),
 ):
     SQL += (
@@ -554,8 +561,8 @@ for _table in ("analytics_savedreport", "analytics_analystreview"):
 REVERSE_SQL += """
 SET LOCAL ROLE clinic_resolver;
 DROP FUNCTION clinic_app.analytics_guard(),
- clinic_app.analytics_refresh(uuid,jsonb,uuid),
- clinic_app.analytics_validate(uuid,jsonb),
+ clinic_app.analytics_refresh(uuid,jsonb,uuid,timestamptz,timestamptz),
+ clinic_app.analytics_validate(uuid,jsonb,timestamptz,timestamptz),
  clinic_app.analytics_authorization(uuid),
  clinic_app.analytics_allowed(uuid,text);
 RESET ROLE;

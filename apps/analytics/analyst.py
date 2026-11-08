@@ -150,6 +150,8 @@ def review_proposal(
             user_id=actor,
             invocation=invocation,
             descriptor=query.payload(),
+            window_start=query.start,
+            window_end=query.end,
             authorization_version=authorization_version,
             decision=decision,
         )
