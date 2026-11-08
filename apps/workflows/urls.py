@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from apps.workflows import inbox_views, views
+from apps.workflows import coordination_views, inbox_views, views
 from apps.workflows.callbacks import callback
 from apps.workflows.designer import designer
 from apps.workflows.run_views import runs
@@ -26,5 +26,21 @@ urlpatterns = [
         views.tasks,
         {"exceptions": True},
         name="exceptions",
+    ),
+    # Task 55: urgent concerns, their coverage policy and release notices.
+    path(
+        "clinics/<uuid:clinic_id>/inbox/urgent/",
+        coordination_views.urgent_concerns_page,
+        name="urgent-concerns",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/settings/urgent-coverage/",
+        coordination_views.urgent_coverage_page,
+        name="urgent-coverage",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/inbox/release-notices/",
+        coordination_views.release_notices_page,
+        name="release-notices",
     ),
 ]

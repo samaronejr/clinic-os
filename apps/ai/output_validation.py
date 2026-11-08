@@ -6,6 +6,8 @@ import json
 from typing import TYPE_CHECKING, assert_never
 
 from apps.ai.brief_contracts import SCHEMA, parse_request, validate_reply
+from apps.ai.care_contracts import SCHEMA as CARE_SCHEMA
+from apps.ai.care_contracts import validate_reply as validate_care_reply
 from apps.ai.contracts import (
     MAX_CONTENT_BYTES,
     GatewayInputError,
@@ -103,4 +105,7 @@ def call_provider(
         validate_decision_reply(result.content, parse_decision_request(request.content))
     elif schema == SCHEMA:
         validate_reply(result.content, parse_request(request.content))
+    elif schema == CARE_SCHEMA:
+        # The envelope must be exact; single items are judged at collection.
+        validate_care_reply(result.content)
     return result

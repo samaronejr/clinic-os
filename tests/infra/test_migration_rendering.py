@@ -9,6 +9,7 @@ from django.db import DEFAULT_DB_ALIAS, connection, migrations, models
 from django.db.backends.postgresql.schema import DatabaseSchemaEditor
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState, ProjectState
+from django.db.migrations.writer import MigrationWriter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -335,3 +336,157 @@ def test_wave_c_batch_database_path_matches_separated_sql(
     separated = statements[migrations.SeparateDatabaseAndState]
     assert statements[SchemaStateBatch] == separated
     assert renders[SchemaStateBatch] == ["entry", "entry", "receipt", "receipt"] * 2
+
+
+@pytest.mark.parametrize("minimum", [0, 1])
+def test_wave_c_batch_preserves_unchanged_model_state_and_sql(
+    rendered_state: ProjectState, monkeypatch: pytest.MonkeyPatch, minimum: int
+) -> None:
+    constraint = models.CheckConstraint(
+        condition=models.Q(value__gte=0), name="render_probe_nonnegative"
+    )
+    migrations.AddConstraint(model_name="entry", constraint=constraint).state_forwards(
+        "render_probe", rendered_state
+    )
+    replacement = models.CheckConstraint(
+        condition=models.Q(value__gte=minimum), name="render_probe_nonnegative"
+    )
+    operations = [
+        migrations.RemoveConstraint(
+            model_name="entry", name="render_probe_nonnegative"
+        ),
+        migrations.AddConstraint(model_name="entry", constraint=replacement),
+    ]
+    original: Callable[[ModelState, Apps], type[models.Model]] = ModelState.render
+    renders: list[str] = []
+
+    def render(model: ModelState, apps: Apps) -> type[models.Model]:
+        renders.append(model.name_lower)
+        return original(model, apps)
+
+    monkeypatch.setattr(ModelState, "render", render)
+    statements = []
+    definitions = []
+    batch_renders: list[str] = []
+    for kind in (migrations.SeparateDatabaseAndState, SchemaStateBatch):
+        operation = kind(database_operations=operations, state_operations=operations)
+        before = rendered_state.clone()
+        after = before.clone()
+        renders.clear()
+        operation.state_forwards("render_probe", after)
+        if kind is SchemaStateBatch:
+            batch_renders = list(renders)
+        assert after.apps.get_model("render_probe", "Entry")._meta.constraints == [
+            replacement
+        ]
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
+            operation.database_forwards("render_probe", forward, before.clone(), after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as backward:
+            operation.database_backwards(
+                "render_probe", backward, after, before.clone()
+            )
+        statements.append([*forward.collected_sql, *backward.collected_sql])
+        after.clear_delayed_apps_cache()
+        definitions.append(
+            MigrationWriter.serialize(
+                [
+                    (
+                        key,
+                        state.name,
+                        sorted(state.fields.items()),
+                        state.options,
+                        state.bases,
+                        state.managers,
+                    )
+                    for key, state in sorted(after.models.items())
+                ]
+            )
+        )
+        entry = after.apps.get_model("render_probe", "Entry")
+        organization = after.apps.get_model("render_probe", "Organization")
+        field = entry._meta.get_field("organization")
+        assert field.related_model is organization
+        assert any(
+            getattr(relation, "field", None) is field
+            for relation in organization._meta.get_fields(include_hidden=True)
+        )
+        assert entry._meta.constraints == [replacement]
+        assert before.apps.get_model("render_probe", "Entry")._meta.constraints == [
+            constraint
+        ]
+
+    assert statements[0] == statements[1]
+    assert definitions[0] == definitions[1]
+    assert batch_renders == ["entry"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("care_models_present", [False, True])
+def test_authority_batch_preserves_fk_sql_and_historical_relations(
+    care_models_present: bool,
+) -> None:
+    loader = MigrationLoader(None)
+    batch = loader.disk_migrations["ai", "0008_front_desk_authority"].operations[0]
+    assert isinstance(batch, SchemaStateBatch)
+    separated = migrations.SeparateDatabaseAndState(
+        database_operations=batch.database_operations,
+        state_operations=batch.state_operations,
+    )
+    targets = [("ai", "0007_front_desk")]
+    if care_models_present:
+        targets.append(("ai", "0008_care_plan_status_private"))
+    before = loader.project_state(targets)
+    assert (("ai", "careproposal") in before.models) is care_models_present
+    _ = before.apps
+    statements = []
+    states = []
+    definitions = []
+    for operation in (separated, batch):
+        after = before.clone()
+        operation.state_forwards("ai", after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as forward:
+            operation.database_forwards("ai", forward, before.clone(), after)
+        with _RecordingEditor(connection, collect_sql=True, atomic=False) as backward:
+            operation.database_backwards("ai", backward, after, before.clone())
+        statements.append([*forward.collected_sql, *backward.collected_sql])
+        # Historical ORM callbacks consume this same delayed-registry boundary.
+        after.clear_delayed_apps_cache()
+        _ = after.apps
+        states.append(after)
+        definitions.append(
+            MigrationWriter.serialize(
+                [
+                    (
+                        key,
+                        state.name,
+                        sorted(state.fields.items()),
+                        state.options,
+                        state.bases,
+                        state.managers,
+                    )
+                    for key, state in sorted(after.models.items())
+                ]
+            )
+        )
+
+    assert statements[0] == statements[1]
+    # ArrayField.deconstruct() clones its base field; compare full serialized
+    # definitions, including nested fields, rather than their creation counters.
+    assert definitions[0] == definitions[1]
+    for state_operation in batch.state_operations:
+        if not isinstance(state_operation, migrations.AddField):
+            continue
+        model = states[1].apps.get_model("ai", state_operation.model_name)
+        field = model._meta.get_field(state_operation.name)
+        if not isinstance(field, models.ForeignKey):
+            continue
+        assert field.null
+        assert field.remote_field is not None
+        assert field.remote_field.related_name == "+"
+        target = field.remote_field.model
+        assert not isinstance(target, str)
+        assert target is states[1].apps.get_model(target._meta.label_lower)
+        assert any(
+            getattr(relation, "field", None) is field
+            for relation in target._meta.get_fields(include_hidden=True)
+        )

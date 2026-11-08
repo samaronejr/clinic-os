@@ -23,13 +23,16 @@ _MODEL_OPERATIONS = (
 
 
 class SchemaStateBatch(migrations.SeparateDatabaseAndState):
-    """Render changed models once while retaining original database operations.
+    # For nullable hidden FKs with unchanged target keys, equivalence holds at
+    # delayed-registry consumption, not for every transient registry.
+    """Render changed models while retaining original database operations.
 
     These batches create plain models or change metadata and non-key scalar
     fields on existing models. Added relationships belong to models created in
     the same batch. Existing relationships and key fields must remain unchanged.
-    Historical ORM callbacks clear the delayed registry, as they do for the
-    existing tenant constraint operations.
+    Constraint metadata is refreshed with its model so later schema operations
+    and historical ORM callbacks receive the current definition in either
+    direction.
 
     Database operations still run one at a time against their own intermediate
     states. Each state re-renders only the model its operation changed, so the
@@ -38,7 +41,7 @@ class SchemaStateBatch(migrations.SeparateDatabaseAndState):
     """
 
     def state_forwards(self, app_label: str, state: ProjectState) -> None:
-        """Apply the complete state batch before refreshing changed models."""
+        """Apply the state batch, rendering each changed model once."""
         _apply_and_render_changed(app_label, self.state_operations, state)
 
     def database_forwards(
@@ -84,7 +87,9 @@ def _following_state(
 
 
 def _apply_and_render_changed(
-    app_label: str, operations: Sequence[Operation], state: ProjectState
+    app_label: str,
+    operations: Sequence[Operation],
+    state: ProjectState,
 ) -> None:
     """Apply state changes without a registry, then render only changed models."""
     registry = state.__dict__.pop("apps", None)

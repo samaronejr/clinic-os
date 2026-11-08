@@ -18,7 +18,7 @@ import os
 import sys
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -40,6 +40,8 @@ from database_urls import database_url_for_name
 from identity.permission_support import owner_context, permission_context
 from patient_service_support import runtime_role
 from workflows import decision_sites
+from workflows.coordination_guard_cases import COORDINATION_SEEDED
+from workflows.coordination_world import seed_coordination_world
 from workflows.guard_cases import (
     Cell,
     GuardCase,
@@ -395,6 +397,12 @@ def test_every_guard_refuses_all_nonpermitted_catalog_roles_and_reaches_permissi
     record_property: Callable[[str, object], None],
 ) -> None:
     world = seed_guard_world(rbac_graph, monkeypatch)
+    if case.symbol.startswith("apps.workflows.care."):
+        from workflows.care_world import seed_care_world  # noqa: PLC0415
+
+        world = replace(world, care=seed_care_world(world))
+    if case.symbol in COORDINATION_SEEDED:
+        world = replace(world, coordination=seed_coordination_world(world))
     with decision_sites.rewritten():
         target = inspect.unwrap(discover_guards()[case.symbol].function).__code__
         _verify_guard(case, world, target, monkeypatch, record_property)
@@ -414,7 +422,8 @@ def _verify_guard(
     }
     denied = set(UserClinicRole.Role.values) - permitted
     assert permitted
-    positive = sorted(permitted)[0]
+    positive = case.control_role or sorted(permitted)[0]
+    assert positive in permitted, (case.symbol, "control role lacks the permission")
     _set_role(world, positive)
 
     def invoke(w: GuardWorld, _prepared: object) -> object:
@@ -434,7 +443,10 @@ def _verify_guard(
         )
     for role in sorted(denied):
         world = _prepare(world, case, positive, role)
-        _refused(_run(case, world, target, invoke), _expected_denial(case), role)
+        expected = (
+            _expected_denial(case) if case.role_denial is None else case.role_denial
+        )
+        _refused(_run(case, world, target, invoke), expected, role)
     for state in ("revoked", "inactive", "foreign"):
         world = _prepare(
             world,

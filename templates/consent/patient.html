@@ -1,9 +1,10 @@
-{% extends "base.html" %}{% load static i18n %}
+{% extends "base.html" %}{% load static i18n patient_portal %}
 {% block title %}{% translate "Your consent choices" %}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% endblock %}
-{% block content %}
-<section class="shell-narrow intake-create" aria-labelledby="consent-title">
-  <header>
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% patient_portal_v2 as portal_v2 %}{% if portal_v2 %}{% include "intake/partials/portal_head.html" %}{% endif %}{% endblock %}
+{% block content %}{% patient_portal_v2 as portal_v2 %}
+<section class="shell-narrow intake-create{% if portal_v2 %} portal-page{% endif %}" aria-labelledby="consent-title">
+{% if portal_v2 %}  {% include "intake/partials/portal_back.html" only %}
+{% endif %}  <header>
     <h1 id="consent-title">{% translate "Your consent choices" %}</h1>
     <p class="lede">{% translate "Decide separately for each purpose. Recording, AI assistance, messages, marketing, and research are independent choices." %}</p>
     <p>{% translate "Refusing optional uses does not prevent care or manual clinical notes. Revocation blocks future uses without erasing clinical records or receipts." %}</p>
@@ -80,6 +81,7 @@
     {% endfor %}
   </section>
   {% endif %}
-  <a class="button button--secondary" href="{% url 'intake:patient-home' %}">{% translate "Back to the portal" %}</a>
-</section>
+{% if not portal_v2 %}  <a class="button button--secondary" href="{% url 'intake:patient-home' %}">{% translate "Back to the portal" %}</a>
+{% endif %}{% if portal_v2 %}  {% include "intake/partials/portal_help.html" only %}
+{% endif %}</section>
 {% endblock %}

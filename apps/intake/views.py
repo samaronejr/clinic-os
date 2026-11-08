@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
 from django import forms
+from django.conf import settings
 from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
@@ -75,6 +76,7 @@ from apps.intake.patient_access import (
     patient_session_overview,
     redeem_invitation,
 )
+from apps.intake.portal import portal_home
 from apps.intake.services import (
     ContactConflictError,
     ContactInputError,
@@ -1369,11 +1371,14 @@ def patient_home_view(request: HttpRequest) -> HttpResponseBase:
             {"state": "required"},
             status=403,
         )
-    return render(
-        request,
-        "intake/patient_home.html",
-        {"overview": overview, "unified_at": patient_alias_overview()},
-    )
+    context: dict[str, object] = {
+        "overview": overview,
+        "unified_at": patient_alias_overview(),
+    }
+    if not settings.PATIENT_PORTAL_V2:
+        return render(request, "intake/patient_home_v1.html", context)
+    context["home"] = portal_home(overview.operations)
+    return render(request, "intake/patient_home.html", context)
 
 
 @require_http_methods(["POST"])

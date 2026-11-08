@@ -1,0 +1,93 @@
+/* Staff inbox layout. Every value is a token from clinic-os.css, so both themes hold. */
+.messages-shell {
+  display: grid;
+  gap: var(--density-stack);
+  max-width: var(--measure-wide);
+  min-width: 0;
+}
+
+/* The list keeps the shared scroll region at phone widths. Positioning it makes
+   it the containing block of the row actions' visually hidden names, which are
+   absolutely positioned: otherwise they escape the region's clipping and widen
+   the page itself at 375px (the billing ledger needed the same rule). */
+.messages-shell .table-scroll {
+  position: relative;
+}
+
+.thread {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread__item {
+  max-width: var(--measure-prose);
+  padding: var(--space-3) var(--space-4);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.thread__item--in {
+  justify-self: start;
+}
+
+.thread__item--out {
+  justify-self: end;
+  background: var(--color-surface-sunken);
+}
+
+.thread__meta {
+  margin: 0 0 var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.thread__body {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 48rem) {
+  .thread__item {
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
+.candidates {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.candidate strong {
+  overflow-wrap: anywhere;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}

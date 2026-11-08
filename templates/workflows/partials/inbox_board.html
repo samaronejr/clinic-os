@@ -119,6 +119,10 @@
             {% csrf_token %}<input type="hidden" name="action" value="show"><input type="hidden" name="encounter_id" value="{{ item.target_id }}">
             <button type="submit" data-worklist-primary>{% trans "Open note" %}<span class="visually-hidden"> · {{ item.title }}</span></button>
           </form>
+          {% elif item.action == "open_conversation" %}
+          <a class="button button--secondary" href="{% url 'comms:conversation' clinic_id item.record_id %}" data-worklist-primary>{% trans "Open conversation" %}<span class="visually-hidden"> · {{ item.title }}</span></a>
+          {% elif item.action == "open_urgent" %}
+          <a class="button button--secondary" href="{% url 'workflows:urgent-concerns' clinic_id %}" data-worklist-primary>{% trans "Open urgent concerns" %}<span class="visually-hidden"> · {{ item.title }}</span></a>
           {% elif item.action == "open_task" %}
           <a class="button button--secondary" href="{% url 'workflows:tasks' clinic_id %}" data-worklist-primary>{% trans "Open in Tasks" %}<span class="visually-hidden"> · {{ item.title }}</span></a>
           {% endif %}

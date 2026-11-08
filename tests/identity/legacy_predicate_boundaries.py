@@ -129,6 +129,9 @@ def _granted_permissions(w: LegacyWorld, valid: bool) -> object:
     if valid and w.role == "receptionist":
         # Reception adds the operational queue permission without rewriting v1.
         expected |= frozenset({"reception.queue"})
+    if valid and w.role in {"owner", "org_admin", "clinic_admin", "clinic_manager"}:
+        # Task 50: management answers data-subject requests (v2 extension).
+        expected |= frozenset({"privacy.requests"})
     assert granted == expected, (granted, expected)
     return valid
 

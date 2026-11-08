@@ -131,3 +131,108 @@ same role and session proof. Later survivor rows stay on the survivor.
 forward links through their unchanged domain RLS for individual review. Native
 forms live at the clinic's `patients/duplicates/` and `patients/timeline/` routes;
 all selectors and reasons remain in POST bodies.
+
+## Patient portal v2 (todo 50)
+
+`/patient/` is a mobile-first hub built by `portal.py`. Each destination in
+`DESTINATIONS` names exactly one session operation, and a destination whose
+operation the live session does not hold is absent, never a placeholder. The
+home keeps the v1 element contract (`#patient-name`, `#patient-clinic` and the
+`#*-link` destination ids). Its summaries read only through the existing
+patient-session resolvers: the next upcoming appointment in clinic time
+(`patient_appointments`), unsubmitted questionnaires (`patient_responses`),
+open released charges (`patient_ledger`), and whether the session acts for a
+represented patient (`clinic_app.patient_is_delegate`). A resolver that
+refuses between the overview read and a summary read hides that summary. The
+portal stores nothing in the browser, and the service worker contract is
+unchanged. `PATIENT_PORTAL_V2=false` serves the retained v1 home as the
+rollback path.
+
+The patient destinations (booking and waitlist offers, forms, teleconsult,
+charges and one charge, documents, records, consent) render from views other
+apps own, so their templates read the same switch through the
+`{% patient_portal_v2 %}` tag (`templatetags/patient_portal.py`). Under v2 each
+opens with `intake/partials/portal_back.html` (`[data-portal-back]`: one
+`[data-portal-back-link]` to `/patient/`, or to the charge list from one
+charge, and one `[data-portal-help-link]` to `#portal-help`), ends with
+`intake/partials/portal_help.html` (the home's non-AI support copy as
+`#portal-help[data-portal-help]`, which the access gate also shows), and drops the legacy
+eyebrow and bottom back links; actions are full width below 48rem, record
+lists keep the prose measure, and digests wrap. With the switch off, each
+template renders its retained v1 bytes. Every id, `data-*` hook, form, action
+name and heading is unchanged in both modes.
+
+Integration boundaries: the messages destination (operation `messages`, added to
+new invitations and to the delegate operation vocabulary by todo 50) opens
+`/patient/messages/`, which the comms app owns together with todo 51's portal
+threads; its contract is the Portal section of
+[`apps/comms/README.md`](../comms/README.md). Like results, it is a v2-only page.
+PSP payment links arrive inside the existing charge screens with todo 57. The
+non-AI path to a person is on the home, on every destination and on the access
+gate.
+
+Results (`/patient/results/`, orders app) list only what
+`clinic_app.orders_patient_sources` releases to the session's audience: the
+current acknowledged version, with a "corrected version" mark after the first.
+A download posts the version in the body, re-checks the resolver, verifies size
+and SHA-256 and chains `orders.result.patient_downloaded` bound to the live
+session (`clinic_app.orders_patient_download_audit`); unknown, unreleased and
+malformed selectors render the same gate.
+
+## Data-subject requests (LGPD art. 18, IS-19)
+
+`DataSubjectRequest` (`data_request_models.py`) records access, correction,
+portability, sharing information and objection requests. Patients and verified
+delegates file them at `/patient/data-requests/` through
+`clinic_app.submit_data_request`, which binds the live session, the subject
+enrollment and the delegate grant, requires the operation each right needs
+(`records` for access and portability, `consent` plus the delegate's purposes
+for objection, `enrollment_view` otherwise), stamps `received_at` and a due date
+15 days later from `clinic_app.data_request_now()`, and opens one `review` task
+owned by the `clinic_manager` role with the same due date. Correction text is a
+tenant envelope and the idempotency fingerprint is a tenant HMAC, so no
+plaintext or plain digest of it is stored. A delegate sees only requests made
+under its own grant; the patient sees every request about them.
+
+Access and portability deliver the deterministic released-record export, so
+records restricted from delegates never leave for a delegate. Correction never
+edits clinical content: staff review it and any clinical change is a
+clinician's amendment. An objection names one optional consent purpose
+(`ConsentPurpose`, never care processing): accepted texts of that purpose are
+revoked through the consent service and the request is fulfilled at once;
+otherwise it waits for staff. Sharing information projects the provider
+registry (capability, lifecycle state, `is_live`) without accounts or secrets.
+
+Staff with `privacy.requests` (owner, org admin, clinic admin and clinic
+manager; a catalog v2 extension held without a workflow bundle opt-in, as
+`reception.queue` is, and narrowable by a v2 remove grant) answer at
+`/intake/clinics/<clinic>/data-requests/` (Patients > Data-subject requests):
+received -> in_progress -> fulfilled, or rejected with a fixed reason. The
+database guard rejects every other transition, deletes and direct writes, and
+a terminal answer closes the SLA task. Overdue is database time, and equality
+counts as overdue. Every other role gets the same denial as an unknown request.
+
+## Preferences, representation and notifications
+
+`/patient/preferences/` keeps display choices (larger text, higher contrast)
+in the server-side Django session only and summarizes the messaging channels
+the clinic uses (`clinic_app.patient_channel_preferences`, never a
+destination). Channel changes stay with the clinic team, who verify each
+contact. The home lists the original identity's active, verified grants
+(`clinic_app.patient_delegate_options`) and switches through the existing
+POST-only `/patient/delegation/switch/`.
+
+Browser notifications stay unavailable and are shown as such: no portal page
+registers a service worker, asks for notification permission or keeps data in
+browser storage, and `templates/clinic-os-sw.js` is unchanged. The only copy a
+future notification may carry is `PUSH_NOTICE` ("Você tem uma nova mensagem da
+clínica", no record data). Delivery needs a push handler in the service worker,
+patient-session worker serving and a governed push capability (EG-1/EG-5); the
+trigger, an accepted portal message, now exists.
+
+Patients book by service type on the appointments screen (contract:
+`tests/renewal/test_patient_service_booking.py`; mechanism in
+`apps/scheduling/README.md`). The service choice travels in the POST body
+(`action=slots`), never in a URL. Clinics that review self-bookings offer no
+service choice: their patient rows are born `requested`, which todo 22 gave
+service bookings no edges for.

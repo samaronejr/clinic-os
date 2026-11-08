@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 import pytest
+from ops.testing.ci_pytest_partition import SHARDS
 from ops.testing.renewal_acceptance import (
     REQUIRED_JOBS,
     _binding_failures,
@@ -30,11 +31,11 @@ FIRST_SUITE = sorted(SUITES)[0]
 WORKFLOW = """\
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/2
+    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/3
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps: []
   python-coverage:
     name: Python ${{ matrix.python-version }} combined coverage and census
@@ -454,20 +455,20 @@ def test_python_shard_and_merge_jobs_are_required(
 @pytest.mark.parametrize(
     "replacement",
     [
-        "shard: [1]",
-        "shard: [1, 1]",
-        "shard: [1, 2, 3]",
-        "shard: [1, 2]\n        exclude: [{shard: 2}]",
+        "shard: [1, 2]",
+        "shard: [1, 2, 2]",
+        "shard: [1, 2, 3, 4]",
+        "shard: [1, 2, 3]\n        exclude: [{shard: 3}]",
     ],
 )
 def test_rc_rejects_a_shrunken_or_duplicated_python_matrix(replacement: str) -> None:
-    workflow = _workflow().replace("shard: [1, 2]", replacement)
+    workflow = _workflow().replace("shard: [1, 2, 3]", replacement)
     failures, _ = _binding_failures(workflow, set(SUITES))
     assert any("every Python shard exactly once" in failure for failure in failures)
 
 
 @pytest.mark.parametrize("version", ["3.12", "3.13"])
-@pytest.mark.parametrize("number", [1, 2])
+@pytest.mark.parametrize("number", SHARDS)
 def test_rc_requires_every_python_shard_artifact(
     tmp_path: Path,
     version: str,

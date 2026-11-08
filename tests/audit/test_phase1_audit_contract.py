@@ -463,6 +463,28 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "ai.model_configuration",
         "drafted",
     ),
+    "ai.care_coordination.requested": (
+        "tenant",
+        "clinic-os-web",
+        "ai.invocation",
+        "care_requested",
+    ),
+    **{
+        f"ai.care_coordination.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.care_proposal",
+            state,
+        )
+        for state in (
+            "proposed",
+            "refused",
+            "approved",
+            "accepted",
+            "rejected",
+            "stale",
+        )
+    },
     **{
         f"ai.evaluation.{state}": ("tenant", "clinic-os-web", "ai.evaluation", state)
         for state in (
@@ -801,6 +823,114 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "workflows.step",
         "retried",
+    ),
+    "workflows.care_plan.created": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_plan",
+        "created",
+    ),
+    "workflows.care_plan.superseded": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.care_plan",
+        "superseded",
+    ),
+    "workflows.care_action.created": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_action",
+        "created",
+    ),
+    "workflows.care_action.assigned": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_action",
+        "assigned",
+    ),
+    "workflows.care_action.completed": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_action",
+        "completed",
+    ),
+    "workflows.care_action.cancelled": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_action",
+        "cancelled",
+    ),
+    "workflows.care_action.reviewed": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.care_action",
+        "reviewed",
+    ),
+    "workflows.care_action.overdue": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.care_action",
+        "overdue",
+    ),
+    "workflows.care_action.flagged": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.care_action",
+        "flagged",
+    ),
+    "workflows.referral.created": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.referral",
+        "created",
+    ),
+    "workflows.referral.linked": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.referral",
+        "linked",
+    ),
+    "workflows.referral.advanced": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.referral",
+        "advanced",
+    ),
+    "workflows.recall.scheduled": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.recall",
+        "scheduled",
+    ),
+    "workflows.recall.materialized": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.recall",
+        "materialized",
+    ),
+    "workflows.pro.assigned": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.pro_assignment",
+        "assigned",
+    ),
+    "workflows.pro.completed": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.pro_assignment",
+        "completed",
+    ),
+    "workflows.pro_occurrence.responded": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.pro_occurrence",
+        "responded",
+    ),
+    "workflows.pro_occurrence.no_response": (
+        "tenant",
+        "clinic-os-worker",
+        "workflows.pro_occurrence",
+        "no_response",
     ),
     "realtime.subscription.authorized": (
         "tenant",
@@ -1254,6 +1384,48 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "intake.patient_access_grant",
         "revoked",
     ),
+    "intake.data_request.received": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "received",
+    ),
+    "intake.data_request.started": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "started",
+    ),
+    "intake.data_request.fulfilled": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "fulfilled",
+    ),
+    "intake.data_request.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "rejected",
+    ),
+    "intake.data_request.exported": (
+        "tenant",
+        "clinic-os-web",
+        "intake.data_subject_request",
+        "exported",
+    ),
+    "intake.data_requests.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic",
+        "viewed",
+    ),
+    "orders.result.patient_downloaded": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "downloaded",
+    ),
     "scheduling.availability.created": (
         "tenant",
         "clinic-os-web",
@@ -1560,6 +1732,142 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "released",
     ),
     "orders.task.created": ("tenant", "clinic-os-web", "workflows.task", "created"),
+    "comms.conversation.opened": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "opened",
+    ),
+    "comms.conversation.assigned": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "assigned",
+    ),
+    "comms.conversation.state_changed": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "state_changed",
+    ),
+    "comms.conversation.patient_linked": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "patient_linked",
+    ),
+    "comms.conversation.clinician_cleared": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "clinician_cleared",
+    ),
+    "comms.message.queued": ("tenant", "clinic-os-web", "comms.message", "queued"),
+    "comms.message.retried": ("tenant", "clinic-os-web", "comms.message", "retried"),
+    "comms.template.created": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "created",
+    ),
+    "comms.template.approval_changed": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "approval_changed",
+    ),
+    "comms.inbound.message_received": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "received",
+    ),
+    "comms.inbound.escalated": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "escalated",
+    ),
+    "comms.inbound.status_applied": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "status_applied",
+    ),
+    "comms.inbound.template_status_applied": (
+        "tenant",
+        "clinic-os-web",
+        "comms.template_version",
+        "status_applied",
+    ),
+    "comms.portal.reply_received": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "received",
+    ),
+    "comms.portal.escalated": (
+        "tenant",
+        "clinic-os-web",
+        "comms.conversation",
+        "escalated",
+    ),
+    "comms.suggestion.decided": (
+        "tenant",
+        "clinic-os-web",
+        "comms.suggested_reply",
+        "decided",
+    ),
+    # Task 54: reviewed front-desk answers and staff handoff resolution.
+    **{
+        f"ai.knowledge_article.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.knowledge_article",
+            state,
+        )
+        for state in ("drafted", "approved", "retired")
+    },
+    "ai.front_desk.resolved": (
+        "tenant",
+        "clinic-os-web",
+        "ai.front_desk_thread",
+        "resolved",
+    ),
+    "ai.front_desk.replied": (
+        "tenant",
+        "clinic-os-web",
+        "ai.front_desk_turn",
+        "replied",
+    ),
+    # Task 55: result release notices and the urgent-concern queue.
+    "workflows.release_notice.approved": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.release_notice",
+        "approved",
+    ),
+    "workflows.release_delivery.queued": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.release_delivery",
+        "queued",
+    ),
+    "workflows.urgent_coverage.published": (
+        "tenant",
+        "clinic-os-web",
+        "workflows.urgent_coverage",
+        "published",
+    ),
+    **{
+        f"workflows.urgent_concern.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "workflows.urgent_concern",
+            state,
+        )
+        for state in ("reported", "acknowledged", "resolved")
+    },
 }
 
 

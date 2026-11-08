@@ -18,6 +18,7 @@ import math
 import threading
 import time
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import pytest
 from PIL import Image
@@ -28,6 +29,7 @@ from playwright.sync_api import ViewportSize
 from renewal.browser._navigation import (
     click_to_navigate,
     goto_settled,
+    reload_settled,
     settle_service_worker,
     wait_for_document,
 )
@@ -39,7 +41,7 @@ from renewal.browser._page_wait import (
     evaluate_js,
     wait_for_js,
 )
-from renewal.browser.a11y_support import check_page
+from renewal.browser.a11y_support import AXE_LOADED_JS, AXE_URL, check_page
 from renewal.browser.engines import (
     MAX_CAPTURE_DEVICE_PX,
     MOBILE_PROFILES,
@@ -54,7 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, Response
 
 OK_STATUS = 200
 FOUND_STATUS = 302
@@ -346,6 +348,43 @@ def csp_page(renewal_page: Page, renewal_base_url: str) -> Iterator[Page]:
     assert "script-src 'self'" in response.headers["content-security-policy"]
     yield page
     context.close()
+
+
+def test_axe_injection_fetches_fresh_bytes_per_document_and_reuses_them(
+    csp_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+) -> None:
+    responses: list[Response] = []
+    bodies: list[bytes] = []
+
+    def record(response: Response) -> None:
+        if urlsplit(response.url).path == AXE_URL:
+            responses.append(response)
+
+    csp_page.on("response", record)
+    for document in range(2):
+        if document:
+            reload_settled(csp_page, wait_until="load")
+        assert evaluate_js(csp_page, AXE_LOADED_JS) is False
+        for audit in range(2):
+            report = check_page(
+                csp_page,
+                renewal_base_url,
+                renewal_artifact_root,
+                f"axe-document-{document}-audit-{audit}",
+            )
+            assert report["violations"] == 0
+            assert evaluate_js(csp_page, AXE_LOADED_JS) is True
+            assert len(responses) == document + 1
+        bodies.append(responses[-1].body())
+    assert len({response.url for response in responses}) == 2
+    assert all(response.status == OK_STATUS for response in responses)
+    assert bodies[0] == bodies[1]
+    assert bodies[0]
+    for response in responses:
+        assert "if-none-match" not in response.request.headers
+        assert "if-modified-since" not in response.request.headers
 
 
 def test_wait_for_js_fails_at_its_deadline_before_a_late_truth(

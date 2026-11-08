@@ -119,6 +119,15 @@ def results(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         )
         if order_form.is_bound:
             order_form.is_valid()
+        # Task 55: a release binds the clinic's current approved notice version.
+        from apps.workflows.release import (  # noqa: PLC0415 - workflows composes orders
+            current_notice,
+        )
+
+        try:
+            release_notice = current_notice(clinic_id=clinic_id)
+        except CurrentActorError:
+            release_notice = None
         return render(
             request,
             "orders/results.html",
@@ -133,6 +142,7 @@ def results(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 "outcome": outcome,
                 "error": error,
                 "render_key": uuid4().hex,
+                "release_notice": release_notice,
                 "lab_enabled": settings.CLINIC_DATA_MODE == "synthetic"
                 and settings.ORDERS_SYNTHETIC_LAB_ENABLED,
             },

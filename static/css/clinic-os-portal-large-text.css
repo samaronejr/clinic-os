@@ -1,0 +1,7 @@
+/* Patient portal display choice "larger text" (todo 50). The design system
+   sizes text in rem, so one root step scales every portal text token while
+   layout stays fluid; linked only when the session chose it. */
+
+html {
+  font-size: 125%;
+}

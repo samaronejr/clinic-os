@@ -48,8 +48,17 @@ NAV_CLINIC: Final = re.compile(
 PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
 # A physician sees every IA destination their bundle and routes open (plan
 # annex IA, todo 13): Patients leads to consent, never to the registry, and
-# the clinic billing ledger stays hidden.
-PHYSICIAN_MODULES: Final = {"today", "agenda", "patients", "inbox", "operations"}
+# the clinic billing ledger stays hidden. Task 53: Automations leads a
+# physician to Care coordination for their own plans.
+PHYSICIAN_MODULES: Final = {
+    "today",
+    "agenda",
+    "patients",
+    "inbox",
+    "messages",
+    "operations",
+    "automations",
+}
 
 
 def _modules(content: bytes) -> dict[str, tuple[str, bool]]:
@@ -106,6 +115,7 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
         "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),
         "inbox": (f"/clinics/{rbac_graph.clinic_a}/results/", False),
+        "messages": (f"/clinics/{rbac_graph.clinic_a}/messages/", False),
         "operations": (f"/retention/clinics/{rbac_graph.clinic_a}/", False),
         "settings": (
             f"/scheduling/clinics/{rbac_graph.clinic_a}/settings/",

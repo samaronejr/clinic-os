@@ -278,6 +278,10 @@ def test_beat_schedule_has_exact_durable_scanners() -> None:
             "task": "apps.workflows.tasks.scan_due",
             "schedule": 60.0,
         },
+        "workflow-care-scanner": {
+            "task": "apps.workflows.tasks.care_scan",
+            "schedule": 60.0,
+        },
         "retention-policy-sweep": {
             "task": "apps.retention.tasks.scan_due",
             "schedule": 60.0,

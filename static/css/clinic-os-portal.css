@@ -1,0 +1,424 @@
+/* Patient portal v2 (todo 50): a mobile-first hub on the Clinic Ledger tokens.
+   Raw values live only in clinic-os.css; this file composes semantic tokens. */
+
+.portal {
+  display: grid;
+  min-width: 0;
+  gap: var(--density-stack);
+}
+
+.portal-header > :last-child {
+  margin-bottom: 0;
+}
+
+.portal-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0 var(--density-stack);
+  padding: var(--density-panel-pad);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+}
+
+.portal-identity-item {
+  min-width: 0;
+}
+
+.portal-identity-item--name {
+  grid-column: 1 / -1;
+}
+
+.portal-identity dt {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.portal-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-identity-item--name dd {
+  font-size: var(--text-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.portal-delegate-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.portal-layout,
+.portal-main,
+.portal-aside {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--density-stack);
+}
+
+.portal-layout > *,
+.portal-main > *,
+.portal-aside > * {
+  margin-bottom: 0;
+}
+
+.portal-next h2,
+.portal-pending h2,
+.portal-destinations h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.portal-next-when {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-title);
+  font-weight: var(--weight-title);
+  line-height: var(--leading-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-next-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.portal-pending-list,
+.portal-destination-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+}
+
+.portal-pending-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--density-cell-block) var(--space-4);
+}
+
+.portal-pending-item .button {
+  grid-column: 1 / -1;
+}
+
+.portal-pending-item + .portal-pending-item,
+.portal-destination + .portal-destination {
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.portal-destination {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: var(--density-row-min);
+  column-gap: var(--space-3);
+  padding: var(--density-cell-block) var(--space-4);
+  transition: background-color var(--duration-1) var(--ease-out);
+}
+
+.portal-destination-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  justify-self: start;
+  color: var(--color-primary-strong);
+  font-weight: var(--weight-label);
+  text-decoration: none;
+}
+
+/* The whole row is the target; the link keeps the only accessible name. */
+.portal-destination-link::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.portal-destination .hint {
+  grid-column: 1;
+  margin: 0;
+}
+
+.portal-destination-mark {
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--color-ink-soft);
+}
+
+.portal-destination:hover {
+  background: var(--color-selection);
+}
+
+.portal-destination:hover .portal-destination-link {
+  text-decoration: underline;
+}
+
+.portal-signout .button {
+  width: 100%;
+}
+
+/* Patient destinations under v2: one back link first, a reading measure for
+   record lists, thumb-wide actions on phones and wrap-safe digests. */
+
+.portal-page {
+  min-width: 0;
+}
+
+.portal-page--prose {
+  width: min(var(--measure-prose), 100%);
+  margin-inline: auto;
+}
+
+.portal-back {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+
+.portal-page > .portal-help {
+  margin-top: var(--density-stack);
+}
+
+.portal-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height);
+  padding-inline-end: var(--space-2);
+  color: var(--color-primary-strong);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+  text-decoration: none;
+}
+
+.portal-back-link:hover {
+  text-decoration: underline;
+}
+
+.portal-page code {
+  overflow-wrap: anywhere;
+}
+
+.portal-page .button {
+  width: 100%;
+}
+
+/* Requests, results and preferences: one ruled list, full-size choices. */
+
+.portal-request-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+}
+
+.portal-request {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--density-cell-block) var(--space-4);
+}
+
+.portal-request + .portal-request {
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.portal-request h2,
+.portal-request h3 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.portal-request p,
+.portal-request form {
+  margin: 0;
+}
+
+.portal-request-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.portal-request-dates dt {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+}
+
+.portal-request-dates dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-request textarea,
+.portal-request select,
+.portal-switch select {
+  width: 100%;
+}
+
+.portal-choice {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 0;
+}
+
+.portal-choice legend {
+  margin-bottom: var(--space-2);
+  font-weight: var(--weight-label);
+}
+
+.portal-choice-option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.portal-choice-option input[type="radio"] {
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+.portal-choice-option label {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+}
+
+.portal-channel-list {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+
+/* Messages: the clinic team's messages on the start side, this portal's own on
+   the end side as sunken paper, the mirror of the staff thread; text keeps its
+   line breaks and long words wrap. */
+
+.portal-thread-section {
+  margin-bottom: var(--density-stack);
+}
+
+.portal-thread {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-thread-item {
+  max-width: var(--measure-narrow);
+  padding: var(--space-3) var(--space-4);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.portal-thread-item--clinic {
+  justify-self: start;
+}
+
+.portal-thread-item--patient {
+  justify-self: end;
+  background: var(--color-surface-sunken);
+}
+
+.portal-thread-meta {
+  margin: 0 0 var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.portal-thread-body,
+.portal-thread-draft {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.portal-reply textarea {
+  width: 100%;
+}
+
+.portal-switch {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+@media (max-width: 48rem) {
+  .portal-thread-item {
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
+@media (min-width: 48rem) {
+  .portal-page .button {
+    width: auto;
+  }
+
+  .portal-identity {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .portal-identity-item--name {
+    grid-column: span 2;
+  }
+
+  .portal-pending-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .portal-pending-item .button {
+    grid-column: auto;
+  }
+
+  .portal-signout .button {
+    width: auto;
+  }
+}
+
+@media (min-width: 64rem) {
+  .portal-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-destination {
+    transition: none;
+  }
+}

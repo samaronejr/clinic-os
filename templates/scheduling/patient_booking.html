@@ -1,13 +1,14 @@
 {% extends "base.html" %}
-{% load tz %}
+{% load i18n tz static patient_portal %}
 {% block title %}Suas consultas · Clinic OS{% endblock %}
-{% block content %}
-<section class="intake-shell patient-booking" aria-labelledby="self-booking-title">
-  <p class="eyebrow">Portal do paciente</p>
+{% block extra_head %}{% patient_portal_v2 as portal_v2 %}{% if portal_v2 %}{% include "intake/partials/portal_head.html" %}{% endif %}{% endblock %}
+{% block content %}{% patient_portal_v2 as portal_v2 %}
+<section class="intake-shell patient-booking{% if portal_v2 %} portal-page{% endif %}" aria-labelledby="self-booking-title">
+  {% if portal_v2 %}{% include "intake/partials/portal_back.html" only %}{% else %}<p class="eyebrow">Portal do paciente</p>{% endif %}
   <h1 id="self-booking-title">Suas consultas</h1>
   <p class="lede">{{ scope.clinic_name }} · Horários da clínica: {{ scope.timezone }}</p>
-  <a class="button button--secondary" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
-  <a class="button button--secondary" href="{% url 'scheduling:patient-offers' %}">Suas ofertas de horário</a>
+  {% if not portal_v2 %}<a class="button button--secondary" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
+  {% endif %}<a class="button button--secondary" href="{% url 'scheduling:patient-offers' %}">Suas ofertas de horário</a>
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
   <section class="panel" aria-labelledby="appointments-title">
     <h2 id="appointments-title">Consultas agendadas</h2>
@@ -15,7 +16,8 @@
     {% for appointment in appointments %}
       <article class="patient-detail" data-appointment="{{ appointment.pk }}" data-status="{{ appointment.status }}">
         <h3>{{ appointment.start_at|date:"d/m/Y" }} · {{ appointment.start_at|date:"H:i" }}–{{ appointment.end_at|date:"H:i" }}</h3>
-        {% if appointment.status == 'scheduled' %}
+{% if portal_v2 and appointment.service_type %}        <p data-appointment-service>{{ appointment.service_type.name }}</p>
+{% endif %}        {% if appointment.status == 'scheduled' %}
         <p>Agendada</p>
         <form method="post">{% csrf_token %}
           <input type="hidden" name="appointment_id" value="{{ appointment.pk }}">
@@ -30,15 +32,29 @@
   </section>
   <section class="panel" aria-labelledby="slots-title">
     <h2 id="slots-title">{% if appointment_id %}Reagendar consulta{% else %}Agendar consulta{% endif %}</h2>
-    <p>Consultas de 30 minutos. O horário é confirmado ao concluir o agendamento.</p>
+{% if service %}    <p data-selected-service>{% blocktranslate with name=service.name minutes=service.duration_min %}{{ name }}: {{ minutes }}-minute visits. The time is confirmed when you finish booking.{% endblocktranslate %}</p>
+{% else %}    <p>Consultas de 30 minutos. O horário é confirmado ao concluir o agendamento.</p>
+{% endif %}
     <form class="booking-day-form" method="{% if appointment_id %}post{% else %}get{% endif %}">
       {% if appointment_id %}{% csrf_token %}<input type="hidden" name="appointment_id" value="{{ appointment_id }}"><input type="hidden" name="action" value="choose">{% endif %}
       <label for="booking-day">Data da consulta</label>
       <input id="booking-day" type="date" name="day" value="{{ day }}" required>
       <button class="button button--secondary" type="submit">Ver horários</button>
     </form>
-    {% for slot in slots %}
-      <form method="post" class="patient-detail" data-slot>
+{% if portal_v2 and services and not appointment_id %}    <form class="booking-day-form" method="post" data-service-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="slots">
+      <label for="booking-service">{% translate "Type of visit" %}</label>
+      <p class="hint" id="booking-service-hint">{% translate "Some visits need a room or equipment; the times shown already reserve them." %}</p>
+      <select id="booking-service" name="service_type_id" aria-describedby="booking-service-hint">
+        {% for item in services %}<option value="{{ item.service_type_id }}" data-service-option="{{ item.service_type_id }}"{% if service and item.service_type_id == service.service_type_id %} selected{% endif %}>{% blocktranslate with name=item.name minutes=item.duration_min %}{{ name }} · {{ minutes }} minutes{% endblocktranslate %}</option>{% endfor %}
+      </select>
+      <label for="booking-service-day">{% translate "Date of the visit" %}</label>
+      <input id="booking-service-day" type="date" name="day" value="{{ day }}" required>
+      <button class="button button--secondary" type="submit">{% translate "See times for this visit" %}</button>
+    </form>
+{% endif %}    {% for slot in slots %}
+      <form method="post" class="patient-detail" data-slot{% if slot.service_type_id %} data-slot-service="{{ slot.service_type_id }}"{% endif %}>
         {% csrf_token %}
         <input type="hidden" name="day" value="{{ day }}">
         <input type="hidden" name="slot" value="{{ slot.token }}">
@@ -49,5 +65,6 @@
       </form>
     {% empty %}<p role="status">Não há horários disponíveis nesta data. Escolha outra data ou fale com a clínica.</p>{% endfor %}
   </section>
-</section>
+{% if portal_v2 %}  {% include "intake/partials/portal_help.html" only %}
+{% endif %}</section>
 {% endblock %}

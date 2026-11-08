@@ -61,6 +61,7 @@ from apps.identity.clinic_settings_views import clinic_settings
 from apps.identity.stepup import STEP_UP_SESSION_KEY
 from apps.intake.duplicate_views import patient_timeline
 from apps.intake.views import patient_access_url, patient_contacts_url
+from apps.orders.patient_views import patient_results_view
 from apps.orders.source_views import download as result_source_download
 from apps.prescription.document_views import clinical_documents_view
 from apps.prescription.views import (
@@ -148,6 +149,7 @@ OUTSIDE_EHR: dict[object, str] = {
     patient_documents_view: "patient prescription downloads",
     patient_timeline: "care-authorized finalized timeline, no clinical writes",
     result_source_download: "immutable result-source download, no EHR writes",
+    patient_results_view: "patient released results, catches the EHR storage error",
     chart_assistant: "source-cited chart reader; tests/ai/test_brief.py",
     decision_support: "AI provenance only; tests/ai/test_decision_support.py",
     extraction_view: "result candidates; tests/ai/test_extraction_runtime.py",

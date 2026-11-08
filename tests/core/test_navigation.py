@@ -81,6 +81,7 @@ EXPECTED: Final = {
         "agenda",
         "patients",
         "inbox",
+        "messages",
         "finance",
         "operations",
         "automations",
@@ -91,20 +92,31 @@ EXPECTED: Final = {
         "agenda",
         "patients",
         "inbox",
+        "messages",
         "finance",
         "operations",
         "settings",
     ],
-    "physician": ["today", "agenda", "patients", "inbox", "operations"],
-    "nurse": ["today", "inbox"],
+    # Task 53: physicians open Automations > Care coordination for their plans.
+    "physician": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "messages",
+        "operations",
+        "automations",
+    ],
+    "nurse": ["today", "inbox", "messages"],
     "allied_professional": ["inbox"],
-    "scheduler": ["inbox", "settings"],
-    "clinic_manager": ["inbox", "automations", "settings"],
+    "scheduler": ["inbox", "messages", "settings"],
+    # Task 50: privacy.requests opens Patients > Data-subject requests.
+    "clinic_manager": ["patients", "inbox", "messages", "automations", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"messages", "reports"})
+UNDELIVERED: Final = frozenset({"reports"})
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
@@ -287,12 +299,13 @@ def test_workflow_candidate_opens_only_delivered_operations(
     _reauthenticate(client, user.pk, role)
     response = _get(client, "/auth/protected/")
     assert response.status_code == OK
+    # Task 50: privacy.requests opens Patients for the clinic manager.
     assert _modules(response) == (
-        ["inbox", "operations", "automations", "settings"]
+        ["patients", "inbox", "messages", "operations", "automations", "settings"]
         if role == "clinic_manager"
-        else ["inbox", "operations", "settings"]
+        else ["inbox", "messages", "operations", "settings"]
         if role == "scheduler"
-        else ["today", "inbox", "operations"]
+        else ["today", "inbox", "messages", "operations"]
         if role == "nurse"
         else ["inbox", "operations"]
         if role == "allied_professional"
@@ -343,15 +356,36 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
         "agenda",
         "patients",
         "inbox",
+        "messages",
         "operations",
         "settings",
     ]
 
 
+@pytest.mark.parametrize(
+    ("role", "status"),
+    [
+        ("owner", 403),
+        ("finance", 403),
+        ("org_admin", 403),
+        ("allied_professional", 404),
+        ("receptionist", OK),
+    ],
+)
+def test_the_inbox_route_follows_the_registry_permission_not_the_role_list(
+    rbac_graph: RbacGraph, role: str, status: int
+) -> None:
+    # The owner role is in MESSAGES_ROUTE, but the route is also gated by the
+    # registry permission, which the owner bundle lacks: the shell hides the link
+    # and the route refuses, so an owner never reaches patient names here.
+    client, _user = _client_for(rbac_graph, role)
+    response = _get(client, f"/clinics/{rbac_graph.clinic_a}/messages/")
+    assert response.status_code == status
+
+
 def test_registry_never_renders_an_undelivered_destination() -> None:
     undelivered = {d.key for d in DESTINATIONS if d.url_name is None}
     assert undelivered == {
-        "messages",
         "operations",
         "reports",
     }
@@ -386,7 +420,14 @@ def test_palette_search_filters_destinations_by_permission(
         "consent:staff",
         "workflows:inbox",
         "orders:results",
+        # Task 55: the urgent-concern queue and the release notice wording.
+        "workflows:urgent-concerns",
+        "workflows:release-notices",
+        "comms:inbox",
+        # Task 54: Messages > Assistant handoffs.
+        "ai:front-desk-handoffs",
         "retention:status",
+        "ai:care-coordination",
         "identity:preferences",
     ]
     assert {row["kind"] for row in receptionist_rows} == {"destination", "action"}
@@ -399,7 +440,11 @@ def test_palette_search_filters_destinations_by_permission(
         for row in receptionist_rows
     )
     agenda = _api(physician, {"q": "AGEN", "clinic_id": str(rbac_graph.clinic_a)})
-    assert [row["label"] for row in agenda.json()] == [gettext("Agenda")]
+    # "AGEN" is also a fragment of the Portuguese label Mensagens.
+    assert [row["label"] for row in agenda.json()] == [
+        gettext("Agenda"),
+        gettext("Messages"),
+    ]
 
 
 def test_patient_matches_are_exact_full_names_only(rbac_graph: RbacGraph) -> None:

@@ -62,9 +62,14 @@ class TaskSpec:
     escalation_policy_version: int = 1
 
 
+def canonical(value: object) -> bytes:
+    """Encode already-validated JSON as RFC 8785 bytes, never repr or floats."""
+    return rfc8785.dumps(cast("CanonicalValue", value))
+
+
 def digest(value: object) -> str:
     """Bind already-validated JSON using RFC 8785, never repr or float coercion."""
-    return hashlib.sha256(rfc8785.dumps(cast("CanonicalValue", value))).hexdigest()
+    return hashlib.sha256(canonical(value)).hexdigest()
 
 
 def reference(value: object) -> dict[str, str]:

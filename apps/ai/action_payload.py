@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Final
 from uuid import UUID
 
@@ -18,6 +18,7 @@ from apps.ai.action_contracts import (
     OPERATIONS,
     ActionInputError,
 )
+from apps.workflows.care.vocab import ADMIN_KINDS, MAX_WINDOW_DAYS
 
 type JSON = str | int | bool | None | list[JSON] | dict[str, JSON]
 _UUID: Final = re.compile(
@@ -26,6 +27,13 @@ _UUID: Final = re.compile(
 _HASH: Final = re.compile(r"[0-9a-f]{64}")
 _INSTANT: Final = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z")
 MAX_COLLECTION: Final = 100
+SUBJECT_KINDS: Final = ("workflow_definition", "ai_artifact", "care_plan")
+SOURCE_KINDS: Final = (
+    "workflow_definition",
+    "ai_artifact",
+    "care_plan",
+    "care_proposal",
+)
 FIELDS: Final = frozenset(
     {
         "schema_version",
@@ -131,7 +139,7 @@ def _references(value: JSON) -> None:
 def _sources(value: JSON) -> None:
     for item in ordered(value):
         row = closed(item, {"kind", "id", "version", "revision", "content_sha256"})
-        if row["kind"] not in ("workflow_definition", "ai_artifact"):
+        if row["kind"] not in SOURCE_KINDS:
             raise ActionInputError
         identifier(row["id"])
         integer(row["version"])
@@ -244,7 +252,7 @@ def _scope_terms(row: dict[str, JSON]) -> None:
     if row["patient_id"] is not None:
         identifier(row["patient_id"])
     subject = closed(row["subject"], {"kind", "id", "expected_state", "revision"})
-    if subject["kind"] not in ("workflow_definition", "ai_artifact"):
+    if subject["kind"] not in SUBJECT_KINDS:
         raise ActionInputError
     identifier(subject["id"])
     text(subject["expected_state"], maximum=24)
@@ -281,9 +289,28 @@ def _effect_terms(row: dict[str, JSON]) -> None:
         arguments = closed(row["parameters"], {"template"})
         if arguments["template"] != "logistics-v1":
             raise ActionInputError
+    elif operation["name"] == "care_action.create":
+        care_window(row["parameters"])
     else:
         arguments = closed(row["parameters"], {"due_at"})
         instant(arguments["due_at"])
+
+
+def care_window(value: JSON) -> tuple[str, datetime, datetime]:
+    """Parse one administrative care action: a closed kind and a bounded window.
+
+    Only administrative kinds are representable; a clinical kind, a dose, a
+    drug or free text has no field, so the clinician's decisions never travel
+    through an agent approval.
+    """
+    arguments = closed(value, {"kind", "window_start", "window_end"})
+    kind = arguments["kind"]
+    if not isinstance(kind, str) or kind not in ADMIN_KINDS:
+        raise ActionInputError
+    start, end = instant(arguments["window_start"]), instant(arguments["window_end"])
+    if not timedelta(0) < end - start <= timedelta(days=MAX_WINDOW_DAYS):
+        raise ActionInputError
+    return kind, start, end
 
 
 def _approval_terms(row: dict[str, JSON]) -> None:

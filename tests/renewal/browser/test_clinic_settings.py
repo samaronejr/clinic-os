@@ -1052,3 +1052,69 @@ def test_native_exact_effect_approval_and_rejection(
         capture(page, renewal_artifact_root, f"agents-rejected-{theme}", width)
     finally:
         context.close()
+
+
+def _submit_answer(page: Page, body: str) -> None:
+    form = page.locator("[data-knowledge-form]")
+    form.locator("#article-key").fill("horario")
+    form.locator("#article-topic").select_option("hours")
+    form.locator("#article-title").fill("Horário de atendimento")
+    form.locator("#article-body").fill(body)
+    form.locator("#article-keywords").fill("horario, funcionamento")
+    click_to_navigate(form.locator("button[type=submit]"))
+
+
+def test_front_desk_answers_are_reviewed_versions(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    """Todo 54: empty, refused, saved, approved and retired answer states."""
+    staff = availability_staff
+    manager = seed_settings_manager(staff)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(viewport={"width": 1280, "height": 900})
+    try:
+        page = context.new_page()
+        sign_in_manager(page, renewal_base_url, staff, manager)
+        url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/front-desk/"
+        goto_settled(page, url)
+        expect(page.locator("h1")).to_have_text(gettext("Front-desk assistant answers"))
+        expect(page.locator("[data-knowledge-empty]")).to_be_visible()
+        form = page.locator("[data-knowledge-form]")
+        assert form.evaluate(ASSOCIATION_JS) == []
+        check_page(page, renewal_base_url, renewal_artifact_root, "answers-empty-1280")
+        # A phone number never goes into answer text: the draft is refused.
+        _submit_answer(page, "Ligue 5555-0000 para saber o horário.")
+        alert = page.locator("[data-knowledge-error]")
+        expect(alert).to_be_visible()
+        expect(alert).to_be_focused()
+        capture(page, renewal_artifact_root, "answers-refused", 1280)
+        check_page(
+            page, renewal_base_url, renewal_artifact_root, "answers-refused-1280"
+        )
+        _submit_answer(page, "Atendemos de segunda a sexta, das 8h às 18h.")
+        expect(page.locator("[data-knowledge-saved]")).to_be_visible()
+        item = page.locator("[data-article]").first
+        expect(item).to_have_attribute("data-article-state", "draft")
+        click_to_navigate(item.locator("button[type=submit]"))
+        expect(page.locator("[data-knowledge-saved]")).to_contain_text(
+            gettext("Answer approved. The assistant now uses this version.")
+        )
+        item = page.locator("[data-article]").first
+        expect(item).to_have_attribute("data-article-state", "approved")
+        capture(page, renewal_artifact_root, "answers-approved", 1280)
+        page.set_viewport_size({"width": 375, "height": 900})
+        capture(page, renewal_artifact_root, "answers-approved", 375)
+        check_page(
+            page, renewal_base_url, renewal_artifact_root, "answers-approved-375"
+        )
+        click_to_navigate(item.locator("button[type=submit]"))
+        item = page.locator("[data-article]").first
+        expect(item).to_have_attribute("data-article-state", "retired")
+        expect(item.locator("button")).to_have_count(0)
+        check_page(page, renewal_base_url, renewal_artifact_root, "answers-retired-375")
+    finally:
+        context.close()

@@ -29,11 +29,17 @@ from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
+from ai.care_oracles import (
+    ACTOR_PROTOCOL_ORACLES as CARE_ACTOR_PROTOCOL_ORACLES,
+)
 from ai.evaluation_oracles import (
     ACTOR_PROTOCOL_ORACLES as EVALUATION_ACTOR_PROTOCOL_ORACLES,
 )
 from ai.extraction_oracles import (
     ACTOR_PROTOCOL_ORACLES as EXTRACTION_ACTOR_PROTOCOL_ORACLES,
+)
+from ai.front_desk_oracles import (
+    ACTOR_PROTOCOL_ORACLES as FRONT_DESK_ACTOR_PROTOCOL_ORACLES,
 )
 from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
@@ -47,6 +53,9 @@ from orders.sql_oracles import (
     ACTOR_PROTOCOL_ORACLES as ORDERS_ACTOR_PROTOCOL_ORACLES,
 )
 from patient_service_support import runtime_role
+from patients.dsar_oracles import (
+    ACTOR_PROTOCOL_ORACLES as DATA_REQUEST_ACTOR_PROTOCOL_ORACLES,
+)
 from patients.duplicate_authority_cases import (
     ACTOR_PROTOCOL_ORACLES as MERGE_ACTOR_PROTOCOL_ORACLES,
 )
@@ -77,6 +86,10 @@ _DELEGATE_AUTHORITY = (
 # Executed for an inactive staff actor on the agent login in
 # test_service_principals (the forged-actor-with-domain-history test).
 _MACHINE_ONLY = "machine-only: refuses any non-empty actor setting"
+_INGEST_ONLY = (
+    "machine-only: requires the actor setting to be empty and the provider "
+    "principal or proof; no staff actor reaches it"
+)
 # Actor readers that neither carry an is_active clause nor delegate to a
 # checked helper. Every other actor reader must do one of the two.
 JUSTIFIED = {
@@ -101,6 +114,8 @@ JUSTIFIED = {
         _PATIENT_ONLY
     ),
     "clinic_app.switch_patient_delegate(uuid,uuid)": _PATIENT_ONLY,
+    # Task 50: the portal home lists the original identity's grants.
+    "clinic_app.patient_delegate_options(text)": _PATIENT_ONLY,
     "clinic_app.delegate_guard()": _DELEGATE_AUTHORITY,
     "clinic_app.request_delegate_grant(uuid,uuid,uuid,text,uuid,text[],text[],"
     "timestamp with time zone,uuid)": _DELEGATE_AUTHORITY,
@@ -108,6 +123,22 @@ JUSTIFIED = {
         _DELEGATE_AUTHORITY
     ),
     "clinic_app.principal_scope(uuid,uuid)": _MACHINE_ONLY,
+    "clinic_app.comms_audit_scope(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_ingest_account(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_resolve_inbound(uuid,text)": _INGEST_ONLY,
+    "clinic_app.comms_message_guard_v1()": (
+        "dual boundary: an inbound row requires the provider account, or on a "
+        "portal thread the live patient session of its enrollment, and refuses "
+        "any actor; an outbound row binds sent_by_id to the signed-in actor, or, "
+        "with no actor at all, is the front-desk agent's reply that only its "
+        "finish bridge admits for its own finishing turn (task 54). "
+        "The role and the active check run first, in the service's _actor"
+    ),
+    "clinic_app.comms_template_guard_v1()": (
+        "requires some signed-in actor to approve an email or SMS template and the "
+        "provider account for WhatsApp; the manager role and the active check run "
+        "first, in set_template_approval's _actor"
+    ),
     "clinic_app.load_current_user()": (
         "loader: returns is_active and every caller refuses an inactive row"
     ),
@@ -392,8 +423,11 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | MERGE_ACTOR_PROTOCOL_ORACLES
         | ORDERS_ACTOR_PROTOCOL_ORACLES
         | RETENTION_ACTOR_PROTOCOLS
+        | DATA_REQUEST_ACTOR_PROTOCOL_ORACLES
         | EXTRACTION_ACTOR_PROTOCOL_ORACLES
         | EVALUATION_ACTOR_PROTOCOL_ORACLES
+        | CARE_ACTOR_PROTOCOL_ORACLES
+        | FRONT_DESK_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

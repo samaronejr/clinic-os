@@ -97,10 +97,18 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_evaluationrun",
         "ai_evaluationrating",
         "ai_modelchangerequest",
+        # Clinician/staff care proposal policies: tests/ai/test_care_coordination.py.
+        "ai_careproposal",
+        # Task 54 front-desk answers, threads and turns: tests/ai/test_posture.py.
+        "ai_knowledgearticle",
+        "ai_frontdeskthread",
+        "ai_frontdeskturn",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.
         "identity_patientdelegategrant",
+        # Task 50 privacy-staff reads, resolver writes: tests/patients/test_dsar.py.
+        "intake_datasubjectrequest",
         # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
         "identity_savedview",
         # Protected pending captures: tests/identity/test_onboarding.py.
@@ -210,6 +218,22 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "workflows_workflowdefinitionversion",
         "workflows_workflowrun",
         "workflows_workflowstep",
+        # Task 52: exact care policies, ACLs, column grants and triggers are
+        # pinned by tests/workflows/test_posture.py (posture.json); the declared
+        # runtime and column grants by tests/infra/test_new_app_posture.py.
+        "workflows_careplan",
+        "workflows_careaction",
+        "workflows_referral",
+        "workflows_recall",
+        "workflows_proassignment",
+        "workflows_prooccurrence",
+        "workflows_carerefusal",
+        # Task 55: exact release/urgent policies, ACLs, column grants and triggers
+        # are pinned by tests/workflows/test_posture.py (posture.json).
+        "workflows_releasenoticetemplate",
+        "workflows_releasedelivery",
+        "workflows_urgentcoveragepolicy",
+        "workflows_urgentconcern",
         # Plan item 30: exact specialty policies are checked in tests/ehr.
         "ehr_specialtypack",
         "ehr_specialtyentry",
@@ -238,6 +262,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("identity_organization", "active_organization_runtime"),
         ("scheduling_availabilityblock", "patient_booking_read"),
         ("scheduling_availabilityblock", "agent_grant"),
+        # Task 50: service self-booking reads the session clinic's catalog, so
+        # the shared write path's selection and window checks run unchanged.
+        ("scheduling_servicetype", "patient_booking_read"),
+        ("scheduling_resource", "patient_booking_read"),
+        ("scheduling_availabilitytemplate", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),
@@ -386,6 +415,23 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("comms_integrationoperation", "provider_reference"),
         ("comms_integrationoperation", "status"),
         ("comms_integrationoperation", "updated_at"),
+        ("comms_conversation", "assignee_id"),
+        ("comms_conversation", "contact_label"),
+        ("comms_conversation", "enrollment_id"),
+        ("comms_conversation", "last_activity_at"),
+        ("comms_conversation", "needs_clinician"),
+        ("comms_conversation", "purpose"),
+        ("comms_conversation", "revision"),
+        ("comms_conversation", "state"),
+        ("comms_conversation", "triage_category"),
+        ("comms_conversation", "updated_at"),
+        ("comms_message", "provider_state"),
+        ("comms_quickreply", "active"),
+        ("comms_suggestedreply", "decided_by_id"),
+        ("comms_suggestedreply", "state"),
+        ("comms_suggestedreply", "used_message_id"),
+        ("comms_templateversion", "approval_changed_at"),
+        ("comms_templateversion", "approval_status"),
         ("intake_patientchannelpreference", "opted_in"),
         ("intake_patientchannelpreference", "updated_at"),
         ("intake_patientchannelpreference", "version"),

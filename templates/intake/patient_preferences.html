@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Portal preferences · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Choose larger text or higher contrast and see how the clinic contacts you." %}{% endblock %}
+{% block extra_head %}{% include "intake/partials/portal_head.html" %}{% endblock %}
+{% block content %}
+<section class="intake-shell portal-page portal-page--prose" aria-labelledby="preferences-title" data-patient-preferences>
+  {% include "intake/partials/portal_back.html" only %}
+  <h1 id="preferences-title">{% trans "Preferences" %}</h1>
+  <p class="lede">{% trans "Adjust how the portal looks for this session and see how the clinic contacts you." %}</p>
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><p>{{ error }}</p></div>{% endif %}
+
+  <section class="panel" aria-labelledby="preferences-display-title">
+    <h2 id="preferences-display-title">{% trans "Accessibility" %}</h2>
+    <p class="hint">{% trans "These choices are kept by the clinic system for this session only. Nothing is saved on your device." %}</p>
+    <form method="post" novalidate data-display-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="display">
+      <fieldset class="portal-choice">
+        <legend>{% trans "Text size" %}</legend>
+        {% for value, label in text_sizes %}
+          <div class="portal-choice-option"><input type="radio" id="text-size-{{ value }}" name="text_size" value="{{ value }}"{% if display.text_size == value %} checked{% endif %}><label for="text-size-{{ value }}">{{ label }}</label></div>
+        {% endfor %}
+      </fieldset>
+      <fieldset class="portal-choice">
+        <legend>{% trans "Contrast" %}</legend>
+        {% for value, label in contrasts %}
+          <div class="portal-choice-option"><input type="radio" id="contrast-{{ value }}" name="contrast" value="{{ value }}"{% if display.contrast == value %} checked{% endif %}><label for="contrast-{{ value }}">{{ label }}</label></div>
+        {% endfor %}
+      </fieldset>
+      <button class="button" type="submit" data-display-save>{% trans "Save display preferences" %}</button>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="preferences-channels-title" data-channel-preferences>
+    <h2 id="preferences-channels-title">{% trans "How the clinic contacts you" %}</h2>
+    {% if channels %}
+      <ul class="portal-channel-list">
+        {% for item in channels %}
+          <li data-channel-preference="{{ item.row.purpose }}:{{ item.row.channel }}">{{ item.purpose }} · {{ item.channel }}{% if not item.row.verified %} <span class="hint">{% trans "(waiting for the clinic to confirm this contact)" %}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p data-channel-preferences-empty>{% trans "The clinic does not send you automated messages." %}</p>
+    {% endif %}
+    <p class="hint">{% trans "To change a contact or a channel, talk to the clinic team. They confirm each contact before using it." %}</p>
+    {% if consent_open %}<p><a class="button button--secondary" href="{% url 'consent:patient' %}">{% trans "Review your consents for messages and other optional uses" %}</a></p>{% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="preferences-alerts-title" data-push-unavailable>
+    <h2 id="preferences-alerts-title">{% trans "Notifications on this device" %}</h2>
+    <p>{% trans "Not available. The portal never asks your browser for notification permission and keeps no data on this device." %}</p>
+    <p class="hint">{% blocktrans with notice=push_notice %}When the clinic turns this on, a notification will only say: “{{ notice }}”, with no details about your care.{% endblocktrans %}</p>
+  </section>
+  {% include "intake/partials/portal_help.html" only %}
+</section>
+{% endblock %}

@@ -48,6 +48,11 @@ def _roles(guard: Guard) -> ClinicRoles:
     expression = ast.parse(guard["roles"], mode="eval").body
     module = importlib.import_module(guard["path"][:-3].replace("/", "."))
     if isinstance(expression, ast.Name):
+        if not hasattr(module, expression.id):
+            # A wrapper forwarding its caller's role set (a parameter, not a
+            # module constant) admits whatever its callers name; each caller's
+            # own set is probed where the caller is classified.
+            return tuple(UserClinicRole.Role)
         return cast("ClinicRoles", getattr(module, expression.id))
     if isinstance(expression, ast.Tuple):
         assert all(isinstance(item, ast.Attribute) for item in expression.elts)

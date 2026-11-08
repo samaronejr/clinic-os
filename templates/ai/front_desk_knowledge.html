@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load i18n workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
+{% block title %}{% trans "Front-desk assistant answers" %} · Clinic OS{% endblock %}
+{% block content %}
+<section aria-labelledby="knowledge-title" data-front-desk-knowledge>
+  <h1 id="knowledge-title">{% trans "Front-desk assistant answers" %}</h1>
+  <p class="lede">{% trans "The automated assistant answers patients only with these reviewed answers. It never gives clinical advice, never invents availability, prices or coverage, and forwards anything else to the team." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-knowledge-error>{{ error }}</div>{% endif %}
+  {% if notice %}<div class="feedback feedback--success" role="status" data-knowledge-saved><p>{{ notice }}</p></div>{% endif %}
+  {% if articles %}
+  <ol class="worklist" data-knowledge-list>
+    {% for item in articles %}
+    <li class="worklist-item" data-article="{{ item.row.id }}" data-article-state="{{ item.row.state }}" aria-labelledby="article-{{ forloop.counter }}">
+      <div class="worklist-item-head">
+        <h2 id="article-{{ forloop.counter }}">{{ item.row.title }}</h2>
+        <p class="worklist-badges"><span class="badge">{{ item.topic }}</span> <span class="badge{% if item.row.state == 'approved' %} badge--success{% endif %}">{{ item.state }}</span></p>
+      </div>
+      <p>{{ item.row.body }}</p>
+      {% if item.row.link %}<p class="hint">{{ item.row.link }}</p>{% endif %}
+      <p class="hint">{% blocktrans with key=item.row.key version=item.row.version %}Key {{ key }}, version {{ version }}{% endblocktrans %}</p>
+      {% if item.row.state != "retired" %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="article_id" value="{{ item.row.id }}">
+        <input type="hidden" name="revision" value="{{ item.row.revision }}">
+        {% if item.row.state == "draft" %}
+        <input type="hidden" name="action" value="approve">
+        <button class="button" type="submit">{% trans "Approve this version" %}<span class="visually-hidden"> · {{ item.row.title }}</span></button>
+        {% else %}
+        <input type="hidden" name="action" value="retire">
+        <button class="button button--secondary" type="submit">{% trans "Retire" %}<span class="visually-hidden"> · {{ item.row.title }}</span></button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p role="status" data-knowledge-empty>{% trans "No answers yet: the assistant forwards every question to the team." %}</p>
+  {% endif %}
+  <form method="post" novalidate data-knowledge-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="draft">
+    <h2>{% trans "New answer" %}</h2>
+    <div class="field">
+      <label for="article-key">{% trans "Key" %}</label>
+      <input id="article-key" name="key" maxlength="40" required aria-describedby="article-hint">
+    </div>
+    <div class="field">
+      <label for="article-topic">{% trans "Topic" %}</label>
+      <select id="article-topic" name="topic">{% for value, label in topics %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label for="article-title">{% trans "Title" %}</label>
+      <input id="article-title" name="title" maxlength="120" required>
+    </div>
+    <div class="field">
+      <label for="article-body">{% trans "Answer" %}</label>
+      <textarea id="article-body" name="body" rows="4" maxlength="600" required aria-describedby="article-hint"></textarea>
+    </div>
+    <div class="field">
+      <label for="article-keywords">{% trans "Keywords, separated by commas" %}</label>
+      <input id="article-keywords" name="keywords" required>
+    </div>
+    <div class="field">
+      <label for="article-link">{% trans "Approved link (optional)" %}</label>
+      <input id="article-link" name="link" type="url" maxlength="200">
+    </div>
+    <p id="article-hint" class="hint">{% trans "Use a short key (lowercase letters, digits, hyphens), a title, an answer of up to 600 characters without e-mail addresses, links or long numbers, up to 12 keywords and, optionally, one plain https link." %}</p>
+    <div class="actions"><button class="button" type="submit">{% trans "Save draft" %}</button></div>
+  </form>
+</section>
+{% endblock %}

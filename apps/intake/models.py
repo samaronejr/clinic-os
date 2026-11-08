@@ -11,6 +11,12 @@ from django.db import models
 
 from apps.identity.models import Clinic
 from apps.intake.alias_models import MergeDecision, PatientAlias, PatientMergeTransfer
+from apps.intake.data_request_models import (
+    DATA_REQUEST_KIND_VALUES,
+    DATA_REQUEST_REJECTION_VALUES,
+    DATA_REQUEST_STATE_VALUES,
+    DataSubjectRequest,
+)
 from apps.intake.duplicate_models import DuplicateCandidate, PatientDuplicateIndex
 from apps.tenancy.fields import (
     EncryptedDateField,
@@ -26,6 +32,9 @@ __all__ = (
     "CONTACT_EVENT_TYPES",
     "CONTACT_EVENT_TYPE_VALUES",
     "CONTACT_PURPOSE_VALUES",
+    "DATA_REQUEST_KIND_VALUES",
+    "DATA_REQUEST_REJECTION_VALUES",
+    "DATA_REQUEST_STATE_VALUES",
     "DEMOGRAPHICS_SOURCE_VALUES",
     "GENDER_IDENTITY_VALUES",
     "IDENTIFIER_KIND_VALUES",
@@ -34,6 +43,7 @@ __all__ = (
     "SEX_AT_BIRTH_VALUES",
     "UNKNOWN_DEMOGRAPHIC_VALUES",
     "ClinicIntakePolicy",
+    "DataSubjectRequest",
     "DemographicsCorrection",
     "DuplicateCandidate",
     "EmergencyContact",
@@ -263,6 +273,7 @@ PATIENT_OPERATION_VALUES: Final = [
     "consent",
     "teleconsult",
     "billing",
+    "messages",
 ]
 
 

@@ -35,6 +35,10 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "intake_questionnairetemplate",
         "intake_questionnaireresponse",
         "intake_questionnaireevent",
+        # Data-subject requests: owner fixtures plus privacy-staff reads only;
+        # patient sessions write and read through resolver functions
+        # (apps/intake/migrations/_data_request_sql.py).
+        "intake_datasubjectrequest",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
@@ -50,6 +54,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "intake_questionnairetemplate": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireresponse": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireevent": frozenset({"SELECT"}),
+    "intake_datasubjectrequest": frozenset({"SELECT"}),
     "intake_patientdemographics": frozenset({"SELECT", "INSERT"}),
     "intake_demographicscorrection": frozenset({"SELECT", "INSERT"}),
     "intake_patientidentifier": frozenset({"SELECT", "INSERT"}),

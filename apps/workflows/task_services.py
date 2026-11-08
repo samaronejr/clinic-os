@@ -17,6 +17,7 @@ from apps.workflows.access import (
     require_reference,
     require_task_access,
 )
+from apps.workflows.care import mirror
 from apps.workflows.models import Task, TaskComment
 from apps.workflows.validation import (
     TaskOwner,
@@ -158,11 +159,15 @@ def assign_task(
         return task
     if task.state in TERMINAL:
         raise WorkflowConflictError
+    # A care-owned task waits while its action awaits the clinician (todo 52).
+    mirror.gate(task)
     task.owner_user_id = owner.user_id
     task.owner_role = owner.role
     if task.state == "open":
         task.state = "assigned"
-    return _save(task, ("owner_user_id", "owner_role", "state"), "assigned")
+    _save(task, ("owner_user_id", "owner_role", "state"), "assigned")
+    mirror.follow(task, "assign")
+    return task
 
 
 @transaction.atomic
@@ -176,6 +181,7 @@ def start_task(*, clinic_id: UUID, task_id: UUID, expected_revision: int) -> Tas
     _dependency(task)
     if task.state != "assigned":
         raise WorkflowConflictError
+    mirror.gate(task)
     task.state = "in_progress"
     return _save(task, ("state",), "started")
 
@@ -202,9 +208,12 @@ def complete_task(
         require_reference(
             clinic_id=clinic_id, value=cast("Mapping[str, object]", checked["record"])
         )
+    mirror.gate(task)
     task.completion_evidence = checked
     task.state = "done"
-    return _save(task, ("completion_evidence", "state"), "completed")
+    _save(task, ("completion_evidence", "state"), "completed")
+    mirror.follow(task, "complete")
+    return task
 
 
 @transaction.atomic
@@ -218,7 +227,9 @@ def cancel_task(*, clinic_id: UUID, task_id: UUID, expected_revision: int) -> Ta
     if task.state in TERMINAL:
         raise WorkflowConflictError
     task.state = "cancelled"
-    return _save(task, ("state",), "cancelled")
+    _save(task, ("state",), "cancelled")
+    mirror.follow(task, "cancel")
+    return task
 
 
 @transaction.atomic

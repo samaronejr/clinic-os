@@ -18,6 +18,7 @@ PURPOSE_LABELS: Final = {
     Purpose.FRONT_DESK: _("Front desk drafts"),
     Purpose.ANALYST: _("Operational analysis"),
     Purpose.DECISION_SUPPORT: _("Clinical review aid"),
+    Purpose.CARE_COORDINATION: _("Care coordination proposals"),
 }
 
 

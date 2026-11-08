@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Final
+from uuid import uuid4
 
 from renewal.browser._page_wait import _answer, evaluate_js
 
@@ -86,19 +87,22 @@ def check_page(
     """Run axe on the page as it is now; fail on serious/critical violations.
 
     The vendored axe-core is injected once per document, and that injection's
-    response must come from the supervised server; a later check on the same
-    document reuses it (a second injection is served without a response).
+    response must come from the supervised server. Each document uses a fresh
+    static-asset URL so HTTP cache revalidation cannot replace that 200 with a
+    304 (Firefox exposes it as such). Later checks on the same document reuse
+    the loaded script without injecting it again.
     ``paused_clock`` is for a page whose Playwright clock is paused: axe then
     settles one clock millisecond at a time, so no later page timer can fire.
     """
     if not evaluate_js(page, AXE_LOADED_JS):
-        with page.expect_response(f"{base_url}{AXE_URL}") as axe_response:
+        script_url = f"{base_url}{AXE_URL}?audit={uuid4().hex}"
+        with page.expect_response(script_url) as axe_response:
             _answer(
                 page,
-                page._impl_obj.add_script_tag(url=f"{base_url}{AXE_URL}"),
+                page._impl_obj.add_script_tag(url=script_url),
                 None,
             )
-        assert axe_response.value.status == OK_STATUS
+        assert axe_response.value.status == OK_STATUS, axe_response.value.status
     violations: list[dict[str, object]] = (
         _settle_under_paused_clock(page)
         if paused_clock

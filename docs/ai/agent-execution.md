@@ -4,8 +4,12 @@ Todo 39 adds an execution platform, not real-provider authorization. No external
 gate is satisfied here. The runnable external command is a labelled, offline
 logistics reminder simulation. The other registered command creates an
 operational review checklist through `workflows.create_task` in the approving
-human's request. Neither command diagnoses, finalizes, prescribes, moves money
-or sends a real patient message.
+human's request. Todo 53 registers a third, A1-only command,
+`care_action.create`, which adds one administrative action (return window or
+staff coordination) to a care plan through `add_care_action` in the approving
+staff member's request; its own validator binds the plan revision and the
+pending care proposal it executes (`apps/ai/README.md`). No command
+diagnoses, finalizes, prescribes, moves money or sends a real patient message.
 
 ## Authority and approval
 
@@ -51,6 +55,17 @@ HMAC-SHA-256 with the dedicated `agent-attestation-v1` managed secret.
 The key name is fixed in code; payloads cannot select a different key.
 Approval, challenge, provider simulation and user-visible receipt have distinct
 HMAC domains. These are server attestations, not qualified signatures.
+
+The `front_desk` capability's A2 policy also drives the bounded front-desk turn
+pipeline (`apps/ai/README.md`, "Front-desk agent"). Its three tools
+(`scheduling.hold`, `scheduling.book_approved`, `comms.send_approved_link`) are
+registered in `TOOL_SCHEMAS` so that a policy can allow them, but they are never
+proposals or executions on this path: each runs inside a turn, under the
+conversation's ingest principal or the patient's channel session, and the turn
+row records the tool, the outcome and the policy version. Portal replies use
+the existing live patient session instead of minting a channel session; the
+session's current booking grant is checked independently of its messages grant.
+Neither path installs a human actor GUC for the assistant.
 
 ## Execution and recovery
 

@@ -52,9 +52,29 @@ NO_IN_VIEW_REFUSAL = {
         "For a valid staff User, unknown/foreign clinics return 200 []; "
         "invalid JSON/schema returns 400, not a clinic refusal."
     ),
+    "comms:inbox": (
+        "GET-only list: for the probed roles the registry permission refuses "
+        "before the view (403) or the view answers 200. The view's own 404, for a "
+        "staff role holding demographics.read but no inbox purpose, is pinned in "
+        "tests/core/test_navigation.py."
+    ),
     "ui_api:inbox-query": (
         "For a valid staff User, refused, unknown and foreign clinics return the "
         "200 empty inbox page; invalid JSON/schema returns 400, not a refusal."
+    ),
+    # Task 54: the front-desk assistant's staff pages.
+    "ai:front-desk-knowledge": (
+        "For the probed roles the registry permission (configuration.clinic and "
+        "the administrative route roles) refuses before the view, or the view "
+        "answers 200 and a body without article_id and revision is 400. Its own "
+        "403 for an unknown or foreign article is pinned in "
+        "tests/ai/test_front_desk_views.py."
+    ),
+    "ai:front-desk-handoffs": (
+        "For the probed roles the registry permission (demographics.read and the "
+        "inbox route roles) refuses before the view, or the view answers 200 and a "
+        "body without thread_id and revision is 400. Its own 403 for an unknown "
+        "thread is pinned in tests/ai/test_front_desk_views.py."
     ),
 }
 
@@ -304,6 +324,13 @@ def _probe_route(
             ("POST", {"encounter_id": str(uuid4()), "command": "open"}, htmx)
             for htmx in (False, True)
             if route.name == "ai:decision-support"
+        )
+        # Task 53: the closed command form answers generic bodies with 400; a
+        # valid command naming an unknown run reaches the view's own denial.
+        requests += tuple(
+            ("POST", {"action": "open", "invocation_id": str(uuid4())}, htmx)
+            for htmx in (False, True)
+            if route.name == "ai:care-coordination"
         )
         clinics = (
             (graph.clinic_a, uuid4())

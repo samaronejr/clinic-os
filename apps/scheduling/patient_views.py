@@ -16,6 +16,7 @@ from apps.scheduling.patient_booking import (
     book_patient_slot,
     cancel_patient_appointment,
     patient_appointments,
+    patient_services,
     patient_slots,
     reschedule_patient_appointment,
 )
@@ -47,8 +48,12 @@ def patient_booking_view(request: HttpRequest) -> HttpResponse:
         )
 
 
-def _submit(request: HttpRequest, key: str) -> UUID | None:
-    """Reject scope fields; execute one closed operation or select a transition."""
+def _submit(request: HttpRequest, key: str) -> tuple[str, UUID | None] | None:
+    """Reject scope fields; run one closed operation, or pick what to show.
+
+    ``slots`` takes the service choice from the body (never the URL); a
+    malformed service selector is the same denial as an unknown one.
+    """
     if set(request.POST) - {
         "csrfmiddlewaretoken",
         "action",
@@ -56,9 +61,16 @@ def _submit(request: HttpRequest, key: str) -> UUID | None:
         "slot",
         "idempotency_key",
         "appointment_id",
+        "service_type_id",
     }:
         raise AppointmentAccessDeniedError
     action = request.POST.get("action", "")
+    if action == "slots":
+        raw = request.POST.get("service_type_id", "")
+        try:
+            return "slots", UUID(raw) if raw else None
+        except ValueError as error:
+            raise AppointmentAccessDeniedError from error
     if action == "book":
         book_patient_slot(token=request.POST.get("slot", ""), idempotency_key=UUID(key))
         return None
@@ -66,7 +78,7 @@ def _submit(request: HttpRequest, key: str) -> UUID | None:
         raise AppointmentCreateInputError
     appointment_id = UUID(request.POST.get("appointment_id", ""))
     if action == "choose":
-        return appointment_id
+        return "choose", appointment_id
     if action == "cancel":
         cancel_patient_appointment(appointment_id)
     else:
@@ -74,7 +86,9 @@ def _submit(request: HttpRequest, key: str) -> UUID | None:
     return None
 
 
-def _submission_result(request: HttpRequest, key: str) -> tuple[UUID | None, str]:
+def _submission_result(
+    request: HttpRequest, key: str
+) -> tuple[tuple[str, UUID | None] | None, str]:
     try:
         return _submit(request, key), ""
     except (ValueError, AppointmentCreateInputError, AppointmentRescheduleInputError):
@@ -98,7 +112,7 @@ def _screen(request: HttpRequest) -> HttpResponse:
     scope = require_patient_booking_scope()
     zone = ZoneInfo(scope.timezone)
     error = ""
-    appointment_id = None
+    outcome: tuple[str, UUID | None] | None = None
     key = request.POST.get("idempotency_key", str(uuid4()))
     raw_day = (
         request.POST.get("day") if request.method == "POST" else request.GET.get("day")
@@ -113,11 +127,14 @@ def _screen(request: HttpRequest) -> HttpResponse:
         day = timezone.now().astimezone(zone).date()
         error = "Confira a data e tente novamente."
     if request.method == "POST":
-        appointment_id, error = _submission_result(request, key)
-        if not error and appointment_id is None:
+        outcome, error = _submission_result(request, key)
+        if not error and outcome is None:
             response = redirect("scheduling:patient-booking")
             response.status_code = 303
             return response
+    appointment_id = outcome[1] if outcome and outcome[0] == "choose" else None
+    service_id = outcome[1] if outcome and outcome[0] == "slots" else None
+    services = patient_services()
     return render(
         request,
         "scheduling/patient_booking.html",
@@ -125,7 +142,11 @@ def _screen(request: HttpRequest) -> HttpResponse:
             "scope": scope,
             "day": day.isoformat(),
             "error": error,
-            "slots": patient_slots(day, appointment_id),
+            "services": services,
+            "service": next(
+                (row for row in services if row.service_type_id == service_id), None
+            ),
+            "slots": patient_slots(day, appointment_id, service_type_id=service_id),
             "appointments": patient_appointments(),
             "appointment_id": appointment_id,
             "idempotency_key": key,

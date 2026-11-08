@@ -16,12 +16,24 @@ class AiConfig(AppConfig):
             SyntheticProvider,
             register_provider,
         )
+        from apps.ai.front_desk import (  # noqa: PLC0415
+            enqueue_turn,
+            run_pending_turns,
+            run_portal_turn,
+        )
         from apps.ai.outbox import (  # noqa: PLC0415
             GatewayActionAdapter,
             eligible,
             organization_lock_key,
         )
         from apps.ai.tasks import dispatch  # noqa: PLC0415
+        from apps.comms.inbox_inbound import (  # noqa: PLC0415
+            register_inbound_message_hook,
+            register_inbound_runner,
+        )
+        from apps.comms.portal_messages import (  # noqa: PLC0415
+            register_portal_reply_hook,
+        )
         from apps.core.integration import (  # noqa: PLC0415
             register_action_adapter,
             register_action_dispatcher,
@@ -35,3 +47,8 @@ class AiConfig(AppConfig):
         register_subject_recheck(
             "ai.invocation", eligible, lock_key=organization_lock_key
         )
+        # Task 54: the front-desk agent answers inbox-channel messages of
+        # clinics whose front_desk A2 policy is enabled.
+        register_inbound_message_hook(enqueue_turn)
+        register_inbound_runner(run_pending_turns)
+        register_portal_reply_hook(run_portal_turn)

@@ -19,6 +19,7 @@
 | teleconsult / retention / consent | video sessions / holds+exports / teleconsult consent | 13 / 7 / 16 | own README.md |
 | interop | deferred stub | 1 | - |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
+| workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
 | scribe | consented capture, volatile buffers, verified encrypted ingest and room gating | new | scribe/README.md |
 
@@ -44,7 +45,7 @@ text. The
 evidence. Physical devices and independent S3/MinIO qualification stay external.
 
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/comms/webhooks/` (per-account raw-body HMAC before stored scope; see `middleware.BYPASS_PREFIXES` for the full set).
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.

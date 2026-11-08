@@ -744,6 +744,376 @@
       ]
     },
     {
+      "symbol": "apps.ai.care_coordination._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.ai_care_staff: agent_staff (automation.admin/.organization through has_permission) and has_permission('tasks.assign'); the care SQL protocol oracles execute it."
+    },
+    {
+      "symbol": "apps.ai.care_coordination.request_care_coordination",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.workflows.care.access.load_plan",
+        "apps.workflows.care.access.require_clinician",
+        "apps.ehr.services.view_version",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "Only the plan's clinician asks: care plan visibility, patient-scoped clinical.write, the EHR version reader and the governed gateway admission decide; the actor id only names the requester."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._requested",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.artifacts.input_for",
+        "apps.workflows.care.access.require_clinician"
+      ],
+      "reason": "The requester-bound gateway input reader and patient-scoped clinical.write decide; foreign, unknown and another user's runs share one denial."
+    },
+    {
+      "symbol": "apps.ai.care_coordination._decide",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Attribution only: stamps the deciding actor after its callers decided authority (require_clinician for clinicians, approve_action for staff bundles); the ai_care_guard trigger repeats the decider binding and permissions."
+    },
+    {
+      "symbol": "apps.ai.care_views._care_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Presentation probe of clinic_app.ai_care_staff (agent_staff plus tasks.assign through has_permission); every command rechecks it in the service and the guard."
+    },
+    {
+      "symbol": "apps.ai.care_views._clinician",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Clinic-scoped automation.propose_clinical through require_permission/has_permission; patient-scoped clinical authority is decided again by every command."
+    },
+    {
+      "symbol": "apps.ai.care_views._plans",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "Lists only the actor's own active plans; care plan row security (tasks.view through has_permission) decides visibility."
+    },
+    {
+      "symbol": "apps.ai.care_views._automation",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Asks clinic_app.agent_staff, which is has_permission('automation.admin'/'automation.organization')."
+    },
+    {
+      "symbol": "apps.ai.care_views._context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; rows stay bounded by the care proposal policy."
+    },
+    {
+      "symbol": "apps.ai.care_views.care_coordination",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required"
+      ],
+      "reason": "TOTP-protected staff view; each command delegates to the care services, whose authority is decided in Python and SQL."
+    },
+    {
+      "symbol": "apps.ai.care_views._approve",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.stepup.assert_step_up",
+        "apps.ai.attestations.step_up_evidence",
+        "apps.ai.approvals.approve_action"
+      ],
+      "reason": "A recent TOTP step-up mints one exact-digest receipt per proposal; approve_action verifies it and the approver's current authority."
+    },
+    {
+      "symbol": "apps.ai.front_desk._appointment_step",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._appointment_step#cut1"
+      ],
+      "reason": "Touches the booking-only patient session inside the inbound transaction with patient-only local GUCs; restores the inbound scope before reply insertion. Existing scheduling gates precede the contact mutation key, which remains held through publication."
+    },
+    {
+      "symbol": "apps.ai.front_desk._articles",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._articles#cut1"
+      ],
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the resolver returns only approved answers of the turn clinic."
+    },
+    {
+      "symbol": "apps.ai.front_desk._audit_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._audit_turn#cut1"
+      ],
+      "reason": "The signed inbox and verified portal authority oracles complete actual turns and execute this source-backed audit boundary. Its resolver accepts only the current principal or patient session, the matching clinic, and a completed reply created in this transaction."
+    },
+    {
+      "symbol": "apps.ai.front_desk._context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._context#cut1"
+      ],
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the turn resolver claims a pending turn and repeats current ownership, enabled-policy and daily-budget checks."
+    },
+    {
+      "symbol": "apps.ai.front_desk._finish",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._finish#cut1"
+      ],
+      "reason": "Uses the owning authenticated inbox principal or current verified portal messages session; the reply bridge rechecks the tool and cited approved version, and only its completed local reply is visible to the patient."
+    },
+    {
+      "symbol": "apps.ai.front_desk._pending",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._pending#cut1"
+      ],
+      "reason": "Lists only pending turns of the authenticated inbox principal; the dedicated global and per-account session locks protect custody across turn transactions."
+    },
+    {
+      "symbol": "apps.ai.front_desk._state",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._state#cut1"
+      ],
+      "reason": "Rechecks the owning inbox principal or verified portal messages session and accepts only closed challenge, verified future offer, clear and handoff transitions."
+    },
+    {
+      "symbol": "apps.ai.front_desk._verify",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._verify#cut1"
+      ],
+      "reason": "Authenticates only an inbox principal and its verified-contact enrollment, limits challenge attempts, and mints a booking-only session after a successful challenge. Portal sessions are refused and cannot widen their existing scope."
+    },
+    {
+      "symbol": "apps.ai.front_desk.enqueue_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk.enqueue_turn#cut1"
+      ],
+      "reason": "Queues only a just-stored message owned by the authenticated inbox principal under the current clinic A2 policy, live agent.execute principal and organization opt-in; portal admission uses run_portal_turn with its current patient session."
+    },
+    {
+      "symbol": "apps.ai.front_desk.run_portal_turn",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk.run_portal_turn#cut1"
+      ],
+      "reason": "Runs inside the current portal messages session without staff or tenant GUCs. Enqueue, policy, reviewed answers, tool budget and booking services recheck that session and clinic; a messages-only session cannot obtain booking scope."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb._article",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb._article#cut1"
+      ],
+      "reason": "Row lookup after the caller decided configuration.clinic; the front_desk_read policy hides foreign rows, so unknown and foreign answers share one denial."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.approve_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.approve_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard repeats the permission and binds the approver to the acting administrator."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.draft_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.draft_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard repeats the permission and binds the author to the acting administrator."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.knowledge_articles",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.knowledge_articles#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the front_desk_read policy repeats it for every row."
+    },
+    {
+      "symbol": "apps.ai.front_desk_kb.retire_article",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_kb.retire_article#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the ai_front_desk_guard allows only approved -> retired with the recorded approver kept."
+    },
+    {
+      "symbol": "apps.ai.front_desk_staff.handoff_threads",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_staff.handoff_threads#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the front_desk_read policy repeats it for every thread."
+    },
+    {
+      "symbol": "apps.ai.front_desk_staff.resolve_handoff",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_staff.resolve_handoff#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the ai_front_desk_guard admits only handoff_pending -> resolved by the acting staff member, nothing else."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views._front_desk_handoffs",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views._front_desk_handoffs#cut1"
+      ],
+      "reason": "TOTP-protected page body; repeats demographics.read and delegates the resolution to resolve_handoff."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views._front_desk_knowledge",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views._front_desk_knowledge#cut1"
+      ],
+      "reason": "TOTP-protected page body; repeats configuration.clinic and delegates each command to the knowledge services."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views.front_desk_handoffs_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views.front_desk_handoffs_page#cut1"
+      ],
+      "reason": "Decides demographics.read before the auth decorators; every refusal is the shared 403 page."
+    },
+    {
+      "symbol": "apps.ai.front_desk_views.front_desk_knowledge_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk_views.front_desk_knowledge_page#cut1"
+      ],
+      "reason": "Decides configuration.clinic before the auth decorators; every refusal is the shared 403 page."
+    },
+    {
+      "symbol": "apps.audit.services._record_comms_ingest_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Machine ingest audit append for the authenticated provider principal. clinic_app.comms_audit_scope proves the record belongs to the active account of the current principal and tenant and refuses any call that carries a staff user; clinic_app.comms_ingest_audit then appends with the principal as actor. Neither function reads a staff role, membership or permission table, and both have sql_guards entries. The machine-ingest audit tests in tests/comms/test_inbox.py cover the appended rows and the foreign and replayed refusals."
+    },
+    {
       "symbol": "apps.audit.services._record_delegate_event",
       "signals": [
         "resolver"
@@ -925,6 +1295,193 @@
       ]
     },
     {
+      "symbol": "apps.comms.inbox_feed.question_items",
+      "signals": [
+        "membership",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_feed.question_items"
+      ],
+      "reason": "Clinical inbox feed: returns open clinician-flagged threads only when the actor holds a nurse or physician role in the clinic, and care threads additionally pass require_permission clinical.read for their patient. Executed against a seeded flagged thread for every stored role, in the clinic that holds the role and in a foreign clinic, in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_inbound.inbound_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Resolves the stored scope of a signed provider delivery. The account proof is authenticated before this runs, and clinic_app.comms_resolve_inbound again requires the stored digest to match and refuses any staff user, patient session or already-set principal; it reads no staff table and the context never borrows a staff actor. test_forged_webhook_is_rejected_before_any_scope_query and test_payload_naming_another_account_or_clinic_is_ignored in tests/comms/test_inbox.py cover it."
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.care_team_patients",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Lists the signed-in clinician's own active care-team patients so a care thread can start from a patient they already serve. The role decision is _actor with the clinician roles, which also refuses any other role and a foreign clinic; demographics.read gates the names, and the care-team query is bound to the actor's own user id. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py, and the list itself is executed there too.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.is_clinician",
+      "signals": [
+        "actor",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_queries.is_clinician"
+      ],
+      "reason": "Reports whether the actor holds a nurse or physician role in the clinic, and False without an actor. It only decides which clinician controls the inbox pages show; the commands behind them decide for themselves (clear_clinician_flag calls _actor with the clinician roles). Executed for every stored role in the clinic that holds the role and in a foreign clinic in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.list_conversations",
+      "signals": [
+        "actor",
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "The role decision is visible_purposes, which this function calls first and which yields no purpose, hence the inbox denial, for an actor without a role that opens one; care threads additionally pass require_permission clinical.read per patient before a row is listed. visible_purposes is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_queries.visible_purposes"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.visible_purposes",
+      "signals": [
+        "actor",
+        "denial",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_queries.visible_purposes"
+      ],
+      "reason": "Computes which thread purposes (transactional, care, marketing) the actor's stored roles in the clinic open; an actor with none gets an empty set, which list_conversations turns into the inbox denial. Each purpose is executed for every stored role in the clinic that holds it and in a foreign clinic in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._actor",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.inbox_services._actor"
+      ],
+      "reason": "The inbox's single role gate: binds the signed-in actor to the stored clinic roles a purpose allows (managers, clinicians or all inbox staff) through require_current_actor_clinic_roles and maps every refusal to the shared inbox denial. The manager and clinician role sets are executed for every stored role, in the clinic that holds the role and in a foreign clinic, in tests/identity/legacy_comms_boundaries.py."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._clinic_organization",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Looks up the organization of a clinic id after its callers (create_template_version and create_quick_reply) have passed _actor for that clinic; an unknown clinic raises the shared inbox denial. It reads no staff authority and grants no access."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._conversation",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Loads a thread the actor may handle. Authority is _actor with the thread purpose's roles and, for care threads, require_permission clinical.read for the enrollment; an unknown or foreign thread raises the same inbox denial. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services._terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Resolves a template in the clinic and renders the exact text a send would carry; an unknown or foreign template raises the shared inbox denial. send_message passes _conversation, which decides authority, before calling it, and the function reads no staff authority."
+    },
+    {
+      "symbol": "apps.comms.inbox_services.assign_conversation",
+      "signals": [
+        "denial",
+        "membership"
+      ],
+      "kind": "delegated",
+      "reason": "Authority comes from _conversation (the purpose's roles through _actor, plus clinical.read on care threads). Its own UserClinicRole query only validates the chosen assignee, who must hold a role that may handle the thread's purpose or the inbox denial is raised; that check grants the acting user nothing. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.link_conversation_to_patient",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Authority comes from _conversation on the thread; promoting it to a care thread additionally calls _actor with the clinician roles and require_permission clinical.read for the patient's enrollment. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.open_conversation",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Calls _actor with the requested purpose's roles before it reads the enrollment; care threads additionally pass require_permission clinical.read for the enrollment, and marketing threads need a recorded opt-in. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.retry_message",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Finds the failed message in the clinic, then authority comes from _conversation on its thread (the purpose's roles through _actor, plus clinical.read on care threads); an unknown or foreign message raises the shared inbox denial. The worker rechecks the window and approval before anything is sent. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.set_template_approval",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Manager-only: calls _actor with the manager roles (clinic_admin, clinic_manager) before touching the template, and refuses WhatsApp templates because only the authenticated provider status event approves them. The manager role set of _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_views._assign",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "reason": "View helper that only forwards the POST to assign_conversation, which decides authority through _conversation and _actor; current_actor_id merely names the acting user when the form picks 'me'. _actor is executed for every stored role in tests/identity/legacy_comms_boundaries.py.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.suggestions._suggestion",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Locks a proposed suggestion in the clinic; unknown, foreign and already-decided suggestions raise the shared inbox denial. Every caller then decides authority through _conversation before any write (use_suggestion through send_message, discard_suggestion directly), inside the same transaction, so the lookup grants nothing."
+    },
+    {
       "symbol": "apps.comms.views.reminders_view",
       "signals": [
         "decorator"
@@ -933,6 +1490,72 @@
       "probes": [
         "apps.comms.views.reminders_view"
       ]
+    },
+    {
+      "symbol": "apps.comms.portal_messages._audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages._audit#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session audit binding (comms_patient_audit_scope admits only the live session's own portal reply and escalation records; the payload is clinic_id and object_verb) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages._resolver_row",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Runs one fixed portal resolver command and maps its SQLSTATE (42501 denial, 40001 conflict, 55000 closed thread, 22023 input) to the contract; the resolver decides authority."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.patient_conversations",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.patient_conversations#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.portal_message_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.portal_message_scope#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.portal_thread",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.portal_thread#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session resolver boundary (the live session or a verified delegate holding the messages operation; other patients, other clinics and staff contexts get the one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.comms.portal_messages.reply_to_portal_conversation",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.comms.portal_messages.reply_to_portal_conversation#cut1"
+      ],
+      "reason": "Task-50 portal message oracles execute this patient-session reply boundary (closed threads refuse, a repeated form key returns its receipt, other patients' and other clinics' threads get the one denial) through the cut1 census."
     },
     {
       "symbol": "apps.consent.services._patient_audit",
@@ -3490,6 +4113,172 @@
       ]
     },
     {
+      "symbol": "apps.intake.data_request_views._patient_names",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_request_views._patient_names#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this display-only name gate (demographics.read through the SQL evaluator) for permitted and refused staff through the cut1 census; privacy.requests admits the queue and this grants no record access."
+    },
+    {
+      "symbol": "apps.intake.data_request_views.staff_data_requests",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_request_views.staff_data_requests#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._authority",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._authority#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._patient_audit",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._patient_audit#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._receipt",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Type check of the submission resolver's own result row; an unexpected shape fails closed with the shared denial and grants nothing."
+    },
+    {
+      "symbol": "apps.intake.data_requests._require_privacy",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._require_privacy#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._resolver_row",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Runs one fixed resolver command and maps its SQLSTATE (42501 denial, 40001 conflict, 22023 and 23514 input) to the contract; the resolver decides authority."
+    },
+    {
+      "symbol": "apps.intake.data_requests._transition",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._transition#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests._withdraw",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests._withdraw#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.export_data_subject_copy",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.export_data_subject_copy#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.patient_data_subject_requests",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.patient_data_subject_requests#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.patient_request_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.patient_request_scope#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.sharing_information",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.sharing_information#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.staff_data_subject_requests",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.staff_data_subject_requests#cut1"
+      ],
+      "reason": "Task-50 privacy-staff oracles execute this boundary for every staff role (privacy.requests through the SQL evaluator; refused roles match an unknown request) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.data_requests.submit_data_subject_request",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.data_requests.submit_data_subject_request#cut1"
+      ],
+      "reason": "Task-50 data-subject request oracles execute this live patient-session and delegate boundary (exact subject scope, identical denial, revoked sessions, replayed and stale commands) through the cut1 census."
+    },
+    {
       "symbol": "apps.intake.delegate_views.delegate_session_status",
       "signals": [
         "resolver"
@@ -3716,6 +4505,50 @@
       "probes": [
         "apps.intake.patient_search.search_patients_exact"
       ]
+    },
+    {
+      "symbol": "apps.intake.portal._acting_for_patient",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal._acting_for_patient#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal._session_clinic",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal._session_clinic#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal.channel_preferences",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal.channel_preferences#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.portal.delegate_options",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.portal.delegate_options#cut1"
+      ],
+      "reason": "Task-50 portal read oracles execute this patient-session resolver boundary (original identity, verified grant state and staff-context refusal) through the cut1 census."
     },
     {
       "symbol": "apps.intake.questionnaire_views._denied",
@@ -4101,6 +4934,29 @@
       "probes": [
         "apps.orders.queries.result_rows#cut1"
       ]
+    },
+    {
+      "symbol": "apps.orders.patient_results._audit",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.patient_results._audit#cut1"
+      ],
+      "reason": "Task-50 result-download oracles execute this released-source boundary (unreleased, unknown and staff contexts share one denial) through the cut1 census."
+    },
+    {
+      "symbol": "apps.orders.patient_results.patient_result_file",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.patient_results.patient_result_file#cut1"
+      ],
+      "reason": "Task-50 result-download oracles execute this released-source boundary (unreleased, unknown and staff contexts share one denial) through the cut1 census."
     },
     {
       "symbol": "apps.orders.review.acknowledge_result",
@@ -6017,6 +6873,7 @@
     {
       "symbol": "apps.scheduling.patient_booking.patient_slots",
       "signals": [
+        "denial",
         "resolver"
       ],
       "kind": "delegated",
@@ -7395,6 +8252,471 @@
       ]
     },
     {
+      "symbol": "apps.workflows.care.access.bind_command",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.bind_command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.load_action",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.load_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.load_plan",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.load_plan#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.occurrence_enrollment",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.occurrence_enrollment#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.plan_of",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.plan_of#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_clinician",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_clinician#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_current_source",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_current_source#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_observer",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_observer#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.require_staff",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.require_staff#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.access.version_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.access.version_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.mirror.follow",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.mirror.follow#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.add_care_action",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.add_care_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.flag_stale_care_plan",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.flag_stale_care_plan#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.plans.mark_care_action_overdue",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.plans.mark_care_action_overdue#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.assign_pro",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.assign_pro#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.close_missed_pro_occurrence",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.close_missed_pro_occurrence#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.pro.record_pro_response",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.pro.record_pro_response#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.recalls.materialize_recall",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.recalls.materialize_recall#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.recalls.schedule_recall",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.recalls.schedule_recall#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.referrals._referral",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.referrals._referral#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.referrals.link_referral_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.referrals.link_referral_document#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.tasks.run_care",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.tasks.run_care#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.care.tasks.scan_care",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.care.tasks.scan_care#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.coordination_views._release_notices",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._release_notices#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: configuration.propose through require_permission before any read; a post without the publish action is the shared 403 page; the coordination guard repeats the permission and binds the approver."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views._urgent_concerns",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._urgent_concerns#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: demographics.read through require_permission; acknowledge and resolve are decided by the responsible-role helper and the revision; malformed selectors and unknown concerns are the shared 403 page."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views._urgent_coverage",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views._urgent_coverage#cut1"
+      ],
+      "reason": "Todo 55 workflow guard cases execute this TOTP-protected page: configuration.clinic through require_permission; a post without the publish action is the shared 403 page; the coordination guard repeats the permission and binds the publisher."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.release_notices_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.release_notices_page#cut1"
+      ],
+      "reason": "Decides configuration.propose before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.urgent_concerns_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.urgent_concerns_page#cut1"
+      ],
+      "reason": "Decides demographics.read before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.coordination_views.urgent_coverage_page",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.coordination_views.urgent_coverage_page#cut1"
+      ],
+      "reason": "Decides configuration.clinic before the auth decorators and answers every other caller with the shared 403 page; executed by the workflow guard cases."
+    },
+    {
+      "symbol": "apps.workflows.release.current_notice",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.current_notice#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the notice read policy repeats it for every row."
+    },
+    {
+      "symbol": "apps.workflows.release.notice_send_eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.notice_send_eligible#cut1"
+      ],
+      "reason": "The comms send check for release notices: clinic_app.workflows_release_send_eligible admits a queued notice only while its release version is current and a delegate recipient still holds an allowed grant; the outbox cancels it otherwise. Executed by the release oracles through the cut1 census."
+    },
+    {
+      "symbol": "apps.workflows.release.publish_release_notice",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.publish_release_notice#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the coordination guard repeats it, binds the approving clinician and numbers versions under a per-clinic advisory lock."
+    },
+    {
+      "symbol": "apps.workflows.release.release_deliveries",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.release_deliveries#cut1"
+      ],
+      "reason": "configuration.propose through require_permission; the delivery read policy requires patient-scoped result.release for every row."
+    },
+    {
+      "symbol": "apps.workflows.release.release_result_to_patient",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.release.release_result_to_patient#cut1"
+      ],
+      "reason": "configuration.propose first, then patient-scoped result.release and clinical.read before any write; unknown and foreign versions share ReleaseAccessDeniedError; the coordination guard binds the releaser, the release, the template and the portal message."
+    },
+    {
+      "symbol": "apps.workflows.urgent._decide",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._decide#cut1"
+      ],
+      "reason": "Locks the concern of the requested clinic; unknown and foreign concerns share WorkflowAccessDeniedError; the coordination guard allows only open to acknowledged to resolved by the responsible actor with revision plus one."
+    },
+    {
+      "symbol": "apps.workflows.urgent._responsible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._responsible#cut1"
+      ],
+      "reason": "clinic_app.workflows_urgent_responsible decides whether the current actor holds one of the policy's responsible roles in the clinic (managers when no policy); it only marks and orders listed rows."
+    },
+    {
+      "symbol": "apps.workflows.urgent._responsible_actor",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent._responsible_actor#cut1"
+      ],
+      "reason": "require_current_actor_clinic_roles with the concern policy's responsible roles (clinic managers without a policy); the urgent-queue oracles execute every role through the cut1 census."
+    },
+    {
+      "symbol": "apps.workflows.urgent.coverage_settings",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.coverage_settings#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the coverage read policy repeats the clinic scope for every row."
+    },
+    {
+      "symbol": "apps.workflows.urgent.current_coverage",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.current_coverage#cut1"
+      ],
+      "reason": "demographics.read through require_permission; the coverage read policy repeats the clinic scope for every row."
+    },
+    {
+      "symbol": "apps.workflows.urgent.patient_coverage_text",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.patient_coverage_text#cut1"
+      ],
+      "reason": "Patient-session text: clinic_app.workflows_patient_coverage, bound to current_patient_authority('messages'), returns only the session clinic's current coverage; without a policy the portal claims no coverage."
+    },
+    {
+      "symbol": "apps.workflows.urgent.report_urgent_message",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.report_urgent_message#cut1"
+      ],
+      "reason": "Patient bridge: clinic_app.workflows_report_urgent admits only a just-stored inbound portal message of the live session's enrollment and opens at most one concern per message; the coordination guard admits that insert only for the bridge's message."
+    },
+    {
+      "symbol": "apps.workflows.urgent.set_urgent_coverage",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.set_urgent_coverage#cut1"
+      ],
+      "reason": "configuration.clinic through require_permission; the coordination guard repeats it, binds the publisher and checks the terms under a per-clinic advisory lock."
+    },
+    {
+      "symbol": "apps.workflows.urgent.urgent_concerns",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.urgent.urgent_concerns#cut1"
+      ],
+      "reason": "Lists the clinic's concerns for the current actor after the caller decided demographics.read; responsibility comes from the SQL helper and overdue concerns rise for managers; rows hold no message text."
+    },
+    {
       "symbol": "apps.scribe.tasks.run_transcription",
       "signals": [
         "tenant_boundary"
@@ -7544,6 +8866,27 @@
     "apps.ai.evaluation.views.evaluation_view#cut1",
     "apps.ai.evaluation.views.evaluation_view#observed",
     "apps.ai.execution_tasks.dispatch_approved#cut1",
+    "apps.ai.front_desk._appointment_step#cut1",
+    "apps.ai.front_desk._articles#cut1",
+    "apps.ai.front_desk._audit_turn#cut1",
+    "apps.ai.front_desk._context#cut1",
+    "apps.ai.front_desk._finish#cut1",
+    "apps.ai.front_desk._pending#cut1",
+    "apps.ai.front_desk._state#cut1",
+    "apps.ai.front_desk._verify#cut1",
+    "apps.ai.front_desk.enqueue_turn#cut1",
+    "apps.ai.front_desk.run_portal_turn#cut1",
+    "apps.ai.front_desk_kb._article#cut1",
+    "apps.ai.front_desk_kb.approve_article#cut1",
+    "apps.ai.front_desk_kb.draft_article#cut1",
+    "apps.ai.front_desk_kb.knowledge_articles#cut1",
+    "apps.ai.front_desk_kb.retire_article#cut1",
+    "apps.ai.front_desk_staff.handoff_threads#cut1",
+    "apps.ai.front_desk_staff.resolve_handoff#cut1",
+    "apps.ai.front_desk_views._front_desk_handoffs#cut1",
+    "apps.ai.front_desk_views._front_desk_knowledge#cut1",
+    "apps.ai.front_desk_views.front_desk_handoffs_page#cut1",
+    "apps.ai.front_desk_views.front_desk_knowledge_page#cut1",
     "apps.ai.management.commands.ai_eval.Command.handle#cut1",
     "apps.ai.management.commands.ai_eval.Command.handle#observed",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
@@ -7572,6 +8915,16 @@
     "apps.billing.views.charges_workspace",
     "apps.billing.views.invoice_detail",
     "apps.billing.views.invoice_status",
+    "apps.comms.inbox_feed.question_items",
+    "apps.comms.inbox_queries.care_team_patients",
+    "apps.comms.inbox_queries.is_clinician",
+    "apps.comms.inbox_queries.visible_purposes",
+    "apps.comms.inbox_services._actor",
+    "apps.comms.portal_messages._audit#cut1",
+    "apps.comms.portal_messages.patient_conversations#cut1",
+    "apps.comms.portal_messages.portal_message_scope#cut1",
+    "apps.comms.portal_messages.portal_thread#cut1",
+    "apps.comms.portal_messages.reply_to_portal_conversation#cut1",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
     "apps.consent.services._patient_lineage#cut1",
@@ -7747,6 +9100,19 @@
     "apps.intake.alias_access.review_actor#cut1",
     "apps.intake.alias_access.verified_review_session#cut1",
     "apps.intake.contacts._actor_label",
+    "apps.intake.data_request_views._patient_names#cut1",
+    "apps.intake.data_request_views.staff_data_requests#cut1",
+    "apps.intake.data_requests._authority#cut1",
+    "apps.intake.data_requests._patient_audit#cut1",
+    "apps.intake.data_requests._require_privacy#cut1",
+    "apps.intake.data_requests._transition#cut1",
+    "apps.intake.data_requests._withdraw#cut1",
+    "apps.intake.data_requests.export_data_subject_copy#cut1",
+    "apps.intake.data_requests.patient_data_subject_requests#cut1",
+    "apps.intake.data_requests.patient_request_scope#cut1",
+    "apps.intake.data_requests.sharing_information#cut1",
+    "apps.intake.data_requests.staff_data_subject_requests#cut1",
+    "apps.intake.data_requests.submit_data_subject_request#cut1",
     "apps.intake.delegate_views.delegate_session_status#cut1",
     "apps.intake.delegate_views.renew_representation#cut1",
     "apps.intake.demographics._actor_label",
@@ -7766,6 +9132,10 @@
     "apps.intake.patient_access.revoke_patient_access",
     "apps.intake.patient_merge.transfer_patient_forward#cut1",
     "apps.intake.patient_search.search_patients_exact",
+    "apps.intake.portal._acting_for_patient#cut1",
+    "apps.intake.portal._session_clinic#cut1",
+    "apps.intake.portal.channel_preferences#cut1",
+    "apps.intake.portal.delegate_options#cut1",
     "apps.intake.questionnaire_views._denied",
     "apps.intake.questionnaire_views.patient_questionnaires#observed",
     "apps.intake.questionnaire_views.staff_questionnaires",
@@ -7799,6 +9169,8 @@
     "apps.orders.lab.receive_lab_result#cut1",
     "apps.orders.ordering.place_order#cut1",
     "apps.orders.ordering.progress_order#cut1",
+    "apps.orders.patient_results._audit#cut1",
+    "apps.orders.patient_results.patient_result_file#cut1",
     "apps.orders.queries.patient_sources#cut1",
     "apps.orders.queries.result_rows#cut1",
     "apps.orders.review.acknowledge_result#cut1",
@@ -7983,7 +9355,36 @@
     "apps.workflows.access.require_owner_target#cut1",
     "apps.workflows.access.require_reference#cut1",
     "apps.workflows.access.require_task_access#cut1",
+    "apps.workflows.care.access.bind_command#cut1",
+    "apps.workflows.care.access.load_action#cut1",
+    "apps.workflows.care.access.load_plan#cut1",
+    "apps.workflows.care.access.occurrence_enrollment#cut1",
+    "apps.workflows.care.access.plan_of#cut1",
+    "apps.workflows.care.access.require_clinician#cut1",
+    "apps.workflows.care.access.require_current_source#cut1",
+    "apps.workflows.care.access.require_observer#cut1",
+    "apps.workflows.care.access.require_staff#cut1",
+    "apps.workflows.care.access.version_scope#cut1",
+    "apps.workflows.care.mirror.follow#cut1",
+    "apps.workflows.care.plans.add_care_action#cut1",
+    "apps.workflows.care.plans.flag_stale_care_plan#cut1",
+    "apps.workflows.care.plans.mark_care_action_overdue#cut1",
+    "apps.workflows.care.pro.assign_pro#cut1",
+    "apps.workflows.care.pro.close_missed_pro_occurrence#cut1",
+    "apps.workflows.care.pro.record_pro_response#cut1",
+    "apps.workflows.care.recalls.materialize_recall#cut1",
+    "apps.workflows.care.recalls.schedule_recall#cut1",
+    "apps.workflows.care.referrals._referral#cut1",
+    "apps.workflows.care.referrals.link_referral_document#cut1",
+    "apps.workflows.care.tasks.run_care#cut1",
+    "apps.workflows.care.tasks.scan_care#cut1",
     "apps.workflows.chart_sources.read_task_sources#cut1",
+    "apps.workflows.coordination_views._release_notices#cut1",
+    "apps.workflows.coordination_views._urgent_concerns#cut1",
+    "apps.workflows.coordination_views._urgent_coverage#cut1",
+    "apps.workflows.coordination_views.release_notices_page#cut1",
+    "apps.workflows.coordination_views.urgent_concerns_page#cut1",
+    "apps.workflows.coordination_views.urgent_coverage_page#cut1",
     "apps.workflows.definition_services._definition#cut1",
     "apps.workflows.designer._authorized_designer#cut1",
     "apps.workflows.designer._command#cut1",
@@ -7999,6 +9400,11 @@
     "apps.workflows.inbox_views._selected_versions#cut1",
     "apps.workflows.inbox_views._terms#cut1",
     "apps.workflows.inbox_views.today#cut1",
+    "apps.workflows.release.current_notice#cut1",
+    "apps.workflows.release.notice_send_eligible#cut1",
+    "apps.workflows.release.publish_release_notice#cut1",
+    "apps.workflows.release.release_deliveries#cut1",
+    "apps.workflows.release.release_result_to_patient#cut1",
     "apps.workflows.run_control.retry_run#cut1",
     "apps.workflows.run_services.cancel_run#cut1",
     "apps.workflows.run_services.start_run#cut1",
@@ -8013,6 +9419,15 @@
     "apps.workflows.tasks.escalate#cut1",
     "apps.workflows.tasks.scan_due#cut1",
     "apps.workflows.today.view_today#cut1",
+    "apps.workflows.urgent._decide#cut1",
+    "apps.workflows.urgent._responsible#cut1",
+    "apps.workflows.urgent._responsible_actor#cut1",
+    "apps.workflows.urgent.coverage_settings#cut1",
+    "apps.workflows.urgent.current_coverage#cut1",
+    "apps.workflows.urgent.patient_coverage_text#cut1",
+    "apps.workflows.urgent.report_urgent_message#cut1",
+    "apps.workflows.urgent.set_urgent_coverage#cut1",
+    "apps.workflows.urgent.urgent_concerns#cut1",
     "apps.workflows.views._authorized_tasks#cut1",
     "apps.workflows.views._staff_catalog#cut1",
     "clinic_app.auth_lookup",
@@ -8065,6 +9480,17 @@
         "clinic_admin",
         "owner",
         "receptionist"
+      ]
+    },
+    {
+      "path": "apps/comms/inbox_services.py",
+      "function": "_actor",
+      "roles": "roles",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
       ]
     },
     {
@@ -8637,6 +10063,17 @@
       "legacy_allowed": [
         "physician"
       ]
+    },
+    {
+      "path": "apps/workflows/urgent.py",
+      "function": "_responsible_actor",
+      "roles": "roles",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ]
     }
   ],
   "sql_guards": {
@@ -9060,6 +10497,116 @@
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
     },
+    "clinic_app.ai_care_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
+    "clinic_app.ai_care_plan_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_care_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_plan uuid, requested_revision integer",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
+      ],
+      "reason": "Resolver-only care-plan predicate called by ai_care_guard. The real-role oracle proves direct runtime calls fail with SQLSTATE 42501 for known/unknown plans and current/stale revisions across authorized, unrelated, unknown and inactive actors, while the resolver-owned trigger still collects an authorized proposal. Migration 0008 only corrects this function's ACL; its definition remains in _care_sql.py."
+    },
+    "clinic_app.ai_care_staff": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_care_visible"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
+    "clinic_app.ai_care_visible": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_care_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_careproposal:care_staff"
+        ],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, enrollment uuid, audience text, state text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_staff_approve_the_previewed_administrative_bundle",
+        "test_stale_proposals_are_rejected_after_the_plan_changes",
+        "test_clinical_action_without_clinician_approval_is_refused",
+        "test_database_guards_refuse_raw_forgery",
+        "test_care_sql_rechecks_inactive_and_foreign_actor",
+        "test_runtime_cannot_call_the_internal_plan_status_helper"
+      ],
+      "reason": "Todo 53 care-coordination protocol: real clinician, staff, foreign and inactive actors drive request, collection, bundle approval, acceptance, staleness and raw forgery through the deployed policy and guard."
+    },
     "clinic_app.ai_extraction_job_allowed": {
       "discovery": {
         "migrations": [
@@ -9184,6 +10731,378 @@
       "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
       ],
       "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
+    "clinic_app.ai_front_desk_articles": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Returns only approved reviewed answers of the turn clinic to its owning inbox principal or current verified portal messages session."
+    },
+    "clinic_app.ai_front_desk_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Appends one metadata-only hash-chain event for a completed owned turn and reply created in the current transaction; principal, organization and clinic come from the source-backed audit scope, and repeated publication is idempotent."
+    },
+    "clinic_app.ai_front_desk_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_front_desk_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Returns only the current inbox principal or verified portal patient session and its stored organization/clinic for an owned completed turn whose reply was created in the current transaction."
+    },
+    "clinic_app.ai_front_desk_enqueue": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in and daily budget."
+    },
+    "clinic_app.ai_front_desk_finish": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, reply_body bytea, kek text, turn_intent text, turn_tool text, turn_outcome text, cited uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Rechecks current owner, enabled policy, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
+    },
+    "clinic_app.ai_front_desk_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Pins reviewed-answer administrator authorship and approval, staff handoff resolution, and the current owned turn bridge for agent rows. Raw foreign or inactive staff, forged reply bindings, deletes and truncation refuse."
+    },
+    "clinic_app.ai_front_desk_pending": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Lists pending turns only for the current authenticated inbox principal or matching verified portal messages session; unrelated staff and patient scopes get none."
+    },
+    "clinic_app.ai_front_desk_state": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, change text, appointment uuid, practitioner uuid, start timestamp with time zone, reason text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Allows only the owning inbox principal or verified portal messages session to record closed challenge, clear, handoff and verified future-offer transitions."
+    },
+    "clinic_app.ai_front_desk_turn": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Claims one pending owned turn under current A2 policy and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
+    },
+    "clinic_app.ai_front_desk_verify": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_turn uuid, birth text, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path"
+      ],
+      "reason": "Compares a verified-contact inbox enrollment birth date server-side with a three-attempt bound, then mints only a short booking session. Portal callers refuse and cannot gain any new scope."
     },
     "clinic_app.ai_budget_usage": {
       "discovery": {
@@ -9905,6 +11824,115 @@
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
     },
+    "clinic_app.comms_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_ingest_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inbound_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Inbox ingest audit: binds the authenticated provider principal as actor with a metadata-only payload (clinic_id, object_verb); no staff role decision. Covered by the machine-ingest audit tests in tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_ingest_account": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
+          "clinic_app.comms_message_guard_v1",
+          "clinic_app.comms_open_window"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, channel_name text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_open_window": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_message_guard_v1"
+        ],
+        "signatures": [
+          {
+            "arguments": "conversation uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
+    "clinic_app.comms_resolve_inbound": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "account uuid, proof text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Inbox machine ingest: resolves or stamps stored provider-account scope from the signing-secret digest, principal and tenant GUCs; there is no staff role decision in the body. Forged, foreign, replayed and stale-window deliveries are covered by tests/comms/test_inbox.py."
+    },
     "clinic_app.comms_operation_callback_scope": {
       "discovery": {
         "migrations": [
@@ -10048,6 +12076,226 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.comms_message_guard_v1": {
+      "kind": "domain_protocol",
+      "reason": "Todo 51 message guard with the todo 50 portal branch: an inbound portal row needs the live patient session of the thread's enrollment holding the messages operation and a thread that is not closed, and refuses any staff actor; provider-account inbound and the outbound rules are unchanged. Executed by the portal message matrix. The todo 54 agent branch admits an outbound row without any actor only while clinic_app.ai_front_desk_finish names that exact row for its own finishing turn, never on the portal channel or a closed thread; tests/ai/test_front_desk*.py execute it.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_sql.py",
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: chains the patient-session reply and escalation events with the session as actor and a clinic_id/object_verb payload only.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_audit_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: admits only the live session's own inbound portal reply or escalated portal thread as the audited record.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_patient_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_conversations": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: only the session subject's portal threads with the count of messages the patient may read; staff contexts and other patients see none.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_messages": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: the subject's own replies and only outbox-accepted clinic messages of one of its portal threads, decrypted through protected_decrypt for the session tenant; any other thread is empty.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_conversation uuid, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_reply": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: session-bound reply with one denial for unknown and foreign threads, a closed-thread refusal, keyed replay and a plaintext conflict check; triage can only raise the escalation.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_conversation uuid, body_envelope bytea, reply_key uuid, kek text, triage text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.comms_patient_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal messages: the live session's messages scope through current_patient_authority (operation and verified-delegate intersection); staff and sessionless contexts get none.",
+      "probes": [
+        "test_a_closed_thread_stays_readable_and_refuses_a_new_reply",
+        "test_a_pending_thread_reopens_and_a_clinical_reply_reaches_a_clinician",
+        "test_a_verified_delegate_with_message_scope_reads_and_replies_for_the_patient",
+        "test_empty_oversized_and_keyless_replies_refuse_before_any_write",
+        "test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies",
+        "test_messages_page_refusals_are_one_gate_and_a_closed_thread_keeps_the_text",
+        "test_other_patients_other_clinics_and_unknown_threads_share_one_denial",
+        "test_patient_reads_accepted_clinic_messages_and_replies_once",
+        "test_sessions_and_delegates_without_the_messages_scope_see_no_thread",
+        "test_the_database_refuses_inbound_portal_rows_outside_the_patient_session"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_portal_messages_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
     },
     "clinic_app.configuration_guard": {
       "discovery": {
@@ -10230,19 +12478,43 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_guard",
+          "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.billing_patient_charge",
           "clinic_app.billing_patient_charges",
+          "clinic_app.comms_message_guard_v1",
+          "clinic_app.comms_patient_audit_scope",
+          "clinic_app.comms_patient_conversations",
+          "clinic_app.comms_patient_messages",
+          "clinic_app.comms_patient_reply",
+          "clinic_app.comms_patient_scope",
           "clinic_app.consent_session",
+          "clinic_app.data_request_audit_scope",
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_purpose_allowed",
           "clinic_app.orders_delegate_allowed",
+          "clinic_app.orders_patient_download_scope",
           "clinic_app.orders_patient_sources",
           "clinic_app.patient_alias_overview",
           "clinic_app.patient_alias_set",
           "clinic_app.patient_booking_scope",
+          "clinic_app.patient_channel_preferences",
+          "clinic_app.patient_data_requests",
           "clinic_app.patient_session_overview",
           "clinic_app.questionnaire_patient_enrollment",
           "clinic_app.retention_records_session",
-          "clinic_app.teleconsult_patient_match"
+          "clinic_app.submit_data_request",
+          "clinic_app.teleconsult_patient_match",
+          "clinic_app.workflows_patient_coverage",
+          "clinic_app.workflows_report_urgent",
+          "clinic_app.workflows_urgent_audit_scope"
         ],
         "signatures": [
           {
@@ -10412,6 +12684,7 @@
           "clinic_app.delegate_session_guard",
           "clinic_app.delegate_session_status",
           "clinic_app.patient_authority",
+          "clinic_app.patient_delegate_options",
           "clinic_app.renew_delegate_grant",
           "clinic_app.switch_patient_delegate"
         ],
@@ -10446,7 +12719,8 @@
           "clinic_app.consent_refusalrecord:delegate_purpose"
         ],
         "resolvers": [
-          "clinic_app.consent_delegate_guard"
+          "clinic_app.consent_delegate_guard",
+          "clinic_app.submit_data_request"
         ],
         "signatures": [
           {
@@ -10586,16 +12860,26 @@
         "resolvers": [
           "clinic_app.agent_audit",
           "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_front_desk_audit",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
+          "clinic_app.comms_ingest_account",
+          "clinic_app.comms_ingest_audit",
+          "clinic_app.comms_patient_audit",
+          "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
+          "clinic_app.data_request_audit",
+          "clinic_app.data_request_emit_task",
+          "clinic_app.data_request_task_valid",
           "clinic_app.delegate_audit",
           "clinic_app.identity_signup_register",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_lab_account",
           "clinic_app.orders_lab_audit",
+          "clinic_app.orders_patient_download_audit",
           "clinic_app.orders_resolve_lab",
           "clinic_app.orders_system_task_valid",
           "clinic_app.prescription_document_viewed",
@@ -10606,7 +12890,12 @@
           "clinic_app.retention_emit_task",
           "clinic_app.retention_record_viewed",
           "clinic_app.retention_system_task_valid",
-          "clinic_app.teleconsult_mode_transition_audit"
+          "clinic_app.teleconsult_mode_transition_audit",
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_system_task_valid",
+          "clinic_app.workflows_release_outcome",
+          "clinic_app.workflows_release_system_task_valid",
+          "clinic_app.workflows_urgent_audit"
         ],
         "signatures": [
           {
@@ -11351,9 +13640,13 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_enqueue",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_review_extraction",
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
+          "clinic_app.comms_patient_reply",
           "clinic_app.ehr_timeline_enqueue",
           "clinic_app.ehr_timeline_refresh",
           "clinic_app.identity_invitation_accept",
@@ -11369,7 +13662,11 @@
           "clinic_app.retention_failure",
           "clinic_app.retention_schedule",
           "clinic_app.scheduling_capacity_guard",
-          "clinic_app.scheduling_lifecycle_receipt"
+          "clinic_app.scheduling_lifecycle_receipt",
+          "clinic_app.submit_data_request",
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_release_outcome",
+          "clinic_app.workflows_report_urgent"
         ],
         "signatures": [
           {
@@ -11395,6 +13692,11 @@
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
+          "clinic_app.ai_frontdeskthread:front_desk_read",
+          "clinic_app.ai_frontdeskthread:front_desk_update",
+          "clinic_app.ai_frontdeskturn:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_update",
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
           "clinic_app.consent_consentacceptance:consent_acceptance_read",
@@ -11422,6 +13724,7 @@
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.intake_datasubjectrequest:privacy_staff_read",
           "clinic_app.orders_labaccount:orders_read",
           "clinic_app.orders_order:orders_insert",
           "clinic_app.orders_order:orders_read",
@@ -11434,8 +13737,25 @@
           "clinic_app.scheduling_displaydevice:reception_scope",
           "clinic_app.scheduling_queueentry:reception_scope",
           "clinic_app.scheduling_roomstatus:reception_scope",
+          "clinic_app.workflows_careaction:care_read",
+          "clinic_app.workflows_careaction:care_update",
+          "clinic_app.workflows_careplan:care_read",
+          "clinic_app.workflows_careplan:care_update",
+          "clinic_app.workflows_carerefusal:care_read",
+          "clinic_app.workflows_proassignment:care_read",
+          "clinic_app.workflows_proassignment:care_update",
+          "clinic_app.workflows_prooccurrence:care_update",
+          "clinic_app.workflows_recall:care_read",
+          "clinic_app.workflows_recall:care_update",
+          "clinic_app.workflows_referral:care_read",
+          "clinic_app.workflows_referral:care_update",
+          "clinic_app.workflows_releasedelivery:coordination_read",
+          "clinic_app.workflows_releasenoticetemplate:coordination_read",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
+          "clinic_app.workflows_urgentconcern:coordination_read",
+          "clinic_app.workflows_urgentconcern:coordination_update",
+          "clinic_app.workflows_urgentcoveragepolicy:coordination_read",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
           "clinic_app.workflows_workflowdefinitionversion:workflow_update",
           "clinic_app.workflows_workflowrun:workflow_read",
@@ -11445,13 +13765,18 @@
         "resolvers": [
           "clinic_app.agent_record_guard",
           "clinic_app.agent_staff",
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_care_staff",
+          "clinic_app.ai_care_visible",
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_extraction_source_allowed",
+          "clinic_app.ai_front_desk_guard",
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_staff",
           "clinic_app.ehr_patient_permission",
           "clinic_app.identity_invitation_accept",
@@ -11481,11 +13806,17 @@
           "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_guard",
           "clinic_app.teleconsult_clinician",
+          "clinic_app.transition_data_request",
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_occurrence_scope",
+          "clinic_app.workflows_care_version_scope",
+          "clinic_app.workflows_coordination_guard",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
           "clinic_app.workflows_predecessor_ready",
-          "clinic_app.workflows_staff_catalog"
+          "clinic_app.workflows_staff_catalog",
+          "clinic_app.workflows_urgent_responsible"
         ],
         "signatures": [
           {
@@ -13160,7 +15491,8 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.patient_booking_slots"
+          "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots"
         ],
         "signatures": [
           {
@@ -13230,6 +15562,9 @@
           "clinic_app.scheduling_appointment:patient_booking_update",
           "clinic_app.scheduling_appointmenttransition:patient_booking_read",
           "clinic_app.scheduling_availabilityblock:patient_booking_read",
+          "clinic_app.scheduling_availabilitytemplate:patient_booking_read",
+          "clinic_app.scheduling_resource:patient_booking_read",
+          "clinic_app.scheduling_servicetype:patient_booking_read",
           "clinic_app.scheduling_waitlistentry:waitlist_read",
           "clinic_app.scheduling_waitlistentry:waitlist_update",
           "clinic_app.scheduling_waitlistoffer:waitlist_read",
@@ -13242,6 +15577,7 @@
           "clinic_app.patient_booking_receipt",
           "clinic_app.patient_booking_requires_approval",
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_appointment_guard_v1",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_guard"
@@ -13289,13 +15625,16 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.data_request_guard",
           "clinic_app.delegate_audit_scope",
           "clinic_app.delegate_grantor",
           "clinic_app.delegate_recovery_identity",
           "clinic_app.delegate_session_status",
           "clinic_app.patient_authority",
+          "clinic_app.patient_delegate_options",
           "clinic_app.patient_is_delegate",
           "clinic_app.renew_delegate_grant",
+          "clinic_app.submit_data_request",
           "clinic_app.switch_patient_delegate"
         ],
         "signatures": [
@@ -13994,6 +16333,12 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
+          "clinic_app.comms_patient_messages",
+          "clinic_app.comms_patient_reply",
+          "clinic_app.patient_delegate_options",
           "clinic_app.patient_registry_count",
           "clinic_app.patient_registry_page",
           "clinic_app.patient_session_overview"
@@ -14923,6 +17268,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.patient_booking_slots",
+          "clinic_app.patient_service_slots",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -15033,7 +17379,8 @@
     "clinic_app.scheduling_lifecycle_guard": {
       "discovery": {
         "migrations": [
-          "apps/scheduling/migrations/_lifecycle_sql.py"
+          "apps/scheduling/migrations/_lifecycle_sql.py",
+          "apps/scheduling/migrations/_patient_service_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -15849,9 +18196,11 @@
     "clinic_app.workflows_guard": {
       "discovery": {
         "migrations": [
+          "apps/intake/migrations/_data_request_sql.py",
           "apps/orders/migrations/_task_sql.py",
           "apps/retention/migrations/_purge_task_sql.py",
           "apps/workflows/migrations/0004_task_completion_gate.py",
+          "apps/workflows/migrations/_care_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -15878,6 +18227,9 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.workflows_care_guard",
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_care_scope",
           "clinic_app.workflows_guard"
         ],
         "signatures": [
@@ -15902,6 +18254,10 @@
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [
+          "clinic_app.workflows_careaction:care_read",
+          "clinic_app.workflows_careaction:care_update",
+          "clinic_app.workflows_referral:care_read",
+          "clinic_app.workflows_referral:care_update",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update"
         ],
@@ -16086,6 +18442,442 @@
       ],
       "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
     },
+    "clinic_app.workflows_care_due": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "due_by timestamp with time zone",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_due"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_guard"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_items": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_care_due",
+          "clinic_app.workflows_care_park",
+          "clinic_app.workflows_care_scope"
+        ],
+        "signatures": [
+          {
+            "arguments": "due_by timestamp with time zone, requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_items"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_occurrence_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_occurrence uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_occurrence_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_park": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_kind text, requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_park"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_kind text, requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_source_current": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_action uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_source_current"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_system_task_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_system_task_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_care_version_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_care_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_version uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_care_version_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_coordination_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_coordination_guard"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_coverage_policy": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_patient_coverage",
+          "clinic_app.workflows_report_urgent"
+        ],
+        "signatures": [
+          {
+            "arguments": "tenant uuid, clinic uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_coverage_policy"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_patient_coverage": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_patient_coverage"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_outcome": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_outcome"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_send_eligible": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_send_eligible"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_release_system_task_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_release_system_task_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_report_urgent": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_report_urgent"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_audit"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_urgent_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_audit_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_urgent_responsible": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_coordination_sql.py"
+        ],
+        "policies": [
+          "clinic_app.workflows_urgentconcern:coordination_read",
+          "clinic_app.workflows_urgentconcern:coordination_update"
+        ],
+        "resolvers": [
+          "clinic_app.workflows_coordination_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, roles character varying[]",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_urgent_responsible"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
     "clinic_app.orders_audit_scope": {
       "discovery": {
         "migrations": [
@@ -16181,7 +18973,8 @@
         "policies": [],
         "resolvers": [
           "clinic_app.orders_guard",
-          "clinic_app.orders_patient_sources"
+          "clinic_app.orders_patient_sources",
+          "clinic_app.workflows_release_send_eligible"
         ],
         "signatures": [
           {
@@ -16338,7 +19131,8 @@
           "clinic_app.ai_review_extraction",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_scope",
-          "clinic_app.orders_verify_identity"
+          "clinic_app.orders_verify_identity",
+          "clinic_app.workflows_release_send_eligible"
         ],
         "signatures": [
           {
@@ -16416,7 +19210,9 @@
           "apps/orders/migrations/_patient_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.orders_patient_download_scope"
+        ],
         "signatures": [
           {
             "arguments": "requested_version uuid",
@@ -16884,7 +19680,8 @@
         ],
         "resolvers": [
           "clinic_app.agent_approval_current",
-          "clinic_app.agent_controls"
+          "clinic_app.agent_controls",
+          "clinic_app.ai_care_staff"
         ],
         "signatures": [
           {
@@ -17780,6 +20577,579 @@
         "test_native_retention_authority_and_restore_keep_independent_subjects"
       ],
       "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.data_request_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_audit_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_close_task": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_emit_task": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_guard": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_now": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_guard",
+          "clinic_app.submit_data_request"
+        ],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_task_close_valid": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "old_row jsonb, new_row jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_task_valid": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.data_request_withdrawn": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.data_request_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, requested_enrollment uuid, requested_purpose text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.orders_patient_download_audit": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal result downloads: the released-source resolver decides the audience; the chained event binds the live patient session and refuses unreleased, unknown and staff contexts.",
+      "probes": [
+        "test_released_source_downloads_exact_bytes_with_one_session_bound_event",
+        "test_unreleased_unknown_and_staff_contexts_are_one_denial"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/orders/migrations/_patient_download_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.orders_patient_download_scope": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal result downloads: the released-source resolver decides the audience; the chained event binds the live patient session and refuses unreleased, unknown and staff contexts.",
+      "probes": [
+        "test_released_source_downloads_exact_bytes_with_one_session_bound_event",
+        "test_unreleased_unknown_and_staff_contexts_are_one_denial"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/orders/migrations/_patient_download_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_patient_download_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_channel_preferences": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 portal channel summary: the live session subject's purpose/channel rows and verification state only, never destinations; staff contexts see none.",
+      "probes": [
+        "test_channel_preferences_summarize_channels_without_destinations"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_data_requests": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_delegate_options": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 delegate switcher: only the original patient identity's active, verified, unexpired grants with available evidence; staff and represented sessions see none.",
+      "probes": [
+        "test_delegate_options_list_only_active_verified_grants_of_the_original_identity"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.submit_data_request": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_kind text, requested_purpose text, details_envelope bytea, request_key uuid, request_fingerprints text[], withdrawn uuid[]",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.transition_data_request": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 data-subject request protocol: live patient-session authority with operation and delegate-purpose scope, privacy.requests staff answers, database-clock due dates, resolver-only writes and the bound SLA review task; native submission, export, refusal and full-role oracles in tests/patients/test_dsar.py.",
+      "probes": [
+        "test_access_and_portability_reuse_the_released_record_export",
+        "test_concurrent_submissions_of_one_key_store_one_request_and_one_task",
+        "test_delegate_export_excludes_restricted_records_and_foreign_requests",
+        "test_delegate_operations_and_purposes_bound_their_requests",
+        "test_every_kind_is_received_with_database_due_date_task_and_idempotent_replay",
+        "test_malformed_requests_refuse_before_any_write",
+        "test_objection_withdraws_only_the_named_accepted_purpose",
+        "test_only_management_roles_answer_and_other_roles_match_unknown_requests",
+        "test_other_tenants_and_other_sessions_see_no_requests",
+        "test_overdue_is_database_time_and_equality_is_overdue",
+        "test_patient_page_keeps_input_and_conflict_refusals_on_the_page",
+        "test_patient_page_submits_in_the_body_and_refuses_without_side_effects",
+        "test_request_table_is_forced_rls_append_only_and_transition_guarded",
+        "test_scope_selectors_fail_identically_and_revoked_sessions_cannot_submit",
+        "test_sharing_information_projects_the_provider_registry_without_secrets",
+        "test_staff_lifecycle_is_exact_closes_the_task_and_never_edits_records"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_data_request_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_request uuid, expected_revision integer, next_state text, reason text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.patient_service_slots": {
+      "kind": "domain_protocol",
+      "reason": "Todo 50 service self-booking: only the session clinic's active service types, slots sized by the service duration and buffers with one free resource of every required kind, and no slot at all where the clinic reviews self-bookings.",
+      "probes": [
+        "test_booking_screen_takes_the_service_choice_in_the_post_body",
+        "test_patient_sees_only_active_services_of_the_session_clinic",
+        "test_service_slots_bind_duration_buffers_and_the_free_room",
+        "test_service_without_a_free_required_resource_offers_no_slot",
+        "test_two_patients_racing_for_the_last_room_get_one_booking"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_patient_service_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_day date, requested_service uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
     }
   },
   "sql_method": [

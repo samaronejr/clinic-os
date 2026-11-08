@@ -249,7 +249,9 @@ def _string(value: object, context: str) -> str:
     return value
 
 
-def run_docker_command(arguments: tuple[str, ...]) -> str:
+def run_docker_command(
+    arguments: tuple[str, ...], *, timeout_seconds: int = DOCKER_TIMEOUT_SECONDS
+) -> str:
     """Run one closed Docker CLI tuple with bounded captured output."""
     executable = shutil.which("docker")
     if executable is None:
@@ -260,7 +262,7 @@ def run_docker_command(arguments: tuple[str, ...]) -> str:
         check=False,
         capture_output=True,
         text=True,
-        timeout=DOCKER_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
     )
     if completed.returncode != 0:
         _fail("Docker metadata command failed")

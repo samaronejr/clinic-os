@@ -62,6 +62,22 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
                 "change_rejected",
             )
         },
+        "ai.care_coordination.requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.invocation", "care_requested"
+        ),
+        **{
+            f"ai.care_coordination.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.care_proposal", state
+            )
+            for state in (
+                "proposed",
+                "refused",
+                "approved",
+                "accepted",
+                "rejected",
+                "stale",
+            )
+        },
         **{
             f"retention.purge.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-worker", "retention.artifact_purge", state
@@ -393,6 +409,80 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "intake.duplicate.forward_transferred": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "intake.patient_merge_transfer", "transferred"
         ),
+        **{
+            f"comms.conversation.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.conversation", verb
+            )
+            for verb in (
+                "opened",
+                "assigned",
+                "state_changed",
+                "patient_linked",
+                "clinician_cleared",
+            )
+        },
+        **{
+            f"comms.message.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.message", verb
+            )
+            for verb in ("queued", "retried")
+        },
+        **{
+            f"comms.template.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "comms.template_version", verb
+            )
+            for verb in ("created", "approval_changed")
+        },
+        "comms.inbound.message_received": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "received"
+        ),
+        "comms.inbound.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.conversation", "escalated"
+        ),
+        "comms.inbound.status_applied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "status_applied"
+        ),
+        "comms.inbound.template_status_applied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.template_version", "status_applied"
+        ),
+        "comms.portal.reply_received": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.message", "received"
+        ),
+        "comms.portal.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.conversation", "escalated"
+        ),
+        "comms.suggestion.decided": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "comms.suggested_reply", "decided"
+        ),
+        # Task 54: reviewed front-desk answers and staff handoff resolution.
+        **{
+            f"ai.knowledge_article.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.knowledge_article", state
+            )
+            for state in ("drafted", "approved", "retired")
+        },
+        "ai.front_desk.resolved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.front_desk_thread", "resolved"
+        ),
+        "ai.front_desk.replied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.front_desk_turn", "replied"
+        ),
+        # Task 55: result release notices and the urgent-concern queue.
+        "workflows.release_notice.approved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.release_notice", "approved"
+        ),
+        "workflows.release_delivery.queued": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.release_delivery", "queued"
+        ),
+        "workflows.urgent_coverage.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.urgent_coverage", "published"
+        ),
+        **{
+            f"workflows.urgent_concern.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "workflows.urgent_concern", state
+            )
+            for state in ("reported", "acknowledged", "resolved")
+        },
         "identity.passkey.registered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.passkey", "created"
         ),
@@ -482,6 +572,60 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         ),
         "workflows.step.retried": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "workflows.step", "retried"
+        ),
+        "workflows.care_plan.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_plan", "created"
+        ),
+        "workflows.care_plan.superseded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_plan", "superseded"
+        ),
+        "workflows.care_action.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "created"
+        ),
+        "workflows.care_action.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "assigned"
+        ),
+        "workflows.care_action.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "completed"
+        ),
+        "workflows.care_action.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "cancelled"
+        ),
+        "workflows.care_action.reviewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.care_action", "reviewed"
+        ),
+        "workflows.care_action.overdue": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_action", "overdue"
+        ),
+        "workflows.care_action.flagged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.care_action", "flagged"
+        ),
+        "workflows.referral.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "created"
+        ),
+        "workflows.referral.linked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "linked"
+        ),
+        "workflows.referral.advanced": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.referral", "advanced"
+        ),
+        "workflows.recall.scheduled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.recall", "scheduled"
+        ),
+        "workflows.recall.materialized": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.recall", "materialized"
+        ),
+        "workflows.pro.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.pro_assignment", "assigned"
+        ),
+        "workflows.pro.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.pro_assignment", "completed"
+        ),
+        "workflows.pro_occurrence.responded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.pro_occurrence", "responded"
+        ),
+        "workflows.pro_occurrence.no_response": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.pro_occurrence", "no_response"
         ),
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
@@ -821,6 +965,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "clinic-os-web",
             "intake.patient_access_grant",
             "revoked",
+        ),
+        **{
+            f"intake.data_request.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "intake.data_subject_request", verb
+            )
+            for verb in ("received", "started", "fulfilled", "rejected", "exported")
+        },
+        "intake.data_requests.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic", "viewed"
+        ),
+        "orders.result.patient_downloaded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "downloaded"
         ),
         "scheduling.availability.created": Phase1AuditEventDefinition(
             "tenant",
