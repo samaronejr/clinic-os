@@ -51,6 +51,10 @@ class PermanentSendError(Exception):
     """Report a non-retryable provider failure; the operation fails closed."""
 
 
+class AmbiguousSendError(Exception):
+    """Retain an in-progress effect for authoritative, lookup-only recovery."""
+
+
 class SendAdapter(Protocol):
     """Prepare inside the tenant transaction; send outside it."""
 

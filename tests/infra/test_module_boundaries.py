@@ -11,6 +11,19 @@ from apps.ai.extraction import collect_extraction, review_extraction, start_extr
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
 from apps.billing.journal import post_entry
+from apps.billing.psp_gate import require_psp_sandbox
+from apps.billing.psp_posting import apply_psp_evidence
+from apps.billing.psp_presentation import patient_psp_payment
+from apps.billing.psp_reconciliation import (
+    receive_psp_event,
+    reconcile_psp_intent,
+    reconcile_psp_statement,
+)
+from apps.billing.psp_services import (
+    prepare_psp_charge,
+    prepare_psp_outgoing,
+    set_psp_policy,
+)
 from apps.billing.services import create_invoice
 from apps.comms import inbox_services, portal_messages, suggestions
 from apps.comms.services import reminder_send_eligible
@@ -77,6 +90,31 @@ def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None
     assert all(
         parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
     )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (prepare_psp_charge, ["clinic_id", "invoice_id", "method", "installments"]),
+        (prepare_psp_outgoing, ["clinic_id", "kind", "target_id"]),
+        (set_psp_policy, ["clinic_id", "max_installments", "command_id"]),
+        (apply_psp_evidence, ["clinic_id", "evidence_id"]),
+        (
+            require_psp_sandbox,
+            ["clinic_id", "method", "version_id", "lookup_only"],
+        ),
+        (patient_psp_payment, ["invoice_id"]),
+        (receive_psp_event, ["provider", "headers", "body"]),
+        (reconcile_psp_intent, ["intent_id"]),
+        (reconcile_psp_statement, ["intent_id"]),
+    ],
+)
+def test_psp_human_boundaries_derive_authority_from_current_context(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(

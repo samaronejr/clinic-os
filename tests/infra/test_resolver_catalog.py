@@ -16,6 +16,7 @@ from infra import (
     orders_catalog,
     portal_catalog,
     portal_messages_catalog,
+    psp_catalog,
     retention_catalog,
 )
 
@@ -25,6 +26,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *crm_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *journal_catalog.TABLE_GRANTS,
+    *psp_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
@@ -259,6 +261,7 @@ POSTURE_OVERRIDES: Final = {
     **crm_catalog.POSTURE,
     **retention_catalog.POSTURE,
     **journal_catalog.POSTURE,
+    **psp_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -872,6 +875,7 @@ FUNCTION_SIGNATURES: Final = {
     *coordination_catalog.RESULTS,
     *inventory_catalog.RESULTS,
     *journal_catalog.RESULTS,
+    *psp_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     **crm_catalog.RESULTS,
@@ -885,6 +889,7 @@ FUNCTION_RESULTS: Final = {
     ("ai_eval_record_guard", ""): "trigger",
     **retention_catalog.RESULTS,
     **journal_catalog.RESULTS,
+    **psp_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (

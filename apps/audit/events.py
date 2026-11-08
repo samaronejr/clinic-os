@@ -186,6 +186,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "inventory.set_minimum_stock": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "inventory.record", "set_minimum_stock"
         ),
+        **{
+            f"billing.psp.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.psp", verb
+            )
+            for verb in ("policy", "prepared", "evidence", "applied")
+        },
         "billing.book.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "billing.journal_book", "created"
         ),

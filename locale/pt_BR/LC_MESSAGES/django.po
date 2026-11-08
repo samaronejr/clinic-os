@@ -9741,3 +9741,16 @@ msgstr "Exibindo até 200 registros recentes desta clínica. Verifique a identid
 
 msgid "Update clinic page"
 msgstr "Atualizar página da clínica"
+
+msgid "Recorded sandbox rehearsal. No real payment or card data is collected."
+msgstr "Ensaio local com registros sintéticos. Não há pagamento real nem coleta de dados de cartão."
+
+msgid "Non-payable PIX rehearsal code"
+msgstr "Código PIX de ensaio, não pagável"
+
+msgid "Recorded card link (not payable)"
+msgstr "Link de cartão de ensaio, não pagável"
+
+#, python-format
+msgid "Installments agreed by the clinic: %(count)s."
+msgstr "Parcelas acordadas pela clínica: %(count)s."

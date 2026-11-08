@@ -23,6 +23,8 @@ from django.db import connection
 from django.utils import timezone
 
 from apps.billing.models import Invoice, PaymentEvent, PixCharge, PixOperation, Receipt
+from apps.billing.psp_models import PspReceipt
+from apps.billing.psp_presentation import patient_psp_payment
 from apps.billing.services import list_invoices, patient_charges, view_invoice
 from apps.intake.models import Patient
 from apps.tenancy.envelope import reveal
@@ -346,10 +348,18 @@ def _staff_charges(invoices: Sequence[Invoice]) -> tuple[StaffCharge, ...]:
         result.operation_id: result
         for result in PixCharge.objects.filter(invoice_id__in=invoice_ids)
     }
-    receipts = {
+    receipts: dict[UUID, Receipt | PspReceipt] = {
         receipt.invoice_id: receipt
         for receipt in Receipt.objects.filter(invoice_id__in=invoice_ids)
     }
+    receipts.update(
+        {
+            receipt.intent.target_id: receipt
+            for receipt in PspReceipt.objects.select_related("intent").filter(
+                intent__kind="charge", intent__target_id__in=invoice_ids
+            )
+        }
+    )
     events: dict[UUID, list[PaymentEvent]] = {}
     for event in PaymentEvent.objects.filter(invoice_id__in=invoice_ids):
         events.setdefault(event.operation_id, []).append(event)
@@ -368,7 +378,7 @@ def _staff_charge(  # noqa: PLR0913 - one prefetched map per related table
     invoice: Invoice,
     operations: dict[UUID, list[PixOperation]],
     results: dict[UUID, PixCharge],
-    receipts: dict[UUID, Receipt],
+    receipts: dict[UUID, Receipt | PspReceipt],
     events: dict[UUID, list[PaymentEvent]],
     names: dict[UUID, str],
     *,
@@ -394,7 +404,9 @@ def _staff_charge(  # noqa: PLR0913 - one prefetched map per related table
         charge=ChargeView(
             invoice_id=invoice.pk,
             reference=invoice.reference,
-            amount=amount_in_reais(invoice.amount_minor),
+            amount=amount_in_reais(
+                receipt.amount_minor if receipt else invoice.amount_minor
+            ),
             currency=invoice.currency,
             state=state,
             issued_at=invoice.issued_at,
@@ -438,26 +450,41 @@ def staff_charge(*, clinic_id: UUID, invoice_id: UUID) -> StaffCharge:
 
 def patient_ledger() -> tuple[PatientCharge, ...]:
     """List the session patient's released charges, without payment instructions."""
-    return tuple(
-        PatientCharge(
-            charge=ChargeView(
-                invoice_id=row.invoice_id,
-                reference=row.reference,
-                amount=amount_in_reais(row.amount_minor),
-                currency=row.currency,
-                state=(
-                    "paid"
-                    if row.receipt_reference is not None
-                    else ("cancelled" if row.state == "cancelled" else "open")
-                ),
-                issued_at=row.issued_at,
-                instructions=None,
-                receipt_reference=row.receipt_reference,
-                receipt_issued_at=row.receipt_issued_at,
+    charges = []
+    for row in patient_charges():
+        psp = patient_psp_payment(invoice_id=row.invoice_id)
+        reference = (
+            psp.receipt_reference
+            if psp and psp.receipt_reference
+            else row.receipt_reference
+        )
+        issued_at = (
+            psp.receipt_issued_at
+            if psp and psp.receipt_reference
+            else row.receipt_issued_at
+        )
+        charges.append(
+            PatientCharge(
+                charge=ChargeView(
+                    invoice_id=row.invoice_id,
+                    reference=row.reference,
+                    amount=amount_in_reais(
+                        psp.amount_minor if psp else row.amount_minor
+                    ),
+                    currency=row.currency,
+                    state=(
+                        "paid"
+                        if reference is not None
+                        else ("cancelled" if row.state == "cancelled" else "open")
+                    ),
+                    issued_at=row.issued_at,
+                    instructions=None,
+                    receipt_reference=reference,
+                    receipt_issued_at=issued_at,
+                )
             )
         )
-        for row in patient_charges()
-    )
+    return tuple(charges)
 
 
 def patient_charge(*, invoice_id: UUID) -> PatientCharge | None:
@@ -489,6 +516,12 @@ def patient_charge(*, invoice_id: UUID) -> PatientCharge | None:
         flagged,
         clinic_timezone,
     ) = row
+    psp = patient_psp_payment(invoice_id=invoice_id)
+    if psp is not None:
+        amount_minor = psp.amount_minor
+        if psp.receipt_reference is not None:
+            receipt_reference = psp.receipt_reference
+            receipt_issued_at = psp.receipt_issued_at
     # The resolver returns tenant envelopes; the live patient session
     # authorizes decryption through the protected boundary.
     copy_code = (
@@ -526,6 +559,8 @@ def patient_charge(*, invoice_id: UUID) -> PatientCharge | None:
         instructions=instructions,
         flagged=bool(flagged),
     )
+    if psp and (psp.payment_code or psp.payment_url) and state not in TERMINAL_STATES:
+        state = "pending"
     return PatientCharge(
         clinic_timezone=clinic_timezone,
         charge=ChargeView(

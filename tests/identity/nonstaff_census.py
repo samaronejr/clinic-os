@@ -37,6 +37,7 @@ from identity.nonstaff_infrastructure_probes import (
 from identity.nonstaff_lifecycle_probes import appointment_lifecycle_probes
 from identity.nonstaff_patient_probes import patient_probes
 from identity.nonstaff_principal_probes import principal_probes
+from identity.nonstaff_psp_probes import psp_probes
 from identity.nonstaff_realtime_probes import realtime_probes
 from identity.nonstaff_states import CareScope, ReplayScope
 from identity.nonstaff_subjects import seed_nonstaff
@@ -95,6 +96,7 @@ def run_nonstaff_census(
             *metrics_probes(data, patch),
             *realtime_probes(data),
             *principal_probes(graph),
+            *psp_probes(data),
             *appointment_lifecycle_probes(data, graph),
             *agenda_grid_probes(data, graph),
             *ehr_probes(data, graph),

@@ -26,6 +26,13 @@ from apps.billing.money_models import (
     Payout,
     Refund,
 )
+from apps.billing.psp_models import (
+    PspBinding,
+    PspEvidence,
+    PspIntent,
+    PspPolicy,
+    PspReceipt,
+)
 from apps.tenancy.fields import EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
@@ -45,6 +52,11 @@ __all__ = (
     "PixCharge",
     "PixOperation",
     "PractitionerPayoutRule",
+    "PspBinding",
+    "PspEvidence",
+    "PspIntent",
+    "PspPolicy",
+    "PspReceipt",
     "Receipt",
     "Refund",
     "Settlement",

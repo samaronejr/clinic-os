@@ -9366,6 +9366,115 @@
         "apps.billing.security.require_finance_step_up#cut1"
       ],
       "reason": "Executed journal oracle: current exact-clinic permission, persisted session loss, or guarded appointment/settlement posting."
+    },
+    {
+      "symbol": "apps.billing.psp_gate.require_psp_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_gate.require_psp_sandbox",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_posting.apply_psp_evidence",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_presentation.patient_psp_payment",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_presentation.patient_psp_payment#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
+    },
+    {
+      "symbol": "apps.billing.psp_services.prepare_psp_charge",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_services.prepare_psp_outgoing",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.billing.security.financial_actor"
+      ],
+      "reason": "The scoped financial writer reaches the exact permission guard exercised by the journal's executable financial-actor oracle."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.record_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_storage.resolve_intent",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Recorded-provider eligibility or authenticated stored-scope recording bootstrap, with no caller staff-role decision. Raw-byte authentication precedes scope resolution; provider and outbox regressions execute this boundary."
+    },
+    {
+      "symbol": "apps.billing.psp_worker.PspSendAdapter.send",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_worker.PspSendAdapter.send#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
+    },
+    {
+      "symbol": "apps.billing.psp_worker._eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.billing.psp_worker._eligible#observed"
+      ],
+      "reason": "The real patient or worker callable is entered and its SQL/GUC authority channel is observed; native PSP tests cover valid effects, role denials, current sessions and opaque unknowns."
     }
   ],
   "probes": [
@@ -9472,6 +9581,9 @@
     "apps.billing.finance_queries.permits#cut1",
     "apps.billing.pix.prepare_pix_charge",
     "apps.billing.presentation.patient_charge#observed",
+    "apps.billing.psp_presentation.patient_psp_payment#observed",
+    "apps.billing.psp_worker.PspSendAdapter.send#observed",
+    "apps.billing.psp_worker._eligible#observed",
     "apps.billing.security.financial_actor#cut1",
     "apps.billing.security.require_finance_step_up#cut1",
     "apps.billing.services._clinic",
@@ -12119,20 +12231,22 @@
     },
     "clinic_app.billing_patient_charges": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/billing/migrations/0010_delegate_charges.py",
           "apps/billing/migrations/_invoice_sql.py",
           "apps/billing/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
+        "resolvers": [
+          "clinic_app.billing_patient_psp_instructions"
         ]
       },
       "kind": "patient_principal",
@@ -15445,15 +15559,6 @@
     },
     "clinic_app.identity_session_verified": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.billing_finance_session",
-          "clinic_app.identity_session_authenticator_verified",
-          "clinic_app.intake_merge_authorized"
-        ],
         "signatures": [
           {
             "arguments": "requested_hash bytea",
@@ -15461,6 +15566,16 @@
             "set_returning": false,
             "security_definer": true
           }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_finance_session",
+          "clinic_app.billing_psp_dispatchable",
+          "clinic_app.identity_session_authenticator_verified",
+          "clinic_app.intake_merge_authorized"
         ]
       },
       "kind": "lifecycle_protocol",
@@ -22338,6 +22453,8 @@
           "clinic_app.billing_journalsettlement:billing_journal_scope",
           "clinic_app.billing_payout:billing_journal_scope",
           "clinic_app.billing_practitionerpayoutrule:billing_journal_scope",
+          "clinic_app.billing_psppolicy:billing_psp_insert",
+          "clinic_app.billing_psppolicy:billing_psp_read",
           "clinic_app.billing_refund:billing_journal_scope",
           "clinic_app.billing_settlementallocation:billing_journal_scope"
         ],
@@ -22349,6 +22466,9 @@
           "clinic_app.billing_opening_balance",
           "clinic_app.billing_payout_guard",
           "clinic_app.billing_post",
+          "clinic_app.billing_psp_access",
+          "clinic_app.billing_psp_dispatchable",
+          "clinic_app.billing_psp_guard",
           "clinic_app.billing_recognize_completion",
           "clinic_app.billing_refund_guard",
           "clinic_app.billing_settlement_journal_guard"
@@ -22598,6 +22718,7 @@
           "clinic_app.billing_cash_guard",
           "clinic_app.billing_cash_receipt",
           "clinic_app.billing_payout_guard",
+          "clinic_app.billing_psp_guard",
           "clinic_app.billing_refund_guard"
         ]
       },
@@ -22706,6 +22827,7 @@
           "clinic_app.billing_payout_guard",
           "clinic_app.billing_post",
           "clinic_app.billing_post_internal",
+          "clinic_app.billing_psp_guard",
           "clinic_app.billing_recognize_completion",
           "clinic_app.billing_refund_guard",
           "clinic_app.billing_settlement_journal_guard"
@@ -23007,6 +23129,174 @@
         "test_prepaid_net_collection_accrues_repasse_before_fees_and_applies_on_completion"
       ],
       "reason": "Operational journal protocol: the named real-role tests execute its financial authority, scoped reads, posting or trigger invariants."
+    },
+    "clinic_app.billing_patient_psp_instructions": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_invoice uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Released-invoice patient/delegate authority is revalidated by the canonical billing patient resolver and native PSP tests."
+    },
+    "clinic_app.billing_psp_access": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_intent uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_pspbinding:billing_psp_insert",
+          "clinic_app.billing_pspbinding:billing_psp_read",
+          "clinic_app.billing_pspevidence:billing_psp_insert",
+          "clinic_app.billing_pspevidence:billing_psp_read",
+          "clinic_app.billing_pspintent:billing_psp_read",
+          "clinic_app.billing_pspreceipt:billing_psp_insert",
+          "clinic_app.billing_pspreceipt:billing_psp_read"
+        ],
+        "resolvers": [
+          "clinic_app.billing_psp_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_psp_sql_requires_current_active_actor",
+        "test_no_context_or_foreign_organization_sees_psp_intents",
+        "test_financial_read_authority_cannot_fabricate_another_actors_evidence"
+      ],
+      "reason": "Immutable PSP requests bind stored actors, exact clinic authority and fresh outgoing sessions. The named native oracles exercise the actual guards and lookup recovery."
+    },
+    "clinic_app.billing_psp_dispatchable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_intent uuid, fresh_session boolean",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_psp_sql_requires_current_active_actor",
+        "test_remote_timeout_keeps_in_progress_and_redelivery_uses_lookup_only",
+        "test_lookup_only_recovery_retains_original_approved_version_after_rotation"
+      ],
+      "reason": "Immutable PSP requests bind stored actors, exact clinic authority and fresh outgoing sessions. The named native oracles exercise the actual guards and lookup recovery."
+    },
+    "clinic_app.billing_psp_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_corrected_statement_at_the_same_provider_version_can_post",
+        "test_financial_read_authority_cannot_fabricate_another_actors_evidence",
+        "test_lookup_only_recovery_retains_original_approved_version_after_rotation",
+        "test_newer_authoritative_reversal_still_blocks_prior_verified_fact",
+        "test_no_context_or_foreign_organization_sees_psp_intents",
+        "test_psp_sql_requires_current_active_actor",
+        "test_remote_timeout_keeps_in_progress_and_redelivery_uses_lookup_only",
+        "test_replayed_refund_callback_requires_finance_and_reverses_repasse_once",
+        "test_survivor_sees_psp_instructions_until_unmerge_without_reparenting_money"
+      ],
+      "reason": "Immutable PSP requests bind stored actors, exact clinic authority and fresh outgoing sessions. The named native oracles exercise the actual guards and lookup recovery."
+    },
+    "clinic_app.billing_psp_intent_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_intent uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored provider/reference scope and event deduplication confer no staff-role decision; authenticated callbacks resolve these only after exact raw-byte authentication."
+    },
+    "clinic_app.billing_psp_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, reference text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored provider/reference scope and event deduplication confer no staff-role decision; authenticated callbacks resolve these only after exact raw-byte authentication."
+    },
+    "clinic_app.billing_psp_seen": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_source text, requested_event text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored provider/reference scope and event deduplication confer no staff-role decision; authenticated callbacks resolve these only after exact raw-byte authentication."
     }
   },
   "sql_method": [
