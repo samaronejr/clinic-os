@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from django.db.backends.base.schema import BaseDatabaseSchemaEditor
     from django.db.backends.ddl_references import Statement
     from django.db.migrations.migration import Migration
+    from django.db.migrations.operations.base import Operation
 
 
 class _RecordingEditor(DatabaseSchemaEditor):
@@ -84,6 +85,14 @@ def _migration_plan(loader: MigrationLoader) -> Iterator[Migration]:
             if key not in seen:
                 seen.add(key)
                 yield loader.graph.nodes[key]
+
+
+def _with_database_halves(operations: Sequence[Operation]) -> Iterator[Operation]:
+    """Each operation, then the database half of any SeparateDatabaseAndState."""
+    for operation in operations:
+        yield operation
+        if isinstance(operation, migrations.SeparateDatabaseAndState):
+            yield from _with_database_halves(operation.database_operations)
 
 
 def test_constraint_state_renders_only_the_changed_model(
@@ -207,7 +216,7 @@ def test_full_migrate_path_has_bounded_model_renders(
     loader = MigrationLoader(None)
     plan = list(_migration_plan(loader))
     for migration in plan:
-        for operation in migration.operations:
+        for operation in _with_database_halves(migration.operations):
             if isinstance(operation, migrations.RunPython):
                 monkeypatch.setattr(operation, "code", _ignore)
     state = ProjectState(real_apps=loader.unmigrated_apps)
