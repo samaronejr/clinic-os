@@ -1089,7 +1089,8 @@
       "constraint:intake_patientcontact.intake_patientcontact_destination_version_check",
       "constraint:intake_patientcontact.intake_patientcontact_patient_id_dbbe435c_fk_intake_patient_id",
       "constraint:intake_patientcontact.intake_patientcontact_verified_version_check",
-      "policy:intake_patientcontact.tenant_isolation"
+      "policy:intake_patientcontact.tenant_isolation",
+      "trigger:intake_patientcontact.crm_marketing_boundary"
     ]
   },
   "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk": {
@@ -1176,7 +1177,8 @@
       "constraint:comms_conversation.comms_conversation_revision_check",
       "index:comms_conversation_live_uniq",
       "policy:comms_conversation.tenant_isolation",
-      "trigger:comms_conversation.comms_conversation_guard"
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary"
     ]
   },
   "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd": {
@@ -1331,7 +1333,8 @@
       "constraint:intake_patientcontact.intake_patientcontact_destination_version_check",
       "constraint:intake_patientcontact.intake_patientcontact_patient_id_dbbe435c_fk_intake_patient_id",
       "constraint:intake_patientcontact.intake_patientcontact_verified_version_check",
-      "policy:intake_patientcontact.tenant_isolation"
+      "policy:intake_patientcontact.tenant_isolation",
+      "trigger:intake_patientcontact.crm_marketing_boundary"
     ]
   },
   "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check": {
@@ -1415,7 +1418,8 @@
       "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
       "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
       "policy:comms_message.tenant_isolation",
-      "trigger:comms_message.comms_message_guard"
+      "trigger:comms_message.comms_message_guard",
+      "trigger:comms_message.crm_neutral_marketing"
     ]
   },
   "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_": {
@@ -1457,7 +1461,8 @@
       "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
       "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
       "policy:comms_message.tenant_isolation",
-      "trigger:comms_message.comms_message_guard"
+      "trigger:comms_message.comms_message_guard",
+      "trigger:comms_message.crm_neutral_marketing"
     ]
   },
   "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id": {
@@ -2113,7 +2118,8 @@
       "constraint:comms_conversation.comms_conversation_revision_check",
       "index:comms_conversation_live_uniq",
       "policy:comms_conversation.tenant_isolation",
-      "trigger:comms_conversation.comms_conversation_guard"
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary"
     ]
   },
   "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_": {
@@ -2385,6 +2391,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -9653,7 +9660,8 @@
       "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
       "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
       "policy:comms_message.tenant_isolation",
-      "trigger:comms_message.comms_message_guard"
+      "trigger:comms_message.comms_message_guard",
+      "trigger:comms_message.crm_neutral_marketing"
     ]
   },
   "constraint:workflows_releasedelivery.workflows_releasedel_organization_id_790defff_fk_identity_": {
@@ -10975,7 +10983,8 @@
       "function:pg_catalog.text(xml)",
       "function:pg_catalog.to_jsonb(anyelement)",
       "policy:comms_message.tenant_isolation",
-      "trigger:comms_message.comms_message_guard"
+      "trigger:comms_message.comms_message_guard",
+      "trigger:comms_message.crm_neutral_marketing"
     ]
   },
   "function:clinic_app.ai_imported_observation(uuid, uuid, uuid)": {
@@ -11408,6 +11417,7 @@
       "trigger:ai_frontdeskturn.front_desk_guard",
       "trigger:ai_frontdeskturn.front_desk_truncate",
       "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary",
       "trigger:comms_templateversion.comms_template_guard"
     ]
   },
@@ -11430,7 +11440,8 @@
       "function:clinic_app.comms_ingest_account(uuid, text)",
       "index:comms_conversation_live_uniq",
       "policy:comms_conversation.tenant_isolation",
-      "trigger:comms_conversation.comms_conversation_guard"
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary"
     ]
   },
   "function:clinic_app.comms_schedule_reminders_v1()": {
@@ -11528,7 +11539,8 @@
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
-      "trigger:identity_clinicconfiguration.configuration_plain_text"
+      "trigger:identity_clinicconfiguration.configuration_plain_text",
+      "trigger:intake_patientcontact.crm_marketing_boundary"
     ]
   },
   "function:clinic_app.comms_template_guard_v1()": {
@@ -11640,6 +11652,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -11758,11 +11771,13 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.crm_marketing_boundary",
       "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence",
@@ -11779,6 +11794,90 @@
     "direct": {},
     "via": [
       "function:clinic_app.current_patient_authority(text)"
+    ]
+  },
+  "function:clinic_app.crm_marketing_lock()": {
+    "direct": {},
+    "via": [
+      "constraint:consent_consentacceptance.consent_authority_check",
+      "constraint:consent_consentacceptance.consent_consentaccep_clinic_id_c51861d0_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_enrollment_id_dbb0d524_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_organization_id_31410d0b_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_id_ac67e8f9_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_session_id_fc7bcace_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_text_id_a971ac6b_fk_consent_c",
+      "constraint:consent_consenttext.consent_consenttext_clinic_id_c0bc255a_fk_identity_clinic_id",
+      "constraint:consent_consenttext.consent_consenttext_organization_id_b745af1e_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_published_by_id_ee3da737_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_version_check",
+      "constraint:consent_consenttext.consent_text_scope_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:consent_consentacceptance.consent_acceptance_insert",
+      "policy:consent_consentacceptance.consent_acceptance_read",
+      "policy:consent_consentacceptance.consent_alias_read",
+      "policy:consent_consentacceptance.delegate_purpose",
+      "policy:consent_consentacceptance.setup_tenant",
+      "policy:consent_consenttext.consent_text_insert",
+      "policy:consent_consenttext.consent_text_read",
+      "policy:consent_consenttext.delegate_purpose",
+      "policy:consent_consenttext.setup_tenant",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "trigger:consent_consentacceptance.consent_binding",
+      "trigger:consent_consentacceptance.consent_delegate_binding",
+      "trigger:consent_consenttext.consent_binding",
+      "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
+      "trigger:consent_consenttext.scribe_capture_consent_published",
+      "trigger:consent_consenttext.scribe_recording_publication_fence"
+    ]
+  },
+  "function:clinic_app.crm_neutral_message()": {
+    "direct": {},
+    "via": [
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "constraint:comms_templateversion.comms_template_contract",
+      "constraint:comms_templateversion.comms_templateversio_created_by_id_47777714_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversio_organization_id_21e01d81_fk_identity_",
+      "constraint:comms_templateversion.comms_templateversion_clinic_id_a91fca49_fk_identity_clinic_id",
+      "constraint:comms_templateversion.comms_templateversion_org_clinic_fk",
+      "constraint:comms_templateversion.comms_templateversion_parameter_count_check",
+      "constraint:comms_templateversion.comms_templateversion_version_check",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "index:comms_conversation_live_uniq",
+      "policy:comms_conversation.tenant_isolation",
+      "policy:comms_templateversion.tenant_isolation",
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary",
+      "trigger:comms_templateversion.comms_template_guard"
     ]
   },
   "function:clinic_app.current_patient_authority(text)": {
@@ -12016,11 +12115,13 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.crm_marketing_boundary",
       "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -14739,8 +14840,10 @@
       "trigger:ai_frontdeskthread.front_desk_guard",
       "trigger:ai_frontdeskthread.front_desk_truncate",
       "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary",
       "trigger:ehr_clinicalattachment.ehr_attachment_binding",
       "trigger:identity_patientdelegategrant.delegate_binding",
+      "trigger:intake_patientcontact.crm_marketing_boundary",
       "trigger:intake_patientsession.delegate_session_binding"
     ]
   },
@@ -17266,6 +17369,7 @@
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -17332,11 +17436,13 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.crm_marketing_boundary",
       "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -17423,6 +17529,7 @@
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -17923,11 +18030,13 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.crm_marketing_boundary",
       "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence",
@@ -18481,7 +18590,9 @@
       "policy:workflows_urgentcoveragepolicy.coordination_owner",
       "policy:workflows_urgentcoveragepolicy.coordination_read",
       "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary",
       "trigger:comms_message.comms_message_guard",
+      "trigger:comms_message.crm_neutral_marketing",
       "trigger:orders_order.orders_binding",
       "trigger:orders_resultmatch.orders_binding",
       "trigger:orders_resultmatch.orders_task_after_match",
@@ -21118,6 +21229,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -21228,6 +21340,7 @@
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.crm_marketing_boundary",
       "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
@@ -24407,6 +24520,12 @@
       "function:clinic_app.comms_conversation_guard_v1()"
     ]
   },
+  "trigger:comms_conversation.crm_marketing_boundary": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.crm_marketing_lock()"
+    ]
+  },
   "trigger:comms_integrationoperation.identity_reset_delivered_clock": {
     "direct": {},
     "via": [
@@ -24424,6 +24543,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.comms_message_guard_v1()"
+    ]
+  },
+  "trigger:comms_message.crm_neutral_marketing": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.crm_neutral_message()"
     ]
   },
   "trigger:comms_templateversion.comms_template_guard": {
@@ -24456,6 +24581,12 @@
       "function:clinic_app.consent_guard()"
     ]
   },
+  "trigger:consent_consentrevocation.crm_marketing_boundary": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.crm_marketing_lock()"
+    ]
+  },
   "trigger:consent_consentrevocation.scribe_asr_revocation_fence": {
     "direct": {},
     "via": [
@@ -24484,6 +24615,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.overlay_plain_text_guard()"
+    ]
+  },
+  "trigger:consent_consenttext.crm_marketing_boundary": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.crm_marketing_lock()"
     ]
   },
   "trigger:consent_consenttext.scribe_asr_publication_fence": {
@@ -24875,6 +25012,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.intake_patient_alias_guard()"
+    ]
+  },
+  "trigger:intake_patientcontact.crm_marketing_boundary": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.crm_marketing_lock()"
     ]
   },
   "trigger:intake_patientdemographics.intake_demographics_receipt": {
