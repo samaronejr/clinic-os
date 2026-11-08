@@ -42,6 +42,7 @@ from ai.front_desk_oracles import (
     ACTOR_PROTOCOL_ORACLES as FRONT_DESK_ACTOR_PROTOCOL_ORACLES,
 )
 from consent.test_purposes import register_physician
+from crm.sql_oracles import ACTOR_PROTOCOL_ORACLES as CRM_ACTOR_PROTOCOL_ORACLES
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
@@ -428,6 +429,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | EVALUATION_ACTOR_PROTOCOL_ORACLES
         | CARE_ACTOR_PROTOCOL_ORACLES
         | FRONT_DESK_ACTOR_PROTOCOL_ORACLES
+        | CRM_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

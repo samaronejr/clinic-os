@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from apps.comms.inbox_services import (
     create_template_version,
@@ -96,6 +97,46 @@ def test_manager_role_permissions_remain_current(rbac_graph: RbacGraph) -> None:
         False,
         False,
     )
+
+
+def _raw_lead_refusal(actor: UUID, organization: UUID, clinic: UUID) -> tuple[str, str]:
+    """Insert one unsourced lead as clinic_app, bypassing Python admission."""
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        for name, value in (
+            ("app.current_user_id", actor),
+            ("app.current_tenant", organization),
+        ):
+            cursor.execute("SELECT set_config(%s,%s,true)", [name, str(value)])
+        with pytest.raises(DatabaseError) as refused, transaction.atomic():
+            cursor.execute(
+                "INSERT INTO clinic_app.crm_lead "
+                "(id, organization_id, clinic_id, source_id) VALUES (%s,%s,%s,%s)",
+                [uuid4(), organization, clinic, uuid4()],
+            )
+    cause = refused.value.__cause__
+    assert isinstance(cause, psycopg.Error)
+    assert "crm_guard()" in (cause.diag.context or "")
+    assert cause.sqlstate is not None
+    assert cause.diag.message_primary is not None
+    return cause.sqlstate, cause.diag.message_primary
+
+
+def test_raw_crm_guard_refuses_an_inactive_manager(rbac_graph: RbacGraph) -> None:
+    """Only is_active changes; the guard's own manager clause decides."""
+    actor = create_role_actor(rbac_graph, UserClinicRole.Role.CLINIC_MANAGER)
+    outcomes = []
+    for active in (True, False, True):
+        with owner_context(rbac_graph.organization_a):
+            assert User.objects.filter(pk=actor.pk).update(is_active=active) == 1
+        outcomes.append(
+            _raw_lead_refusal(actor.pk, rbac_graph.organization_a, rbac_graph.clinic_a)
+        )
+    # An active manager passes the authority clause and reaches validation.
+    assert outcomes == [
+        ("23514", "invalid lead source"),
+        ("42501", "CRM manager required"),
+        ("23514", "invalid lead source"),
+    ]
 
 
 def test_immutable_sql_receipts_cannot_be_truncated(rbac_graph: RbacGraph) -> None:
