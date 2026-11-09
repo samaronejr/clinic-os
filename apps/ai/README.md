@@ -396,6 +396,10 @@ cannot gain booking authority through a challenge.
   stored, supported inbound message inside the authenticated delivery
   transaction (`clinic_app.ai_front_desk_enqueue`). After commit the runner
   re-enters `inbound_context` with the same proof and answers each pending turn.
+  The delivery locks its conversation `FOR NO KEY UPDATE` and runs the hook
+  before its audit records, and every runner path locks the thread before its
+  first audit record, so a delivery and the previous turn's runner both take the
+  thread before the organization's audit chain lock.
   One runner per provider account works at a time (a session advisory lock held
   across the turns), so concurrent deliveries never work on the
   same turn.

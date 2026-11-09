@@ -13,7 +13,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from threading import Barrier
+from threading import Barrier, Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -24,7 +24,7 @@ from apps.ai.agent_policies import PolicyTerms, publish_agent_policy
 from apps.ai.front_desk_kb import approve_article, draft_article
 from apps.ai.front_desk_staff import handoff_threads, resolve_handoff
 from apps.ai.models import FrontDeskThread, FrontDeskTurn
-from apps.comms import inbox_services
+from apps.comms import inbox_inbound, inbox_services
 from apps.comms.models import Conversation, Message
 from apps.identity.models import (
     Clinic,
@@ -524,3 +524,54 @@ def test_concurrent_acceptances_book_the_offer_once(
     with owner_context(rbac_graph.organization_a):
         assert PatientBookingEvent.objects.filter(action="rescheduled").count() == 1
         assert not FrontDeskTurn.objects.filter(state="pending").exists()
+
+
+def test_next_delivery_takes_the_thread_before_the_audit_chain(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The first acceptance's runner holds its touched thread when the next
+    # delivery reaches its enqueue hook. Neither may then wait for the other
+    # while holding the organization's audit chain lock or the conversation.
+    desk = desk_world(rbac_graph, settings, monkeypatch)
+    verify(desk)
+    say(desk, "Quero remarcar")
+    offered = thread_of(desk).offered_start
+    assert offered is not None
+    touched, hooked = Event(), Event()
+    under_session = front_desk._under_session
+
+    def held(
+        ctx: front_desk.Context, decision: front_desk.Decision
+    ) -> front_desk.Decision:
+        if not touched.is_set():
+            touched.set()
+            assert hooked.wait(timeout=20)
+        return under_session(ctx, decision)
+
+    def reached(message_id: UUID, channel: str) -> None:
+        if touched.is_set():
+            hooked.set()
+
+    monkeypatch.setattr(front_desk, "_under_session", held)
+    monkeypatch.setattr(
+        inbox_inbound, "_MESSAGE_HOOKS", [reached, *inbox_inbound._MESSAGE_HOOKS]
+    )
+
+    def accept(after: Event | None) -> int:
+        connections.close_all()
+        try:
+            if after is not None:
+                assert after.wait(timeout=20)
+            body = desk.inbox.message_body(text="Sim")
+            return desk.inbox.receive(body).accepted
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(accept, None), pool.submit(accept, touched)]
+        assert [future.result(timeout=60) for future in futures] == [1, 1]
+    outcomes = [(turn.intent, turn.outcome) for turn in turns(desk)[-2:]]
+    assert sorted(outcomes) == [("accept", "booked"), ("information", "handoff")]
+    assert appointment_start(desk) == offered
