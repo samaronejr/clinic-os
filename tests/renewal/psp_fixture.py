@@ -38,12 +38,16 @@ def main() -> None:
     if data["action"] == "prepare":
         method = data["method"]
         with owner_context(organization):
-            UserClinicRole.objects.get_or_create(
-                organization_id=organization,
-                clinic_id=clinic,
-                user_id=actor,
-                role="finance",
-            )
+            # PSP settlement is a Finance permission, while a journal book's
+            # completion policy is an organization decision (finance.policy,
+            # held by owner and org_admin) since the integrated todo-56 journal.
+            for role in ("finance", "owner"):
+                UserClinicRole.objects.get_or_create(
+                    organization_id=organization,
+                    clinic_id=clinic,
+                    user_id=actor,
+                    role=role,
+                )
             capability = "pix" if method == "pix" else "psp_card"
             version = current_version(capability, clinic_id=clinic)
             if version is None or version.provider != FIXTURE_PROVIDER:

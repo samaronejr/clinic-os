@@ -146,7 +146,7 @@ def availability_staff(renewal_base_url: str) -> dict[str, str]:
         "physician_a_id": str(uuid4()),
         "physician_b": f"dr-bruno-sintetico-{suffix}",
         "physician_b_id": str(uuid4()),
-        "physician_long": LONG_NAME,
+        "physician_long": f"{LONG_NAME}-{suffix}",
         "physician_long_id": str(uuid4()),
         "password": new_password(),
         "totp_key": new_totp_key(),
@@ -738,11 +738,11 @@ def _retire_first_period(
 def _long_content(
     page: Page, list_path: str, staff: dict[str, str], day: str, root: Path
 ) -> None:
-    """A 70-character physician name and a full day of periods stay readable."""
+    """A 75-character physician name and a full day of periods stay readable."""
     for start, end in (("07:00", "08:00"), ("08:00", "09:00"), ("09:00", "10:00")):
         _fill(page, staff["physician_long"], day, start, end)
         _submit_expecting_success(page, list_path)
-    assert LONG_NAME in _captions(page)
+    assert staff["physician_long"] in _captions(page)
     expect(
         page.locator(".availability-table caption").filter(has_text=LONG_NAME)
     ).to_have_count(1)
