@@ -1352,10 +1352,13 @@ button:disabled:active,
 
   /* Forced colors repaint the navy band as Canvas. The band's dark-surface
      inks would otherwise still resolve through -webkit-text-fill-color, so its
-     text takes system colors outright: CanvasText, and LinkText for links. */
+     text takes system colors outright: CanvasText, and LinkText for links,
+     always over Canvas so engines that match the query without forcing
+     backgrounds (WebKit's emulation) never keep navy behind them. */
   .nav,
   .nav * {
     color: CanvasText;
+    background-color: Canvas;
   }
 
   .nav a[href],
