@@ -97,7 +97,11 @@ def test_reports_sources_review_boundaries_and_accessibility(
                 if control.is_visible():
                     box = control.bounding_box()
                     assert box is not None
-                    assert min(box["height"], box["width"]) >= 44
+                    # Box sizes are floats: hosted Firefox reported a 44px control
+                    # as 44 - 2**-13, one float32 rounding step. Compare at 1/64px,
+                    # finer than any engine's layout unit, so a control even one
+                    # unit short still fails.
+                    assert round(min(box["height"], box["width"]) * 64) / 64 >= 44
             report = check_page(
                 page, renewal_base_url, renewal_artifact_root, f"reports-{width}"
             )
