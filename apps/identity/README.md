@@ -324,7 +324,9 @@ current clinician, a non-blank reason, an enrollment or encounter scope and an
 expiry of at most four hours; it notifies the clinic manager, writes a
 patient-visible access-log entry and opens a mandatory review task. Support
 access is approved by the customer administrator, masked and never writes
-clinical rows.
+clinical rows. Every governance action needs organization administration in
+every unit; a unit-scoped administrator who opens the governance page sees an
+explanation and no organization data.
 
 SCIM, pre-auth SSO and support diagnostics set a tenant for envelope
 encryption, so 0051 narrows every other policy that applies to `clinic_app`

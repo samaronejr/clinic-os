@@ -90,6 +90,27 @@ NO_IN_VIEW_REFUSAL = {
         "not_available outside the actor's commercial authority is pinned in "
         "tests/subscriptions/test_authority.py."
     ),
+    # Task 65: emergency access and enterprise governance.
+    "identity:emergency": (
+        "No probed role holds break_glass.request or break_glass.request_scoped, "
+        "so the registry permission refuses before the view (403). The view "
+        "renders its own refusals (blank reason, unknown enrollment) as a 400 "
+        "form error with no grant written, pinned in "
+        "tests/identity/test_emergency_views.py."
+    ),
+    "identity:emergency-read": (
+        "No probed role holds a break-glass permission, so the registry "
+        "permission refuses before the view (403). Its own 403 for a grant held "
+        "by another admitted clinician is pinned in "
+        "tests/identity/test_emergency_views.py."
+    ),
+    "identity:governance": (
+        "No probed role holds staff.organization, so the registry permission "
+        "refuses before the view (403). The view rechecks the persisted factor "
+        "and enterprise_org_admin on every request and renders a refused action "
+        "as a 400 form error; a SCIM credential for an unknown connection is "
+        "pinned in tests/identity/test_enterprise_views.py."
+    ),
 }
 
 
@@ -357,6 +378,13 @@ def _probe_route(
             for htmx in (False, True)
             if route.name == "billing:journal-export"
         )
+        # Task 65: the closed grant form answers generic bodies with 400; a
+        # valid command naming an unknown grant reaches the view's own denial.
+        requests += tuple(
+            ("POST", {"grant_id": str(uuid4()), "action": "break_glass_review"}, htmx)
+            for htmx in (False, True)
+            if route.name == "identity:governance-grant-command"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
@@ -522,6 +550,8 @@ def test_authorised_in_view_refusals_are_session_read_only(
         ("ai:agent-settings", "clinic_admin"),
         # Task 56: Finance rechecks its action permissions inside the view.
         ("billing:finance", "finance"),
+        # Task 65: the unit manager page rechecks enterprise_manager in the view.
+        ("identity:emergency-reviews", "clinic_admin"),
     ):
         refused, codes = _membership_page_refusal(
             rbac_graph,

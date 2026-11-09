@@ -296,15 +296,6 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         owner_todo=26,
         entries=(
             Destination(
-                "emergency-access",
-                gettext_noop("Emergency access"),
-                "identity:emergency",
-                ("break_glass.request", "break_glass.request_scoped"),
-                route_roles=None,
-                views=frozenset({"identity:emergency", "identity:emergency-read"}),
-                owner_todo=65,
-            ),
-            Destination(
                 "retention",
                 gettext_noop("Retention"),
                 "retention:status",
@@ -334,6 +325,16 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("tasks.reassign",),
                 route_roles=TASK_ROUTE,
                 views=frozenset({"workflows:designer"}),
+            ),
+            # Task 65: last, so it never becomes another role's first open place.
+            Destination(
+                "emergency-access",
+                gettext_noop("Emergency access"),
+                "identity:emergency",
+                ("break_glass.request", "break_glass.request_scoped"),
+                route_roles=None,
+                views=frozenset({"identity:emergency", "identity:emergency-read"}),
+                owner_todo=65,
             ),
         ),
     ),
@@ -397,29 +398,6 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 views=frozenset({"ai:settings"}),
             ),
             Destination(
-                "emergency-reviews",
-                gettext_noop("Emergency access and required reviews"),
-                "identity:emergency-reviews",
-                ("staff.clinic", "staff.organization"),
-                route_roles=None,
-                views=frozenset(
-                    {
-                        "identity:emergency-reviews",
-                        "identity:governance-grant-command",
-                    }
-                ),
-                owner_todo=65,
-            ),
-            Destination(
-                "enterprise-governance",
-                gettext_noop("Enterprise governance"),
-                "identity:governance",
-                ("staff.organization",),
-                route_roles=None,
-                views=frozenset({"identity:governance"}),
-                owner_todo=65,
-            ),
-            Destination(
                 "scheduling-settings",
                 gettext_noop("Scheduling settings"),
                 "scheduling:resource-settings",
@@ -447,6 +425,31 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 route_roles=ADMIN_ROUTE | {_ROLE.CLINIC_MANAGER},
                 views=frozenset({"workflows:urgent-coverage"}),
                 owner_todo=55,
+            ),
+            # Task 65: emergency reviews and enterprise governance come last, so
+            # booking staff who hold staff.clinic still land on scheduling settings.
+            Destination(
+                "emergency-reviews",
+                gettext_noop("Emergency access and required reviews"),
+                "identity:emergency-reviews",
+                ("staff.clinic", "staff.organization"),
+                route_roles=None,
+                views=frozenset(
+                    {
+                        "identity:emergency-reviews",
+                        "identity:governance-grant-command",
+                    }
+                ),
+                owner_todo=65,
+            ),
+            Destination(
+                "enterprise-governance",
+                gettext_noop("Enterprise governance"),
+                "identity:governance",
+                ("staff.organization",),
+                route_roles=None,
+                views=frozenset({"identity:governance"}),
+                owner_todo=65,
             ),
         ),
     ),

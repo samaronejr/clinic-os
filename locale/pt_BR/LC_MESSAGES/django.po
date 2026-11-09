@@ -10279,6 +10279,9 @@ msgstr "ID do atendimento"
 msgid "Enterprise governance"
 msgstr "Governança corporativa"
 
+msgid "Enterprise governance needs organization administration in every unit."
+msgstr "A governança corporativa exige administração da organização em todas as unidades."
+
 msgid "Enterprise governance | Clinic OS"
 msgstr "Governança corporativa | Clinic OS"
 

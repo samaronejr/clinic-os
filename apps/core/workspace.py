@@ -285,6 +285,10 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 "billing:finance",
                 "billing:charges",
                 "billing:invoice",
+                # Task 65: the Settings places an organization admin may open.
+                "identity:emergency-reviews",
+                "identity:governance-grant-command",
+                "identity:governance",
             }
             or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
         ),

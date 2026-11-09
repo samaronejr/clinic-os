@@ -140,72 +140,89 @@ def governance_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     operations = []
     status = 200
     succeeded, secret = False, ""
-    with (
-        transaction.atomic(),
-        admin_scope(clinic_id=clinic_id, session_key=key) as (_actor, clinic),
-    ):
-        for name, (form_type, title) in FORM_TYPES.items():
-            form = form_type(request.POST if action == name else None, prefix=name)
-            if action == name and form.is_valid():
-                try:
-                    secret = _apply(
-                        action=action, form=form, clinic_id=clinic_id, session_key=key
+    try:
+        with (
+            transaction.atomic(),
+            admin_scope(clinic_id=clinic_id, session_key=key) as (_actor, clinic),
+        ):
+            for name, (form_type, title) in FORM_TYPES.items():
+                form = form_type(request.POST if action == name else None, prefix=name)
+                if action == name and form.is_valid():
+                    try:
+                        secret = _apply(
+                            action=action,
+                            form=form,
+                            clinic_id=clinic_id,
+                            session_key=key,
+                        )
+                    except (GovernanceDeniedError, ValidationError):
+                        form.add_error(
+                            None,
+                            _(
+                                "Access refused. Check the scope and confirm "
+                                "your authenticator again."
+                            ),
+                        )
+                    else:
+                        succeeded = True
+                operations.append({"key": name, "title": title, "form": form})
+                if form.errors:
+                    status = 400
+            units = [
+                {"clinic": unit, "members": staff_directory(clinic_id=unit.pk)}
+                for unit in Clinic.objects.filter(
+                    organization_id=clinic.organization_id
+                ).order_by("id")
+            ]
+            context = {
+                "clinic": clinic,
+                "clinic_id": clinic_id,
+                "review_now": timezone.now(),
+                "operations": operations,
+                "succeeded": succeeded,
+                "secret": secret,
+                "connections": tuple(
+                    SsoConnection.objects.filter(clinic_id=clinic_id).order_by(
+                        "-created_at"
                     )
-                except (GovernanceDeniedError, ValidationError):
-                    form.add_error(
-                        None,
-                        _(
-                            "Access refused. Check the scope and confirm "
-                            "your authenticator again."
-                        ),
+                ),
+                "groups": tuple(
+                    ScimResource.objects.filter(
+                        clinic_id=clinic_id, kind="Groups", deleted_at__isnull=True
                     )
-                else:
-                    succeeded = True
-            operations.append({"key": name, "title": title, "form": form})
-            if form.errors:
-                status = 400
-        units = [
-            {"clinic": unit, "members": staff_directory(clinic_id=unit.pk)}
-            for unit in Clinic.objects.filter(
-                organization_id=clinic.organization_id
-            ).order_by("id")
-        ]
-        context = {
-            "clinic": clinic,
-            "clinic_id": clinic_id,
-            "review_now": timezone.now(),
-            "operations": operations,
-            "succeeded": succeeded,
-            "secret": secret,
-            "connections": tuple(
-                SsoConnection.objects.filter(clinic_id=clinic_id).order_by(
-                    "-created_at"
-                )
-            ),
-            "groups": tuple(
-                ScimResource.objects.filter(
-                    clinic_id=clinic_id, kind="Groups", deleted_at__isnull=True
-                )
-            ),
-            "mappings": tuple(
-                ScimRoleMapping.objects.filter(clinic_id=clinic_id).select_related(
-                    "unit"
-                )
-            ),
-            "emergencies": tuple(
-                BreakGlassGrant.objects.filter(clinic_id=clinic_id).order_by(
-                    "-created_at"
-                )[:100]
-            ),
-            "support_grants": tuple(
-                SupportAccessGrant.objects.filter(clinic_id=clinic_id).order_by(
-                    "-created_at"
-                )[:100]
-            ),
-            "units": units,
-        }
+                ),
+                "mappings": tuple(
+                    ScimRoleMapping.objects.filter(clinic_id=clinic_id).select_related(
+                        "unit"
+                    )
+                ),
+                "emergencies": tuple(
+                    BreakGlassGrant.objects.filter(clinic_id=clinic_id).order_by(
+                        "-created_at"
+                    )[:100]
+                ),
+                "support_grants": tuple(
+                    SupportAccessGrant.objects.filter(clinic_id=clinic_id).order_by(
+                        "-created_at"
+                    )[:100]
+                ),
+                "units": units,
+            }
+            return auth_response(
+                render(request, "identity/governance.html", context, status=status)
+            )
+    except GovernanceDeniedError:
+        # Navigation offers this page for staff.organization in this unit, but
+        # every action needs it in every unit: a GET explains what is missing
+        # and shows no organization data; a POST stays refused.
+        if request.method != "GET":
+            raise
         return auth_response(
-            render(request, "identity/governance.html", context, status=status)
+            render(
+                request,
+                "identity/governance_unavailable.html",
+                {"clinic_id": clinic_id},
+            )
         )
 
 
