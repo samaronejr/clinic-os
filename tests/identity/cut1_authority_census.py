@@ -20,6 +20,7 @@ from identity.ai_authority_census import exercise_ai_authority
 from identity.billing_authority_oracle import run_billing_census
 from identity.coordination_authority_oracle import run_coordination_census
 from identity.crm_authority_oracle import run_crm_census
+from identity.enterprise_authority_oracle import run_enterprise_census
 from identity.front_desk_authority_oracle import run_front_desk_census
 from identity.insurance_authority_census import exercise_insurance_authority
 from identity.inventory_authority_oracle import run_inventory_census
@@ -358,6 +359,7 @@ def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     run_subscription_census(proofs, graph)
     run_prescription_census(proofs, graph, patch, secret_root)
     run_inventory_census(proofs, graph)
+    run_enterprise_census(proofs, graph)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")

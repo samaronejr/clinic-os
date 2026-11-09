@@ -22,8 +22,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def test_protected_inventory_reverse_refuses_without_removing_schema() -> None:
     executor = MigrationExecutor(connection)
     assert ("inventory", "0001_inventory") in executor.loader.applied_migrations
-    with pytest.raises(IrreversibleError):
-        executor.migrate([("inventory", None)])
+    try:
+        with pytest.raises(IrreversibleError):
+            executor.migrate([("inventory", None)])
+    finally:
+        # Reversible descendants (identity 0051, which follows every app's
+        # leaf) precede the protected migration in the rollback plan.
+        MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
     assert ("inventory", "0001_inventory") in MigrationRecorder(
         connection
     ).applied_migrations()

@@ -2346,16 +2346,22 @@ CONDITIONS: dict[str, Callable[[World], None]] = {
         "#1:helper:analytics_authorization"
     ): metric_receipt_authority,
     "invalid task#1:permission:tasks.assign": task_without_assign,
-    "invalid task#2:actor:NEW.created_by_id IS DISTINCT FROM actor": invalid_task,
+    "invalid task#2:helper:enterprise_security_task": task_without_assign,
+    "invalid task#3:actor:NEW.created_by_id IS DISTINCT FROM actor": invalid_task,
     "task assignment denied#1:helper:workflows_owner_valid": (
         assignment_to_an_invalid_owner
     ),
-    "task assignment denied#2:permission:tasks.reassign": assignment,
-    "task assignment denied#3:actor:NEW.owner_user_id IS NOT DISTINCT FROM actor": (
+    "task assignment denied#2:helper:enterprise_security_task": (
+        assignment_to_an_invalid_owner
+    ),
+    "task assignment denied#3:permission:tasks.reassign": assignment,
+    "task assignment denied#4:actor:NEW.owner_user_id IS NOT DISTINCT FROM actor": (
         assignment_to_a_role_without_reassign
     ),
     "task completion denied#1:permission:tasks.complete": start_without_complete,
-    "task completion denied#2:helper:workflows_owned": completion,
+    "task completion denied#2:helper:enterprise_security_task": start_without_complete,
+    "task completion denied#3:helper:workflows_owned": completion,
+    "task completion denied#4:helper:enterprise_security_task": completion,
     "task cancellation denied#1:permission:tasks.reassign": cancellation,
     "invalid escalation#1:permission:tasks.assign": escalate_without_assign,
     "comment denied#1:actor:NEW.author_id IS DISTINCT FROM actor": comment_trigger,

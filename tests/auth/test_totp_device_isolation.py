@@ -10,6 +10,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from database_urls import database_url_for_name
+from enterprise_fence_support import fenced
 from otp_test_support import create_totp_device, current_user_guc, runtime_role
 from patients.test_intake_migrations import _default_connection, _scratch_database
 
@@ -54,11 +55,13 @@ def test_totp_table_is_force_rls_owned_by_non_runtime_role() -> None:
         policies = cursor.fetchall()
 
     assert posture == (True, True, "clinic_owner", False, False)
-    retirement = (
+    # Identity 0051 fences the two clinic_app policies; the owner one is as is.
+    retirement = fenced(
         "(NOT (EXISTS ( SELECT 1\n"
         "   FROM identity_authenticatorretirement retirement\n"
         "  WHERE (retirement.device_id = otp_totp_totpdevice.id))))"
     )
+    own_device = fenced(POLICY_EXPRESSION)
     assert policies == [
         (
             "identity_totp_retirement",
@@ -76,7 +79,7 @@ def test_totp_table_is_force_rls_owned_by_non_runtime_role() -> None:
             POLICY_EXPRESSION,
             POLICY_EXPRESSION,
         ),
-        EXPECTED_POLICY,
+        (*EXPECTED_POLICY[:4], own_device, own_device),
     ]
 
 

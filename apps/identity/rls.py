@@ -8,6 +8,14 @@ them. This module declares the remaining identity tables.
 
 from typing import Final
 
+from apps.identity.enterprise_contract import (
+    COLUMN_GRANTS as ENTERPRISE_COLUMN_GRANTS,
+)
+from apps.identity.enterprise_contract import (
+    RUNTIME_GRANTS as ENTERPRISE_RUNTIME_GRANTS,
+)
+from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
+
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     {("identity_passkey", "organization_id")}
 )
@@ -16,6 +24,7 @@ RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
 # 0011, 0013 and 0015.
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
+        *ENTERPRISE_TABLES,
         "identity_patientdelegategrant",
         "identity_clinicconfiguration",
         "identity_rolegrant",
@@ -44,6 +53,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
 # runtime role holds no grants on it.
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"identity_user"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    **ENTERPRISE_RUNTIME_GRANTS,
     "identity_patientdelegategrant": frozenset({"SELECT"}),
     "identity_passkey": frozenset({"SELECT", "INSERT"}),
     "identity_user": frozenset(),
@@ -72,6 +82,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        *ENTERPRISE_COLUMN_GRANTS,
         ("identity_passkey", "removed_at", "UPDATE"),
         ("identity_physicianprofile", "expires_at", "UPDATE"),
         ("identity_physicianprofile", "last_checked_at", "UPDATE"),

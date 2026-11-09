@@ -214,18 +214,37 @@ def record_phase1_event(
         from apps.ai.action_audit import record_agent_event  # noqa: PLC0415
 
         return record_agent_event(append, affected_record_id)
-    if event_type.startswith("identity.delegate."):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT NULLIF(current_setting('app.current_patient_session',true),'')"
-            )
-            row = cursor.fetchone()
-        if row is not None and row[0] is not None:
-            return _record_delegate_event(append, affected_record_id)
+    session_seq = _record_session_event(append, clinic_id, affected_record_id)
+    if session_seq is not None:
+        return session_seq
     for prefix, record in _PRINCIPAL_CHAIN_RECORDERS:
         if event_type.startswith(prefix) and _current_principal() is not None:
             return record(append, affected_record_id)
     return record_event(append.event, payload=append.payload)
+
+
+def _session_setting(name: str) -> bool:
+    """Return whether one transaction-local session GUC is set and nonblank."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT NULLIF(current_setting(%s,true),'') IS NOT NULL", [name])
+        row = cursor.fetchone()
+    return row is not None and row[0] is True
+
+
+def _record_session_event(
+    append: Phase1AuditAppend, clinic_id: UUID, record_id: UUID
+) -> int | None:
+    """Bind directory and delegate events to their authenticated session chain."""
+    event_type = append.event.event_type
+    if event_type.startswith("identity.scim.") and _session_setting(
+        "app.current_scim_token"
+    ):
+        return _record_scim_event(append, clinic_id)
+    if event_type.startswith("identity.delegate.") and _session_setting(
+        "app.current_patient_session"
+    ):
+        return _record_delegate_event(append, record_id)
+    return None
 
 
 def _current_principal() -> str | None:
@@ -270,6 +289,40 @@ def _record_retention_event(append: Phase1AuditAppend, record_id: UUID) -> int:
     if row is None:
         raise AuditContextRejectedError(setting="retention_audit")
     return int(row[0])
+
+
+def _record_scim_event(append: Phase1AuditAppend, clinic_id: UUID) -> int:
+    """Hash the authenticated credential principal without installing a staff actor."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.enterprise_scim_audit_scope(%s)", [clinic_id]
+        )
+        scope = cursor.fetchone()
+        if scope is None:
+            raise AuditContextRejectedError(setting="enterprise_scim_audit_scope")
+        context = AuditTrustedContext(organization_id=scope[1], actor_user_id=scope[0])
+        content_hash = _content_hash(
+            append.event, context, _normalize_payload(append.payload)
+        )
+        cursor.execute(
+            "SELECT clinic_app.audit_append("
+            "%s::text, %s::text, %s::inet, %s::text, %s::text, "
+            "%s::timestamptz, %s::jsonb, %s::bytea)",
+            [
+                append.event.event_type,
+                append.event.component_id,
+                None,
+                append.event.affected_record_type,
+                append.event.affected_record_id,
+                append.event.occurred_at_utc,
+                json.dumps(dict(append.payload)),
+                content_hash,
+            ],
+        )
+        result = cursor.fetchone()
+    if result is None:
+        raise AuditContextRejectedError(setting="audit_append")
+    return int(result[0])
 
 
 def _record_lab_event(append: Phase1AuditAppend, record_id: UUID) -> int:

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Emergency clinical read | Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="emergency-read-title">
+  <h1 id="emergency-read-title">{% trans "Emergency clinical read" %}</h1>
+  <p class="feedback">{% trans "Read-only emergency access is audited on every request. Restricted notes are never included." %}</p>
+  {% for note in snapshot.notes %}
+  <section class="panel">
+    <h2>{% trans "Finalized clinical note" %}</h2>
+    <h3>{% trans "Subjective" %}</h3><p>{{ note.content.subjective|linebreaksbr }}</p>
+    <h3>{% trans "Objective" %}</h3><p>{{ note.content.objective|linebreaksbr }}</p>
+    <h3>{% trans "Assessment" %}</h3><p>{{ note.content.assessment|linebreaksbr }}</p>
+    <h3>{% trans "Plan" %}</h3><p>{{ note.content.plan|linebreaksbr }}</p>
+  </section>
+  {% empty %}<p>{% trans "No finalized non-restricted notes are available in this scope." %}</p>{% endfor %}
+  <section class="panel"><h2>{% trans "Clinical observations" %}</h2>
+    <ul>{% for observation in snapshot.observations %}<li>{{ observation.kind }}: {{ observation.value }} {{ observation.unit }}</li>{% empty %}<li>{% trans "No observations are available in this scope." %}</li>{% endfor %}</ul>
+  </section>
+  <a class="button button--secondary" href="{% url 'identity:emergency' clinic_id=clinic_id %}">{% trans "Return to emergency access" %}</a>
+</section>
+{% endblock %}

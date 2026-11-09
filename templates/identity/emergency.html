@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Emergency access | Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="emergency-title">
+  <h1 id="emergency-title">{% trans "Emergency access" %}</h1>
+  <p class="lede">{% trans "Request a time-limited clinical read outside the care team." %}</p>
+  <p class="feedback">{% trans "Restricted notes, clinical writes, finalization and prescribing remain protected. A manager and the patient are notified." %}</p>
+  {% if granted %}<p class="feedback feedback--success" role="status">{% trans "Emergency access granted with mandatory review." %}</p>{% endif %}
+  {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}</div>{% endif %}
+  <form method="post" novalidate>{% csrf_token %}
+    {% for field in form %}{% include "includes/field.html" with field=field %}{% endfor %}
+    <button class="button button--danger" type="submit">{% trans "Request emergency access" %}</button>
+  </form>
+  <h2>{% trans "Your emergency access history" %}</h2>
+  <ul>{% for grant in grants %}<li>
+    {% if grant.revoked_at or grant.reviewed_at %}{% trans "Access ended" %}{% else %}
+    <form method="post" action="{% url 'identity:emergency-read' clinic_id=clinic_id %}">{% csrf_token %}
+      <input type="hidden" name="grant_id" value="{{ grant.pk }}">
+      <button class="button button--secondary" type="submit">{% trans "Read through this grant" %}</button>
+    </form>{% endif %}
+  </li>{% empty %}<li>{% trans "No emergency access has been granted." %}</li>{% endfor %}</ul>
+</section>
+{% endblock %}

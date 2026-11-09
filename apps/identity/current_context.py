@@ -59,6 +59,9 @@ def _actor_uuid_from_guc() -> UserId:
             "SELECT pg_catalog.current_setting('app.current_user_id', true) "
             "WHERE current_user IN ('clinic_app', 'clinic_owner') "
             "AND NULLIF(current_setting('app.current_principal', true), '') IS NULL"
+            " AND NULLIF(current_setting('app.current_scim_token',true),'') IS NULL"
+            " AND NULLIF(current_setting('app.current_support_grant',true),'') IS NULL"
+            " AND NULLIF(current_setting('app.current_sso_connection',true),'') IS NULL"
         )
         row = cursor.fetchone()
     if row is None or not isinstance(row, tuple) or len(row) != 1:

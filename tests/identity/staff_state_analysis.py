@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from django.db import connection
 
-from identity.legacy_sql_inventory import discover_sql
+from identity.legacy_sql_inventory import discover_sql, migration_bodies
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -263,15 +263,20 @@ def python_staff_analysis(root: Path) -> StaffAnalysis:
     return analysis
 
 
-def add_sql_staff_analysis(analysis: StaffAnalysis) -> None:
-    """Inspect deployed bodies, including parsed SQL bodies and SQL call edges."""
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT n.nspname || '.' || p.proname, pg_get_functiondef(p.oid)
-            FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-            WHERE n.nspname IN ('clinic_app','public') AND p.prokind='f'
-        """)
-        rows = cursor.fetchall()
+def add_sql_staff_analysis(
+    analysis: StaffAnalysis, *, include_deployed: bool = True
+) -> None:
+    """Inspect deployed bodies by default or conservative literal source bodies."""
+    if include_deployed:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT n.nspname || '.' || p.proname, pg_get_functiondef(p.oid)
+                FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname IN ('clinic_app','public') AND p.prokind='f'
+            """)
+            rows = cursor.fetchall()
+    else:
+        rows = migration_bodies()
     for name, body in rows:
         analysis.direct.setdefault(name, set()).update(
             f"SQL table {table.lower()}"
@@ -280,6 +285,6 @@ def add_sql_staff_analysis(analysis: StaffAnalysis) -> None:
         analysis.calls.setdefault(name, set()).update(_sql_calls(body) - {name})
     # pg_depend covers parsed SQL bodies; the independent catalog census also
     # resolves unqualified calls in string bodies (including all overloads).
-    for callee, discovered in discover_sql().items():
+    for callee, discovered in discover_sql(include_deployed=include_deployed).items():
         for caller in discovered["resolvers"]:
             analysis.calls.setdefault(caller, set()).add(callee)

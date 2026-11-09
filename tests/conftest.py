@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from apps.core import integration
+from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.insurance.rls import TABLES as INSURANCE_TABLES
 from apps.inventory.rls import CUSTOM_RLS_TABLES as INVENTORY_TABLES
@@ -94,6 +95,7 @@ TRUNCATE_GUARDS = (
     ("scribe_draftsectionsuggestion", "draft_no_truncate"),
     ("scribe_draftactionproposal", "draft_no_truncate"),
     ("scribe_reviewdecision", "draft_no_truncate"),
+    *((table, "enterprise_no_truncate") for table in ENTERPRISE_TABLES),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     *(
         (table, "billing_no_truncate")

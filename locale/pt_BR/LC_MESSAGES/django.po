@@ -10203,3 +10203,225 @@ msgstr "Registro contábil"
 
 msgid "Posted allocation"
 msgstr "Alocação lançada"
+
+msgid "Access duration in minutes"
+msgstr "Duração do acesso em minutos"
+
+msgid "Access ended"
+msgstr "Acesso encerrado"
+
+msgid "Access refused. Check the scope and confirm your authenticator again."
+msgstr "Acesso negado. Confira o escopo e confirme novamente seu autenticador."
+
+msgid "Approve group mapping"
+msgstr "Aprovar mapeamento de grupo"
+
+msgid "Approve masked support access"
+msgstr "Aprovar acesso de suporte com dados mascarados"
+
+msgid "Approved support access"
+msgstr "Acesso de suporte aprovado"
+
+msgid "Awaiting the recovery-exercise evidence from task 72. This screen does not approve recovery or live operation."
+msgstr "Aguardando as evidências do exercício de recuperação da tarefa 72. Esta tela não aprova a recuperação nem a operação com dados reais."
+
+msgid "Client identifier"
+msgstr "Identificador do cliente"
+
+msgid "Clinical observations"
+msgstr "Observações clínicas"
+
+msgid "Complete post-event review"
+msgstr "Concluir revisão após o evento"
+
+msgid "Configure synthetic SSO"
+msgstr "Configurar SSO sintético"
+
+msgid "Connection ID"
+msgstr "ID da conexão"
+
+msgid "Copy this SCIM credential now"
+msgstr "Copie esta credencial SCIM agora"
+
+msgid "Current unit access"
+msgstr "Acessos atuais às unidades"
+
+msgid "Directory configuration"
+msgstr "Configuração do diretório"
+
+msgid "Directory group ID"
+msgstr "ID do grupo do diretório"
+
+msgid "Emergency access"
+msgstr "Acesso emergencial"
+
+msgid "Emergency access and required reviews"
+msgstr "Acesso emergencial e revisões obrigatórias"
+
+msgid "Emergency access granted with mandatory review."
+msgstr "Acesso emergencial concedido com revisão obrigatória."
+
+msgid "Emergency access reason"
+msgstr "Motivo do acesso emergencial"
+
+msgid "Emergency access | Clinic OS"
+msgstr "Acesso emergencial | Clinic OS"
+
+msgid "Emergency clinical read"
+msgstr "Consulta clínica emergencial"
+
+msgid "Emergency clinical read | Clinic OS"
+msgstr "Consulta clínica emergencial | Clinic OS"
+
+msgid "Encounter ID"
+msgstr "ID do atendimento"
+
+msgid "Enterprise governance"
+msgstr "Governança corporativa"
+
+msgid "Enterprise governance | Clinic OS"
+msgstr "Governança corporativa | Clinic OS"
+
+msgid "Every emergency grant creates an immediate manager notice, a patient access-log entry and a mandatory review task."
+msgstr "Toda concessão de acesso emergencial gera um aviso imediato à gestão, um registro no histórico de acesso do paciente e uma tarefa de revisão obrigatória."
+
+msgid "Finalized clinical note"
+msgstr "Evolução clínica finalizada"
+
+msgid "Govern unit access, directory provisioning and time-limited support."
+msgstr "Gerencie os acessos às unidades, o provisionamento pelo diretório e o suporte com prazo limitado."
+
+msgid "Governance change recorded."
+msgstr "Alteração de governança registrada."
+
+msgid "Governance change | Clinic OS"
+msgstr "Alteração de governança | Clinic OS"
+
+msgid "Identity providers are synthetic simulations. Real OIDC and SCIM providers remain blocked by external gates."
+msgstr "Os provedores de identidade são simulações sintéticas. Provedores reais de OIDC e SCIM continuam bloqueados pelas aprovações externas."
+
+msgid "Issue SCIM credential"
+msgstr "Emitir credencial SCIM"
+
+msgid "Next"
+msgstr "Próxima"
+
+msgid "No directory groups have been provisioned."
+msgstr "Nenhum grupo foi provisionado pelo diretório."
+
+msgid "No emergency access has been granted."
+msgstr "Nenhum acesso emergencial foi concedido."
+
+msgid "No emergency access has been recorded."
+msgstr "Nenhum acesso emergencial foi registrado."
+
+msgid "No federation connection is configured."
+msgstr "Nenhuma conexão de federação está configurada."
+
+msgid "No finalized non-restricted notes are available in this scope."
+msgstr "Não há evoluções finalizadas sem restrição neste escopo."
+
+msgid "No group mapping has been approved."
+msgstr "Nenhum mapeamento de grupo foi aprovado."
+
+msgid "No observations are available in this scope."
+msgstr "Não há observações disponíveis neste escopo."
+
+msgid "No support access has been approved."
+msgstr "Nenhum acesso de suporte foi aprovado."
+
+msgid "Patient enrollment ID"
+msgstr "ID do vínculo do paciente"
+
+msgid "Previous"
+msgstr "Anterior"
+
+msgid "Propagate a template version"
+msgstr "Propagar uma versão do modelo"
+
+msgid "Read through this grant"
+msgstr "Consultar com esta autorização"
+
+msgid "Read-only emergency access is audited on every request. Restricted notes are never included."
+msgstr "O acesso emergencial é somente para consulta e cada solicitação é auditada. Evoluções restritas nunca são incluídas."
+
+msgid "Recovery exercise report"
+msgstr "Relatório do exercício de recuperação"
+
+msgid "Request a time-limited clinical read outside the care team."
+msgstr "Solicite uma consulta clínica com prazo limitado fora da equipe assistencial."
+
+msgid "Request emergency access"
+msgstr "Solicitar acesso emergencial"
+
+msgid "Restricted notes, clinical writes, finalization and prescribing remain protected. A manager and the patient are notified."
+msgstr "Evoluções restritas, alterações clínicas, finalização e prescrição continuam protegidas. A gestão e o paciente são notificados."
+
+msgid "Return to emergency access"
+msgstr "Voltar ao acesso emergencial"
+
+msgid "Return to enterprise governance"
+msgstr "Voltar à governança corporativa"
+
+msgid "Review becomes available after access ends."
+msgstr "A revisão fica disponível após o encerramento do acesso."
+
+msgid "Review required"
+msgstr "Revisão obrigatória"
+
+msgid "Revoke support access"
+msgstr "Revogar acesso de suporte"
+
+msgid "Revoke unit access"
+msgstr "Revogar acesso à unidade"
+
+msgid "Revoking a unit policy also blocks future directory reprovisioning. Other units remain unchanged."
+msgstr "A revogação do acesso à unidade também bloqueia novos provisionamentos pelo diretório. As demais unidades não são alteradas."
+
+msgid "Rotate SCIM credential"
+msgstr "Renovar credencial SCIM"
+
+msgid "See when a clinician requested emergency access to your records and whether the event was reviewed."
+msgstr "Veja quando um profissional solicitou acesso emergencial aos seus registros e se o evento foi revisado."
+
+msgid "Source template version ID"
+msgstr "ID da versão de origem do modelo"
+
+msgid "Staff account ID"
+msgstr "ID da conta do profissional"
+
+msgid "Support account ID"
+msgstr "ID da conta de suporte"
+
+msgid "Support purpose"
+msgstr "Finalidade do suporte"
+
+msgid "Support sees masked diagnostics only and can never write clinical records."
+msgstr "O suporte vê apenas diagnósticos técnicos com dados mascarados e nunca pode alterar registros clínicos."
+
+msgid "Synthetic issuer"
+msgstr "Emissor sintético"
+
+msgid "Target unit ID"
+msgstr "ID da unidade de destino"
+
+msgid "The current grant and its audit history have been updated."
+msgstr "A autorização atual e seu histórico de auditoria foram atualizados."
+
+msgid "This credential is shown once. Store it privately; it will not appear in the directory or audit log."
+msgstr "Esta credencial é exibida uma única vez. Guarde-a em local privado; ela não aparecerá no diretório nem no registro de auditoria."
+
+msgid "Unit ID"
+msgstr "ID da unidade"
+
+msgid "Workflow v2 roles require prior owner issuance; directory claims never select a bundle version."
+msgstr "Os perfis do fluxo de trabalho v2 exigem emissão prévia pelo proprietário; declarações do diretório nunca selecionam a versão do pacote."
+
+msgid "Your emergency access history"
+msgstr "Seu histórico de acesso emergencial"
+
+msgid "Your emergency access log"
+msgstr "Seu registro de acesso emergencial"
+
+msgid "Your emergency access log | Clinic OS"
+msgstr "Seu registro de acesso emergencial | Clinic OS"

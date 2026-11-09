@@ -16,6 +16,7 @@ from psycopg.errors import (
 )
 
 from database_urls import database_url_for_name
+from enterprise_fence_support import fenced
 from patients.test_intake_migrations import _default_connection, _scratch_database
 from tenant_key_support import issue_tenant_key_for
 
@@ -222,10 +223,15 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                     "PERMISSIVE",
                     ["public"],
                     "ALL",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
+                    # Re-applied through identity 0051's staff-context fence.
+                    fenced(
+                        "(organization_id = (NULLIF(current_setting("
+                        "'app.current_tenant'::text, true), ''::text))::uuid)"
+                    ),
+                    fenced(
+                        "(organization_id = (NULLIF(current_setting("
+                        "'app.current_tenant'::text, true), ''::text))::uuid)"
+                    ),
                 )
                 for table, _ in sorted(expected_targets)
             ]

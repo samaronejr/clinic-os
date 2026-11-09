@@ -10,6 +10,7 @@ from uuid import UUID
 from django.utils import timezone
 
 from apps.audit.canonical import AuditEventInput
+from apps.identity.enterprise_contract import EVENTS as ENTERPRISE_EVENTS
 from apps.insurance.audit_catalog import EVENTS as INSURANCE_EVENTS
 
 if TYPE_CHECKING:
@@ -276,6 +277,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "billing.journal.exported": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "billing.journal_book", "exported"
         ),
+        **{
+            event_type: Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", record_type, verb
+            )
+            for event_type, (record_type, verb) in ENTERPRISE_EVENTS.items()
+        },
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"
         ),

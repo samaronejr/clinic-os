@@ -66,20 +66,24 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
         assert guard_definition()[0] == before
         assert catalog_hash() == original_catalog
         assert history_hash(w.organization) == original_history
-        reversed_names: list[str] = []
+        reversed_names: list[tuple[str, str]] = []
         try:
             # Exercise only the reversible teleconsult operations in dependency
             # order, leaving all protected descendants and recorder rows intact.
-            for name in (
-                "0007_consented_capture",
-                "0006_mode_audit",
-                "0005_event_authority",
+            # Identity 0051 fences every policy that exists when it runs, so its
+            # reversible descendant goes first and returns last: otherwise the
+            # re-created capture policy would come back without the fence.
+            for node in (
+                ("identity", "0051_enterprise_governance"),
+                ("teleconsult", "0007_consented_capture"),
+                ("teleconsult", "0006_mode_audit"),
+                ("teleconsult", "0005_event_authority"),
             ):
-                migration = executor.loader.get_migration("teleconsult", name)
+                migration = executor.loader.get_migration(*node)
                 state = executor.loader.project_state(migration.dependencies)
                 with connection.schema_editor() as editor:
                     migration.unapply(state, editor)
-                reversed_names.append(name)
+                reversed_names.append(node)
             _, restored_body = guard_definition()
             assert restored_body == BINDING_GUARD_V2.split("$f$")[1]
             assert history_hash(w.organization) == original_history
@@ -91,8 +95,8 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
                     == 1
                 )
         finally:
-            for name in reversed(reversed_names):
-                migration = executor.loader.get_migration("teleconsult", name)
+            for node in reversed(reversed_names):
+                migration = executor.loader.get_migration(*node)
                 state = executor.loader.project_state(migration.dependencies)
                 with connection.schema_editor() as editor:
                     migration.apply(state, editor)

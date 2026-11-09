@@ -28,15 +28,22 @@ if TYPE_CHECKING:
 __all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 OLD = [("teleconsult", "0005_event_authority")]
+# Identity 0051 fences every policy that exists when it runs: as the reversible
+# descendant of these migrations it is unapplied before them and re-applied
+# after them, so the re-created capture policy never comes back unfenced.
+MODE_CHAIN = (
+    ("teleconsult", "0006_mode_audit"),
+    ("teleconsult", "0007_consented_capture"),
+    ("identity", "0051_enterprise_governance"),
+)
 
 
 def mode_migrations(*, backwards: bool) -> None:
     """Exercise all reversible mode DDL without rolling back protected transcripts."""
     loader = MigrationExecutor(connection).loader
-    names = ("0006_mode_audit", "0007_consented_capture")
     with connection.schema_editor() as editor:
-        for name in reversed(names) if backwards else names:
-            migration = loader.get_migration("teleconsult", name)
+        for node in reversed(MODE_CHAIN) if backwards else MODE_CHAIN:
+            migration = loader.get_migration(*node)
             state = loader.project_state(migration.dependencies)
             if backwards:
                 migration.unapply(state, editor)

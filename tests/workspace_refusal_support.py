@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY, AUTH_FLOW_VIEWS
+from apps.identity import scim_views
+from apps.identity.scim_paths import is_scim_endpoint
 from apps.tenancy.middleware import BYPASS_PATHS, BYPASS_PREFIXES, PATIENT_PREFIX
 from django.conf import settings
 from django.urls import Resolver404, URLPattern, URLResolver, resolve, reverse
@@ -50,6 +52,7 @@ def workspace_scope(path: str, view_name: str | None) -> bool:
     """Use the production staff/patient/public/auth boundaries, not a route list."""
     return not (
         path in BYPASS_PATHS
+        or is_scim_endpoint(path)
         or path.startswith((*BYPASS_PREFIXES, PATIENT_PREFIX))
         or view_name in AUTH_FLOW_VIEWS
     )
@@ -174,6 +177,9 @@ def workspace_routes(
         else:
             assert isinstance(entry, URLPattern)
             assert entry.name is not None, "Staff routes must be named and reversible"
+            if entry.callback is scim_views.scim_endpoint:
+                # Bearer-only directory routes never enter the staff workspace.
+                continue
             parameters = entry.pattern.regex.groupindex.keys() | converters.keys()
             assert parameters <= converters.keys(), "Uninspected regex route parameters"
             route = WorkspaceRoute(

@@ -114,6 +114,7 @@
         <p><strong>{% trans "In an emergency, call 192." %}</strong></p>
       </section>
       <form class="portal-signout" method="post" action="{% url 'intake:patient-logout' %}">
+        <a class="button button--secondary" href="{% url 'identity:patient-access-log' %}">{% trans "Your emergency access log" %}</a>
         {% csrf_token %}
         <button class="button button--secondary" type="submit">{% trans "Sign out" %}</button>
       </form>

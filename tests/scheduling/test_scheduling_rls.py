@@ -14,6 +14,7 @@ from psycopg.errors import (
     InvalidTextRepresentation,
 )
 
+from enterprise_fence_support import fenced
 from scheduling.availability_test_support import (
     CLINIC_A_ID,
     END,
@@ -68,18 +69,22 @@ def test_availability_has_exact_force_rls_and_runtime_acl_catalog() -> None:
             policies = cursor.fetchall()
         finally:
             cursor.execute("RESET search_path")
-        expected = (
+        # Identity 0051 fences both clinic_app-facing policies (never the
+        # machine grant); this session deparses its name schema-qualified.
+        expected = fenced(
             "(organization_id = (NULLIF(current_setting("
-            "'app.current_tenant'::text, true), ''::text))::uuid)"
+            "'app.current_tenant'::text, true), ''::text))::uuid)",
+            qualified=True,
         )
-        booking_read = (
+        booking_read = fenced(
             "(EXISTS ( SELECT 1\n"
             "   FROM clinic_app.patient_booking_scope() "
             "s(session_id, organization_id, clinic_id, patient_id, "
             "enrollment_id, clinic_name, timezone)\n"
             "  WHERE ((s.organization_id = "
             "scheduling_availabilityblock.organization_id) "
-            "AND (s.clinic_id = scheduling_availabilityblock.clinic_id))))"
+            "AND (s.clinic_id = scheduling_availabilityblock.clinic_id))))",
+            qualified=True,
         )
         # Task 7 / ADR-019 adds an exact restrictive machine grant without
         # changing either legacy tenant or patient-booking policy.

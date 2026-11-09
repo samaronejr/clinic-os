@@ -54,6 +54,9 @@ from billing.psp_oracles import ACTOR_PROTOCOL_ORACLES as PSP_ACTOR_PROTOCOL_ORA
 from consent.test_purposes import register_physician
 from crm.sql_oracles import ACTOR_PROTOCOL_ORACLES as CRM_ACTOR_PROTOCOL_ORACLES
 from identity.authority_sql import _tokenize, references
+from identity.enterprise_sql_oracles import (
+    ACTOR_PROTOCOL_ORACLES as ENTERPRISE_ACTOR_PROTOCOL_ORACLES,
+)
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
 from identity.test_lifecycle_sql_readers import (
@@ -448,6 +451,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | FISCAL_ACTOR_PROTOCOL_ORACLES
         | INSURANCE_ACTOR_PROTOCOL_ORACLES
         | ANALYTICS_ACTOR_PROTOCOL_ORACLES
+        | ENTERPRISE_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
