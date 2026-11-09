@@ -40,6 +40,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 import rfc8785
+from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
@@ -1037,6 +1038,14 @@ def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
 def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     """Reception charges the visit; the patient pays synthetically; receipt."""
     click_to_navigate(reception.locator("a[data-module=finance]"))
+    # Since plan item 56 the finance module lands on its workspace; reception's
+    # charge ledger is the workspace's Charges link, one step further.
+    assert reception.url == case.url(f"/billing/clinics/{case.clinic}/finance/")
+    click_to_navigate(
+        reception.locator("[data-finance-workspace]").get_by_role(
+            "link", name=gettext("Charges"), exact=True
+        )
+    )
     ledger = case.url(f"/billing/clinics/{case.clinic}/charges/")
     assert reception.url == ledger
 
