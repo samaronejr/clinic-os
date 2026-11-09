@@ -1350,6 +1350,19 @@ button:disabled:active,
     border-bottom: var(--line-1) solid CanvasText;
   }
 
+  /* Forced colors repaint the navy band as Canvas. The band's dark-surface
+     inks would otherwise still resolve through -webkit-text-fill-color, so its
+     text takes system colors outright: CanvasText, and LinkText for links. */
+  .nav,
+  .nav * {
+    color: CanvasText;
+  }
+
+  .nav a[href],
+  .nav a[href] * {
+    color: LinkText;
+  }
+
   .nav-link[aria-disabled="true"],
   .button[aria-disabled="true"],
   .panel--disabled,
