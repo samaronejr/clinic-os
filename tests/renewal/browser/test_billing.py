@@ -467,7 +467,13 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         assert CODE_PREFIX not in str(patient.content())
         capture(patient, root, "patient-receipt", width)
         seed_fiscal_history(staff, manager, invoice_id)
-        goto_settled(admin, f"{base}/billing/clinics/{staff['clinic_a']}/finance/")
+        # Granting the fiscal roles ends the manager's live session (an authority
+        # change always re-authenticates): prove it, then sign in again.
+        fiscal_workspace = f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
+        goto_settled(admin, fiscal_workspace)
+        assert admin.url != fiscal_workspace
+        sign_in_manager(admin, base, staff, manager)
+        goto_settled(admin, fiscal_workspace)
         fiscal = admin.locator("[data-fiscal-documents]")
         expect(
             fiscal.locator('[data-fiscal-state="authorized"]').first
