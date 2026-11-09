@@ -65,7 +65,7 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 `tenancy.0006`) belongs in that file: the parallel phase's server-state guard
 fails the run otherwise.
 
-Hosted CI divides both phases into three deterministic, file-atomic shards per
+Hosted CI divides both phases into four deterministic, file-atomic shards per
 Python version, keeping each hosted job within its 60-minute budget. Each shard collects the complete reference independently and
 retains its raw line coverage, exactly-once execution reports, refusal census
 and shared-catalog certificate. The `python-coverage` jobs require every shard,
