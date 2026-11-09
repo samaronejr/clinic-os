@@ -6,12 +6,13 @@ import copy
 import json
 import re
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 
 from renewal.browser.device_capability_report import (
     ReportError,
+    criterion_status,
     validate_engine_report,
     validate_study,
 )
@@ -30,6 +31,12 @@ def _study() -> dict[str, object]:
     assert match is not None, "ADR-013 must hold a json study-report block"
     study: dict[str, object] = json.loads(match["body"])
     return study
+
+
+def _criteria(study: dict[str, object]) -> list[dict[str, Any]]:
+    criteria = study["criteria"]
+    assert isinstance(criteria, list)
+    return criteria
 
 
 def test_adr_013_study_report_matches_the_schema() -> None:
@@ -53,6 +60,8 @@ def test_study_never_claims_device_proof() -> None:
         lambda study: study["criteria"][1]["l1_by_engine"].update(webkit="maybe"),
         lambda study: study["criteria"][2].update(consequence=""),
         lambda study: study["criteria"].pop(),
+        # An unmeasured engine cannot roll up to a pass.
+        lambda study: study["criteria"][0].update(l1_status="pass"),
     ],
 )
 def test_study_schema_rejects_overclaims(mutate: object) -> None:
@@ -86,3 +95,51 @@ def test_engine_report_rejects_status_that_hides_a_failed_subcheck() -> None:
     criteria[0]["subchecks"][0]["result"] = "fail"
     with pytest.raises(ReportError):
         validate_engine_report(report)
+
+
+def test_study_records_a_failing_criterion_with_its_consequence() -> None:
+    study = copy.deepcopy(_study())
+    criterion = _criteria(study)[3]
+    criterion["l1_by_engine"]["chromium"] = "fail"
+    criterion["l1_status"] = "fail"
+    validate_study(study)
+    criterion["consequence"] = ""
+    with pytest.raises(ReportError):
+        validate_study(study)
+
+
+def test_a_failing_engine_outranks_unmeasured_and_pass() -> None:
+    study = copy.deepcopy(_study())
+    criterion = _criteria(study)[0]
+    criterion["l1_by_engine"] = {
+        "chromium": "pass",
+        "firefox": "unmeasured",
+        "webkit": "fail",
+    }
+    criterion["l1_status"] = "unmeasured"
+    with pytest.raises(ReportError):
+        validate_study(study)
+    criterion["l1_status"] = "fail"
+    validate_study(study)
+
+
+def test_engine_report_rolls_unmeasurable_up_to_unmeasured() -> None:
+    assert criterion_status([{"name": "a", "result": "pass", "detail": ""}]) == "pass"
+    assert (
+        criterion_status(
+            [
+                {"name": "a", "result": "pass", "detail": ""},
+                {"name": "b", "result": "unmeasurable", "detail": ""},
+            ]
+        )
+        == "unmeasured"
+    )
+    assert (
+        criterion_status(
+            [
+                {"name": "a", "result": "unmeasurable", "detail": ""},
+                {"name": "b", "result": "fail", "detail": ""},
+            ]
+        )
+        == "fail"
+    )

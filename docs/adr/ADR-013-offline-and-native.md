@@ -24,25 +24,32 @@ authenticator support. Capability pages and the real-device protocol are in
 `docs/qa/real-device-protocol.md` (RD-6). The `device-capabilities` suite
 runs the pages on Chromium, Firefox and WebKit through the renewal runner.
 
-**Result (evidence level L1 emulation): no criterion failed on any engine, and
-no native work is justified by this evidence.** That is not device proof. Every
-criterion is `pending-EG-14`: EG-14 real-device runs have not happened, and
-this ADR never counts emulation as one. Until EG-14 supplies device results the
-decision stays provisional, and a failing device result reopens it.
+**Result (evidence level L1 emulation): no criterion failed on any engine, so
+this evidence does not justify native work. But emulation also decided nothing
+for good: all 4 criteria are `unmeasured` overall, 0 `pass`, 0 `fail`.** Only
+WebAuthn passed every subcheck, and only on Chromium (a virtual authenticator).
+An `unmeasured` criterion has at least one subcheck that emulation cannot
+decide (a screen lock, a real push service, a real camera, an attached
+authenticator); it is not a pass. Every criterion is `pending-EG-14` on the
+device: EG-14 real-device runs have not happened, and this ADR never counts
+emulation as one. The decision stays provisional until EG-14 supplies device
+results, and a failing device result reopens it.
 
 ### Study report
 
-Each engine cell is the criterion's L1 status, with its subcheck counts.
-`unmeasurable` is a subcheck emulation cannot decide; it is never counted as
-`pass`. Source: `device.json` from the run at `bf880e9a` plus todo 69's
-changes, one report per engine from the suite.
+Criterion status rolls up from subchecks: `fail` if any subcheck failed,
+`unmeasured` if none failed but any is `unmeasurable`, `pass` only when every
+subcheck was measured and passed. The overall column takes `fail` over
+`unmeasured` over `pass` across engines. Each engine cell shows that engine's
+status with its subcheck counts. Source: `device.json` from the suite run at
+`9f83572f` plus the roll-up fix, one report per engine.
 
-| Criterion | Chromium 156 | Firefox 151 | WebKit 26.5 (Playwright WPE) | Device (EG-14) |
-|---|---|---|---|---|
-| background-audio | pass (2 pass / 0 fail / 2 unmeasurable) | pass (2 pass / 0 fail / 2 unmeasurable) | pass (2 pass / 0 fail / 2 unmeasurable) | pending-EG-14 |
-| push | pass (4 pass / 0 fail / 2 unmeasurable) | pass (2 pass / 0 fail / 4 unmeasurable) | pass (1 pass / 0 fail / 5 unmeasurable) | pending-EG-14 |
-| camera-capture | pass (4 pass / 0 fail / 1 unmeasurable) | pass (2 pass / 0 fail / 3 unmeasurable) | pass (2 pass / 0 fail / 3 unmeasurable) | pending-EG-14 |
-| webauthn-platform | pass (3 pass / 0 fail / 0 unmeasurable) | pass (1 pass / 0 fail / 2 unmeasurable) | pass (1 pass / 0 fail / 2 unmeasurable) | pending-EG-14 |
+| Criterion | L1 overall | Chromium 156 | Firefox 151 | WebKit 26.5 (Playwright WPE) | Device (EG-14) |
+|---|---|---|---|---|---|
+| background-audio | **unmeasured** | unmeasured (2 pass / 0 fail / 2 unmeasurable) | unmeasured (2 pass / 0 fail / 2 unmeasurable) | unmeasured (2 pass / 0 fail / 2 unmeasurable) | pending-EG-14 |
+| push | **unmeasured** | unmeasured (4 pass / 0 fail / 2 unmeasurable) | unmeasured (2 pass / 0 fail / 4 unmeasurable) | unmeasured (1 pass / 0 fail / 5 unmeasurable) | pending-EG-14 |
+| camera-capture | **unmeasured** | unmeasured (4 pass / 0 fail / 1 unmeasurable) | unmeasured (2 pass / 0 fail / 3 unmeasurable) | unmeasured (2 pass / 0 fail / 3 unmeasurable) | pending-EG-14 |
+| webauthn-platform | **unmeasured** | pass (3 pass / 0 fail / 0 unmeasurable) | unmeasured (1 pass / 0 fail / 2 unmeasurable) | unmeasured (1 pass / 0 fail / 2 unmeasurable) | pending-EG-14 |
 
 What emulation could not decide, on Chromium (the engine with the most
 coverage):
@@ -79,44 +86,44 @@ schema, the `pending-EG-14` device status and the L1 label):
   "criteria": [
     {
       "id": "background-audio",
-      "l1_status": "pass",
+      "l1_status": "unmeasured",
       "l1_by_engine": {
-        "chromium": "pass",
-        "firefox": "pass",
-        "webkit": "pass"
+        "chromium": "unmeasured",
+        "firefox": "unmeasured",
+        "webkit": "unmeasured"
       },
       "device_status": "pending-EG-14",
       "consequence": "If EG-14 shows playback stopping on screen lock, build a native audio capture shell; until then the PWA keeps its explicit paused state (ADR-005)."
     },
     {
       "id": "push",
-      "l1_status": "pass",
+      "l1_status": "unmeasured",
       "l1_by_engine": {
-        "chromium": "pass",
-        "firefox": "pass",
-        "webkit": "pass"
+        "chromium": "unmeasured",
+        "firefox": "unmeasured",
+        "webkit": "unmeasured"
       },
       "device_status": "pending-EG-14",
       "consequence": "If EG-14 shows no lock-screen delivery (notably iOS outside an installed PWA), keep SMS/email and in-app reminders as the channel of record and propose a native push shell only for the failing platform."
     },
     {
       "id": "camera-capture",
-      "l1_status": "pass",
+      "l1_status": "unmeasured",
       "l1_by_engine": {
-        "chromium": "pass",
-        "firefox": "pass",
-        "webkit": "pass"
+        "chromium": "unmeasured",
+        "firefox": "unmeasured",
+        "webkit": "unmeasured"
       },
       "device_status": "pending-EG-14",
       "consequence": "If printed 10-point text is not legible at 1280x720 on a real device, keep the file-input capture fallback and propose a native document scanner only if that fallback also fails."
     },
     {
       "id": "webauthn-platform",
-      "l1_status": "pass",
+      "l1_status": "unmeasured",
       "l1_by_engine": {
         "chromium": "pass",
-        "firefox": "pass",
-        "webkit": "pass"
+        "firefox": "unmeasured",
+        "webkit": "unmeasured"
       },
       "device_status": "pending-EG-14",
       "consequence": "If a platform authenticator ceremony fails on a real device, step-up stays TOTP (todo 16 keeps both) and a native key-store shell is proposed only for that platform."
@@ -133,9 +140,10 @@ schema, the `pending-EG-14` device status and the L1 label):
 
 Schema: `schema_version`; `study`; `evidence_level` (`L1-emulation`, the only
 level this ADR may carry until EG-14); `device_proof` (`pending-EG-14`);
-`engines`; per criterion `id`, `l1_status` (`pass` or `fail`; `fail` if any engine
-failed), `l1_by_engine`, `device_status` (`pending-EG-14` until a signed EG-14
-record exists), `consequence` (what a failure triggers); and `decision`.
+`engines`; per criterion `id`, `l1_status` (`pass`, `fail` or `unmeasured`;
+`fail` if any engine failed, `pass` only if every engine passed), `l1_by_engine`,
+`device_status` (`pending-EG-14` until a signed EG-14 record exists),
+`consequence` (what a failure triggers); and `decision`.
 
 ## Consequences
 
@@ -145,7 +153,8 @@ record exists), `consequence` (what a failure triggers); and `decision`.
   plan in the open; native work never starts silently. Todo 69 appends none,
   because nothing failed; the per-criterion consequences above say what a
   failing EG-14 result would trigger.
-- Real-device evidence waits on EG-14. Emulation never substitutes for it.
+- Real-device evidence waits on EG-14. Emulation never substitutes for it, and
+  todo 75 must not read an `unmeasured` criterion as a pass.
 - Failure path, exercised by the schema tests: a criterion that fails is
   recorded as `fail` with its consequence, and `l1_status` follows it.
 
@@ -155,6 +164,8 @@ record exists), `consequence` (what a failure triggers); and `decision`.
   gap exists.
 - Reading L1 emulation as device proof. Playwright cannot lock a screen, reach
   a real push service or attach a real camera or authenticator.
+- Rolling `unmeasurable` subchecks up into `pass`. A criterion emulation could
+  not decide is `unmeasured`.
 
 ## Revisit trigger
 

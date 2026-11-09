@@ -13,7 +13,7 @@ from typing import Final, Never
 CRITERIA: Final = ("background-audio", "push", "camera-capture", "webauthn-platform")
 ENGINES: Final = ("chromium", "firefox", "webkit")
 SUBCHECK_RESULTS: Final = ("pass", "fail", "unmeasurable")
-CRITERION_STATUSES: Final = ("pass", "fail")
+CRITERION_STATUSES: Final = ("pass", "fail", "unmeasured")
 EVIDENCE_LEVEL: Final = "L1-emulation"
 DEVICE_PROOF: Final = "pending-EG-14"
 
@@ -27,8 +27,15 @@ def _fail(message: str) -> Never:
 
 
 def criterion_status(subchecks: list[dict[str, str]]) -> str:
-    """``fail`` if a subcheck failed, else ``pass``; unmeasurable ones are listed."""
-    return "fail" if any(item["result"] == "fail" for item in subchecks) else "pass"
+    """Roll subchecks up: ``fail``, else ``unmeasured``, else ``pass``.
+
+    ``pass`` needs every subcheck measured and passing. A criterion with any
+    ``unmeasurable`` subcheck stays ``unmeasured``: emulation did not decide it.
+    """
+    results = {item["result"] for item in subchecks}
+    if "fail" in results:
+        return "fail"
+    return "unmeasured" if "unmeasurable" in results else "pass"
 
 
 def validate_engine_report(report: dict[str, object]) -> None:
@@ -60,6 +67,13 @@ def validate_engine_report(report: dict[str, object]) -> None:
             _fail(f"{criterion['id']}: status disagrees with its subchecks")
 
 
+def _study_status(by_engine: dict[str, str]) -> str:
+    values = set(by_engine.values())
+    if "fail" in values:
+        return "fail"
+    return "pass" if values == {"pass"} else "unmeasured"
+
+
 def _validate_study_criteria(criteria: object) -> None:
     if not isinstance(criteria, list) or [c.get("id") for c in criteria] != list(
         CRITERIA
@@ -70,9 +84,8 @@ def _validate_study_criteria(criteria: object) -> None:
         if not isinstance(by_engine, dict) or list(by_engine) != list(ENGINES):
             _fail(f"{criterion['id']}: l1_by_engine must cover {list(ENGINES)}")
         if any(value not in CRITERION_STATUSES for value in by_engine.values()):
-            _fail(f"{criterion['id']}: engine status must be pass or fail")
-        expected = "fail" if "fail" in by_engine.values() else "pass"
-        if criterion.get("l1_status") != expected:
+            _fail(f"{criterion['id']}: unknown engine status")
+        if criterion.get("l1_status") != _study_status(by_engine):
             _fail(f"{criterion['id']}: l1_status disagrees with the engines")
         if criterion.get("device_status") != DEVICE_PROOF:
             _fail(f"{criterion['id']}: device_status must be {DEVICE_PROOF}")
