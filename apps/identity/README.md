@@ -336,8 +336,10 @@ and the machine principal's reviewed gates are never touched: under those roles
 the fence is constantly true. The fence keeps each expression's meaning (an
 ALL/UPDATE policy without WITH CHECK is checked with its USING; an absent
 expression grants nothing when permissive and restricts nothing when
-restrictive) and alters a table owned by another role as that owner. 0051
-therefore depends on every app's leaf, and a migration that creates a
+restrictive). Its statements are static, built from the reviewed rows in
+`migrations/_enterprise_fence_policies.py`, so the clock census decodes every
+one, and the forward refuses to finish while any applicable policy is unfenced.
+0051 therefore depends on every app's leaf, and a migration that creates a
 `clinic_app` policy after it must carry the fence itself:
 `tests/identity/test_enterprise_migration.py` and
 `tests/infra/test_schema_policy.py` fail otherwise.

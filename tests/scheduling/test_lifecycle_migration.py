@@ -73,12 +73,13 @@ def historical_database(
         with _default_connection(wrapper):
             executor = MigrationExecutor(connection)
             # Current seeding needs identity, duplicate and alias prerequisites.
-            # Later intake leaves depend on scheduling successors under test.
+            # Later intake leaves depend on scheduling successors under test, and
+            # so does identity 0051, which follows every app's leaf.
             executor.migrate(
                 [
                     V2,
                     ("intake", "0017_patient_aliases"),
-                    *executor.loader.graph.leaf_nodes("identity"),
+                    ("identity", "0050_totp_secret_boundary"),
                 ]
             )
             graph = request.getfixturevalue("historical_graph")

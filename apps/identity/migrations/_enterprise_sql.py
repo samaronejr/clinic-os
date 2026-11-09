@@ -118,6 +118,9 @@ _manager = (
     "(clinic_app.has_permission('staff.clinic',clinic_id,NULL) OR "
     "clinic_app.has_permission('staff.organization',clinic_id,NULL))"
 )
+# A set, not any(): the clock census decodes this module's SQL and any() is
+# not one of its finite builtins (tests/scheduling/clock_static_values.py).
+_updated = {table for table, _column, _privilege in COLUMN_GRANTS}
 for _table in TABLES:
     _read = _manager
     _write = _admin
@@ -160,7 +163,7 @@ CREATE POLICY enterprise_read ON clinic_app.{_table} FOR SELECT TO clinic_app
 CREATE POLICY enterprise_insert ON clinic_app.{_table} FOR INSERT TO clinic_app
  WITH CHECK ({_scope} AND ({_write}));
 """
-    if any(table == _table for table, _col, _priv in COLUMN_GRANTS):
+    if _table in _updated:
         _sql += f"""
 CREATE POLICY enterprise_update ON clinic_app.{_table} FOR UPDATE TO clinic_app
  USING ({_scope} AND ({_write})) WITH CHECK ({_scope} AND ({_write}));
@@ -204,7 +207,7 @@ DROP POLICY enterprise_owner ON clinic_app.{_table};
 """
     if "INSERT" in RUNTIME_GRANTS[_table]:
         _reverse += f"DROP POLICY enterprise_insert ON clinic_app.{_table};\n"
-    if any(table == _table for table, _col, _priv in COLUMN_GRANTS):
+    if _table in _updated:
         _reverse += f"DROP POLICY enterprise_update ON clinic_app.{_table};\n"
 # Only the task columns this migration added; INSERT and the state columns stay
 # with the retention and data-request bridges that granted them first.

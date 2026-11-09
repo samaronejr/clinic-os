@@ -223,26 +223,27 @@ def record_phase1_event(
     return record_event(append.event, payload=append.payload)
 
 
-def _session_setting(name: str) -> bool:
-    """Return whether one transaction-local session GUC is set and nonblank."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT NULLIF(current_setting(%s,true),'') IS NOT NULL", [name])
-        row = cursor.fetchone()
-    return row is not None and row[0] is True
-
-
 def _record_session_event(
     append: Phase1AuditAppend, clinic_id: UUID, record_id: UUID
 ) -> int | None:
     """Bind directory and delegate events to their authenticated session chain."""
     event_type = append.event.event_type
-    if event_type.startswith("identity.scim.") and _session_setting(
-        "app.current_scim_token"
-    ):
+    if not event_type.startswith(("identity.scim.", "identity.delegate.")):
+        return None
+    # Literal setting names keep this read inside the clock census boundary.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT NULLIF(current_setting('app.current_scim_token',true),'') "
+            "IS NOT NULL, NULLIF(current_setting('app.current_patient_session',"
+            "true),'') IS NOT NULL"
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    scim_session, patient_session = row
+    if event_type.startswith("identity.scim.") and scim_session:
         return _record_scim_event(append, clinic_id)
-    if event_type.startswith("identity.delegate.") and _session_setting(
-        "app.current_patient_session"
-    ):
+    if event_type.startswith("identity.delegate.") and patient_session:
         return _record_delegate_event(append, record_id)
     return None
 

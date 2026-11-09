@@ -10,6 +10,7 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.identity.migrations._enterprise_sql import REVERSE_SQL, SQL
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 
@@ -92,7 +93,9 @@ class Migration(migrations.Migration):
         ("tenancy", "0007_blind_indexes"),
         ("workflows", "0009_metrics_refresh"),
     ]
-    operations: ClassVar = [
+    # One state batch renders the ten new models once instead of rebuilding
+    # the related tenant graph per model (tests/infra/test_migration_rendering).
+    schema_operations: ClassVar = [
         migrations.CreateModel(
             name="SsoConnection",
             fields=[
@@ -362,6 +365,11 @@ class Migration(migrations.Migration):
                     ),
                 ]
             },
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=schema_operations, state_operations=schema_operations
         ),
         migrations.RunSQL(SQL, reverse_sql=REVERSE_SQL),
     ]

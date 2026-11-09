@@ -14,11 +14,20 @@ TABLES: Final = (
     "identity_governancenotice",
     "identity_unitgovernancechange",
 )
+# A literal, not a comprehension: migration 0051 builds its grants from it, and
+# the clock census decodes that SQL (tests/scheduling/test_clock_boundary.py).
 RUNTIME_GRANTS: Final = {
-    table: frozenset({"SELECT", "INSERT"})
-    for table in TABLES
-    if table != "identity_scimrolebinding"
-} | {"identity_scimrolebinding": frozenset({"SELECT"})}
+    "identity_ssoconnection": frozenset({"SELECT", "INSERT"}),
+    "identity_scimtoken": frozenset({"SELECT", "INSERT"}),
+    "identity_scimresource": frozenset({"SELECT", "INSERT"}),
+    "identity_scimrolemapping": frozenset({"SELECT", "INSERT"}),
+    "identity_scimmembership": frozenset({"SELECT", "INSERT"}),
+    "identity_breakglassgrant": frozenset({"SELECT", "INSERT"}),
+    "identity_supportaccessgrant": frozenset({"SELECT", "INSERT"}),
+    "identity_governancenotice": frozenset({"SELECT", "INSERT"}),
+    "identity_unitgovernancechange": frozenset({"SELECT", "INSERT"}),
+    "identity_scimrolebinding": frozenset({"SELECT"}),
+}
 COLUMN_GRANTS: Final = frozenset(
     (table, column, "UPDATE")
     for table, columns in (
