@@ -112,6 +112,27 @@ debugging).
 | 3 | Use VoiceOver (iOS) or TalkBack (Android) on sign-in and one core task | Every control has a name, the reading order is logical, and focus returns after dialogs. The manual assistive-technology audit (EG-14) is a separate artifact by a qualified tester. |
 | 4 | Install the PWA (where offered), then launch it from the home screen | It launches over HTTPS to the sign-in or home page. The service worker cache holds no clinical content. |
 
+### RD-6 Browser capability study (ADR-013)
+
+The pages live in `tests/renewal/browser/device_capabilities/`. Serve them
+over HTTPS from the synthetic staging host (a secure context is required for
+WebAuthn, push and capture) and open `index.html`; each button runs one probe.
+The pages store nothing and send nothing. The `device-capabilities` emulation
+suite already ran the same probes as L1 evidence; this procedure supplies the
+EG-14 half that emulation cannot.
+
+| Step | Action | Expected |
+|---|---|---|
+| 1 | Background audio: press the audio probe, lock the device for 60 s, unlock | The tone's playback position kept advancing while locked (lock-screen media controls shown), or the page states honestly that it paused. Record which. |
+| 2 | Push: install the PWA where the platform requires it, allow notifications, press the push probe, then send a push from the synthetic staging sender while the device is locked | The notification arrives on the lock screen with the fixed text "You have a new notification." and no payload content. Record the delay. |
+| 3 | Camera: press the camera probe, then photograph a printed synthetic document (10-point body text) at arm's length | The frame is at least 1280x720 and the printed text is legible when the frame is viewed at full size. Also try the file-input fallback. |
+| 4 | Platform authenticator: press the platform authenticator probe | The OS biometric or passcode sheet appears, and create and get both succeed with `platform` attachment and user verification. |
+
+A step that cannot run on the device (for example push on iOS Safari outside an
+installed PWA) is recorded as `blocked` with the reason, never `pass`. Each
+browser-capability criterion in ADR-013 stays `pending-EG-14` until these four
+steps are recorded on at least one device per class in the matrix above.
+
 ## Evidence template
 
 Copy this block once per device and build. File names reference the
