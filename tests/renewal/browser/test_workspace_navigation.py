@@ -82,6 +82,7 @@ EXPECTED: Final = {
         "finance",
         "operations",
         "automations",
+        "reports",
         "settings",
     ],
     "clinic_admin": [
@@ -92,6 +93,7 @@ EXPECTED: Final = {
         "finance",
         "operations",
         "automations",
+        "reports",
         "settings",
     ],
     "receptionist": [
@@ -116,9 +118,19 @@ EXPECTED: Final = {
     ],
     "nurse": ["today", "inbox", "messages"],
     "allied_professional": ["inbox"],
-    "scheduler": ["inbox", "messages", "settings"],
+    # Task 56: Finance opens for any holder of a finance-workspace permission:
+    # charge.collect (scheduler) or refund/payout.request (clinic manager).
+    "scheduler": ["inbox", "messages", "finance", "settings"],
     # Task 50: privacy.requests opens Patients > Data-subject requests.
-    "clinic_manager": ["patients", "inbox", "messages", "automations", "settings"],
+    "clinic_manager": [
+        "patients",
+        "inbox",
+        "messages",
+        "finance",
+        "automations",
+        "reports",
+        "settings",
+    ],
     "finance": [],
     "org_admin": ["settings"],
 }
