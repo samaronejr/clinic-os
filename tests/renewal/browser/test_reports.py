@@ -38,8 +38,9 @@ def _complete_source(staff: dict[str, str]) -> None:
 
 
 def _native_refresh(page: Page) -> None:
-    page.get_by_label(gettext("From"), exact=True).fill("02/06/2035")
-    page.get_by_label(gettext("Through"), exact=True).fill("02/06/2035")
+    # Form labels carry Django's label suffix (':'), as duplicate_accessibility matches.
+    page.get_by_label(f"{gettext('From')}:", exact=True).fill("02/06/2035")
+    page.get_by_label(f"{gettext('Through')}:", exact=True).fill("02/06/2035")
     click_to_navigate(page.locator('button[value="refresh"]'))
     expect(page.locator('[data-report-state="fresh"]')).to_be_visible()
 
@@ -67,8 +68,8 @@ def test_reports_sources_review_boundaries_and_accessibility(
         expect(
             page.get_by_role("heading", name=gettext("Reports"), exact=True)
         ).to_be_visible()
-        page.get_by_label(gettext("From"), exact=True).fill("02/06/2035")
-        page.get_by_label(gettext("Through"), exact=True).fill("02/06/2035")
+        page.get_by_label(f"{gettext('From')}:", exact=True).fill("02/06/2035")
+        page.get_by_label(f"{gettext('Through')}:", exact=True).fill("02/06/2035")
         with page.expect_response(
             lambda response: response.url == url and response.request.method == "POST"
         ):
