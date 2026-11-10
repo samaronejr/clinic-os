@@ -60,6 +60,7 @@ app.conf.update(
         "apps.workflows.tasks.*": {"queue": "bulk"},
         "apps.analytics.tasks.*": {"queue": "bulk"},
         "apps.crm.tasks.*": {"queue": "bulk"},
+        "apps.interop.tasks.*": {"queue": "bulk"},
     },
     task_reject_on_worker_lost=True,
     task_track_started=True,

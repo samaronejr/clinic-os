@@ -240,6 +240,21 @@ as the exception type, route name and traceback frame locations only: never
 the exception message, its arguments, chained exceptions, locals or request
 data.
 
+The partner API lives under `/api/v1/` (`apps/interop/api/`), with the
+committed contract `docs/api/external-v1.yaml` and the same drift test. It
+bypasses the tenant middleware: a request's only authority is what
+`interop_api_session` resolves from the SHA-256 digest of an OAuth 2.0
+client-credentials bearer token (15 minutes), for an active client whose
+approving administrator still holds organization authority. Client secrets and
+tokens are stored as digests only. Patient-linked records are addressed by
+opaque, organization-bound AES-SIV external ids, so unknown, foreign and forged
+ids are one `404`, and no resource carries clinical narrative. Each client
+spends a Redis token bucket per request (`429` with `Retry-After`; `503` when
+the broker cannot decide) and every write needs an `Idempotency-Key`. Partner
+webhooks are signed `Clinic-Signature: t=<ts>,v1=<HMAC-SHA256>` with a 300
+second replay tolerance and are delivered only through the action outbox; no
+URL, body or patient data reaches outbox rows, attempt logs, audit or logs.
+
 ## Patient representation authority
 
 Guardian, curator and adult-delegate grants are retained in

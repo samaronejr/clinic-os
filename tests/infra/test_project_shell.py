@@ -89,6 +89,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     import apps.ai.tasks  # noqa: PLC0415
     import apps.comms.tasks  # noqa: PLC0415
     import apps.ehr.tasks  # noqa: PLC0415
+    import apps.interop.tasks  # noqa: PLC0415
     import apps.retention.tasks  # noqa: PLC0415
     import apps.scheduling.tasks  # noqa: PLC0415
     import apps.scribe.tasks  # noqa: PLC0415
@@ -104,6 +105,9 @@ def test_celery_app_registers_only_the_integration_task() -> None:
         "apps.ai.tasks.execute",
         "apps.ai.tasks.execute_agent",
         "apps.ehr.tasks.refresh_timeline",
+        "apps.interop.tasks.build_export",
+        "apps.interop.tasks.dispatch_due_exports",
+        "apps.interop.tasks.expire_exports",
         "apps.retention.tasks.apply_policy",
         "apps.retention.tasks.purge_artifact",
         "apps.retention.tasks.scan_due",

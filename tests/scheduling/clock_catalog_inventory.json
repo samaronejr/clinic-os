@@ -619,6 +619,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -1365,6 +1366,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -2180,6 +2182,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -2278,6 +2281,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -2345,6 +2349,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -2623,6 +2628,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -2759,6 +2765,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -2888,6 +2895,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -2916,6 +2924,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -4043,6 +4052,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -4692,6 +4702,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -5810,6 +5821,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -6031,6 +6043,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -6159,6 +6172,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -7677,6 +7691,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -7778,6 +7793,283 @@
     ]
   },
   "constraint:intake_questionnairetemplate.intake_questionnairetemplate_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_apiclient.interop_apiclient_approved_by_id_2b69a426_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:interop_apiclient.interop_apiclient_clinic_id_b365bab0_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:interop_apiclient.interop_apiclient_organization_id_7be0b81e_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_apiclient.interop_apiclient_rate_limit_per_minute_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_apiclient.interop_apiclient_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_apiclient.interop_client_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.arraycontained(anyarray, anyarray)",
+      "function:pg_catalog.cardinality(anyarray)",
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_export_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organization_clinic_id_94960e8a_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organization_organization_id_12cda45d_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organization_requested_by_id_6bfb0d58_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_archive_bytes_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_attachment_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_dataset_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_part_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_record_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:interop_organizationexport.interop_organizationexport_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexportpart.interop_organization_export_id_e26ba0ad_fk_interop_o": {
+    "direct": {},
+    "via": [
+      "constraint:interop_organizationexport.interop_export_contract",
+      "constraint:interop_organizationexport.interop_organization_clinic_id_94960e8a_fk_identity_",
+      "constraint:interop_organizationexport.interop_organization_organization_id_12cda45d_fk_identity_",
+      "constraint:interop_organizationexport.interop_organization_requested_by_id_6bfb0d58_fk_identity_",
+      "constraint:interop_organizationexport.interop_organizationexport_archive_bytes_check",
+      "constraint:interop_organizationexport.interop_organizationexport_attachment_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_dataset_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_part_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_record_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_revision_check",
+      "policy:interop_organizationexport.interop_export_update",
+      "policy:interop_organizationexport.interop_manage_read",
+      "trigger:interop_organizationexport.interop_guard",
+      "trigger:interop_organizationexport.interop_retained_truncate"
+    ]
+  },
+  "constraint:interop_organizationexportpart.interop_organization_organization_id_760d5446_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_organizationexportpart.interop_organizationexportpart_part_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexportpart.interop_organizationexportpart_size_bytes_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_organizationexportpart.interop_part_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_webhookdelivery.interop_delivery_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_webhookdelivery.interop_webhookdeliv_clinic_id_a08bcfbe_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:interop_webhookdelivery.interop_webhookdeliv_organization_id_3c9aabf9_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_webhookdelivery.interop_webhookdeliv_subscription_id_b3bb3a27_fk_interop_w": {
+    "direct": {},
+    "via": [
+      "constraint:interop_webhooksubscription.interop_webhook_contract",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_client_id_7e395a5a_fk_interop_a",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_clinic_id_398c4a2c_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_organization_id_0509e623_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_revision_check",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_secret_version_check",
+      "policy:interop_webhooksubscription.interop_manage_read",
+      "trigger:interop_webhooksubscription.interop_guard",
+      "trigger:interop_webhooksubscription.interop_retained_truncate"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhook_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.arraycontained(anyarray, anyarray)",
+      "function:pg_catalog.cardinality(anyarray)",
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhooksubsc_client_id_7e395a5a_fk_interop_a": {
+    "direct": {},
+    "via": [
+      "constraint:interop_apiclient.interop_apiclient_approved_by_id_2b69a426_fk_identity_user_id",
+      "constraint:interop_apiclient.interop_apiclient_clinic_id_b365bab0_fk_identity_clinic_id",
+      "constraint:interop_apiclient.interop_apiclient_organization_id_7be0b81e_fk_identity_",
+      "constraint:interop_apiclient.interop_apiclient_rate_limit_per_minute_check",
+      "constraint:interop_apiclient.interop_apiclient_revision_check",
+      "constraint:interop_apiclient.interop_client_contract",
+      "policy:interop_apiclient.interop_manage_read",
+      "trigger:interop_apiclient.interop_guard",
+      "trigger:interop_apiclient.interop_retained_truncate"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhooksubsc_clinic_id_398c4a2c_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhooksubsc_organization_id_0509e623_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhooksubscription_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:interop_webhooksubscription.interop_webhooksubscription_secret_version_check": {
     "direct": {},
     "via": [
       "function:pg_catalog.int4ge(integer, integer)"
@@ -9482,6 +9774,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -9578,6 +9871,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -9750,6 +10044,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -9838,6 +10133,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -10191,6 +10487,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -10280,6 +10577,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -10694,6 +10992,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -10975,6 +11274,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -11660,6 +11960,7 @@
       "constraint:subscriptions_subscription.subscriptions_subscr_plan_id_2c895107_fk_subscript",
       "constraint:subscriptions_subscription.subscriptions_subscription_revision_check",
       "policy:subscriptions_subscription.subscription_read",
+      "trigger:subscriptions_subscription.interop_offboarding",
       "trigger:subscriptions_subscription.subscription_retained_row",
       "trigger:subscriptions_subscription.subscription_retained_truncate"
     ]
@@ -11723,6 +12024,7 @@
       "constraint:subscriptions_subscription.subscriptions_subscr_plan_id_2c895107_fk_subscript",
       "constraint:subscriptions_subscription.subscriptions_subscription_revision_check",
       "policy:subscriptions_subscription.subscription_read",
+      "trigger:subscriptions_subscription.interop_offboarding",
       "trigger:subscriptions_subscription.subscription_retained_row",
       "trigger:subscriptions_subscription.subscription_retained_truncate"
     ]
@@ -11795,6 +12097,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -11896,6 +12199,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -13308,6 +13612,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -14468,6 +14773,7 @@
       "trigger:ai_modelconfiguration.ai_eval_model_gate",
       "trigger:ai_modelconfiguration.ai_model_guard",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -15095,6 +15401,7 @@
       "policy:billing_settlementallocation.billing_journal_scope",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding",
       "trigger:billing_invoiceterms.billing_journal_guard",
       "trigger:billing_settlementallocation.billing_allocation_paid",
@@ -15345,6 +15652,7 @@
       "policy:scheduling_servicetype.tenant_isolation",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding",
       "trigger:billing_journalbook.billing_journal_guard",
       "trigger:billing_journalbook.billing_seed_chart",
@@ -15363,6 +15671,7 @@
       "trigger:identity_userclinicrole.subscription_membership_created",
       "trigger:identity_userclinicrole.workflows_bundle_selection_guard",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -15588,6 +15897,7 @@
       "trigger:ehr_encounter.scribe_capture_encounter_ended",
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -16038,6 +16348,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -16080,6 +16391,7 @@
       "policy:billing_settlement.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding",
       "trigger:billing_journalbook.billing_journal_guard",
       "trigger:billing_journalbook.billing_seed_chart",
@@ -16109,6 +16421,7 @@
       "policy:billing_receipt.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -16130,6 +16443,7 @@
       "policy:billing_invoice.billing_staff",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding"
     ]
   },
@@ -16362,6 +16676,7 @@
       "policy:intake_patientchannelpreference.tenant_isolation",
       "policy:intake_patientcontact.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
@@ -17176,6 +17491,7 @@
       "trigger:ehr_encounter.scribe_capture_encounter_ended",
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -17482,6 +17798,7 @@
       "trigger:intake_questionnaireresponse.questionnaire_receipt",
       "trigger:intake_questionnaireresponse.questionnaire_template_state",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -17592,6 +17909,7 @@
       "trigger:ehr_encounter.scribe_capture_encounter_ended",
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -18620,6 +18938,7 @@
       "function:pg_catalog.interval(time without time zone)",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
   },
@@ -19121,6 +19440,7 @@
       "policy:workflows_task.workflow_update",
       "trigger:billing_invoice.billing_invoice_guard",
       "trigger:billing_invoice.billing_revision_snapshot",
+      "trigger:billing_invoice.interop_capture_event",
       "trigger:billing_invoice.zz_intake_survivor_binding",
       "trigger:billing_invoiceterms.billing_journal_guard",
       "trigger:billing_journalbook.billing_journal_guard",
@@ -19170,6 +19490,7 @@
       "trigger:insurance_return.insurance_guard",
       "trigger:insurance_return.insurance_no_truncate",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -19233,6 +19554,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -19340,6 +19662,7 @@
       "trigger:intake_insurancemembership.intake_insurancemembership_append_only",
       "trigger:intake_insurancemembership.intake_insurancemembership_version_guard",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -19890,6 +20213,271 @@
       "function:pg_catalog.text(xml)",
       "policy:intake_patientalias.tenant_isolation",
       "trigger:intake_patientalias.intake_patient_alias_binding"
+    ]
+  },
+  "function:clinic_app.interop_authority(uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "function:clinic_app.identity_actor_permission(text, uuid, uuid, uuid, uuid)",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "function:clinic_app.interop_capture_event()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 3
+    },
+    "via": [
+      "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_clinic_id_abf522e0_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_organization_id_7cc6f40b_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationoperation_attempt_count_check",
+      "constraint:comms_integrationoperation.comms_integrationoperation_max_attempts_check",
+      "constraint:comms_integrationoperation.comms_operation_attempts_bounded",
+      "constraint:comms_integrationoperation.comms_operation_kind_contract",
+      "constraint:comms_integrationoperation.comms_operation_org_clinic_fk",
+      "constraint:comms_integrationoperation.comms_operation_status_check",
+      "constraint:interop_apiclient.interop_apiclient_approved_by_id_2b69a426_fk_identity_user_id",
+      "constraint:interop_apiclient.interop_apiclient_clinic_id_b365bab0_fk_identity_clinic_id",
+      "constraint:interop_apiclient.interop_apiclient_organization_id_7be0b81e_fk_identity_",
+      "constraint:interop_apiclient.interop_apiclient_rate_limit_per_minute_check",
+      "constraint:interop_apiclient.interop_apiclient_revision_check",
+      "constraint:interop_apiclient.interop_client_contract",
+      "constraint:interop_webhookdelivery.interop_delivery_contract",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_clinic_id_a08bcfbe_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_organization_id_3c9aabf9_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_subscription_id_b3bb3a27_fk_interop_w",
+      "constraint:interop_webhooksubscription.interop_webhook_contract",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_client_id_7e395a5a_fk_interop_a",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_clinic_id_398c4a2c_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_organization_id_0509e623_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_revision_check",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_secret_version_check",
+      "default:comms_integrationoperation.kind",
+      "default:comms_integrationoperation.payload_digest",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:clinic_app.gen_random_uuid()",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.gen_random_uuid()",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:comms_integrationoperation.tenant_isolation",
+      "policy:interop_apiclient.interop_manage_read",
+      "policy:interop_webhookdelivery.interop_manage_read",
+      "policy:interop_webhooksubscription.interop_manage_read",
+      "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
+      "trigger:comms_integrationoperation.workflows_release_outcome",
+      "trigger:interop_apiclient.interop_guard",
+      "trigger:interop_apiclient.interop_retained_truncate",
+      "trigger:interop_webhookdelivery.interop_guard",
+      "trigger:interop_webhookdelivery.interop_retained_truncate",
+      "trigger:interop_webhooksubscription.interop_guard",
+      "trigger:interop_webhooksubscription.interop_retained_truncate"
+    ]
+  },
+  "function:clinic_app.interop_capture_invoice()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 3
+    },
+    "via": [
+      "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_clinic_id_abf522e0_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_organization_id_7cc6f40b_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationoperation_attempt_count_check",
+      "constraint:comms_integrationoperation.comms_integrationoperation_max_attempts_check",
+      "constraint:comms_integrationoperation.comms_operation_attempts_bounded",
+      "constraint:comms_integrationoperation.comms_operation_kind_contract",
+      "constraint:comms_integrationoperation.comms_operation_org_clinic_fk",
+      "constraint:comms_integrationoperation.comms_operation_status_check",
+      "constraint:interop_apiclient.interop_apiclient_approved_by_id_2b69a426_fk_identity_user_id",
+      "constraint:interop_apiclient.interop_apiclient_clinic_id_b365bab0_fk_identity_clinic_id",
+      "constraint:interop_apiclient.interop_apiclient_organization_id_7be0b81e_fk_identity_",
+      "constraint:interop_apiclient.interop_apiclient_rate_limit_per_minute_check",
+      "constraint:interop_apiclient.interop_apiclient_revision_check",
+      "constraint:interop_apiclient.interop_client_contract",
+      "constraint:interop_webhookdelivery.interop_delivery_contract",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_clinic_id_a08bcfbe_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_organization_id_3c9aabf9_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_subscription_id_b3bb3a27_fk_interop_w",
+      "constraint:interop_webhooksubscription.interop_webhook_contract",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_client_id_7e395a5a_fk_interop_a",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_clinic_id_398c4a2c_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_organization_id_0509e623_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_revision_check",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_secret_version_check",
+      "default:comms_integrationoperation.kind",
+      "default:comms_integrationoperation.payload_digest",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:clinic_app.gen_random_uuid()",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.gen_random_uuid()",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:comms_integrationoperation.tenant_isolation",
+      "policy:interop_apiclient.interop_manage_read",
+      "policy:interop_webhookdelivery.interop_manage_read",
+      "policy:interop_webhooksubscription.interop_manage_read",
+      "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
+      "trigger:comms_integrationoperation.workflows_release_outcome",
+      "trigger:interop_apiclient.interop_guard",
+      "trigger:interop_apiclient.interop_retained_truncate",
+      "trigger:interop_webhookdelivery.interop_guard",
+      "trigger:interop_webhookdelivery.interop_retained_truncate",
+      "trigger:interop_webhooksubscription.interop_guard",
+      "trigger:interop_webhooksubscription.interop_retained_truncate"
+    ]
+  },
+  "function:clinic_app.interop_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 5,
+      "pg_catalog.statement_timestamp()": 14,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 16,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 5
+    },
+    "via": [
+      "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_clinic_id_abf522e0_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationope_organization_id_7cc6f40b_fk_identity_",
+      "constraint:comms_integrationoperation.comms_integrationoperation_attempt_count_check",
+      "constraint:comms_integrationoperation.comms_integrationoperation_max_attempts_check",
+      "constraint:comms_integrationoperation.comms_operation_attempts_bounded",
+      "constraint:comms_integrationoperation.comms_operation_kind_contract",
+      "constraint:comms_integrationoperation.comms_operation_org_clinic_fk",
+      "constraint:comms_integrationoperation.comms_operation_status_check",
+      "constraint:interop_organizationexport.interop_export_contract",
+      "constraint:interop_organizationexport.interop_organization_clinic_id_94960e8a_fk_identity_",
+      "constraint:interop_organizationexport.interop_organization_organization_id_12cda45d_fk_identity_",
+      "constraint:interop_organizationexport.interop_organization_requested_by_id_6bfb0d58_fk_identity_",
+      "constraint:interop_organizationexport.interop_organizationexport_archive_bytes_check",
+      "constraint:interop_organizationexport.interop_organizationexport_attachment_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_dataset_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_part_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_record_count_check",
+      "constraint:interop_organizationexport.interop_organizationexport_revision_check",
+      "constraint:interop_organizationexportpart.interop_organization_export_id_e26ba0ad_fk_interop_o",
+      "constraint:interop_organizationexportpart.interop_organization_organization_id_760d5446_fk_identity_",
+      "constraint:interop_organizationexportpart.interop_organizationexportpart_part_check",
+      "constraint:interop_organizationexportpart.interop_organizationexportpart_size_bytes_check",
+      "constraint:interop_organizationexportpart.interop_part_contract",
+      "constraint:interop_webhookdelivery.interop_delivery_contract",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_clinic_id_a08bcfbe_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_organization_id_3c9aabf9_fk_identity_",
+      "constraint:interop_webhookdelivery.interop_webhookdeliv_subscription_id_b3bb3a27_fk_interop_w",
+      "default:comms_integrationoperation.kind",
+      "default:comms_integrationoperation.payload_digest",
+      "function:pg_catalog.count(\"any\")",
+      "function:pg_catalog.count()",
+      "function:pg_catalog.interval(interval, integer)",
+      "function:pg_catalog.interval(time without time zone)",
+      "function:pg_catalog.sum(bigint)",
+      "function:pg_catalog.sum(double precision)",
+      "function:pg_catalog.sum(integer)",
+      "function:pg_catalog.sum(interval)",
+      "function:pg_catalog.sum(money)",
+      "function:pg_catalog.sum(numeric)",
+      "function:pg_catalog.sum(real)",
+      "function:pg_catalog.sum(smallint)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "function:pg_catalog.unnest(anyarray)",
+      "function:pg_catalog.unnest(anymultirange)",
+      "function:pg_catalog.unnest(tsvector)",
+      "policy:comms_integrationoperation.tenant_isolation",
+      "policy:interop_organizationexport.interop_export_update",
+      "policy:interop_organizationexport.interop_manage_read",
+      "policy:interop_organizationexportpart.interop_manage_read",
+      "policy:interop_organizationexportpart.interop_part_insert",
+      "policy:interop_webhookdelivery.interop_manage_read",
+      "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
+      "trigger:comms_integrationoperation.workflows_release_outcome",
+      "trigger:interop_organizationexport.interop_guard",
+      "trigger:interop_organizationexport.interop_retained_truncate",
+      "trigger:interop_organizationexportpart.interop_guard",
+      "trigger:interop_organizationexportpart.interop_retained_truncate",
+      "trigger:interop_webhookdelivery.interop_guard",
+      "trigger:interop_webhookdelivery.interop_retained_truncate"
+    ]
+  },
+  "function:clinic_app.interop_manager(uuid)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_authority(uuid, uuid)",
+      "function:clinic_app.load_current_user()",
+      "function:clinic_app.user_has_org(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "function:clinic_app.interop_offboarding()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
+      "pg_catalog.statement_timestamp()": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
+    },
+    "via": [
+      "constraint:interop_apiclient.interop_apiclient_approved_by_id_2b69a426_fk_identity_user_id",
+      "constraint:interop_apiclient.interop_apiclient_clinic_id_b365bab0_fk_identity_clinic_id",
+      "constraint:interop_apiclient.interop_apiclient_organization_id_7be0b81e_fk_identity_",
+      "constraint:interop_apiclient.interop_apiclient_rate_limit_per_minute_check",
+      "constraint:interop_apiclient.interop_apiclient_revision_check",
+      "constraint:interop_apiclient.interop_client_contract",
+      "constraint:interop_webhooksubscription.interop_webhook_contract",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_client_id_7e395a5a_fk_interop_a",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_clinic_id_398c4a2c_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubsc_organization_id_0509e623_fk_identity_",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_revision_check",
+      "constraint:interop_webhooksubscription.interop_webhooksubscription_secret_version_check",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:interop_apiclient.interop_manage_read",
+      "policy:interop_webhooksubscription.interop_manage_read",
+      "trigger:interop_apiclient.interop_guard",
+      "trigger:interop_apiclient.interop_retained_truncate",
+      "trigger:interop_webhooksubscription.interop_guard",
+      "trigger:interop_webhooksubscription.interop_retained_truncate"
+    ]
+  },
+  "function:clinic_app.interop_webhook_backoff()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "function:pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, double precision)"
+    ]
+  },
+  "function:clinic_app.load_current_user()": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
     ]
   },
   "function:clinic_app.orders_can_read_version(uuid)": {
@@ -20733,6 +21321,7 @@
       "trigger:identity_user.identity_password_session_rejection",
       "trigger:scheduling_absence.scheduling_definition_guard",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -21283,6 +21872,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -21480,6 +22070,7 @@
       "trigger:identity_userclinicrole.subscription_membership_created",
       "trigger:identity_userclinicrole.workflows_bundle_selection_guard",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -21610,6 +22201,7 @@
       "trigger:ehr_encounter.scribe_capture_encounter_ended",
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -22644,6 +23236,7 @@
       "trigger:identity_userclinicrole.subscription_membership_created",
       "trigger:identity_userclinicrole.workflows_bundle_selection_guard",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -22706,6 +23299,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -22799,6 +23393,7 @@
       "policy:scheduling_appointmenttransition.patient_booking_read",
       "policy:scheduling_appointmenttransition.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -22902,6 +23497,7 @@
       "policy:scheduling_resource.patient_booking_read",
       "policy:scheduling_resource.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -23057,6 +23653,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -23495,6 +24092,7 @@
       "trigger:orders_resultmatch.orders_task_after_match",
       "trigger:orders_resultversion.orders_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -24117,6 +24715,7 @@
       "policy:scribe_recordingsession.capture_update",
       "policy:scribe_recordingsession.setup_tenant",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:ehr_encounter.ehr_binding",
       "trigger:ehr_encounter.ehr_close",
@@ -24569,6 +25168,7 @@
       "trigger:subscriptions_entitlement.subscription_retained_truncate",
       "trigger:subscriptions_plan.subscription_retained_row",
       "trigger:subscriptions_plan.subscription_retained_truncate",
+      "trigger:subscriptions_subscription.interop_offboarding",
       "trigger:subscriptions_subscription.subscription_retained_row",
       "trigger:subscriptions_subscription.subscription_retained_truncate",
       "trigger:subscriptions_subscriptionevent.subscription_retained_row",
@@ -24629,6 +25229,7 @@
       "trigger:subscriptions_entitlement.subscription_retained_truncate",
       "trigger:subscriptions_seat.subscription_retained_row",
       "trigger:subscriptions_seat.subscription_retained_truncate",
+      "trigger:subscriptions_subscription.interop_offboarding",
       "trigger:subscriptions_subscription.subscription_retained_row",
       "trigger:subscriptions_subscription.subscription_retained_truncate"
     ]
@@ -24723,6 +25324,7 @@
       "trigger:subscriptions_entitlement.subscription_retained_truncate",
       "trigger:subscriptions_seat.subscription_retained_row",
       "trigger:subscriptions_seat.subscription_retained_truncate",
+      "trigger:subscriptions_subscription.interop_offboarding",
       "trigger:subscriptions_subscription.subscription_retained_row",
       "trigger:subscriptions_subscription.subscription_retained_truncate",
       "trigger:subscriptions_usagerollup.subscription_retained_row",
@@ -24836,6 +25438,7 @@
       "policy:teleconsult_teleconsultsession.teleconsult_session_read",
       "policy:teleconsult_teleconsultsession.teleconsult_session_update",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -24953,6 +25556,7 @@
       "policy:teleconsult_teleconsultsession.teleconsult_session_read",
       "policy:teleconsult_teleconsultsession.teleconsult_session_update",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
@@ -25138,6 +25742,7 @@
       "policy:scheduling_waitlistentry.waitlist_read",
       "policy:scheduling_waitlistentry.waitlist_update",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -25683,6 +26288,7 @@
       "policy:workflows_workflowstep.workflow_read",
       "policy:workflows_workflowstep.workflow_update",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:workflows_task.care_task_gate",
       "trigger:workflows_task.care_task_mirror",
@@ -25817,6 +26423,7 @@
       "policy:workflows_task.workflow_read",
       "policy:workflows_task.workflow_update",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -30318,6 +30925,76 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:interop_apiclient.interop_manage_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_organizationexport.interop_export_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_organizationexport.interop_manage_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_organizationexportpart.interop_manage_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_organizationexportpart.interop_part_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_webhookdelivery.interop_manage_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:interop_webhooksubscription.interop_manage_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_manager(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:orders_labaccount.orders_read": {
     "direct": {},
     "via": [
@@ -31041,6 +31718,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -31198,6 +31876,7 @@
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
@@ -32575,6 +33254,12 @@
       "function:clinic_app.billing_revision_snapshot()"
     ]
   },
+  "trigger:billing_invoice.interop_capture_event": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_capture_invoice()"
+    ]
+  },
   "trigger:billing_invoice.zz_intake_survivor_binding": {
     "direct": {},
     "via": [
@@ -32687,6 +33372,13 @@
     "direct": {},
     "via": [
       "function:clinic_app.identity_reset_notification_clock()"
+    ]
+  },
+  "trigger:comms_integrationoperation.interop_webhook_backoff": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_webhook_backoff()",
+      "function:pg_catalog.texteq(text, text)"
     ]
   },
   "trigger:comms_integrationoperation.workflows_release_outcome": {
@@ -33465,6 +34157,66 @@
       "function:clinic_app.questionnaire_template_state_guard()"
     ]
   },
+  "trigger:interop_apiclient.interop_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_apiclient.interop_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_organizationexport.interop_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_organizationexport.interop_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_organizationexportpart.interop_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_organizationexportpart.interop_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_webhookdelivery.interop_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_webhookdelivery.interop_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_webhooksubscription.interop_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_webhooksubscription.interop_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_guard()"
+    ]
+  },
   "trigger:orders_labaccount.orders_binding": {
     "direct": {},
     "via": [
@@ -33655,6 +34407,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.comms_schedule_reminders_v1()"
+    ]
+  },
+  "trigger:scheduling_appointment.interop_capture_event": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_capture_event()"
     ]
   },
   "trigger:scheduling_appointment.patient_booking_guard": {
@@ -33938,6 +34696,13 @@
     "direct": {},
     "via": [
       "function:clinic_app.subscription_guard()"
+    ]
+  },
+  "trigger:subscriptions_subscription.interop_offboarding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_offboarding()",
+      "function:pg_catalog.texteq(text, text)"
     ]
   },
   "trigger:subscriptions_subscription.subscription_retained_row": {
@@ -34334,6 +35099,7 @@
       "trigger:orders_resultmatch.orders_task_after_match",
       "trigger:orders_resultversion.orders_binding",
       "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.interop_capture_event",
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",

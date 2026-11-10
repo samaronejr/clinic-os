@@ -13,6 +13,7 @@ from infra import (
     front_desk_catalog,
     identity_lifecycle_catalog,
     insurance_catalog,
+    interop_catalog,
     inventory_catalog,
     journal_catalog,
     longitudinal_catalog,
@@ -34,6 +35,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *crm_catalog.TABLE_GRANTS,
     *analytics_catalog.TABLE_GRANTS,
     *subscriptions_catalog.TABLE_GRANTS,
+    *interop_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
     *fiscal_catalog.TABLE_GRANTS,
     *insurance_catalog.TABLE_GRANTS,
@@ -203,6 +205,7 @@ RESOLVER_TABLE_GRANTS: Final = {
 RESOLVER_COLUMN_GRANTS: Final = {
     *analytics_catalog.COLUMN_GRANTS,
     *subscriptions_catalog.COLUMN_GRANTS,
+    *interop_catalog.COLUMN_GRANTS,
     ("ai_evaluationrun", "status", "UPDATE"),
     ("ai_evaluationrun", "finished_at", "UPDATE"),
     *retention_catalog.COLUMN_GRANTS,
@@ -278,6 +281,7 @@ POSTURE_OVERRIDES: Final = {
     **crm_catalog.POSTURE,
     **analytics_catalog.POSTURE,
     **subscriptions_catalog.POSTURE,
+    **interop_catalog.POSTURE,
     **retention_catalog.POSTURE,
     **fiscal_catalog.POSTURE,
     **journal_catalog.POSTURE,
@@ -592,6 +596,7 @@ FUNCTION_SIGNATURES: Final = {
     *crm_catalog.RESULTS,
     *analytics_catalog.RESULTS,
     *subscriptions_catalog.RESULTS,
+    *interop_catalog.RESULTS,
     *retention_catalog.RESULTS,
     *fiscal_catalog.RESULTS,
     ("reception_guard", ""),
@@ -917,6 +922,7 @@ FUNCTION_RESULTS: Final = {
     **fiscal_catalog.RESULTS,
     **analytics_catalog.RESULTS,
     **subscriptions_catalog.RESULTS,
+    **interop_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",
@@ -1496,7 +1502,10 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            name not in journal_catalog.INVOKERS | subscriptions_catalog.INVOKERS,
+            name
+            not in journal_catalog.INVOKERS
+            | subscriptions_catalog.INVOKERS
+            | interop_catalog.INVOKERS,
             volatility,
             "u",
             [

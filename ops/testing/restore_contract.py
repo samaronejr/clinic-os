@@ -313,6 +313,15 @@ DOMAIN_RELATIONS: Final = (
     "insurance_paymentmatch",
     "insurance_payerrequest",
     "insurance_commandreceipt",
+    "interop_apiclient",
+    "interop_apiclientsecret",
+    "interop_apiaccesstoken",
+    "interop_apiwritereceipt",
+    "interop_webhooksubscription",
+    "interop_webhookdelivery",
+    "interop_webhookattempt",
+    "interop_organizationexport",
+    "interop_organizationexportpart",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

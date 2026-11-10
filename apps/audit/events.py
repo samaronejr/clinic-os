@@ -51,6 +51,17 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "tenant", "clinic-os-web", "subscriptions.subscription", "changed"
         ),
         **{
+            f"interop.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"interop.{kind}", verb
+            )
+            for kind, verbs in {
+                "api_client": ("created", "rotated", "revoked"),
+                "webhook_subscription": ("revoked",),
+                "organization_export": ("requested", "ready", "failed", "downloaded"),
+            }.items()
+            for verb in verbs
+        },
+        **{
             f"crm.{kind}.{verb}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", f"crm.{kind}", verb
             )

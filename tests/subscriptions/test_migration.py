@@ -39,7 +39,9 @@ def test_populated_additive_reverse_forward_preserves_identity_and_installs_post
             )
             assert cursor.fetchone() == (0,)
     finally:
-        MigrationExecutor(connection).migrate([("subscriptions", "0001_initial")])
+        # Dependent apps (interop) are unapplied with it; restore the full graph.
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
     assert discover_catalog() == before
     preserved: set[UUID] = set()
     for organization in (graph.organization_a, graph.organization_b):

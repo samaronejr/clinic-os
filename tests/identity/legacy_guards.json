@@ -9966,6 +9966,203 @@
       ],
       "kind": "data_operation",
       "reason": "Checks one code for the GUC actor's own device through the resolver verifier, the only writer of the device's verification state; a factor check, not a staff-role grant. Forgery, replay and active/inactive/foreign SQL oracles execute its refusals."
+    },
+    {
+      "symbol": "apps.interop.api.authentication.ScopePermission.has_permission",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.api.authentication.ScopePermission.has_permission#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.api.authentication.resolve_principal",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.api.authentication.resolve_principal#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.api.views._issue",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.api.views._issue#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.api.views._resolver_rows",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.api.views._resolver_rows#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.api.views._write",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.api.views._write#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.export_builder._attachments",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.export_builder._attachments#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.export_builder._claim",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.export_builder._claim#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.export_builder._fail",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.export_builder._fail#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.export_builder._page",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.export_builder._page#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.export_builder._store",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.export_builder._store#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.management._command",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.management._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.management._scope",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.management._scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.management.download_export_part",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.management.download_export_part#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.tasks.dispatch_due",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.tasks.dispatch_due#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.tasks.expire",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.tasks.expire#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.views._denied",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.views._denied#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.views.manage",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.views.manage#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.webhooks._record_attempt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.webhooks._record_attempt#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.webhooks.delivery_eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.webhooks.delivery_eligible#cut1"
+      ]
     }
   ],
   "probes": [
@@ -10342,6 +10539,25 @@
     "apps.intake.views.patient_create_view",
     "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
+    "apps.interop.api.authentication.ScopePermission.has_permission#cut1",
+    "apps.interop.api.authentication.resolve_principal#cut1",
+    "apps.interop.api.views._issue#cut1",
+    "apps.interop.api.views._resolver_rows#cut1",
+    "apps.interop.api.views._write#cut1",
+    "apps.interop.export_builder._attachments#cut1",
+    "apps.interop.export_builder._claim#cut1",
+    "apps.interop.export_builder._fail#cut1",
+    "apps.interop.export_builder._page#cut1",
+    "apps.interop.export_builder._store#cut1",
+    "apps.interop.management._command#cut1",
+    "apps.interop.management._scope#cut1",
+    "apps.interop.management.download_export_part#cut1",
+    "apps.interop.tasks.dispatch_due#cut1",
+    "apps.interop.tasks.expire#cut1",
+    "apps.interop.views._denied#cut1",
+    "apps.interop.views.manage#cut1",
+    "apps.interop.webhooks._record_attempt#cut1",
+    "apps.interop.webhooks.delivery_eligible#cut1",
     "apps.inventory.access.authority#cut1",
     "apps.inventory.access.execute#cut1",
     "apps.inventory.access.organization#cut1",
@@ -14106,6 +14322,8 @@
           "clinic_app.identity_signup_register",
           "clinic_app.insurance_appointment_guard",
           "clinic_app.insurance_record_booking_coverage",
+          "clinic_app.interop_capture_event",
+          "clinic_app.interop_capture_invoice",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_lab_account",
           "clinic_app.orders_lab_audit",
@@ -14886,6 +15104,12 @@
           "clinic_app.identity_retire_authenticators",
           "clinic_app.identity_session_register",
           "clinic_app.insurance_record_booking_coverage",
+          "clinic_app.interop_api_token",
+          "clinic_app.interop_api_write",
+          "clinic_app.interop_capture_event",
+          "clinic_app.interop_capture_invoice",
+          "clinic_app.interop_manage",
+          "clinic_app.interop_webhook_attempt",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
@@ -16607,7 +16831,11 @@
           "apps/tenancy/migrations/0002_rls_and_resolvers.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.interop_export_rows",
+          "clinic_app.interop_manage",
+          "clinic_app.interop_manager"
+        ],
         "signatures": [
           {
             "arguments": "",
@@ -18583,6 +18811,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.interop_api_read",
           "clinic_app.patient_booking_slots",
           "clinic_app.patient_service_slots",
           "clinic_app.scheduling_capacity_guard",
@@ -19115,6 +19344,7 @@
           "clinic_app.agent_action_payload",
           "clinic_app.ai_review_extraction",
           "clinic_app.identity_signup_register",
+          "clinic_app.interop_api_read",
           "clinic_app.orders_verify_identity",
           "clinic_app.prescription_document_open",
           "clinic_app.protected_decrypt",
@@ -19367,6 +19597,7 @@
           "clinic_app.identity_passkey_session_verified",
           "clinic_app.identity_passkey_use",
           "clinic_app.identity_session_verify_passkey",
+          "clinic_app.interop_manager",
           "clinic_app.subscription_scope",
           "clinic_app.subscription_seats"
         ]
@@ -21106,7 +21337,8 @@
           "clinic_app.agent_approval_current",
           "clinic_app.agent_bound_snapshot",
           "clinic_app.agent_controls",
-          "clinic_app.has_permission"
+          "clinic_app.has_permission",
+          "clinic_app.interop_authority"
         ],
         "signatures": [
           {
@@ -24929,6 +25161,367 @@
         "test_longitudinal_functions_keep_exact_execute_privileges"
       ],
       "reason": "Trigger enforces source identity, envelope/unit binding, monotone revision and explicit current-actor review stamps. All-role active/inactive UPDATE probes preserve the row on refusal and a forged reviewer is rejected by the actual trigger; insert/provenance tests cover the initial state."
+    },
+    "clinic_app.interop_api_read": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_foreign_and_unknown_external_ids_return_the_identical_404"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "presented_token text, kek text, requested_resource text, selector uuid, window_start timestamp with time zone, window_end timestamp with time zone, after_start timestamp with time zone, after_key uuid, page_size integer",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_api_session": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_revocation_rotation_and_approver_authority_take_effect_immediately",
+        "test_scopes_bound_every_resource_and_malformed_tokens_are_identical"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.interop_api_read",
+          "clinic_app.interop_api_write"
+        ],
+        "signatures": [
+          {
+            "arguments": "presented_token text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_api_token": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_revocation_rotation_and_approver_authority_take_effect_immediately",
+        "test_token_endpoint_refuses_with_rfc6749_bodies"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_client uuid, presented_secret text, requested_scopes character varying[], issued_token text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_api_write": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_writes_require_idempotency_keys_and_replay_exactly"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "presented_token text, requested_operation text, idempotency_key text, request_digest text, selector uuid, parameters jsonb",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_authority": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_export_needs_org_wide_authority_and_stops_once_it_is_lost",
+        "test_revocation_rotation_and_approver_authority_take_effect_immediately"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.interop_api_session",
+          "clinic_app.interop_api_token",
+          "clinic_app.interop_expire_exports",
+          "clinic_app.interop_manager"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_org uuid, requested_actor uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_capture_event": {
+      "kind": "row_integrity",
+      "reason": "Todo 67 appointment capture trigger: records one immutable delivery and one action operation per active subscription whose client holds appointments:read; the send rechecks the approver.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_due_exports": {
+      "kind": "worker_protocol",
+      "reason": "Todo 67 bulk-queue sweep that lists requested export references (ids only) for re-dispatch; the build rechecks the requester's organization authority on every page.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_expire_exports": {
+      "kind": "worker_protocol",
+      "reason": "Todo 67 sweep that expires ready archives, fails builds whose requester lost organization authority or that are stale, and nulls their ciphertext; it never grants access.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_export_rows": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_export_needs_org_wide_authority_and_stops_once_it_is_lost"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_export_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_export uuid, requested_relation text, after_key text, page_size integer",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_guard": {
+      "kind": "row_integrity",
+      "reason": "Todo 67 retained-row trigger: refuses DELETE and TRUNCATE and admits only the closed client, secret, token, subscription and export transitions with exact revision increments.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_manage": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_export_needs_org_wide_authority_and_stops_once_it_is_lost",
+        "test_http_management_downloads_and_refuses_foreign_exports_alike"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_action text, requested_subject uuid, expected_revision integer, presented_secret text, parameters jsonb",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_manager": {
+      "kind": "domain_protocol",
+      "reason": "Todo 67 exact organization-wide administrator authority (configuration.organization on every clinic), approver recheck, bearer-token client state, scope, tenant and identical-denial protocol for the partner API, management and export resolvers.",
+      "probes": [
+        "test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [
+          "clinic_app.interop_apiclient:interop_manage_read",
+          "clinic_app.interop_apiwritereceipt:interop_manage_read",
+          "clinic_app.interop_organizationexport:interop_export_update",
+          "clinic_app.interop_organizationexport:interop_manage_read",
+          "clinic_app.interop_organizationexportpart:interop_manage_read",
+          "clinic_app.interop_organizationexportpart:interop_part_insert",
+          "clinic_app.interop_webhookattempt:interop_manage_read",
+          "clinic_app.interop_webhookdelivery:interop_manage_read",
+          "clinic_app.interop_webhooksubscription:interop_manage_read"
+        ],
+        "resolvers": [
+          "clinic_app.interop_export_rows",
+          "clinic_app.interop_manage"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_offboarding": {
+      "kind": "row_integrity",
+      "reason": "Todo 67 subscription lifecycle hook: offboarding revokes every client and webhook subscription of the organization in the same transaction.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_webhook_attempt": {
+      "kind": "worker_protocol",
+      "reason": "Todo 67 outbox send-path recorder: appends one attempt only while the action operation is in flight for its delivery; the worker holds no staff GUC and the row carries no URL, body or patient data.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "operation uuid, requested_outcome text, http_status integer",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_webhook_backoff": {
+      "kind": "row_integrity",
+      "reason": "Todo 67 outbox trigger that sets the retry not_before (1 to 60 minutes) when a webhook send returns to pending; it reads no authority.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_capture_invoice": {
+      "kind": "row_integrity",
+      "reason": "Todo 67 invoice capture trigger: records one immutable delivery and one action operation per active subscription whose client holds invoices.status:read, for issued invoices only; the send rechecks the approver.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
     }
   },
   "sql_method": [

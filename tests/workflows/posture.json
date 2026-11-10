@@ -1191,6 +1191,11 @@
       "UPDATE"
     ],
     [
+      "workflows_releasenoticetemplate",
+      "clinic_resolver",
+      "SELECT"
+    ],
+    [
       "workflows_task",
       "clinic_app",
       "INSERT"
@@ -1289,6 +1294,11 @@
       "workflows_taskcomment",
       "clinic_owner",
       "UPDATE"
+    ],
+    [
+      "workflows_taskcomment",
+      "clinic_resolver",
+      "SELECT"
     ],
     [
       "workflows_urgentconcern",

@@ -41,6 +41,20 @@ RECEPTION_TABLES = (
 )
 TRUNCATE_GUARDS = (
     *(
+        (f"interop_{table}", "interop_retained_truncate")
+        for table in (
+            "apiclient",
+            "apiclientsecret",
+            "apiaccesstoken",
+            "apiwritereceipt",
+            "webhooksubscription",
+            "webhookdelivery",
+            "webhookattempt",
+            "organizationexport",
+            "organizationexportpart",
+        )
+    ),
+    *(
         (f"crm_{table}", "crm_no_truncate")
         for table in (
             "referralsource",

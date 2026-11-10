@@ -57,6 +57,7 @@ BYPASS_PREFIXES: Final = (
     "/book/",  # Published clinic projection; booking revalidates patient context.
     "/orders/lab/callback/",  # Per-account raw-body HMAC before stored scope.
     "/comms/webhooks/",  # Per-account raw-body HMAC before stored scope.
+    "/api/v1/",  # Partner bearer token; every resolver re-validates its digest.
     "/waiting-display/",  # Device capability only; staff cookies grant nothing.
     "/static/",
     "/rt/",  # Ticket endpoint owns a short, independently authenticated txn.

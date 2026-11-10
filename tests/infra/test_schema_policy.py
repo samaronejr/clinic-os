@@ -10,6 +10,7 @@ from apps.identity.models import (
     UserClinicRole,
 )
 from apps.insurance.rls import TABLES as INSURANCE_TABLES
+from apps.interop.rls import CUSTOM_RLS_TABLES as INTEROP_CUSTOM_RLS_TABLES
 from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
@@ -80,6 +81,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "subscriptions_seat",
         "subscriptions_usageevent",
         "subscriptions_usagerollup",
+        # Task 67: exact FORCE-RLS, grants, policies, triggers: interop/posture.json.
+        *INTEROP_CUSTOM_RLS_TABLES,
         # Exact receipt-only policies and resolver-only writes: retention tests.
         "retention_artifactpurge",
         # Exact capture/consent/token policies: tests/scribe/test_posture.py.
