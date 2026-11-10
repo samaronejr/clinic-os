@@ -1,6 +1,4 @@
-"""Interop service entrypoints: governed data import (todo 66) and deferred RNDS."""
-
-from typing import NoReturn
+"""Interop service entrypoints: governed data import (todo 66) and RNDS (todo 68)."""
 
 from apps.interop.access import (
     ImportAccessDeniedError,
@@ -41,6 +39,7 @@ from apps.interop.records import (
     imported_attachment,
     imported_history,
 )
+from apps.interop.rnds import RndsReceipt, exchange_clinical_record
 from apps.interop.rollback import RollbackReceipt, rollback_import
 
 __all__ = (
@@ -59,6 +58,7 @@ __all__ = (
     "ImportedHistoryItem",
     "MappingSuggestion",
     "ReconciliationReport",
+    "RndsReceipt",
     "RollbackReceipt",
     "apply_mapping",
     "approve_import",
@@ -79,9 +79,3 @@ __all__ = (
     "suggest_mapping",
     "upload_import",
 )
-
-
-def exchange_clinical_record() -> NoReturn:
-    """Exchange a clinical record when the interop domain is implemented."""
-    message = "Phase >=1"
-    raise NotImplementedError(message)

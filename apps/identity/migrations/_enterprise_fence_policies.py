@@ -3157,6 +3157,17 @@ POLICIES: Final = (
         ),
     ),
     (
+        "interop_rndssubmission",
+        "interop_rnds_read",
+        "r",
+        (
+            "((organization_id = (NULLIF(current_setting('app.current_tenant'"
+            ", true), ''::text))::uuid) AND has_permission('result.read'::tex"
+            "t, clinic_id, enrollment_id))"
+        ),
+        None,
+    ),
+    (
         "interop_webhookattempt",
         "interop_manage_read",
         "r",

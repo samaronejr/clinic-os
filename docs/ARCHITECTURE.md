@@ -62,13 +62,10 @@ documents, synthetic signing, public verification). Each provider-backed slice
 uses a labelled synthetic adapter that refuses non-synthetic mode; real
 integration stays `waiting_external` on its task-6 capability record.
 
-Two service entrypoints remain deferred stubs that raise exactly
-`NotImplementedError("Phase >=1")`:
-
-| Deferred entrypoint | Reserved service boundary |
-| --- | --- |
-| `retention.apply_retention_policy` | automatic retention-policy destruction (no approved disposal policy) |
-| `interop.exchange_clinical_record` | clinical-record exchange (RNDS/SNCR preparation only) |
+No service entrypoint remains a deferred `NotImplementedError("Phase >=1")`
+stub. The last one, `interop.exchange_clinical_record`, now submits laboratory
+results to the RNDS homologation fixture leg behind EG-7 (todo 68,
+`apps/interop/README.md`).
 
 The `apps.core` package supplies the project shell, readiness, privacy headers,
 and health endpoints; it is not one of the 13 registered domain apps.

@@ -95,6 +95,7 @@ NEW_PURPOSES = [
     "transactional_messaging",
     "marketing",
     "research_model_improvement",
+    "rnds_exchange",
 ]
 
 
@@ -696,6 +697,9 @@ def test_purpose_labels_render_in_portuguese() -> None:
         ConsentPurpose.TRANSACTIONAL_MESSAGING: _("Transactional messaging"),
         ConsentPurpose.MARKETING: _("Marketing"),
         ConsentPurpose.RESEARCH_MODEL_IMPROVEMENT: _("Research and model improvement"),
+        ConsentPurpose.RNDS_EXCHANGE: _(
+            "Sharing results with the national health data network (RNDS)"
+        ),
     }
     expected_topics = {
         NoticeTopic.CARE_PROCESSING: _("Care data processing"),

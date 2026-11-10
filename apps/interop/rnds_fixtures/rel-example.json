@@ -1,0 +1,152 @@
+{
+  "source": {
+    "url": "https://rnds-guia.saude.gov.br/docs/publico-alvo/ti/homologar/",
+    "fetched": "2026-11-10",
+    "example_date": "2020-10-02",
+    "definitions_package": "unavailable: the zip linked from /docs/rnds/definicoes returned HTTP 404 on 2026-11-10",
+    "note": "Verbatim documentation example. The X sequences are the guide's own redactions of the patient, establishment and performer identifiers."
+  },
+  "bundle": {
+    "resourceType": "Bundle",
+    "id": "414357aa-af1e-4152-93df-8c2bd52fa0f2",
+    "type": "document",
+    "timestamp": "2020-10-02T11:57:31-03:00",
+    "meta": {
+      "lastUpdated": "2020-10-02T11:57:31-03:00"
+    },
+    "identifier": {
+      "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/BRRNDS-14008",
+      "value": "414357aa-af1e-4152-93df-8c2bd52fa0f2"
+    },
+    "entry": [
+      {
+        "fullUrl": "urn:uuid:transient-0",
+        "resource": {
+          "resourceType": "Composition",
+          "meta": {
+            "profile": [
+              "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRResultadoExameLaboratorial-1.1"
+            ]
+          },
+          "status": "final",
+          "type": {
+            "coding": [
+              {
+                "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento",
+                "code": "REL"
+              }
+            ]
+          },
+          "subject": {
+            "identifier": {
+              "system": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRIndividuo-1.0",
+              "value": "XXXXXXXXXXXXX"
+            }
+          },
+          "date": "2020-09-29T10:59:53-03:00",
+          "author": [
+            {
+              "identifier": {
+                "system": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstabelecimentoSaude-1.0",
+                "value": "XXXXXXXX"
+              }
+            }
+          ],
+          "title": "Resultado de Exame Laboratorial",
+          "section": [
+            {
+              "entry": [
+                {
+                  "reference": "urn:uuid:transient-1"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "fullUrl": "urn:uuid:transient-1",
+        "resource": {
+          "resourceType": "Observation",
+          "meta": {
+            "profile": [
+              "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRDiagnosticoLaboratorioClinico-1.0"
+            ]
+          },
+          "status": "final",
+          "category": [
+            {
+              "coding": [
+                {
+                  "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRSubgrupoTabelaSUS",
+                  "code": "0214"
+                }
+              ]
+            }
+          ],
+          "code": {
+            "coding": [
+              {
+                "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRNomeExameLOINC",
+                "code": "94507-1"
+              }
+            ]
+          },
+          "subject": {
+            "identifier": {
+              "system": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRIndividuo-1.0",
+              "value": "XXXXXXXXXXX"
+            }
+          },
+          "issued": "2020-03-23T10:30:12.947-02:00",
+          "performer": [
+            {
+              "identifier": {
+                "system": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRPessoaJuridicaProfissionalLiberal-1.0",
+                "value": "XXXXXXXXXXX"
+              }
+            }
+          ],
+          "valueCodeableConcept": {
+            "coding": [
+              {
+                "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRResultadoQualitativoExame",
+                "code": "1"
+              }
+            ]
+          },
+          "method": {
+            "text": "Imunocromatográfico"
+          },
+          "referenceRange": [
+            {
+              "text": "(1) Detectável = presença de anticorpos; (2) Não detectável = ausência de anticorpos"
+            }
+          ],
+          "specimen": {
+            "reference": "urn:uuid:transient-2"
+          }
+        }
+      },
+      {
+        "fullUrl": "urn:uuid:transient-2",
+        "resource": {
+          "resourceType": "Specimen",
+          "meta": {
+            "profile": [
+              "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRAmostraBiologica-1.0"
+            ]
+          },
+          "type": {
+            "coding": [
+              {
+                "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoAmostraGAL",
+                "code": "SGHEM"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

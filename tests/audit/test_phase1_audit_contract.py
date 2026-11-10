@@ -65,6 +65,15 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "interop.organization_export",
         "downloaded",
     ),
+    **{
+        f"interop.rnds_submission.{verb}": (
+            "tenant",
+            "clinic-os-web",
+            "interop.rnds_submission",
+            verb,
+        )
+        for verb in ("requested", "accepted", "rejected")
+    },
     "billing.psp.policy": ("tenant", "clinic-os-web", "billing.psp", "policy"),
     "billing.psp.prepared": ("tenant", "clinic-os-web", "billing.psp", "prepared"),
     "billing.psp.evidence": ("tenant", "clinic-os-web", "billing.psp", "evidence"),

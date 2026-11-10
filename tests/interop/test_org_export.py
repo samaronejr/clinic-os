@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import re
+import sys
 import zipfile
 from datetime import date, timedelta
 from functools import partial
@@ -26,7 +27,12 @@ from apps.intake.services import create_patient
 from apps.interop import export_builder, tasks
 from apps.interop.errors import InteropAccessDeniedError
 from apps.interop.export_builder import build_organization_export, neutralize
-from apps.interop.export_registry import EXCLUSION_REASONS, FORMAT, datasets
+from apps.interop.export_registry import (
+    EXCLUDED,
+    EXCLUSION_REASONS,
+    FORMAT,
+    datasets,
+)
 from apps.interop.management import (
     create_client,
     download_export_part,
@@ -125,6 +131,12 @@ STAFF_COLUMNS = {
 EXPORTED = [entry[0] for entry in EXPORT_V3]
 IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
 ENTERPRISE_RELATIONS = set(ENTERPRISE_TABLES)
+# The lane's frozen baseline export version and the relations created after it
+# froze. The exemption ends with that version: the forward version must classify
+# them at merge (todo 68 gate review B2-R2), and no frozen version gains them.
+AWAITING_EXPORT_VERSION = {
+    "clinic-organization-export-v1": frozenset({"interop_rndssubmission"}),
+}
 
 
 @pytest.fixture
@@ -267,11 +279,19 @@ def _manage(
 
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
-    assert len(EXPORTED) == len(set(EXPORTED))
-    assert set(EXPORTED).isdisjoint(EXCLUDED_V3)
-    assert set(EXPORTED) | set(EXCLUDED_V3) == set(restore_contract.DOMAIN_RELATIONS)
+    # The registry's current version, not a frozen one by name.
+    awaiting = AWAITING_EXPORT_VERSION.get(FORMAT, frozenset())
+    exported = [dataset.relation for dataset in datasets()]
+    assert len(exported) == len(set(exported))
+    assert set(exported).isdisjoint(EXCLUDED)
+    classified = set(exported) | set(EXCLUDED)
+    assert classified.isdisjoint(awaiting)
+    domain = set(restore_contract.DOMAIN_RELATIONS)
+    unclassified = sorted(domain - classified - awaiting)
+    assert not unclassified, f"{FORMAT} leaves unclassified: {unclassified}"
+    assert classified | awaiting <= domain
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
-    assert set(EXCLUDED_V3.values()) <= set(EXCLUSION_REASONS)
+    assert set(EXCLUDED.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
     for relation, key, _kind, omitted, scope in EXPORT_V3:
@@ -312,6 +332,18 @@ def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -
     assert _export_v3_sql.FORWARD.count("requested_relation='") == len(EXPORT_V3)
     assert _export_v3_sql.REVERSE == _export_v2_sql.FORWARD
     assert "GRANT SELECT ON" not in _export_v3_sql.FORWARD
+
+
+def test_a_forward_export_version_must_classify_every_awaiting_relation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Gate review B2-R2: the exemption ends with the lane's baseline version, so
+    # a forward version that leaves the relation unclassified fails the partition.
+    monkeypatch.setattr(
+        sys.modules[__name__], "FORMAT", "clinic-organization-export-v2"
+    )
+    with pytest.raises(AssertionError, match="interop_rndssubmission"):
+        test_export_registry_partitions_every_recovery_relation()
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:

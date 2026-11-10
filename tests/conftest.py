@@ -60,6 +60,7 @@ TRUNCATE_GUARDS = (
             "organizationexportpart",
         )
     ),
+    ("interop_rndssubmission", "interop_rnds_retained_truncate"),
     *(
         (f"crm_{table}", "crm_no_truncate")
         for table in (

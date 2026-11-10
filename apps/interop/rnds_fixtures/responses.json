@@ -1,0 +1,98 @@
+{
+  "source": {
+    "errors": "https://rnds-guia.saude.gov.br/docs/publico-alvo/ti/erros/",
+    "homologation": "https://rnds-guia.saude.gov.br/docs/publico-alvo/ti/homologar/",
+    "fetched": "2026-11-10",
+    "note": "Bodies are the guide's documented examples. Where the guide gives no HTTP status, status_documented is false and the recorded status is an assumption."
+  },
+  "token": {
+    "status": 200,
+    "status_documented": false,
+    "body": {
+      "access_token": "fixture-access-token",
+      "scope": "read write",
+      "token_type": "jwt",
+      "expires_in": 1800000
+    },
+    "note": "Documented body shape; the guide shows a placeholder sentence, replaced here by a fixture value. expires_in is milliseconds (30 minutes)."
+  },
+  "accepted": {
+    "status": 201,
+    "status_documented": false,
+    "location_prefix": "https://ehr-services.hmg.saude.gov.br/api/fhir/r4/Bundle/",
+    "example_identifier": "eb4fc099-e5e2-4895-9d3b-23a6de2d7324-r3x7",
+    "note": "The guide shows the identifier after the last '/' of the content-location and location headers and omits their prefix; the prefix here is the homologation EHR host."
+  },
+  "outcomes": {
+    "EHR-ERR866": {
+      "status": 422,
+      "status_documented": true,
+      "body": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "processing",
+            "diagnostics": "(EHR-ERR866) O identifier informado já foi utilizado para cadastrar outro documento e não pode ser repetido."
+          }
+        ]
+      }
+    },
+    "EHR-ERR881": {
+      "status": 403,
+      "status_documented": false,
+      "body": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "security",
+            "diagnostics": "(EHR-ERR881) Você não possui autorização para utilizar esse sistema de origem: http://www.saude.gov.br/fhir/r4/NamingSystem/BRRNDS-qualquer"
+          }
+        ]
+      }
+    },
+    "EHR-ERR882": {
+      "status": 401,
+      "status_documented": true,
+      "body": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "security",
+            "diagnostics": "(EHR-ERR882) O token de certificado usado para autorizar o acesso não é válido. JWT expired at 2020-08-19T23:54:28Z. Current time: 2020-08-20T11:00:27Z, a difference of 39959356 milliseconds.  Allowed clock skew: 0 milliseconds."
+          }
+        ]
+      }
+    },
+    "EHR-ERR906": {
+      "status": 403,
+      "status_documented": false,
+      "body": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "security",
+            "diagnostics": "(EHR-ERR906) Profissional CNS <numero aqui> não autorizado, pois não possui vínculo CBO autorizado em nenhum dos estabelecimentos autorizados para a credencial <numero aqui>."
+          }
+        ]
+      }
+    },
+    "EHR-ERR924": {
+      "status": 422,
+      "status_documented": true,
+      "body": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "processing",
+            "diagnostics": "(EHR-ERR924) Ao enviar um documento é obrigatório utilizar o status: final"
+          }
+        ]
+      }
+    }
+  }
+}

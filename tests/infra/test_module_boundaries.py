@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from inspect import Parameter, signature
-from typing import Final, NoReturn
+from typing import Final
 
 import pytest
 from apps.ai import (
@@ -62,6 +62,7 @@ from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop import services as interop_services
+from apps.interop.rnds_gate import require_rnds_homologation
 from apps.interop.services import exchange_clinical_record
 from apps.inventory import services as inventory_services
 from apps.orders import services as order_services
@@ -204,9 +205,6 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.insurance.apps.InsuranceConfig",
         "apps.website.apps.WebsiteConfig",
     }
-)
-DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    exchange_clinical_record,
 )
 
 
@@ -1028,21 +1026,22 @@ def test_domain_app_configs_are_registered() -> None:
 
 
 @pytest.mark.parametrize(
-    "entrypoint",
-    DEFERRED_SERVICE_ENTRYPOINTS,
-    ids=("interop.exchange_clinical_record",),
+    ("entrypoint", "names"),
+    [
+        (
+            exchange_clinical_record,
+            ["clinic_id", "result_version_id", "exam", "command_id"],
+        ),
+        (require_rnds_homologation, ["clinic_id"]),
+    ],
 )
-def test_deferred_service_entrypoint_raises_phase_boundary(
-    entrypoint: Callable[[], NoReturn],
+def test_rnds_exchange_keeps_explicit_clinic_scope_and_no_caller_authority(
+    entrypoint: Callable[..., object], names: list[str]
 ) -> None:
-    # Given: a public service entrypoint for a deferred domain
-    # When: the entrypoint is called before Phase >=1
-    with pytest.raises(NotImplementedError) as exc_info:
-        entrypoint()
-
-    # Then: it fails with the exact shared phase-boundary exception
-    assert type(exc_info.value) is NotImplementedError
-    assert exc_info.value.args == ("Phase >=1",)
+    # No deferred stub remains: the last one, RNDS exchange, is implemented.
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_prescription_draft_requires_explicit_encounter_patient_issuer_category() -> (

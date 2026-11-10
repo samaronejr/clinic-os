@@ -333,6 +333,9 @@ DOMAIN_RELATIONS: Final = (
     "interop_webhookattempt",
     "interop_organizationexport",
     "interop_organizationexportpart",
+    # RNDS laboratory-result submissions (plan 68): the retained submission log;
+    # populated rollback is restore.
+    "interop_rndssubmission",
     # Enterprise identity (plan 65): directory, federation, grants and governance
     # history; additive, populated rollback is restore.
     "identity_ssoconnection",

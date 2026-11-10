@@ -1,10 +1,12 @@
 """Exact interop posture; the migrated catalog must prove every declaration.
 
-Governed-import tables (``migrations/_import_sql.py``) and partner and export
-tables (``migrations/_interop_sql.py``) carry bespoke FORCE-RLS policies; only
-the import hide markers use the shared ``tenant_isolation`` policy. Partner
-secret digests and access tokens are resolver-only: the runtime role holds no
-privilege on them at all.
+Governed-import tables (``migrations/_import_sql.py``), partner and export
+tables (``migrations/_interop_sql.py``) and RNDS submissions
+(``migrations/_rnds_sql.py``) carry bespoke FORCE-RLS policies; only the import
+hide markers use the shared ``tenant_isolation`` policy. Partner secret digests
+and access tokens are resolver-only: the runtime role holds no privilege on them
+at all. RNDS submissions are resolver-written; the runtime only reads them under
+``result.read``.
 """
 
 from typing import Final
@@ -36,7 +38,11 @@ PARTNER_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "interop_organizationexportpart",
     }
 )
-CUSTOM_RLS_TABLES: Final[frozenset[str]] = IMPORT_RLS_TABLES | PARTNER_RLS_TABLES
+# RNDS submissions carry their own read policy and guard (_rnds_sql.py).
+RNDS_RLS_TABLES: Final[frozenset[str]] = frozenset({"interop_rndssubmission"})
+CUSTOM_RLS_TABLES: Final[frozenset[str]] = (
+    IMPORT_RLS_TABLES | PARTNER_RLS_TABLES | RNDS_RLS_TABLES
+)
 # Hide markers hold only identifiers and must be readable by every tenant role:
 # the restrictive intake visibility policies consult them for every reader.
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
@@ -63,6 +69,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "interop_webhookattempt": frozenset({"SELECT"}),
     "interop_organizationexport": frozenset({"SELECT"}),
     "interop_organizationexportpart": frozenset({"SELECT", "INSERT"}),
+    "interop_rndssubmission": frozenset({"SELECT"}),
 }
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {

@@ -335,6 +335,54 @@
       "interop_webhooksubscription",
       "state",
       "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "answer_code",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "capability_version_id",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "command_id",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "decided_at",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "requested_by_id",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "revision",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "rnds_identifier",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "state",
+      "UPDATE"
     ]
   ],
   "functions": [
@@ -746,6 +794,68 @@
         "clinic_resolver"
       ],
       false
+    ],
+    [
+      "interop_rnds_guard",
+      "",
+      "trigger",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_resolver"
+      ],
+      false
+    ],
+    [
+      "interop_rnds_request",
+      "requested_clinic uuid, requested_submission uuid, requested_version uuid, requested_command uuid, requested_digest text, requested_capability uuid, sealed_bundle bytea, bundle_digest text",
+      "TABLE(record_id uuid, outcome text, payload_digest text)",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
+      "interop_rnds_settle",
+      "operation uuid, requested_outcome text, requested_identifier text, requested_code text",
+      "uuid",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
+      "interop_rnds_undelivered",
+      "",
+      "trigger",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_resolver"
+      ],
+      false
     ]
   ],
   "policies": [
@@ -1067,6 +1177,17 @@
       "SELECT",
       "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
+    ],
+    [
+      "interop_rndssubmission",
+      "interop_rnds_read",
+      "PERMISSIVE",
+      [
+        "public"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('result.read'::text, clinic_id, enrollment_id))",
+      null
     ]
   ],
   "table_grants": [
@@ -1379,6 +1500,21 @@
       "clinic_resolver",
       "workflows_taskcomment",
       "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_rndssubmission",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "INSERT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "SELECT"
     ]
   ],
   "tables": [
@@ -1474,6 +1610,12 @@
     ],
     [
       "interop_webhooksubscription",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_rndssubmission",
       "clinic_owner",
       true,
       true
@@ -1659,6 +1801,21 @@
       "subscriptions_subscription",
       "interop_offboarding",
       "CREATE TRIGGER interop_offboarding AFTER UPDATE OF state ON clinic_app.subscriptions_subscription FOR EACH ROW WHEN ((((new.state)::text = 'offboarded'::text) AND ((old.state)::text IS DISTINCT FROM 'offboarded'::text))) EXECUTE FUNCTION interop_offboarding()"
+    ],
+    [
+      "comms_integrationoperation",
+      "interop_rnds_undelivered",
+      "CREATE TRIGGER interop_rnds_undelivered AFTER UPDATE OF status ON clinic_app.comms_integrationoperation FOR EACH ROW WHEN ((((new.subject_type)::text = 'interop.rnds_submission'::text) AND ((new.status)::text = ANY ((ARRAY['failed'::character varying, 'cancelled'::character varying])::text[])) AND ((old.status)::text IS DISTINCT FROM (new.status)::text))) EXECUTE FUNCTION interop_rnds_undelivered()"
+    ],
+    [
+      "interop_rndssubmission",
+      "interop_rnds_guard",
+      "CREATE TRIGGER interop_rnds_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_rndssubmission FOR EACH ROW EXECUTE FUNCTION interop_rnds_guard()"
+    ],
+    [
+      "interop_rndssubmission",
+      "interop_rnds_retained_truncate",
+      "CREATE TRIGGER interop_rnds_retained_truncate BEFORE TRUNCATE ON clinic_app.interop_rndssubmission FOR EACH STATEMENT EXECUTE FUNCTION interop_rnds_guard()"
     ]
   ]
 }

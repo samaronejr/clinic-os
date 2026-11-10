@@ -60,6 +60,7 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
                 "api_client": ("created", "rotated", "revoked"),
                 "webhook_subscription": ("revoked",),
                 "organization_export": ("requested", "ready", "failed", "downloaded"),
+                "rnds_submission": ("requested", "accepted", "rejected"),
             }.items()
             for verb in verbs
         },

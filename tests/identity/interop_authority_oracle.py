@@ -1,4 +1,4 @@
-"""Executed certificates for todo 66's import and todo 67's partner boundaries."""
+"""Executed certificates for the import (66), partner (67) and RNDS (68) boundaries."""
 
 from __future__ import annotations
 
@@ -6,15 +6,19 @@ import secrets
 from functools import partial
 from typing import TYPE_CHECKING
 
+from apps.core import integration
 from apps.interop import ratelimit, tasks
+from apps.interop.rnds_transport import FIXTURE_TRANSPORT
 from apps.interop.webhook_transport import SYNTHETIC_TRANSPORT
 from django.test import override_settings
+from pytest_django.fixtures import SettingsWrapper
 
 from interop import (
     test_authority,
     test_external_api,
     test_import,
     test_org_export,
+    test_rnds_adapter,
     test_sources,
     test_webhooks,
 )
@@ -23,6 +27,7 @@ from interop.support import PLATFORM_SECRETS, LocalBucket
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+    from uuid import UUID
 
     import pytest
 
@@ -46,6 +51,10 @@ REDISPATCH = test_org_export.test_lost_handoffs_are_redispatched_by_reference_on
 MISSING = test_org_export.test_missing_attachment_bytes_fail_the_export_without_parts
 AUTHORITY = (
     test_org_export.test_export_needs_org_wide_authority_and_stops_once_it_is_lost
+)
+RNDS_CASES = (
+    test_rnds_adapter.test_fixture_submission_is_sealed_sent_and_accepted,
+    test_rnds_adapter.test_unknown_foreign_and_unauthorized_records_are_denied_alike,
 )
 
 
@@ -120,6 +129,25 @@ def _delivered(
         SYNTHETIC_TRANSPORT.reset()
 
 
+def _rnds(
+    case: Callable[[RbacGraph, SettingsWrapper, list[UUID], str], None],
+    subject: RbacGraph,
+    patch: pytest.MonkeyPatch,
+    database_url: str,
+) -> None:
+    """Run one RNDS oracle with its own settings, outbox capture and fixture."""
+    dispatched: list[UUID] = []
+    wrapper = SettingsWrapper()
+    FIXTURE_TRANSPORT.reset()
+    try:
+        with patch.context() as local:
+            local.setattr(integration, "_dispatch", dispatched.append)
+            case(subject, wrapper, dispatched, database_url)
+    finally:
+        wrapper.finalize()
+        FIXTURE_TRANSPORT.reset()
+
+
 def run_interop_census(
     proofs: ExecutedProofs,
     graph: Callable[..., RbacGraph],
@@ -168,3 +196,8 @@ def run_interop_census(
                 AUTHORITY.__name__,
                 partial(AUTHORITY, graph(), sent, database_url, revoking),
             )
+    for rnds_case in RNDS_CASES:
+        proofs.run(
+            rnds_case.__name__,
+            partial(_rnds, rnds_case, graph(), patch, database_url),
+        )

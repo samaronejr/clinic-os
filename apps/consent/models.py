@@ -24,6 +24,10 @@ class ConsentPurpose(models.TextChoices):
         "research_model_improvement",
         _("Research and model improvement"),
     )
+    RNDS_EXCHANGE = (
+        "rnds_exchange",
+        _("Sharing results with the national health data network (RNDS)"),
+    )
 
 
 class NoticeTopic(models.TextChoices):

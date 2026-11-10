@@ -310,6 +310,7 @@ def test_live_preflight_rejects_each_missing_capability(
         ({"BILLING_SYNTHETIC_PIX": "1"}, "synthetic-only"),
         ({"BILLING_SYNTHETIC_PSP": "1"}, "synthetic-only"),
         ({"BILLING_PSP_FIXTURE_SECRET": "synthetic-fixture"}, "synthetic-only"),
+        ({"INTEROP_RNDS_HOMOLOGATION": "true"}, "synthetic-only"),
         ({"CELERY_TASK_ALWAYS_EAGER": "true"}, "synthetic-only"),
         ({"DEBUG": "true"}, "DEBUG"),
         (

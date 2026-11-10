@@ -1,8 +1,9 @@
 """The partner and export schema reverses only without history, exactly.
 
 The governed import schema (``interop.0001``) is irreversible; the partner and
-export schema that follows it (``interop.0002``) reverses on an unused database
-to exactly the catalog before it and reapplies to exactly the catalog after it.
+export schema that follows it (``interop.0002``), with the RNDS submission log
+after it (``interop.0004``), reverses on an unused database to exactly the
+catalog before it and reapplies to exactly the catalog after it.
 Identity 0051 follows every app's leaf (its staff-context fence must see every
 policy), so it is unapplied first and the catalog without it is the baseline.
 """
@@ -13,7 +14,8 @@ import re
 from typing import TYPE_CHECKING
 
 import pytest
-from apps.interop.migrations import _export_sql, _interop_sql
+from apps.interop.migrations import _export_sql, _interop_sql, _rnds_sql
+from apps.interop.rls import RNDS_RLS_TABLES
 from django.db import DatabaseError, connection
 from django.db.migrations.executor import MigrationExecutor
 
@@ -29,14 +31,16 @@ pytestmark = pytest.mark.django_db(transaction=True)
 IMPORT_SCHEMA = ("interop", "0001_import_framework")
 PARTNER_SCHEMA = ("interop", "0002_external_api_export")
 BEFORE_ENTERPRISE = ("identity", "0050_totp_secret_boundary")
-# Every table, function and trigger the partner and export schema creates.
-_SQL = _interop_sql.SQL + _export_sql.SQL
+# Every table, function and trigger the partner and export schema and the RNDS
+# submission log create; reversing to the import schema removes both.
+_SQL = _interop_sql.SQL + _export_sql.SQL + _rnds_sql.SQL
 PARTNER_OBJECTS = re.compile(
     r"\b(?:"
     + "|".join(
         sorted(
             {
                 *_interop_sql.TABLES,
+                *RNDS_RLS_TABLES,
                 *re.findall(r"CREATE FUNCTION clinic_app\.(\w+)", _SQL),
                 *re.findall(r"CREATE TRIGGER (\w+)", _SQL),
             }
@@ -121,8 +125,8 @@ def test_unused_interop_schema_reverses_and_reapplies_to_the_exact_catalog() -> 
             for row in rows
             if PARTNER_OBJECTS.search(repr(row))
         ]
-        # Exactly the catalog before 0002: everything else, including the import
-        # schema's resolver grants on the same comms and intake tables, stays.
+        # Exactly the catalog before 0002 and 0004: everything else, including the
+        # import schema's resolver grants on the same comms and intake tables, stays.
         expected = _without_partner_objects(baseline)
         expected["table_grants"] = [
             row

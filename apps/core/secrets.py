@@ -9,6 +9,9 @@ material, access fails closed with ``SecretUnavailableError``.
 ``synthetic-file`` is the only implemented backend. It reads one hex-encoded
 secret per file from a root owned by the deploying operator and is the
 rehearsal stand-in for the approved managed store; it is never a default.
+Binary credentials that cannot be hex secrets, such as an ICP-Brasil PKCS#12
+bundle and its passphrase, are ``<name>.credential`` files in the same root
+under the same owner-only rules, read through ``credential_store``.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from django.conf import settings
 
 _SECRET_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+_CREDENTIAL_MAX_BYTES = 65536
 
 
 class SecretUnavailableError(Exception):
@@ -41,6 +45,14 @@ class SecretStore(Protocol):
         ...
 
 
+class CredentialStore(Protocol):
+    """One named binary credential lookup; never logged, echoed or persisted."""
+
+    def get_credential(self, name: str) -> bytes:
+        """Return the credential bytes or raise SecretUnavailableError."""
+        ...
+
+
 class FileSecretStore:
     """Synthetic file backend: one ``<name>.secret`` file per secret.
 
@@ -55,11 +67,11 @@ class FileSecretStore:
             raise SecretUnavailableError
         self._root = Path(root)
 
-    def get_secret(self, name: str) -> str:
-        """Return the file's hex secret after strict shape checks."""
+    def _owner_only_file(self, name: str, suffix: str) -> Path:
+        """Return the named regular owner-only file, or fail closed."""
         if type(name) is not str or not _SECRET_NAME.fullmatch(name):
             raise SecretUnavailableError
-        path = self._root / f"{name}.secret"
+        path = self._root / f"{name}{suffix}"
         try:
             info = os.lstat(path)
         except OSError as error:
@@ -68,6 +80,24 @@ class FileSecretStore:
             raise SecretUnavailableError
         if info.st_mode & 0o777 not in (0o600, 0o400):
             raise SecretUnavailableError
+        if suffix == ".credential" and not 1 <= info.st_size <= _CREDENTIAL_MAX_BYTES:
+            raise SecretUnavailableError
+        return path
+
+    def get_credential(self, name: str) -> bytes:
+        """Return one ``<name>.credential`` file's exact bytes (at most 64 KiB)."""
+        path = self._owner_only_file(name, ".credential")
+        try:
+            value = path.read_bytes()
+        except OSError as error:
+            raise SecretUnavailableError from error
+        if not 1 <= len(value) <= _CREDENTIAL_MAX_BYTES:
+            raise SecretUnavailableError
+        return value
+
+    def get_secret(self, name: str) -> str:
+        """Return the file's hex secret after strict shape checks."""
+        path = self._owner_only_file(name, ".secret")
         try:
             with path.open(encoding="ascii") as handle:
                 value = handle.read().strip()
@@ -95,4 +125,12 @@ def secret_store() -> SecretStore:
         if type(root) is not str or not root:
             raise SecretUnavailableError
         return FileSecretStore(root)
+    raise SecretUnavailableError
+
+
+def credential_store() -> CredentialStore:
+    """Resolve the configured backend's binary credential surface or fail closed."""
+    store = secret_store()
+    if isinstance(store, FileSecretStore):
+        return store
     raise SecretUnavailableError
