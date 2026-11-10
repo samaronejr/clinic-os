@@ -757,7 +757,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -768,7 +768,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -779,8 +779,8 @@
         "public"
       ],
       "ALL",
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "interop_importbatch",
@@ -791,7 +791,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importbatch",
@@ -812,7 +812,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())",
       null
     ],
     [
@@ -823,8 +823,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importedrecord",
@@ -835,7 +835,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importedrecord",
@@ -856,7 +856,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR interop_record_visible(job_id, clinic_id, enrollment_id)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR interop_record_visible(job_id, clinic_id, enrollment_id)) AND enterprise_staff_context())",
       null
     ],
     [
@@ -868,7 +868,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importfile",
@@ -889,7 +889,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR (EXISTS ( SELECT 1\n   FROM interop_importedrecord r\n  WHERE ((r.file_id = interop_importfile.id) AND interop_record_visible(r.job_id, r.clinic_id, r.enrollment_id))))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR (EXISTS ( SELECT 1\n   FROM interop_importedrecord r\n  WHERE ((r.file_id = interop_importfile.id) AND interop_record_visible(r.job_id, r.clinic_id, r.enrollment_id))))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -901,7 +901,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importjob",
@@ -922,7 +922,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())",
       null
     ],
     [
@@ -934,7 +934,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importmapping",
@@ -955,7 +955,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())",
       null
     ],
     [
@@ -967,7 +967,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())"
     ],
     [
       "interop_importtransition",
@@ -988,7 +988,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id) AND enterprise_staff_context())",
       null
     ],
     [
@@ -999,8 +999,8 @@
         "public"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())"
     ],
     [
       "interop_organizationexport",
@@ -1010,7 +1010,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -1021,7 +1021,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -1033,7 +1033,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())"
     ],
     [
       "interop_webhookattempt",
@@ -1043,7 +1043,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -1054,7 +1054,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ],
     [
@@ -1065,7 +1065,7 @@
         "public"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())",
       null
     ]
   ],

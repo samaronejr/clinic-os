@@ -4822,6 +4822,7 @@
       "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.interop_import_visibility",
       "policy:intake_patientclinicenrollment.tenant_isolation"
     ]
   },
@@ -19869,6 +19870,7 @@
       "policy:identity_unitgovernancechange.enterprise_owner",
       "policy:identity_unitgovernancechange.enterprise_read",
       "policy:identity_userclinicrole.tenant_isolation",
+      "policy:intake_patientclinicenrollment.interop_import_visibility",
       "policy:intake_patientclinicenrollment.tenant_isolation",
       "policy:workflows_task.workflow_insert",
       "policy:workflows_task.workflow_owner",
@@ -32766,6 +32768,7 @@
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_enrollment_id_67a40fb6_fk_intake_pa",
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_job_id_fc62534a_fk_interop_i",
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_organization_id_dad4dbc4_fk_identity_",
+      "function:clinic_app.enterprise_staff_context()",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
       "policy:interop_hiddenenrollment.tenant_isolation",
       "trigger:interop_hiddenenrollment.interop_guard"
@@ -32848,6 +32851,7 @@
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_enrollment_id_67a40fb6_fk_intake_pa",
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_job_id_fc62534a_fk_interop_i",
       "constraint:interop_hiddenenrollment.interop_hiddenenroll_organization_id_dad4dbc4_fk_identity_",
+      "function:clinic_app.enterprise_staff_context()",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
       "policy:interop_hiddenenrollment.tenant_isolation",
       "trigger:interop_hiddenenrollment.interop_guard"
@@ -33009,6 +33013,7 @@
   "policy:interop_apiclient.interop_manage_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33019,6 +33024,7 @@
   "policy:interop_hiddenenrollment.tenant_isolation": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.texteq(text, text)",
@@ -33028,6 +33034,7 @@
   "policy:interop_importbatch.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33047,6 +33054,7 @@
   "policy:interop_importbatch.interop_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33057,6 +33065,7 @@
   "policy:interop_importbatch.interop_update": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33067,6 +33076,7 @@
   "policy:interop_importedrecord.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33086,6 +33096,7 @@
   "policy:interop_importedrecord.interop_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:clinic_app.interop_record_visible(uuid, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
@@ -33097,6 +33108,7 @@
   "policy:interop_importfile.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33126,6 +33138,7 @@
       "constraint:interop_importedrecord.interop_importedrecord_patient_id_d28dc72b_fk_intake_patient_id",
       "constraint:interop_importedrecord.interop_importedrecord_row_number_check",
       "constraint:interop_importedrecord.interop_record_values",
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:clinic_app.interop_record_visible(uuid, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
@@ -33141,6 +33154,7 @@
   "policy:interop_importjob.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33160,6 +33174,7 @@
   "policy:interop_importjob.interop_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33170,6 +33185,7 @@
   "policy:interop_importmapping.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33189,6 +33205,7 @@
   "policy:interop_importmapping.interop_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33199,6 +33216,7 @@
   "policy:interop_importtransition.interop_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33218,6 +33236,7 @@
   "policy:interop_importtransition.interop_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_allowed(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33228,6 +33247,7 @@
   "policy:interop_organizationexport.interop_export_update": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33238,6 +33258,7 @@
   "policy:interop_organizationexport.interop_manage_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33248,6 +33269,7 @@
   "policy:interop_organizationexportpart.interop_manage_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33258,6 +33280,7 @@
   "policy:interop_organizationexportpart.interop_part_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33268,6 +33291,7 @@
   "policy:interop_webhookdelivery.interop_manage_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -33278,6 +33302,7 @@
   "policy:interop_webhooksubscription.interop_manage_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.interop_manager(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
