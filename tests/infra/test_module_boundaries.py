@@ -61,6 +61,7 @@ from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
+from apps.interop import services as interop_services
 from apps.interop.services import exchange_clinical_record
 from apps.inventory import services as inventory_services
 from apps.orders import services as order_services
@@ -378,6 +379,76 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     ],
 )
 def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert {
+        name: p.default
+        for name, p in parameters.items()
+        if p.default is not Parameter.empty
+    } == defaults
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            interop_services.upload_import,
+            ["clinic_id", "source_kind", "data", "declared_sha256", "idempotency_key"],
+            {},
+        ),
+        (
+            interop_services.profile_import,
+            ["clinic_id", "job_id", "expected_sequence"],
+            {},
+        ),
+        (interop_services.suggest_mapping, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.save_mapping,
+            ["clinic_id", "code", "document", "suggested"],
+            {"suggested": False},
+        ),
+        (
+            interop_services.apply_mapping,
+            ["clinic_id", "job_id", "mapping_id", "expected_sequence"],
+            {},
+        ),
+        (
+            interop_services.dry_run_import,
+            ["clinic_id", "job_id", "expected_sequence"],
+            {},
+        ),
+        (interop_services.dry_run_report, ["clinic_id", "job_id"], {}),
+        (interop_services.export_import_report, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.approve_import,
+            ["clinic_id", "job_id", "expected_sequence", "plan"],
+            {},
+        ),
+        (
+            interop_services.commit_import,
+            ["clinic_id", "job_id", "expected_sequence", "session_key"],
+            {},
+        ),
+        (interop_services.run_batch, ["clinic_id", "batch_id"], {}),
+        (interop_services.reconciliation_report, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.rollback_import,
+            ["clinic_id", "job_id", "expected_sequence", "reason", "session_key"],
+            {},
+        ),
+        (interop_services.import_job, ["clinic_id", "job_id"], {}),
+        (interop_services.import_jobs, ["clinic_id"], {}),
+        (interop_services.imported_history, ["clinic_id", "enrollment_id"], {}),
+        (interop_services.imported_attachment, ["clinic_id", "record_id"], {}),
+    ],
+)
+def test_import_services_keep_exact_scoped_keyword_only_boundaries(
     entrypoint: Callable[..., object],
     names: list[str],
     defaults: dict[str, object],

@@ -57,6 +57,8 @@ from identity.test_permission_parity import (
 from identity.test_reception_sql_principal import test_reception_display_device_contract
 from insurance.sql_oracles import CASES as INSURANCE_CASES
 from insurance.sql_oracles import SQL_PROTOCOL_ORACLES as INSURANCE_PROTOCOLS
+from interop.sql_oracles import CASES as INTEROP_CASES
+from interop.sql_oracles import SQL_PROTOCOL_ORACLES as INTEROP_PROTOCOLS
 from orders import test_patient_downloads
 from orders.sql_oracles import CASES as ORDERS_CASES
 from orders.sql_oracles import SQL_PROTOCOL_ORACLES as ORDERS_PROTOCOLS
@@ -515,6 +517,7 @@ PROTOCOL_ORACLES = {
     ],
     **ORDERS_PROTOCOLS,
     **INVENTORY_SQL_ORACLES,
+    **{name: list(cases) for name, cases in INTEROP_PROTOCOLS.items()},
     **BILLING_PROTOCOLS,
     **FISCAL_PROTOCOLS,
     **INSURANCE_PROTOCOLS,
@@ -550,6 +553,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(
         callable(SUBSCRIPTIONS_CASES[name])
         for names in SUBSCRIPTIONS_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(INTEROP_CASES[name])
+        for names in INTEROP_PROTOCOLS.values()
         for name in names
     )
     assert all(

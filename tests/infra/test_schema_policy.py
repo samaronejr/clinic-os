@@ -10,6 +10,7 @@ from apps.identity.models import (
     UserClinicRole,
 )
 from apps.insurance.rls import TABLES as INSURANCE_TABLES
+from apps.interop.rls import CUSTOM_RLS_TABLES as INTEROP_CUSTOM_RLS_TABLES
 from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
@@ -69,6 +70,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         *CRM_CUSTOM_RLS_TABLES,
+        # Task 66: exact import policies, grants and guards: tests/interop.
+        *INTEROP_CUSTOM_RLS_TABLES,
         # Requester-bound reporting policies: tests/analytics/test_posture.py.
         "analytics_metricdefinitionversion",
         "analytics_readmodelrefresh",
@@ -316,6 +319,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("scheduling_roomstatus", "reception_scope"),
         ("scheduling_cliniciandelay", "reception_scope"),
         ("scheduling_displaydevice", "reception_scope"),
+        # Task 66: rolled-back imported enrollments are hidden from every read.
+        ("intake_patientclinicenrollment", "interop_import_visibility"),
+        ("intake_duplicatecandidate", "interop_import_visibility"),
     }
 
 

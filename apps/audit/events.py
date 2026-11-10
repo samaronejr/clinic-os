@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.audit.canonical import AuditEventInput
 from apps.insurance.audit_catalog import EVENTS as INSURANCE_EVENTS
+from apps.interop.audit_catalog import EVENTS as INTEROP_EVENTS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -219,6 +220,13 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
                 "tenant", "clinic-os-web", f"insurance.{kind}", verb
             )
             for kind, verbs in INSURANCE_EVENTS.items()
+            for verb in verbs
+        },
+        **{
+            f"interop.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"interop.{kind}", verb
+            )
+            for kind, verbs in INTEROP_EVENTS.items()
             for verb in verbs
         },
         "billing.book.created": Phase1AuditEventDefinition(

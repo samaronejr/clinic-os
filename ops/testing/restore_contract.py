@@ -313,6 +313,15 @@ DOMAIN_RELATIONS: Final = (
     "insurance_paymentmatch",
     "insurance_payerrequest",
     "insurance_commandreceipt",
+    # Governed import (plan 66): immutable sources, append-only states, batch
+    # plans, provenance and rollback hide markers; nothing is ever deleted.
+    "interop_importmapping",
+    "interop_importjob",
+    "interop_importfile",
+    "interop_importtransition",
+    "interop_importbatch",
+    "interop_importedrecord",
+    "interop_hiddenenrollment",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

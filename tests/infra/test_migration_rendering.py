@@ -573,6 +573,7 @@ BATCHED = [
     ("crm", "0001_initial"),
     ("ehr", "0014_longitudinal_record"),
     ("insurance", "0001_revenue_cycle"),
+    ("interop", "0001_import_framework"),
     ("inventory", "0001_inventory"),
     ("orders", "0001_identity_safe_results"),
     ("prescription", "0014_independent_signature_verification"),
