@@ -66,7 +66,7 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 fails the run otherwise.
 
 Hosted CI divides both phases into four deterministic, file-atomic shards per
-Python version, keeping each hosted job within its 60-minute budget. Each shard collects the complete reference independently and
+Python version, keeping each hosted job within its 75-minute budget. Each shard collects the complete reference independently and
 retains its raw line coverage, exactly-once execution reports, refusal census
 and shared-catalog certificate. The `python-coverage` jobs require every shard,
 prove their disjoint union equals that reference, require every derived refusal

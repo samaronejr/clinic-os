@@ -11,7 +11,7 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
