@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 from uuid import UUID
 
 from django.db import DatabaseError, connection
@@ -22,6 +22,9 @@ from apps.tenancy.envelope import _kek
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+    from datetime import datetime
+
+    from apps.tenancy.fields import EncryptedField
 
 
 class Code(StrEnum):
@@ -253,6 +256,107 @@ def hide_reversible(job_id: UUID) -> tuple[tuple[UUID, bool], ...]:
         )
         rows = cursor.fetchall()
     return tuple((row[0], bool(row[1])) for row in rows)
+
+
+def opened(model: type[Model], field: str, envelope: bytes | None) -> Any:  # noqa: ANN401
+    """Open one sealed payload with its own field's envelope purpose and codec."""
+    sealed = cast("EncryptedField", model._meta.get_field(field))  # noqa: SLF001
+    return sealed.from_db_value(envelope, None, connection)
+
+
+def source_envelope(job_id: UUID) -> bytes | None:
+    """Return the sealed stored source, only to the pipeline of an in-flight job."""
+    with translated(), connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.interop_source(%s)", [job_id])
+        row = cursor.fetchone()
+    return None if row is None or row[0] is None else bytes(row[0])
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryEnvelope:
+    """One imported history row: identifiers and its still-sealed payloads."""
+
+    record_id: UUID
+    job_id: UUID
+    kind: str
+    row_number: int
+    original_author: bytes | None
+    original_recorded_at: datetime | None
+    content: bytes | None
+
+
+def history_envelopes(
+    *, clinic_id: UUID, enrollment_id: UUID
+) -> tuple[HistoryEnvelope, ...]:
+    """Sealed imported history the current clinical reader may see."""
+    with translated(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT record_id, job_id, kind, row_number, original_author,"
+            " original_recorded_at, content FROM clinic_app.interop_history(%s, %s)",
+            [clinic_id, enrollment_id],
+        )
+        rows = cursor.fetchall()
+    return tuple(
+        HistoryEnvelope(
+            record_id=row[0],
+            job_id=row[1],
+            kind=str(row[2]),
+            row_number=int(row[3]),
+            original_author=None if row[4] is None else bytes(row[4]),
+            original_recorded_at=row[5],
+            content=None if row[6] is None else bytes(row[6]),
+        )
+        for row in rows
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentEnvelope:
+    """One imported document's metadata and its still-sealed bytes."""
+
+    record_id: UUID
+    job_id: UUID
+    enrollment_id: UUID
+    media_type: str
+    sha256: str
+    data: bytes
+
+
+def attachment_envelope(*, clinic_id: UUID, record_id: UUID) -> AttachmentEnvelope:
+    """One sealed imported document the current clinical reader may open."""
+    if type(clinic_id) is not UUID or type(record_id) is not UUID:
+        raise ImportAccessDeniedError
+    with translated(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT record_id, job_id, enrollment_id, media_type, sha256, data"
+            " FROM clinic_app.interop_attachment(%s, %s)",
+            [clinic_id, record_id],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise ImportAccessDeniedError
+    return AttachmentEnvelope(
+        record_id=row[0],
+        job_id=row[1],
+        enrollment_id=row[2],
+        media_type=str(row[3]),
+        sha256=str(row[4]),
+        data=bytes(row[5]),
+    )
+
+
+def attachment_checks(job_id: UUID) -> tuple[int, int, int]:
+    """Linked attachments, their bytes and checksum mismatches, counted in SQL."""
+    with translated(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT files, total_bytes, mismatches"
+            " FROM clinic_app.interop_attachment_checks(%s, %s)",
+            [job_id, _kek()],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise ImportAccessDeniedError
+    return int(row[0]), int(row[1]), int(row[2])
 
 
 @contextmanager

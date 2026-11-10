@@ -122,6 +122,9 @@ matching signature, no active content); only clean ones can be linked.
 The last batch appends `committed` with the reconciliation report: per
 dataset rows, accepted, rejected and committed counts; per batch digests;
 source and attachment bytes; source and attachment checksums re-verified.
+Linked attachments are re-verified inside the database
+(`clinic_app.interop_attachment_checks`), which returns only counts, bytes and
+mismatches, never the bytes.
 
 ## Rollback (no hard delete)
 
@@ -146,9 +149,23 @@ earlier batches wrote are hidden like any other unused import.
 ## Database and recovery obligations
 
 All seven tables are classified in `ops/testing/restore_contract.py`. The
-runtime role holds SELECT/INSERT on the six import tables, UPDATE only on
-batch `state`, `committed_count` and `committed_at`, and SELECT on hide
-markers, which only the rollback resolver inserts. No machine grants. The
+runtime role holds SELECT/INSERT on mappings, jobs, transitions and batches,
+UPDATE only on batch `state`, `committed_count` and `committed_at`, and SELECT
+on hide markers, which only the rollback resolver inserts. On stored files and
+imported records it holds INSERT and SELECT only on the metadata and checksum
+columns (`METADATA_COLUMNS` in `migrations/_import_sql.py`): imported content,
+its source id, author and time labels, and stored source and attachment bytes
+are never readable through a table, whatever the session's actor. Clinical
+readers reach imported history and documents only through
+`clinic_app.interop_history` and `clinic_app.interop_attachment`, which apply
+`interop_record_visible` (patient-scoped `clinical.read`, live job). The
+pipeline reaches the stored source only through `clinic_app.interop_source`:
+while the job is in flight (`uploaded` to `approved`), for the current import
+authority, with `demographics.read` once approved; it refuses everyone once the
+job is committed or rolled back. The importer's own pipeline therefore still
+parses the source it uploaded while the job is in flight; the database cannot
+tell that step apart from other code in the same session, so it confines the
+read to that resolver and those states. No machine grants. The
 guard refuses DELETE, TRUNCATE and every UPDATE except the batch step.
 Migration `interop.0001_import_framework` is protected and irreversible;
 rollback = restore. It depends only on what it touches when it runs (identity

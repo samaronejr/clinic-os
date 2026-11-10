@@ -103,6 +103,7 @@ def test_runtime_and_resolver_grants_are_exact() -> None:
             (table, privilege)
             for table in CUSTOM_RLS_TABLES
             for privilege in ("SELECT", "INSERT")
+            if table not in _import_sql.METADATA_COLUMNS or privilege == "INSERT"
         ),
         (HIDDEN, "SELECT"),
     }
@@ -114,9 +115,29 @@ def test_runtime_and_resolver_grants_are_exact() -> None:
         [list(TABLES)],
     )
     assert columns == {
-        ("interop_importbatch", column, "UPDATE")
-        for column in ("state", "committed_count", "committed_at")
+        *(
+            ("interop_importbatch", column, "UPDATE")
+            for column in ("state", "committed_count", "committed_at")
+        ),
+        *(
+            (table, column, "SELECT")
+            for table, names in _import_sql.METADATA_COLUMNS.items()
+            for column in names
+        ),
     }
+    # Every column of the two payload tables is either metadata or payload.
+    catalog = _rows(
+        "SELECT table_name, column_name FROM information_schema.columns"
+        " WHERE table_schema='clinic_app' AND table_name = ANY(%s)",
+        [list(_import_sql.METADATA_COLUMNS)],
+    )
+    for table, names in _import_sql.METADATA_COLUMNS.items():
+        payload = _import_sql.PAYLOAD_COLUMNS[table]
+        assert set(names).isdisjoint(payload)
+        assert {column for name, column in catalog if name == table} == {
+            *names,
+            *payload,
+        }
     agent = _rows(
         "SELECT table_name, privilege_type"
         " FROM information_schema.role_table_grants"

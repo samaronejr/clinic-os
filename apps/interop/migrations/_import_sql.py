@@ -130,6 +130,55 @@ RESOLVER_ACTIVITY_GRANTS: Final = (
     "intake_emergencycontact",
     "intake_patientaddress",
 )
+# The runtime role reads only metadata and checksums of these two tables. The
+# payload columns (imported clinical content with its provenance labels, and
+# stored source and attachment bytes) are reachable only through the resolvers:
+# clinical readers through interop_history/interop_attachment, the in-flight
+# pipeline through interop_source and interop_attachment_checks.
+METADATA_COLUMNS: Final = {
+    "interop_importfile": (
+        "id",
+        "created_at",
+        "organization_id",
+        "clinic_id",
+        "job_id",
+        "role",
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type",
+        "scan_verdict",
+        "scan_reason",
+    ),
+    "interop_importedrecord": (
+        "id",
+        "created_at",
+        "organization_id",
+        "clinic_id",
+        "job_id",
+        "batch_id",
+        "dataset",
+        "row_number",
+        "kind",
+        "patient_id",
+        "enrollment_id",
+        "file_id",
+        "content_sha256",
+        "identifier_count",
+    ),
+}
+PAYLOAD_COLUMNS: Final = {
+    "interop_importfile": ("data",),
+    "interop_importedrecord": (
+        "source_record_id",
+        "original_author",
+        "original_recorded_at",
+        "content",
+    ),
+}
+# Jobs whose stored source the pipeline may still parse (profile, suggestion,
+# mapping, dry run, commit and its batches); none once committed or rolled back.
+IN_FLIGHT: Final = ("uploaded", "profiled", "mapped", "dry_run", "approved")
 
 
 def _exists(table: str, condition: str) -> str:
@@ -393,10 +442,91 @@ BEGIN
  SELECT c.enrollment_id, EXISTS(SELECT 1 FROM inserted i WHERE i.kept=c.enrollment_id)
  FROM candidates c ORDER BY c.enrollment_id;
 END $f$;
+
+-- The pipeline's only way to the stored source: while the job is in flight,
+-- for the import authority, with demographics access once it is approved.
+CREATE FUNCTION clinic_app.interop_source(requested_job uuid)
+RETURNS bytea LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE j clinic_app.interop_importjob; latest text; envelope bytea;
+BEGIN
+ SELECT * INTO j FROM clinic_app.interop_importjob x WHERE x.id=requested_job
+  AND x.organization_id=__TENANT__;
+ SELECT t.state INTO latest FROM clinic_app.interop_importtransition t
+  WHERE t.job_id=j.id ORDER BY t.sequence DESC LIMIT 1;
+ IF j.id IS NULL OR NOT clinic_app.interop_allowed(j.clinic_id)
+  OR latest IS NULL OR latest NOT IN (__IN_FLIGHT__)
+  OR (latest='approved'
+   AND NOT clinic_app.has_permission('demographics.read',j.clinic_id,NULL)) THEN
+  RAISE EXCEPTION 'interop_denied' USING ERRCODE='42501'; END IF;
+ SELECT f.data INTO envelope FROM clinic_app.interop_importfile f
+  WHERE f.job_id=j.id AND f.role='source';
+ RETURN envelope;
+END $f$;
+
+-- Imported history envelopes for a current patient-scoped clinical reader.
+CREATE FUNCTION clinic_app.interop_history(
+ requested_clinic uuid, requested_enrollment uuid)
+RETURNS TABLE(record_id uuid, job_id uuid, kind text, row_number integer,
+ original_author bytea, original_recorded_at timestamptz, content bytea)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+ SELECT r.id, r.job_id, r.kind::text, r.row_number::integer, r.original_author,
+  r.original_recorded_at, r.content
+ FROM clinic_app.interop_importedrecord r
+ WHERE r.organization_id=__TENANT__ AND r.clinic_id=requested_clinic
+  AND r.enrollment_id=requested_enrollment
+  AND r.kind IN ('note','observation','attachment')
+  AND clinic_app.interop_record_visible(r.job_id,r.clinic_id,r.enrollment_id)
+ ORDER BY r.original_recorded_at, r.row_number, r.id
+$f$;
+
+-- One imported document's bytes for a current patient-scoped clinical reader.
+CREATE FUNCTION clinic_app.interop_attachment(
+ requested_clinic uuid, requested_record uuid)
+RETURNS TABLE(record_id uuid, job_id uuid, enrollment_id uuid, media_type text,
+ sha256 text, data bytea)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+ SELECT r.id, r.job_id, r.enrollment_id, f.media_type::text, f.sha256::text,
+  f.data
+ FROM clinic_app.interop_importedrecord r
+ JOIN clinic_app.interop_importfile f ON f.id=r.file_id AND f.job_id=r.job_id
+  AND f.organization_id=r.organization_id AND f.role='attachment'
+ WHERE r.organization_id=__TENANT__ AND r.clinic_id=requested_clinic
+  AND r.id=requested_record AND r.kind='attachment'
+  AND clinic_app.interop_record_visible(r.job_id,r.clinic_id,r.enrollment_id)
+$f$;
+
+-- Reconciliation re-verifies linked attachments inside the database: the
+-- import authority receives counts, bytes and mismatches, never the bytes.
+CREATE FUNCTION clinic_app.interop_attachment_checks(requested_job uuid, kek text)
+RETURNS TABLE(files integer, total_bytes bigint, mismatches integer)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE j clinic_app.interop_importjob;
+BEGIN
+ SELECT * INTO j FROM clinic_app.interop_importjob x WHERE x.id=requested_job
+  AND x.organization_id=__TENANT__;
+ IF j.id IS NULL OR NOT clinic_app.interop_allowed(j.clinic_id) THEN
+  RAISE EXCEPTION 'interop_denied' USING ERRCODE='42501'; END IF;
+ RETURN QUERY
+ WITH linked AS (
+  SELECT f.sha256, f.size_bytes,
+   clinic_app.protected_decrypt(kek,'interop.importfile.data',f.data) AS plain
+  FROM clinic_app.interop_importfile f
+  WHERE f.job_id=j.id AND f.role='attachment' AND EXISTS(
+   SELECT 1 FROM clinic_app.interop_importedrecord r WHERE r.file_id=f.id))
+ SELECT count(*)::integer, coalesce(sum(octet_length(l.plain)),0)::bigint,
+  (count(*) FILTER (WHERE encode(sha256(l.plain),'hex')<>l.sha256
+   OR octet_length(l.plain)<>l.size_bytes))::integer
+ FROM linked l;
+END $f$;
 RESET ROLE;
 """.replace("__NO_MACHINE__", NO_MACHINE_CONTEXT)
     .replace("__TENANT__", TENANT)
     .replace("__ACTIVITY__", activity_predicate("c"))
+    .replace("__IN_FLIGHT__", ",".join(f"'{state}'" for state in IN_FLIGHT))
 )
 TENANT_CONDITION: Final = (
     "organization_id = NULLIF(pg_catalog.current_setting('app.current_tenant', true),"
@@ -416,8 +546,14 @@ def contract_sql() -> str:
     """Publish the import tables with exact grants, policies and guards."""
     sql = "".join(
         f"REVOKE ALL ON clinic_app.{table} FROM PUBLIC,clinic_app,clinic_agent;"
-        f"GRANT SELECT,INSERT ON clinic_app.{table} TO clinic_app;"
-        f"GRANT SELECT ON clinic_app.{table} TO clinic_resolver;"
+        + (
+            f"GRANT INSERT ON clinic_app.{table} TO clinic_app;"
+            f"GRANT SELECT({','.join(METADATA_COLUMNS[table])})"
+            f" ON clinic_app.{table} TO clinic_app;"
+            if table in METADATA_COLUMNS
+            else f"GRANT SELECT,INSERT ON clinic_app.{table} TO clinic_app;"
+        )
+        + f"GRANT SELECT ON clinic_app.{table} TO clinic_resolver;"
         for table in TABLES
     )
     sql += f"""
@@ -487,6 +623,10 @@ CREATE POLICY interop_import_visibility ON clinic_app.{table}
         ("interop_guard", "", False),
         ("interop_no_truncate", "", False),
         ("interop_hide_reversible", "uuid", True),
+        ("interop_source", "uuid", True),
+        ("interop_history", "uuid,uuid", True),
+        ("interop_attachment", "uuid,uuid", True),
+        ("interop_attachment_checks", "uuid,text", True),
     ):
         sql += f"REVOKE ALL ON FUNCTION clinic_app.{name}({signature}) FROM PUBLIC;"
         if app_execute:

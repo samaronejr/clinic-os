@@ -18,8 +18,10 @@ from apps.interop.access import (
     Code,
     ImportAccessDeniedError,
     ImportConflictError,
+    attachment_envelope,
     clinical_reader,
-    record,
+    history_envelopes,
+    opened,
 )
 from apps.interop.models import ImportedRecord, ImportFile, ImportTransition
 from apps.interop.sources import sha256_hex
@@ -69,25 +71,23 @@ def imported_history(
     """List one patient's imported history, oldest original time first."""
     with transaction.atomic():
         clinical_reader(clinic_id=clinic_id, enrollment_id=enrollment_id)
-        rows = list(
-            ImportedRecord.objects.filter(
-                clinic_id=clinic_id,
-                enrollment_id=enrollment_id,
-                kind__in=HISTORY_KINDS,
-            ).order_by("original_recorded_at", "row_number", "id")
-        )
+        rows = history_envelopes(clinic_id=clinic_id, enrollment_id=enrollment_id)
         hidden = _superseded({row.job_id for row in rows})
         items = tuple(
             ImportedHistoryItem(
-                record_id=row.pk,
+                record_id=row.record_id,
                 job_id=row.job_id,
                 kind=row.kind,
-                original_author=row.original_author,
+                original_author=opened(
+                    ImportedRecord, "original_author", row.original_author
+                ),
                 original_recorded_at=row.original_recorded_at,
-                content=cast("dict[str, object]", row.content),
+                content=cast(
+                    "dict[str, object]", opened(ImportedRecord, "content", row.content)
+                ),
             )
             for row in rows
-            if row.job_id not in hidden
+            if row.kind in HISTORY_KINDS and row.job_id not in hidden
         )
         record_phase1_event(
             "interop.records.viewed",
@@ -100,21 +100,20 @@ def imported_history(
 def imported_attachment(*, clinic_id: UUID, record_id: UUID) -> ImportedAttachment:
     """Return one imported document's bytes after re-verifying its checksum."""
     with transaction.atomic():
-        row = record(ImportedRecord, clinic_id=clinic_id, record_id=record_id)
-        clinical_reader(clinic_id=clinic_id, enrollment_id=row.enrollment_id)
-        if row.kind != "attachment" or row.file_id is None or _superseded({row.job_id}):
+        stored = attachment_envelope(clinic_id=clinic_id, record_id=record_id)
+        clinical_reader(clinic_id=clinic_id, enrollment_id=stored.enrollment_id)
+        if _superseded({stored.job_id}):
             raise ImportAccessDeniedError
-        stored = ImportFile.objects.filter(pk=row.file_id).first()
-        data = bytes(stored.data) if stored is not None else b""
-        if stored is None or sha256_hex(data) != stored.sha256:
+        data = bytes(opened(ImportFile, "data", stored.data))
+        if sha256_hex(data) != stored.sha256:
             raise ImportConflictError(Code.CHECKSUM_MISMATCH)
         record_phase1_event(
             "interop.records.viewed",
             clinic_id=clinic_id,
-            affected_record_id=row.enrollment_id,
+            affected_record_id=stored.enrollment_id,
         )
         return ImportedAttachment(
-            record_id=row.pk,
+            record_id=stored.record_id,
             media_type=stored.media_type,
             sha256=stored.sha256,
             data=data,

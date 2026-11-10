@@ -48,6 +48,15 @@ def run_interop_census(
         )
     with patch.context() as local:
         proofs.run(
+            "interop imported history through clinical scope only",
+            partial(
+                test_import.test_provenance_keeps_original_author_and_time_never_the_importer,
+                graph(),
+                local,
+            ),
+        )
+    with patch.context() as local:
+        proofs.run(
             "interop clinical document scope",
             partial(
                 test_sources.test_imported_documents_are_readable_only_through_clinical_scope,

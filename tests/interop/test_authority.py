@@ -10,18 +10,30 @@ import psycopg
 import pytest
 from apps.identity.models import User, UserClinicRole
 from apps.interop import services, tasks
-from apps.interop.models import ImportBatch, ImportJob, ImportTransition
+from apps.interop.models import (
+    ImportBatch,
+    ImportedRecord,
+    ImportFile,
+    ImportJob,
+    ImportTransition,
+)
+from apps.tenancy.envelope import _kek
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from auth.stepup_test_support import create_role_actor
 from identity.permission_support import owner_context
 from interop.support import (
+    SYNTHETIC_PDF,
     approve,
+    archive,
     committed,
+    history_csv,
+    history_row,
     import_world,
     operating,
     patients_csv,
+    run_batches,
     to_dry_run,
     upload,
 )
@@ -34,6 +46,17 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 IMPORT_ROLES = frozenset({"clinic_manager", "clinic_admin", "org_admin", "owner"})
 IDENTITY_ROLES = frozenset({"clinic_manager", "clinic_admin"})
+# Each payload column the import authority must never read, as the exact query.
+PAYLOAD_READS = (
+    "SELECT content FROM clinic_app.interop_importedrecord WHERE job_id=%s",
+    "SELECT source_record_id FROM clinic_app.interop_importedrecord WHERE job_id=%s",
+    "SELECT original_author FROM clinic_app.interop_importedrecord WHERE job_id=%s",
+    "SELECT original_recorded_at FROM clinic_app.interop_importedrecord"
+    " WHERE job_id=%s",
+    "SELECT data FROM clinic_app.interop_importfile"
+    " WHERE job_id=%s AND role='attachment'",
+    "SELECT data FROM clinic_app.interop_importfile WHERE job_id=%s AND role='source'",
+)
 
 
 @pytest.mark.parametrize("role", UserClinicRole.Role.values)
@@ -362,3 +385,116 @@ def test_rollback_window_is_enforced_by_the_database(
                 session_key=world.session,
             )
     assert late.value.code == "interop_rollback_window"
+
+
+def _refused(statement: str, params: list[UUID]) -> str | None:
+    with (
+        pytest.raises(DatabaseError) as refused,
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(statement, params)
+    return getattr(refused.value.__cause__, "sqlstate", None)
+
+
+def test_import_authority_reads_metadata_but_never_clinical_payloads(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    members = {
+        "patients.csv": patients_csv(1),
+        "history.csv": history_csv(
+            [
+                history_row("EV-1", "SIN-000001", "Evolucao", text="Nota sintetica"),
+                history_row("AX-1", "SIN-000001", "Anexo", file="laudo.pdf"),
+            ]
+        ),
+        "files/laudo.pdf": SYNTHETIC_PDF,
+    }
+    report, _receipt = committed(world, archive(members), monkeypatch, kind="zip")
+    job_id = report.job.job_id
+    with operating(world):
+        # Every payload column is refused to the importer's real runtime session,
+        # also through the ORM's default row read.
+        assert {
+            statement: _refused(statement, [job_id]) for statement in PAYLOAD_READS
+        } == dict.fromkeys(PAYLOAD_READS, "42501")
+        with pytest.raises(DatabaseError), transaction.atomic():
+            ImportedRecord.objects.filter(job_id=job_id).first()
+        with pytest.raises(DatabaseError), transaction.atomic():
+            ImportFile.objects.filter(job_id=job_id, role="source").first()
+        # Metadata and checksums stay readable for the import's own bookkeeping.
+        records = dict(
+            ImportedRecord.objects.filter(job_id=job_id).values_list("kind", "pk")
+        )
+        assert set(records) == {"patient", "note", "attachment"}
+        enrollment = (
+            ImportedRecord.objects.filter(job_id=job_id, kind="patient")
+            .values_list("enrollment_id", flat=True)
+            .get()
+        )
+        assert set(
+            ImportFile.objects.filter(job_id=job_id).values_list("role", "size_bytes")
+        ) == {("source", report.job.size_bytes), ("attachment", len(SYNTHETIC_PDF))}
+        # The resolvers give the importer nothing clinical and no stored source.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM clinic_app.interop_history(%s, %s)",
+                [rbac_graph.clinic_a, enrollment],
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                "SELECT count(*) FROM clinic_app.interop_attachment(%s, %s)",
+                [rbac_graph.clinic_a, records["attachment"]],
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                "SELECT files, total_bytes, mismatches"
+                " FROM clinic_app.interop_attachment_checks(%s, %s)",
+                [job_id, _kek()],
+            )
+            assert cursor.fetchone() == (1, len(SYNTHETIC_PDF), 0)
+        assert _refused("SELECT clinic_app.interop_source(%s)", [job_id]) == "42501"
+
+
+def test_stored_source_reaches_only_the_pipeline_of_an_in_flight_job(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    org_admin = import_world(rbac_graph, "org_admin")
+    reception = import_world(rbac_graph, "receptionist")
+    data = patients_csv(2)
+    report = to_dry_run(world, data)
+    statement = "SELECT octet_length(clinic_app.interop_source(%s)) > 0"
+
+    def reads(actor: ImportWorld) -> bool | str | None:
+        with operating(world, actor.operator):
+            try:
+                with transaction.atomic(), connection.cursor() as cursor:
+                    cursor.execute(statement, [report.job.job_id])
+                    row = cursor.fetchone()
+            except DatabaseError as error:
+                return getattr(error.__cause__, "sqlstate", None)
+        return None if row is None else bool(row[0])
+
+    # Before approval an import authority (also an org admin) may re-parse it.
+    assert reads(world) is True
+    assert reads(org_admin) is True
+    approved = approve(world, report)
+    # Once approved, only an actor who may also see identities (the commit).
+    assert reads(world) is True
+    assert reads(org_admin) == "42501"
+    with operating(world):
+        services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+    run_batches(world, report.job.job_id, monkeypatch)
+    # Committed: nobody reads the stored source through the database any more.
+    assert reads(world) == "42501"
+    assert reads(org_admin) == "42501"
+    # Without import authority it was never readable.
+    with operating(world, reception.operator):
+        assert _refused(statement, [report.job.job_id]) == "42501"

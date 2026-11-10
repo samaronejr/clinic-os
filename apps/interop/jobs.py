@@ -37,7 +37,9 @@ from apps.interop.access import (
     identity_authority,
     import_authority,
     import_clinic,
+    opened,
     record,
+    source_envelope,
     translated,
 )
 from apps.interop.models import (
@@ -220,12 +222,18 @@ def append(  # noqa: PLR0913 - one closed transition record
 
 def source_bytes(job: ImportJob) -> bytes:
     """Return the stored source after re-verifying its upload checksum."""
-    stored = ImportFile.objects.filter(job_id=job.pk, role="source").first()
-    data = bytes(stored.data) if stored is not None else b""
+    stored = (
+        ImportFile.objects.filter(job_id=job.pk, role="source")
+        .values_list("sha256", flat=True)
+        .first()
+    )
+    envelope = source_envelope(job.pk)
+    data = b"" if envelope is None else bytes(opened(ImportFile, "data", envelope))
     if (
         stored is None
+        or envelope is None
         or sources.sha256_hex(data) != job.source_sha256
-        or stored.sha256 != job.source_sha256
+        or stored != job.source_sha256
         or len(data) != job.size_bytes
     ):
         raise ImportConflictError(Code.CHECKSUM_MISMATCH)

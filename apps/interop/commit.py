@@ -21,6 +21,7 @@ from apps.interop import contract
 from apps.interop.access import (
     Code,
     ImportConflictError,
+    attachment_checks,
     identity_authority,
     import_authority,
     import_clinic,
@@ -47,7 +48,6 @@ from apps.interop.models import (
     ImportTransition,
 )
 from apps.interop.patients import register
-from apps.interop.sources import sha256_hex
 from apps.interop.validation import (
     HistoryRow,
     PatientRow,
@@ -203,7 +203,7 @@ def _commit_history(
             job_id=batch.job_id,
             dataset="patients",
             row_number__in={row.patient_row for row in rows},
-        )
+        ).only("row_number", "patient_id", "enrollment_id")
     }
     files = {
         str(item.path): item
@@ -331,16 +331,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
                 "verified": verified,
             }
         )
-    linked = ImportFile.objects.filter(
-        job_id=job.pk, role="attachment", importedrecord__isnull=False
-    ).distinct()
-    attachment_bytes = 0
-    mismatches = 0
-    for item in linked:
-        data = bytes(item.data)
-        attachment_bytes += len(data)
-        if sha256_hex(data) != item.sha256 or len(data) != item.size_bytes:
-            mismatches += 1
+    linked, attachment_bytes, mismatches = attachment_checks(job.pk)
     source_verified = True
     try:
         source_bytes(job)
@@ -370,7 +361,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         "checksums": {
             "source_sha256": job.source_sha256,
             "source_verified": source_verified,
-            "attachments_verified": len(linked) - mismatches,
+            "attachments_verified": linked - mismatches,
             "attachment_mismatches": mismatches,
             "batches_verified": batches_verified,
         },
