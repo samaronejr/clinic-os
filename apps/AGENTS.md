@@ -18,7 +18,7 @@
 | billing | invoices, synthetic PIX, payment reconciliation | 26 (tests/ops only) | billing/README.md |
 | insurance | versioned TISS guides, sealed batches, returns, appeals, payer checks and journal reconciliation; synthetic only | new | insurance/README.md |
 | teleconsult / retention / consent | video sessions / holds+exports / teleconsult consent | 13 / 7 / 16 | own README.md |
-| interop | partner API `/api/v1/` (OAuth2 client credentials, hashed secrets, Redis token bucket, opaque ids), signed webhooks on the action outbox, management API `/api/interop/v1/`, organization export v1; `exchange_clinical_record` (RNDS) still deferred | 1 | interop/README.md |
+| interop | partner API `/api/v1/` (OAuth2 client credentials, hashed secrets, Redis token bucket, opaque ids), signed webhooks on the action outbox, management API `/api/interop/v1/`, organization export v1; `exchange_clinical_record` (RNDS laboratory results, fixture homologation leg only, BLOCKED-ON-EG-7) | 1 | interop/README.md |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
 | workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
@@ -52,7 +52,7 @@
 ## CONVENTIONS
 - Per-app shape: `services.py` facade (explicit `__all__` in intake/scheduling/audit), split workflow modules, `*_views.py`, `*_presenter.py`, `rls.py`, `migrations/_*_sql.py`, `README.md` = binding domain contract; read it before editing.
 - Service params keyword-only with explicit scope (`clinic_id`, `encounter_id`...); never `actor`, `request`, `organization_id`. Signatures pinned in `tests/infra/test_module_boundaries.py`, which also pins all 14 AppConfig paths.
-- Deferred: `prescription.issue_prescription`, `retention.apply_retention_policy`, `interop.exchange_clinical_record` raise `NotImplementedError("Phase >=1")` (test-pinned).
+- No deferred service stub remains: `prescription.issue_prescription`, `retention.apply_retention_policy` and `interop.exchange_clinical_record` (todo 68) are implemented, each behind its own capability gate; their keyword-only signatures are pinned.
 - UUID PKs; frozen dataclass results; per-app `*AccessDeniedError`/`*ConflictError`; optimistic `expected_revision`/`expected_version`. Unknown vs wrong-clinic records return the same denial.
 - Load-bearing private cross-app imports: `ehr.services._denied` (prescription, ehr history/attachments), `_appointment`/`_assigned` (retention), `audit.services._content_hash` (consent), `tenancy.envelope._kek` (intake search). Renaming them is a multi-app change.
 - Protected-field migrations (`00xx_protected_fields.py`): `atomic = False`, resumable, irreversible.

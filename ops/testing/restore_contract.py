@@ -322,6 +322,7 @@ DOMAIN_RELATIONS: Final = (
     "interop_webhookattempt",
     "interop_organizationexport",
     "interop_organizationexportpart",
+    "interop_rndssubmission",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

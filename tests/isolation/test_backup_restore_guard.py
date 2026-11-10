@@ -38,7 +38,8 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     # 0050's resolver-owned TOTP seed store has 273 domain relations; the store
     # is restored with its device so a restore never strands an authenticator.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 282
+    # Plan item 67 adds 9 interop tables and item 68 the RNDS submission log.
+    assert len(restore_contract.DOMAIN_RELATIONS) == 283
     assert "clinic_app.identity_totpsecret" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA

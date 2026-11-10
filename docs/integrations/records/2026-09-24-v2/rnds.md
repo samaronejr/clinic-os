@@ -47,4 +47,31 @@ contain only synthetic or explicitly provider-authorized data.
 
 Todo 68 builds the adapter against fixtures. RNDS live waits for EG-7 and EG-2.
 
+## Todo 68 update (2026-11-10)
+
+This is a dated note, not a new record version: no provider was selected, no
+protocol is approved, and every field above stays as recorded.
+
+- Read on 2026-11-10 from rnds-guia.saude.gov.br: passo-a-passo, ambientes,
+  servicos, definicoes, conhecer, homologar, requisicoes, erros, autenticacao,
+  certificado and conector. The only supported use case is the laboratory
+  result (REL, COVID-19 and Monkeypox), sent as one `document` Bundle by
+  `POST /api/fhir/r4/Bundle` with profiles BRResultadoExameLaboratorial-1.1,
+  BRDiagnosticoLaboratorioClinico-1.0 and BRAmostraBiologica-1.0. Auth is
+  `GET /api/token` over mutual TLS with an ICP-Brasil certificate (30-minute
+  token); homologation hosts are `ehr-auth-hmg.saude.gov.br` and
+  `ehr-services.hmg.saude.gov.br`, production EHR hosts are per state.
+- The definitions package zip returned HTTP 404 (http and https), so profile
+  validation is pinned to the guide's documentation example (dated 2020-10-02).
+- `exchange_clinical_record` no longer raises `NotImplementedError`. It builds
+  and validates REL bundles from a typed exam document and sends them only
+  through the recorded fixture transport (provider `rnds-fixture`, environment
+  `homologation`), behind `INTEROP_RNDS_HOMOLOGATION` (off by default), an
+  approved `sandbox` lifecycle version, the patient's `rnds_exchange` consent
+  and `result.release` authority. The mutual-TLS transport is tested only
+  against a local CA. See `apps/interop/README.md`.
+- Still unavailable: credentialing, the homologation evidence PDF, production
+  access, the per-exchange legal basis (LGPD art. 11, open for the owner's
+  compliance reviewer) and any executed provider evidence.
+
 Follow the [register's versioning and approval rules](../../capabilities.md).

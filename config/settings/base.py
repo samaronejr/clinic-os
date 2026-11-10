@@ -341,6 +341,9 @@ BILLING_SYNTHETIC_PIX_SECRET: str = env("BILLING_SYNTHETIC_PIX_SECRET", default=
 # Local recordings only; the registry must also name the approved fixture sandbox.
 BILLING_SYNTHETIC_PSP: bool = env.bool("BILLING_SYNTHETIC_PSP", default=False)
 BILLING_PSP_FIXTURE_SECRET: str = env("BILLING_PSP_FIXTURE_SECRET", default="")
+# RNDS fixture homologation rehearsal (EG-7 unmet); the registry must also name the
+# approved fixture sandbox version, and no real RNDS host is reachable.
+INTEROP_RNDS_HOMOLOGATION: bool = env.bool("INTEROP_RNDS_HOMOLOGATION", default=False)
 COMMS_REVOKED_REMINDER_TEMPLATES: list[str] = env.list(
     "COMMS_REVOKED_REMINDER_TEMPLATES", default=[]
 )

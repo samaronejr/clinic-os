@@ -14,6 +14,10 @@ from interop.test_org_export import (
 from interop.test_posture import (
     test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows,
 )
+from interop.test_rnds_adapter import (
+    test_non_consented_and_revoked_records_are_refused,
+    test_unknown_foreign_and_unauthorized_records_are_denied_alike,
+)
 
 CASES = {
     case.__name__: case
@@ -26,6 +30,8 @@ CASES = {
         test_export_needs_org_wide_authority_and_stops_once_it_is_lost,
         test_http_management_downloads_and_refuses_foreign_exports_alike,
         test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows,
+        test_non_consented_and_revoked_records_are_refused,
+        test_unknown_foreign_and_unauthorized_records_are_denied_alike,
     )
 }
 SQL_PROTOCOL_ORACLES = {
@@ -56,5 +62,9 @@ SQL_PROTOCOL_ORACLES = {
     ),
     "clinic_app.interop_export_rows": (
         "test_export_needs_org_wide_authority_and_stops_once_it_is_lost",
+    ),
+    "clinic_app.interop_rnds_request": (
+        "test_unknown_foreign_and_unauthorized_records_are_denied_alike",
+        "test_non_consented_and_revoked_records_are_refused",
     ),
 }

@@ -1,9 +1,5 @@
-"""Phase >=1 interop service entrypoints."""
+"""Public interop service entrypoints."""
 
-from typing import NoReturn
+from apps.interop.rnds import RndsReceipt, exchange_clinical_record
 
-
-def exchange_clinical_record() -> NoReturn:
-    """Exchange a clinical record when the interop domain is implemented."""
-    message = "Phase >=1"
-    raise NotImplementedError(message)
+__all__ = ("RndsReceipt", "exchange_clinical_record")

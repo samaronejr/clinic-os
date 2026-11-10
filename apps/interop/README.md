@@ -7,16 +7,16 @@ delivered through the shared action outbox, the private management API under
 synthetic: there is no real partner transport, and the webhook transport refuses
 to run outside synthetic data mode.
 
-`services.exchange_clinical_record` (RNDS clinical-record exchange) stays
-deferred and raises exactly `NotImplementedError("Phase >=1")`. The RNDS work
-(plan todo 68) lands behind `adapters.InteropAdapter` and must not reuse the
-partner credentials, scopes or webhook machinery below.
+`services.exchange_clinical_record` submits laboratory results to the RNDS
+homologation environment behind EG-7 (see [RNDS](#rnds-laboratory-results-behind-eg-7)).
+It sits behind `adapters.InteropAdapter` and reuses none of the partner
+credentials, scopes or webhook machinery below.
 
 ## Records
 
-Nine tenant tables, all `FORCE ROW LEVEL SECURITY`. `interop_guard` refuses
-every `DELETE` and `TRUNCATE` and allows only the transitions listed here, with
-a `revision` increment on each.
+Ten tenant tables, all `FORCE ROW LEVEL SECURITY`. `interop_guard` (and
+`interop_rnds_guard` for RNDS submissions) refuses every `DELETE` and `TRUNCATE`
+and allows only the transitions listed here, with a `revision` increment on each.
 
 | Table | Holds |
 |-------|-------|
@@ -29,6 +29,7 @@ a `revision` increment on each.
 | `interop_webhookattempt` | the delivery log: attempt number, outcome, HTTP status, time |
 | `interop_organizationexport` | export receipts and their state machine |
 | `interop_organizationexportpart` | encrypted archive byte ranges, kept until the archive expires or fails |
+| `interop_rndssubmission` | one sealed RNDS result bundle, its owner approval's capability version and the RNDS answer: `pending`, then `accepted` or `rejected` |
 
 Client secrets (`cs_` + 64 hex) and access tokens (`at_` + 64 hex) carry 256
 bits of fresh entropy and are shown once; only their SHA-256 digests are
@@ -173,6 +174,94 @@ archives, fail builds older than 6 hours or whose requester lost authority, and
 null the bytes of expired and failed parts while keeping every receipt.
 
 `export_registry.EXPORT_V1` and `EXCLUDED_V1` partition the recovery manifest's
-`DOMAIN_RELATIONS` exactly (`tests/interop/test_org_export.py`). A new domain
-relation must be classified in a new export version migration; this version
-never changes.
+`DOMAIN_RELATIONS` exactly (`tests/interop/test_org_export.py`). A new relation
+that adds an exported dataset needs a new export version migration; the v1
+datasets never change. `interop_rndssubmission` (todo 68) joined `EXCLUDED_V1`
+as `machinery`: it is the delivery receipt of a document RNDS itself holds, and
+the v1 archive gained no dataset. Whether later relations join v1's exclusions
+or wait for a v2 is the open integration decision recorded for todo 66.
+
+## RNDS laboratory results (behind EG-7)
+
+The RNDS guide (rnds-guia.saude.gov.br, read 2026-11-10) supports one use case,
+the laboratory-result document (Resultado de Exame Laboratorial, REL: COVID-19
+and Monkeypox). `rnds_bundle.py` builds it with the profiles
+`BRResultadoExameLaboratorial-1.1` (Composition), `BRDiagnosticoLaboratorioClinico-1.0`
+(Observation) and `BRAmostraBiologica-1.0` (Specimen). The definitions package
+linked from the guide returned HTTP 404, so the validator is pinned to the
+guide's documentation example (dated 2020-10-02), recorded with its source and
+fetch date in `rnds_fixtures/rel-example.json` and `rnds_bundle.DEFINITIONS`.
+Only the codes that example documents are accepted (exam LOINC `94507-1`, SUS
+subgroup `0214`, qualitative results `1` and `2`, specimen `SGHEM`); any other
+code is `code_not_documented` until a downloaded package extends the sets.
+FHIR-shaped data alone is never an RNDS integration.
+
+`exchange_clinical_record(*, clinic_id, result_version_id, exam, command_id)`
+takes a typed exam document entered for the result (LOINC code, SUS subgroup,
+qualitative result, method, reference range, specimen type, issue time). It
+never reads the encrypted free text of an orders result; without a valid
+document nothing is built. In order, it refuses with:
+
+| Refusal | When |
+|---------|------|
+| `RndsUnavailableError` | before any read: data mode is not synthetic, `INTEROP_RNDS_HOMOLOGATION` is off (the default) or the clinic's current `rnds` version is not an approved `sandbox` version of provider `rnds-fixture`, environment `homologation`, account `fixture` |
+| `RndsValidationError` | the exam document or the built bundle breaks a recorded rule; it carries every failing element path and a closed issue code, never a value |
+| `InteropAccessDeniedError` | unknown, other-clinic or unauthorized result: the actor needs `result.release` for the result's patient, and every miss is the same denial |
+| `RndsIneligibleError` | `source_superseded`, `not_acknowledged`, `consent_required` (no unrevoked `rnds_exchange` acceptance), `identifier_required` (no valid CNS or CPF) or `already_submitted` (a pending or accepted submission exists) |
+| `InteropConflictError` | the command id was used for other terms; the same terms return the stored receipt |
+
+`interop_rnds_request` re-checks authority, the current and acknowledged
+version, consent and the capability version in the database, then stores the
+RFC 8785 bundle bytes as a tenant envelope with their SHA-256. One `action`
+outbox operation (`interop-rnds-v1`) carries only that digest. At send time the
+outbox rechecks the actor and `submission_eligible` rechecks consent, the result
+and the capability version, so a revocation before the send cancels it. This
+recheck is not a lock: a revocation committed while the request is on the wire
+does not recall it.
+
+The only reachable transport is `FixtureRndsTransport`, which answers from the
+guide's recorded examples (`rnds_fixtures/responses.json`): an accepted bundle
+gets a `location` identifier, a non-final document `EHR-ERR924`, a foreign
+requester system `EHR-ERR881`, an unknown requester `EHR-ERR906` and a repeated
+bundle identifier `EHR-ERR866`. The answer settles the submission through
+`interop_rnds_settle` while its operation is in flight:
+
+- `201` with an identifier: `accepted`, identifier stored.
+- `EHR-ERR866`: `accepted` without an identifier. Bundle identifiers are
+  submission ids under the establishment's own requester system, so RNDS
+  already holds this document; a lost answer never becomes a second document.
+- other `4xx`: `rejected` with the `EHR-ERRnnn` code (or `http_<status>`).
+- `401 EHR-ERR882`: the token is refreshed once; then the send retries.
+- `5xx`, an answer without a readable identifier, network failures and
+  timeouts: the same bundle is retried; a copy that already landed answers
+  `EHR-ERR866`.
+- an operation that fails or is cancelled without an answer: `rejected` with
+  `undelivered` or `withdrawn` (`interop_rnds_undelivered` trigger).
+
+A rejected submission frees the result for a new command. Replacing an accepted
+result (RNDS "substituir") is not implemented.
+
+`MtlsRndsTransport` implements the guide's flow with the standard library
+(`ssl`, `http.client`): `GET /api/token` on the Auth host over mutual TLS with
+the establishment's ICP-Brasil certificate (30-minute token), then
+`POST /api/fhir/r4/Bundle` on the EHR host with `X-Authorization-Server: Bearer
+<token>` and `Authorization: <requester CNS>`. `cryptography`, already locked
+and used by `external_ids.py`, only opens the PKCS#12 bundle, which `ssl`
+cannot; the key reaches disk only re-encrypted under an ephemeral passphrase in
+a private temporary directory, and an expired certificate fails before any
+connection. The bundle and passphrase are `rnds-<clinic hex>-pkcs12` and
+`rnds-<clinic hex>-passphrase` credential files in the secret store
+(`apps.core.secrets.credential_store`), never in the database or evidence.
+The transport is tested against a local CA and servers only. Nothing selects
+it: `transport_for` refuses every provider but the fixture, and no establishment
+(requester id, CNES, requester CNS) exists outside the synthetic fixture one.
+
+BLOCKED-ON-EG-7 (and EG-1, EG-2): DATASUS credentialing, the homologation
+evidence PDF, production access per state and the LGPD art. 11 legal basis
+(open for the owner's compliance reviewer) all precede a real leg, which also
+needs the provider lifecycle record and `ops.release.activation`; its live
+preflight refuses an environment that sets `INTEROP_RNDS_HOMOLOGATION`. Submissions
+are audited as `interop.rnds_submission.requested`, `.accepted` and `.rejected`;
+an answer recorded after the requester lost authority is audited by the outbox
+completion event instead. No log, outbox row, `last_error` or audit payload
+holds the bundle, the patient identifier or a credential.

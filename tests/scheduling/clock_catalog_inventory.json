@@ -619,6 +619,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -2924,6 +2925,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -4702,6 +4704,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -7970,6 +7973,87 @@
       "function:pg_catalog.int4ge(integer, integer)",
       "function:pg_catalog.int4le(integer, integer)",
       "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rnds_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.textne(text, text)",
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmissi_capability_version_i_3a427b3b_fk_providers": {
+    "direct": {},
+    "via": [
+      "constraint:providers_capabilityversion.providers_capability_approval_id_9444454d_fk_providers",
+      "constraint:providers_capabilityversion.providers_capability_capability_id_c894e3fe_fk_providers",
+      "constraint:providers_capabilityversion.providers_capabilityversion_approval_pairing",
+      "constraint:providers_capabilityversion.providers_capabilityversion_state_vocab",
+      "trigger:providers_capabilityversion.agent_send_mutation",
+      "trigger:providers_capabilityversion.providers_version_transition"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmissi_enrollment_id_37e81c0b_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmissi_organization_id_c144c5da_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_organization.subscription_organization_created"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmissi_requested_by_id_2ab7bc27_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmissi_result_version_id_a10c00d6_fk_orders_re": {
+    "direct": {},
+    "via": [
+      "constraint:orders_resultversion.orders_resultversion_clinic_id_3bbd4119_fk_identity_clinic_id",
+      "constraint:orders_resultversion.orders_resultversion_lab_account_id_5ecdf87f_fk_orders_la",
+      "constraint:orders_resultversion.orders_resultversion_number_check",
+      "constraint:orders_resultversion.orders_resultversion_organization_id_5df35584_fk_identity_",
+      "constraint:orders_resultversion.orders_resultversion_result_id_158086b5_fk_orders_result_id",
+      "constraint:orders_resultversion.orders_resultversion_size_bytes_check",
+      "constraint:orders_resultversion.orders_resultversion_uploader_id_21db6083_fk_identity_user_id",
+      "policy:orders_resultversion.orders_insert",
+      "policy:orders_resultversion.orders_read",
+      "policy:orders_resultversion.setup_tenant",
+      "trigger:orders_resultversion.orders_binding"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmission_clinic_id_2a5d14a9_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:interop_rndssubmission.interop_rndssubmission_revision_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:interop_webhookdelivery.interop_delivery_contract": {
@@ -11274,6 +11358,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -12097,6 +12182,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -13612,6 +13698,7 @@
       "default:comms_integrationoperation.payload_digest",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -14773,6 +14860,7 @@
       "trigger:ai_modelconfiguration.ai_eval_model_gate",
       "trigger:ai_modelconfiguration.ai_model_guard",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -16676,6 +16764,7 @@
       "policy:intake_patientchannelpreference.tenant_isolation",
       "policy:intake_patientcontact.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:identity_clinicconfiguration.agent_send_mutation",
@@ -18938,6 +19027,7 @@
       "function:pg_catalog.interval(time without time zone)",
       "policy:comms_integrationoperation.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome"
     ]
@@ -20272,6 +20362,7 @@
       "policy:interop_webhookdelivery.interop_manage_read",
       "policy:interop_webhooksubscription.interop_manage_read",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:interop_apiclient.interop_guard",
@@ -20330,6 +20421,7 @@
       "policy:interop_webhookdelivery.interop_manage_read",
       "policy:interop_webhooksubscription.interop_manage_read",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:interop_apiclient.interop_guard",
@@ -20401,6 +20493,7 @@
       "policy:interop_organizationexportpart.interop_part_insert",
       "policy:interop_webhookdelivery.interop_manage_read",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:interop_organizationexport.interop_guard",
@@ -20458,6 +20551,38 @@
       "trigger:interop_apiclient.interop_retained_truncate",
       "trigger:interop_webhooksubscription.interop_guard",
       "trigger:interop_webhooksubscription.interop_retained_truncate"
+    ]
+  },
+  "function:clinic_app.interop_rnds_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 2,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "function:pg_catalog.to_jsonb(anyelement)"
+    ]
+  },
+  "function:clinic_app.interop_rnds_undelivered()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:interop_rndssubmission.interop_rnds_contract",
+      "constraint:interop_rndssubmission.interop_rndssubmissi_capability_version_i_3a427b3b_fk_providers",
+      "constraint:interop_rndssubmission.interop_rndssubmissi_enrollment_id_37e81c0b_fk_intake_pa",
+      "constraint:interop_rndssubmission.interop_rndssubmissi_organization_id_c144c5da_fk_identity_",
+      "constraint:interop_rndssubmission.interop_rndssubmissi_requested_by_id_2ab7bc27_fk_identity_",
+      "constraint:interop_rndssubmission.interop_rndssubmissi_result_version_id_a10c00d6_fk_orders_re",
+      "constraint:interop_rndssubmission.interop_rndssubmission_clinic_id_2a5d14a9_fk_identity_clinic_id",
+      "constraint:interop_rndssubmission.interop_rndssubmission_revision_check",
+      "index:interop_rnds_live_version",
+      "policy:interop_rndssubmission.interop_rnds_read",
+      "trigger:interop_rndssubmission.interop_rnds_guard",
+      "trigger:interop_rndssubmission.interop_rnds_retained_truncate"
     ]
   },
   "function:clinic_app.interop_webhook_backoff()": {
@@ -24715,6 +24840,7 @@
       "policy:scribe_recordingsession.capture_update",
       "policy:scribe_recordingsession.setup_tenant",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:ehr_encounter.ehr_binding",
@@ -25556,6 +25682,7 @@
       "policy:teleconsult_teleconsultsession.teleconsult_session_read",
       "policy:teleconsult_teleconsultsession.teleconsult_session_update",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:consent_consentacceptance.consent_binding",
@@ -26288,6 +26415,7 @@
       "policy:workflows_workflowstep.workflow_read",
       "policy:workflows_workflowstep.workflow_update",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:comms_integrationoperation.interop_rnds_undelivered",
       "trigger:comms_integrationoperation.interop_webhook_backoff",
       "trigger:comms_integrationoperation.workflows_release_outcome",
       "trigger:workflows_task.care_task_gate",
@@ -28299,6 +28427,12 @@
     ]
   },
   "index:ehr_encounter_one_open_unscheduled": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "index:interop_rnds_live_version": {
     "direct": {},
     "via": [
       "function:pg_catalog.texteq(text, text)"
@@ -30975,6 +31109,16 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:interop_rndssubmission.interop_rnds_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:interop_webhookdelivery.interop_manage_read": {
     "direct": {},
     "via": [
@@ -33374,6 +33518,13 @@
       "function:clinic_app.identity_reset_notification_clock()"
     ]
   },
+  "trigger:comms_integrationoperation.interop_rnds_undelivered": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_rnds_undelivered()",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "trigger:comms_integrationoperation.interop_webhook_backoff": {
     "direct": {},
     "via": [
@@ -34191,6 +34342,18 @@
     "direct": {},
     "via": [
       "function:clinic_app.interop_guard()"
+    ]
+  },
+  "trigger:interop_rndssubmission.interop_rnds_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_rnds_guard()"
+    ]
+  },
+  "trigger:interop_rndssubmission.interop_rnds_retained_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.interop_rnds_guard()"
     ]
   },
   "trigger:interop_webhookdelivery.interop_guard": {

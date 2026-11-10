@@ -10163,6 +10163,58 @@
       "probes": [
         "apps.interop.webhooks.delivery_eligible#cut1"
       ]
+    },
+    {
+      "symbol": "apps.interop.rnds._eligible_enrollment",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.rnds._eligible_enrollment#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.rnds._settle",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.rnds._settle#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.rnds._store",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.rnds._store#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.rnds_gate.require_rnds_homologation",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.rnds_gate.require_rnds_homologation#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.interop.rnds_gate.require_rnds_rehearsal",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.rnds_gate.require_rnds_rehearsal#cut1"
+      ]
     }
   ],
   "probes": [
@@ -10552,6 +10604,11 @@
     "apps.interop.management._command#cut1",
     "apps.interop.management._scope#cut1",
     "apps.interop.management.download_export_part#cut1",
+    "apps.interop.rnds._eligible_enrollment#cut1",
+    "apps.interop.rnds._settle#cut1",
+    "apps.interop.rnds._store#cut1",
+    "apps.interop.rnds_gate.require_rnds_homologation#cut1",
+    "apps.interop.rnds_gate.require_rnds_rehearsal#cut1",
     "apps.interop.tasks.dispatch_due#cut1",
     "apps.interop.tasks.expire#cut1",
     "apps.interop.views._denied#cut1",
@@ -15204,6 +15261,7 @@
           "clinic_app.insurance_submission:insurance_scope",
           "clinic_app.insurance_tussterm:insurance_scope",
           "clinic_app.intake_datasubjectrequest:privacy_staff_read",
+          "clinic_app.interop_rndssubmission:interop_rnds_read",
           "clinic_app.inventory_batch:inventory_insert",
           "clinic_app.inventory_batch:inventory_read",
           "clinic_app.inventory_calibration:inventory_insert",
@@ -15313,6 +15371,7 @@
           "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.intake_membership_payer_guard",
           "clinic_app.intake_merge_authorized",
+          "clinic_app.interop_rnds_request",
           "clinic_app.inventory_batch_allowed",
           "clinic_app.inventory_guard",
           "clinic_app.inventory_today",
@@ -16834,7 +16893,8 @@
         "resolvers": [
           "clinic_app.interop_export_rows",
           "clinic_app.interop_manage",
-          "clinic_app.interop_manager"
+          "clinic_app.interop_manager",
+          "clinic_app.interop_rnds_request"
         ],
         "signatures": [
           {
@@ -20684,6 +20744,7 @@
           "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_review_extraction",
+          "clinic_app.interop_rnds_request",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_scope",
           "clinic_app.orders_verify_identity",
@@ -25510,6 +25571,89 @@
       "discovery": {
         "migrations": [
           "apps/interop/migrations/_interop_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_rnds_guard": {
+      "kind": "row_integrity",
+      "reason": "Todo 68 retained-row trigger: refuses DELETE and TRUNCATE on RNDS submissions, admits inserts only as pending revision 1 with a sealed bundle, and only the pending to accepted or rejected transition with an exact revision increment.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_rnds_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_rnds_request": {
+      "kind": "domain_protocol",
+      "reason": "Todo 68 RNDS submission resolver: result.release for the matched result's patient enrollment, the current acknowledged version, the patient's unrevoked rnds_exchange consent, the clinic's approved fixture sandbox capability version and identical denial for unknown, foreign and unauthorized results.",
+      "probes": [
+        "test_unknown_foreign_and_unauthorized_records_are_denied_alike",
+        "test_non_consented_and_revoked_records_are_refused"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_rnds_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_submission uuid, requested_version uuid, requested_command uuid, requested_digest text, requested_capability uuid, sealed_bundle bytea, bundle_digest text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_rnds_settle": {
+      "kind": "worker_protocol",
+      "reason": "Todo 68 outbox send-path recorder: settles one pending RNDS submission to accepted or rejected only while its interop-rnds-v1 action operation is in flight; it stores the closed answer code and RNDS identifier, never the bundle or a patient identifier.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_rnds_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "operation uuid, requested_outcome text, requested_identifier text, requested_code text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.interop_rnds_undelivered": {
+      "kind": "row_integrity",
+      "reason": "Todo 68 outbox trigger: rejects a pending RNDS submission as undelivered or withdrawn when its operation fails or is cancelled without an RNDS answer; it reads no authority.",
+      "probes": [],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_rnds_sql.py"
         ],
         "policies": [],
         "resolvers": [],

@@ -3936,6 +3936,9 @@ msgstr "Apoio de IA"
 msgid "Research and model improvement"
 msgstr "Pesquisa e melhoria de modelos"
 
+msgid "Sharing results with the national health data network (RNDS)"
+msgstr "Compartilhamento de resultados com a Rede Nacional de Dados em Saúde (RNDS)"
+
 msgid "Transactional messaging"
 msgstr "Mensagens transacionais"
 

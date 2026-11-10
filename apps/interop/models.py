@@ -1,4 +1,8 @@
-"""Partner integration and organization export records; no clinical text here."""
+"""Partner integration, organization export and RNDS submission records.
+
+No partner or export row holds clinical text. ``RndsSubmission`` keeps the
+exact submitted FHIR bundle only as a tenant envelope.
+"""
 
 from __future__ import annotations
 
@@ -32,6 +36,7 @@ CLIENT_STATES: Final = ("active", "revoked")
 SUBSCRIPTION_STATES: Final = ("active", "revoked")
 EXPORT_STATES: Final = ("requested", "building", "ready", "failed", "expired")
 ATTEMPT_OUTCOMES: Final = ("delivered", "http_error", "timeout", "network_error")
+RNDS_STATES: Final = ("pending", "accepted", "rejected")
 
 
 class ApiClient(TenantScopedModel):
@@ -188,6 +193,61 @@ class OrganizationExport(TenantScopedModel):
     record_count = models.PositiveBigIntegerField(default=0)
     attachment_count = models.PositiveIntegerField(default=0)
     failure_reason = models.CharField(max_length=32, default="", blank=True)
+
+
+class RndsSubmission(TenantScopedModel):
+    """One laboratory-result bundle sent to the RNDS homologation environment.
+
+    The id is also the bundle id and its identifier value. ``state`` is the RNDS
+    answer: ``pending`` while the outbox operation is live, then ``accepted``
+    with the RNDS identifier or ``rejected`` with a closed answer code.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
+    result_version = models.ForeignKey(
+        "orders.ResultVersion", on_delete=models.PROTECT, related_name="+"
+    )
+    enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment", on_delete=models.PROTECT, related_name="+"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
+    )
+    # The provider lifecycle version, and so the owner approval, it was sent under.
+    capability_version = models.ForeignKey(
+        "providers.CapabilityVersion", on_delete=models.PROTECT, related_name="+"
+    )
+    command_id = models.UUIDField()
+    request_digest = models.CharField(max_length=64)
+    environment = models.CharField(max_length=16, default="homologation")
+    profile = models.CharField(max_length=64)
+    state = models.CharField(max_length=16, default="pending")
+    revision = models.PositiveIntegerField(default=1)
+    bundle = EncryptedBytesField(purpose="interop.rndssubmission.bundle")
+    bundle_sha256 = models.CharField(max_length=64)
+    rnds_identifier = models.CharField(max_length=128, default="", blank=True)
+    answer_code = models.CharField(max_length=32, default="", blank=True)
+    created_at = models.DateTimeField()
+    decided_at = models.DateTimeField(null=True)
+
+    class Meta:
+        """One command per clinic; one live or accepted bundle per result version."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("clinic", "command_id"), name="interop_rnds_command"
+            ),
+            models.UniqueConstraint(
+                fields=("result_version",),
+                condition=models.Q(state__in=("pending", "accepted")),
+                name="interop_rnds_live_version",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return identifiers and state only; the bundle is clinical data."""
+        return f"{self.pk}:{self.state}"
 
 
 class OrganizationExportPart(TenantScopedModel):

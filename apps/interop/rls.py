@@ -3,7 +3,8 @@
 Every interop table carries bespoke policies from
 ``apps/interop/migrations/_interop_sql.py``; none uses the shared
 ``tenant_isolation`` policy. Secret digests and access tokens are resolver-only:
-the runtime role holds no privilege on them at all.
+the runtime role holds no privilege on them at all. RNDS submissions are
+resolver-written; the runtime only reads them under ``result.read``.
 """
 
 from typing import Final
@@ -20,6 +21,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "interop_webhookattempt",
         "interop_organizationexport",
         "interop_organizationexportpart",
+        "interop_rndssubmission",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
@@ -33,6 +35,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "interop_webhookattempt": frozenset({"SELECT"}),
     "interop_organizationexport": frozenset({"SELECT"}),
     "interop_organizationexportpart": frozenset({"SELECT", "INSERT"}),
+    "interop_rndssubmission": frozenset({"SELECT"}),
 }
 # The export worker advances its job under the requester's current authority.
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
