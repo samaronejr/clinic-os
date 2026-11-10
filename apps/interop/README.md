@@ -35,9 +35,10 @@ bits of fresh entropy and are shown once; only their SHA-256 digests are
 stored. Webhook signing secrets are derived from the platform secret
 `interop-webhook-signing` and the subscription id and version, and are never
 stored. External ids are derived with the platform secret
-`interop-external-ids`. No table holds clinical text, and no interop row, outbox
-row, `last_error`, audit payload or log line holds a patient name, an endpoint
-URL or a request body.
+`interop-external-ids`. No table holds clinical text. Webhook subscriptions
+(`interop_webhooksubscription`) store their endpoint URL by design; no delivery
+or attempt row, outbox row, `last_error`, audit payload or log line holds a
+patient name, an endpoint URL or a request body.
 
 ## Authority
 
