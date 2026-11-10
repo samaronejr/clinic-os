@@ -167,7 +167,9 @@ parses the source it uploaded while the job is in flight; the database cannot
 tell that step apart from other code in the same session, so it confines the
 read to that resolver and those states. No machine grants. The
 guard refuses DELETE, TRUNCATE and every UPDATE except the batch step.
-Migration `interop.0001_import_framework` is protected and irreversible;
+Organization export v2 exports these relations except the commit batches
+(machinery) and never reads a stored source. Migration
+`interop.0001_import_framework` is protected and irreversible;
 rollback = restore. It depends only on what it touches when it runs (identity
 user, clinic and `has_permission`, intake's latest node, comms participants):
 the rollback activity check is plpgsql and resolves the other relations at run
@@ -346,9 +348,10 @@ appends one `interop_webhookattempt` row. Revoking the subscription or client,
 losing the approver's authority or offboarding cancels queued deliveries at
 send time without a request.
 
-### Organization export v1
+### Organization export
 
-The archive format is `docs/api/export-v1.md`. `request_export` records the
+The archive format is `docs/api/export-v2.md`: export v1 (`docs/api/export-v1.md`,
+frozen) plus the governed-import relations. `request_export` records the
 receipt and, after commit, hands only the export, organization and requester
 ids to the fair `bulk` queue. `build_organization_export` claims the receipt,
 reads every dataset page in its own `tenant_context` of the requester through
@@ -360,7 +363,11 @@ it is ready. The beat sweeps (`interop-export-dispatch` every 5 minutes,
 archives, fail builds older than 6 hours or whose requester lost authority, and
 null the bytes of expired and failed parts while keeping every receipt.
 
-`export_registry.EXPORT_V1` and `EXCLUDED_V1` partition the recovery manifest's
-`DOMAIN_RELATIONS` exactly (`tests/interop/test_org_export.py`). A new domain
-relation must be classified in a new export version migration; this version
-never changes.
+`EXPORT_V2` and `EXCLUDED_V2` (`migrations/_export_v2_sql.py`) partition the
+recovery manifest's `DOMAIN_RELATIONS` exactly, and `EXPORT_V1`/`EXCLUDED_V1`
+stay as v1 partitioned it before the governed import existed
+(`tests/interop/test_org_export.py`). Version 2 exports the import mappings,
+jobs, transitions, files, imported records and hide markers and excludes the
+commit batches as machinery; an import file of role `source` is exported without
+its stored bytes, which the export never reads. A new domain relation must be
+classified in a new export version migration; no published version changes.

@@ -1,5 +1,9 @@
 # Organization export v1
 
+Exports built after migration `interop.0003_export_v2` use
+[export v2](export-v2.md), which adds the governed-import relations. This
+version and its contract below are unchanged.
+
 Format id: `clinic-organization-export-v1`. An organization administrator
 (`configuration.organization` on every clinic) requests the export through
 `POST /api/interop/v1/` (`exports.request`). It covers every domain record of

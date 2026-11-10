@@ -1,7 +1,8 @@
-"""Organization export v1: complete, organization-scoped, verifiable and expiring."""
+"""Organization export v2 (v1 frozen): complete, organization-scoped, verifiable."""
 
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 import io
@@ -30,8 +31,16 @@ from apps.interop.management import (
     list_exports,
     request_export,
 )
+from apps.interop.migrations import _export_v2_sql
 from apps.interop.migrations._export_sql import EXCLUDED_V1, EXPORT_V1
+from apps.interop.migrations._export_v2_sql import (
+    EXCLUDED_V2,
+    EXPORT_V2,
+    IMPORT_EXCLUSIONS,
+    IMPORT_EXPORTS,
+)
 from apps.interop.migrations._interop_sql import TABLES
+from apps.interop.rls import IMPORT_RLS_TABLES
 from apps.retention.services import verify_export_package
 from apps.subscriptions.services import cancel_subscription
 from apps.tenancy.db import tenant_context
@@ -42,7 +51,17 @@ from ops.testing import restore_contract
 
 from auth.stepup_test_support import create_role_actor
 from identity.permission_support import owner_context
-from interop.support import org_admin, org_b_admin
+from interop.support import (
+    SYNTHETIC_PDF,
+    committed,
+    history_csv,
+    history_row,
+    import_world,
+    org_admin,
+    org_b_admin,
+    patients_csv,
+)
+from interop.support import archive as import_archive
 from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_attachments import PDF_BYTES, attachment_root, begin, upload
@@ -50,7 +69,7 @@ from renewal.test_retention import staff_client
 from subscriptions.support import event
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
     from typing import Any
 
     from apps.ehr.models import ClinicalAttachment
@@ -65,7 +84,8 @@ __all__ = ("attachment_root",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 MANAGEMENT = "/api/interop/v1/"
-FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v1.md"
+FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v2.md"
+V1_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v1.md")
 FORMULA = "=SOMA(1;2)"
 FOREIGN_NAME = "Paciente Sintetica Organizacao B"
 AUDIT_KEYS = {
@@ -86,7 +106,8 @@ STAFF_COLUMNS = {
     "date_joined",
     "last_login",
 }
-EXPORTED = [entry[0] for entry in EXPORT_V1]
+EXPORTED = [entry[0] for entry in EXPORT_V2]
+IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
 
 
 @pytest.fixture
@@ -230,19 +251,34 @@ def _manage(
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
     assert len(EXPORTED) == len(set(EXPORTED))
-    assert set(EXPORTED).isdisjoint(EXCLUDED_V1)
-    assert set(EXPORTED) | set(EXCLUDED_V1) == set(restore_contract.DOMAIN_RELATIONS)
+    assert set(EXPORTED).isdisjoint(EXCLUDED_V2)
+    assert set(EXPORTED) | set(EXCLUDED_V2) == set(restore_contract.DOMAIN_RELATIONS)
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
-    assert set(EXCLUDED_V1.values()) <= set(EXCLUSION_REASONS)
+    assert set(EXCLUDED_V2.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
-    for relation, key, _kind, omitted, scope in EXPORT_V1:
+    for relation, key, _kind, omitted, scope in EXPORT_V2:
         names = {column.name for column in by_relation[relation].columns}
         assert key in names, relation
         assert names.isdisjoint(omitted), relation
         assert scope in {"organization", "self", "staff"}, relation
     staff = {column.name for column in by_relation["identity_user"].columns}
     assert staff == STAFF_COLUMNS
+
+
+def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> None:
+    # v1 still partitions exactly the manifest it was frozen against.
+    v1 = {entry[0] for entry in EXPORT_V1} | set(EXCLUDED_V1)
+    assert v1 == set(restore_contract.DOMAIN_RELATIONS) - IMPORT_RELATIONS
+    assert {entry[0] for entry in IMPORT_EXPORTS} | set(IMPORT_EXCLUSIONS) == (
+        IMPORT_RELATIONS
+    )
+    assert tuple(sorted((*EXPORT_V1, *IMPORT_EXPORTS))) == EXPORT_V2
+    assert EXCLUDED_V2 == {**EXCLUDED_V1, **IMPORT_EXCLUSIONS}
+    # The v2 migration replaces only the reader's branches; its reverse is v1's.
+    assert _export_v2_sql.FORWARD.count("requested_relation='") == len(EXPORT_V2)
+    assert _export_v2_sql.REVERSE.count("requested_relation='") == len(EXPORT_V1)
+    assert "GRANT SELECT ON" not in _export_v2_sql.FORWARD + _export_v2_sql.REVERSE
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
@@ -259,19 +295,34 @@ def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
     assert (definer, owner, runtime) == (True, "clinic_resolver", True)
     assert re.findall(r"requested_relation='([a-z0-9_]+)'", source) == EXPORTED
     assert "EXECUTE" not in source.upper()
+    # A stored import source is never read: only attachments carry their bytes.
+    assert source.count(_export_v2_sql.SEALED_SOURCE) == 1
 
 
-def test_format_document_names_every_exclusion_and_omitted_column() -> None:
-    document = FORMAT_DOCUMENT.read_text(encoding="utf-8")
-    assert f"Format id: `{FORMAT}`" in document
+@pytest.mark.parametrize(
+    ("path", "format_id", "excluded", "exported"),
+    [
+        (V1_DOCUMENT, "clinic-organization-export-v1", EXCLUDED_V1, EXPORT_V1),
+        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V2, EXPORT_V2),
+    ],
+    ids=["v1", "v2"],
+)
+def test_format_document_names_every_exclusion_and_omitted_column(
+    path: Path,
+    format_id: str,
+    excluded: Mapping[str, str],
+    exported: tuple[tuple[str, str, str, tuple[str, ...], str], ...],
+) -> None:
+    document = path.read_text(encoding="utf-8")
+    assert f"Format id: `{format_id}`" in document
     rows = {
         line.split("|")[1].strip(" `"): line
         for line in document.splitlines()
         if line.startswith("| `")
     }
-    for relation, reason in EXCLUDED_V1.items():
+    for relation, reason in excluded.items():
         assert f"`{relation}`" in rows[reason], relation
-    for relation, _key, _kind, omitted, _scope in EXPORT_V1:
+    for relation, _key, _kind, omitted, _scope in exported:
         for column in omitted:
             assert f"`{column}`" in rows[relation], (relation, column)
 
@@ -291,7 +342,7 @@ def _assert_manifest(
     assert manifest["manifest_sha256"] == job.manifest_sha256
     assert [entry["relation"] for entry in manifest["datasets"]] == EXPORTED
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
-    assert excluded == EXCLUDED_V1
+    assert excluded == EXCLUDED_V2
     counts = (
         manifest["dataset_count"],
         manifest["record_count"],
@@ -582,3 +633,49 @@ def test_expired_archives_keep_receipts_and_lose_their_bytes(
         pytest.raises(InteropAccessDeniedError),
     ):
         download_export_part(clinic_id=graph.clinic_a, export_id=job.export_id, part=1)
+
+
+def test_v2_exports_committed_imports_but_never_a_stored_source(
+    rbac_graph: RbacGraph,
+    dispatched: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph = rbac_graph
+    world = import_world(graph)
+    members = {
+        "patients.csv": patients_csv(1),
+        "history.csv": history_csv(
+            [history_row("D-1", "SIN-000001", "Anexo", file="laudo.pdf")]
+        ),
+        "files/laudo.pdf": SYNTHETIC_PDF,
+    }
+    report, _receipt_view = committed(
+        world, import_archive(members), monkeypatch, kind="zip"
+    )
+    admin = org_admin(graph)
+    job = _request(graph, admin)
+    assert _build(graph, admin, job) == "ready"
+    package = _archive(graph, admin, _receipt(graph, admin, job.export_id))
+    assert verify_export_package(package).ok
+    files = _files(package)
+    manifest = json.loads(files["manifest.json"])
+    assert manifest["v"] == "clinic-organization-export-v2"
+    excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
+    assert excluded["interop_importbatch"] == "machinery"
+    assert "data/interop_importbatch.jsonl" not in files
+    jobs = _jsonl(files["data/interop_importjob.jsonl"])
+    assert [row["id"] for row in jobs] == [str(report.job.job_id)]
+    transitions = _jsonl(files["data/interop_importtransition.jsonl"])
+    assert "committed" in {row["state"] for row in transitions}
+    assert len(_jsonl(files["data/interop_importmapping.jsonl"])) == 1
+    records = {
+        row["kind"]: row for row in _jsonl(files["data/interop_importedrecord.jsonl"])
+    }
+    assert set(records) == {"patient", "attachment"}
+    assert records["attachment"]["source_record_id"] == "D-1"
+    stored = {
+        row["role"]: row for row in _jsonl(files["data/interop_importfile.jsonl"])
+    }
+    assert set(stored) == {"source", "attachment"}
+    assert base64.b64decode(str(stored["attachment"]["data"])) == SYNTHETIC_PDF
+    assert "data" not in stored["source"]
