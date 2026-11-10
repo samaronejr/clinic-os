@@ -27217,6 +27217,7 @@
           "clinic_app.interop_organizationexport:interop_manage_read",
           "clinic_app.interop_organizationexportpart:interop_manage_read",
           "clinic_app.interop_organizationexportpart:interop_part_insert",
+          "clinic_app.interop_rndssubmission:interop_rnds_read",
           "clinic_app.interop_webhookattempt:interop_manage_read",
           "clinic_app.interop_webhookdelivery:interop_manage_read",
           "clinic_app.interop_webhooksubscription:interop_manage_read",

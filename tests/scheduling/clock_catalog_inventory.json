@@ -8872,6 +8872,7 @@
       "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "policy:intake_patientclinicenrollment.interop_import_visibility",
       "policy:intake_patientclinicenrollment.tenant_isolation"
     ]
   },
@@ -33425,6 +33426,7 @@
   "policy:interop_rndssubmission.interop_rnds_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.enterprise_staff_context()",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
