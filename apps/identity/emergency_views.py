@@ -46,9 +46,10 @@ def emergency_reviews(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
         cursor.execute("SELECT clinic_app.enterprise_manager(%s)", [clinic_id])
         if cursor.fetchone() != (True,):
             raise GovernanceDeniedError
-        clinic = Clinic.objects.filter(pk=clinic_id).first()
-        if clinic is None:
-            raise GovernanceDeniedError
+        # enterprise_manager holds only through has_permission, which requires
+        # this clinic in the current tenant: the row identity_clinic's tenant
+        # policy shows clinic_app, and current memberships PROTECT it.
+        clinic = Clinic.objects.get(pk=clinic_id)
         return auth_response(
             render(
                 request,

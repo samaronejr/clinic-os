@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -9,19 +10,38 @@ import pytest
 from apps.audit.models import AuditEvent
 from apps.audit.services import verify_chain
 from apps.identity.enterprise import approve_group_mapping, revoke_scim_token
-from apps.identity.models import ScimResource, SessionRecord, User, UserClinicRole
+from apps.identity.models import (
+    ScimResource,
+    ScimToken,
+    SessionRecord,
+    User,
+    UserClinicRole,
+)
 from apps.identity.scim import create_resource, resource_document, scim_context
 from django.db import connection
 from django.test import Client, override_settings
+from django.utils import timezone
 
 from identity.enterprise_support import enterprise_setup, verified_actor_client
 from identity.permission_support import owner_context, permission_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from django.test.client import _MonkeyPatchedWSGIResponse
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+SEARCH = {"schemas": ["urn:ietf:params:scim:api:messages:2.0:SearchRequest"]}
+
+
+def _search(client: Client, token: str) -> _MonkeyPatchedWSGIResponse:
+    return client.post(
+        "/scim/v2/Users/.search",
+        data=SEARCH,
+        content_type="application/scim+json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
@@ -193,6 +213,43 @@ def test_revoked_scim_token_is_unauthorized(rbac_graph: RbacGraph) -> None:
     assert response.status_code == 401
     assert not response.cookies
     assert response.json()["status"] == "401"
+
+
+@override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
+def test_scim_budget_refuses_past_one_hundred_then_revocation_is_unauthorized(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given a bearer that spent 99 of its 100 requests in the current window,
+    # pinned ahead of the database clock so the window cannot roll over here.
+    setup = enterprise_setup(rbac_graph)
+    with owner_context(rbac_graph.organization_a):
+        token_id = setup.connection.tokens.get().pk
+        pinned = ScimToken.objects.filter(pk=token_id).update(
+            window_start=timezone.now() + timedelta(days=1), window_count=99
+        )
+    assert pinned == 1
+    client = Client()
+    # When its hundredth and hundred-and-first requests arrive.
+    with runtime_role():
+        last = _search(client, setup.token)
+        limited = _search(client, setup.token)
+    # Then the hundredth is answered and the next is refused with Retry-After,
+    # reflecting neither the bearer nor a session.
+    assert last.status_code == 200
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "60"
+    assert setup.token.encode("ascii") not in limited.content
+    assert not limited.cookies
+    # And once revoked, the same bearer is unauthorized inside its window.
+    with permission_context(rbac_graph, rbac_graph.clinic_admin):
+        revoke_scim_token(
+            clinic_id=rbac_graph.clinic_a,
+            token_id=token_id,
+            session_key=setup.session_key,
+        )
+    with runtime_role():
+        revoked = _search(client, setup.token)
+    assert revoked.status_code == 401
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)

@@ -44,6 +44,13 @@ def test_governance_page_uses_native_private_forms(rbac_graph: RbacGraph) -> Non
     assert refused.status_code == 400
     assert refused.context["succeeded"] is False
     assert refused.context["secret"] == ""
+    # And an action outside the closed governance forms is the view's own 400.
+    with runtime_role():
+        unknown = setup.client.post(
+            f"/clinics/{rbac_graph.clinic_a}/settings/governance/",
+            {"action": "unknown"},
+        )
+    assert unknown.status_code == 400
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)

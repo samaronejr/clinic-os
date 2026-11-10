@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.identity.delegates import switch_delegate
 from apps.identity.enterprise_access import EmergencyScope, grant_break_glass
 from apps.identity.models import BreakGlassGrant
+from apps.intake.patient_access import patient_session_context
 from django.test import override_settings
 from django.utils import timezone
 
@@ -20,9 +22,12 @@ from identity.permission_support import (
     permission_context,
 )
 from patient_service_support import runtime_role
+from patients.delegate_support import active_grant, delegate_world
 from renewal.test_patient_access import _issue, _patient_client, _redeem
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -61,16 +66,19 @@ def test_emergency_pages_grant_and_read_only_under_break_glass_authority(
         # Exactly one grant: neither refused request wrote one.
         grant = BreakGlassGrant.objects.get(clinician_id=clinician)
     assert grant.enrollment_id == enrollment
-    # Then only the grant's own clinician reads through it: the view refuses
-    # another admitted clinician, the registry refuses the receptionist.
+    # Then only the grant's own clinician reads through it: the view refuses an
+    # unreadable grant selector and another admitted clinician, the registry
+    # refuses the receptionist.
     with runtime_role():
         read = clinician_client.post(f"{page}read/", {"grant_id": grant.pk})
+        unreadable = clinician_client.post(f"{page}read/", {"grant_id": "x"})
         admitted = other_client.get(page)
         foreign = other_client.post(f"{page}read/", {"grant_id": grant.pk})
         refused = receptionist_client.get(page)
         borrowed = receptionist_client.post(f"{page}read/", {"grant_id": grant.pk})
     assert read.status_code == 200
     assert read.context["snapshot"].enrollment_id == enrollment
+    assert unreadable.status_code == 400
     assert "no-store" in read.headers["Cache-Control"]
     assert admitted.status_code == 200
     assert foreign.status_code == 403
@@ -111,3 +119,23 @@ def test_patient_access_log_lists_the_emergency_read_without_its_reason(
     assert b"SINTETICO-SENTINELA" not in listed.content
     assert malformed.status_code == 400
     assert staff.status_code == 403
+
+
+def test_patient_access_log_refuses_a_session_acting_as_a_delegate(
+    rbac_graph: RbacGraph,
+    tmp_path: Path,
+) -> None:
+    # Given a patient session that also holds an active guardian delegation.
+    world = delegate_world(rbac_graph, tmp_path)
+    grant = active_grant(rbac_graph, world)
+    patient = _patient_client(world.session_id)
+    with runtime_role():
+        own = patient.get(ACCESS_LOG)
+    # When the session switches to act for the represented patient.
+    with runtime_role(), patient_session_context(world.session_id):
+        switch_delegate(clinic_id=rbac_graph.clinic_a, grant_id=grant.grant_id)
+    with runtime_role():
+        delegated = patient.get(ACCESS_LOG)
+    # Then its own log opens, but a delegate never reads another patient's log.
+    assert own.status_code == 200
+    assert delegated.status_code == 403

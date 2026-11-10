@@ -69,6 +69,8 @@ FORM_TYPES = {
 
 
 def _apply(*, action: str, form: forms.Form, clinic_id: UUID, session_key: str) -> str:
+    # governance_view passes only a FORM_TYPES key, each matched below; it
+    # answers any other POST action with its own 400 before calling this.
     values = form.cleaned_data
     match action:
         case "configure":
@@ -121,8 +123,6 @@ def _apply(*, action: str, form: forms.Form, clinic_id: UUID, session_key: str) 
                 command_id=values["command_id"],
                 session_key=session_key,
             )
-        case _:
-            raise GovernanceDeniedError
     return ""
 
 
