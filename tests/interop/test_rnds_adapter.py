@@ -57,6 +57,8 @@ from apps.interop.rnds_transport import (
     RndsTransportError,
     credential_names,
     load_credential,
+    parse_answer,
+    recorded_answers,
     transport_for,
 )
 from apps.interop.services import RndsReceipt, exchange_clinical_record
@@ -557,6 +559,74 @@ def test_a_lost_acceptance_then_exhausted_retries_never_make_a_second_document(
 
 
 @db
+def test_a_security_code_under_422_never_releases_a_landed_document(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    dispatched: list[UUID],
+    superuser_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Gate review B1-R2: RNDS stores the bundle, then answers a contradictory 422
+    # carrying the security code EHR-ERR882, read by the real parser.
+    world = rnds_world(rbac_graph, settings)
+    first = submit(world)
+    landed = FixtureRndsTransport.submit_bundle
+    recorded = cast("dict[str, object]", recorded_answers()["outcomes"]["EHR-ERR882"])
+    security = json.dumps(recorded["body"])
+
+    def contradictory(
+        transport: FixtureRndsTransport, *, body: bytes, requester_cns: str
+    ) -> RndsAnswer:
+        landed(transport, body=body, requester_cns=requester_cns)
+        return parse_answer(422, "", security.encode())
+
+    with monkeypatch.context() as patch:
+        patch.setattr(FixtureRndsTransport, "submit_bundle", contradictory)
+        assert execute_operation(dispatched[0]) == "failed"
+    again = submit(world)
+    assert execute_operation(dispatched[-1]) == "succeeded"
+    # RNDS still holds exactly one document for the result version.
+    assert len(FIXTURE_TRANSPORT.accepted) == 1
+    assert again.submission_id == first.submission_id
+    settled = stored(superuser_database_url, first.submission_id)
+    assert (settled["state"], settled["answer_code"]) == ("accepted", "EHR-ERR866")
+
+
+@db
+def test_replaying_an_earlier_command_returns_its_receipt_without_arming(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    dispatched: list[UUID],
+    superuser_database_url: str,
+) -> None:
+    # Gate review B3: commands A and B both end uncertain; replaying A must not
+    # arm a send that its own, finished outbox operation can never run.
+    world = rnds_world(rbac_graph, settings)
+    command_a, command_b = uuid4(), uuid4()
+    first = submit(world, command=command_a)
+    FIXTURE_TRANSPORT.script.extend(["EHR-ERR881", "EHR-ERR881"])
+    assert execute_operation(dispatched[0]) == "failed"
+    second = submit(world, command=command_b)
+    assert (second.submission_id, second.created) == (first.submission_id, True)
+    assert execute_operation(dispatched[-1]) == "failed"
+    replayed = submit(world, command=command_a)
+    assert (replayed.submission_id, replayed.state, replayed.created) == (
+        first.submission_id,
+        "uncertain",
+        False,
+    )
+    assert len(dispatched) == 2
+    assert stored(superuser_database_url, first.submission_id)["state"] == ("uncertain")
+    # The latest command replays the same way, and a fresh command resends.
+    assert submit(world, command=command_b).created is False
+    fresh = submit(world)
+    assert (fresh.submission_id, fresh.created) == (first.submission_id, True)
+    assert execute_operation(dispatched[-1]) == "succeeded"
+    assert stored(superuser_database_url, first.submission_id)["state"] == ("accepted")
+    assert len(FIXTURE_TRANSPORT.accepted) == 1
+
+
+@db
 def test_exhausted_attempts_keep_the_document_until_its_resend_settles(
     rbac_graph: RbacGraph,
     settings: SettingsWrapper,
@@ -875,6 +945,9 @@ def test_database_refuses_raw_writes_and_illegal_transitions(
         " revision=revision+1",
         "UPDATE clinic_app.interop_rndssubmission SET state='rejected',"
         " answer_code='withdrawn'",
+        # Only a recorded validation verdict may reject; a security code may not.
+        "UPDATE clinic_app.interop_rndssubmission SET state='rejected',"
+        " revision=revision+1, answer_code='EHR-ERR882'",
     )
     for statement in refused:
         with (

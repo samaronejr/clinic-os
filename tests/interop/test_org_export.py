@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import re
+import sys
 import zipfile
 from datetime import date, timedelta
 from functools import partial
@@ -92,10 +93,12 @@ STAFF_COLUMNS = {
     "last_login",
 }
 EXPORTED = [entry[0] for entry in EXPORT_V1]
-# Relations created after the newest export version was frozen. The Wave F
-# integrator classifies each in the forward export version at merge, and no
-# frozen version gains them (todo 68 gate review B2).
-AWAITING_EXPORT_VERSION = frozenset({"interop_rndssubmission"})
+# The lane's frozen baseline export version and the relations created after it
+# froze. The exemption ends with that version: the forward version must classify
+# them at merge (todo 68 gate review B2-R2), and no frozen version gains them.
+AWAITING_EXPORT_VERSION = {
+    "clinic-organization-export-v1": frozenset({"interop_rndssubmission"}),
+}
 
 
 @pytest.fixture
@@ -239,14 +242,16 @@ def _manage(
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
     # The registry's current version, not a frozen one by name.
+    awaiting = AWAITING_EXPORT_VERSION.get(FORMAT, frozenset())
     exported = [dataset.relation for dataset in datasets()]
     assert len(exported) == len(set(exported))
     assert set(exported).isdisjoint(EXCLUDED)
     classified = set(exported) | set(EXCLUDED)
-    assert classified.isdisjoint(AWAITING_EXPORT_VERSION)
-    assert classified | AWAITING_EXPORT_VERSION == set(
-        restore_contract.DOMAIN_RELATIONS
-    )
+    assert classified.isdisjoint(awaiting)
+    domain = set(restore_contract.DOMAIN_RELATIONS)
+    unclassified = sorted(domain - classified - awaiting)
+    assert not unclassified, f"{FORMAT} leaves unclassified: {unclassified}"
+    assert classified | awaiting <= domain
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
     assert set(EXCLUDED.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
@@ -258,6 +263,18 @@ def test_export_registry_partitions_every_recovery_relation() -> None:
         assert scope in {"organization", "self", "staff"}, relation
     staff = {column.name for column in by_relation["identity_user"].columns}
     assert staff == STAFF_COLUMNS
+
+
+def test_a_forward_export_version_must_classify_every_awaiting_relation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Gate review B2-R2: the exemption ends with the lane's baseline version, so
+    # a forward version that leaves the relation unclassified fails the partition.
+    monkeypatch.setattr(
+        sys.modules[__name__], "FORMAT", "clinic-organization-export-v2"
+    )
+    with pytest.raises(AssertionError, match="interop_rndssubmission"):
+        test_export_registry_partitions_every_recovery_relation()
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:

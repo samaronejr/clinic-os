@@ -101,8 +101,12 @@ SUBJECT_TYPE: Final = "interop.rnds_submission"
 CONSENT_PURPOSE: Final = "rnds_exchange"
 BUNDLE_PURPOSE: Final = "interop.rndssubmission.bundle"
 DUPLICATE: Final = "EHR-ERR866"
+# The guide's errors page (read 2026-11-10) documents one verdict on a document:
+# EHR-ERR924, a status other than final. Only these codes release a result;
+# extend the set only from a documented source. interop_rnds_contract agrees.
+VALIDATION_VERDICTS: Final = frozenset({"EHR-ERR924"})
 _REQUEST_DOMAIN: Final = "clinic-rnds-request-v1"
-_OPERATION_NAMESPACE: Final = uuid.UUID("2b7f0c6e-3a51-4d8e-9f62-0c4b1e7a5d93")
+_OPERATION_DOMAIN: Final = "clinic-rnds-operation-v1"
 _IDENTIFIER_KINDS: Final = (("cns", cns_valid), ("cpf", cpf_valid))
 _ANSWER_CODE_LIMIT: Final = 32
 _HTTP_CLIENT_ERROR: Final = 400
@@ -115,6 +119,16 @@ class RndsReceipt:
     submission_id: UUID
     state: str
     created: bool
+
+
+def _operation_key(command_id: UUID) -> UUID:
+    """Return the outbox key of the send one command arms.
+
+    It depends on the command alone, so every send a command ever armed stays
+    findable after later resends; ``interop_rnds_request`` derives the same key.
+    """
+    digest = hashlib.sha256(f"{_OPERATION_DOMAIN}:{command_id}".encode()).hexdigest()
+    return uuid.UUID(digest[:32])
 
 
 def _request_digest(result_version_id: UUID, exam: LabExam) -> str:
@@ -352,9 +366,7 @@ def exchange_clinical_record(
                     clinic_id=clinic_id,
                     subject_type=SUBJECT_TYPE,
                     subject_id=receipt.submission_id,
-                    idempotency_key=uuid.uuid5(
-                        _OPERATION_NAMESPACE, f"{receipt.submission_id}:{command_id}"
-                    ),
+                    idempotency_key=_operation_key(command_id),
                     payload_digest=payload_digest,
                 )
             )
@@ -416,11 +428,16 @@ def _decide(answer: RndsAnswer) -> _Decision | None:
         return _Decision("accepted", code=DUPLICATE)
     if answer.status == HTTP_UNAUTHORIZED and TOKEN_EXPIRED in answer.codes:
         return None
-    if answer.status == HTTP_UNPROCESSABLE and answer.codes:
-        # A validation verdict is definitive: RNDS refused this document.
+    if (
+        answer.status == HTTP_UNPROCESSABLE
+        and answer.codes
+        and set(answer.codes) <= VALIDATION_VERDICTS
+    ):
+        # A recorded validation verdict is definitive: RNDS refused this document.
         return _Decision("rejected", code=answer.codes[0])
     if answer.status >= _HTTP_CLIENT_ERROR:
-        # Any other refusal is no verdict on the document; keep its identifier.
+        # Any other refusal, whatever its status or code, is no verdict on the
+        # document; keep its identifier.
         code = answer.codes[0] if answer.codes else f"http_{answer.status}"
         return _Decision("uncertain", code=code[:_ANSWER_CODE_LIMIT])
     # No readable identifier: resend the same bundle. A copy that already

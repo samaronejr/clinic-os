@@ -229,10 +229,14 @@ bundle identifier `EHR-ERR866`. The answer settles the submission through
 - `EHR-ERR866`: `accepted` without an identifier. Bundle identifiers are
   submission ids under the establishment's own requester system, so RNDS
   already holds this document.
-- `422` with an `EHR-ERRnnn` validation code: `rejected` with that code, the
-  only definitive refusal.
-- any other `4xx`: `uncertain` with its code (or `http_<status>`); a refusal
-  that is no verdict on the document keeps its identifier.
+- `422` whose codes are all recorded validation verdicts: `rejected` with that
+  code, the only definitive refusal. The guide documents one verdict,
+  `EHR-ERR924` (a status other than final); `rnds.VALIDATION_VERDICTS` holds it
+  and `interop_rnds_contract` admits no other rejection code.
+- any other `4xx`, including a `422` carrying a security code such as
+  `EHR-ERR882` or an unknown code: `uncertain` with its code (or
+  `http_<status>`); a refusal that is no verdict on the document keeps its
+  identifier.
 - `401 EHR-ERR882`: the token is refreshed once; then the send retries.
 - `5xx`, an answer without a readable identifier, network failures and
   timeouts: the same bundle is retried; a copy that already landed answers
@@ -247,8 +251,10 @@ An uncertain submission keeps the result version (the partial unique index
 next command for that result with the same exam terms resends the same row:
 `interop_rnds_request` returns it to `pending` under the new command, actor and
 capability version with the same identifier and sealed bytes, and a new outbox
-operation sends it, so a lost answer never becomes a second document. Other
-terms are refused (`delivery_unresolved`): a document RNDS may hold can only be
+operation sends it, so a lost answer never becomes a second document. Each
+send's outbox operation is keyed by its arming command alone, so replaying any
+earlier command returns that command's stored receipt (`created` false) and
+never arms a send. Other terms are refused (`delivery_unresolved`): a document RNDS may hold can only be
 replaced, which is not implemented. Only a rejected submission frees the result
 for a new bundle identifier. Replacing an accepted result (RNDS "substituir")
 is not implemented.

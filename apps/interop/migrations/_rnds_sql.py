@@ -27,7 +27,7 @@ ALTER TABLE clinic_app.interop_rndssubmission ADD CONSTRAINT interop_rnds_contra
     AND ((rnds_identifier<>'' AND answer_code='')
      OR (rnds_identifier='' AND answer_code='EHR-ERR866')))
    OR (state='rejected' AND decided_at IS NOT NULL AND rnds_identifier=''
-    AND answer_code ~ '^EHR-ERR[0-9]{3}$' AND answer_code<>'EHR-ERR866')
+    AND answer_code IN ('EHR-ERR924'))
    OR (state='uncertain' AND decided_at IS NOT NULL AND rnds_identifier=''
     AND answer_code<>'' AND answer_code<>'EHR-ERR866')));
 REVOKE ALL ON clinic_app.interop_rndssubmission FROM PUBLIC, clinic_app;
@@ -93,7 +93,7 @@ RETURNS TABLE(record_id uuid, outcome text, payload_digest text)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE org uuid; actor uuid; patient_enrollment uuid; consent_text uuid;
- existing clinic_app.interop_rndssubmission;
+ armed uuid; armed_by uuid; existing clinic_app.interop_rndssubmission;
 BEGIN
  SELECT c.organization_id INTO org FROM clinic_app.identity_clinic c
  WHERE c.id=requested_clinic
@@ -111,10 +111,20 @@ BEGIN
  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(
   'clinic-lock-v1:interop-rnds-version:' || requested_version::text,0));
+ -- Each send a command armed has an outbox operation keyed by the command
+ -- alone (rnds._operation_key), so an earlier command still replays its own
+ -- send after later resends instead of arming one the outbox cannot run.
+ SELECT x.subject_id,x.actor_id INTO armed,armed_by
+ FROM clinic_app.comms_integrationoperation x
+ WHERE x.organization_id=org AND x.subject_type='interop.rnds_submission'
+  AND x.idempotency_key=substr(encode(sha256(convert_to(
+   'clinic-rnds-operation-v1:'||requested_command::text,'UTF8')),'hex'),1,32)::uuid;
  SELECT * INTO existing FROM clinic_app.interop_rndssubmission s
- WHERE s.clinic_id=requested_clinic AND s.command_id=requested_command;
- IF existing.id IS NOT NULL THEN
-  IF existing.request_digest=requested_digest AND existing.requested_by_id=actor
+ WHERE s.clinic_id=requested_clinic
+  AND (s.id=armed OR s.command_id=requested_command);
+ IF existing.id IS NOT NULL OR armed IS NOT NULL THEN
+  IF existing.id IS NOT NULL AND existing.request_digest=requested_digest
+   AND coalesce(armed_by,existing.requested_by_id)=actor
    AND existing.result_version_id=requested_version THEN
    RETURN QUERY SELECT existing.id,'replayed'::text,NULL::text;
   ELSE

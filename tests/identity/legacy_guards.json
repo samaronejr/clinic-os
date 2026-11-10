@@ -25606,7 +25606,7 @@
     },
     "clinic_app.interop_rnds_request": {
       "kind": "domain_protocol",
-      "reason": "Todo 68 RNDS submission resolver: result.release for the matched result's patient enrollment, the current acknowledged version, the patient's unrevoked rnds_exchange consent, the clinic's approved fixture sandbox capability version and identical denial for unknown, foreign and unauthorized results; an uncertain submission of the result is resent unchanged under the new command (same exam terms, last operation over), never replaced by a second document.",
+      "reason": "Todo 68 RNDS submission resolver: result.release for the matched result's patient enrollment, the current acknowledged version, the patient's unrevoked rnds_exchange consent, the clinic's approved fixture sandbox capability version and identical denial for unknown, foreign and unauthorized results; a replayed command, including one a later resend superseded, returns the send its own outbox operation records and never arms another, and an uncertain submission of the result is resent unchanged under a new command (same exam terms, last operation over), never replaced by a second document.",
       "probes": [
         "test_unknown_foreign_and_unauthorized_records_are_denied_alike",
         "test_non_consented_and_revoked_records_are_refused"
@@ -25629,7 +25629,7 @@
     },
     "clinic_app.interop_rnds_settle": {
       "kind": "worker_protocol",
-      "reason": "Todo 68 outbox send-path recorder: settles one pending RNDS submission to accepted, rejected (a definitive validation code) or uncertain only while its interop-rnds-v1 action operation is in flight; it stores the closed answer code and RNDS identifier, never the bundle or a patient identifier.",
+      "reason": "Todo 68 outbox send-path recorder: settles one pending RNDS submission to accepted, rejected (a recorded validation verdict only) or uncertain only while its interop-rnds-v1 action operation is in flight; it stores the closed answer code and RNDS identifier, never the bundle or a patient identifier.",
       "probes": [],
       "discovery": {
         "migrations": [
