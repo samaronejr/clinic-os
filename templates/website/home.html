@@ -1,0 +1,151 @@
+{% extends "website/base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "The operating system for modern clinics" %}{% endblock %}
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <h1 id="hero-title" class="display">{% trans "The operating system for modern clinics." %}</h1>
+    <p class="hero-lede" data-claim="hero">{% trans "Scheduling, reception, records and an AI scribe in one workspace. AI prepares; you decide." %}</p>
+    <div class="site-actions">
+      <a class="button button--large" href="{% url 'website:contact' %}">{% trans "Talk to the team" %}</a>
+      <a class="button button--secondary button--large" href="{% url 'website:product' %}">{% trans "See the product" %}</a>
+    </div>
+  </div>
+  <figure class="ledger" aria-labelledby="ledger-title">
+    <div class="ledger-head">
+      <p id="ledger-title" class="ledger-title">{% trans "Today's agenda" %}</p>
+      <p class="ledger-meta">{% trans "Room 2 · Dr. Marina T." %}</p>
+    </div>
+    <ol class="ledger-rows">
+      <li class="ledger-row">
+        <time class="ledger-time" datetime="08:30">08:30</time>
+        <span class="ledger-who"><strong>Helena P.</strong><span>{% trans "Follow-up visit" %}</span></span>
+        <span class="badge badge--success">{% trans "Arrived" context "appointment status" %}</span>
+      </li>
+      <li class="ledger-row ledger-row--current">
+        <time class="ledger-time" datetime="09:00">09:00</time>
+        <span class="ledger-who"><strong>Caio M.</strong><span>{% trans "First visit" %}</span></span>
+        <span class="badge">{% trans "Care in progress" %}</span>
+      </li>
+      <li class="ledger-row">
+        <time class="ledger-time" datetime="09:30">09:30</time>
+        <span class="ledger-who"><strong>Lívia A.</strong><span>{% trans "Note waiting for review" %}</span></span>
+        <span class="ledger-draft">{% include "includes/components/icon.html" with name="draft" only %}{% trans "AI draft" %}</span>
+      </li>
+      <li class="ledger-row">
+        <time class="ledger-time" datetime="10:15">10:15</time>
+        <span class="ledger-who"><strong>Otávio R.</strong><span>{% trans "Video visit" %}</span></span>
+        <span class="badge badge--muted">{% trans "Confirmed" %}</span>
+      </li>
+    </ol>
+    <figcaption class="ledger-caption">{% trans "Preview built with the product's own status vocabulary and fictional data." %}</figcaption>
+  </figure>
+</section>
+
+<section class="day" aria-labelledby="day-title">
+  <div class="section-head">
+    <h2 id="day-title" class="display-2">{% trans "More time for what matters." %}</h2>
+    <p class="section-lede" data-claim="clinic-day">{% trans "One workspace follows the clinic day, from the first booking to the follow-up." %}</p>
+  </div>
+  <ol class="verbs">
+    <li class="verb">
+      <h3 class="verb-word">{% trans "Organizes" %}</h3>
+      <p data-claim="agenda">{% trans "Day and week agendas in the clinic's own time zone, with overlap protection." %}</p>
+    </li>
+    <li class="verb">
+      <h3 class="verb-word">{% trans "Automates" %}</h3>
+      <p data-claim="reminders">{% trans "Email, SMS and WhatsApp reminders leave through the integration outbox; each channel runs as a simulation until its provider is approved." %}</p>
+    </li>
+    <li class="verb">
+      <h3 class="verb-word">{% trans "Connects" %}</h3>
+      <p data-claim="patient-booking">{% trans "Patients book from a private clinic invitation and see their appointments in the patient portal." %}</p>
+    </li>
+    <li class="verb">
+      <h3 class="verb-word">{% trans "Frees up time" %}</h3>
+      <p data-claim="scribe">{% trans "With separate consent, the AI scribe proposes source-linked suggestions for the note. Real models are switched on only after approval." %}</p>
+    </li>
+  </ol>
+</section>
+
+<section class="ai" aria-labelledby="ai-title">
+  <div class="ai-copy">
+    <h2 id="ai-title" class="display-2" data-claim="ai-heading">{% trans "AI prepares. You decide." %}</h2>
+    <p class="section-lede" data-claim="ai-boundary">{% trans "AI never diagnoses, prescribes, finalizes a note or sends a clinical message on its own." %}</p>
+    <ul class="checks">
+      <li>{% include "includes/components/icon.html" with name="check" only %}<p data-claim="ai-review">{% trans "Every suggestion shows its source and waits for the clinician to accept, edit or reject it." %}</p></li>
+      <li>{% include "includes/components/icon.html" with name="check" only %}<p data-claim="ai-consent">{% trans "Consent to record is not consent to AI: drafting needs its own consent and an enabled organization policy." %}</p></li>
+      <li>{% include "includes/components/icon.html" with name="check" only %}<p data-claim="manual-path">{% trans "The manual path stays complete: every task can be done without AI." %}</p></li>
+    </ul>
+  </div>
+  <figure class="review" aria-labelledby="review-title">
+    <p id="review-title" class="review-title">{% trans "How a suggestion reaches the note" %}</p>
+    <ol class="review-steps">
+      <li class="review-step">
+        <p class="review-kind">{% include "includes/components/icon.html" with name="speech" only %}{% trans "Source · transcript 04:12" %}</p>
+        <blockquote class="review-quote"><p>{% trans "“Let's see you again in thirty days, with the blood tests.”" %}</p></blockquote>
+      </li>
+      <li class="review-step review-step--draft">
+        <p class="review-kind"><span class="ledger-draft">{% include "includes/components/icon.html" with name="draft" only %}{% trans "AI draft" %}</span><span class="review-cite">[1]</span></p>
+        <p class="review-text"><strong>{% trans "Plan" %}:</strong> {% trans "follow-up in 30 days with blood tests." %}</p>
+      </li>
+      <li class="review-step review-step--confirmed">
+        <p class="review-kind"><span class="review-confirmed">{% include "includes/components/icon.html" with name="check" only %}{% trans "Accepted by clinician" %}</span></p>
+        <p class="review-text" data-claim="review-still-draft">{% trans "The note is still a draft. Finalizing it is a separate step." %}</p>
+      </li>
+    </ol>
+    <figcaption class="ledger-caption">{% trans "Illustration with fictional content." %}</figcaption>
+  </figure>
+</section>
+
+<section class="band" aria-labelledby="security-title">
+  <div class="band-inner">
+    <h2 id="security-title" class="display-2" data-claim="security-structural">{% trans "Security is structure, not a feature." %}</h2>
+    <ul class="pillars">
+      <li class="pillar">
+        <h3>{% include "includes/components/icon.html" with name="lock" only %}<span data-claim="isolation-heading">{% trans "Each clinic isolated in the database" %}</span></h3>
+        <p data-claim="tenant-isolation">{% trans "Every clinic table enforces PostgreSQL row-level security, so application code cannot read another clinic's records." %}</p>
+      </li>
+      <li class="pillar">
+        <h3>{% include "includes/components/icon.html" with name="check" only %}<span data-claim="two-step-heading">{% trans "Two-step verification" %}</span></h3>
+        <p data-claim="two-step">{% trans "Privileged roles confirm an authenticator code, and sensitive actions ask for a fresh one." %}</p>
+      </li>
+      <li class="pillar">
+        <h3>{% include "includes/components/icon.html" with name="document" only %}<span data-claim="audit-heading">{% trans "An audit trail that cannot be rewritten" %}</span></h3>
+        <p data-claim="audit-trail">{% trans "Changes are recorded in a hash-chained audit ledger whose rows the database refuses to update or delete." %}</p>
+      </li>
+      <li class="pillar">
+        <h3>{% include "includes/components/icon.html" with name="eye" only %}<span data-claim="links-heading">{% trans "Nothing clinical in links" %}</span></h3>
+        <p data-claim="no-identifiers-in-urls">{% trans "Patient identifiers and searches travel in form bodies, never in page addresses or logs." %}</p>
+      </li>
+    </ul>
+    <a class="band-link" href="{% url 'website:security' %}">{% trans "Read the full security posture" %}{% include "includes/components/icon.html" with name="chevron-right" only %}</a>
+  </div>
+</section>
+
+<section class="honest" aria-labelledby="honest-title">
+  <h2 id="honest-title" class="display-2">{% trans "What we don't do yet." %}</h2>
+  <ul class="honest-list">
+    <li data-claim="no-live-data">{% trans "We do not process real patient data yet. Every environment runs on synthetic data until the privacy, recovery and security approvals are recorded." %}</li>
+    <li data-claim="providers-simulated">{% trans "PIX, WhatsApp, digital signatures and other integrations run as labelled simulations until each provider is approved." %}</li>
+    <li data-claim="no-unproven-marketing">{% trans "You will find no testimonials, certifications or metrics here until we can prove them." %}</li>
+  </ul>
+</section>
+
+<section class="learn" aria-labelledby="learn-title">
+  <div>
+    <h2 id="learn-title" class="display-2">{% trans "Learn at your own pace." %}</h2>
+    <p class="section-lede" data-claim="guides-follow-screens">{% trans "Step-by-step guides follow the real screens, button by button." %}</p>
+    <a class="button button--secondary" href="{% url 'website:help' %}">{% trans "Open the help center" %}</a>
+  </div>
+  <ol class="learn-list">
+    {% for guide in starter_guides %}
+      <li><a class="learn-link" href="{% url 'website:guide' guide.slug %}"><span class="learn-number">{{ forloop.counter }}</span><span><strong>{% trans guide.title %}</strong><span>{% trans guide.summary %}</span></span>{% include "includes/components/icon.html" with name="chevron-right" only %}</a></li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section class="closing" aria-labelledby="closing-title">
+  <h2 id="closing-title" class="display">{% trans "Ready to see it with your team?" %}</h2>
+  <a class="button button--large" href="{% url 'website:contact' %}">{% trans "Talk to the team" %}</a>
+</section>
+{% endblock %}

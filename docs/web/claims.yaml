@@ -1,0 +1,1141 @@
+# Clinic Ops website claims registry (todo 70).
+#
+# claims: every statement of fact in the templates under templates/website/
+# (subfolders included) and in the help guides. On pages the element
+# marked data-claim="<id>" directly wraps the claim's exact English msgid;
+# help-guide claims (surface: guides) are strings in apps/website/guides.py.
+# evidence_ref names a tracked repository file that supports the claim, and
+# each evidence_quote must appear in it (whitespace-normalized).
+# non_claims: every other text shown (headings, navigation, labels,
+# instructions, advice, fictional illustrations, brand rules, metadata), each
+# with a reason from NON_CLAIM_REASONS in tests/website/test_claims.py.
+# That test reads every template under templates/website/ (subfolders
+# included) and the help guides: it fails on any text there in neither list
+# and on any template form it cannot classify. Its route test fails when a
+# website route (the website urlconf, root routes of website views and every
+# route under WEBSITE_PUBLIC in apps/tenancy/middleware.py) renders a
+# template outside that tree and off its allowlist (the text-free icon
+# include, the app-wide 404 page). Declared limits: the tests do not check
+# values the views compute at request time or the pt-BR translations, and
+# the route test renders each route once, anonymously, with no query string.
+# Testimonials, certifications and metrics
+# would need the same evidence; none exists (PRODUCT.md, Evidence on Hand).
+version: 1
+# The pricing page stays hidden (404, unlinked) until todo 74 publishes
+# packaging with an owner approval record; the test pins this state.
+pricing:
+  status: hidden
+  owner_approval_ref: null
+claims:
+  - id: agenda
+    claim: "Day and week agendas in the clinic's own time zone, with overlap protection."
+    evidence_ref: apps/scheduling/README.md
+    evidence_quote:
+      - "overlap protection, and clinic-local time handling"
+  - id: reminders
+    claim: "Email, SMS and WhatsApp reminders leave through the integration outbox; each channel runs as a simulation until its provider is approved."
+    evidence_ref: apps/comms/README.md
+    evidence_quote:
+      - "synthetic implementation, not approved real messaging"
+      - "Email, SMS and WhatsApp have distinct adapters"
+  - id: patient-booking
+    claim: "Patients book from a private clinic invitation and see their appointments in the patient portal."
+    evidence_ref: apps/scheduling/README.md
+    evidence_quote:
+      - "enrollment-bound sessions"
+      - "New invitations grant this operation"
+  - id: scribe
+    claim: "With separate consent, the AI scribe proposes source-linked suggestions for the note. Real models are switched on only after approval."
+    evidence_ref: apps/scribe/README.md
+    evidence_quote:
+      - "separately consented synthetic transcription"
+  - id: ai-boundary
+    claim: "AI never diagnoses, prescribes, finalizes a note or sends a clinical message on its own."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "AI never diagnoses, prescribes, finalizes a note or sends a clinical message on its own."
+  - id: ai-review
+    claim: "Every suggestion shows its source and waits for the clinician to accept, edit or reject it."
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "Nothing is applied or finalized automatically."
+  - id: ai-consent
+    claim: "Consent to record is not consent to AI: drafting needs its own consent and an enabled organization policy."
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "separate current AI consent, informed disclosure and an enabled organization policy"
+  - id: manual-path
+    claim: "The manual path stays complete: every task can be done without AI."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "The manual path for every task stays complete."
+  - id: tenant-isolation
+    claim: "Every clinic table enforces PostgreSQL row-level security, so application code cannot read another clinic's records."
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Every current tenant table has both `ENABLE` and `FORCE ROW LEVEL SECURITY`."
+  - id: two-step
+    claim: "Privileged roles confirm an authenticator code, and sensitive actions ask for a fresh one."
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Privileged foundation routes require a confirmed django-otp TOTP device"
+      - "enforces a default 300-second window"
+  - id: audit-trail
+    claim: "Changes are recorded in a hash-chained audit ledger whose rows the database refuses to update or delete."
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "hashes the content hash together with the previous link"
+      - "triggers reject UPDATE, DELETE, and TRUNCATE"
+  - id: no-identifiers-in-urls
+    claim: "Patient identifiers and searches travel in form bodies, never in page addresses or logs."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "Patient identifiers never travel in URLs or logs."
+  - id: no-live-data
+    claim: "We do not process real patient data yet. Every environment runs on synthetic data until the privacy, recovery and security approvals are recorded."
+    evidence_ref: docs/compliance/LIVE-DATA-GATE.md
+    evidence_quote:
+      - "UNAPPROVED — DO NOT USE LIVE DATA"
+  - id: providers-simulated
+    claim: "PIX, WhatsApp, digital signatures and other integrations run as labelled simulations until each provider is approved."
+    evidence_ref: docs/integrations/capabilities.md
+    evidence_quote:
+      - "all 24 external capabilities unavailable"
+  - id: no-unproven-marketing
+    claim: "You will find no testimonials, certifications or metrics here until we can prove them."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "Absent and not to be fabricated: customers, testimonials, usage metrics"
+  - id: reception
+    claim: "Register arrivals and call patients to rooms; optional consent, documents and payment never block an arrival."
+    evidence_ref: templates/scheduling/partials/reception_board.html
+    evidence_quote:
+      - "Readiness is informational. Optional consent, documents and payment never prevent arrival."
+  - id: registry
+    claim: "Search by name or exact document; the search never appears in the address bar."
+    evidence_ref: apps/intake/README.md
+    evidence_quote:
+      - "Patient search values stay in request bodies rather than browser URLs."
+  - id: note-finalization
+    claim: "SOAP notes are drafted on the server; finalizing makes the version immutable and asks for a fresh authenticator code."
+    evidence_ref: templates/ehr/encounter.html
+    evidence_quote:
+      - "Finalizar torna o conteúdo imutável e exige verificação recente do seu autenticador."
+  - id: documents
+    claim: "Prescriptions, certificates, referrals and exam requests are drafted from the encounter; signing stays simulated until a provider is approved."
+    evidence_ref: apps/prescription/README.md
+    evidence_quote:
+      - "supports prescriptions, medical certificates"
+  - id: results
+    claim: "Each matched result opens a review task for the clinician who ordered it."
+    evidence_ref: apps/orders/README.md
+    evidence_quote:
+      - "Every matched version has an assigned review task for its ordering clinician."
+  - id: teleconsult
+    claim: "A video visit is bound to one encounter, its physician, its patient and the accepted consent; rooms come from a simulated provider until approval."
+    evidence_ref: apps/teleconsult/README.md
+    evidence_quote:
+      - "today always `teleconsult-synthetic-v1`"
+  - id: staff-access
+    claim: "Invite staff by role; access starts only after a password and an authenticator are confirmed."
+    evidence_ref: templates/identity/staff.html
+    evidence_quote:
+      - "Invitation queued. Access starts after password and authenticator confirmation."
+  - id: charges
+    claim: "Amounts are kept in whole centavos and a repeated submission never creates a second charge; PIX is a non-payable simulation."
+    evidence_ref: apps/billing/README.md
+    evidence_quote:
+      - "positive integer BRL centavos"
+      - "returns the charge it already created instead of opening a second one"
+      - "SYNTHETIC-NOT-PAYABLE"
+  - id: reports
+    claim: "Metrics have versioned definitions: a changed formula becomes a new version instead of an edit."
+    evidence_ref: apps/analytics/README.md
+    evidence_quote:
+      - "A changed formula requires a successor version"
+  - id: public-booking
+    claim: "The clinic's booking page asks for no diagnosis or reason for the visit."
+    evidence_ref: templates/crm/public.html
+    evidence_quote:
+      - "No diagnosis or reason for your visit is requested here."
+  - id: runtime-role
+    claim: "The application connects with a database role that cannot bypass row-level security and does not own the schema."
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "NOBYPASSRLS"
+      - "it is not the database or schema owner"
+  - id: same-denial
+    claim: "A record from another clinic gets the same refusal as a record that does not exist, so a refusal reveals nothing."
+    evidence_ref: apps/crm/README.md
+    evidence_quote:
+      - "Unknown and foreign records share one denial."
+  - id: role-bundles
+    claim: "Permissions come from versioned role bundles; a released bundle is never edited in place."
+    evidence_ref: apps/identity/README.md
+    evidence_quote:
+      - "Released versions are immutable"
+  - id: audit-payload
+    claim: "Audit entries carry only the clinic, the request and the outcome, never patient data."
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Sensitive clinical or identity fields are rejected rather than placed in the ledger."
+  - id: no-browser-storage
+    claim: "The browser keeps no clinical text: the offline cache holds only versioned static files."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "the service worker caches versioned static assets only"
+      - "no browser storage of clinical text or audio"
+  - id: encrypted-search
+    claim: "Patient names are stored encrypted and found through keyed exact-match indexes, with no plaintext copy."
+    evidence_ref: apps/intake/README.md
+    evidence_quote:
+      - "No plaintext shadow, decrypted predicate, or decrypt-and-filter fallback exists"
+  - id: approvals-pending
+    claim: "Legal, privacy, incident, key rotation and retention approvals are still open."
+    evidence_ref: docs/compliance/LIVE-DATA-GATE.md
+    evidence_quote:
+      - "- [ ] legal approval"
+      - "- [ ] privacy approval"
+      - "- [ ] incident approval"
+      - "- [ ] rotation approval"
+      - "- [ ] retention approval"
+  - id: recovery-statement
+    claim: "Recovery is proven only as a logical restore; provider point-in-time recovery and encrypted provider backups are not verified yet."
+    evidence_ref: docs/compliance/LIVE-DATA-GATE.md
+    evidence_quote:
+      - "logical restore only; provider PITR not verified; encrypted provider backup not verified"
+  - id: claims-registry
+    claim: "Every statement of fact in this site's page templates and help guides is registered with its evidence; an automated test checks the templates and guides for unregistered text."
+    evidence_ref: tests/website/test_claims.py
+    evidence_quote:
+      - "the test checks the page templates and the help guides for unregistered text"
+      - "def test_every_visible_text_is_a_claim_or_a_justified_non_claim"
+  - id: demo-data
+    claim: "Every demonstration on this site uses fictional, synthetic data."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "All demonstration content is synthetic and labeled as such."
+  - id: hero
+    claim: "Scheduling, reception, records and an AI scribe in one workspace. AI prepares; you decide."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "One workspace runs the whole outpatient day"
+      - "AI prepares, drafts and proposes; a person approves anything clinical or financial."
+  - id: clinic-day
+    claim: "One workspace follows the clinic day, from the first booking to the follow-up."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "One workspace runs the whole outpatient day"
+  - id: ai-heading
+    claim: "AI prepares. You decide."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "AI prepares, drafts and proposes; a person approves anything clinical or financial."
+  - id: review-still-draft
+    claim: "The note is still a draft. Finalizing it is a separate step."
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "The note is still a draft; finalization is a separate action."
+  - id: security-structural
+    claim: "Security is structure, not a feature."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "Security and compliance are structural, not features"
+  - id: isolation-heading
+    claim: "Each clinic isolated in the database"
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Every current tenant table has both `ENABLE` and `FORCE ROW LEVEL SECURITY`."
+  - id: two-step-heading
+    claim: "Two-step verification"
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Privileged foundation routes require a confirmed django-otp TOTP device"
+  - id: audit-heading
+    claim: "An audit trail that cannot be rewritten"
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "triggers reject UPDATE, DELETE, and TRUNCATE"
+  - id: links-heading
+    claim: "Nothing clinical in links"
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "Patient identifiers never travel in URLs or logs."
+  - id: guides-follow-screens
+    claim: "Step-by-step guides follow the real screens, button by button."
+    evidence_ref: tests/website/test_guides.py
+    evidence_quote:
+      - "Help guides stay bound to the real screens they describe."
+  - id: guides-follow-product
+    claim: "Every guide in the help center follows these screens, button by button."
+    evidence_ref: tests/website/test_guides.py
+    evidence_quote:
+      - "Help guides stay bound to the real screens they describe."
+  - id: guides-real-screens
+    claim: "Step-by-step guides for every team. Each step names the real screen and the exact button you will see."
+    evidence_ref: tests/website/test_guides.py
+    evidence_quote:
+      - "Help guides stay bound to the real screens they describe."
+  - id: legend-available
+    claim: "Available"
+    evidence_ref: ops/testing/renewal_runner.py
+    evidence_quote:
+      - "\"agenda\": ("
+      - "\"reception\": ("
+      - "\"staff-intake\": ("
+      - "\"encounter\": ("
+      - "\"reports\": ("
+      - "\"public-booking\": ("
+      - "\"portal\": ("
+  - id: legend-available-meaning
+    claim: "works end to end today"
+    evidence_ref: ops/testing/renewal_runner.py
+    evidence_quote:
+      - "\"agenda\": ("
+      - "\"reception\": ("
+      - "\"staff-intake\": ("
+      - "\"encounter\": ("
+      - "\"reports\": ("
+      - "\"public-booking\": ("
+      - "\"portal\": ("
+  - id: legend-simulation
+    claim: "Simulation"
+    evidence_ref: docs/integrations/capabilities.md
+    evidence_quote:
+      - "all 24 external capabilities unavailable"
+  - id: legend-simulation-meaning
+    claim: "depends on an outside provider; runs on a labelled simulation until approval"
+    evidence_ref: docs/integrations/capabilities.md
+    evidence_quote:
+      - "all 24 external capabilities unavailable"
+  - id: status-agenda
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_agenda.py
+    evidence_quote:
+      - "def test_receptionist_books_locates_reschedules_and_cancels_in_portuguese"
+  - id: status-arrivals
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_reception.py
+    evidence_quote:
+      - "def test_arrive_queue_call_to_room_with_native_keyboard_forms"
+  - id: status-registry
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_staff_intake.py
+    evidence_quote:
+      - "def test_receptionist_registers_and_finds_a_patient_across_pagination_and_reload"
+  - id: status-reminders
+    claim: "Simulation"
+    evidence_ref: apps/comms/README.md
+    evidence_quote:
+      - "synthetic implementation, not approved real messaging"
+  - id: status-encounter
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_encounter.py
+    evidence_quote:
+      - "def test_autosave_survives_a_dropped_save_offline_and_a_second_tab"
+  - id: status-scribe
+    claim: "Simulation"
+    evidence_ref: apps/scribe/README.md
+    evidence_quote:
+      - "separately consented synthetic transcription"
+  - id: status-documents
+    claim: "Simulation"
+    evidence_ref: apps/prescription/README.md
+    evidence_quote:
+      - "synthetic draft workspace"
+  - id: status-results
+    claim: "Simulation"
+    evidence_ref: apps/orders/README.md
+    evidence_quote:
+      - "synthetic data mode required"
+  - id: status-video
+    claim: "Simulation"
+    evidence_ref: apps/teleconsult/README.md
+    evidence_quote:
+      - "today always `teleconsult-synthetic-v1`"
+  - id: status-team
+    claim: "Simulation"
+    evidence_ref: templates/identity/staff.html
+    evidence_quote:
+      - "Notifications are synthetic simulations; no live provider is activated here."
+  - id: status-charges
+    claim: "Simulation"
+    evidence_ref: apps/billing/README.md
+    evidence_quote:
+      - "SYNTHETIC-NOT-PAYABLE"
+  - id: status-reports
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_reports.py
+    evidence_quote:
+      - "def test_reports_sources_review_boundaries_and_accessibility"
+  - id: status-booking
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_public_booking.py
+    evidence_quote:
+      - "def test_native_patient_booking_reuses_existing_service"
+  - id: status-portal
+    claim: "Available"
+    evidence_ref: tests/renewal/browser/test_portal.py
+    evidence_quote:
+      - "def test_home_lists_only_granted_destinations_and_never_placeholders"
+  - id: reception-board
+    claim: "The front desk sees the day, the arrivals and the rooms on one screen."
+    evidence_ref: templates/scheduling/reception.html
+    evidence_quote:
+      - "Arrivals, readiness and rooms in one place."
+  - id: clinician-flow
+    claim: "From the next patient to the finalized note, with AI that only suggests."
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "AI prepares, drafts and proposes; a person approves anything clinical or financial."
+  - id: patient-privacy
+    claim: "A direct path to the clinic that never shows another patient's agenda."
+    evidence_ref: templates/crm/public.html
+    evidence_quote:
+      - "See only available times, never another patient's agenda."
+  - id: lockup-use
+    claim: "Used on the navigation band of the product and this site."
+    evidence_ref: DESIGN.md
+    evidence_quote:
+      - "compact dark lockup (`brand/clinic-ops-logo-compact-dark.svg`"
+  - id: type-family
+    claim: "Avenir Next, then the system interface font. One family, tuned by weight."
+    evidence_ref: DESIGN.md
+    evidence_quote:
+      - "one workhorse sans for everything, tuned by weight"
+  - id: g-invite-summary
+    claim: "Send an invitation for each role. Access starts only after the person sets a password and an authenticator."
+    surface: guides
+    evidence_ref: templates/identity/staff.html
+    evidence_quote:
+      - "Invitation queued. Access starts after password and authenticator confirmation."
+  - id: g-invite-emails
+    claim: "In this version, invitation emails are simulations. No real message leaves until an email provider is approved."
+    surface: guides
+    evidence_ref: templates/identity/staff.html
+    evidence_quote:
+      - "Notifications are synthetic simulations; no live provider is activated here."
+  - id: g-invite-waits
+    claim: "The invitation waits until the person confirms a password and an authenticator."
+    surface: guides
+    evidence_ref: templates/identity/staff.html
+    evidence_quote:
+      - "Invitation queued. Access starts after password and authenticator confirmation."
+  - id: g-onboarding-progress
+    claim: "Finished items are marked complete. Progress is kept on the server."
+    surface: guides
+    evidence_ref: templates/identity/onboarding.html
+    evidence_quote:
+      - "Your progress stays on the server."
+  - id: g-signin-summary
+    claim: "Sign in with your password. Privileged roles then confirm a code from an authenticator app, and sensitive actions ask for a fresh code."
+    surface: guides
+    evidence_ref: docs/SECURITY.md
+    evidence_quote:
+      - "Privileged foundation routes require a confirmed django-otp TOTP device"
+      - "enforces a default 300-second window"
+  - id: g-code-once
+    claim: "A code works only once. If it is refused, wait for the next one."
+    surface: guides
+    evidence_ref: templates/identity/verify.html
+    evidence_quote:
+      - "A code accepted once cannot be replayed."
+  - id: g-qr
+    claim: "A private QR code appears. Scan it once with the app."
+    surface: guides
+    evidence_ref: templates/identity/enroll.html
+    evidence_quote:
+      - "The next screen shows a private QR code. Scan it once, then enter the current code."
+  - id: g-stepup-exact
+    claim: "The code confirms exactly that action and changes nothing else."
+    surface: guides
+    evidence_ref: templates/identity/step_up.html
+    evidence_quote:
+      - "The code confirms your identity for exactly this action; it changes nothing else."
+  - id: g-prefs-summary
+    claim: "Use the dark theme in low-light rooms or the compact density at the desk. The choice follows your account."
+    surface: guides
+    evidence_ref: templates/identity/preferences.html
+    evidence_quote:
+      - "Dark uses navy surfaces for low-light rooms."
+      - "These apply to your account on every device."
+  - id: g-prefs-every-device
+    claim: "Your choices apply on every device you sign in to."
+    surface: guides
+    evidence_ref: templates/identity/preferences.html
+    evidence_quote:
+      - "These apply to your account on every device."
+  - id: g-find-summary
+    claim: "Search the clinic registry by name or exact document, and register the patient when there is no match."
+    surface: guides
+    evidence_ref: templates/intake/patient_list.html
+    evidence_quote:
+      - "Search this clinic by name, with an optional birth date, or by an exact document number."
+  - id: g-search-private
+    claim: "The search never goes into the address bar, so it does not stay in the browser history."
+    surface: guides
+    evidence_ref: apps/intake/README.md
+    evidence_quote:
+      - "Patient search values stay in request bodies rather than browser URLs."
+  - id: g-return-to-search
+    claim: "You return to the search, ready to book."
+    surface: guides
+    evidence_ref: templates/intake/patient_create.html
+    evidence_quote:
+      - "Afterwards you return to the search to book the appointment."
+  - id: g-booking-summary
+    claim: "Start from the patient, choose the physician and the exact time inside an offered window."
+    surface: guides
+    evidence_ref: templates/scheduling/appointment_book.html
+    evidence_quote:
+      - "Choose any start and end inside a window the physician offers."
+  - id: g-booking-availability
+    claim: "The physician has published availability for the day."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/booking_panel.html
+    evidence_quote:
+      - "No physician offers a future window in this clinic yet. Add availability first, then book."
+  - id: g-clinic-time
+    claim: "Times always follow the clinic's time zone, even when your computer is set to another one."
+    surface: guides
+    evidence_ref: PRODUCT.md
+    evidence_quote:
+      - "appointments store UTC and display clinic-local times"
+  - id: g-arrival-summary
+    claim: "Mark the patient as arrived and call them to a room from Reception Today."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/reception_board.html
+    evidence_quote:
+      - "Register arrival"
+      - "Call to room"
+  - id: g-arrival-optional
+    claim: "Optional consent, documents and payment never prevent an arrival; they appear only as information."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/reception_board.html
+    evidence_quote:
+      - "Readiness is informational. Optional consent, documents and payment never prevent arrival."
+  - id: g-display-codes
+    claim: "The waiting display shows only the ticket and room codes."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/reception_board.html
+    evidence_quote:
+      - "Public screens show ticket and room codes only, never patient names or service details."
+  - id: g-encounter-summary
+    claim: "Start the encounter from Today, write the SOAP note and finalize it with a fresh authenticator code."
+    surface: guides
+    evidence_ref: templates/ehr/encounter.html
+    evidence_quote:
+      - "exige verificação recente do seu autenticador"
+  - id: g-encounter-after-arrival
+    claim: "Reception has registered the patient's arrival."
+    surface: guides
+    evidence_ref: templates/workflows/partials/today_board.html
+    evidence_quote:
+      - "Available after reception registers the arrival."
+  - id: g-not-signature
+    claim: "Finalizing in Clinic Ops is not a digital signature."
+    surface: guides
+    evidence_ref: templates/ehr/encounter.html
+    evidence_quote:
+      - "A finalização local não é uma assinatura digital."
+  - id: g-finalized-immutable
+    claim: "The finalized version can no longer change. Corrections are made by amendment."
+    surface: guides
+    evidence_ref: templates/ehr/encounter.html
+    evidence_quote:
+      - "Finalizar torna o conteúdo imutável"
+      - "correções usam retificação"
+  - id: g-reschedule-summary
+    claim: "Move an appointment to a new time or cancel it with a reason. The history is kept either way."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/transition_panel.html
+    evidence_quote:
+      - "Cancellation keeps the appointment history."
+  - id: g-same-patient
+    claim: "The same patient and physician keep the appointment at the new time."
+    surface: guides
+    evidence_ref: templates/scheduling/partials/transition_panel.html
+    evidence_quote:
+      - "The new window stays with the same patient and the same physician."
+  - id: g-time-freed
+    claim: "The time becomes free again and the record keeps its history."
+    surface: guides
+    evidence_ref: templates/scheduling/appointment_transition.html
+    evidence_quote:
+      - "The window opens again and the record keeps its history."
+  - id: g-ai-summary
+    claim: "With the patient's consent, record the consultation and review each source-linked suggestion before it reaches your note."
+    surface: guides
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "Nothing is applied or finalized automatically."
+  - id: g-ai-consent
+    claim: "The patient agreed to the recording and, separately, to AI processing."
+    surface: guides
+    evidence_ref: templates/scribe/capture.html
+    evidence_quote:
+      - "Recording consent does not authorize transcription or AI processing."
+  - id: g-ai-policy
+    claim: "Your organization has enabled the AI policy."
+    surface: guides
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "an enabled organization policy"
+  - id: g-ai-simulated
+    claim: "In this version, transcription and suggestions come from a simulated model. Real models are switched on only after approval."
+    surface: guides
+    evidence_ref: apps/scribe/README.md
+    evidence_quote:
+      - "separately consented synthetic transcription"
+  - id: g-manual
+    claim: "You can always continue the note manually, without AI."
+    surface: guides
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "Continue the note manually"
+  - id: g-nothing-automatic
+    claim: "Nothing is applied or finalized automatically. Finalizing the note is a separate step."
+    surface: guides
+    evidence_ref: templates/scribe/review.html
+    evidence_quote:
+      - "Nothing is applied or finalized automatically."
+      - "The note is still a draft; finalization is a separate action."
+  - id: g-patient-summary
+    claim: "Use your clinic's booking code and private invitation to choose a time, without sharing the reason for your visit."
+    surface: guides
+    evidence_ref: templates/crm/public.html
+    evidence_quote:
+      - "No diagnosis or reason for your visit is requested here."
+  - id: g-not-emergency
+    claim: "This page is not monitored for emergencies. In an emergency, seek urgent care."
+    surface: guides
+    evidence_ref: templates/crm/public.html
+    evidence_quote:
+      - "This page is not monitored for emergencies."
+  - id: g-portal
+    claim: "Your appointment stays available in the patient portal."
+    surface: guides
+    evidence_ref: templates/crm/public.html
+    evidence_quote:
+      - "Your appointment stays available in the patient portal."
+  - id: g-autosave
+    claim: "With JavaScript on, the draft is saved on the server as you type."
+    surface: guides
+    evidence_ref: templates/ehr/encounter.html
+    evidence_quote:
+      - "With JavaScript on, the draft is saved to the server while you type"
+non_claims:
+  - text: "· Clinic Ops"
+    reason: metadata
+  - text: "Skip to main content"
+    reason: navigation
+  - text: "Website"
+    reason: navigation
+  - text: "Clinic Ops"
+    reason: navigation
+  - text: "Product"
+    reason: navigation
+  - text: "Security"
+    reason: navigation
+  - text: "Help"
+    reason: navigation
+  - text: "Contact"
+    reason: navigation
+  - text: "Sign in"
+    reason: navigation
+  - text: "The operating system for modern clinics."
+    reason: brand
+  - text: "Website footer"
+    reason: navigation
+  - text: "Brand"
+    reason: navigation
+  - text: "Help center"
+    reason: navigation
+  - text: "The Clinic Ops mark, colors, type and voice, as used across the product and this site."
+    reason: metadata
+  - text: "Clinic Ops brand"
+    reason: heading
+  - text: "The mark, colors, type and voice used across the product and this site. Use the supplied files as they are."
+    reason: intro
+  - text: "Clinic Ops symbol: a modular medical cross"
+    reason: label
+  - text: "Symbol"
+    reason: heading
+  - text: "The modular medical cross. Never redraw, recolor or stretch it."
+    reason: brand
+  - text: "Compact lockup on navy"
+    reason: heading
+  - text: "Colors"
+    reason: heading
+  - text: "Cyan"
+    reason: brand
+  - text: "#00E5D0"
+    reason: brand
+  - text: "Markers on navy only"
+    reason: brand
+  - text: "Teal"
+    reason: brand
+  - text: "#00B894"
+    reason: brand
+  - text: "Success on navy"
+    reason: brand
+  - text: "Dark teal"
+    reason: brand
+  - text: "#007A87"
+    reason: brand
+  - text: "Actions and links"
+    reason: brand
+  - text: "Deep navy"
+    reason: brand
+  - text: "#0F2D3A"
+    reason: brand
+  - text: "Text and navigation"
+    reason: brand
+  - text: "Paper"
+    reason: brand
+  - text: "#F7F5F0"
+    reason: brand
+  - text: "Canvas"
+    reason: brand
+  - text: "Type"
+    reason: heading
+  - text: "Aa"
+    reason: brand
+  - text: "Regular for reading"
+    reason: brand
+  - text: "Semibold for labels"
+    reason: brand
+  - text: "Bold for titles"
+    reason: brand
+  - text: "Voice"
+    reason: heading
+  - text: "O sistema operacional para clínicas modernas"
+    reason: brand
+  - text: "Mais tempo para o que importa"
+    reason: brand
+  - text: "Tecnologia a serviço da medicina"
+    reason: brand
+  - text: "Direct, reassuring and plain. Each screen names the next safe action."
+    reason: brand
+  - text: "Applications"
+    reason: heading
+  - text: "App icon"
+    reason: label
+  - text: "Browser tab icon"
+    reason: label
+  - text: "Small symbol"
+    reason: label
+  - text: "Files"
+    reason: heading
+  - text: "Symbol (SVG)"
+    reason: navigation
+  - text: "Compact lockup for navy (SVG)"
+    reason: navigation
+  - text: "App icon (PNG, 512 px)"
+    reason: navigation
+  - text: "How to reach the Clinic Ops team, and what to tell us about your clinic."
+    reason: metadata
+  - text: "Talk to the Clinic Ops team"
+    reason: heading
+  - text: "Tell us about your clinic and what you want to organize first."
+    reason: instruction
+  - text: "What helps us answer"
+    reason: heading
+  - text: "How many professionals, rooms and units the clinic has."
+    reason: instruction
+  - text: "The specialties you serve."
+    reason: instruction
+  - text: "The systems you use today for scheduling and records."
+    reason: instruction
+  - text: "What you want to solve first."
+    reason: instruction
+  - text: "Email"
+    reason: heading
+  - text: "The team has not published a contact address for this site yet."
+    reason: state
+  - text: "Before you write"
+    reason: heading
+  - text: "Never send patient data, exam results or screenshots that show patient information."
+    reason: advice
+  - text: "Already use Clinic Ops?"
+    reason: label
+  - text: "Find answers in the help center"
+    reason: navigation
+  - text: "Breadcrumb"
+    reason: navigation
+  - text: "%(steps)s step{% plural %}%(steps)s steps"
+    reason: label
+  - text: "First steps %(position)s of %(total)s"
+    reason: label
+  - text: "Before you start"
+    reason: heading
+  - text: "Step"
+    reason: label
+  - text: "Screen:"
+    reason: label
+  - text: "Good to know"
+    reason: heading
+  - text: "First steps"
+    reason: navigation
+  - text: "Previous step"
+    reason: navigation
+  - text: "Next step"
+    reason: navigation
+  - text: "Screen looks different?"
+    reason: heading
+  - text: "Your role may not include this task. Ask your clinic administrator."
+    reason: advice
+  - text: "Related guides"
+    reason: heading
+  - text: "All guides"
+    reason: navigation
+  - text: "Step-by-step Clinic Ops guides for every team, written from the real screens."
+    reason: metadata
+  - text: "New to Clinic Ops? Follow this path in order, from inviting the team to the first finalized note."
+    reason: instruction
+  - text: "The operating system for modern clinics"
+    reason: metadata
+  - text: "Talk to the team"
+    reason: navigation
+  - text: "See the product"
+    reason: navigation
+  - text: "Today's agenda"
+    reason: illustration
+  - text: "Room 2 · Dr. Marina T."
+    reason: illustration
+  - text: "08:30"
+    reason: illustration
+  - text: "Helena P."
+    reason: illustration
+  - text: "Follow-up visit"
+    reason: illustration
+  - text: "Arrived"
+    reason: illustration
+  - text: "09:00"
+    reason: illustration
+  - text: "Caio M."
+    reason: illustration
+  - text: "First visit"
+    reason: illustration
+  - text: "Care in progress"
+    reason: illustration
+  - text: "09:30"
+    reason: illustration
+  - text: "Lívia A."
+    reason: illustration
+  - text: "Note waiting for review"
+    reason: illustration
+  - text: "AI draft"
+    reason: illustration
+  - text: "10:15"
+    reason: illustration
+  - text: "Otávio R."
+    reason: illustration
+  - text: "Video visit"
+    reason: illustration
+  - text: "Confirmed"
+    reason: illustration
+  - text: "Preview built with the product's own status vocabulary and fictional data."
+    reason: illustration
+  - text: "More time for what matters."
+    reason: heading
+  - text: "Organizes"
+    reason: heading
+  - text: "Automates"
+    reason: heading
+  - text: "Connects"
+    reason: heading
+  - text: "Frees up time"
+    reason: heading
+  - text: "How a suggestion reaches the note"
+    reason: illustration
+  - text: "Source · transcript 04:12"
+    reason: illustration
+  - text: "“Let's see you again in thirty days, with the blood tests.”"
+    reason: illustration
+  - text: "[1]"
+    reason: illustration
+  - text: "Plan"
+    reason: illustration
+  - text: "follow-up in 30 days with blood tests."
+    reason: illustration
+  - text: "Accepted by clinician"
+    reason: illustration
+  - text: "Illustration with fictional content."
+    reason: illustration
+  - text: "Read the full security posture"
+    reason: navigation
+  - text: "What we don't do yet."
+    reason: heading
+  - text: "Learn at your own pace."
+    reason: heading
+  - text: "Open the help center"
+    reason: navigation
+  - text: "Ready to see it with your team?"
+    reason: heading
+  - text: "What Clinic Ops does for reception, clinicians, managers and patients, and which parts still run on simulated providers."
+    reason: intro
+  - text: "One workspace for the whole clinic day."
+    reason: heading
+  - text: "Status legend"
+    reason: label
+  - text: "Reception"
+    reason: heading
+  - text: "Agenda"
+    reason: heading
+  - text: "Arrivals and rooms"
+    reason: heading
+  - text: "Patient registry"
+    reason: heading
+  - text: "Reminders"
+    reason: heading
+  - text: "Clinicians"
+    reason: heading
+  - text: "Encounter and note"
+    reason: heading
+  - text: "AI scribe"
+    reason: heading
+  - text: "Clinical documents"
+    reason: heading
+  - text: "Results"
+    reason: heading
+  - text: "Video visits"
+    reason: heading
+  - text: "Managers"
+    reason: heading
+  - text: "Team access, charges and reports."
+    reason: intro
+  - text: "Team and access"
+    reason: heading
+  - text: "Charges"
+    reason: heading
+  - text: "Reports"
+    reason: heading
+  - text: "Patients"
+    reason: heading
+  - text: "Online booking"
+    reason: heading
+  - text: "Patient portal"
+    reason: heading
+  - text: "See it on your screens"
+    reason: heading
+  - text: "Security posture"
+    reason: metadata
+  - text: "How Clinic Ops isolates clinics, protects accounts and records, and which approvals are still pending."
+    reason: metadata
+  - text: "What Clinic Ops protects today, how it does it, and what is still waiting for approval."
+    reason: intro
+  - text: "On this page"
+    reason: heading
+  - text: "Isolation between clinics"
+    reason: navigation
+  - text: "Access and accounts"
+    reason: navigation
+  - text: "Records and audit"
+    reason: navigation
+  - text: "Privacy by design"
+    reason: navigation
+  - text: "AI with limits"
+    reason: navigation
+  - text: "Not approved yet"
+    reason: navigation
+  - text: "Found a security problem? Tell the team through the contact page and leave all patient data out of the message."
+    reason: instruction
+  - text: "Every team"
+    reason: label
+  - text: "Invite your team"
+    reason: heading
+  - text: "Sign in and protect your account"
+    reason: heading
+  - text: "Install an authenticator app on your phone."
+    reason: instruction
+  - text: "Never share codes or the QR code with anyone, including the clinic team."
+    reason: advice
+  - text: "Choose theme and density"
+    reason: heading
+  - text: "Find or register a patient"
+    reason: heading
+  - text: "Book an appointment"
+    reason: heading
+  - text: "Register an arrival"
+    reason: heading
+  - text: "Document an encounter"
+    reason: heading
+  - text: "Reschedule or cancel an appointment"
+    reason: heading
+  - text: "Record a consultation and review the AI draft"
+    reason: heading
+  - text: "Book online as a patient"
+    reason: heading
+  - text: "The Clinic Ops website: the product, its security posture, the help center and contact."
+    reason: metadata
+  - text: "Enter the person's email and role, then press {control}."
+    reason: instruction
+  - text: "Send invitation"
+    reason: label
+  - text: "Staff and account security"
+    reason: label
+  - text: "Work through the clinic checklist and press {control} after each task."
+    reason: instruction
+  - text: "Refresh progress"
+    reason: label
+  - text: "Enter your clinic username and password and press {control}."
+    reason: instruction
+  - text: "Sign in to Clinic OS"
+    reason: label
+  - text: "If you have a privileged role, open the authenticator app the first time and press {control}."
+    reason: instruction
+  - text: "Show my QR code"
+    reason: label
+  - text: "Protect your clinic account"
+    reason: label
+  - text: "Type the current six-digit code and press {control}."
+    reason: instruction
+  - text: "Confirm authenticator"
+    reason: label
+  - text: "If you have a privileged role, type a fresh code on later sign-ins and press {control}."
+    reason: instruction
+  - text: "Verify and continue"
+    reason: label
+  - text: "Verify your identity"
+    reason: label
+  - text: "Before a sensitive action, type a new code and press {control}."
+    reason: instruction
+  - text: "Confirm and continue"
+    reason: label
+  - text: "Confirm this sensitive action"
+    reason: label
+  - text: "Under {control}, choose light or dark."
+    reason: instruction
+  - text: "Theme"
+    reason: label
+  - text: "Display preferences"
+    reason: label
+  - text: "Under {control}, choose comfortable or compact."
+    reason: instruction
+  - text: "Density"
+    reason: label
+  - text: "Press {control}."
+    reason: instruction
+  - text: "Save preferences"
+    reason: label
+  - text: "Type at least two letters of the name, or an exact document number, and press {control}."
+    reason: instruction
+  - text: "Search registry"
+    reason: label
+  - text: "Patient search"
+    reason: label
+  - text: "If the patient is not in the list, press {control}."
+    reason: instruction
+  - text: "Register a new patient"
+    reason: label
+  - text: "Check the legal name and the birth date, then press {control}."
+    reason: instruction
+  - text: "Register patient"
+    reason: label
+  - text: "Register a patient"
+    reason: label
+  - text: "Find the patient and, in their row, press {control}."
+    reason: instruction
+  - text: "Book appointment"
+    reason: label
+  - text: "Choose the physician, type the start and end inside an offered window and press {control}."
+    reason: instruction
+  - text: "Book this appointment"
+    reason: label
+  - text: "To check the day, open the agenda and press {control}."
+    reason: instruction
+  - text: "Today"
+    reason: label
+  - text: "Clinic agenda"
+    reason: label
+  - text: "When the patient arrives, choose the arrival location and press {control}."
+    reason: instruction
+  - text: "Register arrival"
+    reason: label
+  - text: "Reception Today"
+    reason: label
+  - text: "When the room is ready, choose it and press {control}."
+    reason: instruction
+  - text: "Call to room"
+    reason: label
+  - text: "Find your next patient and press {control}."
+    reason: instruction
+  - text: "Start encounter"
+    reason: label
+  - text: "Write the note in the SOAP sections and press {control} to save it on request."
+    reason: instruction
+  - text: "Salvar rascunho"
+    reason: label
+  - text: "Atendimento"
+    reason: label
+  - text: "When the note is complete, press {control}."
+    reason: instruction
+  - text: "Finalizar documento"
+    reason: label
+  - text: "Type a fresh authenticator code and press {control}."
+    reason: instruction
+  - text: "In the agenda, find the appointment and press {control}."
+    reason: instruction
+  - text: "Reschedule"
+    reason: label
+  - text: "Enter the new start and press {control}."
+    reason: instruction
+  - text: "Save the new time"
+    reason: label
+  - text: "Reschedule an appointment"
+    reason: label
+  - text: "To cancel instead, press {control} in the appointment's row."
+    reason: instruction
+  - text: "Cancel"
+    reason: label
+  - text: "Choose one of the listed reasons and press {control}."
+    reason: instruction
+  - text: "Cancel the appointment"
+    reason: label
+  - text: "Cancel an appointment"
+    reason: label
+  - text: "When everyone is ready, press {control}."
+    reason: instruction
+  - text: "Start recording"
+    reason: label
+  - text: "At the end of the consultation, press {control}."
+    reason: instruction
+  - text: "Stop and keep received audio"
+    reason: label
+  - text: "Review the transcript and press {control}."
+    reason: instruction
+  - text: "Finalize transcript"
+    reason: label
+  - text: "Consultation transcript"
+    reason: label
+  - text: "Back in the encounter, press {control}."
+    reason: instruction
+  - text: "Review source-linked AI suggestions"
+    reason: label
+  - text: "Generate source-linked suggestions"
+    reason: label
+  - text: "Clinician AI review"
+    reason: label
+  - text: "Compare each suggestion with its source, then press {control} or reject it."
+    reason: instruction
+  - text: "Accept suggestion"
+    reason: label
+  - text: "Enter the booking code your clinic gave you and press {control}."
+    reason: instruction
+  - text: "See clinic page"
+    reason: label
+  - text: "Your next visit starts here."
+    reason: label
+  - text: "Press {control} and use the private invitation from your clinic."
+    reason: instruction
+  - text: "Verify patient access"
+    reason: label
+  - text: "Choose a date and press {control}."
+    reason: instruction
+  - text: "Show available times"
+    reason: label
+  - text: "Pick a time and press {control}."
+    reason: instruction
+  - text: "Book this time"
+    reason: label

@@ -202,6 +202,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.orders.apps.OrdersConfig",
         "apps.inventory.apps.InventoryConfig",
         "apps.insurance.apps.InsuranceConfig",
+        "apps.website.apps.WebsiteConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (

@@ -1,0 +1,37 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Help center" %}{% endblock %}
+{% block meta_description %}{% trans "Step-by-step Clinic Ops guides for every team, written from the real screens." %}{% endblock %}
+{% block content %}
+<div class="site-page">
+  <header class="page-head">
+    <h1 class="display">{% trans "Help center" %}</h1>
+    <p class="page-lede" data-claim="guides-real-screens">{% trans "Step-by-step guides for every team. Each step names the real screen and the exact button you will see." %}</p>
+  </header>
+  <div class="help-layout">
+    <section aria-labelledby="first-steps-title">
+      <h2 id="first-steps-title" class="display-2">{% trans "First steps" %}</h2>
+      <p class="section-lede">{% trans "New to Clinic Ops? Follow this path in order, from inviting the team to the first finalized note." %}</p>
+      <ol class="path">
+        {% for entry in first_steps %}
+          <li><a class="path-link" href="{% url 'website:guide' entry.guide.slug %}"><span class="path-number">{{ forloop.counter }}</span><span><strong>{% trans entry.guide.title %}</strong><span class="path-meta">{% trans entry.audience %} · {% trans entry.guide.summary %}</span></span></a></li>
+        {% endfor %}
+      </ol>
+    </section>
+    <div class="guide-groups">
+      {% for group in groups %}
+        {% if group.guides %}
+          <section class="guide-group" aria-labelledby="group-{{ group.key }}">
+            <h2 id="group-{{ group.key }}" class="display-2">{% trans group.label %}</h2>
+            <ul class="guide-list">
+              {% for guide in group.guides %}
+                <li><a class="guide-link" href="{% url 'website:guide' guide.slug %}"><strong>{% trans guide.title %}</strong><span>{% blocktrans count steps=guide.steps|length %}{{ steps }} step{% plural %}{{ steps }} steps{% endblocktrans %}</span></a></li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

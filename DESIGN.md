@@ -801,6 +801,40 @@ state with inert, synthetic content plus stress cases (long labels, error summar
 wrapping) so responsive, keyboard, forced-colors and reduced-motion evidence is
 captured from real CSS. It never contains a secret, a real name or a QR code.
 
+## Website
+
+The public website and help center (`templates/website/`,
+`static/css/clinic-os-website.css`, todo 70) are Persuade and Read surfaces
+inside this same world. They take the paper, the navy, the rules and the
+semantic color tokens unchanged, and add no color, shadow, gradient, glass,
+motion or font file. What changes is scale and rhythm, through tokens scoped
+to `.site`:
+
+- **Display** (700, `--text-display` 2.25rem, 3rem from 48rem, 3.5rem from
+  64rem; leading 1.08; tracking -0.022em): one per page, the page's promise.
+- **Display 2** (700, `--text-display-2` 1.625rem, 2rem from 48rem): section
+  headings.
+- **Section rhythm** (`--site-section`): `--space-8` vertical padding,
+  growing to 4rem from 48rem; width `--site-width` 76rem; gutters 16, 24 and
+  40px like the workspace.
+- **Navy band:** the navigation (the compact dark lockup, four links and a
+  bordered "Entrar") and one security band on the home page. Cyan appears
+  only there, as the current-page bar and the 3px rules over the pillars.
+- **Real vocabulary as illustration:** the hero ledger and the AI review story
+  are built from product badges, the dashed "not decided yet" border and the
+  success tint, with fictional content and a caption saying so. There are no
+  screenshots, stock photography, testimonials or metrics.
+- **Read pages** (security, guides) keep the 44rem prose measure. On wide
+  screens a sticky contents list or an aside sits beside them. Help steps show
+  the screen's real title and the control's real label in a teal-bordered
+  chip.
+- **Brand board** (`/brand/`): the supplied mark and compact lockup as they
+  are, the five brand colors through their tokens, the type specimen and the
+  pt-BR taglines. No new logo or artwork.
+
+The site is light only (the dark theme is a signed-in preference), and every
+standalone link keeps the 44px target floor.
+
 ## Do's and Don'ts
 
 ### Do:

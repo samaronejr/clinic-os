@@ -1,0 +1,34 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Contact" %}{% endblock %}
+{% block meta_description %}{% trans "How to reach the Clinic Ops team, and what to tell us about your clinic." %}{% endblock %}
+{% block content %}
+<div class="site-page contact">
+  <header class="page-head">
+    <h1 class="display">{% trans "Talk to the Clinic Ops team" %}</h1>
+    <p class="page-lede">{% trans "Tell us about your clinic and what you want to organize first." %}</p>
+    <h2 class="display-2">{% trans "What helps us answer" %}</h2>
+    <ul>
+      <li>{% trans "How many professionals, rooms and units the clinic has." %}</li>
+      <li>{% trans "The specialties you serve." %}</li>
+      <li>{% trans "The systems you use today for scheduling and records." %}</li>
+      <li>{% trans "What you want to solve first." %}</li>
+    </ul>
+  </header>
+  <div class="contact-card">
+    <h2>{% trans "Email" %}</h2>
+    {% if contact_email %}
+      <a class="contact-address" href="mailto:{{ contact_email }}" data-contact-email>{{ contact_email }}</a>
+    {% else %}
+      <div class="unpublished" data-contact-unpublished>
+        <p>{% trans "The team has not published a contact address for this site yet." %}</p>
+      </div>
+    {% endif %}
+    <div class="note" role="note">
+      <h3>{% trans "Before you write" %}</h3>
+      <p>{% trans "Never send patient data, exam results or screenshots that show patient information." %}</p>
+    </div>
+    <p class="page-after">{% trans "Already use Clinic Ops?" %} <a href="{% url 'website:help' %}">{% trans "Find answers in the help center" %}</a></p>
+  </div>
+</div>
+{% endblock %}

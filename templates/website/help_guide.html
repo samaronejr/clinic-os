@@ -1,0 +1,64 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans guide.title %} · {% trans "Help center" %}{% endblock %}
+{% block meta_description %}{% trans guide.summary %}{% endblock %}
+{% block content %}
+<div class="site-page">
+  <nav class="crumbs" aria-label="{% trans "Breadcrumb" %}">
+    <ol>
+      <li><a href="{% url 'website:help' %}">{% trans "Help center" %}</a></li>
+      <li aria-current="page">{% trans guide.title %}</li>
+    </ol>
+  </nav>
+  <div class="read read--guide">
+    <article class="prose" aria-labelledby="guide-title" data-guide="{{ guide.slug }}">
+      <h1 id="guide-title" class="display">{% trans guide.title %}</h1>
+      <p class="page-lede">{% trans guide.summary %}</p>
+      <ul class="guide-meta">
+        <li><span class="badge">{% trans audience %}</span></li>
+        <li><span class="badge badge--muted">{% blocktrans count steps=steps|length %}{{ steps }} step{% plural %}{{ steps }} steps{% endblocktrans %}</span></li>
+        {% if track_position %}<li><span class="badge badge--muted">{% blocktrans with position=track_position total=track_length %}First steps {{ position }} of {{ total }}{% endblocktrans %}</span></li>{% endif %}
+      </ul>
+      {% if guide.before %}
+        <div class="note before">
+          <h2>{% trans "Before you start" %}</h2>
+          <ul>{% for item in guide.before %}<li>{% trans item %}</li>{% endfor %}</ul>
+        </div>
+      {% endif %}
+      <ol class="steps">
+        {% for step in steps %}
+          <li class="step" data-step>
+            <span class="step-number" aria-hidden="true">{{ forloop.counter }}</span>
+            <div class="step-body">
+              <p class="step-place">{% include "includes/components/icon.html" with name="document" only %}<span class="visually-hidden">{% trans "Step" %} {{ forloop.counter }}. </span>{% trans "Screen:" %} {{ step.place }}</p>
+              <p class="step-text" data-step-text>{{ step.sentence }}</p>
+              {% if step.result %}<p class="step-result">{% include "includes/components/icon.html" with name="check" only %}<span>{% trans step.result %}</span></p>{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if guide.notes %}
+        <div class="note">
+          <h2>{% trans "Good to know" %}</h2>
+          <ul>{% for item in guide.notes %}<li>{% trans item %}</li>{% endfor %}</ul>
+        </div>
+      {% endif %}
+      {% if track_position %}
+        <nav class="track" aria-label="{% trans "First steps" %}">
+          {% if previous_step %}<a href="{% url 'website:guide' previous_step.slug %}"><span>{% trans "Previous step" %}</span>{% trans previous_step.title %}</a>{% endif %}
+          {% if next_step %}<a class="track-next" href="{% url 'website:guide' next_step.slug %}"><span>{% trans "Next step" %}</span>{% trans next_step.title %}</a>{% endif %}
+        </nav>
+      {% endif %}
+    </article>
+    <aside class="aside" aria-labelledby="aside-title">
+      <h2 id="aside-title">{% trans "Screen looks different?" %}</h2>
+      <p>{% trans "Your role may not include this task. Ask your clinic administrator." %}</p>
+      {% if related %}
+        <h2>{% trans "Related guides" %}</h2>
+        <ul>{% for item in related %}<li><a href="{% url 'website:guide' item.slug %}">{% trans item.title %}</a></li>{% endfor %}</ul>
+      {% endif %}
+      <ul><li><a href="{% url 'website:help' %}">{% trans "All guides" %}</a></li></ul>
+    </aside>
+  </div>
+</div>
+{% endblock %}

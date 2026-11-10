@@ -44,17 +44,25 @@ def test_readyz_reports_unavailable_when_the_database_probe_fails(
     assert response.json() == {"status": "unavailable"}
 
 
-def test_index_renders_the_htmx_base_shell(client: Client) -> None:
-    # Given: the project shell landing route
+def test_index_renders_the_public_website(client: Client) -> None:
+    # Given: the landing route, which todo 70 gave to the product website
     # When: the index page is requested anonymously
     response = client.get("/")
     content = response.content.decode()
 
-    # Then: the accessible HTMX base template is rendered
+    # Then: the accessible, script-free website shell is rendered
     assert response.status_code == 200
-    assert "htmx.min.js" in content
+    assert "css/clinic-os-website.css" in content
+    assert "<script" not in content
     assert '<main id="main-content"' in content
     assert 'class="skip-link"' in content
+
+
+def test_authentication_screens_keep_the_htmx_base_shell(client: Client) -> None:
+    content = client.get("/auth/login/").content.decode()
+
+    assert "htmx.min.js" in content
+    assert '<main id="main-content"' in content
 
 
 def test_rest_framework_defaults_to_session_auth_and_authenticated() -> None:

@@ -1,0 +1,72 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Security posture" %}{% endblock %}
+{% block meta_description %}{% trans "How Clinic Ops isolates clinics, protects accounts and records, and which approvals are still pending." %}{% endblock %}
+{% block content %}
+<div class="site-page">
+  <header class="page-head">
+    <h1 class="display">{% trans "Security posture" %}</h1>
+    <p class="page-lede">{% trans "What Clinic Ops protects today, how it does it, and what is still waiting for approval." %}</p>
+  </header>
+  <div class="read">
+    <nav class="read-toc" aria-labelledby="toc-title">
+      <h2 id="toc-title">{% trans "On this page" %}</h2>
+      <ol>
+        <li><a href="#isolation">{% trans "Isolation between clinics" %}</a></li>
+        <li><a href="#access">{% trans "Access and accounts" %}</a></li>
+        <li><a href="#records">{% trans "Records and audit" %}</a></li>
+        <li><a href="#privacy">{% trans "Privacy by design" %}</a></li>
+        <li><a href="#ai">{% trans "AI with limits" %}</a></li>
+        <li><a href="#pending">{% trans "Not approved yet" %}</a></li>
+      </ol>
+    </nav>
+    <div class="prose">
+      <section id="isolation" aria-labelledby="isolation-title">
+        <h2 id="isolation-title">{% trans "Isolation between clinics" %}</h2>
+        <p data-claim="tenant-isolation">{% trans "Every clinic table enforces PostgreSQL row-level security, so application code cannot read another clinic's records." %}</p>
+        <p data-claim="runtime-role">{% trans "The application connects with a database role that cannot bypass row-level security and does not own the schema." %}</p>
+        <p data-claim="same-denial">{% trans "A record from another clinic gets the same refusal as a record that does not exist, so a refusal reveals nothing." %}</p>
+      </section>
+      <section id="access" aria-labelledby="access-title">
+        <h2 id="access-title">{% trans "Access and accounts" %}</h2>
+        <p data-claim="two-step">{% trans "Privileged roles confirm an authenticator code, and sensitive actions ask for a fresh one." %}</p>
+        <p data-claim="role-bundles">{% trans "Permissions come from versioned role bundles; a released bundle is never edited in place." %}</p>
+        <p data-claim="staff-access">{% trans "Invite staff by role; access starts only after a password and an authenticator are confirmed." %}</p>
+      </section>
+      <section id="records" aria-labelledby="records-title">
+        <h2 id="records-title">{% trans "Records and audit" %}</h2>
+        <p data-claim="audit-trail">{% trans "Changes are recorded in a hash-chained audit ledger whose rows the database refuses to update or delete." %}</p>
+        <p data-claim="audit-payload">{% trans "Audit entries carry only the clinic, the request and the outcome, never patient data." %}</p>
+        <p data-claim="note-finalization">{% trans "SOAP notes are drafted on the server; finalizing makes the version immutable and asks for a fresh authenticator code." %}</p>
+      </section>
+      <section id="privacy" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">{% trans "Privacy by design" %}</h2>
+        <p data-claim="no-identifiers-in-urls">{% trans "Patient identifiers and searches travel in form bodies, never in page addresses or logs." %}</p>
+        <p data-claim="no-browser-storage">{% trans "The browser keeps no clinical text: the offline cache holds only versioned static files." %}</p>
+        <p data-claim="encrypted-search">{% trans "Patient names are stored encrypted and found through keyed exact-match indexes, with no plaintext copy." %}</p>
+      </section>
+      <section id="ai" aria-labelledby="ai-title">
+        <h2 id="ai-title">{% trans "AI with limits" %}</h2>
+        <p data-claim="ai-boundary">{% trans "AI never diagnoses, prescribes, finalizes a note or sends a clinical message on its own." %}</p>
+        <p data-claim="ai-consent">{% trans "Consent to record is not consent to AI: drafting needs its own consent and an enabled organization policy." %}</p>
+        <p data-claim="ai-review">{% trans "Every suggestion shows its source and waits for the clinician to accept, edit or reject it." %}</p>
+      </section>
+      <section id="pending" aria-labelledby="pending-title">
+        <div class="pending">
+          <h2 id="pending-title">{% trans "Not approved yet" %}</h2>
+          <ul>
+            <li data-claim="no-live-data">{% trans "We do not process real patient data yet. Every environment runs on synthetic data until the privacy, recovery and security approvals are recorded." %}</li>
+            <li data-claim="approvals-pending">{% trans "Legal, privacy, incident, key rotation and retention approvals are still open." %}</li>
+            <li data-claim="recovery-statement">{% trans "Recovery is proven only as a logical restore; provider point-in-time recovery and encrypted provider backups are not verified yet." %}</li>
+            <li data-claim="providers-simulated">{% trans "PIX, WhatsApp, digital signatures and other integrations run as labelled simulations until each provider is approved." %}</li>
+          </ul>
+        </div>
+      </section>
+      <div class="note">
+        <p data-claim="claims-registry">{% trans "Every statement of fact in this site's page templates and help guides is registered with its evidence; an automated test checks the templates and guides for unregistered text." %}</p>
+      </div>
+      <p class="page-after">{% trans "Found a security problem? Tell the team through the contact page and leave all patient data out of the message." %} <a href="{% url 'website:contact' %}">{% trans "Contact" %}</a></p>
+    </div>
+  </div>
+</div>
+{% endblock %}

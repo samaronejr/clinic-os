@@ -131,6 +131,8 @@ SUITES: Final = {
     "reports": ("tests/renewal/browser/test_reports.py",),
     # Task 69: the ADR-013 capability study (emulation only, never device proof).
     "device-capabilities": ("tests/renewal/browser/test_device_capabilities.py",),
+    # Task 70: the public website and help center (no fixtures, no session).
+    "website": ("tests/renewal/browser/test_website.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -842,6 +844,12 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
         **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
         **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
+        # A reserved .invalid address, so the contact page renders its link.
+        **(
+            {"CLINIC_WEBSITE_CONTACT_EMAIL": "equipe@clinic-ops.invalid"}
+            if suite == "website"
+            else {}
+        ),
     }
 
 

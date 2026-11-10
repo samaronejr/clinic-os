@@ -27,10 +27,11 @@
 | crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
 | analytics | versioned clinic metrics, journal-only money projections, requester-bound snapshots and a reviewed synthetic analyst | new | analytics/README.md |
 | subscriptions | Clinic Ops packaging, membership seats, lifecycle and source-derived usage, separate from clinic journals | new | subscriptions/README.md |
+| website | public product site and pt-BR help center: GET-only, no models or services, claims registered in `docs/web/claims.yaml`, guides bound to real screens | new | website/README.md |
 
 ## REQUEST AUTHORITY FLOW
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/api/v1/` (bearer authority comes only from `interop_api_session`).
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/api/v1/` (bearer authority comes only from `interop_api_session`), and the public website (`/product/`, `/security/`, `/contact/`, `/brand/`, `/pricing/`, `/help/`).
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.

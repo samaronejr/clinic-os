@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 import environ
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.validators import validate_email
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -88,6 +89,27 @@ def resolve_csp_report_only(environment: Mapping[str, str], data_mode: str) -> b
         message = "CLINIC_CSP_REPORT_ONLY is allowed only in synthetic data mode"
         raise ImproperlyConfigured(message)
     return report_only
+
+
+def resolve_website_contact_email(environment: Mapping[str, str]) -> str:
+    """Return the website's public contact address, or "" when unpublished.
+
+    The address is an owner decision made at deployment
+    (``CLINIC_WEBSITE_CONTACT_EMAIL``). An empty value makes the contact page
+    say that no address is published yet. A malformed one fails closed at
+    startup instead of rendering a broken mailto link.
+    """
+    resolver = environ.Env()
+    resolver.ENVIRON = environment
+    address: str = resolver.str("CLINIC_WEBSITE_CONTACT_EMAIL", default="").strip()
+    if not address:
+        return ""
+    try:
+        validate_email(address)
+    except ValidationError:
+        message = "CLINIC_WEBSITE_CONTACT_EMAIL must be one email address"
+        raise ImproperlyConfigured(message) from None
+    return address
 
 
 def require_synthetic_mode(value: str) -> str:

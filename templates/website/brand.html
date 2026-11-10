@@ -1,0 +1,73 @@
+{% extends "website/base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "Brand" %}{% endblock %}
+{% block meta_description %}{% trans "The Clinic Ops mark, colors, type and voice, as used across the product and this site." %}{% endblock %}
+{% block content %}
+<div class="site-page">
+  <header class="page-head">
+    <h1 class="display">{% trans "Clinic Ops brand" %}</h1>
+    <p class="page-lede">{% trans "The mark, colors, type and voice used across the product and this site. Use the supplied files as they are." %}</p>
+  </header>
+  <div class="board">
+    <section class="board-cell board-mark" aria-labelledby="brand-mark">
+      <img src="{% static 'brand/clinic-ops-mark.svg' %}" alt="{% trans "Clinic Ops symbol: a modular medical cross" %}" width="160" height="160">
+      <div>
+        <h2 id="brand-mark">{% trans "Symbol" %}</h2>
+        <p>{% trans "The modular medical cross. Never redraw, recolor or stretch it." %}</p>
+      </div>
+    </section>
+    <section class="board-cell board-navy board-wide" aria-labelledby="brand-lockup">
+      <img src="{% static 'brand/clinic-ops-logo-compact-dark.svg' %}" alt="Clinic Ops" width="288" height="64">
+      <div>
+        <h2 id="brand-lockup">{% trans "Compact lockup on navy" %}</h2>
+        <p data-claim="lockup-use">{% trans "Used on the navigation band of the product and this site." %}</p>
+      </div>
+    </section>
+    <section class="board-cell" aria-labelledby="brand-colors">
+      <h2 id="brand-colors">{% trans "Colors" %}</h2>
+      <ul class="swatches">
+        <li class="swatch"><span class="swatch-chip swatch-chip--cyan"></span><p><strong>{% trans "Cyan" %}</strong> <code>#00E5D0</code><br>{% trans "Markers on navy only" %}</p></li>
+        <li class="swatch"><span class="swatch-chip swatch-chip--teal"></span><p><strong>{% trans "Teal" %}</strong> <code>#00B894</code><br>{% trans "Success on navy" %}</p></li>
+        <li class="swatch"><span class="swatch-chip swatch-chip--trust"></span><p><strong>{% trans "Dark teal" %}</strong> <code>#007A87</code><br>{% trans "Actions and links" %}</p></li>
+        <li class="swatch"><span class="swatch-chip swatch-chip--navy"></span><p><strong>{% trans "Deep navy" %}</strong> <code>#0F2D3A</code><br>{% trans "Text and navigation" %}</p></li>
+        <li class="swatch"><span class="swatch-chip swatch-chip--paper"></span><p><strong>{% trans "Paper" %}</strong> <code>#F7F5F0</code><br>{% trans "Canvas" %}</p></li>
+      </ul>
+    </section>
+    <section class="board-cell" aria-labelledby="brand-type">
+      <h2 id="brand-type">{% trans "Type" %}</h2>
+      <p class="specimen" aria-hidden="true">Aa</p>
+      <p data-claim="type-family">{% trans "Avenir Next, then the system interface font. One family, tuned by weight." %}</p>
+      <ul class="weights">
+        <li>{% trans "Regular for reading" %}</li>
+        <li>{% trans "Semibold for labels" %}</li>
+        <li>{% trans "Bold for titles" %}</li>
+      </ul>
+    </section>
+    <section class="board-cell" aria-labelledby="brand-voice">
+      <h2 id="brand-voice">{% trans "Voice" %}</h2>
+      <ul class="taglines">
+        <li lang="pt-BR">O sistema operacional para clínicas modernas</li>
+        <li lang="pt-BR">Mais tempo para o que importa</li>
+        <li lang="pt-BR">Tecnologia a serviço da medicina</li>
+      </ul>
+      <p>{% trans "Direct, reassuring and plain. Each screen names the next safe action." %}</p>
+    </section>
+    <section class="board-cell board-wide" aria-labelledby="brand-apps">
+      <h2 id="brand-apps">{% trans "Applications" %}</h2>
+      <div class="icons-row">
+        <figure><img src="{% static 'brand/clinic-ops-icon-192.png' %}" alt="" width="96" height="96"><figcaption>{% trans "App icon" %}</figcaption></figure>
+        <figure><img src="{% static 'icons/clinic-os.svg' %}" alt="" width="48" height="48"><figcaption>{% trans "Browser tab icon" %}</figcaption></figure>
+        <figure><img src="{% static 'brand/clinic-ops-mark.svg' %}" alt="" width="32" height="32"><figcaption>{% trans "Small symbol" %}</figcaption></figure>
+      </div>
+    </section>
+    <section class="board-cell" aria-labelledby="brand-files">
+      <h2 id="brand-files">{% trans "Files" %}</h2>
+      <ul class="downloads">
+        <li><a href="{% static 'brand/clinic-ops-mark.svg' %}">{% trans "Symbol (SVG)" %}</a></li>
+        <li><a href="{% static 'brand/clinic-ops-logo-compact-dark.svg' %}">{% trans "Compact lockup for navy (SVG)" %}</a></li>
+        <li><a href="{% static 'brand/clinic-ops-icon-512.png' %}">{% trans "App icon (PNG, 512 px)" %}</a></li>
+      </ul>
+    </section>
+  </div>
+</div>
+{% endblock %}

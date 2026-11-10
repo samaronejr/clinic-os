@@ -26,6 +26,7 @@ COMPONENT_CSS: Final = CSS / "clinic-os-components.css"
 RECEPTION_CSS: Final = CSS / "clinic-os-reception.css"
 INBOX_CSS: Final = CSS / "clinic-os-inbox.css"
 MESSAGES_CSS: Final = CSS / "clinic-os-messages.css"
+WEBSITE_CSS: Final = CSS / "clinic-os-website.css"
 AXE: Final = ROOT / "static" / "vendor" / "axe"
 AXE_SHA256: Final = "c24f097bd2f451d4f933e8bc7d8d539f8672a2ebcb5cc9f9f3eec8ca9470a0c1"
 AXE_LICENSE_SHA256: Final = (
@@ -296,12 +297,17 @@ def test_raw_values_live_only_in_the_token_blocks() -> None:
     assert RAW_COLOR.findall(messages) == []
     assert "var(--rule" not in messages
     assert "var(--paper" not in messages
+    # The website reads the same semantic tokens; the brand board's swatches
+    # reference the brand variables by name, never a raw value.
+    website = _strip_comments(WEBSITE_CSS.read_text(encoding="utf-8"))
+    assert RAW_COLOR.findall(website) == []
 
 
 def test_component_styles_keep_the_flat_ledger_rules() -> None:
     components = _strip_comments(COMPONENT_CSS.read_text(encoding="utf-8"))
     reception = _strip_comments(RECEPTION_CSS.read_text(encoding="utf-8"))
     inbox = _strip_comments(INBOX_CSS.read_text(encoding="utf-8"))
+    website = _strip_comments(WEBSITE_CSS.read_text(encoding="utf-8"))
     for banned in (
         "box-shadow",
         "gradient(",
@@ -316,9 +322,10 @@ def test_component_styles_keep_the_flat_ledger_rules() -> None:
         assert banned not in components, banned
         assert banned not in reception, f"{RECEPTION_CSS.name}: {banned}"
         assert banned not in inbox, f"{INBOX_CSS.name}: {banned}"
+        assert banned not in website, f"{WEBSITE_CSS.name}: {banned}"
     # Every transition goes through the motion tokens and reduced motion
     # removes the reveal transitions.
-    for value in re.findall(r"transition:\s*([^;]+);", components + inbox):
+    for value in re.findall(r"transition:\s*([^;]+);", components + inbox + website):
         assert value.strip() in {
             "var(--transition-state)",
             "var(--transition-reveal)",

@@ -10428,3 +10428,782 @@ msgstr "Seu registro de acesso emergencial"
 
 msgid "Your emergency access log | Clinic OS"
 msgstr "Seu registro de acesso emergencial | Clinic OS"
+
+# Public website and help center (todo 70)
+
+
+msgid "Website"
+msgstr "Site"
+
+msgid "Product"
+msgstr "Produto"
+
+msgid "Security"
+msgstr "Segurança"
+
+msgid "Help"
+msgstr "Ajuda"
+
+msgid "The operating system for modern clinics."
+msgstr "O sistema operacional para clínicas modernas."
+
+msgid "Website footer"
+msgstr "Rodapé do site"
+
+msgid "Brand"
+msgstr "Marca"
+
+msgid "Help center"
+msgstr "Central de ajuda"
+
+msgid "Every demonstration on this site uses fictional, synthetic data."
+msgstr "Toda demonstração neste site usa dados fictícios e sintéticos."
+
+msgid "The Clinic Ops mark, colors, type and voice, as used across the product and this site."
+msgstr "O símbolo, as cores, a tipografia e a voz da Clinic Ops, como aparecem no produto e neste site."
+
+msgid "Clinic Ops brand"
+msgstr "Marca Clinic Ops"
+
+msgid "The mark, colors, type and voice used across the product and this site. Use the supplied files as they are."
+msgstr "O símbolo, as cores, a tipografia e a voz usados no produto e neste site. Use os arquivos fornecidos como estão."
+
+msgid "Clinic Ops symbol: a modular medical cross"
+msgstr "Símbolo da Clinic Ops: uma cruz médica modular"
+
+msgid "Symbol"
+msgstr "Símbolo"
+
+msgid "The modular medical cross. Never redraw, recolor or stretch it."
+msgstr "A cruz médica modular. Nunca redesenhe, recolora nem distorça."
+
+msgid "Compact lockup on navy"
+msgstr "Assinatura compacta sobre azul-marinho"
+
+msgid "Used on the navigation band of the product and this site."
+msgstr "Usada na faixa de navegação do produto e deste site."
+
+msgid "Colors"
+msgstr "Cores"
+
+msgid "Cyan"
+msgstr "Ciano"
+
+msgid "Markers on navy only"
+msgstr "Marcadores, só sobre azul-marinho"
+
+msgid "Teal"
+msgstr "Verde-água"
+
+msgid "Success on navy"
+msgstr "Sucesso sobre azul-marinho"
+
+msgid "Dark teal"
+msgstr "Verde-petróleo"
+
+msgid "Actions and links"
+msgstr "Ações e links"
+
+msgid "Deep navy"
+msgstr "Azul-marinho profundo"
+
+msgid "Text and navigation"
+msgstr "Texto e navegação"
+
+msgid "Paper"
+msgstr "Papel"
+
+msgid "Canvas"
+msgstr "Fundo das telas"
+
+msgid "Type"
+msgstr "Tipografia"
+
+msgid "Avenir Next, then the system interface font. One family, tuned by weight."
+msgstr "Avenir Next e, na falta dela, a fonte de interface do sistema. Uma só família, ajustada pelo peso."
+
+msgid "Regular for reading"
+msgstr "Regular para leitura"
+
+msgid "Semibold for labels"
+msgstr "Seminegrito para rótulos"
+
+msgid "Bold for titles"
+msgstr "Negrito para títulos"
+
+msgid "Voice"
+msgstr "Voz"
+
+msgid "Direct, reassuring and plain. Each screen names the next safe action."
+msgstr "Direta, acolhedora e simples. Cada tela indica a próxima ação segura."
+
+msgid "Applications"
+msgstr "Aplicações"
+
+msgid "App icon"
+msgstr "Ícone do aplicativo"
+
+msgid "Browser tab icon"
+msgstr "Ícone da aba do navegador"
+
+msgid "Small symbol"
+msgstr "Símbolo pequeno"
+
+msgid "Files"
+msgstr "Arquivos"
+
+msgid "Symbol (SVG)"
+msgstr "Símbolo (SVG)"
+
+msgid "Compact lockup for navy (SVG)"
+msgstr "Assinatura compacta para azul-marinho (SVG)"
+
+msgid "App icon (PNG, 512 px)"
+msgstr "Ícone do aplicativo (PNG, 512 px)"
+
+msgid "How to reach the Clinic Ops team, and what to tell us about your clinic."
+msgstr "Como falar com a equipe Clinic Ops e o que contar sobre a sua clínica."
+
+msgid "Talk to the Clinic Ops team"
+msgstr "Fale com a equipe Clinic Ops"
+
+msgid "Tell us about your clinic and what you want to organize first."
+msgstr "Conte sobre a sua clínica e o que você quer organizar primeiro."
+
+msgid "What helps us answer"
+msgstr "O que ajuda na resposta"
+
+msgid "How many professionals, rooms and units the clinic has."
+msgstr "Quantos profissionais, salas e unidades a clínica tem."
+
+msgid "The specialties you serve."
+msgstr "As especialidades que vocês atendem."
+
+msgid "The systems you use today for scheduling and records."
+msgstr "Os sistemas que vocês usam hoje para agenda e prontuário."
+
+msgid "What you want to solve first."
+msgstr "O que você quer resolver primeiro."
+
+msgid "The team has not published a contact address for this site yet."
+msgstr "A equipe ainda não publicou um endereço de contato para este site."
+
+msgid "Before you write"
+msgstr "Antes de escrever"
+
+msgid "Never send patient data, exam results or screenshots that show patient information."
+msgstr "Nunca envie dados de pacientes, resultados de exames ou capturas de tela com informações de pacientes."
+
+msgid "Already use Clinic Ops?"
+msgstr "Já usa a Clinic Ops?"
+
+msgid "Find answers in the help center"
+msgstr "Encontre respostas na central de ajuda"
+
+msgid "Breadcrumb"
+msgstr "Trilha de navegação"
+
+msgid "Before you start"
+msgstr "Antes de começar"
+
+msgid "Screen:"
+msgstr "Tela:"
+
+msgid "Good to know"
+msgstr "Bom saber"
+
+msgid "Previous step"
+msgstr "Passo anterior"
+
+msgid "Next step"
+msgstr "Próximo passo"
+
+msgid "Screen looks different?"
+msgstr "A tela está diferente?"
+
+
+msgid "Related guides"
+msgstr "Guias relacionados"
+
+msgid "All guides"
+msgstr "Todos os guias"
+
+msgid "First steps %(position)s of %(total)s"
+msgstr "Primeiros passos: %(position)s de %(total)s"
+
+msgid "Step-by-step Clinic Ops guides for every team, written from the real screens."
+msgstr "Guias passo a passo da Clinic Ops para cada equipe, escritos a partir das telas reais."
+
+msgid "Step-by-step guides for every team. Each step names the real screen and the exact button you will see."
+msgstr "Guias passo a passo para cada equipe. Cada passo indica a tela real e o botão exato que você vai ver."
+
+msgid "New to Clinic Ops? Follow this path in order, from inviting the team to the first finalized note."
+msgstr "Começando na Clinic Ops? Siga este caminho em ordem, do convite à equipe até a primeira nota finalizada."
+
+msgid "The operating system for modern clinics"
+msgstr "O sistema operacional para clínicas modernas"
+
+msgid "Scheduling, reception, records and an AI scribe in one workspace. AI prepares; you decide."
+msgstr "Agenda, recepção, prontuário e escriba com IA em um só espaço de trabalho. A IA prepara; você decide."
+
+msgid "Talk to the team"
+msgstr "Falar com a equipe"
+
+msgid "See the product"
+msgstr "Conhecer o produto"
+
+msgid "Today's agenda"
+msgstr "Agenda de hoje"
+
+msgid "Room 2 · Dr. Marina T."
+msgstr "Sala 2 · Dra. Marina T."
+
+msgid "Follow-up visit"
+msgstr "Retorno"
+
+msgid "Note waiting for review"
+msgstr "Nota aguardando revisão"
+
+msgid "Video visit"
+msgstr "Teleconsulta"
+
+msgid "Preview built with the product's own status vocabulary and fictional data."
+msgstr "Prévia montada com o vocabulário de status do próprio produto e dados fictícios."
+
+msgid "More time for what matters."
+msgstr "Mais tempo para o que importa."
+
+msgid "One workspace follows the clinic day, from the first booking to the follow-up."
+msgstr "Um só espaço de trabalho acompanha o dia da clínica, do primeiro agendamento ao retorno."
+
+msgid "Organizes"
+msgstr "Organiza"
+
+msgid "Day and week agendas in the clinic's own time zone, with overlap protection."
+msgstr "Agendas diária e semanal no fuso horário da própria clínica, com proteção contra sobreposição."
+
+msgid "Automates"
+msgstr "Automatiza"
+
+msgid "Email, SMS and WhatsApp reminders leave through the integration outbox; each channel runs as a simulation until its provider is approved."
+msgstr "Lembretes por e-mail, SMS e WhatsApp saem pela fila de integrações; cada canal funciona como simulação até o seu provedor ser aprovado."
+
+msgid "Connects"
+msgstr "Conecta"
+
+msgid "Patients book from a private clinic invitation and see their appointments in the patient portal."
+msgstr "Pacientes agendam a partir de um convite privado da clínica e veem suas consultas no portal do paciente."
+
+msgid "Frees up time"
+msgstr "Libera tempo"
+
+msgid "With separate consent, the AI scribe proposes source-linked suggestions for the note. Real models are switched on only after approval."
+msgstr "Com consentimento próprio, o escriba com IA propõe sugestões com fonte para a nota. Modelos reais só são ativados após aprovação."
+
+msgid "AI prepares. You decide."
+msgstr "A IA prepara. Você decide."
+
+msgid "AI never diagnoses, prescribes, finalizes a note or sends a clinical message on its own."
+msgstr "A IA nunca diagnostica, prescreve, finaliza uma nota nem envia uma mensagem clínica por conta própria."
+
+msgid "Every suggestion shows its source and waits for the clinician to accept, edit or reject it."
+msgstr "Cada sugestão mostra a sua fonte e aguarda o médico aceitar, editar ou rejeitar."
+
+msgid "Consent to record is not consent to AI: drafting needs its own consent and an enabled organization policy."
+msgstr "Consentir com a gravação não é consentir com a IA: o rascunho exige consentimento próprio e uma política habilitada pela organização."
+
+msgid "The manual path stays complete: every task can be done without AI."
+msgstr "O caminho manual continua completo: toda tarefa pode ser feita sem IA."
+
+msgid "How a suggestion reaches the note"
+msgstr "Como uma sugestão chega à nota"
+
+msgid "Source · transcript 04:12"
+msgstr "Fonte · transcrição 04:12"
+
+msgid "“Let's see you again in thirty days, with the blood tests.”"
+msgstr "“Vamos nos ver de novo em trinta dias, com os exames de sangue.”"
+
+msgid "follow-up in 30 days with blood tests."
+msgstr "retorno em 30 dias com exames de sangue."
+
+
+msgid "Illustration with fictional content."
+msgstr "Ilustração com conteúdo fictício."
+
+msgid "Security is structure, not a feature."
+msgstr "Segurança é estrutura, não recurso."
+
+msgid "Each clinic isolated in the database"
+msgstr "Cada clínica isolada no banco de dados"
+
+msgid "Every clinic table enforces PostgreSQL row-level security, so application code cannot read another clinic's records."
+msgstr "Toda tabela de clínica aplica a segurança em nível de linha do PostgreSQL, e o código da aplicação não lê registros de outra clínica."
+
+msgid "Privileged roles confirm an authenticator code, and sensitive actions ask for a fresh one."
+msgstr "Perfis privilegiados confirmam um código do autenticador, e ações sensíveis pedem um código novo."
+
+msgid "An audit trail that cannot be rewritten"
+msgstr "Uma trilha de auditoria que não se reescreve"
+
+msgid "Changes are recorded in a hash-chained audit ledger whose rows the database refuses to update or delete."
+msgstr "As alterações ficam em um registro de auditoria encadeado por hash, cujas linhas o banco de dados se recusa a alterar ou apagar."
+
+msgid "Nothing clinical in links"
+msgstr "Nada clínico nos links"
+
+msgid "Patient identifiers and searches travel in form bodies, never in page addresses or logs."
+msgstr "Identificadores de pacientes e buscas viajam no corpo dos formulários, nunca no endereço das páginas nem nos logs."
+
+msgid "Read the full security posture"
+msgstr "Ver a postura de segurança completa"
+
+msgid "What we don't do yet."
+msgstr "O que ainda não fazemos."
+
+msgid "We do not process real patient data yet. Every environment runs on synthetic data until the privacy, recovery and security approvals are recorded."
+msgstr "Ainda não tratamos dados reais de pacientes. Todo ambiente usa dados sintéticos até o registro das aprovações de privacidade, recuperação e segurança."
+
+msgid "PIX, WhatsApp, digital signatures and other integrations run as labelled simulations until each provider is approved."
+msgstr "PIX, WhatsApp, assinatura digital e outras integrações funcionam como simulações identificadas até a aprovação de cada provedor."
+
+msgid "You will find no testimonials, certifications or metrics here until we can prove them."
+msgstr "Você não vai encontrar aqui depoimentos, certificações nem métricas antes que possamos comprová-los."
+
+msgid "Learn at your own pace."
+msgstr "Aprenda no seu ritmo."
+
+msgid "Step-by-step guides follow the real screens, button by button."
+msgstr "Guias passo a passo seguem as telas reais, botão por botão."
+
+msgid "Open the help center"
+msgstr "Abrir a central de ajuda"
+
+msgid "Ready to see it with your team?"
+msgstr "Quer ver com a sua equipe?"
+
+msgid "What Clinic Ops does for reception, clinicians, managers and patients, and which parts still run on simulated providers."
+msgstr "O que a Clinic Ops faz pela recepção, pelos médicos, pela gestão e pelos pacientes, e quais partes ainda usam provedores simulados."
+
+msgid "One workspace for the whole clinic day."
+msgstr "Um espaço de trabalho para o dia inteiro da clínica."
+
+
+msgid "Status legend"
+msgstr "Legenda de situação"
+
+msgid "works end to end today"
+msgstr "funciona de ponta a ponta hoje"
+
+msgid "Simulation"
+msgstr "Simulação"
+
+msgid "depends on an outside provider; runs on a labelled simulation until approval"
+msgstr "depende de um provedor externo; funciona em simulação identificada até a aprovação"
+
+msgid "Reception"
+msgstr "Recepção"
+
+msgid "The front desk sees the day, the arrivals and the rooms on one screen."
+msgstr "A recepção vê o dia, as chegadas e as salas em uma só tela."
+
+msgid "Arrivals and rooms"
+msgstr "Chegadas e salas"
+
+msgid "Register arrivals and call patients to rooms; optional consent, documents and payment never block an arrival."
+msgstr "Registre chegadas e chame pacientes para as salas; consentimentos, documentos e pagamentos opcionais nunca impedem uma chegada."
+
+msgid "Patient registry"
+msgstr "Cadastro de pacientes"
+
+msgid "Search by name or exact document; the search never appears in the address bar."
+msgstr "Busque por nome ou documento exato; a busca nunca aparece na barra de endereço."
+
+msgid "Clinicians"
+msgstr "Médicos"
+
+msgid "From the next patient to the finalized note, with AI that only suggests."
+msgstr "Do próximo paciente à nota finalizada, com uma IA que só sugere."
+
+msgid "Encounter and note"
+msgstr "Atendimento e nota"
+
+msgid "SOAP notes are drafted on the server; finalizing makes the version immutable and asks for a fresh authenticator code."
+msgstr "As notas SOAP são rascunhadas no servidor; finalizar torna a versão imutável e pede um novo código do autenticador."
+
+msgid "AI scribe"
+msgstr "Escriba com IA"
+
+msgid "Prescriptions, certificates, referrals and exam requests are drafted from the encounter; signing stays simulated until a provider is approved."
+msgstr "Receitas, atestados, encaminhamentos e pedidos de exame são rascunhados a partir do atendimento; a assinatura continua simulada até um provedor ser aprovado."
+
+msgid "Each matched result opens a review task for the clinician who ordered it."
+msgstr "Cada resultado vinculado abre uma tarefa de revisão para o médico que fez o pedido."
+
+msgid "Video visits"
+msgstr "Teleconsultas"
+
+msgid "A video visit is bound to one encounter, its physician, its patient and the accepted consent; rooms come from a simulated provider until approval."
+msgstr "Cada teleconsulta fica vinculada a um atendimento, ao seu médico, ao seu paciente e ao consentimento aceito; as salas vêm de um provedor simulado até a aprovação."
+
+msgid "Managers"
+msgstr "Gestão"
+
+
+msgid "Team and access"
+msgstr "Equipe e acessos"
+
+msgid "Invite staff by role; access starts only after a password and an authenticator are confirmed."
+msgstr "Convide a equipe por perfil; o acesso só começa depois da confirmação de uma senha e de um autenticador."
+
+msgid "Amounts are kept in whole centavos and a repeated submission never creates a second charge; PIX is a non-payable simulation."
+msgstr "Os valores ficam em centavos inteiros e um envio repetido nunca cria uma segunda cobrança; o PIX é uma simulação que não aceita pagamento."
+
+msgid "Metrics have versioned definitions: a changed formula becomes a new version instead of an edit."
+msgstr "As métricas têm definições versionadas: uma fórmula alterada vira uma nova versão, e não uma edição."
+
+
+msgid "Online booking"
+msgstr "Agendamento online"
+
+msgid "The clinic's booking page asks for no diagnosis or reason for the visit."
+msgstr "A página de agendamento da clínica não pede diagnóstico nem o motivo da consulta."
+
+msgid "See it on your screens"
+msgstr "Veja nas suas telas"
+
+msgid "Every guide in the help center follows these screens, button by button."
+msgstr "Cada guia da central de ajuda segue estas telas, botão por botão."
+
+msgid "Security posture"
+msgstr "Postura de segurança"
+
+msgid "How Clinic Ops isolates clinics, protects accounts and records, and which approvals are still pending."
+msgstr "Como a Clinic Ops isola as clínicas, protege contas e registros, e quais aprovações ainda estão pendentes."
+
+msgid "What Clinic Ops protects today, how it does it, and what is still waiting for approval."
+msgstr "O que a Clinic Ops protege hoje, como protege e o que ainda aguarda aprovação."
+
+msgid "On this page"
+msgstr "Nesta página"
+
+msgid "Isolation between clinics"
+msgstr "Isolamento entre clínicas"
+
+msgid "Access and accounts"
+msgstr "Acesso e contas"
+
+msgid "Records and audit"
+msgstr "Registros e auditoria"
+
+msgid "Privacy by design"
+msgstr "Privacidade desde a concepção"
+
+msgid "AI with limits"
+msgstr "IA com limites"
+
+msgid "Not approved yet"
+msgstr "Ainda não aprovado"
+
+msgid "The application connects with a database role that cannot bypass row-level security and does not own the schema."
+msgstr "A aplicação se conecta com um perfil de banco de dados que não contorna a segurança em nível de linha e não é dono do esquema."
+
+msgid "A record from another clinic gets the same refusal as a record that does not exist, so a refusal reveals nothing."
+msgstr "Um registro de outra clínica recebe a mesma recusa que um registro inexistente, então a recusa não revela nada."
+
+msgid "Permissions come from versioned role bundles; a released bundle is never edited in place."
+msgstr "As permissões vêm de pacotes de perfil versionados; um pacote publicado nunca é editado."
+
+msgid "Audit entries carry only the clinic, the request and the outcome, never patient data."
+msgstr "Os registros de auditoria guardam só a clínica, a requisição e o resultado, nunca dados de pacientes."
+
+msgid "The browser keeps no clinical text: the offline cache holds only versioned static files."
+msgstr "O navegador não guarda texto clínico: o cache offline contém só arquivos estáticos versionados."
+
+msgid "Patient names are stored encrypted and found through keyed exact-match indexes, with no plaintext copy."
+msgstr "Os nomes dos pacientes ficam criptografados e são encontrados por índices exatos com chave, sem cópia em texto aberto."
+
+msgid "Legal, privacy, incident, key rotation and retention approvals are still open."
+msgstr "As aprovações jurídica, de privacidade, de incidentes, de rotação de chaves e de retenção ainda estão em aberto."
+
+msgid "Recovery is proven only as a logical restore; provider point-in-time recovery and encrypted provider backups are not verified yet."
+msgstr "A recuperação só foi comprovada como restauração lógica; a recuperação pontual e os backups criptografados do provedor ainda não foram verificados."
+
+
+msgid "Found a security problem? Tell the team through the contact page and leave all patient data out of the message."
+msgstr "Encontrou um problema de segurança? Avise a equipe pela página de contato e deixe qualquer dado de paciente fora da mensagem."
+
+msgid "Every team"
+msgstr "Todas as equipes"
+
+msgid "Invite your team"
+msgstr "Convidar a equipe"
+
+msgid "Send an invitation for each role. Access starts only after the person sets a password and an authenticator."
+msgstr "Envie um convite para cada perfil. O acesso só começa depois que a pessoa define uma senha e um autenticador."
+
+msgid "Sign in and protect your account"
+msgstr "Entrar e proteger a sua conta"
+
+
+msgid "Choose theme and density"
+msgstr "Escolher tema e densidade"
+
+msgid "Use the dark theme in low-light rooms or the compact density at the desk. The choice follows your account."
+msgstr "Use o tema escuro em salas com pouca luz ou a densidade compacta no balcão. A escolha acompanha a sua conta."
+
+msgid "Find or register a patient"
+msgstr "Buscar ou cadastrar um paciente"
+
+msgid "Search the clinic registry by name or exact document, and register the patient when there is no match."
+msgstr "Busque no cadastro da clínica por nome ou documento exato e cadastre o paciente quando não houver resultado."
+
+msgid "Start from the patient, choose the physician and the exact time inside an offered window."
+msgstr "Comece pelo paciente, escolha o médico e o horário exato dentro de um período oferecido."
+
+msgid "Register an arrival"
+msgstr "Registrar uma chegada"
+
+msgid "Mark the patient as arrived and call them to a room from Reception Today."
+msgstr "Marque a chegada do paciente e chame-o para uma sala na Recepção de hoje."
+
+msgid "Document an encounter"
+msgstr "Documentar um atendimento"
+
+msgid "Start the encounter from Today, write the SOAP note and finalize it with a fresh authenticator code."
+msgstr "Inicie o atendimento em Hoje, escreva a nota SOAP e finalize com um novo código do autenticador."
+
+msgid "Reschedule or cancel an appointment"
+msgstr "Reagendar ou cancelar uma consulta"
+
+msgid "Move an appointment to a new time or cancel it with a reason. The history is kept either way."
+msgstr "Mude uma consulta de horário ou cancele com um motivo. O histórico é mantido nos dois casos."
+
+msgid "Record a consultation and review the AI draft"
+msgstr "Gravar uma consulta e revisar o rascunho de IA"
+
+msgid "With the patient's consent, record the consultation and review each source-linked suggestion before it reaches your note."
+msgstr "Com o consentimento do paciente, grave a consulta e revise cada sugestão com fonte antes que ela chegue à sua nota."
+
+msgid "Book online as a patient"
+msgstr "Agendar online como paciente"
+
+msgid "Use your clinic's booking code and private invitation to choose a time, without sharing the reason for your visit."
+msgstr "Use o código de agendamento e o convite privado da sua clínica para escolher um horário, sem informar o motivo da consulta."
+
+
+msgid "In this version, invitation emails are simulations. No real message leaves until an email provider is approved."
+msgstr "Nesta versão, os e-mails de convite são simulações. Nenhuma mensagem real sai até um provedor de e-mail ser aprovado."
+
+msgid "Install an authenticator app on your phone."
+msgstr "Instale um aplicativo autenticador no seu celular."
+
+msgid "A code works only once. If it is refused, wait for the next one."
+msgstr "Cada código funciona uma única vez. Se for recusado, espere o próximo."
+
+msgid "Never share codes or the QR code with anyone, including the clinic team."
+msgstr "Nunca compartilhe códigos nem o QR code com ninguém, nem com a equipe da clínica."
+
+msgid "The search never goes into the address bar, so it does not stay in the browser history."
+msgstr "A busca nunca vai para a barra de endereço, então não fica no histórico do navegador."
+
+msgid "The physician has published availability for the day."
+msgstr "O médico publicou disponibilidade para o dia."
+
+msgid "Times always follow the clinic's time zone, even when your computer is set to another one."
+msgstr "Os horários sempre seguem o fuso horário da clínica, mesmo que o seu computador esteja em outro."
+
+msgid "Optional consent, documents and payment never prevent an arrival; they appear only as information."
+msgstr "Consentimentos, documentos e pagamentos opcionais nunca impedem uma chegada; eles aparecem só como informação."
+
+msgid "Reception has registered the patient's arrival."
+msgstr "A recepção registrou a chegada do paciente."
+
+msgid "Finalizing in Clinic Ops is not a digital signature."
+msgstr "Finalizar na Clinic Ops não é uma assinatura digital."
+
+msgid "The patient agreed to the recording and, separately, to AI processing."
+msgstr "O paciente concordou com a gravação e, separadamente, com o processamento por IA."
+
+
+msgid "In this version, transcription and suggestions come from a simulated model. Real models are switched on only after approval."
+msgstr "Nesta versão, a transcrição e as sugestões vêm de um modelo simulado. Modelos reais só são ativados após aprovação."
+
+msgid "You can always continue the note manually, without AI."
+msgstr "Você sempre pode continuar a nota manualmente, sem IA."
+
+
+msgid "Enter the person's email and role, then press {control}."
+msgstr "Informe o e-mail e o perfil da pessoa e pressione {control}."
+
+msgid "The invitation waits until the person confirms a password and an authenticator."
+msgstr "O convite aguarda até a pessoa confirmar uma senha e um autenticador."
+
+msgid "Work through the clinic checklist and press {control} after each task."
+msgstr "Siga a lista de tarefas da clínica e pressione {control} depois de cada uma."
+
+msgid "Finished items are marked complete. Progress is kept on the server."
+msgstr "Os itens feitos ficam marcados como concluídos. O progresso fica no servidor."
+
+msgid "Enter your clinic username and password and press {control}."
+msgstr "Informe o seu usuário e a sua senha da clínica e pressione {control}."
+
+
+msgid "A private QR code appears. Scan it once with the app."
+msgstr "Aparece um QR code privado. Escaneie uma única vez com o aplicativo."
+
+msgid "Type the current six-digit code and press {control}."
+msgstr "Digite o código atual de seis dígitos e pressione {control}."
+
+
+msgid "Before a sensitive action, type a new code and press {control}."
+msgstr "Antes de uma ação sensível, digite um código novo e pressione {control}."
+
+msgid "The code confirms exactly that action and changes nothing else."
+msgstr "O código confirma exatamente essa ação e não muda mais nada."
+
+msgid "Under {control}, choose light or dark."
+msgstr "Em {control}, escolha claro ou escuro."
+
+msgid "Under {control}, choose comfortable or compact."
+msgstr "Em {control}, escolha confortável ou compacta."
+
+msgid "Press {control}."
+msgstr "Pressione {control}."
+
+msgid "Your choices apply on every device you sign in to."
+msgstr "As suas escolhas valem em todo dispositivo em que você entrar."
+
+msgid "Type at least two letters of the name, or an exact document number, and press {control}."
+msgstr "Digite pelo menos duas letras do nome, ou o número exato de um documento, e pressione {control}."
+
+msgid "If the patient is not in the list, press {control}."
+msgstr "Se o paciente não estiver na lista, pressione {control}."
+
+msgid "Check the legal name and the birth date, then press {control}."
+msgstr "Confira o nome civil e a data de nascimento e pressione {control}."
+
+msgid "You return to the search, ready to book."
+msgstr "Você volta para a busca, pronto para agendar."
+
+msgid "Find the patient and, in their row, press {control}."
+msgstr "Encontre o paciente e, na linha dele, pressione {control}."
+
+msgid "Choose the physician, type the start and end inside an offered window and press {control}."
+msgstr "Escolha o médico, digite o início e o fim dentro de um período oferecido e pressione {control}."
+
+
+msgid "To check the day, open the agenda and press {control}."
+msgstr "Para conferir o dia, abra a agenda e pressione {control}."
+
+msgid "When the patient arrives, choose the arrival location and press {control}."
+msgstr "Quando o paciente chegar, escolha o local de chegada e pressione {control}."
+
+msgid "When the room is ready, choose it and press {control}."
+msgstr "Quando a sala estiver pronta, escolha-a e pressione {control}."
+
+msgid "The waiting display shows only the ticket and room codes."
+msgstr "O painel da sala de espera mostra só a senha e o código da sala."
+
+msgid "Find your next patient and press {control}."
+msgstr "Encontre o seu próximo paciente e pressione {control}."
+
+
+msgid "When the note is complete, press {control}."
+msgstr "Quando a nota estiver completa, pressione {control}."
+
+msgid "Type a fresh authenticator code and press {control}."
+msgstr "Digite um novo código do autenticador e pressione {control}."
+
+msgid "The finalized version can no longer change. Corrections are made by amendment."
+msgstr "A versão finalizada não muda mais. Correções são feitas por retificação."
+
+msgid "In the agenda, find the appointment and press {control}."
+msgstr "Na agenda, encontre a consulta e pressione {control}."
+
+msgid "Enter the new start and press {control}."
+msgstr "Informe o novo início e pressione {control}."
+
+msgid "The same patient and physician keep the appointment at the new time."
+msgstr "O mesmo paciente e o mesmo médico mantêm a consulta no novo horário."
+
+msgid "To cancel instead, press {control} in the appointment's row."
+msgstr "Para cancelar, pressione {control} na linha da consulta."
+
+msgid "Choose one of the listed reasons and press {control}."
+msgstr "Escolha um dos motivos da lista e pressione {control}."
+
+msgid "The time becomes free again and the record keeps its history."
+msgstr "O horário volta a ficar livre e o registro mantém o histórico."
+
+msgid "When everyone is ready, press {control}."
+msgstr "Quando todos estiverem prontos, pressione {control}."
+
+msgid "At the end of the consultation, press {control}."
+msgstr "No fim da consulta, pressione {control}."
+
+msgid "Review the transcript and press {control}."
+msgstr "Revise a transcrição e pressione {control}."
+
+msgid "Back in the encounter, press {control}."
+msgstr "De volta ao atendimento, pressione {control}."
+
+
+msgid "Compare each suggestion with its source, then press {control} or reject it."
+msgstr "Compare cada sugestão com a fonte e pressione {control} ou rejeite."
+
+msgid "Nothing is applied or finalized automatically. Finalizing the note is a separate step."
+msgstr "Nada é aplicado nem finalizado automaticamente. Finalizar a nota é um passo separado."
+
+msgid "Enter the booking code your clinic gave you and press {control}."
+msgstr "Informe o código de agendamento que a sua clínica passou e pressione {control}."
+
+msgid "Press {control} and use the private invitation from your clinic."
+msgstr "Pressione {control} e use o convite privado da sua clínica."
+
+msgid "Choose a date and press {control}."
+msgstr "Escolha uma data e pressione {control}."
+
+msgid "Pick a time and press {control}."
+msgstr "Escolha um horário e pressione {control}."
+
+msgid "%(steps)s step"
+msgid_plural "%(steps)s steps"
+msgstr[0] "%(steps)s etapa"
+msgstr[1] "%(steps)s etapas"
+
+msgid "The Clinic Ops website: the product, its security posture, the help center and contact."
+msgstr "O site da Clinic Ops: o produto, a postura de segurança, a central de ajuda e o contato."
+
+msgid "Team access, charges and reports."
+msgstr "Acessos da equipe, cobranças e relatórios."
+
+msgid "A direct path to the clinic that never shows another patient's agenda."
+msgstr "Um caminho direto até a clínica, que nunca mostra a agenda de outro paciente."
+
+msgid "The note is still a draft. Finalizing it is a separate step."
+msgstr "A nota continua em rascunho. Finalizar é um passo separado."
+
+msgid "Your role may not include this task. Ask your clinic administrator."
+msgstr "Talvez o seu perfil não inclua esta tarefa. Fale com a administração da clínica."
+
+msgid "Sign in with your password. Privileged roles then confirm a code from an authenticator app, and sensitive actions ask for a fresh code."
+msgstr "Entre com a sua senha. Perfis privilegiados confirmam em seguida um código do aplicativo autenticador, e ações sensíveis pedem um código novo."
+
+msgid "Your organization has enabled the AI policy."
+msgstr "A sua organização habilitou a política de IA."
+
+msgid "If you have a privileged role, open the authenticator app the first time and press {control}."
+msgstr "Se o seu perfil for privilegiado, abra o aplicativo autenticador na primeira vez e pressione {control}."
+
+msgid "If you have a privileged role, type a fresh code on later sign-ins and press {control}."
+msgstr "Se o seu perfil for privilegiado, digite um código novo nas próximas entradas e pressione {control}."
+
+msgid "Write the note in the SOAP sections and press {control} to save it on request."
+msgstr "Escreva a nota nas seções SOAP e pressione {control} para salvar quando quiser."
+
+msgid "With JavaScript on, the draft is saved on the server as you type."
+msgstr "Com JavaScript ativo, o rascunho é salvo no servidor enquanto você digita."
+
+msgid "Every statement of fact in this site's page templates and help guides is registered with its evidence; an automated test checks the templates and guides for unregistered text."
+msgstr "Toda afirmação de fato nos modelos de página e nos guias de ajuda deste site está registrada com a sua evidência; um teste automatizado verifica se há texto não registrado nos modelos e nos guias."

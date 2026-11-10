@@ -9,6 +9,7 @@ from .contracts import (
     require_data_mode,
     resolve_attachment_root,
     resolve_csp_report_only,
+    resolve_website_contact_email,
     validate_secret_store_env,
 )
 from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
@@ -38,6 +39,9 @@ CLINIC_DATA_MODE: str = require_data_mode(env("CLINIC_DATA_MODE", default="synth
 # Strict CSP is enforced by default; report-only is a synthetic-only rollout
 # and rollback lever that live mode refuses (contracts.resolve_csp_report_only).
 CLINIC_CSP_REPORT_ONLY: bool = resolve_csp_report_only(os.environ, CLINIC_DATA_MODE)
+# Public contact address for the website's contact page (todo 70); empty means
+# the page says no address is published yet.
+CLINIC_WEBSITE_CONTACT_EMAIL: str = resolve_website_contact_email(os.environ)
 # Managed-secret boundary for key material; no default, no plaintext fallback.
 CLINIC_SECRET_BACKEND: str | None
 CLINIC_SECRET_DIR: str | None
@@ -83,6 +87,7 @@ INSTALLED_APPS: list[str] = [
     "apps.insurance.apps.InsuranceConfig",
     "apps.analytics.apps.AnalyticsConfig",
     "apps.subscriptions.apps.SubscriptionsConfig",
+    "apps.website.apps.WebsiteConfig",
 ]
 
 # Capture is an explicit synthetic rehearsal until the provider lifecycle and

@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from http import HTTPStatus
-from typing import Final
+from typing import Final, NamedTuple
 from uuid import UUID
 
 from django.contrib.auth import SESSION_KEY, logout
@@ -33,9 +33,27 @@ from apps.tenancy.db import (
     tenant_context,
 )
 
+
+class PublicSpace(NamedTuple):
+    """Exact paths and path prefixes that make up one public URL space."""
+
+    paths: frozenset[str]
+    prefixes: tuple[str, ...]
+
+
+# Public website (todo 70): GET-only pages and static guides that read no
+# tenant data. The bypass below is built from this one constant, and
+# tests/website/test_claims.py renders every route that lies in it.
+WEBSITE_PUBLIC: Final = PublicSpace(
+    paths=frozenset(
+        {"/", "/product/", "/security/", "/contact/", "/brand/", "/pricing/"}
+    ),
+    prefixes=("/help/",),
+)
+
 BYPASS_PATHS: Final = frozenset(
     {
-        "/",
+        *WEBSITE_PUBLIC.paths,
         "/healthz",
         "/healthz/",
         "/readyz",
@@ -60,6 +78,7 @@ BYPASS_PATHS: Final = frozenset(
 BYPASS_PREFIXES: Final = (
     "/book/",  # Published clinic projection; booking revalidates patient context.
     SCIM_PREFIX,  # Only is_scim_endpoint's closed directory grammar is admitted.
+    *WEBSITE_PUBLIC.prefixes,
     "/orders/lab/callback/",  # Per-account raw-body HMAC before stored scope.
     "/comms/webhooks/",  # Per-account raw-body HMAC before stored scope.
     "/api/v1/",  # Partner bearer token; every resolver re-validates its digest.
