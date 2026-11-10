@@ -9,7 +9,13 @@ from uuid import UUID, uuid4
 import pytest
 from apps.ehr.longitudinal import record_observation
 from apps.ehr.longitudinal_access import patient_scope
-from apps.ehr.models import ClinicalDocumentVersion, Observation, TimelineRefresh
+from apps.ehr.medication_services import record_medication_statement
+from apps.ehr.models import (
+    ClinicalDocumentVersion,
+    MedicationStatement,
+    Observation,
+    TimelineRefresh,
+)
 from apps.ehr.note_access import grant_note_access, restrict_note, revoke_note_access
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.models import User
@@ -19,7 +25,7 @@ from django.utils import timezone
 from ehr.longitudinal_support import care_reader, chart_world, finalized
 from ehr.test_addenda import clinician
 from ehr.test_autosave import ROLES, as_actor, permitted
-from ehr.test_longitudinal import TEMPERATURE
+from ehr.test_longitudinal import MEDICATION, TEMPERATURE
 from identity.permission_support import owner_context, permission_context
 from patient_service_support import runtime_role
 
@@ -33,7 +39,10 @@ EHR_ACTOR_PROTOCOL_ORACLES = {
         "ehr.test_specialty_actor.test_pack_sql_rechecks_inactive_actor",
         "ehr.test_specialty_actor.test_pack_guard_refuses_forged_installer",
     ),
-    "clinic_app.ehr_longitudinal_guard()": (
+    "clinic_app.ehr_medicationstatement_guard()": (
+        "ehr.test_sql_protocols.test_medication_guard_uses_current_role_and_actor",
+    ),
+    "clinic_app.ehr_observation_guard()": (
         "ehr.test_sql_protocols.test_longitudinal_sql_uses_current_role_and_actor",
     ),
     "clinic_app.ehr_note_visible(uuid)": (
@@ -262,7 +271,8 @@ def test_longitudinal_functions_keep_exact_execute_privileges() -> None:
         "ehr_timeline_refresh",
     }
     trigger_functions = {
-        "ehr_longitudinal_guard",
+        "ehr_medicationstatement_guard",
+        "ehr_observation_guard",
         "ehr_note_guard",
         "ehr_copy_finalization_guard",
         "ehr_timeline_enqueue",
@@ -287,3 +297,48 @@ def test_longitudinal_functions_keep_exact_execute_privileges() -> None:
             ["search_path=pg_catalog, clinic_app, pg_temp"],
         )
         assert (app, agent, migration) == (name in callable_functions, False, False)
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_medication_guard_uses_current_role_and_actor(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    # Given: a reported medication statement awaiting reconciliation.
+    graph = rbac_graph
+    world = chart_world(graph)
+    actor = clinician(graph, role, world.enrollment)
+    with as_actor(graph, graph.physician):
+        statement = record_medication_statement(
+            clinic_id=graph.clinic_a,
+            enrollment_id=world.enrollment,
+            medication=MEDICATION,
+        )
+    for active in (True, False, True):
+        User.objects.filter(pk=actor).update(is_active=active)
+        writer = active and role in permitted("clinical.write")
+        with permission_context(graph, actor):
+            # When: the actor reconciles; Then: only an active writer changes it.
+            with transaction.atomic():
+                changed = MedicationStatement.objects.filter(pk=statement.pk).update(
+                    provenance="clinician_confirmed",
+                    revision=2,
+                    reconciled_at=timezone.now(),
+                    reconciled_by_id=actor,
+                )
+                assert changed == int(writer)
+                transaction.set_rollback(True)
+            # And: the medication guard binds the reviewer to the current actor.
+            if writer:
+                with (
+                    pytest.raises(DatabaseError, match="invalid provenance transition"),
+                    transaction.atomic(),
+                ):
+                    MedicationStatement.objects.filter(pk=statement.pk).update(
+                        provenance="clinician_confirmed",
+                        revision=2,
+                        reconciled_at=timezone.now(),
+                        reconciled_by_id=graph.physician,
+                    )
+    with owner_context(graph.organization_a):
+        statement.refresh_from_db()
+        assert (statement.revision, statement.reconciled_at) == (1, None)

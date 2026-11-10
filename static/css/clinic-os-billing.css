@@ -320,9 +320,11 @@
 /* Below 48rem each charge becomes one block: the patient, then the labelled
    money facts and the full-width action, so the row's next step never sits
    off screen on a phone. The ARIA table roles in the markup keep the table
-   semantics while the display changes. */
+   semantics while the display changes. Only a region holding that reflowing
+   table gives up horizontal scrolling; every other table in the billing shell
+   keeps its scrollable, focusable region (DESIGN.md, Layout). */
 @media (max-width: 47.99rem) {
-  .billing-shell .table-scroll {
+  .billing-shell .table-scroll:has(.billing-table) {
     overflow: visible;
   }
 

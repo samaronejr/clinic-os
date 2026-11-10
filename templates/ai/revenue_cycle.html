@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Revenue-cycle assistant" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="page-stack" aria-labelledby="revenue-title">
+  <h1 id="revenue-title">{% trans "Revenue-cycle assistant" %}</h1>
+  <p class="lede">{% trans "Review discrepancies and administrative appeal drafts against their exact financial sources." %}</p>
+  <p class="feedback feedback--muted" role="status">{% trans "Synthetic rehearsal. No real model, payment or submission is authorized. BLOCKED-ON-EG." %}</p>
+  <p>{% trans "Clinical supporting evidence is not retrieved. Missing evidence means not found in the supplied sources, never absence of care." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  <form method="post" novalidate>
+    {% csrf_token %}<input type="hidden" name="command" value="request">
+    <label for="revenue-guide">{% trans "Claim guide" %}</label>
+    <select id="revenue-guide" name="guide_id" required{% if not guides %} disabled{% endif %}>
+      {% for guide in guides %}<option value="{{ guide.pk }}">{{ guide.number }}</option>{% endfor %}
+    </select>
+    <button class="button" type="submit"{% if not guides %} disabled{% endif %}>{% trans "Request financial review" %}</button>
+  </form>
+  {% if not guides %}<p role="status">{% trans "No claim sources are available in this clinic." %}</p>{% endif %}
+  {% if review %}
+    {% if review.state == "generating" %}
+      <p role="status">{% trans "The review is generating. Manual financial work remains available." %}</p>
+    {% elif review.state == "unavailable" %}
+      <p class="feedback" role="status">{% trans "The assistant is unavailable. Continue the financial workflow manually." %}</p>
+    {% elif review.state == "stale" %}
+      <p class="feedback" role="status">{% trans "The source or proposal changed. Refresh and review it again." %}</p>
+    {% endif %}
+    {% if review.invocation_id %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="command" value="refresh">
+        <input type="hidden" name="invocation_id" value="{{ review.invocation_id }}">
+        <button class="button button--secondary" type="submit">{% trans "Refresh review" %}</button>
+      </form>
+    {% endif %}
+    {% for item in review.items %}
+      <article class="panel" aria-labelledby="revenue-item-{{ forloop.counter }}">
+        <h2 id="revenue-item-{{ forloop.counter }}">{% if item.kind == "appeal.draft" %}{% trans "Administrative appeal draft" %}{% else %}{% trans "Discrepancy explanation" %}{% endif %}</h2>
+        <p>{{ item.text }}</p>
+        <ul>{% for source in item.citations %}<li>{{ source.alias }} · {% if source.kind == "guide" %}{% trans "Claim guide" %}{% elif source.kind == "glosa" %}{% trans "Payer return item" %}{% elif source.kind == "journal" %}{% trans "Journal record" %}{% else %}{% trans "Posted allocation" %}{% endif %} · {{ source.id }} · {% trans "Version" %} {{ source.version }}<br>{{ source.sha256|truncatechars:20 }}</li>{% endfor %}</ul>
+        {% if can_approve %}
+          <form method="post">{% csrf_token %}
+            <input type="hidden" name="command" value="propose">
+            <input type="hidden" name="output_id" value="{{ review.output_id }}">
+            <input type="hidden" name="position" value="{{ item.position }}">
+            <button class="button button--secondary" type="submit">{% trans "Preview exact approval" %}</button>
+          </form>
+        {% else %}<p class="hint">{% trans "A finance reviewer with Automations authority must approve every exact effect." %}</p>{% endif %}
+      </article>
+    {% empty %}{% if review.state == "ready" %}<p role="status">{% trans "No discrepancy was found by these bounded rules. This is not a financial clearance." %}</p>{% endif %}{% endfor %}
+  {% endif %}
+  {% if proposal %}
+    <section class="panel" aria-labelledby="revenue-approval-title">
+      <h2 id="revenue-approval-title">{{ proposal.effect }}</h2>
+      <p>{{ proposal.state_label }} · {{ proposal.autonomy }}</p>
+      <p>{% trans "Approval binds this exact source version, effect and digest." %}</p>
+      <p>{% for part in proposal.digest_parts %}<code>{{ part }}</code> {% endfor %}</p>
+      {% if proposal.reviewable %}
+        <form method="post">{% csrf_token %}
+          <input type="hidden" name="proposal_id" value="{{ proposal.proposal_id }}">
+          <input type="hidden" name="digest" value="{{ proposal.digest }}">
+          <button class="button" name="command" value="approve" type="submit">{% trans "Approve exact draft" %}</button>
+          <button class="button button--secondary" name="command" value="reject" type="submit">{% trans "Reject proposal" %}</button>
+        </form>
+      {% endif %}
+    </section>
+  {% endif %}
+  <a class="button button--quiet" href="{% url 'billing:finance' clinic_id %}">{% trans "Finance" %}</a>
+</section>
+{% endblock %}

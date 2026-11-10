@@ -67,7 +67,10 @@ def invitation_view(request: HttpRequest) -> HttpResponseBase:
                     login(request, user)
                     record_otp_verification(request, enrollment.device)
                     return auth_redirect(request, reverse("workspace-home"))
-                qr_data_uri = provisioning_qr_data_uri(enrollment.device, username)
+                if enrollment.secret_hex is not None:
+                    qr_data_uri = provisioning_qr_data_uri(
+                        enrollment.device, username, enrollment.secret_hex
+                    )
                 if otp_token:
                     form.add_error("otp_token", _("Enter a valid authenticator code."))
     return auth_response(

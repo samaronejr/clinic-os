@@ -17,8 +17,10 @@ from django.contrib.auth import SESSION_KEY
 from django.urls import reverse
 
 from apps.core.navigation import (
+    DESTINATIONS,
     NavLink,
     PaletteGroup,
+    allows,
     build_navigation,
     granted_permissions,
 )
@@ -54,6 +56,11 @@ _SHELL_ROLES: Final = (
     UserClinicRole.Role.CLINIC_MANAGER,
     UserClinicRole.Role.FINANCE,
 )
+# Task 56 opens Finance to bundles with no clinical, task or reception landing;
+# their home is the workspace they may open, not a settings page they cannot.
+_FINANCE: Final = next(
+    destination for destination in DESTINATIONS if destination.key == "finance"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +89,10 @@ class WorkspaceClinic:
                 return reverse("workflows:tasks", args=(self.id,))
             if "demographics.read" in granted and "appointment.book" not in granted:
                 return reverse("orders:results", args=(self.id,))
+            if granted.isdisjoint(
+                {"appointment.book", "configuration.organization"}
+            ) and allows(_FINANCE, roles=self.roles, granted=granted):
+                return reverse("billing:finance", args=(self.id,))
             return reverse("scheduling:resource-settings", args=(self.id,))
         return reverse("scheduling:agenda", args=(self.id,))
 
@@ -155,7 +166,14 @@ def _visible_clinics(
             granted = granted_permissions(clinic.pk)
             command_context = bool({"tasks.view", "demographics.read"} & granted) or (
                 settings_scope
-                and bool({"appointment.book", "configuration.organization"} & granted)
+                and bool(
+                    {
+                        "appointment.book",
+                        "configuration.clinic",
+                        "configuration.organization",
+                    }
+                    & granted
+                )
             )
             if not command_context and "reception.queue" not in granted:
                 continue
@@ -263,6 +281,10 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 "ai:agents",
                 "ai:agent-settings",
                 "ai:care-coordination",
+                "analytics:reports",
+                "billing:finance",
+                "billing:charges",
+                "billing:invoice",
             }
             or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
         ),

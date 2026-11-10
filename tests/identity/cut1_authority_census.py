@@ -17,8 +17,12 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.ai_authority_census import exercise_ai_authority
+from identity.billing_authority_oracle import run_billing_census
 from identity.coordination_authority_oracle import run_coordination_census
+from identity.crm_authority_oracle import run_crm_census
 from identity.front_desk_authority_oracle import run_front_desk_census
+from identity.insurance_authority_census import exercise_insurance_authority
+from identity.inventory_authority_oracle import run_inventory_census
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
@@ -27,6 +31,7 @@ from identity.portal_authority_oracle import run_portal_census
 from identity.prescription_authority_oracle import run_prescription_census
 from identity.retention_authority_census import exercise_retention_authority
 from identity.scribe_authority_census import exercise_scribe_authority
+from identity.subscriptions_authority_oracle import run_subscription_census
 from rbac_fixtures import RbacGraph
 from rbac_fixtures import rbac_graph as seed_graph
 
@@ -346,8 +351,13 @@ def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     run_orders_census(proofs, graph)
     run_portal_census(proofs, graph, secret_root.parent)
     run_front_desk_census(proofs, graph, patch)
+    run_crm_census(proofs, graph, patch)
     run_coordination_census(proofs, graph, patch, secret_root.parent)
+    run_billing_census(proofs, graph)
+    exercise_insurance_authority(proofs, graph)
+    run_subscription_census(proofs, graph)
     run_prescription_census(proofs, graph, patch, secret_root)
+    run_inventory_census(proofs, graph)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")

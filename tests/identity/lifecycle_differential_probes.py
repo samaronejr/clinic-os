@@ -82,12 +82,16 @@ def lifecycle_probes(graph: RbacGraph) -> list[DifferentialProbe]:
         assert prepared[0].accepted_user_id is None
 
     def accept_enrollment() -> bool:
+        # The code comes from the secret the enrolment returned for its QR, as
+        # the invited user's authenticator would compute it.
         with public_context(), fixed_otp_time():
             enrolled = enroll_invitation(
                 token=token,
                 username=username,
                 password=password,
-                otp_token=token_for(prepared[0].device),
+                otp_token=token_for(
+                    prepared[0].device, secret_hex=prepared[0].secret_hex
+                ),
             )
         return enrolled.accepted_user_id == invitation.pending_user_id
 

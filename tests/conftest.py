@@ -11,6 +11,8 @@ import psycopg
 import pytest
 from apps.core import integration
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
+from apps.insurance.rls import TABLES as INSURANCE_TABLES
+from apps.inventory.rls import CUSTOM_RLS_TABLES as INVENTORY_TABLES
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
 
@@ -38,6 +40,42 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    *(
+        (f"crm_{table}", "crm_no_truncate")
+        for table in (
+            "referralsource",
+            "lead",
+            "marketingpreference",
+            "campaign",
+            "campaignsend",
+            "satisfactionsurvey",
+            "publicbookingprofile",
+        )
+    ),
+    *(
+        (table, "fiscal_no_truncate")
+        for table in (
+            "billing_fiscalconfiguration",
+            "billing_fiscaldocument",
+            "billing_fiscaltransition",
+        )
+    ),
+    ("analytics_metricdefinitionversion", "analytics_immutable"),
+    ("analytics_readmodelrefresh", "analytics_immutable"),
+    ("analytics_savedreport", "analytics_immutable"),
+    ("analytics_analystreview", "analytics_immutable"),
+    *(
+        (table, "subscription_retained_truncate")
+        for table in (
+            "subscriptions_plan",
+            "subscriptions_entitlement",
+            "subscriptions_subscription",
+            "subscriptions_subscriptionevent",
+            "subscriptions_seat",
+            "subscriptions_usageevent",
+            "subscriptions_usagerollup",
+        )
+    ),
     ("ai_evaluationprotocol", "evaluation_no_truncate"),
     ("ai_evaluationrun", "evaluation_no_truncate"),
     ("ai_evaluationrating", "evaluation_no_truncate"),
@@ -57,6 +95,33 @@ TRUNCATE_GUARDS = (
     ("scribe_draftactionproposal", "draft_no_truncate"),
     ("scribe_reviewdecision", "draft_no_truncate"),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
+    *(
+        (table, "billing_no_truncate")
+        for table in (
+            "billing_journalbook",
+            "billing_account",
+            "billing_journalentry",
+            "billing_journalline",
+            "billing_practitionerpayoutrule",
+            "billing_invoiceterms",
+            "billing_journalsettlement",
+            "billing_settlementallocation",
+            "billing_refund",
+            "billing_payout",
+            "billing_cashsession",
+            "billing_cashsessionevent",
+        )
+    ),
+    *(
+        (table, "billing_psp_no_truncate")
+        for table in (
+            "billing_psppolicy",
+            "billing_pspintent",
+            "billing_pspbinding",
+            "billing_pspevidence",
+            "billing_pspreceipt",
+        )
+    ),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
     ("scribe_chunktranscription", "transcript_no_truncate"),
@@ -71,6 +136,8 @@ TRUNCATE_GUARDS = (
         "prescription_sncrnumberallocation",
         "prescription_sncrnumberallocation_no_truncate",
     ),
+    *((table, "inventory_no_truncate") for table in sorted(INVENTORY_TABLES)),
+    *((table, "insurance_no_truncate") for table in INSURANCE_TABLES),
 )
 __all__: Final = (
     "RbacGraph",

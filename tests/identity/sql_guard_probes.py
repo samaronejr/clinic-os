@@ -173,6 +173,11 @@ def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
 
 
 PROBES = {
+    "billing_fiscal_access": SqlProbe(
+        "billing_fiscal_access",
+        ("finance",),
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
     "reception_readiness": SqlProbe(
         "reception_readiness",
         READINESS_ROLES,
@@ -292,12 +297,12 @@ PROBES = {
     ),
     "billing_staff_invoice": SqlProbe(
         "billing_staff_invoice",
-        MANAGERS,
+        (*MANAGERS, "scheduler", "finance"),
         lambda w, ok: [w.operational.invoice.pk if ok else uuid4()],
     ),
     "billing_payment_event_recorder": SqlProbe(
         "billing_payment_event_recorder",
-        MANAGERS,
+        (*MANAGERS, "scheduler", "finance"),
         lambda w, ok: [w.manager_payment if ok else uuid4()],
     ),
     "billing_payment_event_recorder#stored_actor": SqlProbe(

@@ -67,6 +67,27 @@ The policy defaults live in
 [docs/clinical/patient-access.md](../../docs/clinical/patient-access.md).
 
 The public service facade is `services.py`; HTTP routes are in `urls.py`.
+
+Insurance registrations retain their original encrypted payer/card fields and
+append-only versions. The nullable `payer` catalog FK is the sole metadata
+exception: `insurance.backfill_membership_payers(*, clinic_id)` may populate
+only a null link, only for an enrolled patient and a unique exact six-digit
+ANS match in that clinic. It never matches names, pads identifiers, creates
+payers or chooses the first ambiguous result. Unmatched and ambiguous
+membership identifiers are returned to the authorized operator and remain
+null. Repeated backfills do not rewrite the link, ciphertext or version.
+Clinic-specific claim memberships retain their explicit `registration` FK
+and derive the card/expiry from that recorded version, rather than asking
+reception to reconstruct a second registry. The original registration is
+organization-scoped; clinic catalog copies of the same operator must share
+the exact ANS identity and organization.
+
+Migration `0029_membership_payer` is non-atomic, idempotent and irreversible.
+It adds only nullable linkage and fixed resolver commands; encrypted facts
+are not rewritten. Run the scoped backfill after loading the payer catalog.
+Rollback is a restore. Upgrade/backfill and live-catalog confirmation remain
+runtime validation requirements.
+
 Questionnaires now retain immutable typed template versions, validate patient
 saves/submissions, and preserve append-only clinical reopen history. Sensitive
 response RLS is patient-session/physician scoped; reception uses a separate

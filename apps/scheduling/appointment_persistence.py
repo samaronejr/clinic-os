@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import psycopg
 from django.db import IntegrityError, transaction
 
+from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentIdempotencyConflictError,
@@ -35,7 +36,7 @@ def insert_appointment(
     """Insert once, recover a key loser, and map only known constraints."""
     try:
         with transaction.atomic():
-            appointment = Appointment.objects.create(
+            appointment = Appointment(
                 organization_id=clinic.organization_id,
                 clinic_id=request.clinic_id,
                 patient_id=prepared.enrollment.patient_id,
@@ -49,7 +50,13 @@ def insert_appointment(
                 status=request.initial_status,
                 series_id=request.series_id,
                 series_index=request.series_index,
+                payer_membership_id=request.payer_membership_id,
+                payer_contract_id=request.payer_contract_id,
             )
+            record_booking_coverage(
+                clinic_id=request.clinic_id, appointment=appointment
+            )
+            appointment.save(force_insert=True)
     except IntegrityError as error:
         replay = replay_appointment(
             clinic.organization_id,
@@ -83,6 +90,8 @@ def _constraint_name(error: IntegrityError) -> str | None:
 
 def _resource_constraint(error: IntegrityError, constraint: str | None) -> None:
     codes = {
+        "scheduling_payer_refused": "payer_refused",
+        "scheduling_payer_pending": "payer_pending",
         "scheduling_resource_conflict": "resource_conflict",
         "scheduling_resource_capacity_excl": "resource_conflict",
         "scheduling_outside_template": "outside_template",
@@ -105,6 +114,9 @@ def update_appointment_range(
         with transaction.atomic():
             appointment.start_at = start_at
             appointment.end_at = end_at
+            record_booking_coverage(
+                clinic_id=appointment.clinic_id, appointment=appointment
+            )
             appointment.save(update_fields=("start_at", "end_at", "updated_at"))
     except IntegrityError as error:
         constraint = _constraint_name(error)

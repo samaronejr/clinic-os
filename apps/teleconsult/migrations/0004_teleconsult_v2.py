@@ -19,6 +19,7 @@ from django.db import migrations, models
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.migrations.operations.base import Operation
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.tenancy.migration_operations import AddConstraint
 
 from ._provider_seed import seed_synthetic_video_version
@@ -28,6 +29,154 @@ from ._teleconsult_v2_sql import REVERSE_SQL, SQL
 def _seed(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
     del schema_editor
     seed_synthetic_video_version(apps)
+
+
+# Each new or changed model renders once instead of re-rendering the tenant graph.
+_BATCH_1 = [
+    migrations.CreateModel(
+        name="TeleconsultDeviceCheck",
+        fields=[
+            (
+                "id",
+                models.UUIDField(
+                    default=uuid.uuid4,
+                    editable=False,
+                    primary_key=True,
+                    serialize=False,
+                ),
+            ),
+            (
+                "role",
+                models.CharField(
+                    choices=[("physician", "Médico"), ("patient", "Paciente")],
+                    max_length=16,
+                ),
+            ),
+            ("participant_id", models.UUIDField()),
+            ("camera", models.CharField(max_length=16)),
+            ("microphone", models.CharField(max_length=16)),
+            ("speaker", models.CharField(max_length=16)),
+            ("network", models.CharField(max_length=16)),
+            ("created_at", models.DateTimeField(auto_now_add=True)),
+        ],
+    ),
+    migrations.RemoveConstraint(
+        model_name="teleconsultevent",
+        name="teleconsult_event_kind_check",
+    ),
+    migrations.AddField(
+        model_name="teleconsultevent",
+        name="mode_audit_seq",
+        field=models.BigIntegerField(editable=False, null=True, unique=True),
+    ),
+    migrations.AddField(
+        model_name="teleconsultroom",
+        name="provider",
+        field=models.CharField(blank=True, default="", max_length=255),
+    ),
+    migrations.AddField(
+        model_name="teleconsultroom",
+        name="provider_environment",
+        field=models.CharField(blank=True, default="", max_length=32),
+    ),
+    AddConstraint(
+        model_name="teleconsultevent",
+        constraint=models.CheckConstraint(
+            condition=models.Q(
+                (
+                    "kind__in",
+                    (
+                        "created",
+                        "joined",
+                        "join_denied",
+                        "started",
+                        "ended",
+                        "failed",
+                        "reconnected",
+                        "audio_only",
+                        "video_restored",
+                        "removed",
+                    ),
+                )
+            ),
+            name="teleconsult_event_kind_check",
+        ),
+    ),
+    AddConstraint(
+        model_name="teleconsultroom",
+        constraint=models.UniqueConstraint(
+            fields=("room_name",), name="teleconsult_room_name_uniq"
+        ),
+    ),
+    migrations.AddField(
+        model_name="teleconsultdevicecheck",
+        name="organization",
+        field=models.ForeignKey(
+            on_delete=django.db.models.deletion.CASCADE, to="identity.organization"
+        ),
+    ),
+    migrations.AddField(
+        model_name="teleconsultdevicecheck",
+        name="session",
+        field=models.ForeignKey(
+            on_delete=django.db.models.deletion.PROTECT,
+            related_name="device_checks",
+            to="teleconsult.teleconsultsession",
+        ),
+    ),
+    AddConstraint(
+        model_name="teleconsultdevicecheck",
+        constraint=models.CheckConstraint(
+            condition=models.Q(("role__in", ("physician", "patient"))),
+            name="teleconsult_device_role_check",
+        ),
+    ),
+    AddConstraint(
+        model_name="teleconsultdevicecheck",
+        constraint=models.CheckConstraint(
+            condition=models.Q(
+                (
+                    "camera__in",
+                    (
+                        "ok",
+                        "denied",
+                        "missing",
+                        "busy",
+                        "unsupported",
+                        "error",
+                        "not_checked",
+                    ),
+                ),
+                (
+                    "microphone__in",
+                    (
+                        "ok",
+                        "denied",
+                        "missing",
+                        "busy",
+                        "unsupported",
+                        "error",
+                        "not_checked",
+                    ),
+                ),
+                ("network__in", ("good", "degraded", "offline", "not_checked")),
+                (
+                    "speaker__in",
+                    (
+                        "ok",
+                        "denied",
+                        "missing",
+                        "busy",
+                        "unsupported",
+                        "error",
+                        "not_checked",
+                    ),
+                ),
+            ),
+            name="teleconsult_device_result_check",
+        ),
+    ),
+]
 
 
 class Migration(migrations.Migration):
@@ -42,149 +191,7 @@ class Migration(migrations.Migration):
     ]
 
     operations: ClassVar[list[Operation]] = [
-        migrations.CreateModel(
-            name="TeleconsultDeviceCheck",
-            fields=[
-                (
-                    "id",
-                    models.UUIDField(
-                        default=uuid.uuid4,
-                        editable=False,
-                        primary_key=True,
-                        serialize=False,
-                    ),
-                ),
-                (
-                    "role",
-                    models.CharField(
-                        choices=[("physician", "Médico"), ("patient", "Paciente")],
-                        max_length=16,
-                    ),
-                ),
-                ("participant_id", models.UUIDField()),
-                ("camera", models.CharField(max_length=16)),
-                ("microphone", models.CharField(max_length=16)),
-                ("speaker", models.CharField(max_length=16)),
-                ("network", models.CharField(max_length=16)),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-            ],
-        ),
-        migrations.RemoveConstraint(
-            model_name="teleconsultevent",
-            name="teleconsult_event_kind_check",
-        ),
-        migrations.AddField(
-            model_name="teleconsultevent",
-            name="mode_audit_seq",
-            field=models.BigIntegerField(editable=False, null=True, unique=True),
-        ),
-        migrations.AddField(
-            model_name="teleconsultroom",
-            name="provider",
-            field=models.CharField(blank=True, default="", max_length=255),
-        ),
-        migrations.AddField(
-            model_name="teleconsultroom",
-            name="provider_environment",
-            field=models.CharField(blank=True, default="", max_length=32),
-        ),
-        AddConstraint(
-            model_name="teleconsultevent",
-            constraint=models.CheckConstraint(
-                condition=models.Q(
-                    (
-                        "kind__in",
-                        (
-                            "created",
-                            "joined",
-                            "join_denied",
-                            "started",
-                            "ended",
-                            "failed",
-                            "reconnected",
-                            "audio_only",
-                            "video_restored",
-                            "removed",
-                        ),
-                    )
-                ),
-                name="teleconsult_event_kind_check",
-            ),
-        ),
-        AddConstraint(
-            model_name="teleconsultroom",
-            constraint=models.UniqueConstraint(
-                fields=("room_name",), name="teleconsult_room_name_uniq"
-            ),
-        ),
-        migrations.AddField(
-            model_name="teleconsultdevicecheck",
-            name="organization",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, to="identity.organization"
-            ),
-        ),
-        migrations.AddField(
-            model_name="teleconsultdevicecheck",
-            name="session",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.PROTECT,
-                related_name="device_checks",
-                to="teleconsult.teleconsultsession",
-            ),
-        ),
-        AddConstraint(
-            model_name="teleconsultdevicecheck",
-            constraint=models.CheckConstraint(
-                condition=models.Q(("role__in", ("physician", "patient"))),
-                name="teleconsult_device_role_check",
-            ),
-        ),
-        AddConstraint(
-            model_name="teleconsultdevicecheck",
-            constraint=models.CheckConstraint(
-                condition=models.Q(
-                    (
-                        "camera__in",
-                        (
-                            "ok",
-                            "denied",
-                            "missing",
-                            "busy",
-                            "unsupported",
-                            "error",
-                            "not_checked",
-                        ),
-                    ),
-                    (
-                        "microphone__in",
-                        (
-                            "ok",
-                            "denied",
-                            "missing",
-                            "busy",
-                            "unsupported",
-                            "error",
-                            "not_checked",
-                        ),
-                    ),
-                    ("network__in", ("good", "degraded", "offline", "not_checked")),
-                    (
-                        "speaker__in",
-                        (
-                            "ok",
-                            "denied",
-                            "missing",
-                            "busy",
-                            "unsupported",
-                            "error",
-                            "not_checked",
-                        ),
-                    ),
-                ),
-                name="teleconsult_device_result_check",
-            ),
-        ),
+        SchemaStateBatch(database_operations=_BATCH_1, state_operations=_BATCH_1),
         migrations.RunPython(_seed, migrations.RunPython.noop),
         migrations.RunSQL(SQL, REVERSE_SQL),
     ]

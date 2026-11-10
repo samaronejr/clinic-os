@@ -81,6 +81,10 @@ CLOSED_TO_APP_RELATIONS: Final = (
     "identity_signupregistration",
     "tenancy_tenantdatakey",
 )
+# Tables a migration hands to the resolver on purpose: the TOTP secret store
+# (identity 0050) keeps no runtime or ambient-owner read path, so its exact
+# owner is clinic_resolver. Every other table and sequence is clinic_owner's.
+RESOLVER_OWNED_RELATIONS: Final = ("identity_totpsecret",)
 POSTURE_SQL: Final = f"""
 
 WITH violations AS (
@@ -89,7 +93,12 @@ WITH violations AS (
     UNION ALL
     SELECT 'relation-owner' FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='clinic_app' AND c.relkind IN ('r','S')
-      AND pg_get_userbyid(c.relowner) <> 'clinic_owner'
+      AND pg_get_userbyid(c.relowner) <> CASE
+        WHEN c.relname IN (
+          {",".join(f"'{name}'" for name in RESOLVER_OWNED_RELATIONS)}
+        ) THEN 'clinic_resolver'
+        ELSE 'clinic_owner'
+      END
     UNION ALL
     SELECT 'function-owner:' || p.proname || ':' || pg_get_userbyid(p.proowner)
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace

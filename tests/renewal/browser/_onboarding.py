@@ -24,6 +24,7 @@ from renewal.browser._fixture_secrets import (
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import await_autofocus, evaluate_js
 from renewal.browser._protected import encrypt
+from renewal.browser._totp_devices import totp_secret
 from renewal.browser.engines import full_page_screenshot
 
 if TYPE_CHECKING:
@@ -181,14 +182,7 @@ def enrollment_fields(page: Page, token: str, username: str, password: str) -> N
 def confirm_enrollment(page: Page, staff: dict[str, str], user_id: str) -> None:
     """Read the owned fixture's private seed and submit a real current TOTP."""
     with psycopg.connect(staff["dsn"]) as conn:
-        conn.execute("SET ROLE clinic_app")
-        conn.execute("SELECT set_config('app.current_user_id', %s, true)", [user_id])
-        row = conn.execute(
-            "SELECT key FROM clinic_app.otp_totp_totpdevice WHERE user_id=%s",
-            [user_id],
-        ).fetchone()
-    assert row is not None
-    key = FixtureSecret(str(row[0]))
+        key = totp_secret(conn, user_id)
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(FixtureSecret(f"{token:06d}"))
     assert submit(page, 'form button[type="submit"]') == 200

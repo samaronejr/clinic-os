@@ -9,12 +9,16 @@ from uuid import UUID
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
+from apps.billing.compensation import bridge_legacy_settlement
+from apps.billing.errors import BillingAccessDeniedError
 from apps.billing.models import Invoice, Receipt, Settlement
+from apps.billing.security import lock_clinic_book
 from apps.core.idempotency import create_fingerprint
 from apps.identity.current_context import (
     MANAGER_ROLES,
     CurrentActorError,
     require_current_actor_clinic_roles,
+    require_permission,
 )
 from apps.identity.models import Clinic
 from apps.intake.alias_access import patient_alias_set, require_survivor
@@ -22,11 +26,26 @@ from apps.intake.alias_access import patient_alias_set, require_survivor
 if TYPE_CHECKING:
     from datetime import datetime
 
+__all__ = [
+    "BillingAccessDeniedError",
+    "BillingConflictError",
+    "BillingIdempotencyConflictError",
+    "BillingValueError",
+    "PatientCharge",
+    "cancel_invoice",
+    "charge_for_operation",
+    "confirm_settlement",
+    "create_invoice",
+    "issue_invoice",
+    "list_invoices",
+    "patient_charges",
+    "patient_invoice_history",
+    "release_invoice",
+    "revise_invoice",
+    "view_invoice",
+]
+
 MAX_MINOR: Final = 2**63 - 1
-
-
-class BillingAccessDeniedError(Exception):
-    """Non-identifying denial for unavailable or unauthorized billing records."""
 
 
 class BillingValueError(ValueError):
@@ -54,9 +73,14 @@ def _terms(amount_minor: int, currency: str) -> None:
         raise BillingValueError(msg)
 
 
-def _clinic(clinic_id: UUID) -> tuple[UUID, Clinic]:
+def _clinic(
+    clinic_id: UUID, *, permission: str = "charge.create"
+) -> tuple[UUID, Clinic]:
     try:
-        actor = require_current_actor_clinic_roles(clinic_id, MANAGER_ROLES)
+        try:
+            actor = require_current_actor_clinic_roles(clinic_id, MANAGER_ROLES)
+        except CurrentActorError:
+            actor = require_permission(permission, clinic_id=clinic_id)
         return actor, Clinic.objects.get(pk=clinic_id)
     except (CurrentActorError, Clinic.DoesNotExist) as error:
         msg = "billing access denied"
@@ -89,11 +113,17 @@ def _charge_fingerprint(clinic_id: UUID, patient_id: UUID, amount_minor: int) ->
 
 
 def _charge_for_key(
-    organization_id: UUID, idempotency_key: UUID, fingerprint: bytes
+    organization_id: UUID,
+    idempotency_key: UUID,
+    fingerprint: bytes,
+    *,
+    clinic_id: UUID,
 ) -> Invoice | None:
     """Return the charge this key already created, or refuse different terms."""
     invoice = Invoice.objects.filter(
-        organization_id=organization_id, idempotency_key=idempotency_key
+        organization_id=organization_id,
+        clinic_id=clinic_id,
+        idempotency_key=idempotency_key,
     ).first()
     if invoice is None:
         return None
@@ -127,7 +157,9 @@ def create_invoice(  # noqa: PLR0913 - exact scope, terms, key and optional sour
     fingerprint = _charge_fingerprint(clinic_id, patient_id, amount_minor)
     with transaction.atomic():
         _, clinic = _clinic(clinic_id)
-        replay = _charge_for_key(clinic.organization_id, idempotency_key, fingerprint)
+        replay = _charge_for_key(
+            clinic.organization_id, idempotency_key, fingerprint, clinic_id=clinic_id
+        )
         if replay is not None:
             return replay
         require_survivor(clinic_id=clinic_id, patient_id=patient_id)
@@ -149,7 +181,10 @@ def create_invoice(  # noqa: PLR0913 - exact scope, terms, key and optional sour
             # returns that exact charge. Every other refused insert - an
             # unenrolled patient, a foreign source - still raises.
             concurrent = _charge_for_key(
-                clinic.organization_id, idempotency_key, fingerprint
+                clinic.organization_id,
+                idempotency_key,
+                fingerprint,
+                clinic_id=clinic_id,
             )
             if concurrent is None:
                 raise
@@ -165,7 +200,9 @@ def charge_for_operation(*, clinic_id: UUID, idempotency_key: UUID) -> Invoice |
     """
     _, clinic = _clinic(clinic_id)
     return Invoice.objects.filter(
-        organization_id=clinic.organization_id, idempotency_key=idempotency_key
+        organization_id=clinic.organization_id,
+        clinic_id=clinic_id,
+        idempotency_key=idempotency_key,
     ).first()
 
 
@@ -277,7 +314,8 @@ def confirm_settlement(
         msg = "confirmation reference must be an opaque UUID"
         raise BillingValueError(msg)
     with transaction.atomic():
-        actor, _ = _clinic(clinic_id)
+        actor, _ = _clinic(clinic_id, permission="charge.collect")
+        lock_clinic_book(clinic_id=clinic_id)
         invoice = _invoice(clinic_id, invoice_id, lock=True)
         if (invoice.amount_minor, invoice.currency) != (amount_minor, currency):
             msg = "settlement terms mismatch"
@@ -299,6 +337,7 @@ def confirm_settlement(
             currency=currency,
             confirmed_by_id=actor,
         )
+        bridge_legacy_settlement(clinic_id=clinic_id, settlement_id=settlement.pk)
         return Receipt.objects.get(settlement=settlement)
 
 

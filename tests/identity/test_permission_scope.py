@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
 from threading import Barrier
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -44,6 +44,14 @@ TABLES = {
     "identity_careteammembership",
     "identity_professionalregistration",
 }
+# Inventory (plan 61): legacy clinic_admin manages inventory like
+# clinic_manager, and owner holds the organizational transfer permission like
+# org_admin. Allied professionals and schedulers receive none
+# (apps/inventory/README.md).
+INVENTORY_ALIAS_PERMISSIONS: Final = {
+    "clinic_admin": frozenset({"inventory.read", "inventory.use", "inventory.manage"}),
+    "owner": frozenset({"inventory.transfer_org"}),
+}
 
 
 def remove_permission(graph: RbacGraph, role: str, permission: str) -> RoleGrant:
@@ -65,9 +73,12 @@ def test_alias_roles_are_checked_for_every_permission(
     actor, enrollment = permission_actor(rbac_graph, role)
     # Task 50: the data-subject request extension reaches every management
     # role row without a workflow bundle opt-in, like reception.queue does
-    # for receptionists; every other permission stays exactly v1.
-    granted = BUNDLES_V1[role] | (
-        PRIVACY_PERMISSIONS_V2 if role in PRIVACY_ROLES_V2 else frozenset()
+    # for receptionists, and the inventory extension reaches the alias rows
+    # above the same way; every other permission stays exactly v1.
+    granted = (
+        BUNDLES_V1[role]
+        | (PRIVACY_PERMISSIONS_V2 if role in PRIVACY_ROLES_V2 else frozenset())
+        | INVENTORY_ALIAS_PERMISSIONS.get(role, frozenset())
     )
     with permission_context(rbac_graph, actor):
         for permission in sorted(PERMISSIONS):

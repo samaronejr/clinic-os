@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 from datetime import date
 from uuid import UUID, uuid4
 
@@ -14,11 +13,10 @@ from django.contrib.auth.hashers import make_password
 from django.core.management import CommandError, call_command
 from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext
-from django_otp.oath import TOTP
 
 from database_urls import database_url_for_name
 from infra.management_command_support import generated_password, run_management_command
-from otp_test_support import create_totp_device, get_totp_device
+from otp_test_support import create_totp_device, get_totp_device, totp_generator
 from tenant_key_support import issue_tenant_key_for
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -26,14 +24,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _token_for(user_id: UUID) -> str:
     device = get_totp_device(user_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     return f"{generator.token():0{device.digits}d}"
 
 
@@ -83,14 +74,7 @@ def test_timezone_change_refuses_after_the_first_clinic_enrollment() -> None:
             create_fingerprint=b"e" * 32,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     database_url = database_url_for_name(
         os.environ["MIGRATION_DATABASE_URL"],

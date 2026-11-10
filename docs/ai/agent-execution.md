@@ -56,6 +56,19 @@ The key name is fixed in code; payloads cannot select a different key.
 Approval, challenge, provider simulation and user-visible receipt have distinct
 HMAC domains. These are server attestations, not qualified signatures.
 
+PostgreSQL repeats the rule without the key (migration `ai.0012`). Runtime
+holds no INSERT on votes. The resolver `agent_record_approval` records a vote
+only when the approver's own session has a persisted, resolver-written TOTP or
+passkey verification from the last five minutes and the evidence facts name
+that approver, clinic, digest and evidence id; the vote stores the verification
+instant, and `agent_approval_current` ignores votes without one. A proposal
+declares its payload's quorum, which approval and execution compare with the
+payload. The record guard requires that many digest-bound current votes before
+`approved` or `executing`, before an execution is claimed and before its send
+starts. A zero quorum exists only under a bounded policy with a machine
+principal, and only that principal on the agent login may claim, start or send
+such an execution. Recording an outcome after dispatch is never blocked.
+
 The `front_desk` capability's A2 policy also drives the bounded front-desk turn
 pipeline (`apps/ai/README.md`, "Front-desk agent"). Its three tools
 (`scheduling.hold`, `scheduling.book_approved`, `comms.send_approved_link`) are
@@ -128,9 +141,14 @@ The creating migration installs FORCE RLS, exact role grants, composite scope
 foreign keys and immutable-term/state-machine guards on all seven new tenant
 tables. Protected storage is encrypted from its first version. The migration is
 irreversible; rollback is restore, not deletion of approval or execution history.
+`0012_approval_attestation` adds the declared quorum and the verified instant,
+revokes runtime vote INSERT and installs the vote writer, the counted-vote rule
+and the quorum guard. Votes and proposals recorded earlier cannot advance. Its
+reverse is a rehearsal for an empty synthetic database; with history, rollback
+is restore.
 
-Focused acceptance lives in `tests/ai/test_agent_execution.py` and the action
-payload tests. Repository authority/refusal catalogs, exact posture, schema
-drift, audit catalog, live-catalog recovery membership, upgrade and restoration
-remain required gates. Local synthetic evidence is L1 only; Root owns the stock
+Focused acceptance lives in `tests/ai/test_agent_execution.py`,
+`tests/ai/test_vote_attestation.py` and the action payload tests. Repository
+authority/refusal catalogs, exact posture, schema drift, audit catalog,
+live-catalog recovery membership, upgrade and restoration remain required gates. Local synthetic evidence is L1 only; Root owns the stock
 canonical grant and independent final review.

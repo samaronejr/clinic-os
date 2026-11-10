@@ -39,6 +39,13 @@
   align-items: center;
 }
 
+#workflow-designer .task-filters a,
+#workflow-designer summary {
+  min-block-size: var(--control-height);
+  min-inline-size: var(--control-height);
+  padding-block: var(--space-2);
+}
+
 .task-row h2 {
   margin: 0;
   font-size: var(--text-heading);

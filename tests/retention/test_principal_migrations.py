@@ -6,6 +6,12 @@ from itertools import product
 from uuid import UUID, uuid4
 
 import pytest
+from apps.identity.migrations._insurance_permission_sql import (
+    _BRANCH as INSURANCE_BRANCH,
+)
+from apps.identity.migrations._inventory_permission_sql import (
+    BRANCH as INVENTORY_BRANCH,
+)
 from apps.identity.migrations._privacy_permission_sql import _BRANCH as PRIVACY_BRANCH
 from apps.identity.models import (
     Clinic,
@@ -62,13 +68,14 @@ def _authority_catalog() -> list[tuple[object, ...]]:
 def _without_privacy_branch(
     catalog: list[tuple[object, ...]],
 ) -> list[tuple[object, ...]]:
-    """Remove the one staff branch identity 0042 adds after the v2 grant set."""
+    """Remove exactly the staff-only branches identity 0042, 0044 and 0047 add."""
     result = []
     for name, definition, *rest in catalog:
         text = str(definition)
         if name == "identity_actor_permission":
-            assert text.count(PRIVACY_BRANCH) == 1
-            text = text.replace(PRIVACY_BRANCH, "", 1)
+            for branch in (PRIVACY_BRANCH, INVENTORY_BRANCH, INSURANCE_BRANCH):
+                assert text.count(branch) == 1
+                text = text.replace(branch, "", 1)
         result.append((name, text, *rest))
     return result
 
@@ -149,8 +156,9 @@ def test_full_chain_preserves_existing_v1_v2_and_admits_only_v3_retention(
             cursor.execute(
                 "SELECT set_config('app.current_tenant',%s,true)", [str(ORGANIZATION)]
             )
-            # Task 50 adds only the staff privacy.requests branch to the
-            # evaluator; every machine authority definition is unchanged.
+            # Tasks 50, 61 and 59 add only the staff privacy, inventory and
+            # clinical appeal branches; every machine authority definition
+            # remains exactly unchanged.
             assert _without_privacy_branch(_authority_catalog()) == before
             _grant(_principal(3), 3, "retention.execute")
             assert set(

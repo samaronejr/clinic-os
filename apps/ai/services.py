@@ -22,6 +22,7 @@ from apps.ai.prompt_registry import load_prompt
 from apps.audit.services import record_phase1_event
 from apps.core.integration import ActionOperationRequest, enqueue_operation
 from apps.identity.current_context import current_actor_id
+from apps.subscriptions.services import entitlement_status
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -70,15 +71,33 @@ def invoke(
             ):
                 return _refused("budget_exhausted")
             return InvocationResult(previous.pk, previous.operation_id)
+        entitled = all(
+            entitlement_status(
+                clinic_id=clinic_id, meter=meter, quantity=quantity
+            ).available
+            for meter, quantity in (
+                ("ai_tokens_in", budget.limits.tokens_in),
+                ("ai_tokens_out", budget.limits.tokens_out),
+                ("ai_tokens_cached", budget.limits.tokens_in),
+                ("ai_audio_seconds", budget.limits.audio_seconds),
+            )
+        )
         configuration = select_configuration(clinic_id=clinic_id, purpose=purpose)
         reserved = price_for(configuration).reservation(budget.limits)
+        entitled = (
+            entitled
+            and entitlement_status(
+                clinic_id=clinic_id, meter="ai_cost_micros", quantity=reserved
+            ).available
+        )
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT * FROM clinic_app.ai_budget_usage(%s)", [purpose.value]
             )
             usage = cursor.fetchone()
         if usage is None or (
-            reserved > budget.maximum_micros
+            not entitled
+            or reserved > budget.maximum_micros
             or int(usage[0]) + reserved > policy.monthly_budget_micros
             or int(usage[1]) + reserved > dict(policy.purpose_budgets)[purpose.value]
         ):

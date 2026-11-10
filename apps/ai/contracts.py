@@ -24,6 +24,7 @@ class Purpose(StrEnum):
     ANALYST = "analyst"
     DECISION_SUPPORT = "decision_support"
     CARE_COORDINATION = "care_coordination"
+    REVENUE_CYCLE = "revenue_cycle"
 
 
 type Method = Literal["complete", "stream", "transcribe", "extract"]

@@ -11,6 +11,53 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "subscriptions.subscription.changed": (
+        "tenant",
+        "clinic-os-web",
+        "subscriptions.subscription",
+        "changed",
+    ),
+    "billing.psp.policy": ("tenant", "clinic-os-web", "billing.psp", "policy"),
+    "billing.psp.prepared": ("tenant", "clinic-os-web", "billing.psp", "prepared"),
+    "billing.psp.evidence": ("tenant", "clinic-os-web", "billing.psp", "evidence"),
+    "billing.psp.applied": ("tenant", "clinic-os-web", "billing.psp", "applied"),
+    **{
+        f"crm.{kind}.{verb}": ("tenant", "clinic-os-web", f"crm.{kind}", verb)
+        for kind, verbs in {
+            "source": ("created",),
+            "lead": ("created", "converted", "redacted"),
+            "campaign": ("created", "approved", "sending", "sent"),
+            "send": ("queued",),
+            "profile": ("published",),
+            "preference": ("recorded",),
+            "survey": ("recorded",),
+        }.items()
+        for verb in verbs
+    },
+    **{
+        f"billing.fiscal.{status}": (
+            "tenant",
+            "clinic-os-web",
+            "billing.fiscal_document",
+            status,
+        )
+        for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+    },
+    **{
+        f"analytics.{kind}.{action}": (
+            "tenant",
+            "clinic-os-web",
+            f"analytics.{kind}",
+            action,
+        )
+        for kind, action in (
+            ("definition", "registered"),
+            ("read_model", "refreshed"),
+            ("report", "saved"),
+            ("analyst", "accepted"),
+            ("analyst", "rejected"),
+        )
+    },
     **{
         f"retention.purge.{state}": (
             "tenant",
@@ -79,6 +126,264 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "prescription.draft",
         "renewed",
+    ),
+    "inventory.receive": ("tenant", "clinic-os-web", "inventory.record", "receive"),
+    "inventory.use": ("tenant", "clinic-os-web", "inventory.record", "use"),
+    "inventory.return_stock": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "return_stock",
+    ),
+    "inventory.write_off": ("tenant", "clinic-os-web", "inventory.record", "write_off"),
+    "inventory.transfer": ("tenant", "clinic-os-web", "inventory.record", "transfer"),
+    "inventory.create_purchase_request": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "create_purchase_request",
+    ),
+    "inventory.propose_replenishment": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "propose_replenishment",
+    ),
+    "inventory.approve_purchase": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "approve_purchase",
+    ),
+    "inventory.receive_purchase": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "receive_purchase",
+    ),
+    "inventory.approve_budget": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "approve_budget",
+    ),
+    "inventory.register_equipment": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "register_equipment",
+    ),
+    "inventory.record_calibration": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "record_calibration",
+    ),
+    "inventory.record_maintenance": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "record_maintenance",
+    ),
+    "inventory.create_item": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "create_item",
+    ),
+    "inventory.create_batch": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "create_batch",
+    ),
+    "inventory.create_location": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "create_location",
+    ),
+    "inventory.create_supplier": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "create_supplier",
+    ),
+    "inventory.set_minimum_stock": (
+        "tenant",
+        "clinic-os-web",
+        "inventory.record",
+        "set_minimum_stock",
+    ),
+    **{
+        f"insurance.{kind}.{verb}": (
+            "tenant",
+            "clinic-os-web",
+            f"insurance.{kind}",
+            verb,
+        )
+        for kind, verbs in {
+            "payer": ("created",),
+            "contract": ("created",),
+            "tuss": ("imported",),
+            "prices": ("created",),
+            "membership": ("created",),
+            "registration": ("payer_linked",),
+            "coverage": ("checked",),
+            "guide": ("draft", "validated", "sealed"),
+            "batch": (
+                "draft",
+                "validated",
+                "sealed",
+                "submitting",
+                "submitted",
+                "unknown",
+                "acknowledged",
+                "returned",
+            ),
+            "submission": ("prepared", "exported"),
+            "return": ("ingested",),
+            "appeal": ("draft", "clinical_approved", "approved", "submitted"),
+            "payment": ("reconciled",),
+            "request": ("recorded",),
+        }.items()
+        for verb in verbs
+    },
+    "billing.book.created": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_book",
+        "created",
+    ),
+    "billing.rule.created": (
+        "tenant",
+        "clinic-os-web",
+        "billing.practitioner_rule",
+        "created",
+    ),
+    "billing.terms.prepared": (
+        "tenant",
+        "clinic-os-web",
+        "billing.invoice_terms",
+        "prepared",
+    ),
+    "billing.journal.posted": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_entry",
+        "posted",
+    ),
+    "billing.service.completed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_entry",
+        "service_completed",
+    ),
+    "billing.allocation.created": (
+        "tenant",
+        "clinic-os-web",
+        "billing.settlement_allocation",
+        "created",
+    ),
+    "billing.settlement.observed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_settlement",
+        "observed",
+    ),
+    "billing.settlement.verified": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_settlement",
+        "verified",
+    ),
+    "billing.settlement.posted": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_settlement",
+        "posted",
+    ),
+    "billing.settlement.quarantined": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_settlement",
+        "quarantined",
+    ),
+    "billing.refund.requested": (
+        "tenant",
+        "clinic-os-web",
+        "billing.refund",
+        "requested",
+    ),
+    "billing.refund.approved": (
+        "tenant",
+        "clinic-os-web",
+        "billing.refund",
+        "approved",
+    ),
+    "billing.refund.sending": ("tenant", "clinic-os-web", "billing.refund", "sending"),
+    "billing.refund.confirmed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.refund",
+        "confirmed",
+    ),
+    "billing.refund.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "billing.refund",
+        "rejected",
+    ),
+    "billing.refund.unknown": ("tenant", "clinic-os-web", "billing.refund", "unknown"),
+    "billing.payout.requested": (
+        "tenant",
+        "clinic-os-web",
+        "billing.payout",
+        "requested",
+    ),
+    "billing.payout.approved": (
+        "tenant",
+        "clinic-os-web",
+        "billing.payout",
+        "approved",
+    ),
+    "billing.payout.sending": ("tenant", "clinic-os-web", "billing.payout", "sending"),
+    "billing.payout.confirmed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.payout",
+        "confirmed",
+    ),
+    "billing.payout.unknown": ("tenant", "clinic-os-web", "billing.payout", "unknown"),
+    "billing.cash.opened": (
+        "tenant",
+        "clinic-os-web",
+        "billing.cash_session",
+        "opened",
+    ),
+    "billing.cash.closed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.cash_session",
+        "closed",
+    ),
+    "billing.cash.reopened": (
+        "tenant",
+        "clinic-os-web",
+        "billing.cash_session",
+        "reopened",
+    ),
+    "billing.journal.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_book",
+        "viewed",
+    ),
+    "billing.journal.exported": (
+        "tenant",
+        "clinic-os-web",
+        "billing.journal_book",
+        "exported",
     ),
     "scheduling.queue.arrived": (
         "tenant",

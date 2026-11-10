@@ -2,16 +2,20 @@ from typing import Final
 
 import psycopg
 import pytest
+from apps.crm.rls import CUSTOM_RLS_TABLES as CRM_CUSTOM_RLS_TABLES
 from apps.identity.models import (
     Clinic,
     ClinicConfiguration,
     Organization,
     UserClinicRole,
 )
+from apps.insurance.rls import TABLES as INSURANCE_TABLES
 from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
 from django.db import connection
+
+from infra.inventory_catalog import TABLES as INVENTORY_TABLES
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -64,6 +68,18 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        *CRM_CUSTOM_RLS_TABLES,
+        # Requester-bound reporting policies: tests/analytics/test_posture.py.
+        "analytics_metricdefinitionversion",
+        "analytics_readmodelrefresh",
+        "analytics_savedreport",
+        "analytics_analystreview",
+        # Task 64: exact FORCE-RLS, grants and policies in subscriptions/posture.json.
+        "subscriptions_subscription",
+        "subscriptions_subscriptionevent",
+        "subscriptions_seat",
+        "subscriptions_usageevent",
+        "subscriptions_usagerollup",
         # Exact receipt-only policies and resolver-only writes: retention tests.
         "retention_artifactpurge",
         # Exact capture/consent/token policies: tests/scribe/test_posture.py.
@@ -103,6 +119,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_knowledgearticle",
         "ai_frontdeskthread",
         "ai_frontdeskturn",
+        *INSURANCE_TABLES,
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.
@@ -212,6 +229,28 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_pixcharge",
         # Append-only authenticated payment events: test_payment_reconciliation.
         "billing_paymentevent",
+        # Task 56: exact custom policies and immutable money posture.
+        "billing_journalbook",
+        "billing_account",
+        "billing_journalentry",
+        "billing_journalline",
+        "billing_practitionerpayoutrule",
+        "billing_invoiceterms",
+        "billing_journalsettlement",
+        "billing_settlementallocation",
+        "billing_refund",
+        "billing_payout",
+        "billing_cashsession",
+        "billing_cashsessionevent",
+        "billing_psppolicy",
+        "billing_pspintent",
+        "billing_pspbinding",
+        "billing_pspevidence",
+        "billing_pspreceipt",
+        # Task 58: exact Finance-only fiscal policies and immutable reviews.
+        "billing_fiscalconfiguration",
+        "billing_fiscaldocument",
+        "billing_fiscaltransition",
         # Exact owner/task/run policies and ACLs: tests/workflows/test_posture.py.
         "workflows_task",
         "workflows_taskcomment",
@@ -251,6 +290,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "orders_resultacknowledgment",
         "orders_resultrelease",
         "orders_resultworkitem",
+        *INVENTORY_TABLES,
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS

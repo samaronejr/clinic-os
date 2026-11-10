@@ -1,6 +1,12 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
-from ai import test_agent_execution, test_agent_guards, test_agent_staff_authority
+from ai import (
+    test_agent_execution,
+    test_agent_guards,
+    test_agent_staff_authority,
+    test_revenue_cycle,
+    test_vote_attestation,
+)
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
 from ai.care_oracles import CASES as CARE_CASES
@@ -11,7 +17,17 @@ from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
+from analytics.sql_oracles import CASES as ANALYTICS_CASES
+from analytics.sql_oracles import SQL_PROTOCOL_ORACLES as ANALYTICS_PROTOCOLS
+from billing.fiscal_oracles import CASES as FISCAL_CASES
+from billing.fiscal_oracles import SQL_PROTOCOL_ORACLES as FISCAL_PROTOCOLS
+from billing.journal_oracles import CASES as BILLING_CASES
+from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
+from billing.psp_oracles import CASES as PSP_CASES
+from billing.psp_oracles import SQL_PROTOCOL_ORACLES as PSP_PROTOCOLS
 from comms import test_portal_messages
+from crm.sql_oracles import CASES as CRM_CASES
+from crm.sql_oracles import SQL_PROTOCOL_ORACLES as CRM_PROTOCOLS
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -22,6 +38,7 @@ from ehr.test_prior_notes import test_copy_requires_review_at_the_current_revisi
 from ehr.test_sql_protocols import (
     test_longitudinal_functions_keep_exact_execute_privileges,
     test_longitudinal_sql_uses_current_role_and_actor,
+    test_medication_guard_uses_current_role_and_actor,
     test_note_sql_rechecks_grants_scope_and_active_actor,
     test_projection_worker_refuses_every_ambient_authority,
 )
@@ -30,10 +47,16 @@ from ehr.test_timeline import (
     test_projection_is_after_commit_and_replay_safe,
     test_restricted_note_does_not_leak_a_timeline_count,
 )
+from identity.inventory_authority_oracle import (
+    INVENTORY_CASES,
+    INVENTORY_SQL_ORACLES,
+)
 from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
 from identity.test_reception_sql_principal import test_reception_display_device_contract
+from insurance.sql_oracles import CASES as INSURANCE_CASES
+from insurance.sql_oracles import SQL_PROTOCOL_ORACLES as INSURANCE_PROTOCOLS
 from orders import test_patient_downloads
 from orders.sql_oracles import CASES as ORDERS_CASES
 from orders.sql_oracles import SQL_PROTOCOL_ORACLES as ORDERS_PROTOCOLS
@@ -85,6 +108,8 @@ from scribe import test_refusals as scribe_refusals
 from scribe import test_room_capture as scribe_room
 from scribe import test_transcript_concurrency as scribe_transcript_native
 from scribe import test_transcript_runtime as scribe_transcript
+from subscriptions.sql_oracles import CASES as SUBSCRIPTIONS_CASES
+from subscriptions.sql_oracles import SQL_PROTOCOL_ORACLES as SUBSCRIPTIONS_PROTOCOLS
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -225,6 +250,7 @@ EHR_CASES = {
         test_copy_requires_review_at_the_current_revision,
         test_longitudinal_functions_keep_exact_execute_privileges,
         test_longitudinal_sql_uses_current_role_and_actor,
+        test_medication_guard_uses_current_role_and_actor,
         test_note_sql_rechecks_grants_scope_and_active_actor,
         test_projection_worker_refuses_every_ambient_authority,
         test_concurrent_edits_and_duplicate_workers_preserve_every_source,
@@ -237,6 +263,12 @@ EHR_PROTOCOLS = {
         "test_longitudinal_sql_uses_current_role_and_actor"
     ],
     "clinic_app.ehr_longitudinal_guard": [
+        "test_longitudinal_sql_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_medicationstatement_guard": [
+        "test_medication_guard_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_observation_guard": [
         "test_longitudinal_sql_uses_current_role_and_actor"
     ],
     "clinic_app.ehr_note_author": [
@@ -351,7 +383,50 @@ SCRIBE_PROTOCOL_ORACLES = {
     ],
 }
 
+AGENT_PROTOCOL_ORACLES = [
+    "test_agent_scope_and_approval_refusals_are_side_effect_free",
+    "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+    "test_revoked_approver_blocks_after_approval",
+    "test_superseded_source_publication_blocks_execution",
+    "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+]
+# ai.0011 binds revenue ancestry in these resolvers; each oracle fails on 0010.
+REVENUE_BOUND_ORACLES = [
+    "test_sql_hides_revenue_rows_from_automation_staff_without_finance_automation",
+    "test_sql_stops_counting_a_vote_once_its_approver_loses_finance_automation",
+    "test_sql_refuses_a_forged_vote_without_finance_automation",
+    "test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes",
+    "test_sql_refuses_raw_revenue_state_changes_without_finance_automation",
+    "test_inactive_actor_is_refused_by_revenue_sql_itself",
+]
+# ai.0012 vote writer, counted-vote rule and quorum guard, for an A3 reminder and
+# an AI-06 draft; the forged-vote and raw-approval oracles fail on ai.0011.
+VOTE_ORACLES = [
+    "test_sql_refuses_a_forged_vote_from_the_entitled_approver",
+    "test_sql_never_counts_a_vote_without_verified_step_up",
+    "test_sql_refuses_raw_approval_without_current_verified_votes",
+    "test_sql_refuses_execution_and_dispatch_of_an_approval_without_votes",
+    "test_python_approval_still_records_one_counted_vote",
+    "test_vote_writer_requires_this_approvers_fresh_verified_session",
+    "test_vote_writer_refuses_an_inactive_approver",
+    "test_proposals_without_a_declared_quorum_never_advance",
+    "test_zero_vote_dispatch_needs_the_bound_machine_principal",
+]
+
 PROTOCOL_ORACLES = {
+    **CRM_PROTOCOLS,
+    **{name: list(cases) for name, cases in SUBSCRIPTIONS_PROTOCOLS.items()},
+    **PSP_PROTOCOLS,
+    **ANALYTICS_PROTOCOLS,
+    "clinic_app.ai_revenue_ancestry": [
+        *REVENUE_BOUND_ORACLES,
+        "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation",
+    ],
+    "clinic_app.ai_revenue_row": [
+        "test_inactive_actor_is_refused_by_revenue_sql_itself",
+        "test_finance_scope_resolver_never_opens_another_capability_or_clinic",
+        "test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft",
+    ],
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
@@ -361,15 +436,8 @@ PROTOCOL_ORACLES = {
     **FRONT_DESK_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
-    **{
-        name: [
-            "test_agent_scope_and_approval_refusals_are_side_effect_free",
-            "test_fabricated_step_up_and_double_approval_cannot_add_votes",
-            "test_revoked_approver_blocks_after_approval",
-            "test_superseded_source_publication_blocks_execution",
-            "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
-        ]
-        for name in (
+    **dict.fromkeys(
+        (
             "clinic_app.agent_action_payload",
             "clinic_app.agent_approval_current",
             "clinic_app.agent_audit",
@@ -384,8 +452,21 @@ PROTOCOL_ORACLES = {
             "clinic_app.agent_transition",
             "clinic_app.identity_actor_permission",
             "clinic_app.identity_agent_grant_version",
+        ),
+        AGENT_PROTOCOL_ORACLES,
+    ),
+    "clinic_app.agent_controls": [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES],
+    **{
+        name: [*AGENT_PROTOCOL_ORACLES, *REVENUE_BOUND_ORACLES, *VOTE_ORACLES]
+        for name in (
+            "clinic_app.agent_approval_current",
+            "clinic_app.agent_record_guard",
         )
     },
+    **dict.fromkeys(
+        ("clinic_app.agent_record_approval", "clinic_app.agent_votes_current"),
+        VOTE_ORACLES,
+    ),
     "clinic_app.agent_staff": [
         "test_agent_scope_and_approval_refusals_are_side_effect_free",
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
@@ -416,7 +497,9 @@ PROTOCOL_ORACLES = {
     "clinic_app.scheduling_effective_interval": [
         "test_effective_interval_is_actor_invariant"
     ],
-    **{name: [name] for name in SQL_CASES},
+    # A workflow-migration member another domain registry owns keeps that
+    # registry's oracles (analytics_workflow_receipt: workflows 0009, todo 63).
+    **{name: [name] for name in SQL_CASES if name not in ANALYTICS_PROTOCOLS},
     "clinic_app.workflows_bundle_selection_guard": [
         "test_bundle_issuance_requires_the_owner_login_for_every_role"
     ],
@@ -431,6 +514,10 @@ PROTOCOL_ORACLES = {
         "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
     ],
     **ORDERS_PROTOCOLS,
+    **INVENTORY_SQL_ORACLES,
+    **BILLING_PROTOCOLS,
+    **FISCAL_PROTOCOLS,
+    **INSURANCE_PROTOCOLS,
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
@@ -453,6 +540,37 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
     assert all(
+        callable(CRM_CASES[name]) for names in CRM_PROTOCOLS.values() for name in names
+    )
+    assert all(
+        callable(FISCAL_CASES[name])
+        for names in FISCAL_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(SUBSCRIPTIONS_CASES[name])
+        for names in SUBSCRIPTIONS_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(BILLING_CASES[name])
+        for names in BILLING_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(PSP_CASES[name]) for names in PSP_PROTOCOLS.values() for name in names
+    )
+    assert all(
+        callable(INSURANCE_CASES[name])
+        for names in INSURANCE_PROTOCOLS.values()
+        for name in names
+    )
+    assert all(
+        callable(ANALYTICS_CASES[name])
+        for cases in ANALYTICS_PROTOCOLS.values()
+        for name in cases
+    )
+    assert all(
         callable(RETENTION_CASES[name])
         for names in RETENTION_PROTOCOLS.values()
         for name in names
@@ -461,6 +579,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
     assert all(callable(case) for case in SERVICE_BOOKING_CASES.values())
     assert all(callable(case) for case in SQL_CASES.values())
+    assert all(
+        callable(INVENTORY_CASES[name])
+        for names in INVENTORY_SQL_ORACLES.values()
+        for name in names
+    )
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
@@ -531,6 +654,9 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_row"]),
+        (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_ancestry"]),
+        (test_vote_attestation, VOTE_ORACLES),
         (
             scribe_draft_authority,
             (

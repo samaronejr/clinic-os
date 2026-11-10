@@ -158,6 +158,9 @@ _RUNNERS: list[Callable[[UUID, str], None]] = []
 def register_inbound_message_hook(hook: Callable[[UUID, str], None]) -> None:
     """Run ``hook(message_id, channel)`` in the inbound transaction after a message.
 
+    Hooks run before the delivery's audit records, so a hook's row locks
+    precede the organization's audit chain lock.
+
     The hook shares the authenticated principal context and the event's
     savepoint: if it fails, the message and its event receipt roll back.
     """
@@ -268,8 +271,12 @@ def _kind(event: ParsedEvent) -> str:
 def _live_conversation(
     account: ResolvedAccount, tokens: tuple[str, ...]
 ) -> Conversation | None:
+    # FOR NO KEY UPDATE: a delivery writes only non-key columns. FOR UPDATE
+    # would also block the key-share checks of rows inserted into the
+    # conversation, such as the front-desk runner's reply, while this delivery
+    # waits for that runner's thread: a deadlock.
     return (
-        Conversation.objects.select_for_update()
+        Conversation.objects.select_for_update(no_key=True)
         .filter(
             clinic_id=account.clinic_id,
             channel=account.channel,
@@ -348,6 +355,13 @@ def _apply_message(account: ResolvedAccount, event: InboundMessage) -> None:
             "updated_at",
         ]
     )
+    # Hooks lock their own rows (the front-desk hook takes its thread FOR
+    # UPDATE) before the audit records below take the organization's audit
+    # chain lock, held to commit. The front-desk runner also takes its thread
+    # before its audit records, so the two never wait in opposite orders.
+    if event.supported:
+        for hook in _MESSAGE_HOOKS:
+            hook(message.pk, account.channel)
     record_phase1_event(
         "comms.inbound.message_received",
         clinic_id=account.clinic_id,
@@ -364,9 +378,6 @@ def _apply_message(account: ResolvedAccount, event: InboundMessage) -> None:
         from apps.workflows.inbox import publish_inbox_hint  # noqa: PLC0415
 
         publish_inbox_hint(account.clinic_id)
-    if event.supported:
-        for hook in _MESSAGE_HOOKS:
-            hook(message.pk, account.channel)
 
 
 def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:

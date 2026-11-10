@@ -354,6 +354,449 @@ msgstr "Voltar ao atendimento"
 
 msgid "Invalid decision-support request."
 msgstr "Solicitação de apoio à decisão inválida."
+msgid "Receipt (not a tax invoice)"
+msgstr "Recibo (não é nota fiscal)"
+
+msgid "NFS-e"
+msgstr "NFS-e"
+
+msgid "NFS-e rehearsal (not a tax invoice)"
+msgstr "Ensaio de NFS-e (não é nota fiscal)"
+
+msgid "Fiscal draft"
+msgstr "Rascunho fiscal"
+
+msgid "Awaiting fiscal confirmation"
+msgstr "Aguardando confirmação fiscal"
+
+msgid "Fiscal authorization recorded"
+msgstr "Autorização fiscal registrada"
+
+msgid "Fiscal document rejected"
+msgstr "Documento fiscal rejeitado"
+
+msgid "Fiscal document cancelled"
+msgstr "Documento fiscal cancelado"
+
+msgid "The fiscal provider rejected the document. Ask the fiscal reviewer to check the configuration."
+msgstr "O provedor fiscal rejeitou o documento. Peça ao responsável pela revisão fiscal que confira a configuração."
+
+msgid "Payment receipts are not tax invoices. Live fiscal issuance remains blocked pending external approvals."
+msgstr "Recibos de pagamento não são notas fiscais. A emissão fiscal real continua bloqueada até as aprovações externas."
+
+msgid "The fiscal reviewer must record the clinic's legal entity, municipality, service, tax regime, IBS/CBS applicability and cancellation deadline. No tax classification is inferred."
+msgstr "O responsável pela revisão fiscal precisa registrar a pessoa jurídica da clínica, o município, o serviço, o regime tributário, a aplicabilidade de IBS/CBS e o prazo de cancelamento. Nenhuma classificação tributária é presumida."
+
+msgid "Recent fiscal documents"
+msgstr "Documentos fiscais recentes"
+
+msgid "No fiscal document recorded. A payment receipt does not become an NFS-e."
+msgstr "Nenhum documento fiscal registrado. Um recibo de pagamento não se transforma em NFS-e."
+
+msgid "Finance permission is required to view fiscal documents."
+msgstr "É necessária a permissão de Financeiro para consultar documentos fiscais."
+
+msgid "Document"
+msgstr "Documento"
+
+msgid "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close."
+msgstr "A contagem do caixa precisa conferir com o diário selado. Recebimentos não lançados, valores não identificados, valores em apuração e resultados desconhecidos impedem o fechamento."
+
+msgid "Account"
+msgstr "Conta"
+
+msgid "Accountant export"
+msgstr "Exportação para a contabilidade"
+
+msgid "Allocate collection"
+msgstr "Alocar recebimento"
+
+msgid "Allocation"
+msgstr "Alocação"
+
+msgid "Amount"
+msgstr "Valor"
+
+msgid "Amount in reais"
+msgstr "Valor em reais"
+
+msgid "Amounts are reais. Rules use basis points (3000 means 30 percent) or fixed centavos. Discounts and payer adjustments precede PSP fees."
+msgstr "Os valores estão em reais. As regras usam pontos-base (3000 equivalem a 30 por cento) ou centavos fixos. Descontos e ajustes da operadora são aplicados antes das tarifas do PSP."
+
+msgid "An unknown refund or payout keeps its reservation. Reconcile evidence; do not send it again."
+msgstr "Um reembolso ou repasse com resultado desconhecido mantém a reserva. Confira a comprovação; não envie novamente."
+
+msgid "Approve payout"
+msgstr "Aprovar repasse"
+
+msgid "Approve refund"
+msgstr "Aprovar reembolso"
+
+msgid "Attest completed service"
+msgstr "Confirmar serviço concluído"
+
+msgid "Awaiting service completion"
+msgstr "Aguardando conclusão do serviço"
+
+msgid "Bad debt"
+msgstr "Perdas com inadimplência"
+
+msgid "Bank"
+msgstr "Banco"
+
+msgid "Basis points or fixed centavos"
+msgstr "Pontos-base ou centavos fixos"
+
+msgid "CSV and the documented OFX-like journal contain the same sealed centavo lines. This is not a bank statement or a fiscal document."
+msgstr "O CSV e o diário documentado, inspirado em OFX, contêm os mesmos lançamentos selados em centavos. Não são extratos bancários nem documentos fiscais."
+
+msgid "Cash drawer"
+msgstr "Caixa físico"
+
+msgid "Cash drawers"
+msgstr "Caixas físicos"
+
+msgid "Chargeback"
+msgstr "Contestação de pagamento"
+
+msgid "Charges, balances, journal records and financial actions need permission to view charges."
+msgstr "Cobranças, saldos, registros do diário e ações financeiras exigem permissão para ver cobranças."
+
+msgid "Check the export dates."
+msgstr "Confira as datas da exportação."
+
+msgid "Check the financial fields below."
+msgstr "Confira os campos financeiros abaixo."
+
+msgid "Clinic journal, receivables, collections and day close."
+msgstr "Diário da clínica, contas a receber, recebimentos e fechamento do dia."
+
+msgid "Close cash drawer"
+msgstr "Fechar caixa físico"
+
+msgid "Close the day from verified money and a sealed journal."
+msgstr "Feche o dia com recebimentos verificados e lançamentos selados."
+
+msgid "Collection"
+msgstr "Recebimento"
+
+msgid "Collections"
+msgstr "Recebimentos"
+
+msgid "Contra-revenue"
+msgstr "Deduções de receita"
+
+msgid "Correction"
+msgstr "Correção"
+
+msgid "Counted"
+msgstr "Contado"
+
+msgid "Counted cash in reais"
+msgstr "Dinheiro contado em reais"
+
+msgid "Day close"
+msgstr "Fechamento do dia"
+
+msgid "Debit balance; credits are negative"
+msgstr "Saldo devedor; créditos são negativos"
+
+msgid "Discount in reais"
+msgstr "Desconto em reais"
+
+msgid "Discounts"
+msgstr "Descontos"
+
+msgid "Download journal"
+msgstr "Baixar diário"
+
+msgid "Enter an exact nonnegative amount in reais."
+msgstr "Informe um valor exato em reais, igual ou maior que zero."
+
+msgid "Export format"
+msgstr "Formato da exportação"
+
+msgid "Financial action not permitted for your role in this clinic."
+msgstr "Ação financeira não permitida para o seu perfil nesta clínica."
+
+msgid "Financial action refused. Reload the current state before trying again."
+msgstr "A ação financeira não foi concluída. Atualize o estado atual antes de tentar novamente."
+
+msgid "Financial command recorded. The displayed balances come from the journal."
+msgstr "Ação financeira registrada. Os saldos exibidos vêm do diário."
+
+msgid "Fixed per service"
+msgstr "Fixo por serviço"
+
+msgid "Freeze invoice terms"
+msgstr "Fixar condições da cobrança"
+
+msgid "I independently checked the retained evidence."
+msgstr "Confirmo que conferi a comprovação de forma independente."
+
+msgid "Insurer"
+msgstr "Operadora"
+
+msgid "Insurer overpayment"
+msgstr "Recebimento a maior de operadora"
+
+msgid "Insurer overpayments"
+msgstr "Recebimentos a maior de operadoras"
+
+msgid "Insurer receivables"
+msgstr "Contas a receber de operadoras"
+
+msgid "Journal balance"
+msgstr "Saldo do diário"
+
+msgid "Journal balances"
+msgstr "Saldos do diário"
+
+msgid "Money account"
+msgstr "Conta financeira"
+
+msgid "Net terms"
+msgstr "Valor líquido pactuado"
+
+msgid "No collection recorded. Observed money still needs independent verification before posting."
+msgstr "Nenhum recebimento registrado. Um valor observado ainda precisa de verificação independente antes do lançamento."
+
+msgid "No drawer opened. Count the physical cash, then use Open cash drawer below."
+msgstr "Nenhum caixa aberto. Conte o dinheiro físico e use Abrir caixa físico abaixo."
+
+msgid "No frozen invoice terms. Issue a charge and record its net terms before allocating money."
+msgstr "Nenhuma condição de cobrança fixada. Emita uma cobrança e registre seu valor líquido antes de alocar recebimentos."
+
+msgid "No observed or quarantined receipt in the recent list."
+msgstr "Nenhum recebimento observado ou em quarentena na lista recente."
+
+msgid "No payout reservation. Only verified net collection earns a practitioner payable."
+msgstr "Nenhuma reserva de repasse. Somente o recebimento líquido verificado gera um repasse a pagar."
+
+msgid "No posted economic fact."
+msgstr "Nenhum fato econômico lançado."
+
+msgid "No refund reservation. Finance approval and fresh verification are required before sending."
+msgstr "Nenhuma reserva de reembolso. O envio exige aprovação financeira e confirmação de segurança recente."
+
+msgid "OFX-like journal XML"
+msgstr "Diário XML inspirado em OFX"
+
+msgid "Open cash drawer"
+msgstr "Abrir caixa físico"
+
+msgid "Open the clinic book"
+msgstr "Abrir diário da clínica"
+
+msgid "Opening balances"
+msgstr "Saldos de abertura"
+
+msgid "Outcome evidence reference"
+msgstr "Referência da comprovação do resultado"
+
+msgid "Outstanding"
+msgstr "Em aberto"
+
+msgid "PSP and live-money actions remain blocked by external gates."
+msgstr "As ações com PSP e dinheiro real continuam bloqueadas pelas liberações externas."
+
+msgid "PSP clearing"
+msgstr "Compensação do PSP"
+
+msgid "PSP fees"
+msgstr "Tarifas do PSP"
+
+msgid "Patient advance"
+msgstr "Adiantamento de paciente"
+
+msgid "Patient advances"
+msgstr "Adiantamentos de pacientes"
+
+msgid "Patient receivables"
+msgstr "Contas a receber de pacientes"
+
+msgid "Payer"
+msgstr "Pagador"
+
+msgid "Payer adjustment in reais"
+msgstr "Ajuste do pagador em reais"
+
+msgid "Payer adjustments"
+msgstr "Ajustes do pagador"
+
+msgid "Payout"
+msgstr "Repasse"
+
+msgid "Payouts in transit"
+msgstr "Repasses em trânsito"
+
+msgid "Percentage"
+msgstr "Percentual"
+
+msgid "Petty cash"
+msgstr "Caixa físico"
+
+msgid "Post verified collection"
+msgstr "Lançar recebimento verificado"
+
+msgid "Posted"
+msgstr "Lançado"
+
+msgid "Practitioner"
+msgstr "Médico"
+
+msgid "Practitioner compensation"
+msgstr "Despesa com profissionais"
+
+msgid "Practitioner payables"
+msgstr "Repasses a pagar"
+
+msgid "Practitioner payouts"
+msgstr "Repasses a profissionais"
+
+msgid "Practitioner rule"
+msgstr "Regra de repasse"
+
+msgid "Quarantine receipt"
+msgstr "Colocar recebimento em quarentena"
+
+msgid "Quarantined"
+msgstr "Em quarentena"
+
+msgid "Receipt kind"
+msgstr "Tipo de recebimento"
+
+msgid "Receivables"
+msgstr "Contas a receber"
+
+msgid "Recent tables show up to 100 records. Accountant exports include the full selected period."
+msgstr "As tabelas recentes mostram até 100 registros. A exportação para a contabilidade inclui todo o período selecionado."
+
+msgid "Recognition"
+msgstr "Reconhecimento"
+
+msgid "Reconciliation"
+msgstr "Conciliação"
+
+msgid "Record PSP fee"
+msgstr "Registrar tarifa do PSP"
+
+msgid "Record a financial action"
+msgstr "Registrar ação financeira"
+
+msgid "Record observed money"
+msgstr "Registrar valor observado"
+
+msgid "Record payout rehearsal outcome"
+msgstr "Registrar resultado da simulação de repasse"
+
+msgid "Record practitioner rule"
+msgstr "Registrar regra de repasse"
+
+msgid "Record refund rehearsal outcome"
+msgstr "Registrar resultado da simulação de reembolso"
+
+msgid "Record the required source first; this action has no available selection yet."
+msgstr "Registre primeiro a origem necessária; esta ação ainda não tem uma opção disponível."
+
+msgid "Recorded at"
+msgstr "Registrado em"
+
+msgid "Refresh stored balances"
+msgstr "Atualizar saldos registrados"
+
+msgid "Refund"
+msgstr "Reembolso"
+
+msgid "Refund and payout sending is a local rehearsal. No real money is moved. PSP and live legs remain BLOCKED-ON-EG."
+msgstr "O envio de reembolsos e repasses é uma simulação local. Nenhum dinheiro real é movimentado. As etapas com PSP e dinheiro real permanecem BLOCKED-ON-EG."
+
+msgid "Refunds and chargebacks"
+msgstr "Reembolsos e contestações"
+
+msgid "Refunds payable"
+msgstr "Reembolsos a pagar"
+
+msgid "Rehearsal state"
+msgstr "Estado da simulação"
+
+msgid "Reopen cash drawer"
+msgstr "Reabrir caixa físico"
+
+msgid "Reopening reason"
+msgstr "Motivo da reabertura"
+
+msgid "Repasse reversed"
+msgstr "Repasse estornado"
+
+msgid "Request practitioner payout"
+msgstr "Solicitar repasse a profissional"
+
+msgid "Request refund or chargeback"
+msgstr "Solicitar reembolso ou contestação"
+
+msgid "Retained evidence reference"
+msgstr "Referência da comprovação guardada"
+
+msgid "Return kind"
+msgstr "Tipo de devolução"
+
+msgid "Return unallocated money"
+msgstr "Devolver valor não alocado"
+
+msgid "Reviewed revision"
+msgstr "Revisão conferida"
+
+msgid "Rule basis"
+msgstr "Base de cálculo"
+
+msgid "Sending"
+msgstr "Em envio"
+
+msgid "Service completed"
+msgstr "Serviço concluído"
+
+msgid "Service revenue"
+msgstr "Receita de serviços"
+
+msgid "Suspense"
+msgstr "Valores em apuração"
+
+msgid "Taxes payable"
+msgstr "Tributos a pagar"
+
+msgid "The organization policy owner must open this clinic's book before financial operations."
+msgstr "O responsável pela política da organização precisa abrir o diário desta clínica antes das operações financeiras."
+
+msgid "Through"
+msgstr "Até"
+
+msgid "Unidentified receipt"
+msgstr "Recebimento não identificado"
+
+msgid "Unidentified receipts"
+msgstr "Recebimentos não identificados"
+
+msgid "Unknown outcome"
+msgstr "Resultado desconhecido"
+
+msgid "Verify authenticator"
+msgstr "Confirmar aplicativo autenticador"
+
+msgid "Verify retained evidence"
+msgstr "Verificar comprovação guardada"
+
+msgid "Verify your authenticator again before approving or reopening."
+msgstr "Confirme novamente seu aplicativo autenticador antes de aprovar ou reabrir."
+
+msgid "Record opening balance"
+msgstr "Registrar saldo de abertura"
+
+msgid "Allocate proportionally"
+msgstr "Alocar proporcionalmente"
+
+msgid "Charges for proportional allocation"
+msgstr "Cobranças para alocação proporcional"
 
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
@@ -3346,6 +3789,16 @@ msgstr "Mensagens"
 
 msgid "Finance"
 msgstr "Financeiro"
+
+msgid "Invalid TISS field."
+msgstr "Campo TISS inválido. Revise os dados antes de selar o lote."
+
+msgid "The payer refused this coverage or authorization."
+msgstr "A operadora recusou esta cobertura ou autorização."
+
+msgid "Complete the required payer checks before confirming."
+msgstr "Conclua as verificações exigidas pela operadora antes de confirmar."
+
 
 msgid "Operations"
 msgstr "Operações"
@@ -9018,3 +9471,735 @@ msgid "Reply within %(hours)s business hour; in an emergency, call 192."
 msgid_plural "Reply within %(hours)s business hours; in an emergency, call 192."
 msgstr[0] "Resposta em até %(hours)s hora útil; em emergência, ligue 192."
 msgstr[1] "Resposta em até %(hours)s horas úteis; em emergência, ligue 192."
+
+msgid "Optional visit feedback"
+msgstr "Avaliação opcional da consulta"
+
+msgid "How likely are you to recommend the clinic? This optional score never changes your care or marketing choices."
+msgstr "Qual a chance de você recomendar a clínica? Esta nota opcional não altera seu atendimento nem suas escolhas de divulgação."
+
+msgid "Do not enter clinical details. We collect only a score from zero to ten."
+msgstr "Não informe detalhes clínicos. Coletamos apenas uma nota de zero a dez."
+
+msgid "Completed visit"
+msgstr "Consulta concluída"
+
+msgid "Recommendation score (zero to ten)"
+msgstr "Nota de recomendação (zero a dez)"
+
+msgid "Record optional feedback"
+msgstr "Registrar avaliação opcional"
+
+msgid "Feedback becomes available after a completed visit."
+msgstr "A avaliação fica disponível após uma consulta concluída."
+
+msgid "Continue without feedback"
+msgstr "Continuar sem avaliar"
+
+msgid "Marketing preferences"
+msgstr "Preferências de divulgação"
+
+msgid "Marketing is optional. Your care never depends on it."
+msgstr "A divulgação é opcional. Seu atendimento nunca depende dela."
+
+msgid "Accept the current marketing consent text separately, then choose each verified channel. You can opt out here at any time."
+msgstr "Aceite o texto atual de consentimento para divulgação separadamente e escolha cada canal verificado. Você pode recusar aqui a qualquer momento."
+
+msgid "Review consent texts"
+msgstr "Consultar textos de consentimento"
+
+msgid "Do not send marketing"
+msgstr "Não enviar divulgação"
+
+msgid "Allow neutral marketing on this channel"
+msgstr "Permitir divulgação neutra neste canal"
+
+msgid "Your recorded choices"
+msgstr "Suas escolhas registradas"
+
+msgid "Allowed"
+msgstr "Permitido"
+
+msgid "Not allowed"
+msgstr "Não permitido"
+
+msgid "No marketing channels are allowed by default."
+msgstr "Nenhum canal de divulgação é permitido por padrão."
+
+msgid "Return to patient booking"
+msgstr "Voltar ao agendamento do paciente"
+
+msgid "Ethical outreach"
+msgstr "Relacionamento ético"
+
+msgid "Consent comes first. Clinical conditions are never an audience filter."
+msgstr "O consentimento vem primeiro. Condições clínicas nunca são um filtro de público."
+
+msgid "Synthetic messaging only. Live providers remain blocked pending external approval."
+msgstr "Somente mensagens simuladas. Provedores reais continuam bloqueados até aprovação externa."
+
+msgid "Retained prospects"
+msgstr "Interessados no período de retenção"
+
+msgid "Converted prospects"
+msgstr "Interessados convertidos"
+
+msgid "Optional feedback"
+msgstr "Avaliações opcionais"
+
+msgid "Promoters / detractors"
+msgstr "Promotores / detratores"
+
+msgid "Counts cover retained prospects in this clinic. Promoters score nine or ten; detractors score zero to six. No clinical breakdown is used."
+msgstr "As contagens abrangem interessados retidos nesta clínica. Promotores dão nota nove ou dez; detratores, de zero a seis. Não há recorte clínico."
+
+msgid "Campaigns"
+msgstr "Campanhas"
+
+msgid "Eligible with current consent"
+msgstr "Elegíveis com consentimento atual"
+
+msgid "Excluded without current permission"
+msgstr "Excluídos sem permissão atual"
+
+msgid "Excluded at queue time"
+msgstr "Excluídos ao enfileirar"
+
+msgid "Preview consent counts"
+msgstr "Conferir contagens de consentimento"
+
+msgid "Approve neutral campaign"
+msgstr "Aprovar campanha neutra"
+
+msgid "Queue consented campaign"
+msgstr "Enfileirar campanha consentida"
+
+msgid "Check send receipts"
+msgstr "Conferir comprovantes de envio"
+
+msgid "No campaigns yet. Start with an approved neutral template."
+msgstr "Ainda não há campanhas. Comece com um modelo neutro aprovado."
+
+msgid "New campaign"
+msgstr "Nova campanha"
+
+msgid "Internal title"
+msgstr "Título interno"
+
+msgid "Approved neutral template"
+msgstr "Modelo neutro aprovado"
+
+msgid "Choose a template"
+msgstr "Escolha um modelo"
+
+msgid "Only the fixed neutral copy is allowed. Diagnosis placeholders, personal variables and clinical targeting are blocked."
+msgstr "Somente o texto neutro fixo é permitido. Marcadores de diagnóstico, variáveis pessoais e direcionamento clínico são bloqueados."
+
+msgid "Prospects, separate from patients"
+msgstr "Interessados, separados dos pacientes"
+
+msgid "Recording a prospect does not create a patient or authorize outreach. Contact data is redacted after ninety days."
+msgstr "Registrar um interessado não cria um paciente nem autoriza divulgação. Os dados de contato são removidos após noventa dias."
+
+msgid "Referral source"
+msgstr "Origem da indicação"
+
+msgid "Record prospect"
+msgstr "Registrar interessado"
+
+msgid "Record a verified conversion"
+msgstr "Registrar conversão verificada"
+
+msgid "Select records only after verifying identity. A shared contact never proves identity."
+msgstr "Selecione registros somente após verificar a identidade. Um contato compartilhado nunca comprova identidade."
+
+msgid "Prospect record"
+msgstr "Registro do interessado"
+
+msgid "Verified enrollment record"
+msgstr "Registro do vínculo verificado"
+
+msgid "Record conversion"
+msgstr "Registrar conversão"
+
+msgid "Referral sources"
+msgstr "Origens de indicação"
+
+msgid "Administrative source code"
+msgstr "Código administrativo da origem"
+
+msgid "Source label"
+msgstr "Nome da origem"
+
+msgid "Add source"
+msgstr "Adicionar origem"
+
+msgid "Public booking page"
+msgstr "Página pública de agendamento"
+
+msgid "Publish factual clinic information. Patient verification and the existing booking rules stay required."
+msgstr "Publique informações factuais da clínica. A verificação do paciente e as regras de agendamento continuam obrigatórias."
+
+msgid "Open public booking"
+msgstr "Abrir agendamento público"
+
+msgid "Clinic booking code"
+msgstr "Código de agendamento da clínica"
+
+msgid "Factual clinic introduction"
+msgstr "Apresentação factual da clínica"
+
+msgid "Publish clinic page"
+msgstr "Publicar página da clínica"
+
+msgid "Book with your clinic"
+msgstr "Agende com sua clínica"
+
+msgid "Skip to content"
+msgstr "Ir para o conteúdo"
+
+msgid "Your next visit starts here."
+msgstr "Sua próxima consulta começa aqui."
+
+msgid "Choose a time in your clinic's agenda, with verified patient access."
+msgstr "Escolha um horário na agenda da sua clínica com acesso verificado do paciente."
+
+msgid "A direct path to your clinic. At your pace."
+msgstr "Um caminho direto para sua clínica. No seu ritmo."
+
+msgid "Enter the booking code provided by your clinic to see its page."
+msgstr "Informe o código de agendamento fornecido pela clínica para ver sua página."
+
+msgid "No diagnosis or reason for your visit is requested here."
+msgstr "Não solicitamos diagnóstico nem motivo da consulta aqui."
+
+msgid "Find your clinic"
+msgstr "Encontre sua clínica"
+
+msgid "The clinic supplies this code. It is not your patient access code."
+msgstr "A clínica fornece este código. Ele não é o seu código de acesso do paciente."
+
+msgid "See clinic page"
+msgstr "Ver página da clínica"
+
+msgid "First, verify your access"
+msgstr "Primeiro, verifique seu acesso"
+
+msgid "Use the private invitation your clinic provided. It protects your booking and keeps other patients' information private."
+msgstr "Use o convite privado fornecido pela clínica. Ele protege seu agendamento e mantém os dados de outros pacientes em sigilo."
+
+msgid "Verify patient access"
+msgstr "Verificar acesso do paciente"
+
+msgid "Already verified? Return to this page to choose a time."
+msgstr "Já verificou seu acesso? Volte a esta página para escolher um horário."
+
+msgid "Choose your time"
+msgstr "Escolha seu horário"
+
+msgid "General appointment"
+msgstr "Consulta geral"
+
+msgid "Show available times"
+msgstr "Ver horários disponíveis"
+
+msgid "Available times"
+msgstr "Horários disponíveis"
+
+msgid "Book this time"
+msgstr "Agendar este horário"
+
+msgid "No times are available for this date. Choose another date or contact the clinic."
+msgstr "Não há horários disponíveis nesta data. Escolha outra data ou entre em contato com a clínica."
+
+msgid "A clear path, without pressure."
+msgstr "Um caminho claro, sem pressão."
+
+msgid "Verify"
+msgstr "Verifique"
+
+msgid "Your clinic invitation confirms who can book."
+msgstr "O convite da clínica confirma quem pode agendar."
+
+msgid "Choose"
+msgstr "Escolha"
+
+msgid "See only available times, never another patient's agenda."
+msgstr "Veja apenas horários disponíveis, nunca a agenda de outro paciente."
+
+msgid "Your appointment stays available in the patient portal."
+msgstr "Sua consulta fica disponível no portal do paciente."
+
+msgid "This page is not monitored for emergencies. In an emergency, seek urgent care."
+msgstr "Esta página não é monitorada para emergências. Em uma emergência, procure atendimento de urgência."
+
+msgid "Choose another clinic"
+msgstr "Escolher outra clínica"
+
+msgid "Booking and patient access. No clinical details in links."
+msgstr "Agendamento e acesso do paciente. Sem detalhes clínicos nos links."
+
+msgid "Use the form to select a clinic."
+msgstr "Use o formulário para selecionar uma clínica."
+
+msgid "Clinic unavailable. Check the code with the clinic."
+msgstr "Clínica indisponível. Confira o código com a clínica."
+
+msgid "Verify your patient access before booking."
+msgstr "Verifique seu acesso de paciente antes de agendar."
+
+msgid "The time is unavailable. Choose a new time."
+msgstr "O horário está indisponível. Escolha outro horário."
+
+msgid "Booking recorded. Review it in your portal."
+msgstr "Agendamento registrado. Confira no seu portal."
+
+msgid "CRM action recorded."
+msgstr "Ação de relacionamento registrada."
+
+msgid "Action refused. Check consent, neutral template and current revision."
+msgstr "Ação recusada. Confira o consentimento, o modelo neutro e a revisão atual."
+
+msgid "Your marketing choice was recorded."
+msgstr "Sua escolha de divulgação foi registrada."
+
+msgid "Accept the current marketing text and verify the channel before opting in."
+msgstr "Aceite o texto atual de divulgação e verifique o canal antes de permitir o envio."
+
+msgid "Thank you. Your optional feedback was recorded."
+msgstr "Agradecemos sua avaliação opcional. Ela foi registrada."
+
+msgid "Choose a completed visit and a score from zero to ten."
+msgstr "Escolha uma consulta concluída e uma nota de zero a dez."
+
+#, python-format
+msgid "Times follow the clinic timezone: %(timezone)s."
+msgstr "Os horários seguem o fuso da clínica: %(timezone)s."
+
+msgid "Enter your private invitation"
+msgstr "Informe seu convite privado"
+
+msgid "Access unavailable. Ask the clinic for a new invitation."
+msgstr "Acesso indisponível. Peça um novo convite à clínica."
+
+msgid "No service notification channels are recorded. Marketing choices are separate."
+msgstr "Nenhum canal de aviso de serviço está registrado. As escolhas de divulgação são separadas."
+
+msgid "Sent"
+msgstr "Enviado"
+
+msgid "Choose a prospect"
+msgstr "Escolha um interessado"
+
+msgid "Showing up to 200 recent records in this clinic. Verify identity before recording the conversion."
+msgstr "Exibindo até 200 registros recentes desta clínica. Verifique a identidade antes de registrar a conversão."
+
+msgid "Update clinic page"
+msgstr "Atualizar página da clínica"
+
+msgid "Recorded sandbox rehearsal. No real payment or card data is collected."
+msgstr "Ensaio local com registros sintéticos. Não há pagamento real nem coleta de dados de cartão."
+
+msgid "Non-payable PIX rehearsal code"
+msgstr "Código PIX de ensaio, não pagável"
+
+msgid "Recorded card link (not payable)"
+msgstr "Link de cartão de ensaio, não pagável"
+
+#, python-format
+msgid "Installments agreed by the clinic: %(count)s."
+msgstr "Parcelas acordadas pela clínica: %(count)s."
+
+
+msgid "Utilization"
+msgstr "Ocupação"
+
+msgid "Resolved no-show rate"
+msgstr "Taxa de faltas resolvidas"
+
+msgid "Waiting time"
+msgstr "Tempo de espera"
+
+msgid "Task turnaround"
+msgstr "Tempo de conclusão das tarefas"
+
+msgid "Verified collections"
+msgstr "Recebimentos verificados"
+
+msgid "Net collections"
+msgstr "Recebimentos líquidos"
+
+msgid "Denials"
+msgstr "Glosas"
+
+msgid "Payout liabilities"
+msgstr "Repasses a pagar"
+
+msgid "Result acknowledgment latency"
+msgstr "Tempo até a ciência dos resultados"
+
+msgid "Overdue follow-ups"
+msgstr "Seguimentos atrasados"
+
+msgid "Support load"
+msgstr "Carga de suporte"
+
+msgid "AI correction elapsed time"
+msgstr "Tempo decorrido para correção da IA"
+
+msgid "Staff activation"
+msgstr "Ativação da equipe"
+
+msgid "Retained paid usage"
+msgstr "Uso pago retido"
+
+msgid "Booked, arrived, in-progress, completed and no-show practitioner seconds"
+msgstr "Segundos dos profissionais em consultas agendadas, com chegada, em andamento, concluídas ou com falta"
+
+msgid "Unretired practitioner availability seconds; both clipped to the window"
+msgstr "Segundos da disponibilidade vigente dos profissionais; ambos limitados ao período"
+
+msgid "Appointments resolved as no_show"
+msgstr "Consultas resolvidas como falta"
+
+msgid "Appointments resolved as completed or no_show; unresolved visits are partial"
+msgstr "Consultas concluídas ou com falta; consultas ainda não resolvidas tornam os dados parciais"
+
+msgid "Seconds from queue arrival to first call"
+msgstr "Segundos entre a chegada à fila e a primeira chamada"
+
+msgid "Called queue entries; uncalled arrivals remain partial"
+msgstr "Chegadas já chamadas; chegadas sem chamada tornam os dados parciais"
+
+msgid "Seconds from task creation to its terminal done update"
+msgstr "Segundos entre a criação e a conclusão definitiva da tarefa"
+
+msgid "Completed tasks; unfinished tasks remain partial"
+msgstr "Tarefas concluídas; tarefas em aberto tornam os dados parciais"
+
+msgid "Posted patient_ar and insurer_ar debits less credits through the cutoff"
+msgstr "Débitos menos créditos contabilizados em contas a receber de pacientes e convênios até a data de corte"
+
+msgid "One; cumulative BRL centavos, including opening balances"
+msgstr "Um; centavos de real acumulados, incluindo saldos de abertura"
+
+msgid "Posted collection asset debits; unverified observations are excluded"
+msgstr "Débitos de recebimentos verificados no diário; observações não verificadas ficam excluídas"
+
+msgid "One; BRL centavos before fees and refunds"
+msgstr "Um; centavos de real antes de taxas e devoluções"
+
+msgid "Posted collections less confirmed refund and chargeback asset credits"
+msgstr "Recebimentos contabilizados menos devoluções e contestações confirmadas"
+
+msgid "One; BRL centavos before PSP fees"
+msgstr "Um; centavos de real antes das taxas do prestador de pagamentos"
+
+msgid "Adjudicated denial postings; generic payer adjustments are not denials"
+msgstr "Lançamentos de glosas analisadas; ajustes genéricos do pagador não são glosas"
+
+msgid "One; no reviewed denial posting classification exists on this base"
+msgstr "Um; esta versão ainda não dispõe de classificação validada de lançamentos de glosas"
+
+msgid "Journal-only source required; insurance denial posting contract unavailable"
+msgstr "Fonte obrigatória no diário; contrato de lançamentos de glosas ainda indisponível"
+
+msgid "Posted practitioner_payables and payout_in_transit credits less debits"
+msgstr "Créditos menos débitos contabilizados em repasses a pagar e em trânsito"
+
+msgid "One; cumulative BRL centavos, including retained unknown outcomes"
+msgstr "Um; centavos de real acumulados, incluindo operações com resultado desconhecido"
+
+msgid "Seconds from matched result version arrival to its acknowledgment"
+msgstr "Segundos entre a chegada da versão do resultado identificado e a ciência do responsável"
+
+msgid "Acknowledged matched versions; unacknowledged versions remain partial"
+msgstr "Versões identificadas com ciência registrada; versões sem ciência tornam os dados parciais"
+
+msgid "Nonterminal follow_up tasks with a deadline before refresh time"
+msgstr "Tarefas de seguimento em aberto com prazo anterior à atualização"
+
+msgid "One; tasks whose due date lies in the window"
+msgstr "Um; tarefas com prazo dentro do período"
+
+msgid "Open customer support cases created in the window"
+msgstr "Chamados de suporte de clientes criados no período e ainda em aberto"
+
+msgid "One; no support-case source is installed on this base"
+msgstr "Um; esta versão ainda não dispõe de fonte de chamados de suporte"
+
+msgid "Unavailable support-case source; operational tasks are not support cases"
+msgstr "Fonte de chamados indisponível; tarefas operacionais não são chamados de suporte"
+
+msgid "Elapsed seconds from suggestion creation to a modified review"
+msgstr "Segundos decorridos entre a sugestão e uma revisão com alterações"
+
+msgid "Modified suggestions; includes queue time, not active editing time"
+msgstr "Sugestões modificadas; inclui a espera, sem medir o tempo de edição ativa"
+
+msgid "Current exact-clinic staff with an operational audit event in the window"
+msgstr "Membros ativos desta unidade com evento operacional auditado no período"
+
+msgid "Current active exact-clinic staff; excludes reporting events"
+msgstr "Membros ativos desta unidade; eventos de relatórios ficam excluídos"
+
+msgid "Paid staff active in both adjacent equal windows"
+msgstr "Membros com uso pago nos dois períodos consecutivos de igual duração"
+
+msgid "Paid staff active in the preceding window; subscription evidence required"
+msgstr "Membros com uso pago no período anterior; exige evidência da assinatura"
+
+msgid "Subscription and metered usage source unavailable; never inferred from the clinic journal"
+msgstr "Fonte de assinaturas e uso medido indisponível; nunca inferida do diário da clínica"
+
+msgid "identity.UserClinicRole; audit.AuditEvent metadata only"
+msgstr "Vínculos da equipe; somente metadados dos eventos de auditoria"
+
+msgid "Grouping"
+msgstr "Agrupamento"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Day filter"
+msgstr "Filtro de dia"
+
+msgid "Every day"
+msgstr "Todos os dias"
+
+msgid "Ask the synthetic analyst"
+msgstr "Pergunte ao analista sintético"
+
+msgid "Use a metric name. Dates come from this form. Do not enter patient information."
+msgstr "Use o nome de um indicador. As datas são as deste formulário. Não informe dados de pacientes."
+
+msgid "Check the dates and the metric's permitted dimensions."
+msgstr "Confira as datas e as dimensões permitidas para o indicador."
+
+msgid "Check the report fields."
+msgstr "Confira os campos do relatório."
+
+msgid "Human decision recorded."
+msgstr "Decisão humana registrada."
+
+msgid "Report saved."
+msgstr "Relatório salvo."
+
+msgid "The report request was refused. Reload Reports and try again."
+msgstr "A solicitação foi recusada. Reabra Relatórios e tente novamente."
+
+msgid "Defined metrics, visible denominators and accountable decisions."
+msgstr "Indicadores definidos, denominadores visíveis e decisões com responsável."
+
+msgid "Synthetic analyst only. Real providers remain BLOCKED-ON-EG. Cross-clinic benchmarking is disabled."
+msgstr "Somente analista sintético. Provedores reais permanecem BLOCKED-ON-EG. Comparações entre unidades estão desabilitadas."
+
+msgid "Dates use the clinic timezone. Balance metrics and staff usage support totals only."
+msgstr "As datas usam o fuso da unidade. Saldos, ocupação e uso da equipe aceitam somente totais."
+
+msgid "Refresh metric"
+msgstr "Atualizar indicador"
+
+msgid "Read saved snapshot"
+msgstr "Ler dados salvos"
+
+msgid "Inspect no-show sources"
+msgstr "Inspecionar fontes das faltas"
+
+msgid "Save report"
+msgstr "Salvar relatório"
+
+msgid "Propose a metric query"
+msgstr "Propor consulta de indicador"
+
+msgid "Synthetic analyst"
+msgstr "Analista sintético"
+
+msgid "Choose one metric and explicit dates. The question is ambiguous or outside the catalog."
+msgstr "Escolha um indicador e datas explícitas. A pergunta é ambígua ou está fora do catálogo."
+
+msgid "Proposal queued. No metric query has been executed."
+msgstr "Proposta na fila. Nenhuma consulta de indicador foi executada."
+
+msgid "Check proposal"
+msgstr "Consultar proposta"
+
+msgid "Review the exact metric, version, period and timezone before running this read-only query."
+msgstr "Revise o indicador, a versão, o período e o fuso antes de executar esta consulta somente de leitura."
+
+msgid "Approve and run query"
+msgstr "Aprovar e executar consulta"
+
+msgid "Partial data"
+msgstr "Dados parciais"
+
+msgid "No denominator; no rate is inferred."
+msgstr "Sem denominador; nenhuma taxa é estimada."
+
+msgid "Fresh"
+msgstr "Atualizado"
+
+msgid "Data as of"
+msgstr "dados de"
+
+msgid "Governed result"
+msgstr "Resultado governado"
+
+msgid "Period"
+msgstr "Período"
+
+msgid "Unresolved"
+msgstr "Não resolvidos"
+
+msgid "BRL centavos"
+msgstr "centavos de real"
+
+msgid "No current authorized snapshot. Refresh the selected metric."
+msgstr "Sem dados salvos para a autorização atual. Atualize o indicador selecionado."
+
+msgid "Forecast: unvalidated and unavailable. Observed results are not predictions."
+msgstr "Previsão: não validada e indisponível. Resultados observados não são previsões."
+
+msgid "Authorized no-show sources"
+msgstr "Fontes autorizadas das faltas"
+
+msgid "Up to 100 live operational references. No patient names or clinical content."
+msgstr "Até 100 referências operacionais atuais. Sem nomes de pacientes ou conteúdo clínico."
+
+msgid "No authorized sources in this period."
+msgstr "Sem fontes autorizadas neste período."
+
+msgid "Saved reports"
+msgstr "Relatórios salvos"
+
+msgid "No saved report."
+msgstr "Nenhum relatório salvo."
+
+msgid "Metric definitions"
+msgstr "Definições dos indicadores"
+
+msgid "Freshness"
+msgstr "Atualização"
+
+msgid "15 minutes. Late data appears after an explicit refresh; previous snapshots remain in history."
+msgstr "15 minutos. Dados tardios aparecem após uma atualização explícita; os dados anteriores permanecem no histórico."
+
+msgid "Scope"
+msgstr "Escopo"
+
+msgid "Current clinic and current reporting permission. No cross-clinic benchmarking."
+msgstr "Unidade e permissão atuais. Sem comparação entre unidades."
+
+msgid "Refreshing governed data."
+msgstr "Atualizando os dados governados."
+
+msgid "Connection unavailable. The displayed data may be stale; reconnect and refresh deliberately."
+msgstr "Conexão indisponível. Os dados exibidos podem estar desatualizados; reconecte e atualize quando desejar."
+
+msgid "Metric window in days"
+msgstr "Período do indicador em dias"
+
+msgid "Choose a metric and its window."
+msgstr "Escolha um indicador e seu período."
+
+msgid "Leave empty to include every day."
+msgstr "Deixe sem seleção para incluir todos os dias."
+
+msgid "days"
+msgstr "dias"
+
+msgid "Revenue-cycle assistant"
+msgstr "Assistente de faturamento"
+
+msgid "Review discrepancies and administrative appeal drafts against their exact financial sources."
+msgstr "Revise divergências e rascunhos administrativos de recursos de glosa com suas fontes financeiras exatas."
+
+msgid "Synthetic rehearsal. No real model, payment or submission is authorized. BLOCKED-ON-EG."
+msgstr "Simulação sintética. Nenhum modelo real, pagamento ou envio está autorizado. BLOCKED-ON-EG."
+
+msgid "Clinical supporting evidence is not retrieved. Missing evidence means not found in the supplied sources, never absence of care."
+msgstr "Evidências clínicas de apoio não são consultadas. Evidência pendente significa que não foi encontrada nas fontes fornecidas, nunca ausência de atendimento."
+
+msgid "Claim guide"
+msgstr "Guia de cobrança"
+
+msgid "Request financial review"
+msgstr "Solicitar revisão financeira"
+
+msgid "No claim sources are available in this clinic."
+msgstr "Nenhuma fonte de cobrança está disponível nesta clínica."
+
+msgid "The review is generating. Manual financial work remains available."
+msgstr "A revisão está sendo gerada. O trabalho financeiro manual continua disponível."
+
+msgid "The assistant is unavailable. Continue the financial workflow manually."
+msgstr "O assistente está indisponível. Continue o fluxo financeiro manualmente."
+
+msgid "The source or proposal changed. Refresh and review it again."
+msgstr "A fonte ou proposta mudou. Atualize e revise novamente."
+
+msgid "Administrative appeal draft"
+msgstr "Rascunho administrativo de recurso de glosa"
+
+msgid "Discrepancy explanation"
+msgstr "Explicação da divergência"
+
+msgid "Preview exact approval"
+msgstr "Conferir aprovação exata"
+
+msgid "A finance reviewer with Automations authority must approve every exact effect."
+msgstr "Um revisor financeiro com permissão de automação financeira deve aprovar cada efeito exato."
+
+msgid "No discrepancy was found by these bounded rules. This is not a financial clearance."
+msgstr "Estas regras limitadas não encontraram divergências. Isso não é uma quitação financeira."
+
+msgid "Approval binds this exact source version, effect and digest."
+msgstr "A aprovação vincula esta versão exata da fonte, o efeito e o resumo criptográfico."
+
+msgid "Approve exact draft"
+msgstr "Aprovar rascunho exato"
+
+msgid "Choose the source and review the current proposal."
+msgstr "Escolha a fonte e revise a proposta atual."
+
+msgid "Proposal rejected. No claim or billing action was performed."
+msgstr "Proposta rejeitada. Nenhuma ação de cobrança ou faturamento foi realizada."
+
+msgid "Review recorded. An appeal remains a draft and needs separate human submission approval."
+msgstr "Revisão registrada. O recurso continua como rascunho e precisa de aprovação humana separada para envio."
+
+msgid "Create an administrative appeal draft"
+msgstr "Criar um rascunho administrativo de recurso de glosa"
+
+msgid "Record review of a source-backed discrepancy"
+msgstr "Registrar a revisão de uma divergência vinculada às fontes"
+
+msgid "No current service-recognition entry was found in the supplied journal facts."
+msgstr "Nenhum lançamento atual de reconhecimento do serviço foi encontrado nos fatos contábeis fornecidos."
+
+msgid "The submitted claim total differs from the frozen net journal terms."
+msgstr "O total da guia enviada difere dos valores líquidos fixados no livro contábil."
+
+msgid "No payer return was found in the supplied claim sources. This does not establish payment or denial."
+msgstr "Nenhum retorno da operadora foi encontrado nas fontes fornecidas. Isso não comprova pagamento nem glosa."
+
+msgid "The payer return records a denied amount. A person must review the source and any appeal."
+msgstr "O retorno da operadora registra um valor glosado. Uma pessoa deve revisar a fonte e qualquer recurso."
+
+msgid "The accepted claim amount exceeds independently posted allocations. A return is not payment evidence."
+msgstr "O valor aceito da guia supera as alocações lançadas de forma independente. Um retorno não é comprovante de pagamento."
+
+msgid "Independently posted allocations exceed the accepted amount in this return. Review the sources; no refund or adjustment is inferred."
+msgstr "As alocações lançadas de forma independente superam o valor aceito neste retorno. Revise as fontes; nenhum estorno ou ajuste é presumido."
+
+msgid "Administrative appeal draft. Please review the recorded denial. The submitted procedure is table %(table)s, code %(code)s, quantity %(quantity)s, unit value %(unit)s centavos. The payer recorded %(denied)s centavos denied, reason %(reason)s. These are recorded billing facts, not new clinical assertions. Clinical supporting evidence was not retrieved; a person must review it before any submission."
+msgstr "Rascunho administrativo de recurso de glosa. Revise a glosa registrada. O procedimento enviado pertence à tabela %(table)s, código %(code)s, quantidade %(quantity)s, valor unitário de %(unit)s centavos. A operadora registrou %(denied)s centavos glosados, motivo %(reason)s. Estes são fatos de faturamento registrados, não novas afirmações clínicas. Evidências clínicas de apoio não foram consultadas; uma pessoa deve revisá-las antes de qualquer envio."
+
+msgid "Payer return item"
+msgstr "Item do retorno da operadora"
+
+msgid "Journal record"
+msgstr "Registro contábil"
+
+msgid "Posted allocation"
+msgstr "Alocação lançada"

@@ -11,15 +11,20 @@ from __future__ import annotations
 import ast
 import copy
 import inspect
+import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from urllib.parse import urlencode
 from uuid import UUID, uuid4, uuid5
 
 import pytest
+from apps.analytics.contracts import Query
+from apps.analytics.models import ReadModelRefresh
+from apps.analytics.services import authorize as authorize_metrics
+from apps.analytics.services import refresh_metric
 from apps.comms.adapters import OperationScope
 from apps.core import integration
 from apps.core.chart_sources import ChartBatch
@@ -1447,7 +1452,40 @@ CARE = PYTHON + "care."
 PREVIEW = (
     PYTHON + "reassignment.apply_reassignment:scope:payload['clinic'] != str(clinic_id)"
 )
+
+
+def metric_receipt_scope(s: Scoped) -> None:
+    step = _claimed_step(s, handler="metrics_refresh")
+    with permission_context(s.graph, s.manager):
+        query = Query(
+            "no_show",
+            step.run.created_at - timedelta(days=30),
+            step.run.created_at,
+            "America/Sao_Paulo",
+        )
+        refresh_metric(clinic_id=s.b, query=query, command_id=step.pk)
+
+    def receipt(identifier: UUID) -> object:
+        candidate = copy.copy(step)
+        candidate.pk = identifier
+        receipts.validate_step_receipt(candidate, "completed", timezone.now())
+        return None
+
+    denied = outcome(s, s.manager, lambda: receipt(step.pk))
+    unknown = outcome(s, s.manager, lambda: receipt(uuid4()))
+    assert denied == unknown
+    assert isinstance(denied[0], tuple)
+    assert denied[0][0] is WorkflowInputError
+    assert denied[1] is False
+    with permission_context(s.graph, s.manager):
+        refresh_metric(clinic_id=s.a, query=query, command_id=step.pk)
+    assert outcome(s, s.manager, lambda: receipt(step.pk))[0] is None
+
+
 PY_CASES: dict[str, Callable[..., None]] = {
+    PYTHON + "receipts.validate_step_receipt:scope:clinic_id=step.clinic_id#3": (
+        metric_receipt_scope
+    ),
     PYTHON + "access.require_task_access:scope:clinic_id=clinic_id": task_scope,
     PYTHON + "access.owner_matches:scope:clinic_id=task.clinic_id": role_scope,
     PYTHON + "access.require_reference:scope:identifier == clinic_id": reference(
@@ -1686,6 +1724,9 @@ def _claimed_step(s: Scoped, *, handler: str = "timer") -> WorkflowStep:
                 }
             ],
             "external": [{"handler": "external", "provider": "workflow-synthetic-v1"}],
+            "metrics_refresh": [
+                {"handler": "metrics_refresh", "metric_id": "no_show", "days": 30}
+            ],
         }
         definition = publish_definition(
             clinic_id=s.a,
@@ -1702,6 +1743,51 @@ def _claimed_step(s: Scoped, *, handler: str = "timer") -> WorkflowStep:
         step = WorkflowStep.objects.get(run=run)
         assert engine.claim_step(step_id=step.pk) == 1
     return step
+
+
+def sql_metric_receipt_scope(s: Scoped) -> None:
+    step = _claimed_step(s, handler="metrics_refresh")
+    with permission_context(s.graph, s.manager):
+        query = Query(
+            "no_show",
+            step.run.created_at - timedelta(days=30),
+            step.run.created_at,
+            "America/Sao_Paulo",
+        )
+        source = refresh_metric(clinic_id=s.b, query=query, command_id=uuid4())
+        foreign = ReadModelRefresh.objects.get(pk=source.refresh_id)
+        _actor, version = authorize_metrics(clinic_id=s.a)
+    with owner_context(s.graph.organization_a), connection.cursor() as cursor:
+        # Isolate the clinic comparison: all other receipt fields deliberately
+        # match A, while the referenced projection belongs to B.
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        ReadModelRefresh.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.b,
+            user_id=s.manager,
+            definition_id=foreign.definition_id,
+            authorization_version=version,
+            descriptor=query.payload(),
+            window_start=query.start,
+            window_end=query.end,
+            command_id=step.pk,
+            rows=foreign.rows,
+            quality=foreign.quality,
+        )
+    with permission_context(s.graph, s.manager):
+        refused(
+            ("23514", "workflow effect is missing"),
+            lambda: WorkflowStep.objects.filter(pk=step.pk).update(
+                state="completed", claim_until=None
+            ),
+        )
+        refresh_metric(clinic_id=s.a, query=query, command_id=step.pk)
+        assert (
+            WorkflowStep.objects.filter(pk=step.pk).update(
+                state="completed", claim_until=None
+            )
+            == 1
+        )
 
 
 def sql_step_operation(s: Scoped, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2068,6 +2154,9 @@ CARE_GUARD = "scope:workflows_care_guard():"
 GUARD = "scope:workflows_guard():"
 REFERENCE = "scope:workflows_reference_valid(jsonb,uuid,uuid):"
 SQL_CASES: dict[str, Callable[..., None]] = {
+    "scope:analytics_workflow_receipt():r.clinic_id=NEW.clinic_id": (
+        sql_metric_receipt_scope
+    ),
     GUARD + "c.id=NEW.clinic_id": sql_clinic_in_tenant,
     GUARD + "t.clinic_id=NEW.clinic_id": sql_comment,
     GUARD + "d.clinic_id=NEW.clinic_id": sql_definition_version,
@@ -2205,3 +2294,41 @@ def test_sql_scope_derivation_admits_only_a_trigger_rows_own_scope_in_values(
             with pytest.raises(AssertionError, match="unclassified record-scope use"):
                 discover_scope_conditions()
         transaction.set_rollback(True)
+
+
+def _metric_receipt_window(s: Scoped, text: str) -> None:
+    step = _claimed_step(s, handler="metrics_refresh")
+    with permission_context(s.graph, s.manager):
+        query = Query(
+            "no_show",
+            step.run.created_at - timedelta(days=30),
+            step.run.created_at,
+            "America/Sao_Paulo",
+        )
+        window = cast("dict[str, str]", query.payload()["window"])
+        forged = query.payload() | {"window": window | {"end": text}}
+        # When: the step's own refresh names its window end as clock text.
+        with (
+            pytest.raises(DatabaseError, match="invalid metric query"),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "SELECT * FROM clinic_app.analytics_refresh(%s,%s::jsonb,%s,%s,%s)",
+                [s.a, json.dumps(forged), step.pk, query.start, query.end],
+            )
+        # Then: no effect exists, so the workflow receipt refuses the step.
+        refused(
+            ("23514", "workflow effect is missing"),
+            lambda: WorkflowStep.objects.filter(pk=step.pk).update(
+                state="completed", claim_until=None
+            ),
+        )
+
+
+@pytest.mark.parametrize("text", ["now", "today"])
+def test_receipt_refuses_a_projection_whose_window_is_clock_text(
+    scoped: Scoped, text: str
+) -> None:
+    # Given a claimed refresh step whose refresh names clock text, the receipt refuses.
+    _metric_receipt_window(scoped, text)

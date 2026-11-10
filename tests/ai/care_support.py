@@ -208,7 +208,7 @@ def request_and_collect(world: CareWorld) -> CareBundle:
 
 def approve_bundle(world: CareWorld, invocation_id: UUID) -> tuple[ItemOutcome, ...]:
     graph = world.graph
-    request = verified_request(world.manager)
+    request = verified_request(world.manager, persisted=True)
     with acting(graph, world.manager):
         items = pending_bundle(clinic_id=graph.clinic_a, invocation_id=invocation_id)
         digest = bundle_digest(

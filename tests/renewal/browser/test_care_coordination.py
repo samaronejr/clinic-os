@@ -32,6 +32,7 @@ from renewal.browser._navigation import (
     goto_settled,
     wait_for_signed_in,
 )
+from renewal.browser._totp_devices import reset_totp_device, seed_totp_device
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
@@ -134,19 +135,7 @@ def care_staff(availability_staff: dict[str, str]) -> dict[str, str]:
             "WHERE user_id = %s AND clinic_id = %s",
             [staff["physician_a_id"], staff["clinic_a"]],
         )
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [staff["manager_id"]],
-        )
-        connection.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [staff["manager_totp_key"], staff["manager_id"]],
-        )
+        seed_totp_device(connection, staff["manager_id"], staff["manager_totp_key"])
     assert fixture(staff, "configure") == {"synthetic": True}
     return staff
 
@@ -164,16 +153,7 @@ def _manager(page: Page, base: str, staff: dict[str, str]) -> None:
     """Sign the manager in; the login TOTP verification is the recent step-up."""
     staff["manager_totp_key"] = new_totp_key()
     with psycopg.connect(staff["dsn"]) as connection:
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [staff["manager_id"]],
-        )
-        connection.execute(
-            "UPDATE clinic_app.otp_totp_totpdevice SET key = %s, last_t = -1 "
-            "WHERE user_id = %s",
-            [staff["manager_totp_key"], staff["manager_id"]],
-        )
+        reset_totp_device(connection, staff["manager_id"], staff["manager_totp_key"])
     _sign_in(page, base, staff["manager"], staff["password"])
     page.wait_for_url("**/auth/verify/**")
     token = TOTP(bytes.fromhex(staff["manager_totp_key"]), 30, 0, 6, 0).token()

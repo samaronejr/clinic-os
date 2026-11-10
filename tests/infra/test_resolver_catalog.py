@@ -4,22 +4,41 @@ import pytest
 from django.db import connection
 
 from infra import (
+    analytics_catalog,
     comms_inbox_catalog,
     coordination_catalog,
+    crm_catalog,
     duplicate_catalog,
+    fiscal_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
+    insurance_catalog,
+    inventory_catalog,
+    journal_catalog,
     longitudinal_catalog,
     orders_catalog,
     portal_catalog,
     portal_messages_catalog,
+    psp_catalog,
     retention_catalog,
+    subscriptions_catalog,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+RECORD_APPROVAL_ARGUMENTS: Final = (
+    "requested uuid, approval_id uuid, approval_digest text, snapshot jsonb, "
+    "evidence_ref uuid, evidence jsonb, attestation text, session_digest bytea"
+)
 RESOLVER_TABLE_GRANTS: Final = {
+    *crm_catalog.TABLE_GRANTS,
+    *analytics_catalog.TABLE_GRANTS,
+    *subscriptions_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
+    *fiscal_catalog.TABLE_GRANTS,
+    *insurance_catalog.TABLE_GRANTS,
+    *journal_catalog.TABLE_GRANTS,
+    *psp_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
@@ -32,6 +51,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ai_agentrun", "SELECT"),
     ("ai_actionproposal", "SELECT"),
     ("ai_approval", "SELECT"),
+    # ai.0012: agent_record_approval is the only vote writer.
+    ("ai_approval", "INSERT"),
     ("ai_actionexecution", "SELECT"),
     ("ai_actionreceipt", "SELECT"),
     ("ai_compensation", "SELECT"),
@@ -177,8 +198,11 @@ RESOLVER_TABLE_GRANTS: Final = {
     *portal_messages_catalog.TABLE_GRANTS,
     *front_desk_catalog.TABLE_GRANTS,
     *coordination_catalog.TABLE_GRANTS,
+    *inventory_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *analytics_catalog.COLUMN_GRANTS,
+    *subscriptions_catalog.COLUMN_GRANTS,
     ("ai_evaluationrun", "status", "UPDATE"),
     ("ai_evaluationrun", "finished_at", "UPDATE"),
     *retention_catalog.COLUMN_GRANTS,
@@ -187,6 +211,9 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "observation_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
+    *inventory_catalog.COLUMN_GRANTS,
+    *insurance_catalog.COLUMN_GRANTS,
+    *journal_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("ehr_drafteditstate", "version_id", "SELECT"),
     ("ehr_drafteditstate", "section_edit_epochs", "SELECT"),
@@ -248,7 +275,13 @@ RESOLVER_COLUMN_GRANTS: Final = {
     *coordination_catalog.COLUMN_GRANTS,
 }
 POSTURE_OVERRIDES: Final = {
+    **crm_catalog.POSTURE,
+    **analytics_catalog.POSTURE,
+    **subscriptions_catalog.POSTURE,
     **retention_catalog.POSTURE,
+    **fiscal_catalog.POSTURE,
+    **journal_catalog.POSTURE,
+    **psp_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -271,6 +304,7 @@ POSTURE_OVERRIDES: Final = {
         True,
         ["clinic_agent", "clinic_app", "clinic_owner", "clinic_resolver"],
     ),
+    "agent_record_approval": ("v", True, ["clinic_app", "clinic_resolver"]),
     "agent_audit_scope": (
         "v",
         False,
@@ -309,6 +343,12 @@ POSTURE_OVERRIDES: Final = {
     "scribe_citation_allowed": ("v", False, ["clinic_resolver"]),
     "scribe_draft_guard": ("v", False, ["clinic_resolver"]),
     "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ai_revenue_ancestry": (
+        "v",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "ai_revenue_row": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_organization_policy": (
         "s",
         True,
@@ -545,9 +585,15 @@ POSTURE_OVERRIDES: Final = {
     **portal_messages_catalog.POSTURE,
     **front_desk_catalog.POSTURE,
     **coordination_catalog.POSTURE,
+    **inventory_catalog.POSTURE,
+    **insurance_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
+    *crm_catalog.RESULTS,
+    *analytics_catalog.RESULTS,
+    *subscriptions_catalog.RESULTS,
     *retention_catalog.RESULTS,
+    *fiscal_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
@@ -565,6 +611,7 @@ FUNCTION_SIGNATURES: Final = {
     ("agent_source", "requested uuid, source_id uuid"),
     ("agent_approval_current", "requested uuid, approval_id uuid"),
     ("agent_controls", "requested uuid"),
+    ("agent_record_approval", RECORD_APPROVAL_ARGUMENTS),
     ("agent_audit_scope", "record_id uuid, event_name text"),
     ("scribe_room_capture_allowed", "requested_session uuid"),
     ("scribe_room_guard", ""),
@@ -598,6 +645,8 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_eval_model_gate", ""),
     ("ai_eval_record_guard", ""),
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
+    ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"),
+    ("ai_revenue_row", "clinic uuid, kind text, requested uuid"),
     ("ai_organization_policy", ""),
     ("ai_budget_usage", "requested_purpose text"),
     ("ai_policy_valid", "policy jsonb"),
@@ -858,8 +907,16 @@ FUNCTION_SIGNATURES: Final = {
     *portal_messages_catalog.RESULTS,
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
+    *inventory_catalog.RESULTS,
+    *insurance_catalog.RESULTS,
+    *journal_catalog.RESULTS,
+    *psp_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    **crm_catalog.RESULTS,
+    **fiscal_catalog.RESULTS,
+    **analytics_catalog.RESULTS,
+    **subscriptions_catalog.RESULTS,
     ("ai_eval_staff", "clinic uuid, mode text"): "boolean",
     ("ai_eval_run_visible", "subject uuid"): "boolean",
     ("ai_eval_rating_visible", "subject uuid, case_key text, human uuid"): "boolean",
@@ -869,6 +926,8 @@ FUNCTION_RESULTS: Final = {
     ("ai_eval_model_gate", ""): "trigger",
     ("ai_eval_record_guard", ""): "trigger",
     **retention_catalog.RESULTS,
+    **journal_catalog.RESULTS,
+    **psp_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (
@@ -900,6 +959,7 @@ FUNCTION_RESULTS: Final = {
     ("agent_source", "requested uuid, source_id uuid"): "jsonb",
     ("agent_approval_current", "requested uuid, approval_id uuid"): "boolean",
     ("agent_controls", "requested uuid"): "jsonb",
+    ("agent_record_approval", RECORD_APPROVAL_ARGUMENTS): "boolean",
     ("agent_audit_scope", "record_id uuid, event_name text"): (
         "TABLE(organization_id uuid, clinic_id uuid, "
         "principal_id uuid, record_type text)"
@@ -931,6 +991,8 @@ FUNCTION_RESULTS: Final = {
     ): "boolean",
     ("scribe_draft_guard", ""): "trigger",
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
+    ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"): "boolean",
+    ("ai_revenue_row", "clinic uuid, kind text, requested uuid"): "boolean",
     ("ai_organization_policy", ""): "jsonb",
     ("ai_budget_usage", "requested_purpose text"): (
         "TABLE(total_micros numeric, purpose_micros numeric)"
@@ -1340,6 +1402,8 @@ FUNCTION_RESULTS: Final = {
     **portal_messages_catalog.RESULTS,
     **front_desk_catalog.RESULTS,
     **coordination_catalog.RESULTS,
+    **inventory_catalog.RESULTS,
+    **insurance_catalog.RESULTS,
 }
 
 
@@ -1432,13 +1496,14 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            True,
+            name not in journal_catalog.INVOKERS | subscriptions_catalog.INVOKERS,
             volatility,
             "u",
             [
                 "search_path=pg_catalog, pg_temp"
                 if name in identity_lifecycle_catalog.POSTURE
                 or name in duplicate_catalog.POSTURE
+                or name in journal_catalog.PG_ONLY
                 else "search_path=pg_catalog, clinic_app, pg_temp"
             ],
             True,

@@ -25,13 +25,26 @@ if TYPE_CHECKING:
 
 MAX_DAILY_ACTIONS: Final = 1000
 MAX_TIMEOUT_SECONDS: Final = 60
-CAPABILITIES: Final = ("front_desk", "analyst", "care_coordination")
+CAPABILITIES: Final = ("front_desk", "analyst", "care_coordination", "revenue_cycle")
 # Care coordination (AI-05) only drafts: staff approve each exact
 # administrative effect, and its one command adds an action to a care plan.
 CARE_TOOLS: Final = frozenset({"care_action.create"})
-A1_TOOLS: Final = frozenset({"workflows.review_task"}) | CARE_TOOLS
+REVENUE_TOOLS: Final = frozenset({"appeal.draft", "discrepancy.explain"})
+A1_TOOLS: Final = frozenset({"workflows.review_task"}) | CARE_TOOLS | REVENUE_TOOLS
 
 TOOL_SCHEMAS: Final[dict[str, JSON]] = {
+    "appeal.draft": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["position"],
+        "properties": {"position": {"type": "integer", "minimum": 0, "maximum": 191}},
+    },
+    "discrepancy.explain": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["position"],
+        "properties": {"position": {"type": "integer", "minimum": 0, "maximum": 191}},
+    },
     "comms.synthetic_reminder": {
         "type": "object",
         "additionalProperties": False,
@@ -95,6 +108,7 @@ class PolicyTerms:
     def __post_init__(self) -> None:
         """Parse policy controls once, including Python boolean/int ambiguity."""
         care = self.capability == "care_coordination"
+        revenue = self.capability == "revenue_cycle"
         if (
             self.capability not in CAPABILITIES
             or self.autonomy_ceiling not in AUTONOMY
@@ -105,6 +119,13 @@ class PolicyTerms:
             or (care and self.autonomy_ceiling not in ("A0", "A1"))
             or (care and not set(self.tools) <= CARE_TOOLS)
             or (not care and bool(set(self.tools) & CARE_TOOLS))
+            or (revenue and self.autonomy_ceiling not in ("A0", "A1"))
+            or (revenue and not set(self.tools) <= REVENUE_TOOLS)
+            or (
+                revenue
+                and (self.principal_id is not None or self.compensation != "manual")
+            )
+            or (not revenue and bool(set(self.tools) & REVENUE_TOOLS))
             or (self.autonomy_ceiling in ("A2", "A3") and self.principal_id is None)
             or type(self.budget_actions) is not int
             or not 1 <= self.budget_actions <= MAX_DAILY_ACTIONS
@@ -136,6 +157,10 @@ def publish_agent_policy(
 ) -> AgentPolicyVersion:
     """Disabling is a successor version, so queued approvals become stale."""
     user = policy_administrator(clinic_id=clinic_id)
+    if terms.capability == "revenue_cycle":
+        # AI-06 fails closed: every revenue version, the first included, needs
+        # the publisher's current Finance automation (ai.0011 enforces it too).
+        require_permission("automation.finance", clinic_id=clinic_id)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended('agent-send-v1',0))"

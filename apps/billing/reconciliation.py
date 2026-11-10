@@ -48,7 +48,9 @@ from apps.billing.adapters import (
     PaymentOperationFacts,
     ProviderChargeStatus,
 )
+from apps.billing.compensation import bridge_legacy_settlement
 from apps.billing.models import PaymentEvent, Settlement
+from apps.billing.security import lock_clinic_book
 from apps.tenancy.db import clear_connection_tenant_gucs
 
 if TYPE_CHECKING:
@@ -382,6 +384,7 @@ def _apply(  # noqa: PLR0913 - one flag per entry-point contract
     """Record one verified event and settle only on exact verified terms."""
     event_pk = uuid4()
     with _stored_scope_context(state):
+        lock_clinic_book(clinic_id=state.clinic_id)
         _hold_event_lock(state.operation_id)
         if recovery:
             if authoritative is not None and _recovered(
@@ -410,6 +413,9 @@ def _apply(  # noqa: PLR0913 - one flag per entry-point contract
                         amount_minor=fresh.operation_amount_minor,
                         currency=fresh.operation_currency,
                         confirmed_by_id=fresh.actor_id,
+                    )
+                    bridge_legacy_settlement(
+                        clinic_id=fresh.clinic_id, settlement_id=settlement.pk
                     )
                     settlement_id = settlement.pk
             except DatabaseError:

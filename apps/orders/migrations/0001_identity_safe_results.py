@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import migrations
 from django.db.migrations.operations.base import Operation
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.orders.migrations import (
     _access_sql,
     _audit_sql,
@@ -17,7 +18,7 @@ from apps.orders.migrations import (
 from apps.orders.migrations._schema import MODELS
 
 
-class ProtectedSchema(migrations.SeparateDatabaseAndState):
+class ProtectedSchema(SchemaStateBatch):
     """Publish the encrypted schema and its least-privilege contract together."""
 
     atomic = True

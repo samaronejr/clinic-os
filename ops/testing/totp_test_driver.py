@@ -2,8 +2,11 @@
 
 This module is never an HTTP, management, or product API. Each process reads a
 single synthetic context frame from a private input descriptor, resolves exactly
-one FORCE-RLS visible device under the runtime application role, writes the code
-bytes to a private output descriptor, and closes both descriptors.
+one FORCE-RLS visible device under the runtime application role, reads only that
+device's seed through ``clinic_resolver`` (identity 0050 hides it from the
+runtime role, so the context DSN must be a fixture login that holds SET on that
+role), writes the code bytes to a private output descriptor, and closes both
+descriptors.
 """
 
 from __future__ import annotations
@@ -26,9 +29,13 @@ CONTEXT_KEYS: Final = frozenset({"dsn", "last_t", "mode", "tenant_id", "user_id"
 MAX_CONTEXT_BYTES: Final = 4096
 MIN_DESCRIPTOR: Final = 3
 DEVICE_QUERY: Final = (
-    "SELECT id, key, step, t0, digits, drift, last_t "
+    "SELECT id, step, t0, digits, drift, last_t "
     "FROM clinic_app.otp_totp_totpdevice "
     "WHERE user_id = %s::uuid AND confirmed = %s ORDER BY id"
+)
+SEED_QUERY: Final = (
+    "SELECT encode(secret, 'hex') FROM clinic_app.identity_totpsecret "
+    "WHERE device_id = %s"
 )
 
 
@@ -114,17 +121,21 @@ def resolve_code(context: dict[str, object], mode: str) -> str:
             cursor.execute("SET LOCAL ROLE clinic_app")
             cursor.execute(DEVICE_QUERY, [str(context["user_id"]), confirmed])
             device = _selected_device(cursor.fetchall())
+            cursor.execute("SET LOCAL ROLE clinic_resolver")
+            cursor.execute(SEED_QUERY, [device[0]])
+            (key,) = _selected_device(cursor.fetchall())
         connection.rollback()
-    return _code_for_device(device, context, confirmed=confirmed)
+    return _code_for_device(device, key, context, confirmed=confirmed)
 
 
 def _code_for_device(
     device: tuple[object, ...],
+    key: object,
     context: dict[str, object],
     *,
     confirmed: bool,
 ) -> str:
-    _, key, step, t0, digits, drift, device_last_t = device
+    _, step, t0, digits, drift, device_last_t = device
     if not isinstance(key, str) or not isinstance(step, int):
         _fail()
     if not isinstance(t0, int) or not isinstance(digits, int):
@@ -163,7 +174,7 @@ def main() -> int:
     """Return two on any rejection without writing diagnostic bytes."""
     try:
         run(sys.argv[1:])
-    except (TotpDriverError, OSError, ValueError):
+    except (TotpDriverError, OSError, ValueError, psycopg.Error):
         return 2
     return 0
 

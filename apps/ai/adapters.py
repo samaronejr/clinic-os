@@ -29,6 +29,10 @@ from apps.ai.extraction_documents import (
     recorded_document_extraction,
     synthetic_document_extraction,
 )
+from apps.ai.revenue_contracts import SCHEMA as REVENUE_SCHEMA
+from apps.ai.revenue_contracts import synthetic_reply as synthetic_revenue_reply
+from apps.analytics.analyst_contracts import synthetic_reply as synthetic_analyst_reply
+from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -101,12 +105,16 @@ class SyntheticProvider(AdapterBase):
         self.check_boundary(request)
         content = "Synthetic draft. Human review required."
         schema = request_schema(request.content)
-        if schema == DECISION_SCHEMA:
+        if schema == ANALYST_SCHEMA:
+            content = synthetic_analyst_reply(request.content)
+        elif schema == DECISION_SCHEMA:
             content = synthetic_decision_reply(request.content)
         elif schema == CARE_SCHEMA:
             content = synthetic_care_reply(request.content)
         elif schema == SCHEMA:
             content = synthetic_reply(request.content)
+        elif schema == REVENUE_SCHEMA:
+            content = synthetic_revenue_reply(request.content)
         return ProviderResult(
             content,
             Usage(

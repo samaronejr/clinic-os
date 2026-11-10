@@ -17,7 +17,7 @@ from apps.tenancy.db import tenant_context
 from django.db import connection
 from ops.testing import restore_rehearsal, restore_verification
 from ops.testing.restore_contract import RestoreContractError
-from ops.testing.restore_queries import TARGET_SEED_SQL
+from ops.testing.restore_queries import POSTURE_SQL, TARGET_SEED_SQL
 from psycopg import sql
 
 from otp_test_support import runtime_role
@@ -169,7 +169,7 @@ def test_audit_content_verification_rejects_fabricated_rows(
 def test_posture_rejects_role_and_acl_drift(
     rbac_graph: RbacGraph, superuser_database_url: str
 ) -> None:
-    """BYPASSRLS drift and closed-table grants must fail the posture proof."""
+    """Role, closed-table grant and owner drift must fail the posture proof."""
     client = SuperuserClient(superuser_database_url)
     restore_verification.require_owner_rls_acl_posture(client)
     with psycopg.connect(superuser_database_url, autocommit=True) as raw:
@@ -195,6 +195,16 @@ def test_posture_rejects_role_and_acl_drift(
                 restore_verification.require_owner_rls_acl_posture(client)
         finally:
             raw.execute("REVOKE SELECT ON clinic_app.tenancy_tenantdatakey FROM PUBLIC")
+        # Owner drift, rolled back so no ACL is rewritten: the TOTP secret
+        # store belongs to clinic_resolver alone (identity 0050) and every
+        # other table stays clinic_owner's.
+        for drift in (
+            "ALTER TABLE clinic_app.identity_totpsecret OWNER TO clinic_owner",
+            "ALTER TABLE clinic_app.tenancy_tenantdatakey OWNER TO clinic_resolver",
+        ):
+            with raw.transaction(force_rollback=True):
+                raw.execute(drift)
+                assert raw.execute(POSTURE_SQL).fetchone() == ("relation-owner",)
 
 
 @pytest.mark.parametrize("relation", ["ai_gatewayswitch", "ai_modelconfiguration"])
@@ -311,10 +321,8 @@ def test_app_role_probes_reject_permissive_policy(
                 "DELETE FROM clinic_app.intake_patient WHERE id = %s",
                 [restore_verification.FOREIGN_PROBE_PATIENT],
             )
-            raw.execute(
-                "DELETE FROM clinic_app.identity_organization WHERE id = %s",
-                [restore_verification.FOREIGN_PROBE_ORGANIZATION],
-            )
+            # The probe organization's bootstrapped subscription is retained
+            # history, so the organization stays for the transactional flush.
 
 
 def test_tenant_key_status_must_match_source() -> None:
@@ -332,12 +340,20 @@ def test_tenant_key_status_must_match_source() -> None:
 def _reseed_provider_registry(superuser_database_url: str) -> None:
     """Rebuild the migration seed under fresh surrogate keys and timestamps."""
     with psycopg.connect(superuser_database_url, autocommit=True) as raw:
+        # PSP history references capability versions, so it is truncated with
+        # the registry; replica mode lifts its no-truncate guard for this
+        # session only, as the teardown flush lifts it per test.
+        raw.execute("SET session_replication_role = replica")
         raw.execute(
             "TRUNCATE clinic_app.providers_healthevent, "
             "clinic_app.providers_activationrecord, "
             "clinic_app.providers_capabilityversion, "
             "clinic_app.providers_capabilityapproval, "
-            "clinic_app.providers_providercapability"
+            "clinic_app.providers_providercapability, "
+            "clinic_app.billing_pspbinding, "
+            "clinic_app.billing_pspevidence, "
+            "clinic_app.billing_pspintent, "
+            "clinic_app.billing_pspreceipt"
         )
     seed_capabilities()
 

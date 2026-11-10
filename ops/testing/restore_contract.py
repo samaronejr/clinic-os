@@ -19,6 +19,17 @@ from dataclasses import dataclass
 from typing import Final, Never
 
 DOMAIN_RELATIONS: Final = (
+    "analytics_analystreview",
+    "analytics_metricdefinitionversion",
+    "analytics_readmodelrefresh",
+    "analytics_savedreport",
+    "subscriptions_plan",
+    "subscriptions_entitlement",
+    "subscriptions_subscription",
+    "subscriptions_subscriptionevent",
+    "subscriptions_seat",
+    "subscriptions_usageevent",
+    "subscriptions_usagerollup",
     "ai_evaluationprotocol",
     "ai_evaluationrun",
     "ai_evaluationrating",
@@ -51,6 +62,27 @@ DOMAIN_RELATIONS: Final = (
     "billing_pixoperation",
     "billing_receipt",
     "billing_settlement",
+    # Task 56: every operational fact, reservation and counted close is durable.
+    "billing_journalbook",
+    "billing_account",
+    "billing_journalentry",
+    "billing_journalline",
+    "billing_practitionerpayoutrule",
+    "billing_invoiceterms",
+    "billing_journalsettlement",
+    "billing_settlementallocation",
+    "billing_refund",
+    "billing_payout",
+    "billing_cashsession",
+    "billing_cashsessionevent",
+    "billing_pspbinding",
+    "billing_pspevidence",
+    "billing_pspintent",
+    "billing_psppolicy",
+    "billing_pspreceipt",
+    "billing_fiscalconfiguration",
+    "billing_fiscaldocument",
+    "billing_fiscaltransition",
     "comms_appointmentreminder",
     # Task 51 inbox: threads, messages, notes, templates and provider accounts
     # are durable conversation history; keys are secret files, never rows.
@@ -121,6 +153,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_sessionrecord",
     "identity_signupregistration",
     "identity_staffinvitation",
+    # Resolver-owned TOTP secret store (0050); durable, restored with its device.
+    "identity_totpsecret",
     "identity_user",
     "identity_userclinicrole",
     "identity_userpreference",
@@ -241,6 +275,44 @@ DOMAIN_RELATIONS: Final = (
     "orders_resultacknowledgment",
     "orders_resultrelease",
     "orders_resultworkitem",
+    # Inventory (plan 61): retained source relations; live census is pending.
+    "inventory_supplier",
+    "inventory_item",
+    "inventory_batch",
+    "inventory_location",
+    "inventory_minimumstock",
+    "inventory_purchasebudget",
+    "inventory_purchaserequest",
+    "inventory_stockmovement",
+    "inventory_equipment",
+    "inventory_calibration",
+    "inventory_maintenance",
+    "inventory_commandreceipt",
+    # CRM (plan 62): tenant prospects, consent choices, campaigns and receipts;
+    # populated rollback is restore (apps/crm/README.md).
+    "crm_referralsource",
+    "crm_lead",
+    "crm_marketingpreference",
+    "crm_campaign",
+    "crm_campaignsend",
+    "crm_satisfactionsurvey",
+    "crm_publicbookingprofile",
+    "insurance_payer",
+    "insurance_payercontract",
+    "insurance_tussterm",
+    "insurance_pricetable",
+    "insurance_insurancemembership",
+    "insurance_guide",
+    "insurance_batch",
+    "insurance_batchguide",
+    "insurance_submission",
+    "insurance_return",
+    "insurance_glosa",
+    "insurance_appeal",
+    "insurance_clinicalapproval",
+    "insurance_paymentmatch",
+    "insurance_payerrequest",
+    "insurance_commandreceipt",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive
@@ -284,6 +356,12 @@ TARGET_SEEDED_RELATIONS: Final = (
     "providers_providercapability",
 )
 TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
+    "analytics_metricfact": (
+        "rebuildable authorized view; target migrations recreate it"
+    ),
+    "analytics_usagefact": (
+        "rebuildable authorized view; target migrations recreate it"
+    ),
     "prescription_prescriptionclasspolicy": (
         "immutable D-21 migration seed; exact source/target equality required"
     ),

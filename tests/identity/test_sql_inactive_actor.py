@@ -41,13 +41,27 @@ from ai.extraction_oracles import (
 from ai.front_desk_oracles import (
     ACTOR_PROTOCOL_ORACLES as FRONT_DESK_ACTOR_PROTOCOL_ORACLES,
 )
+from analytics.sql_oracles import (
+    ACTOR_PROTOCOL_ORACLES as ANALYTICS_ACTOR_PROTOCOL_ORACLES,
+)
+from billing.fiscal_oracles import (
+    ACTOR_PROTOCOL_ORACLES as FISCAL_ACTOR_PROTOCOL_ORACLES,
+)
+from billing.journal_oracles import (
+    ACTOR_PROTOCOL_ORACLES as BILLING_ACTOR_PROTOCOL_ORACLES,
+)
+from billing.psp_oracles import ACTOR_PROTOCOL_ORACLES as PSP_ACTOR_PROTOCOL_ORACLES
 from consent.test_purposes import register_physician
+from crm.sql_oracles import ACTOR_PROTOCOL_ORACLES as CRM_ACTOR_PROTOCOL_ORACLES
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
 from identity.test_lifecycle_sql_readers import (
     ACTOR_PROTOCOL_ORACLES,
     assert_lifecycle_oracles,
+)
+from insurance.test_sql_inactive_actor import (
+    ACTOR_PROTOCOL_ORACLES as INSURANCE_ACTOR_PROTOCOL_ORACLES,
 )
 from orders.sql_oracles import (
     ACTOR_PROTOCOL_ORACLES as ORDERS_ACTOR_PROTOCOL_ORACLES,
@@ -428,6 +442,12 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | EVALUATION_ACTOR_PROTOCOL_ORACLES
         | CARE_ACTOR_PROTOCOL_ORACLES
         | FRONT_DESK_ACTOR_PROTOCOL_ORACLES
+        | CRM_ACTOR_PROTOCOL_ORACLES
+        | BILLING_ACTOR_PROTOCOL_ORACLES
+        | PSP_ACTOR_PROTOCOL_ORACLES
+        | FISCAL_ACTOR_PROTOCOL_ORACLES
+        | INSURANCE_ACTOR_PROTOCOL_ORACLES
+        | ANALYTICS_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
@@ -633,6 +653,14 @@ GUARD_PROBES = {
 # eligibility), rather than being classified solely through a delegated gate.
 # Their native INSERT still has to prove the current actor's refusal.
 OWN_GUARD_PROBES = {
+    "clinic_app.inventory_guard()": GuardProbe(
+        "INSERT INTO clinic_app.inventory_item "
+        "(id, organization_id, clinic_id, created_at, name, unit) "
+        "VALUES (%(id)s, %(organization)s, %(clinic)s, now(), "
+        "'Synthetic inactive actor material', 'each')",
+        "inventory_denied",
+        inactive_denial=("42501", "inventory_denied"),
+    ),
     "clinic_app.reception_guard()": GuardProbe(
         "INSERT INTO clinic_app.scheduling_displaydevice "
         "(id, organization_id, clinic_id, token_hash, active, created_at) "

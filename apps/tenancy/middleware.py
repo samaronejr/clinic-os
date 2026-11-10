@@ -54,6 +54,7 @@ BYPASS_PATHS: Final = frozenset(
     }
 )
 BYPASS_PREFIXES: Final = (
+    "/book/",  # Published clinic projection; booking revalidates patient context.
     "/orders/lab/callback/",  # Per-account raw-body HMAC before stored scope.
     "/comms/webhooks/",  # Per-account raw-body HMAC before stored scope.
     "/waiting-display/",  # Device capability only; staff cookies grant nothing.

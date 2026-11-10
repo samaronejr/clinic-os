@@ -1,0 +1,14 @@
+{% load i18n %}
+{% if psp_payment.payment_code or psp_payment.payment_url %}
+<div class="billing-instructions" data-psp-instructions>
+  <p class="hint">{% trans "Recorded sandbox rehearsal. No real payment or card data is collected." %}</p>
+  {% if psp_payment.payment_code %}
+  <label for="recorded-psp-code">{% trans "Non-payable PIX rehearsal code" %}</label>
+  <textarea id="recorded-psp-code" readonly rows="3">{{ psp_payment.payment_code }}</textarea>
+  {% endif %}
+  {% if psp_payment.payment_url %}
+  <p><a href="{{ psp_payment.payment_url }}" rel="noreferrer noopener">{% trans "Recorded card link (not payable)" %}</a></p>
+  <p class="hint">{% blocktrans with count=psp_payment.installments %}Installments agreed by the clinic: {{ count }}.{% endblocktrans %}</p>
+  {% endif %}
+</div>
+{% endif %}

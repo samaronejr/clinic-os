@@ -3,8 +3,10 @@
 # floor (--cov-fail-under=90) is unchanged.
 --cov=apps.audit
 --cov=apps.ai
+--cov=apps.analytics
 --cov=apps.billing
 --cov=apps.comms
+--cov=apps.crm
 --cov=apps.consent
 --cov=apps.ehr
 --cov=apps.prescription
@@ -17,7 +19,10 @@
 --cov=apps.retention
 --cov=apps.scheduling
 --cov=apps.scribe
+--cov=apps.subscriptions
 --cov=apps.teleconsult
 --cov=apps.tenancy
 --cov=apps.workflows
 --cov=apps.orders
+--cov=apps.inventory
+--cov=apps.insurance

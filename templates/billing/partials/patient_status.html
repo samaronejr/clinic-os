@@ -1,4 +1,4 @@
-{% load tz clinic_locale %}{% comment %}
+{% load i18n tz clinic_locale %}{% comment %}
 Patient payment state, re-read from stored facts on every refresh.
 
 Nothing here can be paid, retried or created by the patient: the screen reads
@@ -16,9 +16,9 @@ once the database holds the receipt.
   <div class="billing-fact"><dt>Emitida em</dt><dd>{% if view.issued_at %}{{ view.issued_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}</dd></div>
 </dl>
 {% if view.paid %}
-<div class="billing-receipt" data-receipt="{{ view.receipt_reference }}">
+<div class="billing-receipt" data-receipt="{{ view.receipt_reference }}" data-document-kind="receipt">
   <div class="billing-receipt-head">
-    <h3>Seu recibo de ensaio</h3>
+    <h3>{% trans "Receipt (not a tax invoice)" %}</h3>
     <span class="badge badge--muted">ensaio sintético · nenhum pagamento real</span>
   </div>
   <p class="billing-receipt-disclosure" data-synthetic-receipt><strong>Recibo sintético, sem valor de comprovante.</strong> Nenhum dinheiro foi cobrado nem transferido: o código PIX deste ensaio não é pagável.</p>
@@ -28,6 +28,8 @@ once the database holds the receipt.
 </div>
 {% elif view.instructions %}
   {% include "billing/partials/instructions.html" with instructions=view.instructions patient=True %}
+{% elif psp_payment %}
+  {% include "billing/partials/psp_instructions.html" %}
 {% endif %}
 <p class="feedback feedback--error billing-offline" role="alert" data-offline hidden>Não foi possível atualizar o estado agora. O que está na tela pode estar desatualizado; nada foi pago por causa disso.</p>
 <div class="actions billing-refresh">

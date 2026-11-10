@@ -25,6 +25,7 @@ from identity import legacy_teleconsult_boundaries as teleconsult
 from identity import legacy_view_boundaries as views
 from identity.cut1_authority_census import run_cut1_census
 from identity.guard_classification import Candidate, assert_staff_coverage
+from identity.legacy_analytics_boundaries import BOUNDARIES as ANALYTICS_BOUNDARIES
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
 from identity.legacy_comms_boundaries import BOUNDARIES as COMMS_BOUNDARIES
 from identity.legacy_comms_boundaries import seed_comms
@@ -61,6 +62,7 @@ __all__ = ("agent_password", "reset_db_clock")
 # (nonstaff_differential_census requests agent_password).
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
 CORE = (
+    *ANALYTICS_BOUNDARIES,
     *IDENTITY_BOUNDARIES,
     *CLINICAL_BOUNDARIES,
     *PREDICATE_BOUNDARIES,

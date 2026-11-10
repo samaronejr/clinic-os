@@ -267,10 +267,26 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "finance",
         gettext_noop("Finance"),
-        "billing:charges",
-        ("charge.read",),
-        route_roles=MANAGER_ROUTE,
-        views=frozenset({"billing:charges", "billing:invoice"}),
+        "billing:finance",
+        (
+            "charge.collect",
+            "settlement.post",
+            "refund.request",
+            "payout.request",
+            "finance.policy",
+        ),
+        route_roles=None,
+        views=frozenset({"billing:finance", "billing:journal-export"}),
+        entries=(
+            Destination(
+                "charges",
+                gettext_noop("Charges"),
+                "billing:charges",
+                ("charge.read",),
+                route_roles=MANAGER_ROUTE | {_ROLE.FINANCE, _ROLE.SCHEDULER},
+                views=frozenset({"billing:charges", "billing:invoice"}),
+            ),
+        ),
     ),
     Destination(
         "operations",
@@ -341,8 +357,18 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "reports",
         gettext_noop("Reports"),
-        None,
-        ("charge.read", "configuration.clinic", "configuration.organization"),
+        "analytics:reports",
+        ("configuration.clinic", "configuration.organization"),
+        route_roles=frozenset(
+            {
+                _ROLE.OWNER,
+                _ROLE.ORG_ADMIN,
+                _ROLE.CLINIC_ADMIN,
+                _ROLE.CLINIC_MANAGER,
+                _ROLE.FINANCE,
+            }
+        ),
+        views=frozenset({"analytics:reports"}),
         owner_todo=63,
     ),
     Destination(
@@ -479,6 +505,9 @@ def allows(
     if destination.url_name is None:
         return False
     if destination.route_roles is not None and not roles & destination.route_roles:
+        return False
+    # Reporting requires charge.read AND one of the configuration permissions.
+    if destination.key == "reports" and "charge.read" not in granted:
         return False
     return not destination.permission or bool(
         granted.intersection(destination.permission)

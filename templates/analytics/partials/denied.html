@@ -1,0 +1,6 @@
+{% load i18n %}
+<section class="reports-shell" id="reports-content" aria-labelledby="reports-denied-title" data-reports data-report-state="denied">
+  <h1 id="reports-denied-title" tabindex="-1" data-focus-error>{% trans "Access unavailable" %}</h1>
+  <p role="alert">{% trans "Sign in with an authorized clinic account. If the problem continues, contact the clinic administrator." %}</p>
+  <a class="button" href="/auth/login/">{% trans "Sign in" %}</a>
+</section>

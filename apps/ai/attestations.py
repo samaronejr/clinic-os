@@ -14,6 +14,7 @@ from apps.ai.action_contracts import ActionRefusedError, Refusal
 from apps.ai.action_payload import JSON, digest_text
 from apps.core.secrets import secret_store
 from apps.identity.current_context import current_actor_id
+from apps.identity.session_inventory import session_hash
 from apps.identity.stepup import STEP_UP_SESSION_KEY, assert_step_up
 
 if TYPE_CHECKING:
@@ -49,6 +50,9 @@ class StepUpEvidence:
     digest: str
     verified_at: int
     signature: str
+    # SHA-256 of the session key, never attested or stored: PostgreSQL rechecks
+    # that this exact session carries the persisted fresh verification.
+    session: bytes = b""
 
     def value(self) -> dict[str, JSON]:
         """Return the exact material authenticated by the server."""
@@ -75,6 +79,7 @@ def step_up_evidence(
         raise ActionRefusedError(Refusal.AUTHORITY)
     digest_text(digest)
     verified_at = request.session[STEP_UP_SESSION_KEY]
+    key = request.session.session_key
     evidence = StepUpEvidence(uuid4(), clinic_id, user, digest, verified_at, "")
     return StepUpEvidence(
         evidence.evidence_id,
@@ -83,4 +88,5 @@ def step_up_evidence(
         digest,
         verified_at,
         attest(purpose="clinic-agent-step-up-v1", value=evidence.value()),
+        b"" if key is None else session_hash(key),
     )

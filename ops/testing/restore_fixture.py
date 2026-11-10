@@ -59,8 +59,14 @@ class _Device(Protocol):
     persistent_id: str
 
 
+class _DeviceQuery(Protocol):
+    def order_by(self, *fields: str) -> _DeviceQuery: ...
+    def first(self) -> _Device | None: ...
+
+
 class _DeviceManager(Protocol):
-    def create(self, **values: object) -> _Device: ...
+    def filter(self, **values: object) -> _DeviceQuery: ...
+    def get(self, **values: object) -> _Device: ...
 
 
 class _DeviceModel(Protocol):
@@ -132,22 +138,42 @@ def bootstrap(password: str) -> None:
     action(request, password)
 
 
-def create_totp() -> None:
-    """Create one confirmed source-only TOTP row through its app-role RLS policy."""
-    module = import_module("django_otp.plugins.otp_totp.models")
-    device: _DeviceModel = module.TOTPDevice
-    with transaction.atomic():
-        with connection.cursor() as cursor:
-            cursor.execute("SET LOCAL app.current_user_id = %s", [str(OWNER_ID)])
-        device.objects.create(
-            user_id=OWNER_ID,
-            name="synthetic-recovery-device",
-            confirmed=True,
+def _enrol_totp(user_id: UUID) -> int:
+    """Enrol and confirm one authenticator through the identity 0050 boundary.
+
+    The resolver creates the pending device and holds its secret; a code from
+    the returned provisioning secret then confirms it exactly as a user's first
+    verification does, so the fixture never writes verification state itself.
+    Runs inside the caller's runtime-role transaction.
+    """
+    from apps.identity.otp import start_enrollment, verify_totp_code
+    from django_otp.oath import TOTP
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+            [str(user_id)],
         )
+    started = start_enrollment(user_id)
+    if started is None:
+        message = "TOTP enrollment was refused at its boundary"
+        raise RuntimeError(message)
+    device, secret = started
+    token = TOTP(bytes.fromhex(secret), 30, 0, 6, 0).token()
+    if verify_totp_code(device.pk, f"{token:06d}") != 1:
+        message = "TOTP enrollment was not confirmed at its boundary"
+        raise RuntimeError(message)
+    return int(device.pk)
+
+
+def create_totp() -> None:
+    """Enrol one confirmed source-only authenticator through its TOTP boundary."""
+    with _runtime_role(), transaction.atomic():
+        _enrol_totp(OWNER_ID)
 
 
 def _totp_device(user_id: UUID) -> _Device:
-    """Create one confirmed TOTP device for step-up-bound operations."""
+    """Return the user's confirmed authenticator, enrolling it once if absent."""
     module = import_module("django_otp.plugins.otp_totp.models")
     device: _DeviceModel = module.TOTPDevice
     with _runtime_role(), transaction.atomic():
@@ -156,11 +182,14 @@ def _totp_device(user_id: UUID) -> _Device:
                 "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
                 [str(user_id)],
             )
-        return device.objects.create(
-            user_id=user_id,
-            name="synthetic-recovery-physician",
-            confirmed=True,
+        existing = (
+            device.objects.filter(user_id=user_id, confirmed=True)
+            .order_by("pk")
+            .first()
         )
+        if existing is not None:
+            return existing
+        return device.objects.get(pk=_enrol_totp(user_id))
 
 
 def _verified_request(user_id: UUID) -> HttpRequest:

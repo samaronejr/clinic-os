@@ -10,6 +10,7 @@ from uuid import UUID
 from django.utils import timezone
 
 from apps.audit.canonical import AuditEventInput
+from apps.insurance.audit_catalog import EVENTS as INSURANCE_EVENTS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -46,6 +47,42 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "subscriptions.subscription.changed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "subscriptions.subscription", "changed"
+        ),
+        **{
+            f"crm.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"crm.{kind}", verb
+            )
+            for kind, verbs in {
+                "source": ("created",),
+                "lead": ("created", "converted", "redacted"),
+                "campaign": ("created", "approved", "sending", "sent"),
+                "send": ("queued",),
+                "profile": ("published",),
+                "preference": ("recorded",),
+                "survey": ("recorded",),
+            }.items()
+            for verb in verbs
+        },
+        **{
+            f"billing.fiscal.{status}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.fiscal_document", status
+            )
+            for status in ("draft", "submitted", "authorized", "rejected", "cancelled")
+        },
+        **{
+            f"analytics.{kind}.{action}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"analytics.{kind}", action
+            )
+            for kind, action in (
+                ("definition", "registered"),
+                ("read_model", "refreshed"),
+                ("report", "saved"),
+                ("analyst", "accepted"),
+                ("analyst", "rejected"),
+            )
+        },
         **{
             f"ai.evaluation.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "ai.evaluation", state
@@ -116,6 +153,128 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         ),
         "prescription.draft.renewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.draft", "renewed"
+        ),
+        "inventory.receive": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "receive"
+        ),
+        "inventory.use": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "use"
+        ),
+        "inventory.return_stock": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "return_stock"
+        ),
+        "inventory.write_off": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "write_off"
+        ),
+        "inventory.transfer": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "transfer"
+        ),
+        "inventory.create_purchase_request": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_purchase_request"
+        ),
+        "inventory.propose_replenishment": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "propose_replenishment"
+        ),
+        "inventory.approve_purchase": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "approve_purchase"
+        ),
+        "inventory.receive_purchase": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "receive_purchase"
+        ),
+        "inventory.approve_budget": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "approve_budget"
+        ),
+        "inventory.register_equipment": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "register_equipment"
+        ),
+        "inventory.record_calibration": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "record_calibration"
+        ),
+        "inventory.record_maintenance": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "record_maintenance"
+        ),
+        "inventory.create_item": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_item"
+        ),
+        "inventory.create_batch": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_batch"
+        ),
+        "inventory.create_location": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_location"
+        ),
+        "inventory.create_supplier": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "create_supplier"
+        ),
+        "inventory.set_minimum_stock": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "inventory.record", "set_minimum_stock"
+        ),
+        **{
+            f"billing.psp.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.psp", verb
+            )
+            for verb in ("policy", "prepared", "evidence", "applied")
+        },
+        **{
+            f"insurance.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"insurance.{kind}", verb
+            )
+            for kind, verbs in INSURANCE_EVENTS.items()
+            for verb in verbs
+        },
+        "billing.book.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "created"
+        ),
+        "billing.rule.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.practitioner_rule", "created"
+        ),
+        "billing.terms.prepared": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.invoice_terms", "prepared"
+        ),
+        "billing.journal.posted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_entry", "posted"
+        ),
+        "billing.service.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_entry", "service_completed"
+        ),
+        "billing.allocation.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.settlement_allocation", "created"
+        ),
+        **{
+            f"billing.settlement.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.journal_settlement", state
+            )
+            for state in ("observed", "verified", "posted", "quarantined")
+        },
+        **{
+            f"billing.refund.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.refund", state
+            )
+            for state in (
+                "requested",
+                "approved",
+                "sending",
+                "confirmed",
+                "rejected",
+                "unknown",
+            )
+        },
+        **{
+            f"billing.payout.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.payout", state
+            )
+            for state in ("requested", "approved", "sending", "confirmed", "unknown")
+        },
+        **{
+            f"billing.cash.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "billing.cash_session", state
+            )
+            for state in ("opened", "closed", "reopened")
+        },
+        "billing.journal.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "viewed"
+        ),
+        "billing.journal.exported": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "billing.journal_book", "exported"
         ),
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"

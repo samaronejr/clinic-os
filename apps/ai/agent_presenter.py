@@ -36,6 +36,8 @@ EFFECT_LABELS: Final = {
     "workflows.review_task": gettext_noop("Create an operational review checklist"),
     "comms.synthetic_reminder": gettext_noop("Simulate one logistics reminder"),
     "care_action.create": gettext_noop("Add an administrative action to a care plan"),
+    "appeal.draft": gettext_noop("Create an administrative appeal draft"),
+    "discrepancy.explain": gettext_noop("Record review of a source-backed discrepancy"),
 }
 
 

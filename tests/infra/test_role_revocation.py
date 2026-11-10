@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -15,7 +14,6 @@ from apps.scheduling.timezones import parse_local_minute
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 from django.utils import timezone
-from django_otp.oath import TOTP
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from database_urls import database_url_for_name
@@ -25,6 +23,7 @@ from otp_test_support import (
     current_user_guc,
     get_totp_device,
     runtime_role,
+    totp_generator,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -73,14 +72,7 @@ def _owner_setup() -> OwnerSetup:
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     return OwnerSetup(
         organization_id=organization_id,
         clinic_id=clinic_id,
@@ -136,14 +128,7 @@ def test_revoke_staff_role_refuses_to_remove_the_final_active_owner() -> None:
 def _current_token(device_id: int, owner_id: UUID) -> tuple[str, int, str]:
     with runtime_role(), current_user_guc(owner_id):
         device = TOTPDevice.objects.get(pk=device_id)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     return (
         f"{generator.token():0{device.digits}d}",
         generator.t(),

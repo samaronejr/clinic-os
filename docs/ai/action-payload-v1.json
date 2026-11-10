@@ -22,7 +22,7 @@
     "operation": {
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
       "properties": {
-        "name": {"enum": ["comms.synthetic_reminder", "workflows.review_task"]},
+        "name": {"enum": ["comms.synthetic_reminder", "workflows.review_task", "care_action.create", "appeal.draft", "discrepancy.explain"]},
         "version": {"const": 1}
       }
     },
@@ -30,7 +30,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["kind", "id", "expected_state", "revision"],
       "properties": {
-        "kind": {"enum": ["workflow_definition", "ai_artifact"]},
+        "kind": {"enum": ["workflow_definition", "ai_artifact", "care_plan"]},
         "id": {"$ref": "#/$defs/uuid"},
         "expected_state": {"type": "string", "minLength": 1, "maxLength": 24},
         "revision": {"$ref": "#/$defs/version"}
@@ -42,7 +42,7 @@
         "type": "object", "additionalProperties": false,
         "required": ["kind", "id", "version", "revision", "content_sha256"],
         "properties": {
-          "kind": {"enum": ["workflow_definition", "ai_artifact"]},
+          "kind": {"enum": ["workflow_definition", "ai_artifact", "care_plan", "care_proposal"]},
           "id": {"$ref": "#/$defs/uuid"}, "version": {"$ref": "#/$defs/version"},
           "revision": {"$ref": "#/$defs/version"},
           "content_sha256": {"$ref": "#/$defs/sha256"}
@@ -139,11 +139,37 @@
       "then": {"properties": {"parameters": {
         "type": "object", "additionalProperties": false, "required": ["template"],
         "properties": {"template": {"const": "logistics-v1"}}
-      }}},
-      "else": {"properties": {"parameters": {
+      }}}
+    },
+    {
+      "if": {"properties": {"operation": {"properties": {"name": {"const": "workflows.review_task"}}}}},
+      "then": {"properties": {"parameters": {
         "type": "object", "additionalProperties": false, "required": ["due_at"],
         "properties": {"due_at": {"$ref": "#/$defs/instant"}}
       }}}
+    },
+    {
+      "if": {"properties": {"operation": {"properties": {"name": {"const": "care_action.create"}}}}},
+      "then": {"properties": {"parameters": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "window_start", "window_end"],
+        "properties": {
+          "kind": {"enum": ["return_window", "staff_coordination"]},
+          "window_start": {"$ref": "#/$defs/instant"},
+          "window_end": {"$ref": "#/$defs/instant"}
+        }
+      }}}
+    },
+    {
+      "if": {"properties": {"operation": {"properties": {"name": {"enum": ["appeal.draft", "discrepancy.explain"]}}}}},
+      "then": {"properties": {
+        "parameters": {
+          "type": "object", "additionalProperties": false, "required": ["position"],
+          "properties": {"position": {"type": "integer", "minimum": 0, "maximum": 191}}
+        },
+        "patient_id": {"type": "null"},
+        "approval_policy": {"properties": {"autonomy": {"const": "A1"}, "quorum": {"const": 1}}}
+      }}
     }
   ],
   "$defs": {

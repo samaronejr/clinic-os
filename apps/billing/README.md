@@ -164,3 +164,209 @@ vocabulary or transport detail. The QR is rendered from the stored bytes and the
 copy text is selectable without JavaScript; the clipboard button appears only
 when the browser can write to the clipboard. Both carry the synthetic rehearsal
 badge, because the code is explicitly not payable.
+
+## Task 57: recorded sandbox PSP and statements
+
+`PaymentProvider` adds charge creation, authoritative lookup by the original
+idempotency key, refund, payout, statement fetch and raw-byte authentication.
+Only `RecordedPaymentProvider` is registered. It makes no network calls, collects
+no card/bank/patient data, and produces `SYNTHETIC-NOT-PAYABLE` dynamic PIX text
+or a `payments.invalid` card link. Its recorded fixtures are local rehearsals,
+not recordings obtained from a real PSP or proof that a real sandbox passed.
+
+Every external sandbox/production/provider leg remains
+**BLOCKED-ON-EG-1/EG-5**, and `PspCapability.real_enabled` is always `False`.
+`BILLING_SYNTHETIC_PSP` defaults off. An explicit opt-in also requires the
+current provider lifecycle version to be an approved `sandbox`, with provider
+`recorded-psp-v1`, environment `sandbox`, and account `fixture`. The logical
+`psp_pix` key uses the registry's existing canonical `pix` alias; cards use
+`psp_card`. This code never creates approvals, advances a gate or selects a real
+provider. Replacing or revoking that version blocks new effects. Lookup-only
+recovery and local journal application retain the intent's approved sandbox
+version after replacement; revocation still closes that version.
+
+`set_psp_policy` appends an authorized clinic installment policy (1-12).
+`prepare_psp_charge` freezes issued patient net terms and its policy/version;
+PIX has one installment. One target has one immutable `PspIntent` and provider
+key. Creating instructions never marks an invoice paid. Approved refund/payout
+reservations use `prepare_psp_outgoing`, which requires current Finance authority
+and genuine fresh step-up. The worker revalidates the exact dispatch session
+before sending, not merely the historical approval.
+
+Preparation and the shared action outbox commit together. The first send looks
+up the original provider key before any mutation. Timeout or worker death leaves
+the same outbox row in progress; `AmbiguousSendError` never resets it to pending.
+The registered recovery adapter performs lookup only, without consuming send
+attempts or minting another key. A not-found/unknown recovery remains held; it
+does not infer that an effect failed and resend. The required real broker/PG
+variant has a durable fixture remote effect immediately before SIGKILL.
+
+`receive_psp_event` authenticates exact raw bytes before resolving the unique
+stored provider/reference binding. Tenant claims are never read. Independent
+authoritative amount, currency, status and version must match. Replays converge;
+contradictions are quarantined, and stale versions cannot regress newer facts.
+`reconcile_psp_intent` recovers a missing callback by the same key.
+`reconcile_psp_statement` fetches outside transactions and matches reference,
+gross integer centavos, currency, kind and separate fees. Foreign/unmatched
+references are reported, not attributed to a guessed tenant. The retained
+evidence includes the actual mismatching statement amount. Quarantined statement
+observations cannot supersede independently verified status facts.
+
+Callbacks retain immutable evidence; they do not approve outgoing money.
+`apply_psp_evidence` requires current exact-clinic Finance permission and uses
+the existing journal services. Gross collection posts to PSP clearing, net
+collection earns repasse before PSP fees, and an independent matched statement
+releases clearing to bank with a separate fee expense. Outgoing confirmation
+requires fresh step-up and preserves the original refund/payout reservation.
+Unknown outcomes can be recorded without releasing that reservation.
+Replaying a fact cannot create a second collection, receipt, refund or fee.
+
+`PspReceipt` is created only after a verified collection is posted and exactly
+allocated. Existing legacy Settlement/Receipt one-to-one contracts remain intact.
+Patient/delegate projections revalidate released-invoice billing authority and
+show stored non-payable instructions or the sealed synthetic receipt. Encrypted
+codes/links, FORCE RLS, immutable guards, exact resolver ACLs and recovery
+classification cover every new table. No payloads or credentials enter outbox,
+audit, error text or evidence.
+Binding and evidence inserts require the stored intent actor; financial read
+authority alone cannot manufacture proof for another actor's request.
+
+## Task 56: operational journal
+
+The binding economic policy is
+[`completion-net-v1`](../../docs/accounting/operational-journal-policy.md).
+Its missing-U1 provenance is explicit: root chose service-completion accrual
+and net verified-collection repasse on best judgment after the owner question
+timed out. This is **not explicit owner approval** or a reconstruction of U1.
+
+`JournalBook` is clinic/legal-entity scoped. Its immutable minimum chart,
+`JournalEntry` and `JournalLine` retain positive bigint centavos and a side.
+`post_entry(*, book_id, source_fact, lines)` seals once per economic fact.
+Changed-content retries conflict; PostgreSQL defers balance to COMMIT.
+Posted facts cannot be edited, deleted or truncated; corrections link reversals.
+Clinic Ops' own SaaS revenue never enters these books.
+
+Service completion recognizes gross revenue against patient/insurer A/R,
+with explicit discounts and payer adjustments reducing net receivables.
+Issuing a charge does not recognize revenue. Prepayments remain advances and
+are applied at completion. `InvoiceTerms` freezes payer, reductions and the
+exact optional practitioner rule before collection. Without a specified
+contract, no practitioner fee is guessed. Completion joins the clinician's
+appointment transition atomically; Finance can separately attest external
+completion evidence for a service without an appointment.
+
+`JournalSettlement` retains observed -> verified -> posted or quarantined
+money facts. A synthetic adapter success is never verification.
+`SettlementAllocation` adds partial/installment/deposit many-to-many edges.
+The original `Settlement.invoice`, `Receipt.invoice` and `Receipt.settlement`
+remain one-to-one; the migration never rewrites historic rows.
+New independently confirmed manual settlements bridge additively when a book
+exists. Historical rows are not silently imported. The exact `create_invoice`
+signature remains unchanged, and the current Finance permission bundle can
+use the same exact-clinic charge boundary.
+
+Repasse accrues on allocated verified **net collection**, before PSP/card fees.
+Rules are immutable percent/basis-point or fixed-per-service versions.
+Cumulative half-even rounding prevents splitting gains; largest remainder
+conserves every allocated cent. The clinic separately expenses PSP fees.
+Confirmed refunds/chargebacks reverse entitlement proportionally through
+linked entries; an already paid practitioner can have a visible clawback
+balance, never an automatic bank debit.
+
+Refunds reserve capacity at request. Payout requests reserve only earned
+unreserved practitioner debt; approval moves it into transit. Unknown outcomes
+retain reservations. Exact-clinic Finance permissions plus genuine persisted
+fresh session verification approve both; legacy manager/owner equivalence
+does not approve outgoing money. Dispatch revalidates the executor's current
+Finance authority and fresh persisted proof; the original approval remains
+historical evidence. Authorized Finance can still record separately evidenced
+outcomes after dispatch if an original approver was offboarded.
+
+`CashSession` counts must match posted petty cash. `CashSessionEvent` preserves
+each count/reopening and command identity. Unknown outcomes, unexplained
+receipts, unresolved settlement verification and suspense prevent close.
+Reopening requires fresh step-up, the reviewed revision and a closed reason.
+The policy owner records evidenced opening balances explicitly; closing never
+creates a balancing plug.
+
+The Finance screen supplies native POST commands and an HTMX read refresh,
+receivables, collections, exceptions, outgoing reservations, cash history,
+PSP-fee recording, frozen rules/terms and scoped CSV/custom OFX-like XML
+exports. Recent tables are bounded; exports cover their full chosen period.
+Operational financial rows exclude clinician-only and patient identities.
+Audit events contain only registered metadata keys. Presentation uses English
+msgids and the pt-BR catalog; selectors remain in POST bodies.
+
+PostgreSQL applies the RP charges/settlements view cell itself. Every journal
+record row, from accounts and entries to cash events, and the practitioner
+choices need charge.read together with a Finance command in the exact clinic.
+The book row needs only the command, so a role whose clinic narrowed
+charge.read still resolves its book and is shown the permission denial;
+clinician-only roles see no book. Seeding the chart takes the book lock, so
+opening the book needs charge.read like every other Finance command.
+
+Sending/outcome operations are **local synthetic rehearsals only**.
+PSP, sandbox and live-money legs remain **BLOCKED-ON-EG**. No provider call,
+credentials, activation flag, fiscal tax classification or SaaS book is added.
+Migration rollback after posting is restore, never deletion of financial history.
+
+## Task 58: fiscal documents are not receipts
+
+`FiscalDocument` is separate from `Receipt`, settlement and journal posting.
+Payment never authorizes an NFS-e and fiscal authorization never settles a
+charge. Receipt headings say **Recibo (não é nota fiscal)**. Finance shows a
+separate **NFS-e** history; synthetic authorization remains visibly a rehearsal
+without fiscal validity. No patient identifiers or fiscal payloads enter HTML.
+
+`FiscalConfiguration` is an immutable, owner-written capture of an external
+review for one clinic/book/legal entity: encrypted legal-entity identifiers,
+municipality, service code, tax regime, explicit IBS/CBS applicability and
+encrypted tax groups, opaque reviewer evidence, review kind/date/expiry, and
+the reviewer-supplied cancellation window. The runtime has SELECT only.
+No service here creates an EG-9 approval or chooses a tax classification,
+rate, applicability decision or municipal deadline. An `eg9` reference must
+come from the accountable external fiscal/accounting reviewer. Test-only
+reviews use `synthetic_fixture`, never `eg9`; changing terms requires a new
+configuration record.
+
+`apps.billing.fiscal` services require exact-clinic Finance authority
+(`settlement.post`), not legacy manager/owner equivalence. Unknown and foreign
+selectors have identical denials. Creation binds the immutable review and the
+issued invoice; command receipts make retries content-bound. PostgreSQL owns
+the transitions `draft -> submitted -> authorized/rejected`, and cancellation
+of a draft or an authorized document before its recorded deadline. Timeout or
+an invalid response leaves `submitted`; replay queries the original DPS
+instead of submitting a second one. The database writes immutable transition
+receipts and prohibits deletion/truncation. Every transition appends registered
+metadata-only audit. XML, PDF and cancellation bytes are envelope encrypted;
+their opaque references select those bytes on the same row, not public URLs.
+
+`FiscalProvider` has national and aggregator implementations. The national
+boundary encodes exact DPS/event bytes as gzip/base64, follows DPS lookup to
+the access key, correlates responses and bounds XML inflation. Aggregator
+methods define an internal interface only; no aggregator has been selected.
+Raw provider descriptions are discarded; bounded rejection codes accompany
+fixed pt-BR recovery copy. No XML signing, XSD acceptance, signature validation
+or homologation is claimed by the synthetic fixtures.
+
+Only local deterministic adapters run, with `CLINIC_DATA_MODE=synthetic` and
+explicit `BILLING_SYNTHETIC_NFSE=True` (absent/default: off). Their unsigned
+XML says `SYNTHETIC-NOT-FISCAL`; no provider request, money movement or receipt
+creation occurs. Live submission checks an unexpired `eg9` review and the
+`nfse` lifecycle gate, then still refuses **BLOCKED-ON-EG**. Both adapters keep
+`real_enabled=False`. Production/sandbox transports, certificates, reviewed
+signed DPS/events, municipal acceptance and IBS/CBS schema selection remain
+**BLOCKED-ON-EG-1/EG-5/EG-9**. Future real sends must use the after-commit
+outbox/action-operation boundary; they cannot reuse the local fake's tenant
+transaction. Synthetic evidence never satisfies an external gate.
+
+Official documentation rechecked 2026-11-06 keeps production documentation
+separate from restricted testing with IBS/CBS groups. This lane does not guess
+which restricted tax groups apply in production. Sources and their dates are
+retained in task-58 evidence. Migration `0013_fiscal_documents`
+adds protected fields atomically with their grants inside an irreversible,
+non-atomic migration container; rollback = restore. Foreign keys are installed
+inline on the new empty tables before FORCE RLS, so no existing table's posture
+or grants change. The fiscal functions receive temporary owner installation
+grants, all revoked before migration commit. Local evidence does not authorize
+provider sandbox, external fiscal review or live issuance.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import threading
-import time
 from uuid import uuid4
 
 import psycopg
@@ -13,7 +12,6 @@ from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.scheduling.locks import clinic_lock_key
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
-from django_otp.oath import TOTP
 
 from database_urls import database_url_for_name
 from infra.management_command_support import (
@@ -22,7 +20,7 @@ from infra.management_command_support import (
     run_management_command,
     wait_for_totp_commit,
 )
-from otp_test_support import create_totp_device, get_totp_device
+from otp_test_support import create_totp_device, get_totp_device, totp_generator
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -67,14 +65,7 @@ def test_valid_token_commits_before_a_later_domain_failure() -> None:
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(owner_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     password = generated_password()
     target_id = uuid4()
@@ -167,14 +158,7 @@ def test_post_lock_reauthorization_rejects_an_owner_revoked_after_totp() -> None
             role=UserClinicRole.Role.OWNER,
         )
     device = create_totp_device(operator_id, confirmed=True)
-    generator = TOTP(
-        device.bin_key,
-        device.step,
-        device.t0,
-        device.digits,
-        device.drift,
-    )
-    generator.time = time.time()
+    generator = totp_generator(device)
     token = f"{generator.token():0{device.digits}d}"
     password = generated_password()
     target_id = uuid4()

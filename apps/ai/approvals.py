@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Final
 
 from django.db import connection, connections, transaction
@@ -69,14 +70,38 @@ def approval_value(approval: Approval) -> dict[str, JSON]:
     }
 
 
+def _declared_quorum(proposal: ActionProposal, data: dict[str, JSON]) -> int:
+    """PostgreSQL enforces the declared quorum; it must be the payload's own."""
+    terms = closed(
+        data["approval_policy"], {"policy_id", "version", "quorum", "autonomy"}
+    )
+    quorum = integer(terms["quorum"], minimum=0, maximum=2)
+    if proposal.quorum != quorum:
+        raise ActionRefusedError(Refusal.QUORUM)
+    return quorum
+
+
+def _listed_snapshot(data: dict[str, JSON], actor: UUID) -> dict[str, JSON]:
+    """Return the one authority snapshot the payload lists for this approver."""
+    snapshots = data["approver_authority_snapshots"]
+    if not isinstance(snapshots, list):
+        raise ActionRefusedError(Refusal.QUORUM)
+    candidates = [
+        item
+        for item in snapshots
+        if isinstance(item, dict) and item["user_id"] == str(actor)
+    ]
+    if len(candidates) != 1:
+        raise ActionRefusedError(Refusal.AUTHORITY)
+    return candidates[0]
+
+
 def verify_approvals(
     *, proposal: ActionProposal, payload: ActionPayload, using: str
 ) -> None:
     """Verify distinct votes, current authority and every attested binding."""
     data = payload.data()
-    terms = closed(
-        data["approval_policy"], {"policy_id", "version", "quorum", "autonomy"}
-    )
+    quorum = _declared_quorum(proposal, data)
     expected = data["approver_authority_snapshots"]
     if not isinstance(expected, list):
         raise ActionRefusedError(Refusal.QUORUM)
@@ -99,7 +124,7 @@ def verify_approvals(
             allowed = cursor.fetchone() == (True,)
         if not allowed:
             raise ActionRefusedError(Refusal.AUTHORITY)
-    if len(votes) < integer(terms["quorum"], minimum=0, maximum=2):
+    if len(votes) < quorum:
         raise ActionRefusedError(Refusal.QUORUM)
     if using == "default" and not any(
         vote.approver_id == current_actor_id() for vote in votes
@@ -137,22 +162,13 @@ def approve_action(
         raise ActionRefusedError(Refusal.DIGEST)
     if proposal.state not in ("validated", "approved"):
         raise ActionRefusedError(Refusal.STATE)
+    data = payload.data()
+    quorum = _declared_quorum(proposal, data)
     _verify_evidence(evidence, clinic_id=clinic_id, actor=actor, digest=expected_digest)
     validate_current(
         payload=payload, policy=proposal.run.policy, proposal_id=proposal.pk
     )
-    data = payload.data()
-    snapshots = data["approver_authority_snapshots"]
-    if not isinstance(snapshots, list):
-        raise ActionRefusedError(Refusal.QUORUM)
-    candidates = [
-        item
-        for item in snapshots
-        if isinstance(item, dict) and item["user_id"] == str(actor)
-    ]
-    if len(candidates) != 1:
-        raise ActionRefusedError(Refusal.AUTHORITY)
-    snapshot = candidates[0]
+    snapshot = _listed_snapshot(data, actor)
     permission = snapshot["permission"]
     if not isinstance(permission, str):
         raise ActionRefusedError(Refusal.AUTHORITY)
@@ -180,18 +196,38 @@ def approve_action(
     approval.attestation = attest(
         purpose="clinic-agent-approval-v1", value=approval_value(approval)
     )
-    approval.save()
+    with connection.cursor() as cursor:
+        # Runtime cannot insert votes: the only writer rechecks this session's
+        # persisted verification in PostgreSQL and records its instant.
+        cursor.execute(
+            "SELECT clinic_app.agent_record_approval("
+            "%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s)",
+            [
+                proposal.pk,
+                approval.pk,
+                approval.digest,
+                json.dumps(approval.authority_snapshot),
+                approval.step_up_evidence_ref,
+                json.dumps(approval.step_up_evidence),
+                approval.attestation,
+                evidence.session,
+            ],
+        )
+        if cursor.fetchone() != (True,):
+            raise ActionRefusedError(Refusal.ATTESTATION)
+        # The PostgreSQL guard's rule for approval: enough votes, all current.
+        cursor.execute(
+            "SELECT count(*)>=%s AND bool_and("
+            "clinic_app.agent_approval_current(proposal_id,id)) "
+            "FROM clinic_app.ai_approval WHERE proposal_id=%s",
+            [quorum, proposal.pk],
+        )
+        quorum_met = cursor.fetchone() == (True,)
+    approval = Approval.objects.get(pk=approval.pk)
     record_phase1_event(
         "ai.approval.recorded", clinic_id=clinic_id, affected_record_id=approval.pk
     )
-    policy = closed(
-        data["approval_policy"], {"policy_id", "version", "quorum", "autonomy"}
-    )
-    if (
-        Approval.objects.filter(proposal=proposal).count()
-        >= integer(policy["quorum"], minimum=0, maximum=2)
-        and proposal.state == "validated"
-    ):
+    if quorum_met and proposal.state == "validated":
         transition(proposal, "approved")
     return approval
 

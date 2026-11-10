@@ -3,13 +3,37 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
-from apps.ai import care_coordination, front_desk, front_desk_kb, front_desk_staff
+from apps.ai import (
+    care_coordination,
+    front_desk,
+    front_desk_kb,
+    front_desk_staff,
+    revenue_cycle,
+    revenue_sources,
+)
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
 from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
+from apps.analytics import analyst as analytics_analyst
+from apps.analytics import services as analytics_services
+from apps.billing import fiscal
+from apps.billing.journal import post_entry
+from apps.billing.psp_gate import require_psp_sandbox
+from apps.billing.psp_posting import apply_psp_evidence
+from apps.billing.psp_presentation import patient_psp_payment
+from apps.billing.psp_reconciliation import (
+    receive_psp_event,
+    reconcile_psp_intent,
+    reconcile_psp_statement,
+)
+from apps.billing.psp_services import (
+    prepare_psp_charge,
+    prepare_psp_outgoing,
+    set_psp_policy,
+)
 from apps.billing.services import create_invoice
 from apps.comms import inbox_services, portal_messages, suggestions
 from apps.comms.services import reminder_send_eligible
@@ -19,6 +43,9 @@ from apps.core.integration import (
     OperationRequest,
     enqueue_operation,
 )
+from apps.crm import campaigns as crm_campaigns
+from apps.crm import patient as crm_patient
+from apps.crm import services as crm_services
 from apps.ehr.services import record_clinical_note
 from apps.identity import (
     delegates,
@@ -29,10 +56,13 @@ from apps.identity import (
     service_principals,
 )
 from apps.identity.current_context import require_permission
+from apps.insurance import services as insurance_services
+from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
+from apps.inventory import services as inventory_services
 from apps.orders import services as order_services
 from apps.orders.patient_results import patient_result_file
 from apps.prescription.services import create_document_draft, issue_prescription
@@ -43,6 +73,7 @@ from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy, release_version
 from apps.scheduling import services as scheduling_services
 from apps.scribe import services as scribe_services
+from apps.subscriptions import services as subscription_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from apps.workflows import release as release_services
@@ -64,13 +95,95 @@ FOUNDATION_APP_NAMES: Final = frozenset(
         "rest_framework",
     }
 )
+
+
+def test_journal_posting_keeps_the_exact_book_and_source_fact_contract() -> None:
+    parameters = signature(post_entry).parameters
+    assert list(parameters) == ["book_id", "source_fact", "lines"]
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (prepare_psp_charge, ["clinic_id", "invoice_id", "method", "installments"]),
+        (prepare_psp_outgoing, ["clinic_id", "kind", "target_id"]),
+        (set_psp_policy, ["clinic_id", "max_installments", "command_id"]),
+        (apply_psp_evidence, ["clinic_id", "evidence_id"]),
+        (
+            require_psp_sandbox,
+            ["clinic_id", "method", "version_id", "lookup_only"],
+        ),
+        (patient_psp_payment, ["invoice_id"]),
+        (receive_psp_event, ["provider", "headers", "body"]),
+        (reconcile_psp_intent, ["intent_id"]),
+        (reconcile_psp_statement, ["intent_id"]),
+    ],
+)
+def test_psp_human_boundaries_derive_authority_from_current_context(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (revenue_cycle.request_revenue_cycle, ["clinic_id", "guide_id"]),
+        (revenue_cycle.collect_revenue_cycle, ["clinic_id", "invocation_id"]),
+        (revenue_cycle.propose_revenue_action, ["clinic_id", "output_id", "position"]),
+        (revenue_cycle.check_revenue_sources, ["clinic_id", "data"]),
+        (revenue_cycle.execute_revenue_draft, ["clinic_id", "payload"]),
+        (revenue_sources.require_finance, ["clinic_id"]),
+        (revenue_sources.retrieve_context, ["clinic_id", "guide_id"]),
+        (revenue_sources.recheck_context, ["clinic_id", "content"]),
+    ],
+)
+def test_revenue_assistant_keeps_explicit_scope_and_no_caller_authority(
+    entrypoint: Callable[..., object],
+    names: list[str],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("service", "names"),
+    [
+        (
+            fiscal.prepare_fiscal_document,
+            ["clinic_id", "invoice_id", "configuration_id", "command_id"],
+        ),
+        (fiscal.submit_fiscal_document, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.submit_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+        (fiscal.cancel_fiscal_rehearsal, ["clinic_id", "document_id", "command_id"]),
+    ],
+)
+def test_fiscal_services_keep_exact_scope_and_command_contract(
+    service: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(service).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+
+
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
+        "apps.analytics.apps.AnalyticsConfig",
         "apps.ai.apps.AiConfig",
         "apps.scribe.apps.ScribeConfig",
+        "apps.subscriptions.apps.SubscriptionsConfig",
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
+        "apps.crm.apps.CrmConfig",
         "apps.consent.apps.ConsentConfig",
         "apps.core.apps.CoreConfig",
         "apps.ehr.apps.EhrConfig",
@@ -86,6 +199,8 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.tenancy.apps.TenancyConfig",
         "apps.workflows.apps.WorkflowsConfig",
         "apps.orders.apps.OrdersConfig",
+        "apps.inventory.apps.InventoryConfig",
+        "apps.insurance.apps.InsuranceConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
@@ -94,8 +209,311 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
 
 
 @pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            inventory_services.receive,
+            ["clinic_id", "batch_id", "location_id", "quantity", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.use,
+            [
+                "clinic_id",
+                "batch_id",
+                "location_id",
+                "quantity",
+                "command_id",
+                "procedure_entry_id",
+            ],
+            {"procedure_entry_id": None},
+        ),
+        (
+            inventory_services.return_stock,
+            ["clinic_id", "use_movement_id", "quantity", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.write_off,
+            [
+                "clinic_id",
+                "batch_id",
+                "location_id",
+                "quantity",
+                "reason",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.transfer,
+            [
+                "clinic_id",
+                "batch_id",
+                "source_location_id",
+                "destination_location_id",
+                "quantity",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.balance,
+            ["clinic_id", "batch_id", "location_id"],
+            {},
+        ),
+        (inventory_services.stock_alerts, ["clinic_id"], {}),
+        (
+            inventory_services.create_purchase_request,
+            [
+                "clinic_id",
+                "item_id",
+                "supplier_id",
+                "quantity",
+                "amount_minor",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.propose_replenishment,
+            [
+                "clinic_id",
+                "budget_id",
+                "item_id",
+                "supplier_id",
+                "quantity",
+                "amount_minor",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.approve_budget,
+            ["clinic_id", "amount_minor", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.approve_purchase,
+            ["clinic_id", "purchase_request_id", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.receive_purchase,
+            [
+                "clinic_id",
+                "purchase_request_id",
+                "batch_id",
+                "location_id",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.register_equipment,
+            [
+                "clinic_id",
+                "supplier_id",
+                "location_id",
+                "name",
+                "serial",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.record_calibration,
+            [
+                "clinic_id",
+                "equipment_id",
+                "performed_on",
+                "due_on",
+                "outcome",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.record_maintenance,
+            [
+                "clinic_id",
+                "equipment_id",
+                "performed_on",
+                "due_on",
+                "outcome",
+                "command_id",
+            ],
+            {},
+        ),
+        (
+            inventory_services.equipment_status,
+            ["clinic_id", "equipment_id"],
+            {},
+        ),
+        (
+            inventory_services.create_item,
+            ["clinic_id", "name", "unit", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_location,
+            ["clinic_id", "name", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_batch,
+            ["clinic_id", "item_id", "lot", "expires_on", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.create_supplier,
+            ["clinic_id", "name", "contact", "command_id"],
+            {},
+        ),
+        (
+            inventory_services.set_minimum_stock,
+            ["clinic_id", "item_id", "location_id", "quantity", "command_id"],
+            {},
+        ),
+    ],
+)
+def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert {
+        name: p.default
+        for name, p in parameters.items()
+        if p.default is not Parameter.empty
+    } == defaults
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            crm_services.create_lead,
+            ["clinic_id", "name", "email", "source_id"],
+            {"source_id": None},
+        ),
+        (
+            crm_campaigns.create_campaign,
+            ["clinic_id", "title", "template_version_id", "targeting"],
+            {"targeting": None},
+        ),
+        (
+            crm_campaigns.approve_campaign,
+            ["clinic_id", "campaign_id", "expected_revision"],
+            {},
+        ),
+        (
+            crm_campaigns.send_campaign,
+            ["clinic_id", "campaign_id", "expected_revision"],
+            {},
+        ),
+        (crm_campaigns.campaign_audience, ["clinic_id", "campaign_id"], {}),
+        (crm_campaigns.refresh_campaign, ["clinic_id", "campaign_id"], {}),
+        (crm_services.create_source, ["clinic_id", "code", "name"], {}),
+        (crm_services.convert_lead, ["clinic_id", "lead_id", "enrollment_id"], {}),
+        (crm_services.redact_expired_leads, ["clinic_id"], {}),
+        (crm_services.conversion_report, ["clinic_id"], {}),
+        (
+            crm_services.publish_booking_profile,
+            ["clinic_id", "code", "description"],
+            {},
+        ),
+        (crm_patient.set_marketing_preference, ["channel", "opted_in"], {}),
+        (crm_patient.record_satisfaction, ["appointment_id", "score"], {}),
+    ],
+)
+def test_crm_entrypoints_are_keyword_only(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+    assert {
+        name: parameter.default
+        for name, parameter in parameters.items()
+        if parameter.default is not Parameter.empty
+    } == defaults
+
+
+def test_crm_marketing_callback_preserves_the_inbox_contract() -> None:
+    parameters = signature(crm_campaigns.marketing_opted_in).parameters
+    assert list(parameters) == ["enrollment_id", "channel"]
+    assert all(
+        parameter.kind is Parameter.POSITIONAL_OR_KEYWORD
+        and parameter.default is Parameter.empty
+        for parameter in parameters.values()
+    )
+
+
+@pytest.mark.parametrize(
     ("entrypoint", "names"),
     [
+        (subscription_services.subscription_snapshot, ["clinic_id"]),
+        (subscription_services.usage_report, ["clinic_id"]),
+        (subscription_services.entitlement_status, ["clinic_id", "meter", "quantity"]),
+        (
+            subscription_services.change_plan,
+            ["clinic_id", "plan_code", "expected_revision", "command_id"],
+        ),
+        (
+            subscription_services.cancel_subscription,
+            ["clinic_id", "expected_revision", "command_id"],
+        ),
+        (
+            subscription_services.receive_synthetic_event,
+            ["clinic_id", "subscription_id", "event_id", "action"],
+        ),
+    ],
+)
+def test_subscription_services_keep_explicit_scope_and_keyword_only_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (analytics_services.authorize, ["clinic_id", "metric_id"]),
+        (analytics_services.definitions, ["clinic_id"]),
+        (analytics_services.query_metric, ["clinic_id", "query"]),
+        (analytics_services.refresh_metric, ["clinic_id", "query", "command_id"]),
+        (analytics_services.drill_down, ["clinic_id", "query"]),
+        (analytics_services.save_report, ["clinic_id", "query"]),
+        (analytics_services.load_report, ["clinic_id", "report_id"]),
+        (
+            analytics_services.require_snapshot,
+            ["clinic_id", "query", "authorization_version"],
+        ),
+        (analytics_analyst.request_analyst, ["clinic_id", "question", "query"]),
+        (analytics_analyst.display_proposal, ["clinic_id", "invocation_id"]),
+        (
+            analytics_analyst.review_proposal,
+            [
+                "clinic_id",
+                "invocation_id",
+                "query_digest",
+                "authorization_version",
+                "decision",
+            ],
+        ),
         (
             evaluation_services.register_protocol,
             [
@@ -614,6 +1032,112 @@ def test_teleconsult_session_requires_exact_clinic_and_encounter() -> None:
     parameters = signature(create_session).parameters
     assert list(parameters) == ["clinic_id", "encounter_id"]
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            record_booking_coverage,
+            ["clinic_id", "appointment"],
+        ),
+        (
+            insurance_services.approve_appeal,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.approve_appeal_assertions,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.create_batch,
+            ["clinic_id", "contract_id", "guide_ids", "command_id"],
+        ),
+        (
+            insurance_services.create_contract,
+            ["clinic_id", "payer_id", "terms", "command_id"],
+        ),
+        (
+            insurance_services.create_payer,
+            ["clinic_id", "ans_registry", "name", "command_id"],
+        ),
+        (
+            insurance_services.create_price_table,
+            ["clinic_id", "contract_id", "version", "prices", "command_id"],
+        ),
+        (
+            insurance_services.draft_appeal,
+            ["clinic_id", "glosa_id", "body", "clinical_assertions", "command_id"],
+        ),
+        (
+            insurance_services.export_submission,
+            ["clinic_id", "submission_id"],
+        ),
+        (
+            insurance_services.import_tuss,
+            ["clinic_id", "component_version", "source_date", "source", "command_id"],
+        ),
+        (
+            insurance_services.ingest_return,
+            ["clinic_id", "batch_id", "xml", "command_id"],
+        ),
+        (
+            insurance_services.prepare_submission,
+            ["clinic_id", "batch_id", "channel", "command_id"],
+        ),
+        (
+            insurance_services.reconcile_payment,
+            ["clinic_id", "guide_id", "settlement_id", "amount_minor", "command_id"],
+        ),
+        (
+            insurance_services.draft_guide,
+            ["clinic_id", "selection", "command_id"],
+        ),
+        (
+            insurance_services.backfill_membership_payers,
+            ["clinic_id"],
+        ),
+        (
+            insurance_services.register_membership,
+            ["clinic_id", "payer_id", "enrollment_id", "terms", "command_id"],
+        ),
+        (
+            insurance_services.request_payer_check,
+            ["clinic_id", "membership_id", "contract_id", "check", "command_id"],
+        ),
+        (
+            insurance_services.resubmit_guide,
+            ["clinic_id", "guide_id", "command_id"],
+        ),
+        (
+            insurance_services.seal_batch,
+            ["clinic_id", "batch_id", "command_id"],
+        ),
+        (
+            insurance_services.submission_outcome,
+            ["clinic_id", "batch_id", "outcome", "command_id"],
+        ),
+        (
+            insurance_services.submit_appeal,
+            ["clinic_id", "appeal_id", "command_id"],
+        ),
+        (
+            insurance_services.validate_batch,
+            ["clinic_id", "batch_id", "command_id"],
+        ),
+        (
+            insurance_services.validate_guide,
+            ["clinic_id", "guide_id", "command_id"],
+        ),
+    ],
+)
+def test_insurance_commands_keep_exact_clinic_scoped_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
 
 
 def test_intake_submission_requires_explicit_response_and_revision() -> None:

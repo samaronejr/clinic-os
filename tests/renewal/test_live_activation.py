@@ -308,6 +308,8 @@ def test_live_preflight_rejects_each_missing_capability(
     [
         ({"TELECONSULT_SYNTHETIC_PROVIDER": "true"}, "synthetic-only"),
         ({"BILLING_SYNTHETIC_PIX": "1"}, "synthetic-only"),
+        ({"BILLING_SYNTHETIC_PSP": "1"}, "synthetic-only"),
+        ({"BILLING_PSP_FIXTURE_SECRET": "synthetic-fixture"}, "synthetic-only"),
         ({"CELERY_TASK_ALWAYS_EAGER": "true"}, "synthetic-only"),
         ({"DEBUG": "true"}, "DEBUG"),
         (

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from apps.analytics.models import ReadModelRefresh
 from apps.comms.models import IntegrationOperation
 from apps.workflows.handlers import Handler, operation_digest
 from apps.workflows.models import Task
@@ -64,6 +65,16 @@ def validate_step_receipt(
                 operations.filter(status="delivered").exists()
                 if completed
                 else operations.exists()
+            )
+        case Handler.METRICS_REFRESH:
+            recorded = (
+                completed
+                and ReadModelRefresh.objects.filter(
+                    clinic_id=step.clinic_id,
+                    user_id=step.run.started_by_id,
+                    command_id=step.pk,
+                    definition__metric_id=specification["metric_id"],
+                ).exists()
             )
     if not recorded:
         raise WorkflowInputError

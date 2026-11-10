@@ -35,6 +35,9 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "identity_recoverybatch",
         "identity_recoverycode",
         "identity_sessionrecord",
+        # Resolver-owned TOTP seed store (migration 0050): FORCE RLS, owner insert
+        # policy only, and no runtime grant.
+        "identity_totpsecret",
     }
 )
 # identity_user is reachable only through resolver-owned functions; the
@@ -62,6 +65,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_recoverybatch": frozenset({"SELECT", "INSERT", "UPDATE"}),
     "identity_recoverycode": frozenset({"SELECT", "INSERT", "UPDATE"}),
     "identity_sessionrecord": frozenset({"SELECT", "UPDATE"}),
+    "identity_totpsecret": frozenset(),
 }
 # New authorization tables have no runtime column writes: provisioning remains
 # owner-controlled. Column grants below belong to physician checks and preferences.

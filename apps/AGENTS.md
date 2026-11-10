@@ -16,36 +16,21 @@
 | ehr | encounters, SOAP, history, attachments | 75 | ehr/AGENTS.md |
 | prescription | drafts, PDF render, signing, public verification | 43 | prescription/AGENTS.md |
 | billing | invoices, synthetic PIX, payment reconciliation | 26 (tests/ops only) | billing/README.md |
+| insurance | versioned TISS guides, sealed batches, returns, appeals, payer checks and journal reconciliation; synthetic only | new | insurance/README.md |
 | teleconsult / retention / consent | video sessions / holds+exports / teleconsult consent | 13 / 7 / 16 | own README.md |
 | interop | deferred stub | 1 | - |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
 | workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
 | scribe | consented capture, volatile buffers, verified encrypted ingest and room gating | new | scribe/README.md |
+| inventory | immutable stock movements, batch expiry, procedure links, approved purchasing and equipment evidence | new | inventory/README.md |
+| crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
+| analytics | versioned clinic metrics, journal-only money projections, requester-bound snapshots and a reviewed synthetic analyst | new | analytics/README.md |
+| subscriptions | Clinic Ops packaging, membership seats, lifecycle and source-derived usage, separate from clinic journals | new | subscriptions/README.md |
 
 ## REQUEST AUTHORITY FLOW
-
-### Scribe
-
-Read `scribe/README.md` before changing capture, receipts, encryption or discard.
-The ten public entrypoints are exported by `scribe/services.py`;
-`tests/infra/test_module_boundaries.py` pins their signatures and defaults.
-`tests/scribe/test_posture.py` and `tests/infra/test_new_app_posture.py` pin exact
-FORCE RLS, policies, table grants and column grants. Keep the original upload
-deadline and immutable encounter/token/epoch binding. Capture receipts
-acknowledge encrypted ingest, not completed object delivery. The
-transcription path additionally requires separate current AI assistance consent
-and the governed gateway. Transcript corrections are immutable successors;
-never deduplicate repeated words or invent missing coverage. Note drafting
-requires its own governed purpose and final sources; clinician review uses
-section generations, edit epochs and the EHR CAS writer. Accepted AI provenance
-is retained after finalization, and proposed actions stay separate from note
-text. The
-`scribe-capture` browser suite owns interruption, privacy and accessibility
-evidence. Physical devices and independent S3/MinIO qualification stay external.
-
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/comms/webhooks/` (per-account raw-body HMAC before stored scope; see `middleware.BYPASS_PREFIXES` for the full set).
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.

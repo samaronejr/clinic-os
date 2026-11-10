@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
+from apps.analytics.contracts import AnalyticsAccessDeniedError
 from apps.billing.services import BillingAccessDeniedError
 from apps.core.integration import _ClinicAuthorityRevokedError, _SubjectIneligibleError
 from apps.ehr.services import (
@@ -64,6 +65,7 @@ MANAGERS = ("owner", "receptionist", "clinic_admin")
 ADMINS = ("owner", "clinic_admin")
 PHYSICIAN = ("physician",)
 DENIALS = (
+    AnalyticsAccessDeniedError,
     DraftAccessDeniedError,
     ReceptionAccessDeniedError,
     CurrentActorError,

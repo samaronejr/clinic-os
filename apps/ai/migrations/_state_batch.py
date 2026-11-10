@@ -80,7 +80,10 @@ def _following_state(
 ) -> ProjectState:
     """Return the state after one database operation, rendering only its model."""
     following = state.clone()
-    if isinstance(operation, migrations.RunSQL) and not operation.state_operations:
+    # Raw SQL and Python callbacks change no model state: nothing to render.
+    if isinstance(operation, migrations.RunPython) or (
+        isinstance(operation, migrations.RunSQL) and not operation.state_operations
+    ):
         return following
     _apply_and_render_changed(app_label, [operation], following)
     return following

@@ -12,10 +12,16 @@ from apps.ai.front_desk_views import (
     front_desk_handoffs_page,
     front_desk_knowledge_page,
 )
+from apps.ai.revenue_views import revenue_cycle_page
 from apps.ai.views import settings_view
 
 app_name = "ai"
 urlpatterns = [
+    path(
+        "clinics/<uuid:clinic_id>/finance/assistant/",
+        revenue_cycle_page,
+        name="revenue-cycle",
+    ),
     path("clinics/<uuid:clinic_id>/evaluation/", evaluation_view, name="evaluation"),
     path(
         "clinics/<uuid:clinic_id>/decision-support/",

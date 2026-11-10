@@ -1,0 +1,112 @@
+{% load static i18n tz %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% if brand %}{{ brand.name }} · {% endif %}{% trans "Book with your clinic" %}</title>
+  <link rel="icon" href="{% static 'icons/clinic-os.svg' %}">
+  <link rel="stylesheet" href="{% static 'css/clinic-os.css' %}">
+  <link rel="stylesheet" href="{% static 'css/clinic-os-crm.css' %}">
+</head>
+<body class="crm-public">
+  <a class="skip-link" href="#booking-main">{% trans "Skip to content" %}</a>
+  <header class="crm-public-header">
+    <a class="crm-brand" href="{% url 'crm:public-booking' %}">
+      <img src="{% static 'icons/clinic-os.svg' %}" alt="" width="40" height="40">
+      <span>{% if brand %}{{ brand.name }}{% else %}Clinic Ops{% endif %}</span>
+    </a>
+    <a class="button button--secondary" href="{% url 'crm:public-access' %}">{% trans "Patient access" %}</a>
+  </header>
+  <main id="booking-main" class="crm-public-main">
+    {% if error %}<div class="notice notice-error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+    {% if status %}<div class="notice notice-success" role="status" aria-live="polite">{{ status }}</div>{% endif %}
+    <section class="crm-hero" aria-labelledby="booking-title">
+      <div class="crm-hero-copy">
+        <h1 id="booking-title">{% trans "Your next visit starts here." %}</h1>
+        {% if brand %}
+          <p class="crm-public-lede">{{ brand.description }}</p>
+          <p>{% trans "Choose a time in your clinic's agenda, with verified patient access." %}</p>
+        {% else %}
+          <p class="crm-public-lede">{% trans "A direct path to your clinic. At your pace." %}</p>
+          <p>{% trans "Enter the booking code provided by your clinic to see its page." %}</p>
+        {% endif %}
+        <div class="crm-principles">
+          <p>{% trans "No diagnosis or reason for your visit is requested here." %}</p>
+          <p>{% trans "Marketing is optional. Your care never depends on it." %}</p>
+        </div>
+      </div>
+      <div class="crm-booking-panel">
+        {% if not brand %}
+          <h2>{% trans "Find your clinic" %}</h2>
+          <form method="post" action="{% url 'crm:public-booking' %}" novalidate>
+            {% csrf_token %}<input type="hidden" name="action" value="select">
+            <label for="clinic-code">{% trans "Clinic booking code" %}</label>
+            <input id="clinic-code" name="clinic_code" maxlength="40" required autocomplete="off">
+            <p class="help-text">{% trans "The clinic supplies this code. It is not your patient access code." %}</p>
+            <button type="submit">{% trans "See clinic page" %}</button>
+          </form>
+        {% elif access_form %}
+          <h2>{% trans "Enter your private invitation" %}</h2>
+          <form method="post" action="{% url 'crm:public-access' %}" novalidate>
+            {% csrf_token %}{{ access_form.as_p }}
+            <p id="patient-access-help">{% trans "Use the private invitation your clinic provided. It protects your booking and keeps other patients' information private." %}</p>
+            <button type="submit">{% trans "Verify patient access" %}</button>
+          </form>
+        {% elif not booking_ready %}
+          <h2>{% trans "First, verify your access" %}</h2>
+          <p>{% trans "Use the private invitation your clinic provided. It protects your booking and keeps other patients' information private." %}</p>
+          <a class="button" href="{% url 'crm:public-access' %}">{% trans "Verify patient access" %}</a>
+          <p class="help-text">{% trans "Already verified? Return to this page to choose a time." %}</p>
+        {% else %}
+          <h2>{% trans "Choose your time" %}</h2>
+          <p>{% blocktrans %}Times follow the clinic timezone: {{ timezone }}.{% endblocktrans %}</p>
+          <form method="post" action="{% url 'crm:public-booking' %}" novalidate>
+            {% csrf_token %}<input type="hidden" name="action" value="slots">
+            <label for="booking-day">{% trans "Date" %}</label>
+            <input id="booking-day" name="day" type="date" value="{{ day }}" required>
+            {% if services %}
+              <label for="booking-service">{% trans "Service" %}</label>
+              <select id="booking-service" name="service_type_id">
+                <option value="">{% trans "General appointment" %}</option>
+                {% for service in services %}<option value="{{ service.service_type_id }}">{{ service.name }} · {{ service.duration_min }} {% trans "minutes" %}</option>{% endfor %}
+              </select>
+            {% endif %}
+            <button type="submit">{% trans "Show available times" %}</button>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+    {% if booking_ready %}
+      <section class="crm-times" aria-labelledby="times-title">
+        <h2 id="times-title">{% trans "Available times" %}</h2>
+        <div class="crm-slot-grid">
+          {% for slot in slots %}
+            <form class="crm-slot" method="post" action="{% url 'crm:public-booking' %}">
+              {% csrf_token %}<input type="hidden" name="action" value="book">
+              <input type="hidden" name="slot" value="{{ slot.token }}">
+              <input type="hidden" name="idempotency_key" value="{{ command_id }}">
+              <input type="hidden" name="day" value="{{ day }}">
+              <p><strong>{% timezone timezone %}{{ slot.start_at|date:"d/m/Y H:i" }}{% endtimezone %}</strong></p>
+              <p>{{ slot.practitioner }}</p>
+              <button type="submit">{% trans "Book this time" %}</button>
+            </form>
+          {% empty %}<p class="notice">{% trans "No times are available for this date. Choose another date or contact the clinic." %}</p>{% endfor %}
+        </div>
+      </section>
+    {% endif %}
+    <section class="crm-next-steps" aria-labelledby="next-title">
+      <h2 id="next-title">{% trans "A clear path, without pressure." %}</h2>
+      <ol>
+        <li><strong>{% trans "Verify" %}</strong><p>{% trans "Your clinic invitation confirms who can book." %}</p></li>
+        <li><strong>{% trans "Choose" %}</strong><p>{% trans "See only available times, never another patient's agenda." %}</p></li>
+        <li><strong>{% trans "Review" %}</strong><p>{% trans "Your appointment stays available in the patient portal." %}</p></li>
+      </ol>
+    </section>
+    <aside class="crm-public-notice"><p>{% trans "This page is not monitored for emergencies. In an emergency, seek urgent care." %}</p></aside>
+    {% if brand %}<form method="post" action="{% url 'crm:public-booking' %}" class="crm-clinic-reset">{% csrf_token %}<button name="action" value="clear" class="button button--secondary">{% trans "Choose another clinic" %}</button></form>{% endif %}
+  </main>
+  <footer class="crm-public-footer"><p>Clinic Ops</p><p>{% trans "Booking and patient access. No clinical details in links." %}</p></footer>
+</body>
+</html>

@@ -26,11 +26,14 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from playwright.sync_api import ViewportSize, expect
 
+from renewal.browser._fiscal import seed_fiscal_history
 from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._protected import encrypt
+from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import (
     full_page_screenshot,
     grant_clipboard,
@@ -360,6 +363,22 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         # The ledger is reachable from the shell, not only by typed URL.
         click_to_navigate(admin.locator("a[data-module=finance]"))
         ledger = ledger_url(base, staff)
+        assert admin.url == f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
+        expect(
+            admin.get_by_role("heading", name=gettext("Finance"), exact=True)
+        ).to_be_visible()
+        expect(admin.locator("a[data-module=finance]")).to_have_attribute(
+            "aria-current", "page"
+        )
+        expect(admin.locator("[data-finance-workspace]")).to_be_visible()
+        expect(admin.locator("[data-fiscal-documents]")).to_be_visible()
+        expect(admin.locator('[data-fiscal-permission="denied"]')).to_be_visible()
+        capture(admin, root, "finance-workspace", width)
+        click_to_navigate(
+            admin.locator("[data-finance-workspace]").get_by_role(
+                "link", name=gettext("Charges"), exact=True
+            )
+        )
         assert admin.url == ledger
         expect(admin.locator("a[data-module=finance]")).to_have_attribute(
             "aria-current", "page"
@@ -432,6 +451,9 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         goto_settled(admin, charge_url)
         confirm_settlement(admin, AMOUNT)
         expect_state(admin, "paid")
+        expect(admin.locator('[data-document-kind="receipt"]')).to_contain_text(
+            gettext("Receipt (not a tax invoice)")
+        )
         receipt = str(admin.locator("[data-receipt]").get_attribute("data-receipt"))
         capture(admin, root, "charge-paid", width)
         goto_settled(patient, f"{base}/patient/charges/{invoice_id}/")
@@ -439,8 +461,44 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         expect(patient.locator("[data-receipt]")).to_have_attribute(
             "data-receipt", receipt
         )
+        expect(patient.locator('[data-document-kind="receipt"]')).to_contain_text(
+            gettext("Receipt (not a tax invoice)")
+        )
         assert CODE_PREFIX not in str(patient.content())
         capture(patient, root, "patient-receipt", width)
+        seed_fiscal_history(staff, manager, invoice_id)
+        # Granting the fiscal roles ends the manager's live session (an authority
+        # change always re-authenticates): prove it, then sign in again.
+        fiscal_workspace = f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
+        goto_settled(admin, fiscal_workspace)
+        # The revoked session never reaches the workspace. The navigation ends on
+        # sign-in, or on the in-place refusal when a request the engine sent first
+        # already cleared the cookie (hosted Firefox, PR #32 run 42728791394).
+        expect(admin.locator("[data-finance-workspace]")).to_have_count(0)
+        if admin.url == fiscal_workspace:
+            expect(
+                admin.get_by_role("heading", name=gettext("Access unavailable"))
+            ).to_be_visible()
+        else:
+            assert admin.url == f"{base}/auth/login/"
+        sign_in_manager(admin, base, staff, manager)
+        goto_settled(admin, fiscal_workspace)
+        fiscal = admin.locator("[data-fiscal-documents]")
+        expect(
+            fiscal.locator('[data-fiscal-state="authorized"]').first
+        ).to_contain_text(gettext("NFS-e rehearsal (not a tax invoice)"))
+        rejected = fiscal.locator('[data-fiscal-state="rejected"]').first
+        expect(rejected).to_contain_text("E0004")
+        expect(rejected).to_contain_text(
+            gettext(
+                "The fiscal provider rejected the document. Ask the fiscal reviewer "
+                "to check the configuration."
+            )
+        )
+        assert "SYNTHETIC-SERVICE" not in admin.content()
+        assert "Synthetic clinic" not in admin.content()
+        capture(admin, root, "fiscal-history", width)
+        check_page(admin, base, root, f"fiscal-history-{width}")
 
         # An expired code is refused, regenerated once, and never paid. This
         # second charge repeats the paid one deliberately, through the screen.

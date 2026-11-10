@@ -15,6 +15,7 @@ from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
+from renewal.browser._totp_devices import seed_totp_device
 from renewal.browser.duplicate_accessibility import (
     test_duplicate_review_merge_reversal_accessibility,
 )
@@ -167,14 +168,7 @@ def swap_totp_device(staff: dict[str, str]) -> str:
             "WHERE retired.device_id = device.id)",
             [staff["physician_a_id"]],
         )
-        conn.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [key, staff["physician_a_id"]],
-        )
+        seed_totp_device(conn, staff["physician_a_id"], key)
     return key
 
 

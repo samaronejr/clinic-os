@@ -25,6 +25,7 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
+from renewal.browser._totp_devices import seed_totp_device
 from renewal.browser.engines import (
     full_page_screenshot,
     launch_selected,
@@ -641,19 +642,7 @@ def _today_scene(staff: dict[str, str]) -> dict[str, str]:
                 "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, staff["organization"], scene["clinic_a"], role],
             )
-        conn.execute("SET ROLE clinic_app")
-        conn.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [scene["physician_a_id"]],
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.otp_totp_totpdevice "
-            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
-            "user_id, throttling_failure_count, created_at) "
-            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
-            "%s, 0, now())",
-            [scene["totp_key"], scene["physician_a_id"]],
-        )
+        seed_totp_device(conn, scene["physician_a_id"], scene["totp_key"])
     return scene
 
 

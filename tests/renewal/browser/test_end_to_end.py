@@ -40,6 +40,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 import rfc8785
+from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
@@ -53,6 +54,7 @@ from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
 from renewal.browser._room_join import room_join_readiness, room_media_settled
 from renewal.browser._teleconsult import register_physician, stored_room_name
+from renewal.browser._totp_devices import reset_totp_device
 from renewal.browser.engines import (
     element_box,
     full_page_screenshot,
@@ -496,16 +498,7 @@ def provider_signs(page: Page, case: Day, document: str) -> None:
 def answer_challenge(page: Page, staff: dict[str, str]) -> None:
     """Complete a real TOTP challenge for the physician's current device."""
     with psycopg.connect(staff["dsn"]) as connection:
-        connection.execute("SET ROLE clinic_app")
-        connection.execute(
-            "SELECT set_config('app.current_user_id', %s, true)",
-            [staff["physician_a_id"]],
-        )
-        connection.execute(
-            "UPDATE clinic_app.otp_totp_totpdevice SET last_t = -1, drift = 0 "
-            "WHERE user_id = %s",
-            [staff["physician_a_id"]],
-        )
+        reset_totp_device(connection, staff["physician_a_id"])
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     click_to_navigate(page.locator("button[type=submit]"))
@@ -1045,6 +1038,14 @@ def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
 def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     """Reception charges the visit; the patient pays synthetically; receipt."""
     click_to_navigate(reception.locator("a[data-module=finance]"))
+    # Since plan item 56 the finance module lands on its workspace; reception's
+    # charge ledger is the workspace's Charges link, one step further.
+    assert reception.url == case.url(f"/billing/clinics/{case.clinic}/finance/")
+    click_to_navigate(
+        reception.locator("[data-finance-workspace]").get_by_role(
+            "link", name=gettext("Charges"), exact=True
+        )
+    )
     ledger = case.url(f"/billing/clinics/{case.clinic}/charges/")
     assert reception.url == ledger
 

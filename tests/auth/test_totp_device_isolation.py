@@ -128,6 +128,13 @@ def test_totp_seed_acl_is_limited_to_owner_and_runtime_role() -> None:
                 "USAGE",
             )
         ),
+        # The TOTP verifier/enrolment definers read and write the device table
+        # as clinic_resolver (0050); the secret itself is in identity_totpsecret.
+        *(
+            (table, "clinic_resolver", privilege)
+            for privilege in ("SELECT", "INSERT", "UPDATE")
+        ),
+        *((sequence, "clinic_resolver", privilege) for privilege in ("USAGE",)),
     }
 
 

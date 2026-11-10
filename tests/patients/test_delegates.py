@@ -267,7 +267,9 @@ def test_delegate_sm_verification_idempotency_and_stale_commands(
         assert stored.verified_by_id == world.verifier_id
         assert stored.evidence_attachment_id == world.evidence_id
         events = list(
-            AuditEvent.objects.filter(event_type__startswith="identity.delegate.")
+            AuditEvent.objects.filter(
+                event_type__startswith="identity.delegate."
+            ).order_by("seq")
         )
         assert [event.event_type for event in events] == [
             "identity.delegate.requested",

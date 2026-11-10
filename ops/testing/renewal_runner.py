@@ -73,7 +73,10 @@ SUITES: Final = {
         "tests/renewal/browser/test_passkeys.py",
     ),
     "clinic-settings": ("tests/renewal/browser/test_clinic_settings.py",),
-    "billing": ("tests/renewal/browser/test_billing.py",),
+    "billing": (
+        "tests/renewal/browser/test_billing.py",
+        "tests/renewal/browser/test_billing_psp.py",
+    ),
     "prescription-draft": ("tests/renewal/browser/test_prescription_draft.py",),
     "prescribing": ("tests/renewal/browser/test_prescribing.py",),
     "document-verification": ("tests/renewal/browser/test_document_verification.py",),
@@ -124,6 +127,8 @@ SUITES: Final = {
     "messages": ("tests/renewal/browser/test_messages.py",),
     # Task 53: care-coordination proposals, appended as its own registration block.
     "care-coordination": ("tests/renewal/browser/test_care_coordination.py",),
+    "public-booking": ("tests/renewal/browser/test_public_booking.py",),
+    "reports": ("tests/renewal/browser/test_reports.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -167,6 +172,8 @@ FIXTURE_SUITES: Final = frozenset(
         "portal",
         "messages",
         "care-coordination",
+        "public-booking",
+        "reports",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -831,6 +838,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
             else {}
         ),
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
+        **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
         **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
     }
 

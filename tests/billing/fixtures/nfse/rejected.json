@@ -1,0 +1,10 @@
+{
+  "tipoAmbiente": 2,
+  "idDPS": "DPS-SYNTHETIC-000058",
+  "erros": [
+    {
+      "Codigo": "E0004",
+      "Descricao": "SYNTHETIC-PII-SENTINEL"
+    }
+  ]
+}

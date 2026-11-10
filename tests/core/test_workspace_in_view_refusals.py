@@ -76,6 +76,20 @@ NO_IN_VIEW_REFUSAL = {
         "body without thread_id and revision is 400. Its own 403 for an unknown "
         "thread is pinned in tests/ai/test_front_desk_views.py."
     ),
+    # Task 63: Reports decides analytics authority inside its transaction.
+    "analytics:reports": (
+        "For the probed roles the registry permission refuses before the view "
+        "(403), or the view answers 200 or 400. Its own read-only 403 for a "
+        "clinic outside the actor's analytics authority, native and enhanced, "
+        "is pinned in tests/analytics/test_views.py."
+    ),
+    # Task 64: the POST-only commercial command API.
+    "subscriptions:commercial": (
+        "Commands are JSON only: the probed form bodies return 400 "
+        "invalid_input before any clinic is named, and GET is 405. Its own 403 "
+        "not_available outside the actor's commercial authority is pinned in "
+        "tests/subscriptions/test_authority.py."
+    ),
 }
 
 
@@ -332,6 +346,17 @@ def _probe_route(
             for htmx in (False, True)
             if route.name == "ai:care-coordination"
         )
+        # Task 56: the closed export form answers generic bodies with 400; a
+        # valid window reaches the view's own book and settlement.post refusal.
+        requests += tuple(
+            (
+                "POST",
+                {"start": "2033-05-18", "end": "2033-05-18", "format": "csv"},
+                htmx,
+            )
+            for htmx in (False, True)
+            if route.name == "billing:journal-export"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
@@ -495,6 +520,8 @@ def test_authorised_in_view_refusals_are_session_read_only(
         ("identity:passkeys", "receptionist"),
         ("ai:agents", "clinic_admin"),
         ("ai:agent-settings", "clinic_admin"),
+        # Task 56: Finance rechecks its action permissions inside the view.
+        ("billing:finance", "finance"),
     ):
         refused, codes = _membership_page_refusal(
             rbac_graph,

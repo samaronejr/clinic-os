@@ -5,13 +5,12 @@ from typing import TYPE_CHECKING, Final, cast
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
-from django.db import transaction
 from django.http import HttpRequest, QueryDict
 from django.utils.translation import gettext_lazy as _
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.identity.models import User
-from apps.identity.otp import TotpDevice
+from apps.identity.otp import TotpDevice, verify_totp_code
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -148,40 +147,22 @@ class ExplicitOTPTokenForm(forms.Form):
         expected = self._allowed_devices.get(device_id)
         if expected is None:
             raise forms.ValidationError(INVALID_CODE_MESSAGE, code="invalid_token")
-        device_pk, confirmed = expected
-        validation_error: forms.ValidationError | None = None
-        with transaction.atomic():
-            loaded = (
-                TOTPDevice.objects.select_for_update()
-                .filter(
-                    pk=device_pk,
-                    user_id=self._user_id,
-                    confirmed=confirmed,
-                )
-                .first()
+        device_pk, _confirmed = expected
+        # The resolver boundary checks the code, advances replay state and
+        # throttling, and confirms a pending device; the form never sees the
+        # secret or writes the device.
+        status = verify_totp_code(device_pk, token)
+        if status == -1:
+            raise forms.ValidationError(
+                _("Verification temporarily disabled. Try again soon."),
+                code="verification_not_allowed",
             )
-            device = cast("TotpDevice | None", loaded)
-            if device is None:
-                validation_error = forms.ValidationError(
-                    INVALID_CODE_MESSAGE,
-                    code="invalid_token",
-                )
-            else:
-                allowed, _details = device.verify_is_allowed()
-                if not allowed:
-                    validation_error = forms.ValidationError(
-                        _("Verification temporarily disabled. Try again soon."),
-                        code="verification_not_allowed",
-                    )
-                elif not device.verify_token(token):
-                    validation_error = forms.ValidationError(
-                        INVALID_CODE_MESSAGE,
-                        code="invalid_token",
-                    )
-                else:
-                    self._selected_device = device
-        if validation_error is not None:
-            raise validation_error
+        if status != 1:
+            raise forms.ValidationError(INVALID_CODE_MESSAGE, code="invalid_token")
+        loaded = TOTPDevice.objects.filter(pk=device_pk, user_id=self._user_id).first()
+        self._selected_device = cast("TotpDevice | None", loaded)
+        if self._selected_device is None:
+            raise forms.ValidationError(INVALID_CODE_MESSAGE, code="invalid_token")
         return token
 
     def selected_device(self) -> TotpDevice | None:

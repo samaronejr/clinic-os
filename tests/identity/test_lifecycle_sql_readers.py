@@ -20,6 +20,7 @@ from apps.identity.models import (
     User,
     UserClinicRole,
 )
+from apps.identity.otp import verify_totp_code
 from apps.identity.recovery import issue_recovery_codes
 from apps.identity.session_inventory import session_hash
 from apps.identity.signup import submit_signup
@@ -29,13 +30,21 @@ from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, ProgrammingError, connection, transaction
 from django.test import override_settings
 from django.utils import timezone
+from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from auth.passkey_test_support import passkey_login, registered_passkey
 from ehr.test_sql_protocols import EHR_ACTOR_PROTOCOL_ORACLES
 from identity.lifecycle_test_support import session_key, verified_client
 from identity.permission_support import owner_context
 from identity.test_onboarding import _capture
-from otp_test_support import fixed_otp_time, runtime_role, token_for
+from otp_test_support import (
+    create_totp_device,
+    current_user_guc,
+    fixed_otp_time,
+    fresh_token_for,
+    runtime_role,
+    token_for,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
@@ -89,6 +98,9 @@ LIFECYCLE_TRIGGERS = {
     "clinic_app.identity_signup_immutable": {
         ("identity_signupregistration", "signup_immutable"),
     },
+    "clinic_app.identity_totp_device_guard": {
+        ("otp_totp_totpdevice", "identity_totp_device_boundary"),
+    },
 }
 _ACCOUNT_ORACLES = {
     "clinic_app.identity_passkey_session_verified(bytea,uuid,integer)": (
@@ -106,6 +118,15 @@ _ACCOUNT_ORACLES = {
     "clinic_app.identity_session_verify_passkey(bytea,uuid)": (
         "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
     ),
+    # The TOTP verifier and enrolment definers bind the GUC actor; an inactive
+    # account verifies only its own pending invitation device.
+    "clinic_app.identity_totp_enroll()": (
+        "test_totp_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
+    "clinic_app.identity_totp_verify(integer,text)": (
+        "test_totp_sql_gates_refuse_inactive_and_foreign_actors",
+        "test_pending_accept_rechecks_the_stored_sender",
+    ),
     "clinic_app.identity_invitation_accept(bytea,text)": (
         "test_pending_accept_rechecks_the_stored_sender",
     ),
@@ -114,6 +135,9 @@ _ACCOUNT_ORACLES = {
     ),
     "clinic_app.identity_invitation_claim(bytea)": (
         "test_pending_claim_and_password_require_their_exact_context",
+    ),
+    "clinic_app.identity_invitation_device_secret(bytea)": (
+        "test_pending_invitation_secret_is_shown_only_in_its_exact_context",
     ),
     "clinic_app.identity_invitation_finish(bytea,text)": (
         "test_historical_lifecycle_callables_are_not_runtime_capabilities",
@@ -154,6 +178,13 @@ ACTOR_PROTOCOL_ORACLES = {
         "ai.test_agent_execution.test_revoked_approver_blocks_after_approval",
         "ai.test_agent_execution.test_superseded_source_publication_blocks_execution",
         "ai.test_agent_guards.test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+    ),
+    # ai.0012's vote writer binds the actor; its own session predicates refuse an
+    # inactive, revoked, foreign or unverified approver.
+    "clinic_app.agent_record_approval(uuid,uuid,text,jsonb,uuid,jsonb,text,bytea)": (
+        "ai.test_vote_attestation.test_vote_writer_refuses_an_inactive_approver",
+        "ai.test_vote_attestation."
+        "test_vote_writer_requires_this_approvers_fresh_verified_session",
     ),
     "clinic_app.agent_snapshot(uuid,text)": (
         "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
@@ -224,6 +255,8 @@ SQL_PROTOCOL_ORACLES = (
             "clinic_app.identity_reset_guard()",
             # Sealed staff/domain oracles already classify these SQL guards;
             # actor protocols add independent inactive-caller proof.
+            "clinic_app.agent_record_approval("
+            "uuid,uuid,text,jsonb,uuid,jsonb,text,bytea)",
             "clinic_app.agent_record_guard()",
             "clinic_app.agent_snapshot(uuid,text)",
             "clinic_app.has_permission(text,uuid,uuid)",
@@ -308,6 +341,14 @@ SQL_PROTOCOL_ORACLES = (
             "test_installed_lifecycle_triggers_are_attached_and_enabled",
             "identity.test_lifecycle_sql_readers."
             "test_pending_authority_and_capture_history_refuse_writes",
+        ),
+        "clinic_app.identity_totp_device_guard": (
+            "identity.test_lifecycle_sql_readers."
+            "test_installed_lifecycle_triggers_are_attached_and_enabled",
+            "identity.test_sql_totp_boundary."
+            "test_runtime_cannot_write_device_verification_state",
+            "identity.test_sql_totp_boundary."
+            "test_runtime_cannot_insert_a_confirmed_device",
         ),
     }
 )
@@ -495,6 +536,64 @@ def test_pending_claim_and_password_require_their_exact_context(
         ).exists()
 
 
+def test_pending_invitation_secret_is_shown_only_in_its_exact_context(
+    rbac_graph: RbacGraph,
+) -> None:
+    graph = rbac_graph
+    with runtime_role(), tenant_context(graph.clinic_admin, graph.organization_a):
+        invitation = invite_staff(
+            clinic_id=graph.clinic_b,
+            email="synthetic-sql-secret@example.invalid",
+            bundle=UserClinicRole.Role.RECEPTIONIST,
+        )
+        envelope = protect(
+            purpose="identity.staff.invitation.username",
+            plaintext=f"synthetic-secret-{uuid4().hex}".encode(),
+        )
+    digest = bytes(invitation.token_hash)
+    key = secrets.token_hex(20)
+    read = "SELECT clinic_app.identity_invitation_device_secret(%s)"
+    with (
+        _context(actor=invitation.pending_user_id, tenant=graph.organization_a),
+        connection.cursor() as cursor,
+    ):
+        # Nothing is shown before the password step creates the device.
+        cursor.execute(read, [digest])
+        assert cursor.fetchone() == (None,)
+        cursor.execute(
+            "SELECT clinic_app.identity_invitation_password(%s,%s,%s,%s)",
+            [digest, envelope, make_password(secrets.token_urlsafe(24)), key],
+        )
+        created = cursor.fetchone()
+        assert created is not None
+        assert type(created[0]) is int
+        cursor.execute(read, [digest])
+        assert cursor.fetchone() == (key,)
+        # Any other actor, tenant or ambient principal, or another token, sees
+        # nothing; the runtime role still cannot read the store itself.
+        for setting, value in (
+            ("app.current_user_id", str(graph.shared_user)),
+            ("app.current_tenant", str(graph.organization_b)),
+            ("app.current_principal", str(uuid4())),
+            ("app.current_patient_session", str(uuid4())),
+        ):
+            with transaction.atomic():
+                cursor.execute("SELECT set_config(%s,%s,true)", [setting, value])
+                cursor.execute(read, [digest])
+                assert cursor.fetchone() == (None,), setting
+                transaction.set_rollback(True)
+        cursor.execute(read, [secrets.token_bytes(32)])
+        assert cursor.fetchone() == (None,)
+        with pytest.raises(ProgrammingError), transaction.atomic():
+            cursor.execute("SELECT secret FROM clinic_app.identity_totpsecret")
+        # Once the invitee proves a real code the secret is never shown again.
+        device = TOTPDevice.objects.get(pk=created[0])
+        assert verify_totp_code(device.pk, token_for(device, secret_hex=key)) == 1
+        cursor.execute(read, [digest])
+        assert cursor.fetchone() == (None,)
+        transaction.set_rollback(True)
+
+
 def test_pending_accept_rechecks_the_stored_sender(rbac_graph: RbacGraph) -> None:
     graph = rbac_graph
     username = f"synthetic-accept-{uuid4().hex}"
@@ -513,9 +612,9 @@ def test_pending_accept_rechecks_the_stored_sender(rbac_graph: RbacGraph) -> Non
         _context(actor=invitation.pending_user_id, tenant=graph.organization_a),
         fixed_otp_time(),
     ):
-        assert enrollment.device.verify_token(token_for(enrollment.device))
-        enrollment.device.confirmed = True
-        enrollment.device.save(update_fields=("confirmed",))
+        # The resolver verifier confirms the device; the runtime role cannot
+        # write the verification state or the confirmed flag directly.
+        assert verify_totp_code(enrollment.device.pk, token_for(enrollment.device)) == 1
     for active in (True, False, True):
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
@@ -564,6 +663,8 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
         )
         (device_id,) = cursor.fetchone()
         assert type(device_id) is int
+    with runtime_role(), current_user_guc(graph.clinic_admin):
+        device = TOTPDevice.objects.get(pk=device_id)
     for actor, active in (
         (graph.clinic_admin, True),
         (graph.clinic_admin, False),
@@ -621,6 +722,14 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
                 assert cursor.fetchone() == (
                     ([graph.clinic_b],) if allowed else (None,)
                 )
+                # The stamp binds only inside the transaction in which the
+                # verifier accepted a genuine code, and the verifier itself
+                # refuses the inactive and the foreign caller.
+                cursor.execute(
+                    "SELECT clinic_app.identity_totp_verify(%s,%s)",
+                    [device_id, fresh_token_for(device)],
+                )
+                assert cursor.fetchone() == (1 if allowed else 0,)
                 queries: tuple[tuple[str, tuple[bytes | int, ...]], ...] = (
                     ("identity_session_verify(%s,%s)", (digest, device_id)),
                     ("identity_recovery_consume(%s)", (code_digest,)),
@@ -708,6 +817,72 @@ def test_passkey_sql_gates_refuse_inactive_and_foreign_actors(
     oracle = (
         "identity.test_lifecycle_sql_readers."
         "test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
+    )
+    expected = {
+        signature.split("(", 1)[0]: (True, False, True, False)
+        for signature, oracles in ACTOR_PROTOCOL_ORACLES.items()
+        if oracle in oracles
+    }
+    assert expected
+    assert {name: tuple(values) for name, values in decisions.items()} == expected
+
+
+def test_totp_sql_gates_refuse_inactive_and_foreign_actors(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given one account holding a confirmed device and one holding none.
+    graph = rbac_graph
+    holder = User.objects.create(username=f"synthetic-totp-holder-{uuid4().hex}")
+    enroller = User.objects.create(username=f"synthetic-totp-enrol-{uuid4().hex}")
+    device = create_totp_device(holder.pk, confirmed=True)
+    decisions: dict[str, list[bool]] = {}
+    for active, foreign in ((True, False), (False, False), (True, False), (True, True)):
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE clinic_app.identity_user SET is_active=%s WHERE id IN (%s,%s)",
+                [active, holder.pk, enroller.pk],
+            )
+            # A foreign actor presents the holder's device with a genuine code.
+            # Enrolment binds only the GUC actor, so its foreign case is the
+            # holder, whose confirmed device already exists.
+            calls: tuple[tuple[str, UUID, str, list[int | str]], ...] = (
+                (
+                    "clinic_app.identity_totp_verify",
+                    graph.shared_user if foreign else holder.pk,
+                    "SELECT clinic_app.identity_totp_verify(%s,%s) = 1",
+                    [device.pk, token_for(device)],
+                ),
+                (
+                    "clinic_app.identity_totp_enroll",
+                    holder.pk if foreign else enroller.pk,
+                    "SELECT count(*) = 1 FROM clinic_app.identity_totp_enroll()",
+                    [],
+                ),
+            )
+            # When clinic_app binds the GUCs directly, no Python active-user
+            # gate or tenant_context can refuse before the SQL under test.
+            for name, actor, statement, parameters in calls:
+                with _context(actor=actor, tenant=graph.organization_a):
+                    cursor.execute(statement, parameters)
+                    (decision,) = cursor.fetchone()
+                    assert type(decision) is bool, name
+                    decisions.setdefault(name, []).append(decision)
+            # A refusal happens before the device row is touched: no use, no
+            # replay counter and no throttling failure is written.
+            verified = decisions["clinic_app.identity_totp_verify"][-1]
+            with _context(actor=holder.pk, tenant=graph.organization_a):
+                cursor.execute(
+                    "SELECT last_t <> -1, last_used_at IS NOT NULL, "
+                    "throttling_failure_count "
+                    "FROM clinic_app.otp_totp_totpdevice WHERE id=%s",
+                    [device.pk],
+                )
+                assert cursor.fetchone() == (verified, verified, 0)
+            transaction.set_rollback(True)
+    # Then active controls succeed; only inactive/foreign actors are refused.
+    oracle = (
+        "identity.test_lifecycle_sql_readers."
+        "test_totp_sql_gates_refuse_inactive_and_foreign_actors"
     )
     expected = {
         signature.split("(", 1)[0]: (True, False, True, False)
