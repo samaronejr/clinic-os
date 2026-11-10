@@ -75,6 +75,7 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
         )
         assert cursor.fetchall() == [
             ("comms_schedule_reminders", "O"),
+            ("interop_capture_event", "O"),
             ("patient_booking_guard", "O"),
             ("patient_booking_receipt", "O"),
             ("scheduling_appointment_a_lifecycle", "O"),

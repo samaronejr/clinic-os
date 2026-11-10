@@ -418,6 +418,7 @@ VOTE_ORACLES = [
 PROTOCOL_ORACLES = {
     **CRM_PROTOCOLS,
     **{name: list(cases) for name, cases in SUBSCRIPTIONS_PROTOCOLS.items()},
+    **{name: list(cases) for name, cases in INTEROP_PROTOCOLS.items()},
     **PSP_PROTOCOLS,
     **ANALYTICS_PROTOCOLS,
     "clinic_app.ai_revenue_ancestry": [
@@ -517,7 +518,6 @@ PROTOCOL_ORACLES = {
     ],
     **ORDERS_PROTOCOLS,
     **INVENTORY_SQL_ORACLES,
-    **{name: list(cases) for name, cases in INTEROP_PROTOCOLS.items()},
     **BILLING_PROTOCOLS,
     **FISCAL_PROTOCOLS,
     **INSURANCE_PROTOCOLS,

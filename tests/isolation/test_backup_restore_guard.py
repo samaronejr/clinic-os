@@ -34,12 +34,12 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         == restore_contract.TABLE_DATA
     )
     # The Wave D catalog plus 12 journal, 5 PSP, 3 fiscal, 16 insurance, 4
-    # analytics, 7 subscription, 12 inventory, 7 CRM and 7 import tables and
-    # identity 0050's resolver-owned TOTP seed store has 280 domain relations;
-    # the store is restored with its device so a restore never strands an
-    # authenticator. tests/infra/test_recovery_manifest.py independently
-    # proves completeness against the live migrated catalog.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 280
+    # analytics, 7 subscription, 12 inventory, 7 CRM, 7 import and 9 partner and
+    # export tables and identity 0050's resolver-owned TOTP seed store has 289
+    # domain relations; the store is restored with its device so a restore never
+    # strands an authenticator. tests/infra/test_recovery_manifest.py
+    # independently proves completeness against the live migrated catalog.
+    assert len(restore_contract.DOMAIN_RELATIONS) == 289
     assert "clinic_app.identity_totpsecret" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA

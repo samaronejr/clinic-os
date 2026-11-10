@@ -70,7 +70,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         *CRM_CUSTOM_RLS_TABLES,
-        # Task 66: exact import policies, grants and guards: tests/interop.
+        # Tasks 66 and 67: exact interop policies, grants, guards and triggers:
+        # tests/interop (posture.json).
         *INTEROP_CUSTOM_RLS_TABLES,
         # Requester-bound reporting policies: tests/analytics/test_posture.py.
         "analytics_metricdefinitionversion",

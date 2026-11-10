@@ -322,6 +322,17 @@ DOMAIN_RELATIONS: Final = (
     "interop_importbatch",
     "interop_importedrecord",
     "interop_hiddenenrollment",
+    # Partner API, webhooks and organization export (plan 67): retained receipts,
+    # digests and archive parts; credentials and parts are excluded from export.
+    "interop_apiclient",
+    "interop_apiclientsecret",
+    "interop_apiaccesstoken",
+    "interop_apiwritereceipt",
+    "interop_webhooksubscription",
+    "interop_webhookdelivery",
+    "interop_webhookattempt",
+    "interop_organizationexport",
+    "interop_organizationexportpart",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

@@ -90,6 +90,13 @@ NO_IN_VIEW_REFUSAL = {
         "not_available outside the actor's commercial authority is pinned in "
         "tests/subscriptions/test_authority.py."
     ),
+    # Task 67: the POST-only partner management API.
+    "interop:management": (
+        "Commands are JSON only: the probed form bodies return 400 "
+        "invalid_input before any clinic is named, and GET is 405. Its own 403 "
+        "not_available outside organization authority is pinned in "
+        "tests/interop/test_org_export.py."
+    ),
 }
 
 

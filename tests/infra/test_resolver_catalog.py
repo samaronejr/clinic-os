@@ -1502,7 +1502,10 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            name not in journal_catalog.INVOKERS | subscriptions_catalog.INVOKERS,
+            name
+            not in journal_catalog.INVOKERS
+            | subscriptions_catalog.INVOKERS
+            | interop_catalog.INVOKERS,
             volatility,
             "u",
             [

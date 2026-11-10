@@ -18,7 +18,7 @@
 | billing | invoices, synthetic PIX, payment reconciliation | 26 (tests/ops only) | billing/README.md |
 | insurance | versioned TISS guides, sealed batches, returns, appeals, payer checks and journal reconciliation; synthetic only | new | insurance/README.md |
 | teleconsult / retention / consent | video sessions / holds+exports / teleconsult consent | 13 / 7 / 16 | own README.md |
-| interop | governed data import (todo 66): checksummed sources, versioned mappings, dry runs, step-up commits on the bulk queue, imported provenance and hide-only rollback; RNDS exchange still deferred | 1 | interop/README.md |
+| interop | governed data import (todo 66): checksummed sources, versioned mappings, dry runs, step-up commits on the bulk queue, imported provenance and hide-only rollback; partner API `/api/v1/` (OAuth2 client credentials, hashed secrets, Redis token bucket, opaque ids), signed webhooks on the action outbox, management API `/api/interop/v1/` and the organization export (todo 67); `exchange_clinical_record` (RNDS) still deferred | 1 | interop/README.md |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
 | workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
@@ -30,7 +30,7 @@
 
 ## REQUEST AUTHORITY FLOW
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/api/v1/` (bearer authority comes only from `interop_api_session`).
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.
@@ -41,7 +41,7 @@
 | New tenant table | inherit `tenancy.models.TenantScopedModel`; add `(table, col)` to the app's `rls.py` `*_RLS_TARGETS` allowlist; migration runs `apply_*_rls` |
 | Policy/resolver/trigger SQL | `<app>/migrations/_<topic>_sql.py` constants, imported by numbered migrations via `RunSQL` |
 | Encrypted column | `tenancy/fields.py` (purpose-bound, bytea), `tenancy/envelope.py` `protect`/`reveal` |
-| External send/callback | `core/integration.py` `enqueue_operation`/`execute_operation`/`receive_provider_callback`; register via `register_send_adapter` + `register_subject_recheck` in `AppConfig.ready()` (comms, intake, prescription, teleconsult) |
+| External send/callback | `core/integration.py` `enqueue_operation`/`execute_operation`/`receive_provider_callback`; register via `register_send_adapter` + `register_subject_recheck` in `AppConfig.ready()` (comms, intake, prescription, teleconsult); `action` kind via `register_action_adapter` (interop webhooks) |
 | Subject mutation vs in-flight send | `hold_subject_mutation_lock` / `hold_subject_mutation_key` |
 | Audit event | `audit/events.py` fixed matrix; payload keys only `clinic_id, http_method, http_status, object_verb, reason_code, request_id` |
 | Idempotency fingerprint | `core/idempotency.py` (`clinic-idempotency-v1`) |

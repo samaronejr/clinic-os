@@ -12,7 +12,7 @@ import pytest
 from apps.core import integration
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.insurance.rls import TABLES as INSURANCE_TABLES
-from apps.interop.rls import CUSTOM_RLS_TABLES as INTEROP_TABLES
+from apps.interop.rls import IMPORT_RLS_TABLES as INTEROP_IMPORT_TABLES
 from apps.inventory.rls import CUSTOM_RLS_TABLES as INVENTORY_TABLES
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
@@ -43,7 +43,21 @@ RECEPTION_TABLES = (
 TRUNCATE_GUARDS = (
     *(
         (table, "interop_no_truncate")
-        for table in (*sorted(INTEROP_TABLES), "interop_hiddenenrollment")
+        for table in (*sorted(INTEROP_IMPORT_TABLES), "interop_hiddenenrollment")
+    ),
+    *(
+        (f"interop_{table}", "interop_retained_truncate")
+        for table in (
+            "apiclient",
+            "apiclientsecret",
+            "apiaccesstoken",
+            "apiwritereceipt",
+            "webhooksubscription",
+            "webhookdelivery",
+            "webhookattempt",
+            "organizationexport",
+            "organizationexportpart",
+        )
     ),
     *(
         (f"crm_{table}", "crm_no_truncate")

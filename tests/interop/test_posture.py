@@ -1,21 +1,33 @@
-"""Exact interop posture from the migrated catalog: RLS, grants, guards, links."""
+"""Exact interop posture from the migrated catalog and fail-closed tenant reads."""
 
 from __future__ import annotations
 
-from typing import Any
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from apps.interop.migrations import _import_sql
 from apps.interop.migrations._schema import ProtectedSchema
-from apps.interop.rls import CUSTOM_RLS_TABLES
+from apps.interop.models import ApiAccessToken, ApiClient, ApiClientSecret
+from apps.interop.rls import IMPORT_RLS_TABLES
+from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.db.migrations.loader import MigrationLoader
 
+from identity.permission_support import permission_context
+from interop.catalog import discover_catalog
+from interop.support import access_token, local_bucket, make_client, org_admin
 from patient_service_support import runtime_role
 
+if TYPE_CHECKING:
+    from interop.support import LocalBucket
+    from rbac_fixtures import RbacGraph
+
+__all__ = ("local_bucket",)
 pytestmark = pytest.mark.django_db(transaction=True)
 HIDDEN = "interop_hiddenenrollment"
-TABLES = (*sorted(CUSTOM_RLS_TABLES), HIDDEN)
+TABLES = (*sorted(IMPORT_RLS_TABLES), HIDDEN)
 FK_SQL = """
 SELECT DISTINCT c.conrelid::regclass::text, a.attname
 FROM pg_catalog.pg_constraint c
@@ -49,7 +61,7 @@ def test_import_tables_are_forced_rls_with_exact_policies() -> None:
     assert policies == {
         *(
             entry
-            for table in CUSTOM_RLS_TABLES
+            for table in IMPORT_RLS_TABLES
             for entry in (
                 (table, "interop_owner", "PERMISSIVE", "{clinic_owner}", "ALL"),
                 (table, "interop_read", "PERMISSIVE", "{clinic_app}", "SELECT"),
@@ -101,7 +113,7 @@ def test_runtime_and_resolver_grants_are_exact() -> None:
     assert runtime == {
         *(
             (table, privilege)
-            for table in CUSTOM_RLS_TABLES
+            for table in IMPORT_RLS_TABLES
             for privilege in ("SELECT", "INSERT")
             if table not in _import_sql.METADATA_COLUMNS or privilege == "INSERT"
         ),
@@ -242,3 +254,47 @@ def test_initial_import_schema_is_irreversible() -> None:
         for app, name in migration.dependencies
         if name != "__first__"
     )
+
+
+def test_exact_catalog_is_the_discovered_force_rls_grant_and_trigger_snapshot() -> None:
+    assert discover_catalog() == json.loads(
+        Path(__file__).with_name("posture.json").read_text()
+    )
+
+
+def test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows(
+    rbac_graph: RbacGraph, local_bucket: LocalBucket
+) -> None:
+    graph = rbac_graph
+    admin = org_admin(graph)
+    access_token(make_client(graph, admin))
+    with runtime_role(), transaction.atomic():
+        assert not ApiClient.objects.exists()
+    with runtime_role(), tenant_context(admin, graph.organization_a):
+        assert ApiClient.objects.count() == 1
+    # Staff of the same organization without organization authority see nothing.
+    for actor in (graph.physician, graph.clinic_admin, graph.shared_user):
+        with permission_context(graph, actor):
+            assert not ApiClient.objects.exists()
+    with permission_context(graph, admin):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_tenant',%s,true)",
+                [str(graph.organization_b)],
+            )
+        assert not ApiClient.objects.exists()
+
+
+@pytest.mark.parametrize("model", [ApiClientSecret, ApiAccessToken])
+def test_runtime_role_holds_no_privilege_on_credential_digests(
+    rbac_graph: RbacGraph, model: type[ApiClientSecret | ApiAccessToken]
+) -> None:
+    graph = rbac_graph
+    admin = org_admin(graph)
+    with (
+        runtime_role(),
+        tenant_context(admin, graph.organization_a),
+        pytest.raises(DatabaseError),
+        transaction.atomic(),
+    ):
+        list(model.objects.values_list("pk", flat=True))

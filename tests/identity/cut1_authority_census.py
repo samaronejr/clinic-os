@@ -359,7 +359,7 @@ def run_cut1_census(  # noqa: PLR0915 - one statement per oracle family
     run_subscription_census(proofs, graph)
     run_prescription_census(proofs, graph, patch, secret_root)
     run_inventory_census(proofs, graph)
-    run_interop_census(proofs, graph, patch, database_url)
+    run_interop_census(proofs, graph, patch, secret_root, database_url)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")
