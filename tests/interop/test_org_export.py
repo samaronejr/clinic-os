@@ -19,6 +19,8 @@ import psycopg
 import pytest
 from apps.audit.models import AuditEvent
 from apps.ehr.attachments import scan_attachment
+from apps.identity.enterprise_access import EmergencyScope, grant_break_glass
+from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
 from apps.identity.models import User, UserClinicRole
 from apps.intake.services import create_patient
 from apps.interop import export_builder, tasks
@@ -31,13 +33,19 @@ from apps.interop.management import (
     list_exports,
     request_export,
 )
-from apps.interop.migrations import _export_v2_sql
+from apps.interop.migrations import _export_v2_sql, _export_v3_sql
 from apps.interop.migrations._export_sql import EXCLUDED_V1, EXPORT_V1
 from apps.interop.migrations._export_v2_sql import (
     EXCLUDED_V2,
     EXPORT_V2,
     IMPORT_EXCLUSIONS,
     IMPORT_EXPORTS,
+)
+from apps.interop.migrations._export_v3_sql import (
+    ENTERPRISE_EXCLUSIONS,
+    ENTERPRISE_EXPORTS,
+    EXCLUDED_V3,
+    EXPORT_V3,
 )
 from apps.interop.migrations._interop_sql import TABLES
 from apps.interop.rls import IMPORT_RLS_TABLES
@@ -47,10 +55,17 @@ from apps.tenancy.db import tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection
 from django.test import override_settings
+from django.utils import timezone
 from ops.testing import restore_contract
 
 from auth.stepup_test_support import create_role_actor
-from identity.permission_support import owner_context
+from identity.enterprise_support import enterprise_setup, verified_actor_client
+from identity.lifecycle_test_support import session_key
+from identity.permission_support import (
+    owner_context,
+    permission_actor,
+    permission_context,
+)
 from interop.support import (
     SYNTHETIC_PDF,
     committed,
@@ -84,7 +99,8 @@ __all__ = ("attachment_root",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 MANAGEMENT = "/api/interop/v1/"
-FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v2.md"
+FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v3.md"
+V2_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v2.md")
 V1_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v1.md")
 FORMULA = "=SOMA(1;2)"
 FOREIGN_NAME = "Paciente Sintetica Organizacao B"
@@ -106,8 +122,9 @@ STAFF_COLUMNS = {
     "date_joined",
     "last_login",
 }
-EXPORTED = [entry[0] for entry in EXPORT_V2]
+EXPORTED = [entry[0] for entry in EXPORT_V3]
 IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
+ENTERPRISE_RELATIONS = set(ENTERPRISE_TABLES)
 
 
 @pytest.fixture
@@ -251,13 +268,13 @@ def _manage(
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
     assert len(EXPORTED) == len(set(EXPORTED))
-    assert set(EXPORTED).isdisjoint(EXCLUDED_V2)
-    assert set(EXPORTED) | set(EXCLUDED_V2) == set(restore_contract.DOMAIN_RELATIONS)
+    assert set(EXPORTED).isdisjoint(EXCLUDED_V3)
+    assert set(EXPORTED) | set(EXCLUDED_V3) == set(restore_contract.DOMAIN_RELATIONS)
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
-    assert set(EXCLUDED_V2.values()) <= set(EXCLUSION_REASONS)
+    assert set(EXCLUDED_V3.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
-    for relation, key, _kind, omitted, scope in EXPORT_V2:
+    for relation, key, _kind, omitted, scope in EXPORT_V3:
         names = {column.name for column in by_relation[relation].columns}
         assert key in names, relation
         assert names.isdisjoint(omitted), relation
@@ -269,7 +286,9 @@ def test_export_registry_partitions_every_recovery_relation() -> None:
 def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> None:
     # v1 still partitions exactly the manifest it was frozen against.
     v1 = {entry[0] for entry in EXPORT_V1} | set(EXCLUDED_V1)
-    assert v1 == set(restore_contract.DOMAIN_RELATIONS) - IMPORT_RELATIONS
+    assert v1 == (
+        set(restore_contract.DOMAIN_RELATIONS) - IMPORT_RELATIONS - ENTERPRISE_RELATIONS
+    )
     assert {entry[0] for entry in IMPORT_EXPORTS} | set(IMPORT_EXCLUSIONS) == (
         IMPORT_RELATIONS
     )
@@ -279,6 +298,20 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
     assert _export_v2_sql.FORWARD.count("requested_relation='") == len(EXPORT_V2)
     assert _export_v2_sql.REVERSE.count("requested_relation='") == len(EXPORT_V1)
     assert "GRANT SELECT ON" not in _export_v2_sql.FORWARD + _export_v2_sql.REVERSE
+
+
+def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -> None:
+    v2 = {entry[0] for entry in EXPORT_V2} | set(EXCLUDED_V2)
+    assert v2 == set(restore_contract.DOMAIN_RELATIONS) - ENTERPRISE_RELATIONS
+    assert {entry[0] for entry in ENTERPRISE_EXPORTS} | set(ENTERPRISE_EXCLUSIONS) == (
+        ENTERPRISE_RELATIONS
+    )
+    assert tuple(sorted((*EXPORT_V2, *ENTERPRISE_EXPORTS))) == EXPORT_V3
+    assert EXCLUDED_V3 == {**EXCLUDED_V2, **ENTERPRISE_EXCLUSIONS}
+    # Identity 0051 replaces only the reader's branches; its reverse is v2's.
+    assert _export_v3_sql.FORWARD.count("requested_relation='") == len(EXPORT_V3)
+    assert _export_v3_sql.REVERSE == _export_v2_sql.FORWARD
+    assert "GRANT SELECT ON" not in _export_v3_sql.FORWARD
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
@@ -303,9 +336,10 @@ def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
     ("path", "format_id", "excluded", "exported"),
     [
         (V1_DOCUMENT, "clinic-organization-export-v1", EXCLUDED_V1, EXPORT_V1),
-        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V2, EXPORT_V2),
+        (V2_DOCUMENT, "clinic-organization-export-v2", EXCLUDED_V2, EXPORT_V2),
+        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V3, EXPORT_V3),
     ],
-    ids=["v1", "v2"],
+    ids=["v1", "v2", "v3"],
 )
 def test_format_document_names_every_exclusion_and_omitted_column(
     path: Path,
@@ -342,7 +376,7 @@ def _assert_manifest(
     assert manifest["manifest_sha256"] == job.manifest_sha256
     assert [entry["relation"] for entry in manifest["datasets"]] == EXPORTED
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
-    assert excluded == EXCLUDED_V2
+    assert excluded == EXCLUDED_V3
     counts = (
         manifest["dataset_count"],
         manifest["record_count"],
@@ -659,7 +693,7 @@ def test_v2_exports_committed_imports_but_never_a_stored_source(
     assert verify_export_package(package).ok
     files = _files(package)
     manifest = json.loads(files["manifest.json"])
-    assert manifest["v"] == "clinic-organization-export-v2"
+    assert manifest["v"] == FORMAT
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
     assert excluded["interop_importbatch"] == "machinery"
     assert "data/interop_importbatch.jsonl" not in files
@@ -679,3 +713,44 @@ def test_v2_exports_committed_imports_but_never_a_stored_source(
     assert set(stored) == {"source", "attachment"}
     assert base64.b64decode(str(stored["attachment"]["data"])) == SYNTHETIC_PDF
     assert "data" not in stored["source"]
+
+
+@override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
+def test_v3_exports_enterprise_records_but_never_a_scim_credential(
+    rbac_graph: RbacGraph, dispatched: list[dict[str, object]]
+) -> None:
+    graph = rbac_graph
+    setup = enterprise_setup(graph)
+    clinician, _own = permission_actor(graph, "physician")
+    _other, enrollment = permission_actor(graph, "physician")
+    client = verified_actor_client(clinician)
+    with permission_context(graph, clinician):
+        grant = grant_break_glass(
+            clinic_id=graph.clinic_a,
+            scope=EmergencyScope(enrollment),
+            reason="Emergencia sintetica exportada",
+            expires_at=timezone.now() + timedelta(hours=1),
+            session_key=session_key(client),
+        )
+    admin = org_admin(graph)
+    job = _request(graph, admin)
+    assert _build(graph, admin, job) == "ready"
+    package = _archive(graph, admin, _receipt(graph, admin, job.export_id))
+    assert verify_export_package(package).ok
+    files = _files(package)
+    manifest = json.loads(files["manifest.json"])
+    assert manifest["v"] == "clinic-organization-export-v3"
+    excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
+    assert excluded["identity_scimtoken"] == "credential"
+    assert "data/identity_scimtoken.jsonl" not in files
+    columns = {
+        entry["relation"]: {column["name"] for column in entry["columns"]}
+        for entry in manifest["datasets"]
+    }
+    assert columns["identity_scimresource"].isdisjoint({"external_hash", "search_hash"})
+    (sso,) = _jsonl(files["data/identity_ssoconnection.jsonl"])
+    assert sso["id"] == str(setup.connection.pk)
+    assert "https://synthetic-idp.invalid" in json.dumps(sso["configuration"])
+    (emergency,) = _jsonl(files["data/identity_breakglassgrant.jsonl"])
+    assert emergency["id"] == str(grant.pk)
+    assert emergency["reason"] == "Emergencia sintetica exportada"

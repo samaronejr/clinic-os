@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from apps.interop.migrations import _import_sql
+from apps.interop.migrations import _import_activity_v2_sql, _import_sql
 from apps.interop.migrations._schema import ProtectedSchema
 from apps.interop.models import ApiAccessToken, ApiClient, ApiClientSecret
 from apps.interop.rls import IMPORT_RLS_TABLES
@@ -204,6 +204,8 @@ def test_every_patient_and_enrollment_reference_is_classified() -> None:
     classified = {
         *_import_sql.PATIENT_ACTIVITY,
         *_import_sql.ENROLLMENT_ACTIVITY,
+        # References created after interop.0001 (rollback activity v2).
+        *_import_activity_v2_sql.ENROLLMENT_ACTIVITY,
         *_import_sql.IMPORT_OWNED,
         *_import_sql.DERIVED,
     }
@@ -213,6 +215,7 @@ def test_every_patient_and_enrollment_reference_is_classified() -> None:
         for group in (
             _import_sql.PATIENT_ACTIVITY,
             _import_sql.ENROLLMENT_ACTIVITY,
+            _import_activity_v2_sql.ENROLLMENT_ACTIVITY,
             _import_sql.IMPORT_OWNED,
             _import_sql.DERIVED,
         )
@@ -222,6 +225,7 @@ def test_every_patient_and_enrollment_reference_is_classified() -> None:
         for table, _column in (
             *_import_sql.PATIENT_ACTIVITY,
             *_import_sql.ENROLLMENT_ACTIVITY,
+            *_import_activity_v2_sql.ENROLLMENT_ACTIVITY,
             *_import_sql.IMPORT_OWNED,
         )
     }

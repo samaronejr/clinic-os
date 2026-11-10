@@ -137,7 +137,12 @@ listed in `migrations/_import_sql.py` (`PATIENT_ACTIVITY`,
 enrollment, a demographics version above 1, more identifiers); in-use
 enrollments are retained and returned for review. A catalog test requires
 every foreign key to a patient or enrollment identity to be classified, so a
-new relation cannot silently escape the check. Hidden enrollments (and their
+new relation cannot silently escape the check. `migrations/_import_sql.py` is
+frozen with the irreversible `interop.0001`, so a relation created after it is
+classified by a later rollback-activity version that the migration creating the
+relation applies: identity 0051 applies v2 (`migrations/_import_activity_v2_sql.py`),
+which counts its break-glass grants as enrollment activity because an emergency
+read is clinical use. Hidden enrollments (and their
 duplicate hints) disappear from every `clinic_app`/`clinic_owner` read through
 the restrictive `interop_import_visibility` policies; every row stays
 physically retained. Imported history of a rolled-back job is invisible.
@@ -167,8 +172,8 @@ parses the source it uploaded while the job is in flight; the database cannot
 tell that step apart from other code in the same session, so it confines the
 read to that resolver and those states. No machine grants. The
 guard refuses DELETE, TRUNCATE and every UPDATE except the batch step.
-Organization export v2 exports these relations except the commit batches
-(machinery) and never reads a stored source. Migration
+Organization exports (v2 and later) include these relations except the commit
+batches (machinery) and never read a stored source. Migration
 `interop.0001_import_framework` is protected and irreversible;
 rollback = restore. It depends only on what it touches when it runs (identity
 user, clinic and `has_permission`, intake's latest node, comms participants):
@@ -350,8 +355,10 @@ send time without a request.
 
 ### Organization export
 
-The archive format is `docs/api/export-v2.md`: export v1 (`docs/api/export-v1.md`,
-frozen) plus the governed-import relations. `request_export` records the
+The archive format is `docs/api/export-v3.md`: export v2
+(`docs/api/export-v2.md`) plus identity 0051's enterprise relations, where v2 is
+export v1 (`docs/api/export-v1.md`) plus the governed-import relations; both
+earlier versions are frozen. `request_export` records the
 receipt and, after commit, hands only the export, organization and requester
 ids to the fair `bulk` queue. `build_organization_export` claims the receipt,
 reads every dataset page in its own `tenant_context` of the requester through
@@ -363,11 +370,15 @@ it is ready. The beat sweeps (`interop-export-dispatch` every 5 minutes,
 archives, fail builds older than 6 hours or whose requester lost authority, and
 null the bytes of expired and failed parts while keeping every receipt.
 
-`EXPORT_V2` and `EXCLUDED_V2` (`migrations/_export_v2_sql.py`) partition the
-recovery manifest's `DOMAIN_RELATIONS` exactly, and `EXPORT_V1`/`EXCLUDED_V1`
-stay as v1 partitioned it before the governed import existed
-(`tests/interop/test_org_export.py`). Version 2 exports the import mappings,
-jobs, transitions, files, imported records and hide markers and excludes the
-commit batches as machinery; an import file of role `source` is exported without
-its stored bytes, which the export never reads. A new domain relation must be
-classified in a new export version migration; no published version changes.
+`EXPORT_V3` and `EXCLUDED_V3` (`migrations/_export_v3_sql.py`) partition the
+recovery manifest's `DOMAIN_RELATIONS` exactly; `EXPORT_V2`/`EXCLUDED_V2` and
+`EXPORT_V1`/`EXCLUDED_V1` stay as their versions partitioned it before identity
+0051 and the governed import existed (`tests/interop/test_org_export.py`).
+Version 2 exports the import mappings, jobs, transitions, files, imported
+records and hide markers and excludes the commit batches as machinery; an import
+file of role `source` is exported without its stored bytes, which the export
+never reads. Version 3 exports identity 0051's directory, federation, grant and
+governance records, excludes the SCIM bearer tokens as credentials and omits the
+SCIM resources' external-id digest and search index; identity 0051 applies its
+reader. A new domain relation must be classified in a new export version
+migration; no published version changes.

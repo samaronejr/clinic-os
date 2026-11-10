@@ -344,9 +344,17 @@ one, and the forward refuses to finish while any applicable policy is unfenced.
 `tests/identity/test_enterprise_migration.py` and
 `tests/infra/test_schema_policy.py` fail otherwise.
 
+Because nothing may follow it, 0051 also applies the interop rules for the
+relations it creates: import rollback activity v2
+(`apps/interop/migrations/_import_activity_v2_sql.py`) counts its break-glass
+grants as use of an imported enrollment, and organization export v3
+(`apps/interop/migrations/_export_v3_sql.py`, `docs/api/export-v3.md`)
+classifies its ten relations.
+
 Migration 0051 reverses only while every enterprise table is empty; populated
 authority history rolls back by restore. An unused install's reverse restores
-the prior coordination workflow guard and audit append, strips the fence and
+the prior coordination workflow guard, audit append, import rollback check and
+export reader, strips the fence and
 removes every object and grant it added. Rollback tests that cross it (0050's
 TOTP reverse, analytics, subscriptions, care plans, inventory, teleconsult)
 therefore return to identical functions, triggers and grants, with policy

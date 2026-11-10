@@ -1,5 +1,9 @@
 # Organization export v2
 
+Exports built after migration `identity.0051_enterprise_governance` use
+[export v3](export-v3.md), which adds identity 0051's enterprise relations.
+This version and its contract below are unchanged.
+
 Format id: `clinic-organization-export-v2`. An organization administrator
 (`configuration.organization` on every clinic) requests the export through
 `POST /api/interop/v1/` (`exports.request`). It covers every domain record of

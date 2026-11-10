@@ -12,6 +12,7 @@ from django.db import migrations, models
 
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.identity.migrations._enterprise_sql import REVERSE_SQL, SQL
+from apps.interop.migrations import _export_v3_sql, _import_activity_v2_sql
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 
 
@@ -66,7 +67,9 @@ class Migration(migrations.Migration):
     The policy fence narrows every clinic_app policy that exists when it runs,
     so this migration follows the leaf of every app. An unused install reverses
     exactly (tests/identity/test_enterprise_migration.py); any enterprise row
-    makes the reverse refuse before it changes anything.
+    makes the reverse refuse before it changes anything. It also applies the
+    interop rules for relations it creates (rollback activity v2, export v3),
+    so nothing follows it and its refusal covers them.
     """
 
     dependencies: ClassVar = [
@@ -373,4 +376,11 @@ class Migration(migrations.Migration):
             database_operations=schema_operations, state_operations=schema_operations
         ),
         migrations.RunSQL(SQL, reverse_sql=REVERSE_SQL),
+        # The merged lanes' rules for relations created here: import rollback
+        # counts break-glass grants as use, and export v3 classifies all ten.
+        migrations.RunSQL(
+            _import_activity_v2_sql.FORWARD,
+            reverse_sql=_import_activity_v2_sql.REVERSE,
+        ),
+        migrations.RunSQL(_export_v3_sql.FORWARD, reverse_sql=_export_v3_sql.REVERSE),
     ]
