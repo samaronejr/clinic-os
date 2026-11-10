@@ -471,7 +471,16 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         # change always re-authenticates): prove it, then sign in again.
         fiscal_workspace = f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
         goto_settled(admin, fiscal_workspace)
-        assert admin.url != fiscal_workspace
+        # The revoked session never reaches the workspace. The navigation ends on
+        # sign-in, or on the in-place refusal when a request the engine sent first
+        # already cleared the cookie (hosted Firefox, PR #32 run 42728791394).
+        expect(admin.locator("[data-finance-workspace]")).to_have_count(0)
+        if admin.url == fiscal_workspace:
+            expect(
+                admin.get_by_role("heading", name=gettext("Access unavailable"))
+            ).to_be_visible()
+        else:
+            assert admin.url == f"{base}/auth/login/"
         sign_in_manager(admin, base, staff, manager)
         goto_settled(admin, fiscal_workspace)
         fiscal = admin.locator("[data-fiscal-documents]")
