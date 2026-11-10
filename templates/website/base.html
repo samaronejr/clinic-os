@@ -1,0 +1,56 @@
+{% load static i18n %}<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{% block meta_description %}{% trans "The Clinic Ops website: the product, its security posture, the help center and contact." %}{% endblock %}">
+    <meta name="theme-color" content="#0f2d3a">
+    <title>{% block title %}{% endblock %} · Clinic Ops</title>
+    <link rel="icon" href="{% static 'icons/clinic-os.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'brand/clinic-ops-icon-192.png' %}">
+    <link rel="stylesheet" href="{% static 'css/clinic-os.css' %}">
+    <link rel="stylesheet" href="{% static 'css/clinic-os-website.css' %}">
+  </head>
+  <body class="site">
+    <a class="skip-link" href="#main-content">{% trans "Skip to main content" %}</a>
+    <header class="site-top">
+      <nav class="site-nav" aria-label="{% trans "Website" %}">
+        <a class="site-brand" href="{% url 'index' %}"{% if page == "home" %} aria-current="page"{% endif %}>
+          <img class="site-brand-logo" src="{% static 'brand/clinic-ops-logo-compact-dark.svg' %}" alt="" width="144" height="32">
+          <span class="site-brand-name">Clinic Ops</span>
+        </a>
+        <ul class="site-nav-list">
+          <li><a class="site-nav-link" href="{% url 'website:product' %}"{% if page == "product" %} aria-current="page"{% endif %}>{% trans "Product" %}</a></li>
+          <li><a class="site-nav-link" href="{% url 'website:security' %}"{% if page == "security" %} aria-current="page"{% endif %}>{% trans "Security" %}</a></li>
+          <li><a class="site-nav-link" href="{% url 'website:help' %}"{% if page == "help" %} aria-current="page"{% endif %}>{% trans "Help" %}</a></li>
+          <li><a class="site-nav-link" href="{% url 'website:contact' %}"{% if page == "contact" %} aria-current="page"{% endif %}>{% trans "Contact" %}</a></li>
+        </ul>
+        <a class="site-nav-signin" href="{% url 'identity:login' %}">{% trans "Sign in" %}</a>
+      </nav>
+    </header>
+    <main id="main-content" class="site-main" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-foot">
+      <div class="site-foot-inner">
+        <div class="site-foot-brand">
+          <img src="{% static 'brand/clinic-ops-mark.svg' %}" alt="" width="40" height="40">
+          <p><strong>Clinic Ops</strong><br>{% trans "The operating system for modern clinics." %}</p>
+        </div>
+        <nav class="site-foot-nav" aria-label="{% trans "Website footer" %}">
+          <ul>
+            <li><a href="{% url 'website:product' %}">{% trans "Product" %}</a></li>
+            <li><a href="{% url 'website:security' %}">{% trans "Security" %}</a></li>
+            <li><a href="{% url 'website:brand' %}">{% trans "Brand" %}</a></li>
+          </ul>
+          <ul>
+            <li><a href="{% url 'website:help' %}">{% trans "Help center" %}</a></li>
+            <li><a href="{% url 'website:contact' %}">{% trans "Contact" %}</a></li>
+            <li><a href="{% url 'identity:login' %}">{% trans "Sign in" %}</a></li>
+          </ul>
+        </nav>
+        <p class="site-foot-note" data-claim="demo-data">{% trans "Every demonstration on this site uses fictional, synthetic data." %}</p>
+      </div>
+    </footer>
+  </body>
+</html>

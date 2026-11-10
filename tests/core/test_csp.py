@@ -276,7 +276,8 @@ class _MetaConfig(HTMLParser):
 
 
 def test_rendered_shell_configures_htmx_for_the_strict_policy() -> None:
-    response = Client().get("/")
+    # The landing route is the script-free website; sign-in renders the shell.
+    response = Client().get("/auth/login/")
     scan = _MetaConfig()
     scan.feed(response.content.decode())
 

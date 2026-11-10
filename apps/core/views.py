@@ -1,4 +1,4 @@
-"""Landing page, workspace entry, installable shell and health endpoints."""
+"""Workspace entry, installable shell and health endpoints."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET
 
 from apps.core.readiness import probe_database_ready
-from apps.core.workspace import has_session_identity, resolve_workspace
+from apps.core.workspace import resolve_workspace
 from apps.identity.otp import privileged_totp_required
 
 if TYPE_CHECKING:
@@ -33,13 +33,6 @@ SHELL_STATIC_ASSETS: Final = (
 )
 SERVICE_WORKER_TEMPLATE: Final = "clinic-os-sw.js"
 VERSION_DIGEST_LENGTH: Final = 12
-
-
-def index(request: HttpRequest) -> HttpResponseBase:
-    """Send signed-in sessions to their workspace; greet everyone else."""
-    if has_session_identity(request):
-        return redirect("workspace-home")
-    return render(request, "base.html")
 
 
 def workspace_home_continuation() -> str:
