@@ -129,6 +129,8 @@ SUITES: Final = {
     "care-coordination": ("tests/renewal/browser/test_care_coordination.py",),
     "public-booking": ("tests/renewal/browser/test_public_booking.py",),
     "reports": ("tests/renewal/browser/test_reports.py",),
+    # Task 69: the ADR-013 capability study (emulation only, never device proof).
+    "device-capabilities": ("tests/renewal/browser/test_device_capabilities.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(

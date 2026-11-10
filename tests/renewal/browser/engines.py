@@ -886,6 +886,43 @@ def virtual_authenticator(page: Page) -> tuple[CDPSession, str]:
     return cdp, authenticator_id
 
 
+def grant_notifications(context: BrowserContext, origin: str) -> bool:
+    """Grant the notification permission where Playwright can; else say so."""
+    if _engine_of(context) != "chromium":
+        return False
+    context.grant_permissions(["notifications"], origin=origin)
+    return True
+
+
+def deliver_push(page: Page, *, origin: str, data: str) -> bool:
+    """Deliver a push message to the page's service worker; Chromium only.
+
+    This exercises the worker's ``push`` handler through DevTools, not a real
+    push service (FCM, APNs or Mozilla autopush), so it is L1 evidence only.
+    """
+    if _engine_of(page.context) != "chromium":
+        return False
+    session = page.context.new_cdp_session(page)
+    registrations: list[str] = []
+
+    def collect(event: dict[str, list[dict[str, str]]]) -> None:
+        registrations.extend(item["registrationId"] for item in event["registrations"])
+
+    session.on("ServiceWorker.workerRegistrationUpdated", collect)
+    try:
+        session.send("ServiceWorker.enable")
+        # Events raised by enable are delivered while the next command runs.
+        session.send("Runtime.evaluate", {"expression": "0"})
+        assert registrations, "no service worker registration reported"
+        session.send(
+            "ServiceWorker.deliverPushMessage",
+            {"origin": origin, "registrationId": registrations[0], "data": data},
+        )
+    finally:
+        session.detach()
+    return True
+
+
 def throttle_cpu(page: Page, rate: float) -> dict[str, object]:
     """Slow ``page``'s renderer ``rate`` times; Chromium DevTools only.
 
