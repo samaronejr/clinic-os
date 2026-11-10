@@ -2,6 +2,180 @@
   "column_grants": [
     [
       "clinic_app",
+      "interop_importbatch",
+      "committed_at",
+      "UPDATE"
+    ],
+    [
+      "clinic_app",
+      "interop_importbatch",
+      "committed_count",
+      "UPDATE"
+    ],
+    [
+      "clinic_app",
+      "interop_importbatch",
+      "state",
+      "UPDATE"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "batch_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "clinic_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "content_sha256",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "created_at",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "dataset",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "enrollment_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "file_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "identifier_count",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "job_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "kind",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "organization_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "patient_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "row_number",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "clinic_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "created_at",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "job_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "media_type",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "organization_id",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "path",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "role",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "scan_reason",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "scan_verdict",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "sha256",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "size_bytes",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
       "interop_organizationexport",
       "archive_bytes",
       "UPDATE"
@@ -165,6 +339,22 @@
   ],
   "functions": [
     [
+      "interop_allowed",
+      "requested_clinic uuid",
+      "boolean",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
       "interop_api_read",
       "presented_token text, kek text, requested_resource text, selector uuid, window_start timestamp with time zone, window_end timestamp with time zone, after_start timestamp with time zone, after_key uuid, page_size integer",
       "SETOF jsonb",
@@ -229,6 +419,38 @@
       true
     ],
     [
+      "interop_attachment",
+      "requested_clinic uuid, requested_record uuid",
+      "TABLE(record_id uuid, job_id uuid, enrollment_id uuid, media_type text, sha256 text, data bytea)",
+      "s",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
+      "interop_attachment_checks",
+      "requested_job uuid, kek text",
+      "TABLE(files integer, total_bytes bigint, mismatches integer)",
+      "s",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
       "interop_authority",
       "requested_org uuid, requested_actor uuid",
       "boolean",
@@ -242,6 +464,22 @@
         "clinic_resolver"
       ],
       false
+    ],
+    [
+      "interop_batch_scope",
+      "requested_batch uuid",
+      "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)",
+      "s",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
     ],
     [
       "interop_capture_event",
@@ -322,7 +560,7 @@
       true
     ],
     [
-      "interop_partner_guard",
+      "interop_guard",
       "",
       "trigger",
       "v",
@@ -335,6 +573,38 @@
         "clinic_resolver"
       ],
       false
+    ],
+    [
+      "interop_hide_reversible",
+      "requested_job uuid",
+      "TABLE(imported_enrollment uuid, hidden boolean)",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
+      "interop_history",
+      "requested_clinic uuid, requested_enrollment uuid",
+      "TABLE(record_id uuid, job_id uuid, kind text, row_number integer, original_author bytea, original_recorded_at timestamp with time zone, content bytea)",
+      "s",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
     ],
     [
       "interop_manage",
@@ -370,6 +640,21 @@
       true
     ],
     [
+      "interop_no_truncate",
+      "",
+      "trigger",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_resolver"
+      ],
+      false
+    ],
+    [
       "interop_offboarding",
       "",
       "trigger",
@@ -383,6 +668,53 @@
         "clinic_resolver"
       ],
       false
+    ],
+    [
+      "interop_partner_guard",
+      "",
+      "trigger",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_resolver"
+      ],
+      false
+    ],
+    [
+      "interop_record_visible",
+      "requested_job uuid, requested_clinic uuid, requested_enrollment uuid",
+      "boolean",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
+      "interop_source",
+      "requested_job uuid",
+      "bytea",
+      "s",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
     ],
     [
       "interop_webhook_attempt",
@@ -437,6 +769,226 @@
       ],
       "SELECT",
       "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager))",
+      null
+    ],
+    [
+      "interop_hiddenenrollment",
+      "tenant_isolation",
+      "PERMISSIVE",
+      [
+        "public"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importbatch",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importbatch",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importbatch",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      null
+    ],
+    [
+      "interop_importbatch",
+      "interop_update",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importedrecord",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importedrecord",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importedrecord",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR interop_record_visible(job_id, clinic_id, enrollment_id)))",
+      null
+    ],
+    [
+      "interop_importfile",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importfile",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importfile",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (interop_allowed(clinic_id) OR (EXISTS ( SELECT 1\n   FROM interop_importedrecord r\n  WHERE ((r.file_id = interop_importfile.id) AND interop_record_visible(r.job_id, r.clinic_id, r.enrollment_id))))))",
+      null
+    ],
+    [
+      "interop_importjob",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importjob",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importjob",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      null
+    ],
+    [
+      "interop_importmapping",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importmapping",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importmapping",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
+      null
+    ],
+    [
+      "interop_importtransition",
+      "interop_insert",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "INSERT",
+      null,
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))"
+    ],
+    [
+      "interop_importtransition",
+      "interop_owner",
+      "PERMISSIVE",
+      [
+        "clinic_owner"
+      ],
+      "ALL",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)",
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+    ],
+    [
+      "interop_importtransition",
+      "interop_read",
+      "PERMISSIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND interop_allowed(clinic_id))",
       null
     ],
     [
@@ -530,6 +1082,61 @@
     ],
     [
       "clinic_app",
+      "interop_hiddenenrollment",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importbatch",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importbatch",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importedrecord",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importfile",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importjob",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importjob",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importmapping",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importmapping",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
+      "interop_importtransition",
+      "INSERT"
+    ],
+    [
+      "clinic_app",
+      "interop_importtransition",
+      "SELECT"
+    ],
+    [
+      "clinic_app",
       "interop_organizationexport",
       "SELECT"
     ],
@@ -565,11 +1172,6 @@
     ],
     [
       "clinic_resolver",
-      "comms_participant",
-      "SELECT"
-    ],
-    [
-      "clinic_resolver",
       "comms_quickreply",
       "SELECT"
     ],
@@ -596,16 +1198,6 @@
     [
       "clinic_resolver",
       "intake_demographicscorrection",
-      "SELECT"
-    ],
-    [
-      "clinic_resolver",
-      "intake_emergencycontact",
-      "SELECT"
-    ],
-    [
-      "clinic_resolver",
-      "intake_patientaddress",
       "SELECT"
     ],
     [
@@ -651,6 +1243,46 @@
     [
       "clinic_resolver",
       "interop_apiwritereceipt",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_hiddenenrollment",
+      "INSERT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_hiddenenrollment",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importbatch",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importedrecord",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importfile",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importjob",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importmapping",
+      "SELECT"
+    ],
+    [
+      "clinic_resolver",
+      "interop_importtransition",
       "SELECT"
     ],
     [
@@ -775,6 +1407,48 @@
       true
     ],
     [
+      "interop_hiddenenrollment",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importbatch",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importedrecord",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importfile",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importjob",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importmapping",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
+      "interop_importtransition",
+      "clinic_owner",
+      true,
+      true
+    ],
+    [
       "interop_organizationexport",
       "clinic_owner",
       true,
@@ -855,6 +1529,76 @@
       "interop_apiwritereceipt",
       "interop_retained_truncate",
       "CREATE TRIGGER interop_retained_truncate BEFORE TRUNCATE ON clinic_app.interop_apiwritereceipt FOR EACH STATEMENT EXECUTE FUNCTION interop_partner_guard()"
+    ],
+    [
+      "interop_hiddenenrollment",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_hiddenenrollment FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_hiddenenrollment",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_hiddenenrollment FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importbatch",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importbatch FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importbatch",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importbatch FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importedrecord",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importedrecord FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importedrecord",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importedrecord FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importfile",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importfile FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importfile",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importfile FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importjob",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importjob FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importjob",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importjob FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importmapping",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importmapping FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importmapping",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importmapping FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
+    ],
+    [
+      "interop_importtransition",
+      "interop_guard",
+      "CREATE TRIGGER interop_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.interop_importtransition FOR EACH ROW EXECUTE FUNCTION interop_guard()"
+    ],
+    [
+      "interop_importtransition",
+      "interop_no_truncate",
+      "CREATE TRIGGER interop_no_truncate BEFORE TRUNCATE ON clinic_app.interop_importtransition FOR EACH STATEMENT EXECUTE FUNCTION interop_no_truncate()"
     ],
     [
       "interop_organizationexport",

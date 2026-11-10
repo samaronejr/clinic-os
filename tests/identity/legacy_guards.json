@@ -25809,7 +25809,8 @@
       ],
       "discovery": {
         "migrations": [
-          "apps/interop/migrations/_export_sql.py"
+          "apps/interop/migrations/_export_sql.py",
+          "apps/interop/migrations/_export_v2_sql.py"
         ],
         "policies": [],
         "resolvers": [],
