@@ -514,7 +514,50 @@ def test_an_answer_without_an_identifier_resends_the_same_bundle(
 
 
 @db
-def test_attempts_exhausted_without_an_answer_reject_as_undelivered(
+def test_a_lost_acceptance_then_exhausted_retries_never_make_a_second_document(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    dispatched: list[UUID],
+    superuser_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Gate review B1: RNDS stores the first send but its answer is unreadable,
+    # every retry then fails, and only a later command reaches RNDS again.
+    world = rnds_world(rbac_graph, settings)
+    first = submit(world)
+    (operation_id,) = dispatched
+    landed = FixtureRndsTransport.submit_bundle
+
+    def unreadable(
+        transport: FixtureRndsTransport, *, body: bytes, requester_cns: str
+    ) -> RndsAnswer:
+        landed(transport, body=body, requester_cns=requester_cns)
+        return RndsAnswer(status=201)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(FixtureRndsTransport, "submit_bundle", unreadable)
+        outcomes = [execute_operation(operation_id)]
+    FIXTURE_TRANSPORT.script.extend(["timeout"] * 4)
+    outcomes += [execute_operation(operation_id) for _ in range(5)]
+    assert outcomes == ["retry"] * 5 + ["failed"]
+    assert len(FIXTURE_TRANSPORT.accepted) == 1
+    again = submit(world)
+    assert execute_operation(dispatched[-1]) == "succeeded"
+    # RNDS still holds exactly one document for the result version.
+    assert len(FIXTURE_TRANSPORT.accepted) == 1
+    assert len({request.body for request in FIXTURE_TRANSPORT.requests}) == 1
+    assert (again.submission_id, again.created) == (first.submission_id, True)
+    assert submissions(superuser_database_url, world.version_id) == 1
+    settled = stored(superuser_database_url, first.submission_id)
+    assert (
+        settled["state"],
+        settled["answer_code"],
+        settled["rnds_identifier"],
+    ) == ("accepted", "EHR-ERR866", "")
+
+
+@db
+def test_exhausted_attempts_keep_the_document_until_its_resend_settles(
     rbac_graph: RbacGraph,
     settings: SettingsWrapper,
     dispatched: list[UUID],
@@ -530,11 +573,62 @@ def test_attempts_exhausted_without_an_answer_reject_as_undelivered(
     assert len(FIXTURE_TRANSPORT.requests) == 5
     operation = operation_for(world.graph, receipt.submission_id)
     assert operation.last_error == "attempts_exhausted"
-    undelivered = stored(superuser_database_url, receipt.submission_id)
-    assert (undelivered["state"], undelivered["answer_code"]) == (
-        "rejected",
+    uncertain = stored(superuser_database_url, receipt.submission_id)
+    assert (uncertain["state"], uncertain["answer_code"]) == (
+        "uncertain",
         "undelivered",
     )
+    # Only a resend settles a document RNDS may hold, even for the superuser.
+    with psycopg.connect(superuser_database_url) as raw, pytest.raises(psycopg.Error):
+        raw.execute(
+            "UPDATE clinic_app.interop_rndssubmission SET state='rejected',"
+            " revision=revision+1, answer_code='EHR-ERR924' WHERE id=%s",
+            [receipt.submission_id],
+        )
+    with pytest.raises(RndsIneligibleError) as caught:
+        submit(world, result_code="2")
+    assert caught.value.reason == "delivery_unresolved"
+    resent = submit(world)
+    assert (resent.submission_id, resent.state, resent.created) == (
+        receipt.submission_id,
+        "pending",
+        True,
+    )
+    assert execute_operation(dispatched[-1]) == "succeeded"
+    settled = stored(superuser_database_url, receipt.submission_id)
+    assert settled["state"] == "accepted"
+    assert (
+        settled["rnds_identifier"]
+        == FIXTURE_TRANSPORT.accepted[str(receipt.submission_id)]
+    )
+    assert len({request.body for request in FIXTURE_TRANSPORT.requests}) == 1
+    assert submissions(superuser_database_url, world.version_id) == 1
+
+
+@db
+def test_a_refusal_without_a_validation_verdict_keeps_the_document(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    dispatched: list[UUID],
+    superuser_database_url: str,
+) -> None:
+    world = rnds_world(rbac_graph, settings)
+    receipt = submit(world)
+    FIXTURE_TRANSPORT.script.append("EHR-ERR881")
+    assert execute_operation(dispatched[0]) == "failed"
+    refused = stored(superuser_database_url, receipt.submission_id)
+    assert (refused["state"], refused["answer_code"]) == ("uncertain", "EHR-ERR881")
+    resent = submit(world)
+    assert resent.submission_id == receipt.submission_id
+    assert execute_operation(dispatched[-1]) == "succeeded"
+    assert stored(superuser_database_url, receipt.submission_id)["state"] == (
+        "accepted"
+    )
+    assert events(world.graph, receipt.submission_id) == [
+        "interop.rnds_submission.requested",
+        "interop.rnds_submission.requested",
+        "interop.rnds_submission.accepted",
+    ]
 
 
 @db
@@ -611,7 +705,10 @@ def test_consent_revoked_before_the_send_cancels_it_without_a_request(
     assert execute_operation(dispatched[0]) == "cancelled"
     assert FIXTURE_TRANSPORT.requests == []
     withdrawn = stored(superuser_database_url, receipt.submission_id)
-    assert (withdrawn["state"], withdrawn["answer_code"]) == ("rejected", "withdrawn")
+    assert (withdrawn["state"], withdrawn["answer_code"]) == (
+        "uncertain",
+        "withdrawn",
+    )
 
 
 @db

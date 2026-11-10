@@ -132,7 +132,9 @@ class Migration(migrations.Migration):
                         fields=("clinic", "command_id"), name="interop_rnds_command"
                     ),
                     models.UniqueConstraint(
-                        condition=models.Q(("state__in", ("pending", "accepted"))),
+                        condition=models.Q(
+                            ("state__in", ("pending", "accepted", "uncertain"))
+                        ),
                         fields=("result_version",),
                         name="interop_rnds_live_version",
                     ),

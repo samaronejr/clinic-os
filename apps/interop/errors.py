@@ -10,12 +10,14 @@ NOT_ACKNOWLEDGED: Final = "not_acknowledged"
 CONSENT_REQUIRED: Final = "consent_required"
 IDENTIFIER_REQUIRED: Final = "identifier_required"
 ALREADY_SUBMITTED: Final = "already_submitted"
+DELIVERY_UNRESOLVED: Final = "delivery_unresolved"
 RNDS_INELIGIBLE_REASONS: Final = (
     SOURCE_SUPERSEDED,
     NOT_ACKNOWLEDGED,
     CONSENT_REQUIRED,
     IDENTIFIER_REQUIRED,
     ALREADY_SUBMITTED,
+    DELIVERY_UNRESOLVED,
 )
 
 

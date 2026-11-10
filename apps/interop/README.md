@@ -29,7 +29,7 @@ and allows only the transitions listed here, with a `revision` increment on each
 | `interop_webhookattempt` | the delivery log: attempt number, outcome, HTTP status, time |
 | `interop_organizationexport` | export receipts and their state machine |
 | `interop_organizationexportpart` | encrypted archive byte ranges, kept until the archive expires or fails |
-| `interop_rndssubmission` | one sealed RNDS result bundle, its owner approval's capability version and the RNDS answer: `pending`, then `accepted` or `rejected` |
+| `interop_rndssubmission` | one sealed RNDS result bundle, its owner approval's capability version and the RNDS answer: `pending`, then `accepted`, `rejected` or `uncertain` (resent as `pending`) |
 
 Client secrets (`cs_` + 64 hex) and access tokens (`at_` + 64 hex) carry 256
 bits of fresh entropy and are shown once; only their SHA-256 digests are
@@ -174,12 +174,11 @@ archives, fail builds older than 6 hours or whose requester lost authority, and
 null the bytes of expired and failed parts while keeping every receipt.
 
 `export_registry.EXPORT_V1` and `EXCLUDED_V1` partition the recovery manifest's
-`DOMAIN_RELATIONS` exactly (`tests/interop/test_org_export.py`). A new relation
-that adds an exported dataset needs a new export version migration; the v1
-datasets never change. `interop_rndssubmission` (todo 68) joined `EXCLUDED_V1`
-as `machinery`: it is the delivery receipt of a document RNDS itself holds, and
-the v1 archive gained no dataset. Whether later relations join v1's exclusions
-or wait for a v2 is the open integration decision recorded for todo 66.
+`DOMAIN_RELATIONS` exactly (`tests/interop/test_org_export.py`). A new domain
+relation must be classified in a new export version migration; this version
+never changes. `interop_rndssubmission` (todo 68) is not classified here: the
+Wave F integrator classifies it in the forward export version at merge, and
+until then the partition test names it as awaiting that version.
 
 ## RNDS laboratory results (behind EG-7)
 
@@ -207,7 +206,7 @@ document nothing is built. In order, it refuses with:
 | `RndsUnavailableError` | before any read: data mode is not synthetic, `INTEROP_RNDS_HOMOLOGATION` is off (the default) or the clinic's current `rnds` version is not an approved `sandbox` version of provider `rnds-fixture`, environment `homologation`, account `fixture` |
 | `RndsValidationError` | the exam document or the built bundle breaks a recorded rule; it carries every failing element path and a closed issue code, never a value |
 | `InteropAccessDeniedError` | unknown, other-clinic or unauthorized result: the actor needs `result.release` for the result's patient, and every miss is the same denial |
-| `RndsIneligibleError` | `source_superseded`, `not_acknowledged`, `consent_required` (no unrevoked `rnds_exchange` acceptance), `identifier_required` (no valid CNS or CPF) or `already_submitted` (a pending or accepted submission exists) |
+| `RndsIneligibleError` | `source_superseded`, `not_acknowledged`, `consent_required` (no unrevoked `rnds_exchange` acceptance), `identifier_required` (no valid CNS or CPF), `already_submitted` (a pending or accepted submission exists, or an uncertain one is still finishing its last send) or `delivery_unresolved` (an uncertain submission of the result has other exam terms) |
 | `InteropConflictError` | the command id was used for other terms; the same terms return the stored receipt |
 
 `interop_rnds_request` re-checks authority, the current and acknowledged
@@ -229,17 +228,30 @@ bundle identifier `EHR-ERR866`. The answer settles the submission through
 - `201` with an identifier: `accepted`, identifier stored.
 - `EHR-ERR866`: `accepted` without an identifier. Bundle identifiers are
   submission ids under the establishment's own requester system, so RNDS
-  already holds this document; a lost answer never becomes a second document.
-- other `4xx`: `rejected` with the `EHR-ERRnnn` code (or `http_<status>`).
+  already holds this document.
+- `422` with an `EHR-ERRnnn` validation code: `rejected` with that code, the
+  only definitive refusal.
+- any other `4xx`: `uncertain` with its code (or `http_<status>`); a refusal
+  that is no verdict on the document keeps its identifier.
 - `401 EHR-ERR882`: the token is refreshed once; then the send retries.
 - `5xx`, an answer without a readable identifier, network failures and
   timeouts: the same bundle is retried; a copy that already landed answers
   `EHR-ERR866`.
-- an operation that fails or is cancelled without an answer: `rejected` with
-  `undelivered` or `withdrawn` (`interop_rnds_undelivered` trigger).
+- an operation that fails (attempts exhausted) or is cancelled without an
+  answer: `uncertain` with `undelivered` or `withdrawn`
+  (`interop_rnds_undelivered` trigger). Neither proves that RNDS lacks the
+  document.
 
-A rejected submission frees the result for a new command. Replacing an accepted
-result (RNDS "substituir") is not implemented.
+An uncertain submission keeps the result version (the partial unique index
+`interop_rnds_live_version` covers `pending`, `accepted` and `uncertain`). The
+next command for that result with the same exam terms resends the same row:
+`interop_rnds_request` returns it to `pending` under the new command, actor and
+capability version with the same identifier and sealed bytes, and a new outbox
+operation sends it, so a lost answer never becomes a second document. Other
+terms are refused (`delivery_unresolved`): a document RNDS may hold can only be
+replaced, which is not implemented. Only a rejected submission frees the result
+for a new bundle identifier. Replacing an accepted result (RNDS "substituir")
+is not implemented.
 
 `MtlsRndsTransport` implements the guide's flow with the standard library
 (`ssl`, `http.client`): `GET /api/token` on the Auth host over mutual TLS with
@@ -261,7 +273,8 @@ evidence PDF, production access per state and the LGPD art. 11 legal basis
 (open for the owner's compliance reviewer) all precede a real leg, which also
 needs the provider lifecycle record and `ops.release.activation`; its live
 preflight refuses an environment that sets `INTEROP_RNDS_HOMOLOGATION`. Submissions
-are audited as `interop.rnds_submission.requested`, `.accepted` and `.rejected`;
-an answer recorded after the requester lost authority is audited by the outbox
+are audited as `interop.rnds_submission.requested` (each send, resends
+included), `.accepted` and `.rejected`; an uncertain outcome, and an answer
+recorded after the requester lost authority, are audited by the outbox
 completion event instead. No log, outbox row, `last_error` or audit payload
 holds the bundle, the patient identifier or a credential.

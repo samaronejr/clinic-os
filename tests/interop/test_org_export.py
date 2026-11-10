@@ -23,7 +23,12 @@ from apps.intake.services import create_patient
 from apps.interop import export_builder, tasks
 from apps.interop.errors import InteropAccessDeniedError
 from apps.interop.export_builder import build_organization_export, neutralize
-from apps.interop.export_registry import EXCLUSION_REASONS, FORMAT, datasets
+from apps.interop.export_registry import (
+    EXCLUDED,
+    EXCLUSION_REASONS,
+    FORMAT,
+    datasets,
+)
 from apps.interop.management import (
     create_client,
     download_export_part,
@@ -87,6 +92,10 @@ STAFF_COLUMNS = {
     "last_login",
 }
 EXPORTED = [entry[0] for entry in EXPORT_V1]
+# Relations created after the newest export version was frozen. The Wave F
+# integrator classifies each in the forward export version at merge, and no
+# frozen version gains them (todo 68 gate review B2).
+AWAITING_EXPORT_VERSION = frozenset({"interop_rndssubmission"})
 
 
 @pytest.fixture
@@ -229,11 +238,17 @@ def _manage(
 
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
-    assert len(EXPORTED) == len(set(EXPORTED))
-    assert set(EXPORTED).isdisjoint(EXCLUDED_V1)
-    assert set(EXPORTED) | set(EXCLUDED_V1) == set(restore_contract.DOMAIN_RELATIONS)
+    # The registry's current version, not a frozen one by name.
+    exported = [dataset.relation for dataset in datasets()]
+    assert len(exported) == len(set(exported))
+    assert set(exported).isdisjoint(EXCLUDED)
+    classified = set(exported) | set(EXCLUDED)
+    assert classified.isdisjoint(AWAITING_EXPORT_VERSION)
+    assert classified | AWAITING_EXPORT_VERSION == set(
+        restore_contract.DOMAIN_RELATIONS
+    )
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
-    assert set(EXCLUDED_V1.values()) <= set(EXCLUSION_REASONS)
+    assert set(EXCLUDED.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
     for relation, key, _kind, omitted, scope in EXPORT_V1:

@@ -11,6 +11,8 @@ all of it) and enqueues one ``action`` operation that sends it after commit.
 At send time the outbox rechecks the actor; ``submission_eligible`` rechecks
 consent, the capability version and the result, so a revocation before the send
 cancels it. The answer settles the submission while its operation is in flight.
+Without a definitive answer the submission is uncertain: RNDS may hold it, so
+the next command for that result resends the same bundle and identifier.
 """
 
 from __future__ import annotations
@@ -66,6 +68,7 @@ from apps.interop.rnds_gate import require_rnds_homologation
 from apps.interop.rnds_transport import (
     HTTP_CREATED,
     HTTP_UNAUTHORIZED,
+    HTTP_UNPROCESSABLE,
     TOKEN_EXPIRED,
     RndsTransportError,
     establishment_for,
@@ -107,7 +110,7 @@ _HTTP_CLIENT_ERROR: Final = 400
 
 @dataclass(frozen=True, slots=True)
 class RndsReceipt:
-    """The submission a command created or, on replay, already holds."""
+    """The submission a command armed (``created``) or, on replay, already holds."""
 
     submission_id: UUID
     state: str
@@ -259,13 +262,17 @@ def _seal(  # noqa: PLR0913 - one value per bound request term
     )
 
 
-def _store(request: _SealedRequest) -> RndsReceipt:
-    """Insert through the resolver, which re-checks every rule in the database."""
+def _store(request: _SealedRequest) -> tuple[RndsReceipt, str]:
+    """Arm one send through the resolver, which re-checks every rule.
+
+    The resolver inserts the sealed bundle, or resends the result's uncertain
+    bundle unchanged; it returns the digest of the bytes that will be sent.
+    """
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT record_id,outcome FROM clinic_app.interop_rnds_request("
-                "%s,%s,%s,%s,%s,%s,%s,%s)",
+                "SELECT record_id,outcome,payload_digest FROM "
+                "clinic_app.interop_rnds_request(%s,%s,%s,%s,%s,%s,%s,%s)",
                 [
                     request.clinic_id,
                     request.submission_id,
@@ -280,19 +287,21 @@ def _store(request: _SealedRequest) -> RndsReceipt:
             row = cursor.fetchone()
     except DatabaseError as error:
         raise InteropAccessDeniedError from error
-    record_id, outcome = (None, "") if row is None else (row[0], str(row[1]))
+    record_id, outcome, digest = (
+        (None, "", None) if row is None else (row[0], str(row[1]), row[2])
+    )
     if outcome == "replayed" and record_id is not None:
         replayed = RndsSubmission.objects.get(pk=record_id)
-        return RndsReceipt(replayed.pk, replayed.state, created=False)
+        return RndsReceipt(replayed.pk, replayed.state, created=False), ""
     if outcome == "unavailable":
         raise RndsUnavailableError
     if outcome == "conflict":
         raise InteropConflictError
     if outcome in RNDS_INELIGIBLE_REASONS:
         raise RndsIneligibleError(outcome)
-    if outcome != "created" or record_id is None:
+    if outcome not in {"created", "resent"} or record_id is None or digest is None:
         raise InteropAccessDeniedError
-    return RndsReceipt(cast("UUID", record_id), "pending", created=True)
+    return RndsReceipt(cast("UUID", record_id), "pending", created=True), str(digest)
 
 
 def exchange_clinical_record(
@@ -334,8 +343,9 @@ def exchange_clinical_record(
             exam=document,
             patient=patient,
         )
-        receipt = _store(request)
+        receipt, payload_digest = _store(request)
         if receipt.created:
+            # One operation per armed send: a resend gets its own operation.
             enqueue_operation(
                 ActionOperationRequest(
                     provider=PROVIDER,
@@ -343,9 +353,9 @@ def exchange_clinical_record(
                     subject_type=SUBJECT_TYPE,
                     subject_id=receipt.submission_id,
                     idempotency_key=uuid.uuid5(
-                        _OPERATION_NAMESPACE, str(receipt.submission_id)
+                        _OPERATION_NAMESPACE, f"{receipt.submission_id}:{command_id}"
                     ),
-                    payload_digest=request.bundle_digest,
+                    payload_digest=payload_digest,
                 )
             )
             record_phase1_event(
@@ -406,16 +416,23 @@ def _decide(answer: RndsAnswer) -> _Decision | None:
         return _Decision("accepted", code=DUPLICATE)
     if answer.status == HTTP_UNAUTHORIZED and TOKEN_EXPIRED in answer.codes:
         return None
+    if answer.status == HTTP_UNPROCESSABLE and answer.codes:
+        # A validation verdict is definitive: RNDS refused this document.
+        return _Decision("rejected", code=answer.codes[0])
     if answer.status >= _HTTP_CLIENT_ERROR:
+        # Any other refusal is no verdict on the document; keep its identifier.
         code = answer.codes[0] if answer.codes else f"http_{answer.status}"
-        return _Decision("rejected", code=code[:_ANSWER_CODE_LIMIT])
+        return _Decision("uncertain", code=code[:_ANSWER_CODE_LIMIT])
     # No readable identifier: resend the same bundle. A copy that already
     # landed answers EHR-ERR866, so a retry never becomes a second document.
     return None
 
 
 def _settle(prepared: PreparedSubmission, decision: _Decision) -> None:
-    """Record the answer; audit it under the requester while authority holds."""
+    """Record the answer; audit a verdict under the requester while authority holds.
+
+    An uncertain answer is no verdict; the outbox failure event audits it.
+    """
     statement = "SELECT clinic_app.interop_rnds_settle(%s,%s,%s,%s)"
     params: tuple[UUID, str, str, str] = (
         prepared.operation_id,
@@ -428,7 +445,11 @@ def _settle(prepared: PreparedSubmission, decision: _Decision) -> None:
             with connection.cursor() as cursor:
                 cursor.execute(statement, params)
                 row = cursor.fetchone()
-            if row is not None and row[0] is not None:
+            if (
+                row is not None
+                and row[0] is not None
+                and decision.outcome != "uncertain"
+            ):
                 record_phase1_event(
                     f"interop.rnds_submission.{decision.outcome}",
                     clinic_id=prepared.clinic_id,
@@ -470,7 +491,7 @@ class RndsActionAdapter:
         )
 
     def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
-        """Send once; settle accepted or rejected, retry transport failures."""
+        """Send once; settle the answer, retry transport failures."""
         if (
             not isinstance(prepared, PreparedSubmission)
             or prepared.operation_id != operation_id

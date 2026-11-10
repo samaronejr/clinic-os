@@ -5,9 +5,7 @@ Every ``clinic_app`` domain relation is either exported here or excluded with a
 closed reason (``EXCLUDED_V1``); ``tests/interop/test_org_export.py`` proves the
 union equals the recovery manifest's domain relations plus the interop tables.
 The reader is static SQL: one fixed branch per relation, no dynamic SQL.
-A later export version adds a new migration; the v1 datasets never change. A
-later relation that exports nothing may join ``EXCLUDED_V1`` with a closed reason
-(``interop_rndssubmission``, todo 68); the reader SQL is untouched by it.
+A later export version adds a new migration; this module never changes.
 """
 
 from typing import Final
@@ -299,7 +297,6 @@ EXCLUDED_V1: Final = {
     "interop_apiaccesstoken": "credential",
     "interop_apiclientsecret": "credential",
     "interop_organizationexportpart": "derived_archive",
-    "interop_rndssubmission": "machinery",
     "inventory_commandreceipt": "machinery",
     "otp_static_staticdevice": "credential",
     "otp_totp_totpdevice": "credential",

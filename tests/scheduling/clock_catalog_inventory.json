@@ -20555,10 +20555,10 @@
   },
   "function:clinic_app.interop_rnds_guard()": {
     "direct": {
-      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
       "pg_catalog.statement_timestamp()": 2,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 4,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
     },
     "via": [
       "function:pg_catalog.to_jsonb(anyelement)"

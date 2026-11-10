@@ -338,7 +338,7 @@ class RecordedRndsRequest:
 
     path: str
     headers: dict[str, str]
-    body: bytes
+    body: bytes = field(repr=False)
 
 
 @dataclass

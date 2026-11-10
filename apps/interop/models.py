@@ -36,7 +36,7 @@ CLIENT_STATES: Final = ("active", "revoked")
 SUBSCRIPTION_STATES: Final = ("active", "revoked")
 EXPORT_STATES: Final = ("requested", "building", "ready", "failed", "expired")
 ATTEMPT_OUTCOMES: Final = ("delivered", "http_error", "timeout", "network_error")
-RNDS_STATES: Final = ("pending", "accepted", "rejected")
+RNDS_STATES: Final = ("pending", "accepted", "rejected", "uncertain")
 
 
 class ApiClient(TenantScopedModel):
@@ -199,8 +199,11 @@ class RndsSubmission(TenantScopedModel):
     """One laboratory-result bundle sent to the RNDS homologation environment.
 
     The id is also the bundle id and its identifier value. ``state`` is the RNDS
-    answer: ``pending`` while the outbox operation is live, then ``accepted``
-    with the RNDS identifier or ``rejected`` with a closed answer code.
+    answer: ``pending`` while an outbox operation is live, then ``accepted``
+    with the RNDS identifier, ``rejected`` with a definitive validation code, or
+    ``uncertain`` when no definitive answer came. An uncertain bundle may be at
+    RNDS, so it keeps the result version until a resend of the same bundle
+    settles it; ``command_id`` names the command that armed the last send.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -232,7 +235,7 @@ class RndsSubmission(TenantScopedModel):
     decided_at = models.DateTimeField(null=True)
 
     class Meta:
-        """One command per clinic; one live or accepted bundle per result version."""
+        """One command per clinic; one unreleased bundle per result version."""
 
         constraints: ClassVar = [
             models.UniqueConstraint(
@@ -240,7 +243,7 @@ class RndsSubmission(TenantScopedModel):
             ),
             models.UniqueConstraint(
                 fields=("result_version",),
-                condition=models.Q(state__in=("pending", "accepted")),
+                condition=models.Q(state__in=("pending", "accepted", "uncertain")),
                 name="interop_rnds_live_version",
             ),
         ]

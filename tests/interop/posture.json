@@ -135,7 +135,25 @@
     [
       "clinic_resolver",
       "interop_rndssubmission",
+      "capability_version_id",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "command_id",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
       "decided_at",
+      "UPDATE"
+    ],
+    [
+      "clinic_resolver",
+      "interop_rndssubmission",
+      "requested_by_id",
       "UPDATE"
     ],
     [
@@ -432,7 +450,7 @@
     [
       "interop_rnds_request",
       "requested_clinic uuid, requested_submission uuid, requested_version uuid, requested_command uuid, requested_digest text, requested_capability uuid, sealed_bundle bytea, bundle_digest text",
-      "TABLE(record_id uuid, outcome text)",
+      "TABLE(record_id uuid, outcome text, payload_digest text)",
       "v",
       true,
       "clinic_resolver",

@@ -25586,7 +25586,7 @@
     },
     "clinic_app.interop_rnds_guard": {
       "kind": "row_integrity",
-      "reason": "Todo 68 retained-row trigger: refuses DELETE and TRUNCATE on RNDS submissions, admits inserts only as pending revision 1 with a sealed bundle, and only the pending to accepted or rejected transition with an exact revision increment.",
+      "reason": "Todo 68 retained-row trigger: refuses DELETE and TRUNCATE on RNDS submissions, admits inserts only as pending revision 1 with a sealed bundle, the pending to accepted, rejected or uncertain transition, and the uncertain to pending resend that changes only the arming command, actor and capability version, each with an exact revision increment.",
       "probes": [],
       "discovery": {
         "migrations": [
@@ -25606,7 +25606,7 @@
     },
     "clinic_app.interop_rnds_request": {
       "kind": "domain_protocol",
-      "reason": "Todo 68 RNDS submission resolver: result.release for the matched result's patient enrollment, the current acknowledged version, the patient's unrevoked rnds_exchange consent, the clinic's approved fixture sandbox capability version and identical denial for unknown, foreign and unauthorized results.",
+      "reason": "Todo 68 RNDS submission resolver: result.release for the matched result's patient enrollment, the current acknowledged version, the patient's unrevoked rnds_exchange consent, the clinic's approved fixture sandbox capability version and identical denial for unknown, foreign and unauthorized results; an uncertain submission of the result is resent unchanged under the new command (same exam terms, last operation over), never replaced by a second document.",
       "probes": [
         "test_unknown_foreign_and_unauthorized_records_are_denied_alike",
         "test_non_consented_and_revoked_records_are_refused"
@@ -25629,7 +25629,7 @@
     },
     "clinic_app.interop_rnds_settle": {
       "kind": "worker_protocol",
-      "reason": "Todo 68 outbox send-path recorder: settles one pending RNDS submission to accepted or rejected only while its interop-rnds-v1 action operation is in flight; it stores the closed answer code and RNDS identifier, never the bundle or a patient identifier.",
+      "reason": "Todo 68 outbox send-path recorder: settles one pending RNDS submission to accepted, rejected (a definitive validation code) or uncertain only while its interop-rnds-v1 action operation is in flight; it stores the closed answer code and RNDS identifier, never the bundle or a patient identifier.",
       "probes": [],
       "discovery": {
         "migrations": [
@@ -25649,7 +25649,7 @@
     },
     "clinic_app.interop_rnds_undelivered": {
       "kind": "row_integrity",
-      "reason": "Todo 68 outbox trigger: rejects a pending RNDS submission as undelivered or withdrawn when its operation fails or is cancelled without an RNDS answer; it reads no authority.",
+      "reason": "Todo 68 outbox trigger: marks a pending RNDS submission uncertain (undelivered or withdrawn) when its operation fails or is cancelled without an RNDS answer, keeping its bundle identifier; it reads no authority.",
       "probes": [],
       "discovery": {
         "migrations": [
