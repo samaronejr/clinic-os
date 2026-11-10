@@ -29,6 +29,24 @@ PATIENT_B = UUID(int=2202)
 ENROLLMENT_A = UUID(int=2301)
 ENROLLMENT_B = UUID(int=2302)
 ENROLLMENT_FOREIGN = UUID(int=2303)
+TENANT_POLICY = (
+    "(organization_id = (NULLIF(current_setting("
+    "'app.current_tenant'::text, true), ''::text))::uuid)"
+)
+# A rolled-back import (apps/interop) hides its unused enrollments and their
+# duplicate hints from every staff and owner read.
+IMPORT_VISIBILITY = {
+    "intake_duplicatecandidate": (
+        "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+        "  WHERE (h.enrollment_id = ANY (ARRAY["
+        "intake_duplicatecandidate.enrollment_a_id, "
+        "intake_duplicatecandidate.enrollment_b_id])))))"
+    ),
+    "intake_patientclinicenrollment": (
+        "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+        "  WHERE (h.enrollment_id = intake_patientclinicenrollment.id))))"
+    ),
+}
 
 
 def _set_owner_tenant(organization_id: UUID) -> None:
@@ -215,20 +233,35 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 """,
                 [[table for table, _ in sorted(expected_targets)]],
             )
-            assert cursor.fetchall() == [
-                (
-                    table,
-                    "tenant_isolation",
-                    "PERMISSIVE",
-                    ["public"],
-                    "ALL",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
-                )
-                for table, _ in sorted(expected_targets)
-            ]
+            assert cursor.fetchall() == sorted(
+                [
+                    *(
+                        (
+                            table,
+                            "tenant_isolation",
+                            "PERMISSIVE",
+                            ["public"],
+                            "ALL",
+                            TENANT_POLICY,
+                            TENANT_POLICY,
+                        )
+                        for table, _ in expected_targets
+                    ),
+                    *(
+                        (
+                            table,
+                            "interop_import_visibility",
+                            "RESTRICTIVE",
+                            ["clinic_app", "clinic_owner"],
+                            "SELECT",
+                            qual,
+                            None,
+                        )
+                        for table, qual in IMPORT_VISIBILITY.items()
+                    ),
+                ],
+                key=lambda row: (row[0], row[1]),
+            )
             cursor.execute(
                 """
                 SELECT table_name, privilege_type

@@ -82,7 +82,7 @@ flowchart LR
 | IE-D1 | Denial of service | A large import starves chart saves for other tenants. | Commit runs in batches on the `bulk` queue with per-tenant fairness. | 9, 66 |
 | IE-D2 | Denial of service | API clients flood the service. | Redis token-bucket rate limits per client; idempotency key required on writes. | 67 |
 | IE-E1 | Elevation of privilege | A ZIP attachment carries malware into clinical storage. | Attachments are checksummed and scanned in quarantine before linking. | 66 |
-| IE-E2 | Elevation of privilege | An archive path escapes the extraction directory (zip slip). | **Proposal:** validate archive entries against a flat allowlisted layout before extraction. | 66 |
+| IE-E2 | Elevation of privilege | An archive path escapes the extraction directory (zip slip). | Accepted by todo 66: archive entries must match the flat allowlisted `clinic-import-archive-v1` layout (no `..`, absolute, nested, symlinked or encrypted members) and are read in memory; nothing is extracted to disk. | 66 |
 
 ## Residual risk and external gates
 

@@ -1,0 +1,411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-ops.invalid/interop/import-mapping-v1.json",
+  "title": "Clinic Ops import profile and mapping contract v1",
+  "description": "A profile describes an uploaded source without patient values; a mapping binds source columns to import fields. Competitor-specific layouts are out of scope until EG-15 samples exist.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/mapping"
+    },
+    {
+      "$ref": "#/$defs/profile"
+    }
+  ],
+  "$defs": {
+    "column": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "source_kind",
+        "datasets"
+      ],
+      "properties": {
+        "schema": {
+          "const": "import-mapping-v1"
+        },
+        "source_kind": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "zip",
+            "api"
+          ]
+        },
+        "date_format": {
+          "enum": [
+            "DD/MM/YYYY",
+            "YYYY-MM-DD",
+            "excel_serial"
+          ]
+        },
+        "datetime_format": {
+          "enum": [
+            "DD/MM/YYYY HH:MM",
+            "YYYY-MM-DDTHH:MM"
+          ]
+        },
+        "csv": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patients": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "delimiter",
+                "encoding"
+              ],
+              "properties": {
+                "delimiter": {
+                  "enum": [
+                    ",",
+                    ";",
+                    "\t",
+                    "|"
+                  ]
+                },
+                "encoding": {
+                  "enum": [
+                    "utf-8",
+                    "cp1252"
+                  ]
+                }
+              }
+            },
+            "history": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "delimiter",
+                "encoding"
+              ],
+              "properties": {
+                "delimiter": {
+                  "enum": [
+                    ",",
+                    ";",
+                    "\t",
+                    "|"
+                  ]
+                },
+                "encoding": {
+                  "enum": [
+                    "utf-8",
+                    "cp1252"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "datasets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "patients"
+          ],
+          "properties": {
+            "patients": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "columns"
+              ],
+              "properties": {
+                "columns": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "source_id"
+                  ],
+                  "properties": {
+                    "source_id": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "legal_name": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "social_name": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "birth_date": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "cpf": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "cns": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "sex_at_birth": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "registered_at": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "registered_by": {
+                      "$ref": "#/$defs/column"
+                    }
+                  }
+                },
+                "values": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "sex_at_birth": {
+                      "type": "object",
+                      "maxProperties": 64,
+                      "propertyNames": {
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "declined",
+                          "female",
+                          "intersex",
+                          "male",
+                          "not_informed"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "history": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "columns"
+              ],
+              "properties": {
+                "columns": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "source_id",
+                    "patient_source_id",
+                    "kind",
+                    "recorded_at",
+                    "author"
+                  ],
+                  "properties": {
+                    "source_id": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "patient_source_id": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "kind": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "recorded_at": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "author": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "text": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "code": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "value": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "unit": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "file": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "title": {
+                      "$ref": "#/$defs/column"
+                    }
+                  }
+                },
+                "values": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "type": "object",
+                      "maxProperties": 64,
+                      "propertyNames": {
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "note",
+                          "observation",
+                          "attachment"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "source_kind",
+        "datasets",
+        "attachments"
+      ],
+      "properties": {
+        "schema": {
+          "const": "import-profile-v1"
+        },
+        "source_kind": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "zip",
+            "api"
+          ]
+        },
+        "datasets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patients": {
+              "$ref": "#/$defs/dataset_profile"
+            },
+            "history": {
+              "$ref": "#/$defs/dataset_profile"
+            }
+          }
+        },
+        "attachments": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "clean",
+            "rejected",
+            "bytes"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "clean": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rejected": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "dataset_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row_count",
+        "defective_rows",
+        "columns"
+      ],
+      "properties": {
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "defective_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "csv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "delimiter",
+            "encoding"
+          ],
+          "properties": {
+            "delimiter": {
+              "enum": [
+                ",",
+                ";",
+                "\t",
+                "|"
+              ]
+            },
+            "encoding": {
+              "enum": [
+                "utf-8",
+                "cp1252"
+              ]
+            }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "header",
+              "non_empty",
+              "max_length",
+              "kinds"
+            ],
+            "properties": {
+              "header": {
+                "$ref": "#/$defs/column"
+              },
+              "non_empty": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kinds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "empty",
+                    "integer",
+                    "decimal",
+                    "date",
+                    "datetime",
+                    "cpf_like",
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

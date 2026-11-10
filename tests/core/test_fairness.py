@@ -253,6 +253,7 @@ def test_route_table_maps_task_modules_to_queues() -> None:
         "apps.workflows.tasks.*": "bulk",
         "apps.analytics.tasks.*": "bulk",
         "apps.crm.tasks.*": "bulk",
+        "apps.interop.tasks.*": "bulk",
     }
     for pattern, queue in module_queues.items():
         assert routes[pattern]["queue"] == queue
@@ -260,6 +261,8 @@ def test_route_table_maps_task_modules_to_queues() -> None:
     assert routed["queue"].name == "clinic-integrations"
     routed = celery_app.amqp.router.route({}, "apps.ai.tasks.draft")
     assert routed["queue"].name == "ai-batch"
+    routed = celery_app.amqp.router.route({}, "apps.interop.tasks.commit_batch")
+    assert routed["queue"].name == "bulk"
     routed = celery_app.amqp.router.route({}, "apps.scheduling.tasks.expire_holds")
     assert routed["queue"].name == "clinical"
 

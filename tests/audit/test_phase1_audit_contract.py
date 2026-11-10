@@ -216,6 +216,25 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "set_minimum_stock",
     ),
     **{
+        f"interop.{kind}.{verb}": ("tenant", "clinic-os-web", f"interop.{kind}", verb)
+        for kind, verbs in {
+            "job": (
+                "uploaded",
+                "profiled",
+                "mapped",
+                "dry_run",
+                "approved",
+                "committed",
+                "rolled_back",
+            ),
+            "mapping": ("saved",),
+            "batch": ("committed",),
+            "report": ("exported",),
+            "records": ("viewed",),
+        }.items()
+        for verb in verbs
+    },
+    **{
         f"insurance.{kind}.{verb}": (
             "tenant",
             "clinic-os-web",

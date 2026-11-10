@@ -5691,6 +5691,145 @@
       ]
     },
     {
+      "symbol": "apps.interop.access.import_authority",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.import_authority#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.identity_authority",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.identity_authority#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.import_clinic",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.import_clinic#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.record",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.record#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.blind_index_sets",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.blind_index_sets#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.clinical_reader",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.clinical_reader#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.batch_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.batch_scope#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.hide_reversible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.hide_reversible#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.access.translated",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.access.translated#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.patients.register",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.patients.register#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.records.imported_attachment",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.records.imported_attachment#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
+      "symbol": "apps.interop.tasks.commit_batch",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.interop.tasks.commit_batch#cut1"
+      ],
+      "reason": "Todo 66 import authority, step-up, worker and provenance boundary; the cut1 census executes it through tests/interop."
+    },
+    {
       "symbol": "apps.inventory.access.authority",
       "signals": [
         "denial",
@@ -10342,6 +10481,18 @@
     "apps.intake.views.patient_create_view",
     "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
+    "apps.interop.access.batch_scope#cut1",
+    "apps.interop.access.blind_index_sets#cut1",
+    "apps.interop.access.clinical_reader#cut1",
+    "apps.interop.access.hide_reversible#cut1",
+    "apps.interop.access.identity_authority#cut1",
+    "apps.interop.access.import_authority#cut1",
+    "apps.interop.access.import_clinic#cut1",
+    "apps.interop.access.record#cut1",
+    "apps.interop.access.translated#cut1",
+    "apps.interop.patients.register#cut1",
+    "apps.interop.records.imported_attachment#cut1",
+    "apps.interop.tasks.commit_batch#cut1",
     "apps.inventory.access.authority#cut1",
     "apps.inventory.access.execute#cut1",
     "apps.inventory.access.organization#cut1",
@@ -14886,6 +15037,7 @@
           "clinic_app.identity_retire_authenticators",
           "clinic_app.identity_session_register",
           "clinic_app.insurance_record_booking_coverage",
+          "clinic_app.interop_hide_reversible",
           "clinic_app.orders_emit_task",
           "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
@@ -15089,6 +15241,9 @@
           "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.intake_membership_payer_guard",
           "clinic_app.intake_merge_authorized",
+          "clinic_app.interop_allowed",
+          "clinic_app.interop_guard",
+          "clinic_app.interop_record_visible",
           "clinic_app.inventory_batch_allowed",
           "clinic_app.inventory_guard",
           "clinic_app.inventory_today",
@@ -16121,7 +16276,8 @@
           "clinic_app.billing_finance_session",
           "clinic_app.billing_psp_dispatchable",
           "clinic_app.identity_session_authenticator_verified",
-          "clinic_app.intake_merge_authorized"
+          "clinic_app.intake_merge_authorized",
+          "clinic_app.interop_guard"
         ]
       },
       "kind": "lifecycle_protocol",
@@ -16607,7 +16763,9 @@
           "apps/tenancy/migrations/0002_rls_and_resolvers.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.interop_guard"
+        ],
         "signatures": [
           {
             "arguments": "",
@@ -22571,6 +22729,159 @@
           }
         ]
       }
+    },
+    "clinic_app.interop_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [
+          "clinic_app.interop_importbatch:interop_insert",
+          "clinic_app.interop_importbatch:interop_read",
+          "clinic_app.interop_importbatch:interop_update",
+          "clinic_app.interop_importedrecord:interop_insert",
+          "clinic_app.interop_importedrecord:interop_read",
+          "clinic_app.interop_importfile:interop_insert",
+          "clinic_app.interop_importfile:interop_read",
+          "clinic_app.interop_importjob:interop_insert",
+          "clinic_app.interop_importjob:interop_read",
+          "clinic_app.interop_importmapping:interop_insert",
+          "clinic_app.interop_importmapping:interop_read",
+          "clinic_app.interop_importtransition:interop_insert",
+          "clinic_app.interop_importtransition:interop_read"
+        ],
+        "resolvers": [
+          "clinic_app.interop_guard",
+          "clinic_app.interop_hide_reversible"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_import_authority_follows_the_staff_management_bundle",
+        "test_unknown_and_foreign_jobs_share_one_denial"
+      ],
+      "reason": "Import authority: staff.clinic or staff.organization at the exact clinic, never a machine principal; the named real-role tests execute every policy that calls it."
+    },
+    "clinic_app.interop_batch_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_batch uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Worker scope projection of one stored batch (organization, clinic, requester); grants nothing: the worker then re-enters tenant_context and re-checks import authority."
+    },
+    "clinic_app.interop_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_commit_and_rollback_require_this_actors_fresh_step_up",
+        "test_database_refuses_illegal_edges_stale_sequences_and_history_edits",
+        "test_org_admin_prepares_and_signs_off_but_cannot_commit_identity",
+        "test_rollback_window_is_enforced_by_the_database"
+      ],
+      "reason": "Import state machine, tenant/clinic/job binding, step-up, demographics and immutability guard; the named real-role tests execute its refusals and admissions."
+    },
+    "clinic_app.interop_hide_reversible": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_job uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_rollback_hides_batch_and_retains_used_patients"
+      ],
+      "reason": "Rollback resolver: hides only unused imported enrollments of a rolled-back job under current import authority; the named test executes hidden and retained outcomes."
+    },
+    "clinic_app.interop_no_truncate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Unconditional immutable-history TRUNCATE refusal; no staff-state decision."
+    },
+    "clinic_app.interop_record_visible": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_job uuid, requested_clinic uuid, requested_enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/interop/migrations/_import_sql.py"
+        ],
+        "policies": [
+          "clinic_app.interop_importedrecord:interop_read",
+          "clinic_app.interop_importfile:interop_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_imported_documents_are_readable_only_through_clinical_scope",
+        "test_provenance_keeps_original_author_and_time_never_the_importer"
+      ],
+      "reason": "Imported clinical history needs current patient-scoped clinical.read and a live (not rolled-back) job; the named tests execute clinician admission and importer refusal."
     },
     "clinic_app.inventory_balance": {
       "discovery": {
