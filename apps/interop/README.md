@@ -142,7 +142,10 @@ frozen with the irreversible `interop.0001`, so a relation created after it is
 classified by a later rollback-activity version that the migration creating the
 relation applies: identity 0051 applies v2 (`migrations/_import_activity_v2_sql.py`),
 which counts its break-glass grants as enrollment activity because an emergency
-read is clinical use. Hidden enrollments (and their
+read is clinical use. Todo 68's `interop_rndssubmission.enrollment_id` needs no
+new version: it is derived (`IMPORT_ROLLBACK_DERIVED` in `migrations/_rnds_sql.py`),
+because a submission's enrollment is its result's order's, which v1 checks.
+Hidden enrollments (and their
 duplicate hints) disappear from every `clinic_app`/`clinic_owner` read through
 the restrictive `interop_import_visibility` policies; every row stays
 physically retained. Imported history of a rolled-back job is invisible.
@@ -357,10 +360,11 @@ send time without a request.
 
 ### Organization export
 
-The archive format is `docs/api/export-v3.md`: export v2
-(`docs/api/export-v2.md`) plus identity 0051's enterprise relations, where v2 is
-export v1 (`docs/api/export-v1.md`) plus the governed-import relations; both
-earlier versions are frozen. `request_export` records the
+The archive format is `docs/api/export-v4.md`: export v3
+(`docs/api/export-v3.md`) plus todo 68's RNDS submission log, where v3 is export
+v2 (`docs/api/export-v2.md`) plus identity 0051's enterprise relations and v2 is
+export v1 (`docs/api/export-v1.md`) plus the governed-import relations; every
+earlier version is frozen. `request_export` records the
 receipt and, after commit, hands only the export, organization and requester
 ids to the fair `bulk` queue. `build_organization_export` claims the receipt,
 reads every dataset page in its own `tenant_context` of the requester through
@@ -372,20 +376,22 @@ it is ready. The beat sweeps (`interop-export-dispatch` every 5 minutes,
 archives, fail builds older than 6 hours or whose requester lost authority, and
 null the bytes of expired and failed parts while keeping every receipt.
 
-`EXPORT_V3` and `EXCLUDED_V3` (`migrations/_export_v3_sql.py`) partition the
-recovery manifest's `DOMAIN_RELATIONS` exactly; `EXPORT_V2`/`EXCLUDED_V2` and
-`EXPORT_V1`/`EXCLUDED_V1` stay as their versions partitioned it before identity
-0051 and the governed import existed (`tests/interop/test_org_export.py`).
+`EXPORT_V4` and `EXCLUDED_V4` (`migrations/_export_v4_sql.py`) partition the
+recovery manifest's `DOMAIN_RELATIONS` exactly; `EXPORT_V3`/`EXCLUDED_V3`,
+`EXPORT_V2`/`EXCLUDED_V2` and `EXPORT_V1`/`EXCLUDED_V1` stay as their versions
+partitioned it before the RNDS log, identity 0051 and the governed import
+existed (`tests/interop/test_org_export.py`).
 Version 2 exports the import mappings, jobs, transitions, files, imported
 records and hide markers and excludes the commit batches as machinery; an import
 file of role `source` is exported without its stored bytes, which the export
 never reads. Version 3 exports identity 0051's directory, federation, grant and
 governance records, excludes the SCIM bearer tokens as credentials and omits the
-SCIM resources' external-id digest and search index; identity 0051 applies its
-reader. A new domain relation must be classified in a new export version
-migration; no published version changes.
-`interop_rndssubmission` (todo 68) is classified in no version yet; the partition
-test fails on it until the forward export version classifies it.
+SCIM resources' external-id digest and search index. Version 4 exports todo
+68's RNDS submission log with its sealed bundle decrypted: it is the clinic's
+record of each document sent to the RNDS and the only copy of the identifier
+RNDS assigned. Identity 0051 applies the v3 and v4 readers. A new domain
+relation must be classified in a new export version migration; no published
+version changes.
 
 ## RNDS laboratory results (behind EG-7)
 

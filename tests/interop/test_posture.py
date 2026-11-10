@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from apps.interop.migrations import _import_activity_v2_sql, _import_sql
+from apps.interop.migrations import _import_activity_v2_sql, _import_sql, _rnds_sql
 from apps.interop.migrations._schema import ProtectedSchema
 from apps.interop.models import ApiAccessToken, ApiClient, ApiClientSecret
 from apps.interop.rls import IMPORT_RLS_TABLES
@@ -208,6 +208,8 @@ def test_every_patient_and_enrollment_reference_is_classified() -> None:
         *_import_activity_v2_sql.ENROLLMENT_ACTIVITY,
         *_import_sql.IMPORT_OWNED,
         *_import_sql.DERIVED,
+        # Created after interop.0001 and derived from a checked order (todo 68).
+        *_rnds_sql.IMPORT_ROLLBACK_DERIVED,
     }
     assert live == classified
     assert len(classified) == sum(
@@ -218,6 +220,7 @@ def test_every_patient_and_enrollment_reference_is_classified() -> None:
             _import_activity_v2_sql.ENROLLMENT_ACTIVITY,
             _import_sql.IMPORT_OWNED,
             _import_sql.DERIVED,
+            _rnds_sql.IMPORT_ROLLBACK_DERIVED,
         )
     )
     checked = {

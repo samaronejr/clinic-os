@@ -1,5 +1,9 @@
 # Organization export v3
 
+Exports built after migration `identity.0051_enterprise_governance` use
+[export v4](export-v4.md), which adds todo 68's RNDS submission log. This
+version and its contract below are unchanged.
+
 Format id: `clinic-organization-export-v3`. An organization administrator
 (`configuration.organization` on every clinic) requests the export through
 `POST /api/interop/v1/` (`exports.request`). It covers every domain record of

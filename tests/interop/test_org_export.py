@@ -1,4 +1,4 @@
-"""Organization export v2 (v1 frozen): complete, organization-scoped, verifiable."""
+"""Organization export v4 (v1-v3 frozen): complete, organization-scoped, verifiable."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 import re
-import sys
 import zipfile
 from datetime import date, timedelta
 from functools import partial
@@ -19,6 +18,8 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from apps.audit.models import AuditEvent
+from apps.core import integration
+from apps.core.integration import execute_operation
 from apps.ehr.attachments import scan_attachment
 from apps.identity.enterprise_access import EmergencyScope, grant_break_glass
 from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
@@ -39,7 +40,7 @@ from apps.interop.management import (
     list_exports,
     request_export,
 )
-from apps.interop.migrations import _export_v2_sql, _export_v3_sql
+from apps.interop.migrations import _export_v2_sql, _export_v3_sql, _export_v4_sql
 from apps.interop.migrations._export_sql import EXCLUDED_V1, EXPORT_V1
 from apps.interop.migrations._export_v2_sql import (
     EXCLUDED_V2,
@@ -53,8 +54,12 @@ from apps.interop.migrations._export_v3_sql import (
     EXCLUDED_V3,
     EXPORT_V3,
 )
+from apps.interop.migrations._export_v4_sql import EXCLUDED_V4, EXPORT_V4, RNDS_EXPORTS
 from apps.interop.migrations._interop_sql import TABLES
-from apps.interop.rls import IMPORT_RLS_TABLES
+from apps.interop.models import RndsSubmission
+from apps.interop.rls import IMPORT_RLS_TABLES, RNDS_RLS_TABLES
+from apps.interop.rnds_transport import FIXTURE_TRANSPORT
+from apps.interop.services import exchange_clinical_record
 from apps.retention.services import verify_export_package
 from apps.subscriptions.services import cancel_subscription
 from apps.tenancy.db import tenant_context
@@ -65,6 +70,7 @@ from django.utils import timezone
 from ops.testing import restore_contract
 
 from auth.stepup_test_support import create_role_actor
+from ehr.test_autosave import as_actor
 from identity.enterprise_support import enterprise_setup, verified_actor_client
 from identity.lifecycle_test_support import session_key
 from identity.permission_support import (
@@ -72,6 +78,7 @@ from identity.permission_support import (
     permission_actor,
     permission_context,
 )
+from interop.rnds_support import EXAM, rnds_world
 from interop.support import (
     SYNTHETIC_PDF,
     committed,
@@ -98,6 +105,7 @@ if TYPE_CHECKING:
     from apps.interop.management import ExportView
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
+    from pytest_django.fixtures import SettingsWrapper
 
     from rbac_fixtures import RbacGraph
 
@@ -105,7 +113,8 @@ __all__ = ("attachment_root",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 MANAGEMENT = "/api/interop/v1/"
-FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v3.md"
+FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v4.md"
+V3_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v3.md")
 V2_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v2.md")
 V1_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v1.md")
 FORMULA = "=SOMA(1;2)"
@@ -128,15 +137,10 @@ STAFF_COLUMNS = {
     "date_joined",
     "last_login",
 }
-EXPORTED = [entry[0] for entry in EXPORT_V3]
+EXPORTED = [entry[0] for entry in EXPORT_V4]
 IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
 ENTERPRISE_RELATIONS = set(ENTERPRISE_TABLES)
-# The lane's frozen baseline export version and the relations created after it
-# froze. The exemption ends with that version: the forward version must classify
-# them at merge (todo 68 gate review B2-R2), and no frozen version gains them.
-AWAITING_EXPORT_VERSION = {
-    "clinic-organization-export-v1": frozenset({"interop_rndssubmission"}),
-}
+RNDS_RELATIONS = set(RNDS_RLS_TABLES)
 
 
 @pytest.fixture
@@ -280,21 +284,19 @@ def _manage(
 
 def test_export_registry_partitions_every_recovery_relation() -> None:
     # The registry's current version, not a frozen one by name.
-    awaiting = AWAITING_EXPORT_VERSION.get(FORMAT, frozenset())
     exported = [dataset.relation for dataset in datasets()]
     assert len(exported) == len(set(exported))
     assert set(exported).isdisjoint(EXCLUDED)
     classified = set(exported) | set(EXCLUDED)
-    assert classified.isdisjoint(awaiting)
     domain = set(restore_contract.DOMAIN_RELATIONS)
-    unclassified = sorted(domain - classified - awaiting)
+    unclassified = sorted(domain - classified)
     assert not unclassified, f"{FORMAT} leaves unclassified: {unclassified}"
-    assert classified | awaiting <= domain
+    assert classified <= domain
     assert set(TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
     assert set(EXCLUDED.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
-    for relation, key, _kind, omitted, scope in EXPORT_V3:
+    for relation, key, _kind, omitted, scope in EXPORT_V4:
         names = {column.name for column in by_relation[relation].columns}
         assert key in names, relation
         assert names.isdisjoint(omitted), relation
@@ -307,7 +309,10 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
     # v1 still partitions exactly the manifest it was frozen against.
     v1 = {entry[0] for entry in EXPORT_V1} | set(EXCLUDED_V1)
     assert v1 == (
-        set(restore_contract.DOMAIN_RELATIONS) - IMPORT_RELATIONS - ENTERPRISE_RELATIONS
+        set(restore_contract.DOMAIN_RELATIONS)
+        - IMPORT_RELATIONS
+        - ENTERPRISE_RELATIONS
+        - RNDS_RELATIONS
     )
     assert {entry[0] for entry in IMPORT_EXPORTS} | set(IMPORT_EXCLUSIONS) == (
         IMPORT_RELATIONS
@@ -322,7 +327,9 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
 
 def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -> None:
     v2 = {entry[0] for entry in EXPORT_V2} | set(EXCLUDED_V2)
-    assert v2 == set(restore_contract.DOMAIN_RELATIONS) - ENTERPRISE_RELATIONS
+    assert v2 == (
+        set(restore_contract.DOMAIN_RELATIONS) - ENTERPRISE_RELATIONS - RNDS_RELATIONS
+    )
     assert {entry[0] for entry in ENTERPRISE_EXPORTS} | set(ENTERPRISE_EXCLUSIONS) == (
         ENTERPRISE_RELATIONS
     )
@@ -334,16 +341,16 @@ def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -
     assert "GRANT SELECT ON" not in _export_v3_sql.FORWARD
 
 
-def test_a_forward_export_version_must_classify_every_awaiting_relation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Gate review B2-R2: the exemption ends with the lane's baseline version, so
-    # a forward version that leaves the relation unclassified fails the partition.
-    monkeypatch.setattr(
-        sys.modules[__name__], "FORMAT", "clinic-organization-export-v2"
-    )
-    with pytest.raises(AssertionError, match="interop_rndssubmission"):
-        test_export_registry_partitions_every_recovery_relation()
+def test_export_v3_stays_frozen_and_v4_adds_exactly_the_rnds_submission_log() -> None:
+    v3 = {entry[0] for entry in EXPORT_V3} | set(EXCLUDED_V3)
+    assert v3 == set(restore_contract.DOMAIN_RELATIONS) - RNDS_RELATIONS
+    assert {entry[0] for entry in RNDS_EXPORTS} == RNDS_RELATIONS
+    assert tuple(sorted((*EXPORT_V3, *RNDS_EXPORTS))) == EXPORT_V4
+    assert EXCLUDED_V4 == EXCLUDED_V3
+    # Identity 0051 replaces only the reader's branches; its reverse is v3's.
+    assert _export_v4_sql.FORWARD.count("requested_relation='") == len(EXPORT_V4)
+    assert _export_v4_sql.REVERSE == _export_v3_sql.FORWARD
+    assert "GRANT SELECT ON" not in _export_v4_sql.FORWARD
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
@@ -369,9 +376,10 @@ def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
     [
         (V1_DOCUMENT, "clinic-organization-export-v1", EXCLUDED_V1, EXPORT_V1),
         (V2_DOCUMENT, "clinic-organization-export-v2", EXCLUDED_V2, EXPORT_V2),
-        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V3, EXPORT_V3),
+        (V3_DOCUMENT, "clinic-organization-export-v3", EXCLUDED_V3, EXPORT_V3),
+        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V4, EXPORT_V4),
     ],
-    ids=["v1", "v2", "v3"],
+    ids=["v1", "v2", "v3", "v4"],
 )
 def test_format_document_names_every_exclusion_and_omitted_column(
     path: Path,
@@ -408,7 +416,7 @@ def _assert_manifest(
     assert manifest["manifest_sha256"] == job.manifest_sha256
     assert [entry["relation"] for entry in manifest["datasets"]] == EXPORTED
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
-    assert excluded == EXCLUDED_V3
+    assert excluded == EXCLUDED_V4
     counts = (
         manifest["dataset_count"],
         manifest["record_count"],
@@ -771,7 +779,7 @@ def test_v3_exports_enterprise_records_but_never_a_scim_credential(
     assert verify_export_package(package).ok
     files = _files(package)
     manifest = json.loads(files["manifest.json"])
-    assert manifest["v"] == "clinic-organization-export-v3"
+    assert manifest["v"] == FORMAT
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
     assert excluded["identity_scimtoken"] == "credential"
     assert "data/identity_scimtoken.jsonl" not in files
@@ -786,3 +794,55 @@ def test_v3_exports_enterprise_records_but_never_a_scim_credential(
     (emergency,) = _jsonl(files["data/identity_breakglassgrant.jsonl"])
     assert emergency["id"] == str(grant.pk)
     assert emergency["reason"] == "Emergencia sintetica exportada"
+
+
+def test_v4_exports_the_rnds_submission_log_with_its_sealed_bundle(
+    rbac_graph: RbacGraph,
+    dispatched: list[dict[str, object]],
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph = rbac_graph
+    sent: list[UUID] = []
+    monkeypatch.setattr(integration, "_dispatch", sent.append)
+    FIXTURE_TRANSPORT.reset()
+    try:
+        world = rnds_world(graph, settings)
+        with as_actor(graph, graph.physician):
+            receipt = exchange_clinical_record(
+                clinic_id=graph.clinic_a,
+                result_version_id=world.version_id,
+                exam=EXAM,
+                command_id=uuid4(),
+            )
+        (operation_id,) = sent
+        with runtime_role():
+            assert execute_operation(operation_id) == "succeeded"
+        identifier = FIXTURE_TRANSPORT.accepted[str(receipt.submission_id)]
+    finally:
+        FIXTURE_TRANSPORT.reset()
+    with as_actor(graph, graph.physician):
+        bundle = bytes(RndsSubmission.objects.get(pk=receipt.submission_id).bundle)
+    admin = org_admin(graph)
+    job = _request(graph, admin)
+    assert _build(graph, admin, job) == "ready"
+    package = _archive(graph, admin, _receipt(graph, admin, job.export_id))
+    assert verify_export_package(package).ok
+    files = _files(package)
+    manifest = json.loads(files["manifest.json"])
+    assert manifest["v"] == "clinic-organization-export-v4"
+    (dataset,) = [
+        entry
+        for entry in manifest["datasets"]
+        if entry["relation"] == "interop_rndssubmission"
+    ]
+    encrypted = {
+        column["name"]: column["encrypted_at_rest"] for column in dataset["columns"]
+    }
+    assert encrypted["bundle"] is True
+    (row,) = _jsonl(files["data/interop_rndssubmission.jsonl"])
+    assert row["id"] == str(receipt.submission_id)
+    assert (row["state"], row["rnds_identifier"]) == ("accepted", identifier)
+    assert row["enrollment_id"] == str(world.enrollment)
+    assert base64.b64decode(str(row["bundle"])) == bundle
+    assert hashlib.sha256(bundle).hexdigest() == row["bundle_sha256"]

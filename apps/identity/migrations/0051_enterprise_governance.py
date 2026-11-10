@@ -12,7 +12,11 @@ from django.db import migrations, models
 
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.identity.migrations._enterprise_sql import REVERSE_SQL, SQL
-from apps.interop.migrations import _export_v3_sql, _import_activity_v2_sql
+from apps.interop.migrations import (
+    _export_v3_sql,
+    _export_v4_sql,
+    _import_activity_v2_sql,
+)
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 
 
@@ -68,8 +72,9 @@ class Migration(migrations.Migration):
     so this migration follows the leaf of every app. An unused install reverses
     exactly (tests/identity/test_enterprise_migration.py); any enterprise row
     makes the reverse refuse before it changes anything. It also applies the
-    interop rules for relations it creates (rollback activity v2, export v3),
-    so nothing follows it and its refusal covers them.
+    interop rules that read relations it creates (rollback activity v2, export
+    v3, and export v4 with todo 68's RNDS submission log), so nothing follows it
+    and its refusal covers them.
     """
 
     dependencies: ClassVar = [
@@ -383,4 +388,6 @@ class Migration(migrations.Migration):
             reverse_sql=_import_activity_v2_sql.REVERSE,
         ),
         migrations.RunSQL(_export_v3_sql.FORWARD, reverse_sql=_export_v3_sql.REVERSE),
+        # Export v4 adds todo 68's RNDS submission log (interop.0004) to v3.
+        migrations.RunSQL(_export_v4_sql.FORWARD, reverse_sql=_export_v4_sql.REVERSE),
     ]

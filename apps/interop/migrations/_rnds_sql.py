@@ -14,6 +14,13 @@ terms resend it, and only a definitive RNDS rejection frees the result version.
 
 from typing import Final
 
+# Lane 66's import rollback (interop_hide_reversible) need not check this
+# reference: interop_rnds_request takes enrollment_id from the result's order,
+# whose orders_order.enrollment_id is already checked enrollment activity, and
+# clinic_resolver cannot update the column, so a submission is never an
+# enrollment's only activity (tests/interop/test_posture.py classifies it).
+IMPORT_ROLLBACK_DERIVED: Final = (("interop_rndssubmission", "enrollment_id"),)
+
 _CONTRACT: Final = r"""
 ALTER TABLE clinic_app.interop_rndssubmission ADD CONSTRAINT interop_rnds_contract
  CHECK (state IN ('pending','accepted','rejected','uncertain') AND revision>=1

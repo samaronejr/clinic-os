@@ -349,7 +349,10 @@ relations it creates: import rollback activity v2
 (`apps/interop/migrations/_import_activity_v2_sql.py`) counts its break-glass
 grants as use of an imported enrollment, and organization export v3
 (`apps/interop/migrations/_export_v3_sql.py`, `docs/api/export-v3.md`)
-classifies its ten relations.
+classifies its ten relations. Export v4
+(`apps/interop/migrations/_export_v4_sql.py`, `docs/api/export-v4.md`) adds
+todo 68's RNDS submission log, which precedes 0051 but extends v3's relation
+set, so 0051 applies it too.
 
 Migration 0051 reverses only while every enterprise table is empty; populated
 authority history rolls back by restore. An unused install's reverse restores
