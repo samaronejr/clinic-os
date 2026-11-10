@@ -23,6 +23,7 @@ from django.db import DatabaseError, connection, transaction
 from django.test import Client
 from django.utils.translation import gettext
 
+from enterprise_fence_support import fenced
 from otp_test_support import current_user_guc, runtime_role
 from patient_http_support import receptionist_client
 
@@ -81,8 +82,9 @@ def test_preference_table_is_forced_rls_owned_by_the_owner_role() -> None:
             "ALL",
             ["clinic_app"],
             "PERMISSIVE",
-            POLICY_EXPRESSION,
-            POLICY_EXPRESSION,
+            # Identity 0051's staff-context fence narrows the owner policy.
+            fenced(POLICY_EXPRESSION),
+            fenced(POLICY_EXPRESSION),
         )
     ]
 

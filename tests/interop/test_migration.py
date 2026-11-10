@@ -3,6 +3,8 @@
 The governed import schema (``interop.0001``) is irreversible; the partner and
 export schema that follows it (``interop.0002``) reverses on an unused database
 to exactly the catalog before it and reapplies to exactly the catalog after it.
+Identity 0051 follows every app's leaf (its staff-context fence must see every
+policy), so it is unapplied first and the catalog without it is the baseline.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 IMPORT_SCHEMA = ("interop", "0001_import_framework")
 PARTNER_SCHEMA = ("interop", "0002_external_api_export")
+BEFORE_ENTERPRISE = ("identity", "0050_totp_secret_boundary")
 # Every table, function and trigger the partner and export schema creates.
 _SQL = _interop_sql.SQL + _export_sql.SQL
 PARTNER_OBJECTS = re.compile(
@@ -108,7 +111,9 @@ def test_unused_interop_schema_reverses_and_reapplies_to_the_exact_catalog() -> 
     targets = executor.loader.graph.leaf_nodes()
     before = _catalog()
     try:
-        executor.migrate([IMPORT_SCHEMA])
+        executor.migrate([BEFORE_ENTERPRISE])
+        baseline = _catalog()
+        MigrationExecutor(connection).migrate([IMPORT_SCHEMA])
         reversed_catalog = _catalog()
         assert not [
             row
@@ -118,7 +123,7 @@ def test_unused_interop_schema_reverses_and_reapplies_to_the_exact_catalog() -> 
         ]
         # Exactly the catalog before 0002: everything else, including the import
         # schema's resolver grants on the same comms and intake tables, stays.
-        expected = _without_partner_objects(before)
+        expected = _without_partner_objects(baseline)
         expected["table_grants"] = [
             row
             for row in expected["table_grants"]

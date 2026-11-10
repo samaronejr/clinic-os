@@ -8,6 +8,7 @@ exclusion silently discards a migration-defined guard.
 
 from __future__ import annotations
 
+import ast
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -64,6 +65,27 @@ def migration_definitions() -> dict[str, list[str]]:
     return dict(found)
 
 
+def migration_bodies() -> list[tuple[str, str]]:
+    """Conservatively collect literal SQL bodies without importing migrations."""
+    found = []
+    for path in sorted((ROOT / "apps").rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            definitions = list(DEFINITION.finditer(node.value))
+            for index, definition in enumerate(definitions):
+                end = (
+                    definitions[index + 1].start()
+                    if index + 1 < len(definitions)
+                    else len(node.value)
+                )
+                found.append(
+                    (definition.group(1).lower(), node.value[definition.start() : end])
+                )
+    return found
+
+
 def _body_callees(body: str, by_name: dict[str, set[int]]) -> set[int]:
     found: set[int] = set()
     for schema, name in CALL.findall(body):
@@ -75,7 +97,38 @@ def _body_callees(body: str, by_name: dict[str, set[int]]) -> set[int]:
     return found
 
 
-def discover_sql() -> dict[str, SqlDiscovery]:
+def _source_discovery() -> dict[str, SqlDiscovery]:
+    """Return conservative source roots without claiming deployed metadata."""
+    sources = migration_definitions()
+    source_callers: dict[str, set[str]] = defaultdict(set)
+    for source_caller, body in migration_bodies():
+        for schema, name in CALL.findall(body):
+            names = (
+                [f"{schema}.{name}"]
+                if schema
+                else [f"clinic_app.{name}", f"public.{name}"]
+            )
+            for source_callee in names:
+                if source_callee in sources:
+                    source_callers[source_callee].add(source_caller)
+    return {
+        name: {
+            "signatures": [],
+            "migrations": paths,
+            "policies": [],
+            "resolvers": sorted(source_callers[name]),
+        }
+        for name, paths in sorted(sources.items())
+    }
+
+
+def discover_sql(*, include_deployed: bool = True) -> dict[str, SqlDiscovery]:
+    """Inspect deployed metadata by default; source mode never opens a database."""
+    return _deployed_discovery() if include_deployed else _source_discovery()
+
+
+def _deployed_discovery() -> dict[str, SqlDiscovery]:
+    """Inspect the complete live catalog, policy roots and resolver dependencies."""
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT p.oid, n.nspname || '.' || p.proname,

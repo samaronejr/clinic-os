@@ -333,6 +333,18 @@ DOMAIN_RELATIONS: Final = (
     "interop_webhookattempt",
     "interop_organizationexport",
     "interop_organizationexportpart",
+    # Enterprise identity (plan 65): directory, federation, grants and governance
+    # history; additive, populated rollback is restore.
+    "identity_ssoconnection",
+    "identity_scimtoken",
+    "identity_scimresource",
+    "identity_scimrolemapping",
+    "identity_scimmembership",
+    "identity_scimrolebinding",
+    "identity_breakglassgrant",
+    "identity_supportaccessgrant",
+    "identity_governancenotice",
+    "identity_unitgovernancechange",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive
@@ -425,6 +437,7 @@ class SourceScope:
     totp_without_identity_count: int
     unexpected_domain_relations: tuple[str, ...]
     users_without_role_count: int
+    directory_users_without_role_count: int = 0
 
 
 def dump_argv(database: str) -> tuple[str, ...]:
@@ -528,8 +541,14 @@ def require_source_scope(scope: SourceScope) -> None:
         _fail("source has an active writer")
     if scope.organization_count != 1:
         _fail("source must contain exactly one synthetic organization")
-    if scope.identity_user_count < 1 or scope.users_without_role_count != 0:
-        _fail("every source identity requires one organization role")
+    if (
+        scope.identity_user_count < 1
+        or not 0
+        <= scope.directory_users_without_role_count
+        <= scope.identity_user_count
+        or scope.users_without_role_count != scope.directory_users_without_role_count
+    ):
+        _fail("every source identity requires a role or directory ownership")
     if scope.totp_without_identity_count != 0:
         _fail("source TOTP scope is not identity-bound")
     if scope.foreign_audit_organization_count != 0:

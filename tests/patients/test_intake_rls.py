@@ -16,6 +16,7 @@ from psycopg.errors import (
 )
 
 from database_urls import database_url_for_name
+from enterprise_fence_support import fenced
 from patients.test_intake_migrations import _default_connection, _scratch_database
 from tenant_key_support import issue_tenant_key_for
 
@@ -233,6 +234,8 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 """,
                 [[table for table, _ in sorted(expected_targets)]],
             )
+            # Identity 0051's staff-context fence narrows both the tenant policy and
+            # task 66's restrictive import visibility (SELECT, so it has no check).
             assert cursor.fetchall() == sorted(
                 [
                     *(
@@ -242,8 +245,8 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                             "PERMISSIVE",
                             ["public"],
                             "ALL",
-                            TENANT_POLICY,
-                            TENANT_POLICY,
+                            fenced(TENANT_POLICY),
+                            fenced(TENANT_POLICY),
                         )
                         for table, _ in expected_targets
                     ),
@@ -254,7 +257,7 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                             "RESTRICTIVE",
                             ["clinic_app", "clinic_owner"],
                             "SELECT",
-                            qual,
+                            fenced(qual),
                             None,
                         )
                         for table, qual in IMPORT_VISIBILITY.items()

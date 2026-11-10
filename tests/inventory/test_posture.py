@@ -17,7 +17,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # into them; the reviewed delta adds only NO_MACHINE_CONTEXT.
 EXPECTED: Final = {
     "flags": "84a7e5f98df00cadbccaec616533fdb9ef2e2282befca48e0cd2abf74fb0c18a",
-    "policies": "231125c13dab1d8fa735ecdd53fef546708137a96278705929438c6e50465ffb",
+    # Identity 0051 fences the clinic_app policies; inventory_owner is unchanged.
+    "policies": "7de39836340b5fbc5637c4063a317447a4542081e9f590bc35edbe52944b5bc7",
     "grants": "e60d7d454baeebbccd2312d35861244a51d8fbd69ed2ef49045e9f984c93dc8a",
     "columns": "e69fdd5580a038337521c41c7d30e32f024fade4497944851e805fe43fa9d734",
     "types": "44ea7433271df3ec120d30edbe8786106ff59e8a7afc23bfe609273fd45eef38",

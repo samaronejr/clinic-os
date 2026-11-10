@@ -2527,5 +2527,14 @@
     "returns": "bigint",
     "volatility": "s",
     "reason": "Reached scribe_transcript_guard's transaction identity read; retain the exact transaction-id implementation as opaque risk."
+  },
+  "pg_catalog.timestamptz_le(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_le",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Required ordering of supplied instants."
   }
 }

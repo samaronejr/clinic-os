@@ -125,7 +125,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_careaction",
@@ -146,7 +146,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -157,8 +157,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((((kind)::text <> 'patient_instruction'::text) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND (p.clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_careaction.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id))))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_careplan",
@@ -169,7 +169,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_careplan",
@@ -190,7 +190,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)) AND enterprise_staff_context())",
       null
     ],
     [
@@ -201,8 +201,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ((has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((clinician_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR has_permission('clinical.read'::text, clinic_id, enrollment_id)) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_carerefusal",
@@ -223,7 +223,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())",
       null
     ],
     [
@@ -235,7 +235,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_proassignment",
@@ -256,7 +256,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)) AND enterprise_staff_context())",
       null
     ],
     [
@@ -267,8 +267,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('clinical.read'::text, clinic_id, enrollment_id) OR has_permission('observation.write'::text, clinic_id, enrollment_id)) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_prooccurrence",
@@ -279,7 +279,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_prooccurrence",
@@ -300,7 +300,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -311,8 +311,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_proassignment a\n  WHERE (a.id = workflows_prooccurrence.assignment_id))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_recall",
@@ -323,7 +323,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_recall",
@@ -344,7 +344,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -355,8 +355,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_referral",
@@ -367,7 +367,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_referral",
@@ -388,7 +388,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -399,8 +399,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (((target_label IS NULL) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) OR (EXISTS ( SELECT 1\n   FROM workflows_careplan p\n  WHERE ((p.id = workflows_referral.plan_id) AND has_permission('clinical.read'::text, p.clinic_id, p.enrollment_id)))) OR (EXISTS ( SELECT 1\n   FROM workflows_careaction a\n  WHERE ((a.id = workflows_referral.action_id) AND workflows_owned(a.clinic_id, a.owner_user_id, (a.owner_role)::text))))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_releasedelivery",
@@ -411,7 +411,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_releasedelivery",
@@ -432,7 +432,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('result.release'::text, clinic_id, enrollment_id))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('result.release'::text, clinic_id, enrollment_id) AND enterprise_staff_context())",
       null
     ],
     [
@@ -444,7 +444,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_releasenoticetemplate",
@@ -465,7 +465,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('configuration.propose'::text, clinic_id, NULL::uuid))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('configuration.propose'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())",
       null
     ],
     [
@@ -477,7 +477,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_task",
@@ -498,7 +498,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((((state)::text = 'open'::text) AND (created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((((state)::text = 'open'::text) AND (created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -509,8 +509,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((((state)::text = 'open'::text) AND (created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((((state)::text = 'open'::text) AND (created_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)) OR workflows_owned(clinic_id, owner_user_id, (owner_role)::text) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_taskcomment",
@@ -521,7 +521,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_taskcomment",
@@ -542,7 +542,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_task t\n  WHERE (t.id = workflows_taskcomment.task_id))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_task t\n  WHERE (t.id = workflows_taskcomment.task_id))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -564,7 +564,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)) AND enterprise_staff_context())",
       null
     ],
     [
@@ -575,8 +575,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (workflows_urgent_responsible(clinic_id, ( SELECT p.responsible_roles\n   FROM workflows_urgentcoveragepolicy p\n  WHERE (p.id = workflows_urgentconcern.policy_id))) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_urgentcoveragepolicy",
@@ -587,7 +587,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_urgentcoveragepolicy",
@@ -608,7 +608,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('demographics.read'::text, clinic_id, NULL::uuid) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('demographics.read'::text, clinic_id, NULL::uuid) OR has_permission('configuration.clinic'::text, clinic_id, NULL::uuid)) AND enterprise_staff_context())",
       null
     ],
     [
@@ -620,7 +620,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_workflowdefinitionversion",
@@ -641,7 +641,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())",
       null
     ],
     [
@@ -652,8 +652,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_workflowrun",
@@ -664,7 +664,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_workflowrun",
@@ -685,7 +685,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((started_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((started_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -696,8 +696,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((started_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND ((started_by_id = (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid) OR has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_workflowstep",
@@ -708,7 +708,7 @@
       ],
       "INSERT",
       null,
-      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())"
     ],
     [
       "workflows_workflowstep",
@@ -729,7 +729,7 @@
         "clinic_app"
       ],
       "SELECT",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_workflowrun r\n  WHERE (r.id = workflows_workflowstep.run_id))))",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_workflowrun r\n  WHERE (r.id = workflows_workflowstep.run_id))) AND enterprise_staff_context())",
       null
     ],
     [
@@ -740,8 +740,8 @@
         "clinic_app"
       ],
       "UPDATE",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_workflowrun r\n  WHERE (r.id = workflows_workflowstep.run_id))))",
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND (EXISTS ( SELECT 1\n   FROM workflows_workflowrun r\n  WHERE (r.id = workflows_workflowstep.run_id))) AND enterprise_staff_context())",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid) AND enterprise_staff_context())"
     ]
   ],
   "table_grants": [
@@ -1848,8 +1848,20 @@
     ],
     [
       "workflows_task",
+      "last_command_digest",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
       "last_command_key",
       "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
+      "last_command_key",
+      "clinic_resolver",
       "UPDATE"
     ],
     [
@@ -1860,8 +1872,20 @@
     ],
     [
       "workflows_task",
+      "owner_role",
+      "clinic_resolver",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
       "owner_user_id",
       "clinic_app",
+      "UPDATE"
+    ],
+    [
+      "workflows_task",
+      "owner_user_id",
+      "clinic_resolver",
       "UPDATE"
     ],
     [
@@ -5064,7 +5088,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "d5c54848b5684493f3915b3541e305a8747d8dcf023f14cf42e6a12c91f262a1",
+      "6d0c0ff7be05166b194f39986149958421b3ead193229184d86871cd55e8966a",
       [
         "clinic_resolver"
       ]

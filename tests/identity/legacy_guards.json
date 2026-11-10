@@ -10348,6 +10348,253 @@
       "probes": [
         "apps.interop.webhooks.delivery_eligible#cut1"
       ]
+    },
+    {
+      "symbol": "apps.audit.services._record_scim_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_scim_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.emergency_views.emergency_reviews",
+      "signals": [
+        "decorator",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.emergency_views.emergency_reviews#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.emergency_views.emergency_view",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.emergency_views.emergency_view#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.emergency_views.emergency_read",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.emergency_views.emergency_read#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.emergency_views.patient_access_log",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.emergency_views.patient_access_log#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise.approve_group_mapping",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise.approve_group_mapping#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_access.grant_break_glass",
+      "signals": [
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_access.grant_break_glass#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_access.read_break_glass",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_access.read_break_glass#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_access.review_break_glass",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_access.review_break_glass#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_authority.require_synthetic_identity",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_authority.require_synthetic_identity#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_authority.factor_scope",
+      "signals": [
+        "actor",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_authority.factor_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_authority.admin_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_authority.admin_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_sso._connection_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_sso._connection_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_sso.finish_sso",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_sso.finish_sso#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_support_access.approve_support_access",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_support_access.approve_support_access#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_support_access.support_diagnostics",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_support_access.support_diagnostics#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_support_access.revoke_support_access",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_support_access.revoke_support_access#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_units.revoke_unit_access",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_units.revoke_unit_access#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_units.propagate_template",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_units.propagate_template#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_views.governance_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_views.governance_view#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.enterprise_views.grant_command",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.enterprise_views.grant_command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.scim._sync",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.scim._sync#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.scim.create_resource",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.scim.create_resource#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.scim_context.scim_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.scim_context.scim_context#cut1"
+      ]
     }
   ],
   "probes": [
@@ -10449,6 +10696,7 @@
     "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_lab_event#cut1",
     "apps.audit.services._record_retention_event#cut1",
+    "apps.audit.services._record_scim_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
     "apps.billing.compensation.bridge_legacy_settlement#cut1",
@@ -10575,6 +10823,26 @@
     "apps.identity.delegates.request_delegate_grant#cut1",
     "apps.identity.delegates.request_renewal#cut1",
     "apps.identity.delegates.switch_delegate#cut1",
+    "apps.identity.emergency_views.emergency_read#cut1",
+    "apps.identity.emergency_views.emergency_reviews#cut1",
+    "apps.identity.emergency_views.emergency_view#cut1",
+    "apps.identity.emergency_views.patient_access_log#cut1",
+    "apps.identity.enterprise.approve_group_mapping#cut1",
+    "apps.identity.enterprise_access.grant_break_glass#cut1",
+    "apps.identity.enterprise_access.read_break_glass#cut1",
+    "apps.identity.enterprise_access.review_break_glass#cut1",
+    "apps.identity.enterprise_authority.admin_scope#cut1",
+    "apps.identity.enterprise_authority.factor_scope#cut1",
+    "apps.identity.enterprise_authority.require_synthetic_identity#cut1",
+    "apps.identity.enterprise_sso._connection_scope#cut1",
+    "apps.identity.enterprise_sso.finish_sso#cut1",
+    "apps.identity.enterprise_support_access.approve_support_access#cut1",
+    "apps.identity.enterprise_support_access.revoke_support_access#cut1",
+    "apps.identity.enterprise_support_access.support_diagnostics#cut1",
+    "apps.identity.enterprise_units.propagate_template#cut1",
+    "apps.identity.enterprise_units.revoke_unit_access#cut1",
+    "apps.identity.enterprise_views.governance_view#cut1",
+    "apps.identity.enterprise_views.grant_command#cut1",
     "apps.identity.invitation_management.expire_pending_invitations",
     "apps.identity.invitation_management.revoke_invitation",
     "apps.identity.invitations.enroll_invitation#observed",
@@ -10628,6 +10896,9 @@
     "apps.identity.recovery.recover_authenticator",
     "apps.identity.recovery.request_authenticator_reset",
     "apps.identity.saved_views.save_view",
+    "apps.identity.scim._sync#cut1",
+    "apps.identity.scim.create_resource#cut1",
+    "apps.identity.scim_context.scim_context#cut1",
     "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
     "apps.identity.services.clinics_for_user_roles",
     "apps.identity.services.has_clinic_role",
@@ -14142,6 +14413,7 @@
           "clinic_app.data_request_audit_scope",
           "clinic_app.data_request_guard",
           "clinic_app.delegate_purpose_allowed",
+          "clinic_app.enterprise_patient_access_log",
           "clinic_app.orders_delegate_allowed",
           "clinic_app.orders_patient_download_scope",
           "clinic_app.orders_patient_sources",
@@ -14163,8 +14435,8 @@
           {
             "arguments": "requested_operation text",
             "returns": "record",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
         ]
       },
@@ -15300,6 +15572,11 @@
           "clinic_app.comms_patient_reply",
           "clinic_app.ehr_timeline_enqueue",
           "clinic_app.ehr_timeline_refresh",
+          "clinic_app.enterprise_create_review",
+          "clinic_app.enterprise_finish_review",
+          "clinic_app.enterprise_new_directory_user",
+          "clinic_app.enterprise_sync_directory",
+          "clinic_app.enterprise_template_propagate",
           "clinic_app.identity_invitation_accept",
           "clinic_app.identity_invitation_finish",
           "clinic_app.identity_retire_authenticators",
@@ -15382,13 +15659,22 @@
           "clinic_app.ehr_episode:episode_read",
           "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.identity_authenticatorreset:manager",
+          "clinic_app.identity_breakglassgrant:enterprise_insert",
+          "clinic_app.identity_breakglassgrant:enterprise_read",
+          "clinic_app.identity_breakglassgrant:enterprise_update",
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_clinicconfiguration:configuration_insert",
           "clinic_app.identity_clinicconfiguration:configuration_read",
+          "clinic_app.identity_governancenotice:enterprise_insert",
+          "clinic_app.identity_governancenotice:enterprise_read",
           "clinic_app.identity_onboardingprogress:manager",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.identity_scimrolebinding:enterprise_read",
+          "clinic_app.identity_scimrolemapping:enterprise_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.identity_supportaccessgrant:enterprise_read",
+          "clinic_app.identity_unitgovernancechange:enterprise_read",
           "clinic_app.insurance_appeal:insurance_scope",
           "clinic_app.insurance_batch:insurance_scope",
           "clinic_app.insurance_batchguide:insurance_scope",
@@ -15498,6 +15784,11 @@
           "clinic_app.data_request_guard",
           "clinic_app.delegate_staff",
           "clinic_app.ehr_patient_permission",
+          "clinic_app.enterprise_break_glass_usable",
+          "clinic_app.enterprise_break_glass_versions",
+          "clinic_app.enterprise_governance_guard",
+          "clinic_app.enterprise_manager",
+          "clinic_app.enterprise_org_admin",
           "clinic_app.identity_invitation_accept",
           "clinic_app.identity_invitation_account",
           "clinic_app.identity_invitation_finish",
@@ -16262,6 +16553,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.enterprise_sync_directory",
           "clinic_app.identity_offboarding_execute",
           "clinic_app.identity_offboarding_revoke",
           "clinic_app.identity_recovery_consume",
@@ -16271,8 +16563,8 @@
           {
             "arguments": "requested_user uuid",
             "returns": "void",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -16375,6 +16667,10 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.enterprise_governance_guard",
+          "clinic_app.enterprise_manager",
+          "clinic_app.enterprise_org_admin",
+          "clinic_app.enterprise_support_scope",
           "clinic_app.identity_passkey_policy_set",
           "clinic_app.identity_passkey_registration_allowed",
           "clinic_app.identity_session_step_up"
@@ -16383,8 +16679,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -19802,6 +20098,7 @@
           "clinic_app.subscriptions_usagerollup:subscription_read"
         ],
         "resolvers": [
+          "clinic_app.enterprise_sso_account",
           "clinic_app.identity_passkey_registration_allowed",
           "clinic_app.identity_passkey_session_verified",
           "clinic_app.identity_passkey_use",
@@ -25981,6 +26278,1262 @@
           }
         ]
       }
+    },
+    "clinic_app.enterprise_break_glass_complete": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_break_glass_observations": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid",
+            "returns": "ehr_observation",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_break_glass_usable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_break_glass_observations",
+          "clinic_app.enterprise_break_glass_versions",
+          "clinic_app.enterprise_create_review",
+          "clinic_app.enterprise_security_task"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_break_glass_versions": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid",
+            "returns": "ehr_clinicaldocumentversion",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_connection_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_scim_audit_scope",
+          "clinic_app.enterprise_sso_account",
+          "clinic_app.enterprise_sso_principal"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_create_review": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_review_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_directory_authorized": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_connection uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_scimmembership:enterprise_insert",
+          "clinic_app.identity_scimmembership:enterprise_read",
+          "clinic_app.identity_scimmembership:enterprise_update",
+          "clinic_app.identity_scimresource:enterprise_insert",
+          "clinic_app.identity_scimresource:enterprise_read",
+          "clinic_app.identity_scimresource:enterprise_update",
+          "clinic_app.identity_ssoconnection:enterprise_read"
+        ],
+        "resolvers": [
+          "clinic_app.enterprise_governance_guard",
+          "clinic_app.enterprise_new_directory_user",
+          "clinic_app.enterprise_sync_directory"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_finish_review": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_review_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_governance_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_manager": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_finish_review",
+          "clinic_app.enterprise_governance_guard",
+          "clinic_app.enterprise_security_task"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_new_directory_user": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_connection uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_org_admin": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_scimrolemapping:enterprise_insert",
+          "clinic_app.identity_scimrolemapping:enterprise_update",
+          "clinic_app.identity_scimtoken:enterprise_insert",
+          "clinic_app.identity_scimtoken:enterprise_read",
+          "clinic_app.identity_scimtoken:enterprise_update",
+          "clinic_app.identity_ssoconnection:enterprise_insert",
+          "clinic_app.identity_ssoconnection:enterprise_read",
+          "clinic_app.identity_ssoconnection:enterprise_update",
+          "clinic_app.identity_supportaccessgrant:enterprise_insert",
+          "clinic_app.identity_supportaccessgrant:enterprise_update",
+          "clinic_app.identity_unitgovernancechange:enterprise_insert"
+        ],
+        "resolvers": [
+          "clinic_app.enterprise_directory_authorized",
+          "clinic_app.enterprise_governance_guard",
+          "clinic_app.enterprise_template_propagate",
+          "clinic_app.enterprise_unit_member_revoke",
+          "clinic_app.enterprise_unit_policy_apply"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_patient_access_log": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, page_number integer",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_scim_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_unchecked_v2"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal"
+      ],
+      "reason": "The real-role provisioning regression commits a credential-attributed audit and verifies its hash chain. Declaration and caller expectations are source-derived; execution and the deployed catalog census are pending."
+    },
+    "clinic_app.enterprise_scim_auth": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_security_task": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "candidate jsonb, operation text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_review_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_break_glass_without_reason_leaves_no_grant",
+        "test_break_glass_rejects_unbounded_or_elapsed_expiry",
+        "test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit",
+        "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
+        "test_break_glass_cannot_use_someone_elses_verified_session",
+        "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_sso_account": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_connection uuid, subject_hash bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_sso_principal": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_connection uuid, subject_hash bytea",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_staff_context": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_context_fence_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_finance",
+          "clinic_app.ai_actionexecution:agent_finance_bound",
+          "clinic_app.ai_actionexecution:agent_staff",
+          "clinic_app.ai_actionproposal:agent_finance",
+          "clinic_app.ai_actionproposal:agent_finance_bound",
+          "clinic_app.ai_actionproposal:agent_staff",
+          "clinic_app.ai_actionreceipt:agent_finance",
+          "clinic_app.ai_actionreceipt:agent_finance_bound",
+          "clinic_app.ai_actionreceipt:agent_staff",
+          "clinic_app.ai_agentpolicyversion:agent_finance",
+          "clinic_app.ai_agentpolicyversion:agent_finance_bound",
+          "clinic_app.ai_agentpolicyversion:agent_staff",
+          "clinic_app.ai_agentrun:agent_finance",
+          "clinic_app.ai_agentrun:agent_finance_bound",
+          "clinic_app.ai_agentrun:agent_staff",
+          "clinic_app.ai_aiartifact:ai_artifact_user",
+          "clinic_app.ai_aicircuit:ai_circuit_tenant",
+          "clinic_app.ai_aiinvocation:ai_invocation_user",
+          "clinic_app.ai_approval:agent_finance",
+          "clinic_app.ai_approval:agent_finance_bound",
+          "clinic_app.ai_approval:agent_staff",
+          "clinic_app.ai_careproposal:care_staff",
+          "clinic_app.ai_compensation:agent_finance",
+          "clinic_app.ai_compensation:agent_finance_bound",
+          "clinic_app.ai_compensation:agent_staff",
+          "clinic_app.ai_evaluationprotocol:evaluation_staff",
+          "clinic_app.ai_evaluationrating:evaluation_staff",
+          "clinic_app.ai_evaluationrun:evaluation_staff",
+          "clinic_app.ai_extractioncandidate:extraction_staff",
+          "clinic_app.ai_extractionjob:extraction_staff",
+          "clinic_app.ai_frontdeskthread:front_desk_read",
+          "clinic_app.ai_frontdeskthread:front_desk_update",
+          "clinic_app.ai_frontdeskturn:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_insert",
+          "clinic_app.ai_knowledgearticle:front_desk_read",
+          "clinic_app.ai_knowledgearticle:front_desk_update",
+          "clinic_app.ai_modelchangerequest:evaluation_staff",
+          "clinic_app.analytics_analystreview:analytics_scope",
+          "clinic_app.analytics_metricdefinitionversion:analytics_scope",
+          "clinic_app.analytics_readmodelrefresh:analytics_scope",
+          "clinic_app.analytics_savedreport:analytics_scope",
+          "clinic_app.billing_account:billing_journal_scope",
+          "clinic_app.billing_cashsession:billing_journal_scope",
+          "clinic_app.billing_cashsessionevent:billing_journal_scope",
+          "clinic_app.billing_fiscalconfiguration:fiscal_read",
+          "clinic_app.billing_fiscaldocument:fiscal_insert",
+          "clinic_app.billing_fiscaldocument:fiscal_read",
+          "clinic_app.billing_fiscaldocument:fiscal_update",
+          "clinic_app.billing_fiscaltransition:fiscal_read",
+          "clinic_app.billing_invoice:billing_staff",
+          "clinic_app.billing_invoicerevision:billing_staff",
+          "clinic_app.billing_invoiceterms:billing_journal_scope",
+          "clinic_app.billing_journalbook:billing_journal_scope",
+          "clinic_app.billing_journalentry:billing_journal_scope",
+          "clinic_app.billing_journalline:billing_journal_scope",
+          "clinic_app.billing_journalsettlement:billing_journal_scope",
+          "clinic_app.billing_paymentevent:billing_event_recorder",
+          "clinic_app.billing_paymentevent:billing_staff",
+          "clinic_app.billing_payout:billing_journal_scope",
+          "clinic_app.billing_pixcharge:billing_staff",
+          "clinic_app.billing_pixoperation:billing_staff",
+          "clinic_app.billing_practitionerpayoutrule:billing_journal_scope",
+          "clinic_app.billing_pspbinding:billing_psp_insert",
+          "clinic_app.billing_pspbinding:billing_psp_read",
+          "clinic_app.billing_pspevidence:billing_psp_insert",
+          "clinic_app.billing_pspevidence:billing_psp_read",
+          "clinic_app.billing_pspintent:billing_psp_insert",
+          "clinic_app.billing_pspintent:billing_psp_read",
+          "clinic_app.billing_psppolicy:billing_psp_insert",
+          "clinic_app.billing_psppolicy:billing_psp_read",
+          "clinic_app.billing_pspreceipt:billing_psp_insert",
+          "clinic_app.billing_pspreceipt:billing_psp_read",
+          "clinic_app.billing_receipt:billing_staff",
+          "clinic_app.billing_refund:billing_journal_scope",
+          "clinic_app.billing_settlement:billing_staff",
+          "clinic_app.billing_settlementallocation:billing_journal_scope",
+          "clinic_app.comms_appointmentreminder:tenant_isolation",
+          "clinic_app.comms_conversation:tenant_isolation",
+          "clinic_app.comms_inboundevent:tenant_isolation",
+          "clinic_app.comms_integrationoperation:tenant_isolation",
+          "clinic_app.comms_internalnote:tenant_isolation",
+          "clinic_app.comms_message:tenant_isolation",
+          "clinic_app.comms_messagemeter:tenant_isolation",
+          "clinic_app.comms_participant:tenant_isolation",
+          "clinic_app.comms_provideraccount:tenant_isolation",
+          "clinic_app.comms_quickreply:tenant_isolation",
+          "clinic_app.comms_suggestedreply:tenant_isolation",
+          "clinic_app.comms_templateversion:tenant_isolation",
+          "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
+          "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
+          "clinic_app.consent_aiusedisclosure:consent_alias_read",
+          "clinic_app.consent_aiusedisclosure:delegate_confidentiality",
+          "clinic_app.consent_consentacceptance:consent_acceptance_insert",
+          "clinic_app.consent_consentacceptance:consent_acceptance_read",
+          "clinic_app.consent_consentacceptance:consent_alias_read",
+          "clinic_app.consent_consentacceptance:delegate_purpose",
+          "clinic_app.consent_consentrevocation:consent_alias_read",
+          "clinic_app.consent_consentrevocation:consent_revocation_insert",
+          "clinic_app.consent_consentrevocation:consent_revocation_read",
+          "clinic_app.consent_consentrevocation:delegate_purpose",
+          "clinic_app.consent_consenttext:consent_text_insert",
+          "clinic_app.consent_consenttext:consent_text_read",
+          "clinic_app.consent_consenttext:delegate_purpose",
+          "clinic_app.consent_noticeversion:consent_notice_insert",
+          "clinic_app.consent_noticeversion:consent_notice_read",
+          "clinic_app.consent_participantacknowledgment:consent_participant_insert",
+          "clinic_app.consent_participantacknowledgment:consent_participant_read",
+          "clinic_app.consent_refusalrecord:consent_alias_read",
+          "clinic_app.consent_refusalrecord:consent_refusal_insert",
+          "clinic_app.consent_refusalrecord:consent_refusal_read",
+          "clinic_app.consent_refusalrecord:delegate_purpose",
+          "clinic_app.crm_campaign:crm_staff_insert",
+          "clinic_app.crm_campaign:crm_staff_read",
+          "clinic_app.crm_campaign:crm_staff_update",
+          "clinic_app.crm_campaignsend:crm_staff_insert",
+          "clinic_app.crm_campaignsend:crm_staff_read",
+          "clinic_app.crm_lead:crm_staff_insert",
+          "clinic_app.crm_lead:crm_staff_read",
+          "clinic_app.crm_lead:crm_staff_update",
+          "clinic_app.crm_marketingpreference:crm_patient_insert",
+          "clinic_app.crm_marketingpreference:crm_patient_read",
+          "clinic_app.crm_marketingpreference:crm_staff_read",
+          "clinic_app.crm_publicbookingprofile:crm_staff_insert",
+          "clinic_app.crm_publicbookingprofile:crm_staff_read",
+          "clinic_app.crm_publicbookingprofile:crm_staff_update",
+          "clinic_app.crm_referralsource:crm_staff_insert",
+          "clinic_app.crm_referralsource:crm_staff_read",
+          "clinic_app.crm_satisfactionsurvey:crm_patient_insert",
+          "clinic_app.crm_satisfactionsurvey:crm_patient_read",
+          "clinic_app.crm_satisfactionsurvey:crm_staff_read",
+          "clinic_app.ehr_addendumsavereceipt:addendum_receipt_insert",
+          "clinic_app.ehr_addendumsavereceipt:addendum_receipt_read",
+          "clinic_app.ehr_allergy:history_insert",
+          "clinic_app.ehr_allergy:history_read",
+          "clinic_app.ehr_clinicalattachment:attachment_insert",
+          "clinic_app.ehr_clinicalattachment:attachment_read",
+          "clinic_app.ehr_clinicalattachment:attachment_scan",
+          "clinic_app.ehr_clinicaldocument:clinical_insert",
+          "clinic_app.ehr_clinicaldocument:clinical_read",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_insert",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_read",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_update",
+          "clinic_app.ehr_clinicaldocumentversion:restricted_note_visibility",
+          "clinic_app.ehr_copiednoteblock:copy_insert",
+          "clinic_app.ehr_copiednoteblock:copy_read",
+          "clinic_app.ehr_copiednoteblock:copy_review",
+          "clinic_app.ehr_drafteditstate:draft_state_author",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_insert",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_read",
+          "clinic_app.ehr_encounter:clinical_insert",
+          "clinic_app.ehr_encounter:clinical_lock",
+          "clinic_app.ehr_encounter:clinical_read",
+          "clinic_app.ehr_encounteraddendum:addendum_insert",
+          "clinic_app.ehr_encounteraddendum:addendum_read",
+          "clinic_app.ehr_encounteraddendum:addendum_write",
+          "clinic_app.ehr_encounterintakereference:clinical_insert",
+          "clinic_app.ehr_encounterintakereference:clinical_read",
+          "clinic_app.ehr_episode:episode_close",
+          "clinic_app.ehr_episode:episode_insert",
+          "clinic_app.ehr_episode:episode_read",
+          "clinic_app.ehr_episodeencounter:episode_member_insert",
+          "clinic_app.ehr_episodeencounter:episode_member_read",
+          "clinic_app.ehr_historyassessment:history_insert",
+          "clinic_app.ehr_historyassessment:history_read",
+          "clinic_app.ehr_medicationstatement:longitudinal_confirm",
+          "clinic_app.ehr_medicationstatement:longitudinal_insert",
+          "clinic_app.ehr_medicationstatement:longitudinal_read",
+          "clinic_app.ehr_noteaccessgrant:note_grant_insert",
+          "clinic_app.ehr_noteaccessgrant:note_grant_read",
+          "clinic_app.ehr_noteaccessgrant:note_grant_revoke",
+          "clinic_app.ehr_observation:longitudinal_confirm",
+          "clinic_app.ehr_observation:longitudinal_insert",
+          "clinic_app.ehr_observation:longitudinal_read",
+          "clinic_app.ehr_observation:observation_nursing_insert",
+          "clinic_app.ehr_problem:history_insert",
+          "clinic_app.ehr_problem:history_read",
+          "clinic_app.ehr_restrictednote:note_restriction_insert",
+          "clinic_app.ehr_restrictednote:note_restriction_read",
+          "clinic_app.ehr_specialtyentry:specialty_insert",
+          "clinic_app.ehr_specialtyentry:specialty_read",
+          "clinic_app.ehr_specialtypack:pack_insert",
+          "clinic_app.ehr_specialtypack:pack_read",
+          "clinic_app.ehr_specialtypack:pack_retire",
+          "clinic_app.ehr_specialtytemplate:clinical_insert",
+          "clinic_app.ehr_specialtytemplate:clinical_read",
+          "clinic_app.ehr_timelineprojection:timeline_read",
+          "clinic_app.identity_authenticatorreset:manager",
+          "clinic_app.identity_authenticatorreset:notified_user",
+          "clinic_app.identity_authenticatorretirement:own_user",
+          "clinic_app.identity_careteammembership:scope_read",
+          "clinic_app.identity_clinic:tenant_isolation",
+          "clinic_app.identity_clinicconfiguration:configuration_insert",
+          "clinic_app.identity_clinicconfiguration:configuration_read",
+          "clinic_app.identity_onboardingprogress:manager",
+          "clinic_app.identity_organization:active_organization_runtime",
+          "clinic_app.identity_organization:tenant_isolation",
+          "clinic_app.identity_passkey:passkey_owner_only",
+          "clinic_app.identity_passkey:tenant_isolation",
+          "clinic_app.identity_patientdelegategrant:delegate_read",
+          "clinic_app.identity_physicianevidence:physician_evidence_assigned",
+          "clinic_app.identity_physicianprofile:physician_self",
+          "clinic_app.identity_professionalregistration:scope_read",
+          "clinic_app.identity_recoverybatch:own_user",
+          "clinic_app.identity_recoverycode:own_user",
+          "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.identity_savedview:savedview_owner_only",
+          "clinic_app.identity_sessionrecord:own_user",
+          "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.identity_userclinicrole:tenant_isolation",
+          "clinic_app.identity_userpreference:userpreference_owner_only",
+          "clinic_app.insurance_appeal:insurance_scope",
+          "clinic_app.insurance_batch:insurance_scope",
+          "clinic_app.insurance_batchguide:insurance_scope",
+          "clinic_app.insurance_clinicalapproval:insurance_scope",
+          "clinic_app.insurance_commandreceipt:insurance_scope",
+          "clinic_app.insurance_glosa:insurance_scope",
+          "clinic_app.insurance_guide:insurance_scope",
+          "clinic_app.insurance_insurancemembership:insurance_scope",
+          "clinic_app.insurance_payer:insurance_scope",
+          "clinic_app.insurance_payercontract:insurance_scope",
+          "clinic_app.insurance_payerrequest:insurance_scope",
+          "clinic_app.insurance_paymentmatch:insurance_scope",
+          "clinic_app.insurance_pricetable:insurance_scope",
+          "clinic_app.insurance_return:insurance_scope",
+          "clinic_app.insurance_submission:insurance_scope",
+          "clinic_app.insurance_tussterm:insurance_scope",
+          "clinic_app.intake_clinicintakepolicy:tenant_isolation",
+          "clinic_app.intake_datasubjectrequest:privacy_staff_read",
+          "clinic_app.intake_demographicscorrection:tenant_isolation",
+          "clinic_app.intake_duplicatecandidate:tenant_isolation",
+          "clinic_app.intake_emergencycontact:tenant_isolation",
+          "clinic_app.intake_insurancemembership:tenant_isolation",
+          "clinic_app.intake_mergedecision:tenant_isolation",
+          "clinic_app.intake_patient:tenant_isolation",
+          "clinic_app.intake_patientaccessgrant:tenant_isolation",
+          "clinic_app.intake_patientaddress:tenant_isolation",
+          "clinic_app.intake_patientalias:tenant_isolation",
+          "clinic_app.intake_patientchannelpreference:tenant_isolation",
+          "clinic_app.intake_patientclinicenrollment:tenant_isolation",
+          "clinic_app.intake_patientcontact:tenant_isolation",
+          "clinic_app.intake_patientcontactevent:tenant_isolation",
+          "clinic_app.intake_patientdemographics:tenant_isolation",
+          "clinic_app.intake_patientduplicateindex:tenant_isolation",
+          "clinic_app.intake_patientidentifier:tenant_isolation",
+          "clinic_app.intake_patientmergetransfer:tenant_isolation",
+          "clinic_app.intake_patientsession:tenant_isolation",
+          "clinic_app.intake_questionnaireevent:event_read",
+          "clinic_app.intake_questionnaireresponse:delegate_confidentiality",
+          "clinic_app.intake_questionnaireresponse:response_assign",
+          "clinic_app.intake_questionnaireresponse:response_read",
+          "clinic_app.intake_questionnaireresponse:response_write",
+          "clinic_app.intake_questionnairetemplate:template_read",
+          "clinic_app.intake_questionnairetemplate:template_write",
+          "clinic_app.inventory_batch:inventory_insert",
+          "clinic_app.inventory_batch:inventory_read",
+          "clinic_app.inventory_calibration:inventory_insert",
+          "clinic_app.inventory_calibration:inventory_read",
+          "clinic_app.inventory_commandreceipt:inventory_insert",
+          "clinic_app.inventory_commandreceipt:inventory_read",
+          "clinic_app.inventory_equipment:inventory_insert",
+          "clinic_app.inventory_equipment:inventory_read",
+          "clinic_app.inventory_item:inventory_insert",
+          "clinic_app.inventory_item:inventory_read",
+          "clinic_app.inventory_location:inventory_insert",
+          "clinic_app.inventory_location:inventory_read",
+          "clinic_app.inventory_maintenance:inventory_insert",
+          "clinic_app.inventory_maintenance:inventory_read",
+          "clinic_app.inventory_minimumstock:inventory_insert",
+          "clinic_app.inventory_minimumstock:inventory_read",
+          "clinic_app.inventory_purchasebudget:inventory_insert",
+          "clinic_app.inventory_purchasebudget:inventory_read",
+          "clinic_app.inventory_purchaserequest:inventory_insert",
+          "clinic_app.inventory_purchaserequest:inventory_read",
+          "clinic_app.inventory_purchaserequest:inventory_update",
+          "clinic_app.inventory_stockmovement:inventory_insert",
+          "clinic_app.inventory_stockmovement:inventory_read",
+          "clinic_app.inventory_supplier:inventory_insert",
+          "clinic_app.inventory_supplier:inventory_read",
+          "clinic_app.orders_labaccount:orders_read",
+          "clinic_app.orders_order:orders_insert",
+          "clinic_app.orders_order:orders_read",
+          "clinic_app.orders_orderevent:orders_insert",
+          "clinic_app.orders_orderevent:orders_read",
+          "clinic_app.orders_orderitem:orders_insert",
+          "clinic_app.orders_orderitem:orders_read",
+          "clinic_app.orders_result:orders_insert",
+          "clinic_app.orders_result:orders_read",
+          "clinic_app.orders_resultacknowledgment:orders_insert",
+          "clinic_app.orders_resultacknowledgment:orders_read",
+          "clinic_app.orders_resultmatch:orders_read",
+          "clinic_app.orders_resultobservation:orders_insert",
+          "clinic_app.orders_resultobservation:orders_read",
+          "clinic_app.orders_resultquarantine:orders_read",
+          "clinic_app.orders_resultrejection:orders_insert",
+          "clinic_app.orders_resultrejection:orders_read",
+          "clinic_app.orders_resultrelease:orders_insert",
+          "clinic_app.orders_resultrelease:orders_read",
+          "clinic_app.orders_resultversion:orders_insert",
+          "clinic_app.orders_resultversion:orders_read",
+          "clinic_app.orders_resultworkitem:orders_read",
+          "clinic_app.otp_static_staticdevice:own_user",
+          "clinic_app.otp_totp_totpdevice:identity_totp_retirement",
+          "clinic_app.otp_totp_totpdevice:otp_totp_device_user_isolation",
+          "clinic_app.prescription_documentdraftcontent:content_insert",
+          "clinic_app.prescription_documentdraftcontent:content_read",
+          "clinic_app.prescription_medicationfavorite:favorite_insert",
+          "clinic_app.prescription_medicationfavorite:favorite_read",
+          "clinic_app.prescription_medicationfavorite:favorite_update",
+          "clinic_app.prescription_prescriptiondocument:document_insert",
+          "clinic_app.prescription_prescriptiondocument:document_read",
+          "clinic_app.prescription_prescriptiondocumentrelease:delegate_confidentiality",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_insert",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_read",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_revoke",
+          "clinic_app.prescription_prescriptiondocumentrevocation:revocation_insert",
+          "clinic_app.prescription_prescriptiondocumentrevocation:revocation_read",
+          "clinic_app.prescription_prescriptiondraft:draft_insert",
+          "clinic_app.prescription_prescriptiondraft:draft_read",
+          "clinic_app.prescription_prescriptiondraft:draft_update",
+          "clinic_app.prescription_prescriptionissuance:issuer_insert",
+          "clinic_app.prescription_prescriptionissuance:issuer_read",
+          "clinic_app.prescription_prescriptionitem:item_insert",
+          "clinic_app.prescription_prescriptionitem:item_read",
+          "clinic_app.prescription_signaturecallback:signature_callback_insert",
+          "clinic_app.prescription_signaturecallback:signature_callback_read",
+          "clinic_app.prescription_signatureoperation:signature_insert",
+          "clinic_app.prescription_signatureoperation:signature_read",
+          "clinic_app.prescription_signatureoperation:signature_update",
+          "clinic_app.prescription_sncrnumberallocation:issuer_read",
+          "clinic_app.retention_artifactpurge:purge_read",
+          "clinic_app.retention_legalhold:hold_insert",
+          "clinic_app.retention_legalhold:hold_read",
+          "clinic_app.retention_legalhold:hold_release",
+          "clinic_app.retention_recordexport:export_insert_patient",
+          "clinic_app.retention_recordexport:export_insert_staff",
+          "clinic_app.retention_recordexport:export_read",
+          "clinic_app.retention_recordrelease:delegate_confidentiality",
+          "clinic_app.retention_recordrelease:release_insert",
+          "clinic_app.retention_recordrelease:release_read",
+          "clinic_app.retention_recordrelease:release_revoke",
+          "clinic_app.retention_retentionpolicy:policy_insert",
+          "clinic_app.retention_retentionpolicy:policy_read",
+          "clinic_app.retention_retentionpolicy:policy_update",
+          "clinic_app.scheduling_absence:tenant_isolation",
+          "clinic_app.scheduling_appointment:patient_booking_insert",
+          "clinic_app.scheduling_appointment:patient_booking_read",
+          "clinic_app.scheduling_appointment:patient_booking_update",
+          "clinic_app.scheduling_appointment:tenant_isolation",
+          "clinic_app.scheduling_appointmentresource:tenant_isolation",
+          "clinic_app.scheduling_appointmentseries:tenant_isolation",
+          "clinic_app.scheduling_appointmenttransition:patient_booking_read",
+          "clinic_app.scheduling_appointmenttransition:tenant_isolation",
+          "clinic_app.scheduling_availabilityblock:patient_booking_read",
+          "clinic_app.scheduling_availabilityblock:tenant_isolation",
+          "clinic_app.scheduling_availabilitytemplate:patient_booking_read",
+          "clinic_app.scheduling_availabilitytemplate:tenant_isolation",
+          "clinic_app.scheduling_cliniciandelay:reception_scope",
+          "clinic_app.scheduling_cliniciandelay:tenant_isolation",
+          "clinic_app.scheduling_displaydevice:reception_scope",
+          "clinic_app.scheduling_displaydevice:tenant_isolation",
+          "clinic_app.scheduling_holiday:tenant_isolation",
+          "clinic_app.scheduling_patientbookingevent:tenant_isolation",
+          "clinic_app.scheduling_queueentry:reception_scope",
+          "clinic_app.scheduling_queueentry:tenant_isolation",
+          "clinic_app.scheduling_resource:patient_booking_read",
+          "clinic_app.scheduling_resource:tenant_isolation",
+          "clinic_app.scheduling_roomstatus:reception_scope",
+          "clinic_app.scheduling_roomstatus:tenant_isolation",
+          "clinic_app.scheduling_seriesexception:tenant_isolation",
+          "clinic_app.scheduling_servicetype:patient_booking_read",
+          "clinic_app.scheduling_servicetype:tenant_isolation",
+          "clinic_app.scheduling_waitlistentry:waitlist_insert",
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_insert",
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_update",
+          "clinic_app.scheduling_waitlistentry:waitlist_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_update",
+          "clinic_app.scheduling_waitlistoffer:waitlist_insert",
+          "clinic_app.scheduling_waitlistoffer:waitlist_merge_read",
+          "clinic_app.scheduling_waitlistoffer:waitlist_merge_update",
+          "clinic_app.scheduling_waitlistoffer:waitlist_read",
+          "clinic_app.scheduling_waitlistoffer:waitlist_update",
+          "clinic_app.scribe_aidraft:draft_insert",
+          "clinic_app.scribe_aidraft:draft_read",
+          "clinic_app.scribe_audiochunk:capture_insert",
+          "clinic_app.scribe_audiochunk:capture_read",
+          "clinic_app.scribe_audiochunk:capture_update",
+          "clinic_app.scribe_captureepoch:capture_insert",
+          "clinic_app.scribe_captureepoch:capture_read",
+          "clinic_app.scribe_captureepoch:capture_update",
+          "clinic_app.scribe_chunktranscription:transcript_insert",
+          "clinic_app.scribe_chunktranscription:transcript_read",
+          "clinic_app.scribe_draftactionproposal:draft_insert",
+          "clinic_app.scribe_draftactionproposal:draft_read",
+          "clinic_app.scribe_draftsectionsuggestion:draft_insert",
+          "clinic_app.scribe_draftsectionsuggestion:draft_read",
+          "clinic_app.scribe_recordingcommand:capture_insert",
+          "clinic_app.scribe_recordingcommand:capture_read",
+          "clinic_app.scribe_recordingsession:capture_insert",
+          "clinic_app.scribe_recordingsession:capture_read",
+          "clinic_app.scribe_recordingsession:capture_update",
+          "clinic_app.scribe_reviewdecision:draft_insert",
+          "clinic_app.scribe_reviewdecision:draft_read",
+          "clinic_app.scribe_transcriptsegment:transcript_insert",
+          "clinic_app.scribe_transcriptsegment:transcript_read",
+          "clinic_app.scribe_transcriptversion:transcript_insert",
+          "clinic_app.scribe_transcriptversion:transcript_read",
+          "clinic_app.subscriptions_entitlement:subscription_read",
+          "clinic_app.subscriptions_plan:subscription_read",
+          "clinic_app.subscriptions_seat:subscription_read",
+          "clinic_app.subscriptions_subscription:subscription_read",
+          "clinic_app.subscriptions_subscriptionevent:subscription_read",
+          "clinic_app.subscriptions_usageevent:subscription_read",
+          "clinic_app.subscriptions_usagerollup:subscription_read",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_insert",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_insert",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_read",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_read",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_capture_update",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_insert",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_read",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_insert",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_update",
+          "clinic_app.tenancy_tenantdatakey:tenant_isolation",
+          "clinic_app.tenancy_tenantprobe:tenant_isolation",
+          "clinic_app.workflows_careaction:care_insert",
+          "clinic_app.workflows_careaction:care_read",
+          "clinic_app.workflows_careaction:care_update",
+          "clinic_app.workflows_careplan:care_insert",
+          "clinic_app.workflows_careplan:care_read",
+          "clinic_app.workflows_careplan:care_update",
+          "clinic_app.workflows_carerefusal:care_read",
+          "clinic_app.workflows_proassignment:care_insert",
+          "clinic_app.workflows_proassignment:care_read",
+          "clinic_app.workflows_proassignment:care_update",
+          "clinic_app.workflows_prooccurrence:care_insert",
+          "clinic_app.workflows_prooccurrence:care_read",
+          "clinic_app.workflows_prooccurrence:care_update",
+          "clinic_app.workflows_recall:care_insert",
+          "clinic_app.workflows_recall:care_read",
+          "clinic_app.workflows_recall:care_update",
+          "clinic_app.workflows_referral:care_insert",
+          "clinic_app.workflows_referral:care_read",
+          "clinic_app.workflows_referral:care_update",
+          "clinic_app.workflows_releasedelivery:coordination_insert",
+          "clinic_app.workflows_releasedelivery:coordination_read",
+          "clinic_app.workflows_releasenoticetemplate:coordination_insert",
+          "clinic_app.workflows_releasenoticetemplate:coordination_read",
+          "clinic_app.workflows_task:workflow_insert",
+          "clinic_app.workflows_task:workflow_read",
+          "clinic_app.workflows_task:workflow_update",
+          "clinic_app.workflows_taskcomment:workflow_insert",
+          "clinic_app.workflows_taskcomment:workflow_read",
+          "clinic_app.workflows_urgentconcern:coordination_read",
+          "clinic_app.workflows_urgentconcern:coordination_update",
+          "clinic_app.workflows_urgentcoveragepolicy:coordination_insert",
+          "clinic_app.workflows_urgentcoveragepolicy:coordination_read",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_insert",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_read",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_update",
+          "clinic_app.workflows_workflowrun:workflow_insert",
+          "clinic_app.workflows_workflowrun:workflow_read",
+          "clinic_app.workflows_workflowrun:workflow_update",
+          "clinic_app.workflows_workflowstep:workflow_insert",
+          "clinic_app.workflows_workflowstep:workflow_read",
+          "clinic_app.workflows_workflowstep:workflow_update"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_scim_token_cannot_read_staff_patient_tables",
+        "test_nonstaff_context_cannot_borrow_an_existing_staff_actor"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_support_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid, requested_clinic uuid, requested_session bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_support_is_masked_and_purpose_bound",
+        "test_jit_expiry_uses_a_clock_not_a_wait"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_sync_directory": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_connection uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_directory_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_provisioning_commits_audit_with_credential_principal",
+        "test_approved_group_provisions_only_its_exact_unit_bundle",
+        "test_directory_deactivation_revokes_managed_roles_and_existing_sessions",
+        "test_revoked_scim_token_is_unauthorized",
+        "test_foreign_and_unknown_scim_resources_are_indistinguishable",
+        "test_directory_resource_id_is_not_the_authentication_user_id",
+        "test_modern_mapping_requires_owner_issuance_and_never_revokes_native_authority",
+        "test_unmapped_subject_or_claim_cannot_elevate_a_role",
+        "test_approved_directory_subject_signs_in_without_a_factor_or_claim_elevation",
+        "test_oidc_state_is_single_use_and_bound_to_its_server_session",
+        "test_configuration_cannot_reuse_another_tenants_scope",
+        "test_browser_freshness_without_a_persisted_factor_is_not_authority",
+        "test_governance_obeys_actual_passkey_substitution_policy"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_template_propagate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "source uuid, unit uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships",
+        "test_template_propagation_appends_a_version_and_replays_the_same_receipt"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_unit_denied": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, target_user uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_unit_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_sync_directory",
+          "clinic_app.enterprise_unit_membership_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships",
+        "test_template_propagation_appends_a_version_and_replays_the_same_receipt"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_unit_member_revoke": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, target_user uuid",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships",
+        "test_template_propagation_appends_a_version_and_replays_the_same_receipt"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_unit_membership_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_unit_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships",
+        "test_template_propagation_appends_a_version_and_replays_the_same_receipt"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_unit_policy_apply": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_enterprise_unit_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships",
+        "test_template_propagation_appends_a_version_and_replays_the_same_receipt"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
     }
   },
   "sql_method": [

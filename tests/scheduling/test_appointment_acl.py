@@ -3,6 +3,8 @@ from importlib import import_module
 import pytest
 from django.db import connection
 
+from enterprise_fence_support import fenced
+
 
 @pytest.mark.django_db(transaction=True)
 def test_appointment_has_exact_force_rls_and_column_acl_catalog() -> None:
@@ -30,7 +32,8 @@ def test_appointment_has_exact_force_rls_and_column_acl_catalog() -> None:
             "AND tablename = 'scheduling_appointment' "
             "AND policyname = 'tenant_isolation'"
         )
-        expression = (
+        # Identity 0051 narrows the tenant policy with its staff-context fence.
+        expression = fenced(
             "(organization_id = (NULLIF(current_setting("
             "'app.current_tenant'::text, true), ''::text))::uuid)"
         )

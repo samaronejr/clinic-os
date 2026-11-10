@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% load i18n tz clinic_locale %}
+{% block title %}{% trans "Emergency access and required reviews" %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="emergency-review-title">
+  <h1 id="emergency-review-title">{% trans "Emergency access and required reviews" %}</h1>
+  {% include "identity/includes/emergency_reviews.html" %}
+</section>
+{% endblock %}

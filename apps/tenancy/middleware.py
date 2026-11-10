@@ -16,6 +16,7 @@ from apps.core.patient_context import persist_bound_patient_context
 from apps.core.workspace import finish_clinic_selection
 from apps.core.workspace_access import workspace_denial
 from apps.identity.otp import auth_redirect
+from apps.identity.scim_paths import SCIM_PREFIX, is_scim_endpoint
 from apps.identity.session_inventory import (
     session_cookie_is_revoked,
     session_is_active,
@@ -40,6 +41,9 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        "/auth/sso/begin/",
+        "/auth/sso/finish/",
+        "/support/diagnostics/",
         # WebAuthn assertions authenticate their own exact stored credential,
         # then open tenant_context; no body-supplied tenant is accepted.
         "/auth/passkey/assert/begin/",
@@ -55,6 +59,7 @@ BYPASS_PATHS: Final = frozenset(
 )
 BYPASS_PREFIXES: Final = (
     "/book/",  # Published clinic projection; booking revalidates patient context.
+    SCIM_PREFIX,  # Only is_scim_endpoint's closed directory grammar is admitted.
     "/orders/lab/callback/",  # Per-account raw-body HMAC before stored scope.
     "/comms/webhooks/",  # Per-account raw-body HMAC before stored scope.
     "/api/v1/",  # Partner bearer token; every resolver re-validates its digest.
@@ -70,6 +75,13 @@ PATIENT_ACCESS_PREFIX: Final = "/patient/access/"
 PATIENT_PREFIX: Final = "/patient/"
 SERVER_ERROR_STATUS: Final = 500
 HANDLED_REJECTION_ATTR: Final = "clinic_handled_rejection"
+
+
+def _independent_prefix(path: str) -> bool:
+    """Retain existing bypasses and apply the narrow SCIM directory allowlist."""
+    return is_scim_endpoint(path) or path.startswith(
+        tuple(prefix for prefix in BYPASS_PREFIXES if prefix != SCIM_PREFIX)
+    )
 
 
 class TenantStreamingResponseError(RuntimeError):
@@ -122,7 +134,9 @@ class TenantMiddleware:
         try:
             # These entrypoints authenticate independently and must retain
             # their side-effect-free denial rather than mutate a staff session.
-            if request.path_info.startswith((*BYPASS_PREFIXES, PATIENT_PREFIX)):
+            if _independent_prefix(request.path_info) or request.path_info.startswith(
+                PATIENT_PREFIX
+            ):
                 return self._response(request)
             incoming_key = request.session.session_key
             raw_session_user = request.session.get(SESSION_KEY)
@@ -157,8 +171,10 @@ class TenantMiddleware:
     def _response(self, request: HttpRequest) -> HttpResponseBase:
         """Validate signed session identifiers and execute the full response chain."""
         path = request.path_info
-        if path in BYPASS_PATHS or path.startswith(
-            (*BYPASS_PREFIXES, PATIENT_ACCESS_PREFIX)
+        if (
+            path in BYPASS_PATHS
+            or _independent_prefix(path)
+            or path.startswith(PATIENT_ACCESS_PREFIX)
         ):
             clear_connection_tenant_gucs()
             try:

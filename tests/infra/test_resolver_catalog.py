@@ -9,6 +9,7 @@ from infra import (
     coordination_catalog,
     crm_catalog,
     duplicate_catalog,
+    enterprise_catalog,
     fiscal_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
@@ -42,6 +43,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *journal_catalog.TABLE_GRANTS,
     *psp_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
+    *enterprise_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
     ("scheduling_displaydevice", "SELECT"),
@@ -226,6 +228,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("consent_aiusedisclosure", "patient_id", "SELECT"),
     ("consent_aiusedisclosure", "informed", "SELECT"),
     ("consent_aiusedisclosure", "refused", "SELECT"),
+    *enterprise_catalog.COLUMN_GRANTS,
     ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
     ("identity_passkey", "last_used", "UPDATE"),
     ("identity_passkey", "removed_at", "UPDATE"),
@@ -285,6 +288,7 @@ POSTURE_OVERRIDES: Final = {
     **fiscal_catalog.POSTURE,
     **journal_catalog.POSTURE,
     **psp_catalog.POSTURE,
+    **enterprise_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -598,6 +602,7 @@ FUNCTION_SIGNATURES: Final = {
     *subscriptions_catalog.RESULTS,
     *retention_catalog.RESULTS,
     *fiscal_catalog.RESULTS,
+    *enterprise_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
@@ -933,6 +938,7 @@ FUNCTION_RESULTS: Final = {
     **retention_catalog.RESULTS,
     **journal_catalog.RESULTS,
     **psp_catalog.RESULTS,
+    **enterprise_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (
@@ -1513,6 +1519,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
                 if name in identity_lifecycle_catalog.POSTURE
                 or name in duplicate_catalog.POSTURE
                 or name in journal_catalog.PG_ONLY
+                or name in enterprise_catalog.POSTURE
                 else "search_path=pg_catalog, clinic_app, pg_temp"
             ],
             True,

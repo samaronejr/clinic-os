@@ -7,6 +7,8 @@ from apps.scribe.rls import CUSTOM_RLS_TABLES
 from django.apps import apps
 from django.db import connection, transaction
 
+from enterprise_fence_support import fenced
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 TABLES: Final = frozenset(
@@ -208,6 +210,18 @@ def test_scribe_policy_roles_commands_and_predicates_are_exact() -> None:
             (table, name, mode, tuple(roles), command, using, check)
             for table, name, mode, roles, command, using, check in cursor.fetchall()
         }
+
+    # Identity 0051 fences each policy that applies to clinic_app (never the
+    # owner-only setup policy); this session deparses its name qualified.
+    def fence(text: str | None) -> str | None:
+        return None if text is None else fenced(text, qualified=True)
+
+    expected = {
+        (table, name, mode, roles, command, fence(using), fence(check))
+        if "clinic_app" in roles or "public" in roles
+        else (table, name, mode, roles, command, using, check)
+        for table, name, mode, roles, command, using, check in expected
+    }
 
     # Then: role, command, ownership, and both predicates stay exact.
     assert observed == expected

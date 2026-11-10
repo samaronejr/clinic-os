@@ -15,6 +15,7 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.db.migrations.loader import MigrationLoader
 
+from enterprise_fence_support import fenced
 from identity.permission_support import permission_context
 from interop.catalog import discover_catalog
 from interop.support import access_token, local_bucket, make_client, org_admin
@@ -80,6 +81,7 @@ def test_import_tables_are_forced_rls_with_exact_policies() -> None:
 
 
 def test_intake_reads_hide_rolled_back_enrollments_restrictively() -> None:
+    # Both apply to clinic_app, so identity 0051's staff-context fence narrows them.
     assert _rows(
         "SELECT tablename, permissive, roles::text, cmd, qual"
         " FROM pg_catalog.pg_policies WHERE policyname='interop_import_visibility'"
@@ -89,17 +91,21 @@ def test_intake_reads_hide_rolled_back_enrollments_restrictively() -> None:
             "RESTRICTIVE",
             "{clinic_app,clinic_owner}",
             "SELECT",
-            "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
-            "  WHERE (h.enrollment_id = intake_patientclinicenrollment.id))))",
+            fenced(
+                "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+                "  WHERE (h.enrollment_id = intake_patientclinicenrollment.id))))"
+            ),
         ),
         (
             "intake_duplicatecandidate",
             "RESTRICTIVE",
             "{clinic_app,clinic_owner}",
             "SELECT",
-            "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
-            "  WHERE (h.enrollment_id = ANY (ARRAY[intake_duplicatecandidate"
-            ".enrollment_a_id, intake_duplicatecandidate.enrollment_b_id])))))",
+            fenced(
+                "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+                "  WHERE (h.enrollment_id = ANY (ARRAY[intake_duplicatecandidate"
+                ".enrollment_a_id, intake_duplicatecandidate.enrollment_b_id])))))"
+            ),
         ),
     }
 

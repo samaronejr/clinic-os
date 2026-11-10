@@ -1,5 +1,7 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from itertools import chain
+
 from ai import (
     test_agent_execution,
     test_agent_guards,
@@ -47,6 +49,8 @@ from ehr.test_timeline import (
     test_projection_is_after_commit_and_replay_safe,
     test_restricted_note_does_not_leak_a_timeline_count,
 )
+from identity.enterprise_sql_oracles import CASES as ENTERPRISE_CASES
+from identity.enterprise_sql_oracles import SQL_PROTOCOL_ORACLES as ENTERPRISE_PROTOCOLS
 from identity.inventory_authority_oracle import (
     INVENTORY_CASES,
     INVENTORY_SQL_ORACLES,
@@ -536,6 +540,7 @@ PROTOCOL_ORACLES = {
     "clinic_app.prescription_draft_guard": [
         "test_renewal_trigger_requires_source_care_for_every_role"
     ],
+    **ENTERPRISE_PROTOCOLS,
 }
 
 
@@ -555,10 +560,20 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         for names in SUBSCRIPTIONS_PROTOCOLS.values()
         for name in names
     )
+    # Tasks 66/67 and 65 (one statement: the merged matrix is at the size bound).
     assert all(
-        callable(INTEROP_CASES[name])
-        for names in INTEROP_PROTOCOLS.values()
-        for name in names
+        chain(
+            (
+                callable(INTEROP_CASES[name])
+                for names in INTEROP_PROTOCOLS.values()
+                for name in names
+            ),
+            (
+                callable(ENTERPRISE_CASES[name])
+                for names in ENTERPRISE_PROTOCOLS.values()
+                for name in names
+            ),
+        )
     )
     assert all(
         callable(BILLING_CASES[name])

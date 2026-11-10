@@ -16,8 +16,14 @@ from apps.audit.models import AuditEvent
 from apps.core import patient_context
 from apps.core.navigation import DESTINATIONS, destination_url
 from apps.core.patient_context import DEMOGRAPHICS_READ, SESSION_PREFIX
-from apps.identity.models import RoleGrant, SavedView, UserClinicRole
-from apps.identity.permissions import BUNDLES_V1
+from apps.identity.models import (
+    Clinic,
+    ProfessionalRegistration,
+    RoleGrant,
+    SavedView,
+    UserClinicRole,
+)
+from apps.identity.permissions import BUNDLES_V1, PROFESSIONAL_PERMISSIONS_V1
 from apps.identity.saved_views import archive_saved_view, save_view
 from apps.intake.models import PatientClinicEnrollment
 from apps.tenancy.db import tenant_context
@@ -76,6 +82,33 @@ def remove_permission(graph: RbacGraph, role: str, permission: str) -> None:
             role=role,
             permission=permission,
             valid_from=timezone.now() - timedelta(minutes=1),
+        )
+
+
+def register_professional(
+    graph: RbacGraph, user: User, role: str, permissions: tuple[str, ...]
+) -> None:
+    """Register a clinical actor whose place needs a professional permission.
+
+    A bundle alone never grants one: has_permission also needs the actor's
+    current regular registration in the clinic.
+    """
+    if not set(permissions) & PROFESSIONAL_PERMISSIONS_V1:
+        return
+    now = timezone.now()
+    with owner_context(graph.organization_a):
+        ProfessionalRegistration.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=user.pk,
+            role=role,
+            council={"physician": "CRM", "nurse": "COREN"}.get(role, "CREFITO"),
+            number=f"SYNTHETIC-BOUNDARY-{uuid4().hex}",
+            jurisdiction=Clinic.objects.get(pk=graph.clinic_a).crm_uf,
+            specialty="Synthetic boundary fixture",
+            status="regular",
+            valid_from=now - timedelta(days=1),
+            valid_to=now + timedelta(days=1),
         )
 
 
@@ -206,6 +239,7 @@ def test_every_destination_enforces_its_permission_over_http(
         "django.http.response.time", SimpleNamespace(time=lambda: 2_000_000_000)
     )
     client, user = _client_for(rbac_graph, role)
+    register_professional(rbac_graph, user, role, place.permission)
     url = destination_url(place, rbac_graph.clinic_a)
     assert _get(client, url).status_code == 200
     states = [dict(client.session)]
