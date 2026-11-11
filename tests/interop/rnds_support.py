@@ -195,7 +195,13 @@ def issue(  # noqa: PLR0913 - one value per certificate field under test
     not_before: datetime | None = None,
     not_after: datetime | None = None,
 ) -> Issued:
-    """Issue one synthetic certificate; ``issuer=None`` makes it self-signed."""
+    """Issue one synthetic certificate; ``issuer=None`` makes it self-signed.
+
+    The chain carries the RFC 5280 extensions a real one does, which Python
+    3.13's default client context requires (``ssl.VERIFY_X509_STRICT``): a key
+    identifier on every certificate, the issuer's on every issued one, and key
+    usage on a CA.
+    """
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
     builder = (
@@ -209,7 +215,30 @@ def issue(  # noqa: PLR0913 - one value per certificate field under test
         .not_valid_before(not_before or now - timedelta(days=1))
         .not_valid_after(not_after or now + timedelta(days=30))
         .add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
+        )
     )
+    if issuer is not None:
+        builder = builder.add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer.key.public_key()),
+            critical=False,
+        )
+    if ca:
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
     if server:
         builder = builder.add_extension(
             x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False
