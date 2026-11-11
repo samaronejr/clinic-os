@@ -236,7 +236,9 @@ fixture that must look like one goes in `ops/testing/secret-scan-allowlist.txt`
 with its reason; don't weaken a rule. A new threat-model mitigation needs a
 Tests cell whose first non-browser test proves it (a test that fails when the
 control is removed); a control that is not in place is written after
-`**Gap:**`, never mapped to an unrelated test. A runtime dependency change
+`**Gap:**` and a clause no test proves after `**Unproved:**`, never mapped to
+an unrelated test. Closing or adding such a row changes the totals that
+`tests/infra/test_threat_model_coverage.py` pins. A runtime dependency change
 needs `python -m ops.release.sbom write`.
 
 Source anchors: [CI target](../Makefile),

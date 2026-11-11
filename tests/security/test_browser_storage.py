@@ -54,6 +54,8 @@ def test_first_party_scripts_never_write_browser_storage() -> None:
 
 
 def test_scribe_capture_buffer_is_memory_only_and_capped_from_capture_time() -> None:
+    # A source-level tripwire, not behavior: the running cap is proved by the
+    # scribe-capture browser suite, so SM-I1 records that clause **Unproved:**.
     source = CAPTURE.read_text(encoding="utf-8")
     # The cap is sixty seconds, enforced on the in-memory pending list ...
     assert re.search(r"\bvar BUFFER_MS = 60000;", source)

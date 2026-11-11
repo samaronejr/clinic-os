@@ -339,8 +339,11 @@ database trust boundary, not as proof against a superuser.
   refuses to run without JUnit. `tests/infra/test_threat_model_coverage.py`
   runs every designated proof and applies that verdict; `inventory` only
   checks the mapping. Text after `**Gap:**` in a mitigation is a known
-  missing control, listed under `gaps` in every report: today DG-R1, whose
-  patient access log does not show delegate access.
+  missing control (state `gap`); text after `**Unproved:**` is a clause no
+  mapped test proves (state `partial`). Neither counts as covered, every
+  report lists them, and `report` exits 0 only when all rows are covered.
+  Today: 92 covered, 5 partial (IE-R1, PY-R1, PY-D1, SM-I1, SA-T1) and 1 gap
+  (DG-R1: the patient access log does not show delegate access).
 - `ops/testing/sentinel_scan.py` is the shared PHI-sentinel scanner. It
   checks emitted logs, URLs, SSE frames, push payloads, artifact trees and
   every text, JSON and bytea column (audit and outbox rows included) for

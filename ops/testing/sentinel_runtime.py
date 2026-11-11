@@ -17,7 +17,11 @@ The renewal runner wraps every registered suite with this module:
    bytea column of the suite database read as the superuser (audit and
    outbox rows classified separately), and the whole artifact tree.
 
-No push sender exists, so ``push`` is reported not applicable. The receipt
+No push sender exists, so ``push`` is reported not applicable. The shared
+prefix is reserved for forbidden-sink sentinels: fixtures must not use it for
+ordinary plaintext data (an organization name, a label), or the scan reports it.
+Findings name the needle, so a fresh, run-unique probe value (``PROBE-...``)
+is told apart from a prefix match of a suite's own sentinel. The receipt
 ``sentinel-runtime.json`` lists sink counts and findings by label only.
 """
 

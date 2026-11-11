@@ -28,6 +28,10 @@ MODELS = {
     "scribe-media",
     "support-access",
 }
+# Open rows recorded in the threat-model tables: PARTIAL clauses are marked
+# **Unproved:**, GAPS (missing controls, owners todos 19 and 50) **Gap:**.
+PARTIAL = ["IE-R1", "PY-R1", "PY-D1", "SM-I1", "SA-T1"]
+GAPS = ["DG-R1"]
 PROOF = "tests/core/test_x.py::test_proof"
 BROWSER = "tests/renewal/browser/test_x.py::test_page"
 
@@ -76,8 +80,13 @@ def test_every_mitigation_has_a_passing_mapped_test(tmp_path: Path) -> None:
     report = coverage.coverage_report(
         mitigations, coverage.defined_tests(), coverage.executed_outcomes([junit])
     )
+    # Recorded open rows never count as covered: the exact totals are pinned so
+    # closing or adding one is a deliberate change to this acceptance.
     assert report["uncovered"] == []
-    assert report["covered"] == len(mitigations)
+    assert report["partial"] == PARTIAL
+    assert report["gaps"] == GAPS
+    assert report["covered"] == len(mitigations) - len(PARTIAL) - len(GAPS) == 92
+    assert report["complete"] is False
 
 
 def _tree(
@@ -188,18 +197,58 @@ def test_inventory_maps_class_members_but_never_says_covered(tmp_path: Path) -> 
     )
 
 
-def test_a_gap_clause_is_reported_and_never_hidden(tmp_path: Path) -> None:
-    root = _tree(
-        tmp_path,
-        f"`{PROOF}`",
-        mitigation="An audited switch. **Gap:** the access log omits it.",
-    )
+@pytest.mark.parametrize(
+    ("mitigation", "state", "key"),
+    [
+        ("An audited switch. **Gap:** the access log omits it.", "gap", "gaps"),
+        (
+            "An audited switch. **Unproved:** no test reads the log.",
+            "partial",
+            "partial",
+        ),
+    ],
+)
+def test_gap_and_unproved_rows_are_never_covered(
+    tmp_path: Path, mitigation: str, state: str, key: str
+) -> None:
+    root = _tree(tmp_path, f"`{PROOF}`", mitigation=mitigation)
     (row,) = coverage.load_mitigations(root)
-    assert row.gap == "the access log omits it."
+    assert (row.gap or row.unproved or "").startswith(("the access", "no test"))
+    # Given a passing proof, the row is still not covered and the run not complete.
     report = _report(root, {PROOF: "passed"})
-    assert (report["uncovered"], report["gaps"]) == ([], ["XX-S1"])
+    assert report[key] == ["XX-S1"]
+    assert (report["covered"], report["uncovered"], report["complete"]) == (
+        0,
+        [],
+        False,
+    )
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    assert isinstance(rows[0], dict)
+    assert rows[0]["state"] == state
+    # A failing proof still dominates as uncovered.
+    assert _report(root, {PROOF: "failed"})["uncovered"] == ["XX-S1"]
+    # The CLI refuses closure.
+    junit = _junit(
+        tmp_path / "pass.xml", [("tests.core.test_x", "test_proof", "passed")]
+    )
+    argv = ["report", "--root", str(root), "--output", str(tmp_path / "out.json")]
+    assert coverage.run_cli([*argv, "--junit", str(junit)]) == 1
     inventory = coverage.mapping_inventory([row], coverage.defined_tests(root))
-    assert inventory["gaps"] == ["XX-S1"]
+    assert inventory[key] == ["XX-S1"]
+
+
+@pytest.mark.parametrize(
+    "mitigation",
+    [
+        "M. **Gap:** a. **Gap:** b.",
+        "M. **Unproved:**  ",
+        "M. **Gap:** **Unproved:** b.",
+    ],
+)
+def test_malformed_markers_are_refused(tmp_path: Path, mitigation: str) -> None:
+    with pytest.raises(IsolationError):
+        coverage.load_mitigations(_tree(tmp_path, f"`{PROOF}`", mitigation=mitigation))
 
 
 @pytest.mark.parametrize(
@@ -333,7 +382,11 @@ def test_cli_writes_the_report_and_exits_by_verdict(tmp_path: Path) -> None:
     argv = ["report", "--root", str(root), "--output", str(output)]
     assert coverage.run_cli([*argv, "--junit", str(passed)]) == 0
     written = json.loads(output.read_text(encoding="utf-8"))
-    assert (written["execution"], written["covered"]) == ("junit", 1)
+    assert (written["execution"], written["covered"], written["complete"]) == (
+        "junit",
+        1,
+        True,
+    )
     assert (
         coverage.run_cli([*argv, "--junit", str(passed), "--junit", str(failed)]) == 1
     )

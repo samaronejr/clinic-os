@@ -14,10 +14,11 @@ evidence, never from definitions:
   mapped test failed or errored and at least one mapped non-browser test
   passed. Skipped and not-run tests never count.
 
-Everything else is ``uncovered`` and ``report`` exits non-zero. A mitigation
-whose text contains ``**Gap:**`` claims only the part before the marker; the
-clause after it is a known missing control, listed under ``gaps`` in every
-report so it is never mistaken for a covered one. ``inventory``
+Everything else is ``uncovered``. A mitigation whose text contains
+``**Gap:**`` names a control known to be missing (state ``gap``); one whose
+text contains ``**Unproved:**`` names a clause no mapped test proves (state
+``partial``). Neither counts as covered, both are listed in every report, and
+``report`` exits 0 only when every mitigation is ``covered``. ``inventory``
 only checks the mapping (``mapped``/``unmapped``) and never says covered::
 
     python -m ops.testing.threat_model_coverage report --junit XML [...] --output PATH
@@ -65,6 +66,9 @@ NODE_ID: Final = re.compile(
 TODOS: Final = re.compile(r"[1-9][0-9]*(?:, [1-9][0-9]*)*")
 COLUMNS: Final = 6
 GAP_MARKER: Final = "**Gap:**"
+UNPROVED_MARKER: Final = "**Unproved:**"
+MARKERS: Final = (GAP_MARKER, UNPROVED_MARKER)
+STATES: Final = ("covered", "partial", "gap", "uncovered")
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,7 @@ class Mitigation:
     todos: tuple[int, ...]
     tests: tuple[str, ...]
     gap: str | None = None
+    unproved: str | None = None
 
 
 def _fail(message: str) -> Never:
@@ -127,18 +132,23 @@ def _row(model: str, line: str) -> Mitigation:
         mitigation=mitigation,
         todos=tuple(int(item) for item in todos.split(", ")),
         tests=_test_ids(identifier, tests),
-        gap=_gap(identifier, mitigation),
+        gap=_clause(identifier, mitigation, GAP_MARKER),
+        unproved=_clause(identifier, mitigation, UNPROVED_MARKER),
     )
 
 
-def _gap(identifier: str, mitigation: str) -> str | None:
-    """Return the text after ``**Gap:**``: a clause known not to be in place."""
-    if GAP_MARKER not in mitigation:
+def _clause(identifier: str, mitigation: str, marker: str) -> str | None:
+    """Return the text after ``marker`` up to the next marker, if present."""
+    if marker not in mitigation:
         return None
-    gap = mitigation.split(GAP_MARKER, 1)[1].strip()
-    if not gap or GAP_MARKER in gap:
-        _fail(f"{identifier} needs exactly one non-empty gap clause")
-    return gap
+    if mitigation.count(marker) != 1:
+        _fail(f"{identifier} repeats {marker}")
+    text = mitigation.split(marker, 1)[1]
+    for other in MARKERS:
+        text = text.split(other, 1)[0]
+    if not text.strip():
+        _fail(f"{identifier} has an empty {marker} clause")
+    return text.strip()
 
 
 def _test_ids(identifier: str, cell: str) -> tuple[str, ...]:
@@ -264,6 +274,7 @@ def mapping_inventory(
                 "model": row.model,
                 "state": "unmapped" if reasons else "mapped",
                 "gap": row.gap,
+                "unproved": row.unproved,
                 "reasons": list(reasons),
                 "proof": proof_test(row),
             }
@@ -273,7 +284,8 @@ def mapping_inventory(
         "mitigations": len(rows),
         "mapped": len(rows) - len(unmapped),
         "unmapped": unmapped,
-        "gaps": _gaps(rows),
+        "partial": _marked(rows, "unproved"),
+        "gaps": _marked(rows, "gap"),
         "rows": rows,
     }
 
@@ -288,31 +300,47 @@ def coverage_report(
     index: frozenset[str],
     outcomes: Mapping[str, str],
 ) -> JsonObject:
-    """Return the covered/uncovered verdict of every mitigation for one run."""
+    """Return each mitigation's state for one run; only ``covered`` is closure.
+
+    ``uncovered`` (no passing proof, or a mapped test failed) dominates; then
+    ``gap`` (a ``**Gap:**`` control is missing) and ``partial`` (an
+    ``**Unproved:**`` clause has no proof). Neither counts as covered.
+    """
     rows: list[JsonValue] = []
-    uncovered: list[JsonValue] = []
+    states: dict[str, list[JsonValue]] = {state: [] for state in STATES}
     for row in mitigations:
         reasons, tests = _assess(row, index, outcomes)
-        if reasons:
-            uncovered.append(row.identifier)
+        state = (
+            "uncovered"
+            if reasons
+            else "gap"
+            if row.gap is not None
+            else "partial"
+            if row.unproved is not None
+            else "covered"
+        )
+        states[state].append(row.identifier)
         rows.append(
             {
                 "id": row.identifier,
                 "model": row.model,
                 "todos": list(row.todos),
-                "state": "uncovered" if reasons else "covered",
+                "state": state,
                 "gap": row.gap,
+                "unproved": row.unproved,
                 "reasons": list(reasons),
                 "tests": tests,
             }
         )
     return {
-        "schema": "clinic-threat-coverage-v2",
+        "schema": "clinic-threat-coverage-v3",
         "execution": "junit",
         "mitigations": len(rows),
-        "covered": len(rows) - len(uncovered),
-        "uncovered": uncovered,
-        "gaps": _gaps(rows),
+        "covered": len(states["covered"]),
+        "partial": states["partial"],
+        "gaps": states["gap"],
+        "uncovered": states["uncovered"],
+        "complete": len(states["covered"]) == len(rows),
         "rows": rows,
     }
 
@@ -346,11 +374,9 @@ def _assess(
     return reasons, tests
 
 
-def _gaps(rows: list[JsonValue]) -> list[JsonValue]:
+def _marked(rows: list[JsonValue], key: str) -> list[JsonValue]:
     return [
-        row["id"]
-        for row in rows
-        if isinstance(row, dict) and row.get("gap") is not None
+        row["id"] for row in rows if isinstance(row, dict) and row.get(key) is not None
     ]
 
 
@@ -359,7 +385,7 @@ def _browser(node: str) -> bool:
 
 
 def run_cli(argv: list[str] | None = None) -> int:
-    """Write a report; ``report`` exits 0 only when every mitigation passed."""
+    """Write a report; ``report`` exits 0 only when every mitigation is covered."""
     parser = argparse.ArgumentParser(prog="threat_model_coverage")
     commands = parser.add_subparsers(dest="command", required=True)
     report = commands.add_parser("report")
@@ -386,13 +412,20 @@ def run_cli(argv: list[str] | None = None) -> int:
         mitigations, defined_tests(root), executed_outcomes(arguments.junit)
     )
     output.write_bytes(canonical_bytes(result))
-    uncovered = result["uncovered"]
-    count = len(uncovered) if isinstance(uncovered, list) else -1
+    counts = {
+        state: len(value) if isinstance(value, list) else value
+        for state, value in (
+            ("partial", result["partial"]),
+            ("gap", result["gaps"]),
+            ("uncovered", result["uncovered"]),
+        )
+    }
     sys.stdout.write(
         f"threat-model coverage: {result['covered']}/{result['mitigations']} "
-        f"covered, {count} uncovered\n"
+        f"covered, {counts['partial']} partial, {counts['gap']} gap, "
+        f"{counts['uncovered']} uncovered\n"
     )
-    return 0 if count == 0 else 1
+    return 0 if result["complete"] is True else 1
 
 
 if __name__ == "__main__":

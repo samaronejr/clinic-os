@@ -42,8 +42,10 @@ Each threat model's mitigation table lists the tests that prove its controls,
 and `python -m ops.testing.threat_model_coverage report --junit <pytest
 junit.xml> --output threat-coverage.json` calls a mitigation covered only when
 a mapped test passed in that run. Rows marked `**Gap:**` name controls known
-to be missing (DG-R1: the patient access log does not show delegate access);
-the assessor should treat them as open findings. The assessor should test the
+to be missing (DG-R1: the patient access log does not show delegate access),
+and rows marked `**Unproved:**` name clauses no test proves (IE-R1, PY-R1,
+PY-D1, SM-I1, SA-T1); neither counts as covered, and the assessor should treat
+them as open findings. The assessor should test the
 controls directly, not rely on these tests.
 
 ## Roles and test accounts
