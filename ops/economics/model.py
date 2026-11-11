@@ -76,15 +76,16 @@ def validate(document: object) -> dict[str, dict[str, Decimal | None]]:
         if not str(spec.get("unit") or "").strip():
             _fail(f"{name}: missing unit")
         raw = spec.get("value")
-        if raw is None and spec.get("owner_input_required") is not True:
-            _fail(f"{name}: null value must be marked owner_input_required")
         if isinstance(raw, dict):
             if set(raw) != set(SCENARIOS):
                 _fail(f"{name}: scenario mapping needs exactly {SCENARIOS}")
-            resolved[name] = {s: _number(name, raw[s]) for s in SCENARIOS}
+            values = {s: _number(name, raw[s]) for s in SCENARIOS}
         else:
-            value = _number(name, raw)
-            resolved[name] = dict.fromkeys(SCENARIOS, value)
+            values = dict.fromkeys(SCENARIOS, _number(name, raw))
+        null = [s for s in SCENARIOS if values[s] is None]
+        if null and spec.get("owner_input_required") is not True:
+            _fail(f"{name}: null {null} must be marked owner_input_required")
+        resolved[name] = values
     return resolved
 
 
@@ -229,7 +230,9 @@ def run(document: object) -> dict[str, Any]:
         for s in SCENARIOS
     }
     missing = sorted(
-        name for name, values in resolved.items() if values["expected"] is None
+        name
+        for name, values in resolved.items()
+        if any(value is None for value in values.values())
     )
     return {
         "schema_version": 1,

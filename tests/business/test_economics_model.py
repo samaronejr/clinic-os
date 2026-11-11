@@ -115,6 +115,42 @@ def test_unmarked_null_value_fails() -> None:
         model.run(document)
 
 
+PARTIAL_NULLS = [
+    {"low": 1, "expected": 1, "high": None},
+    {"low": None, "expected": 1, "high": 1},
+    {"low": 1, "expected": None, "high": 1},
+    {"low": None, "expected": None, "high": 1},
+]
+
+
+@pytest.mark.parametrize("value", PARTIAL_NULLS)
+def test_unmarked_partial_null_fails(value: dict[str, object]) -> None:
+    document = _fixture()
+    document["variables"]["p_asr"]["value"] = value
+    del document["variables"]["p_asr"]["owner_input_required"]
+    with pytest.raises(model.EconomicsInputError, match="p_asr"):
+        model.run(document)
+
+
+@pytest.mark.parametrize("value", PARTIAL_NULLS)
+def test_marked_partial_null_is_listed_and_nulls_dependent_totals(
+    value: dict[str, object],
+) -> None:
+    document = _fixture()
+    document["variables"]["p_asr"]["value"] = value
+    output = model.run(document)
+    assert output["owner_input_required"] == ["p_asr"]
+    for name in model.SCENARIOS:
+        result = output["scenarios"][name]
+        cogs = result["cogs_per_clinic_month"]
+        if value[name] is None:
+            assert cogs["components"]["asr"] is None
+            assert cogs["total"] is None
+            assert result["cogs_profile_month"] is None
+        else:
+            assert cogs["total"] is not None
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [
