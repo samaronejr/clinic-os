@@ -141,4 +141,8 @@ def patient_sources(*, version_id: UUID | None = None) -> tuple[PatientSource, .
         cursor.execute(
             "SELECT * FROM clinic_app.orders_patient_sources(%s)", [version_id]
         )
-        return tuple(PatientSource(*row) for row in cursor.fetchall())
+        sources = tuple(PatientSource(*row) for row in cursor.fetchall())
+        if sources:
+            # A delegate read appears in the represented patient's access log.
+            cursor.execute("SELECT clinic_app.record_delegate_access('result')")
+        return sources

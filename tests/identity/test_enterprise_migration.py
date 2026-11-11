@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 
 LANE = ("identity", "0051_enterprise_governance")
+# Reapply restores the installed graph, including identity migrations after 0051.
+LEAF = ("identity", "0052_delegate_access_log")
 BEFORE = ("identity", "0050_totp_secret_boundary")
 FENCE = " AND enterprise_staff_context())"
 # clinic_app ALL policies without WITH CHECK before 0051: PostgreSQL checked new

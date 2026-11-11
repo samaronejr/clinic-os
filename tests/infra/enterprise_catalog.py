@@ -16,7 +16,12 @@ TABLE_GRANTS: Final = {
         "identity_governancenotice",
         "identity_unitgovernancechange",
     )
-} | {("workflows_task", "INSERT")}
+} | {
+    ("workflows_task", "INSERT"),
+    # DG-R1: only the delegate-access writer and the access log use it.
+    ("identity_delegateaccessevent", "SELECT"),
+    ("identity_delegateaccessevent", "INSERT"),
+}
 COLUMN_GRANTS: Final = {
     (table, column, "UPDATE")
     for table, columns in (
@@ -78,8 +83,10 @@ RESULTS: Final = {
     ("enterprise_patient_access_log", "clinic uuid, page_number integer"): (
         "TABLE(notice_id uuid, occurred_at timestamp with time zone, "
         "clinician_label text, "
-        "expires_at timestamp with time zone, reviewed boolean, clinic_timezone text)"
+        "expires_at timestamp with time zone, reviewed boolean, clinic_timezone text, "
+        "kind text, record_type text, grant_id uuid, delegate_kind text)"
     ),
+    ("record_delegate_access", "requested_type text"): "void",
     ("enterprise_governance_guard", ""): "trigger",
     ("enterprise_break_glass_complete", ""): "trigger",
     ("enterprise_security_task", "candidate jsonb, operation text"): "boolean",

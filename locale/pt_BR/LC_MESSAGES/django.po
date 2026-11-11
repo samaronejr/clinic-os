@@ -11210,3 +11210,9 @@ msgstr "Com JavaScript ativo, o rascunho é salvo no servidor enquanto você dig
 
 msgid "Every statement of fact in this site's page templates and help guides is registered with its evidence; an automated test checks the templates and guides for unregistered text."
 msgstr "Toda afirmação de fato nos modelos de página e nos guias de ajuda deste site está registrada com a sua evidência; um teste automatizado verifica se há texto não registrado nos modelos e nos guias."
+
+msgid "Delegate access"
+msgstr "Acesso por representante"
+
+msgid "Reads by a delegate acting for you are listed too."
+msgstr "Leituras feitas por um representante em seu nome também aparecem aqui."

@@ -4,11 +4,11 @@
 {% block content %}
 <section class="intake-shell" aria-labelledby="patient-access-log-title">
   <h1 id="patient-access-log-title">{% trans "Your emergency access log" %}</h1>
-  <p class="lede">{% trans "See when a clinician requested emergency access to your records and whether the event was reviewed." %}</p>
-  <ul>{% for entry in entries %}<li>
-    {{ entry.clinician }} /
+  <p class="lede">{% trans "See when a clinician requested emergency access to your records and whether the event was reviewed." %} {% trans "Reads by a delegate acting for you are listed too." %}</p>
+  <ul>{% for entry in entries %}<li data-access-kind="{{ entry.kind }}"{% if entry.kind == "delegate" %} data-record-type="{{ entry.record_type_key }}" data-delegate-grant="{{ entry.grant_id }}"{% endif %}>
+    {% if entry.kind == "delegate" %}{% trans "Delegate access" %}: {{ entry.delegate_kind }} / {{ entry.record_type }}{% else %}{{ entry.clinician }}{% endif %} /
     {% timezone entry.timezone %}<time datetime="{{ entry.occurred_at|date:'c' }}">{{ entry.occurred_at|date:"d/m/Y H:i" }}</time>{% endtimezone %} /
-    {% if entry.reviewed %}{% trans "Reviewed" %}{% else %}{% trans "Review required" %}{% endif %}
+    {% if entry.kind != "delegate" %}{% if entry.reviewed %}{% trans "Reviewed" %}{% else %}{% trans "Review required" %}{% endif %}{% endif %}
   </li>{% empty %}<li>{% trans "No emergency access has been recorded." %}</li>{% endfor %}</ul>
   <div class="actions">
     <form method="post">{% csrf_token %}<input type="hidden" name="page" value="{{ previous_page }}"><button class="button button--secondary" type="submit">{% trans "Previous" %}</button></form>

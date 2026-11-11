@@ -26,6 +26,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         *ENTERPRISE_TABLES,
         "identity_patientdelegategrant",
+        "identity_delegateaccessevent",
         "identity_clinicconfiguration",
         "identity_rolegrant",
         "identity_serviceprincipal",

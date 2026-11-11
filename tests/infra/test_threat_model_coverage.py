@@ -30,8 +30,8 @@ MODELS = {
 }
 # Open rows recorded in the threat-model tables: PARTIAL clauses are marked
 # **Unproved:**, GAPS (missing controls, owners todos 19 and 50) **Gap:**.
-PARTIAL = ["IE-R1", "PY-R1", "PY-D1", "SM-I1", "SA-T1"]
-GAPS = ["DG-R1"]
+PARTIAL = ["SM-I1"]
+GAPS: list[str] = []
 PROOF = "tests/core/test_x.py::test_proof"
 BROWSER = "tests/renewal/browser/test_x.py::test_page"
 
@@ -85,7 +85,7 @@ def test_every_mitigation_has_a_passing_mapped_test(tmp_path: Path) -> None:
     assert report["uncovered"] == []
     assert report["partial"] == PARTIAL
     assert report["gaps"] == GAPS
-    assert report["covered"] == len(mitigations) - len(PARTIAL) - len(GAPS) == 92
+    assert report["covered"] == len(mitigations) - len(PARTIAL) - len(GAPS) == 97
     assert report["complete"] is False
 
 
