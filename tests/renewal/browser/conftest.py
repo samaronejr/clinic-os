@@ -54,6 +54,9 @@ NAVIGATION_TIMEOUT_MS = 20_000
 # Policy", Firefox writes "Content-Security-Policy:".
 CSP_CONSOLE_MARKER = re.compile(r"Content[ -]Security[ -]Policy")
 CSP_CONSOLE_REPORT = "csp-console.json"
+# Every URL the session's browsers requested; the runner's sentinel scan reads
+# it as the suite's URL sink (ops/testing/sentinel_runtime.py).
+REQUEST_URLS_REPORT = "request-urls.json"
 # Playwright's WebKit screenshotter appends a "body {}" <style> to every frame
 # before each capture (screenshotter.ts inPagePrepareForScreenshots, because
 # WebKit's shouldToggleStyleSheetToSyncAnimations() is true), and the page's
@@ -141,6 +144,7 @@ _PAGE_ON = cast("Callable[[Page, str, Callable[..., object]], None]", Page.on)
 def _csp_console_watch(
     violations: list[dict[str, str]],
     artifacts: _WebKitArtifacts,
+    requested: list[str],
 ) -> Callable[[BrowserContext | Page], None]:
     # Holding the contexts keeps identity checks exact for the session.
     watched: list[BrowserContext] = []
@@ -167,6 +171,7 @@ def _csp_console_watch(
             context.on("page", artifacts.attach)
             context.on("response", artifacts.track_document)
             context.on("console", record)
+            context.on("request", lambda request: requested.append(request.url))
 
     return watch
 
@@ -213,8 +218,9 @@ def csp_console_violations() -> Iterator[list[dict[str, str]]]:
     violation, and the runner artifact root receives the full log.
     """
     violations: list[dict[str, str]] = []
+    requested: list[str] = []
     artifacts = _WebKitArtifacts()
-    watch = _csp_console_watch(violations, artifacts)
+    watch = _csp_console_watch(violations, artifacts, requested)
 
     def page_on(page: Page, event: str, handler: Callable[..., object]) -> None:
         if event == "console":
@@ -252,6 +258,9 @@ def csp_console_violations() -> Iterator[list[dict[str, str]]]:
             json.dumps({"violations": violations}, sort_keys=True, indent=2) + "\n"
         )
         destination.chmod(0o600)
+        urls = Path(root) / REQUEST_URLS_REPORT
+        urls.write_text(json.dumps(requested, indent=1) + "\n")
+        urls.chmod(0o600)
 
 
 @pytest.fixture(autouse=True)
