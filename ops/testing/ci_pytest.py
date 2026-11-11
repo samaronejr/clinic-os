@@ -6,8 +6,10 @@ runner's coverage gate::
     python -m ops.testing.ci_pytest --workers 4 --work-root DIR [--cov-xml PATH]
 
 Hosted jobs add ``--shard 1|2|3|4 --artifact-root DIR``. Both phases select that
-shard; raw coverage and detector receipts are retained for the per-version
-``ops.testing.ci_pytest_artifacts`` gate. Only that gate enforces the combined
+shard, balanced by the committed duration table (``ci-pytest-durations.json``,
+pinned in ``ops.testing.ci_pytest_partition``); raw coverage and detector
+receipts are retained for the per-version ``ops.testing.ci_pytest_artifacts``
+gate. Only that gate enforces the combined
 population, refusal-exit union and coverage floor. Local invocations remain
 unsharded. ``--partition-only --artifact-root DIR`` collects without any
 database work and retains the complete partition proof.
@@ -66,12 +68,15 @@ from ops.testing.ci_pytest_collection import (
     write_execution_collections,
 )
 from ops.testing.ci_pytest_partition import (
+    ALGORITHM,
     NODE_ID_ENCODING,
     PHASES,
     SHARDS,
+    load_durations,
     partition,
     population_failures,
     public_nodeid,
+    shard_weights,
 )
 from ops.testing.ci_pytest_plugin import Counters, catalog_writes, read_counters
 from ops.testing.isolation_common import (
@@ -83,6 +88,8 @@ from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+
+    from ops.testing.ci_pytest_partition import DurationTable
 
 REPOSITORY: Final = Path(__file__).resolve().parents[2]
 COVERAGE_TARGETS_FILE: Final = REPOSITORY / "ops/testing/coverage-targets.txt"
@@ -139,14 +146,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         _fail("--work-root must be absolute")
     work_root.parent.mkdir(parents=True, exist_ok=True)
     ensure_private_directory(work_root)
+    try:
+        durations = load_durations()
+    except IsolationError as error:
+        _fail(str(error))
     with runtime_directory(work_root, purpose="ci-pytest") as work:
         reference, manifest = _collect(work)
         expected_serial = {
             nodeid for nodeids in manifest.values() for nodeid in nodeids
         }
-        selections = partition(reference, expected_serial)
+        selections = partition(reference, expected_serial, durations=durations)
         if arguments.partition_only:
-            _partition_proof(Path(arguments.artifact_root), reference, selections)
+            _partition_proof(
+                Path(arguments.artifact_root), reference, selections, durations
+            )
             return 0
         shard_options = (
             [] if arguments.shard is None else [f"--ci-pytest-shard={arguments.shard}"]
@@ -200,7 +213,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         write_execution_collections(work, arguments.workers)
         failures = [
-            *verify(work, reference, expected_serial, shard=arguments.shard),
+            *verify(
+                work,
+                reference,
+                expected_serial,
+                shard=arguments.shard,
+                durations=durations,
+            ),
             *catalog_failures,
         ]
         executed = {phase: len(_executed(work, phase)) for phase in PHASES}
@@ -236,8 +255,13 @@ def verify(
     expected_serial: set[str],
     *,
     shard: int | None = None,
+    durations: DurationTable | None = None,
 ) -> list[str]:
-    """Compare phase execution with the independent and live collections."""
+    """Compare phase execution with the independent and live collections.
+
+    A shard's expected population comes from ``durations``, by default the
+    committed table.
+    """
     failures: list[str] = []
     if len(set(reference)) != len(reference):
         failures.append("reference collection repeats a node ID")
@@ -248,7 +272,11 @@ def verify(
             "serial": sorted(expected_serial),
         }
         if shard is None
-        else partition(reference, expected_serial)[shard]
+        else partition(
+            reference,
+            expected_serial,
+            durations=load_durations() if durations is None else durations,
+        )[shard]
     )
     reports = {
         phase: json.loads((work / f"{phase}-reports.json").read_text("utf-8"))
@@ -660,6 +688,7 @@ def _partition_proof(
     destination: Path,
     reference: list[str],
     selections: dict[int, dict[str, list[str]]],
+    durations: DurationTable,
 ) -> None:
     destination.mkdir(parents=True, exist_ok=False)
     flattened = [
@@ -674,6 +703,9 @@ def _partition_proof(
     if len(set(public_reference)) != len(reference):
         _fail("public node ID encoding repeats an identity")
     proof = {
+        "algorithm": ALGORITHM,
+        "durations_sha256": durations.sha256,
+        "durations_source": durations.source,
         "reference": public_reference,
         "node_id_encoding": NODE_ID_ENCODING,
         "shards": {
@@ -687,6 +719,7 @@ def _partition_proof(
             shard: {phase: len(nodes) for phase, nodes in phases.items()}
             for shard, phases in selections.items()
         },
+        "weights_ms": shard_weights(selections, durations),
         "union_equals_reference": True,
     }
     (destination / "partition.json").write_text(

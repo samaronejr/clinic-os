@@ -13,6 +13,7 @@ from ops.testing.ci_pytest_partition import (
     PHASES,
     PYTHONS,
     SHARDS,
+    load_durations,
     partition,
     public_nodeid,
 )
@@ -67,7 +68,7 @@ def write_python_artifacts(
 ) -> None:
     """Publish both versions' shards and independently validated merge reports."""
     root.mkdir(parents=True, exist_ok=True)
-    selection = partition(REFERENCE, SERIAL)
+    selection = partition(REFERENCE, SERIAL, durations=load_durations())
     reading = asdict(
         Counters(
             ("on", "started", "loaded", "never"),
@@ -107,7 +108,7 @@ def write_python_artifacts(
             for phase in PHASES:
                 reports: JsonObject = {
                     nodeid: [
-                        {"when": when, "outcome": "passed"}
+                        {"when": when, "outcome": "passed", "duration": 0.001}
                         for when in ("setup", "call", "teardown")
                     ]
                     for nodeid in selection[number][phase]

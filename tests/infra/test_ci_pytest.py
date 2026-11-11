@@ -182,7 +182,7 @@ class FakePhases:
         executed = self.parallel if name == "parallel" else self.serial
         reports = {
             nodeid: [
-                {"when": when, "outcome": "passed"}
+                {"when": when, "outcome": "passed", "duration": 0.0}
                 for when in ("setup", "call", "teardown")
             ]
             for nodeid in executed

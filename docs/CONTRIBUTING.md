@@ -66,9 +66,18 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 fails the run otherwise.
 
 Hosted CI divides both phases into four deterministic, file-atomic shards per
-Python version, keeping each hosted job within its 90-minute budget. Each shard collects the complete reference independently and
-retains its raw line coverage, exactly-once execution reports, refusal census
-and shared-catalog certificate. The `python-coverage` jobs require every shard,
+Python version, keeping each hosted job within its 90-minute budget. The split
+is balanced by recorded test durations: `ops/testing/ci-pytest-durations.json`
+holds each test file's milliseconds per phase, and a file it does not list
+weighs its test count times the table's fixed fallback. `DURATIONS_SHA256` in
+`ops/testing/ci_pytest_partition.py` pins the table's bytes, and every shard
+manifest records that hash. Refresh the table from one Python version's four
+green shard bundles with `python -m ops.testing.ci_pytest_durations --source
+hosted --note TEXT BUNDLE...` and update the pin in the same commit. Each shard
+collects the complete reference independently and retains its raw line
+coverage, exactly-once execution reports with each test's duration, refusal
+census and shared-catalog certificate. The `python-coverage` jobs require every
+shard and the same duration table,
 prove their disjoint union equals that reference, require every derived refusal
 exit across the union, revalidate every catalog certificate, and combine raw
 coverage before enforcing the same 90% floor. `Renewal RC acceptance` requires

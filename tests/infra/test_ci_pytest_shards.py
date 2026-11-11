@@ -9,7 +9,14 @@ from typing import TYPE_CHECKING
 import pytest
 from coverage import CoverageData
 from ops.testing import ci_pytest_artifacts as artifacts
-from ops.testing.ci_pytest_partition import PHASES, SHARDS, partition, public_nodeid
+from ops.testing.ci_pytest_partition import (
+    PHASES,
+    SHARDS,
+    DurationTable,
+    load_durations,
+    partition,
+    public_nodeid,
+)
 from ops.testing.isolation_common import IsolationError, JsonObject
 
 from infra.ci_shard_support import (
@@ -24,6 +31,9 @@ from infra.ci_shard_support import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+# A table that knows no file: every file weighs its population.
+BY_POPULATION = DurationTable("0" * 64, "local", 1, {})
+
 
 def test_partition_is_order_independent_balanced_and_exactly_once() -> None:
     # Given: files occurring in both phases and unequal file populations.
@@ -34,9 +44,11 @@ def test_partition_is_order_independent_balanced_and_exactly_once() -> None:
     ]
     serial = {node for node in reference if node.endswith(("0", "1"))}
     # When: both input orderings are independently partitioned.
-    selected = partition(reference, serial)
+    selected = partition(reference, serial, durations=BY_POPULATION)
     # Then: each phase is balanced to at most its largest indivisible file.
-    assert selected == partition(list(reversed(reference)), serial)
+    assert selected == partition(
+        list(reversed(reference)), serial, durations=BY_POPULATION
+    )
     flattened = [
         node
         for phases in selected.values()
@@ -83,7 +95,7 @@ def test_reference_population_refuses_empty_duplicate_or_foreign_nodes(
     serial: set[str],
 ) -> None:
     with pytest.raises(IsolationError):
-        partition(reference, serial)
+        partition(reference, serial, durations=BY_POPULATION)
 
 
 @pytest.fixture
@@ -173,9 +185,10 @@ def test_population_refuses_missing_repeated_and_misrouted_execution(
         elif case == "duplicate":
             entries = reports[nodeid]
             assert isinstance(entries, list)
-            entries.append({"when": "teardown", "outcome": "passed"})
+            entries.append({"when": "teardown", "outcome": "passed", "duration": 0.0})
         else:
-            other = public_nodeid(partition(REFERENCE, SERIAL)[2][phase][0])
+            selection = partition(REFERENCE, SERIAL, durations=load_durations())
+            other = public_nodeid(selection[2][phase][0])
             reports[other] = reports[nodeid]
 
     rewrite_payload(root, f"{phase}-reports.json", change)

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, assert_never
 
 import pytest
-from ops.testing.ci_pytest_partition import partition
+from ops.testing.ci_pytest_partition import load_durations, partition
 from ops.testing.process_helpers import run_process
 from ops.testing.runtime_paths import runtime_directory
 
@@ -88,7 +88,7 @@ ci_pytest_plugin.load_manifest = lambda: entries
             for test in ("test_parallel", "test_serial")
         ]
         serial = {f"{name}::test_serial" for name in files}
-        selection = partition(reference, serial)
+        selection = partition(reference, serial, durations=load_durations())
         paths: Sequence[str]
         match phase:
             case "parallel":
