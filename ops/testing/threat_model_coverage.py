@@ -2,18 +2,26 @@
 
 Each ``docs/threat-models/*.md`` keeps exactly one mitigation table whose header
 is ``TABLE_HEADER``. The last column lists pytest node ids, each in backticks and
-separated by ``<br>``. A mitigation is ``covered`` only when:
+separated by ``<br>``; the first id outside ``tests/renewal/browser/`` is the
+row's designated proof. A mitigation is ``covered`` only from execution
+evidence, never from definitions:
 
 * it names at least one test id, every id resolves to a collected test function
   in ``tests/`` (static AST lookup, no import), and at least one id is outside
   ``tests/renewal/browser/`` (those skip outside the browser runner, so they can
   only add evidence, never be the sole proof);
-* when JUnit reports of a run are given (``--junit``, repeatable), no mapped
-  test failed or errored and at least one mapped non-browser test passed.
+* the JUnit reports of a run (``--junit``, required and repeatable) show no
+  mapped test failed or errored and at least one mapped non-browser test
+  passed. Skipped and not-run tests never count.
 
-Everything else is ``uncovered`` and the command exits non-zero::
+Everything else is ``uncovered`` and ``report`` exits non-zero. A mitigation
+whose text contains ``**Gap:**`` claims only the part before the marker; the
+clause after it is a known missing control, listed under ``gaps`` in every
+report so it is never mistaken for a covered one. ``inventory``
+only checks the mapping (``mapped``/``unmapped``) and never says covered::
 
-    python -m ops.testing.threat_model_coverage report --output PATH [--junit XML ...]
+    python -m ops.testing.threat_model_coverage report --junit XML [...] --output PATH
+    python -m ops.testing.threat_model_coverage inventory --output PATH
 """
 
 from __future__ import annotations
@@ -56,6 +64,7 @@ NODE_ID: Final = re.compile(
 )
 TODOS: Final = re.compile(r"[1-9][0-9]*(?:, [1-9][0-9]*)*")
 COLUMNS: Final = 6
+GAP_MARKER: Final = "**Gap:**"
 
 
 @dataclass(frozen=True)
@@ -67,6 +76,7 @@ class Mitigation:
     mitigation: str
     todos: tuple[int, ...]
     tests: tuple[str, ...]
+    gap: str | None = None
 
 
 def _fail(message: str) -> Never:
@@ -117,7 +127,18 @@ def _row(model: str, line: str) -> Mitigation:
         mitigation=mitigation,
         todos=tuple(int(item) for item in todos.split(", ")),
         tests=_test_ids(identifier, tests),
+        gap=_gap(identifier, mitigation),
     )
+
+
+def _gap(identifier: str, mitigation: str) -> str | None:
+    """Return the text after ``**Gap:**``: a clause known not to be in place."""
+    if GAP_MARKER not in mitigation:
+        return None
+    gap = mitigation.split(GAP_MARKER, 1)[1].strip()
+    if not gap or GAP_MARKER in gap:
+        _fail(f"{identifier} needs exactly one non-empty gap clause")
+    return gap
 
 
 def _test_ids(identifier: str, cell: str) -> tuple[str, ...]:
@@ -222,17 +243,56 @@ def _case_outcome(case: ET.Element) -> str:
     return "passed"
 
 
+def mapping_inventory(
+    mitigations: Iterable[Mitigation], index: frozenset[str]
+) -> JsonObject:
+    """Return which mitigations name usable tests; never a coverage verdict.
+
+    A row is ``mapped`` when every id is a defined test and one is outside the
+    browser suites. Mapping proves nothing ran: only ``coverage_report`` with
+    execution outcomes can call a mitigation covered.
+    """
+    rows: list[JsonValue] = []
+    unmapped: list[JsonValue] = []
+    for row in mitigations:
+        reasons = _mapping_reasons(row, index)
+        if reasons:
+            unmapped.append(row.identifier)
+        rows.append(
+            {
+                "id": row.identifier,
+                "model": row.model,
+                "state": "unmapped" if reasons else "mapped",
+                "gap": row.gap,
+                "reasons": list(reasons),
+                "proof": proof_test(row),
+            }
+        )
+    return {
+        "schema": "clinic-threat-mapping-v1",
+        "mitigations": len(rows),
+        "mapped": len(rows) - len(unmapped),
+        "unmapped": unmapped,
+        "gaps": _gaps(rows),
+        "rows": rows,
+    }
+
+
+def proof_test(row: Mitigation) -> str | None:
+    """Return the row's designated proof: its first non-browser test id."""
+    return next((node for node in row.tests if not _browser(node)), None)
+
+
 def coverage_report(
     mitigations: Iterable[Mitigation],
     index: frozenset[str],
-    outcomes: Mapping[str, str] | None = None,
+    outcomes: Mapping[str, str],
 ) -> JsonObject:
-    """Return the covered/uncovered verdict of every mitigation."""
+    """Return the covered/uncovered verdict of every mitigation for one run."""
     rows: list[JsonValue] = []
     uncovered: list[JsonValue] = []
     for row in mitigations:
         reasons, tests = _assess(row, index, outcomes)
-        state = "uncovered" if reasons else "covered"
         if reasons:
             uncovered.append(row.identifier)
         rows.append(
@@ -240,49 +300,58 @@ def coverage_report(
                 "id": row.identifier,
                 "model": row.model,
                 "todos": list(row.todos),
-                "state": state,
+                "state": "uncovered" if reasons else "covered",
+                "gap": row.gap,
                 "reasons": list(reasons),
                 "tests": tests,
             }
         )
     return {
-        "schema": "clinic-threat-coverage-v1",
-        "execution": "static" if outcomes is None else "junit",
+        "schema": "clinic-threat-coverage-v2",
+        "execution": "junit",
         "mitigations": len(rows),
         "covered": len(rows) - len(uncovered),
         "uncovered": uncovered,
+        "gaps": _gaps(rows),
         "rows": rows,
     }
+
+
+def _mapping_reasons(row: Mitigation, index: frozenset[str]) -> list[str]:
+    reasons = [
+        f"{node} is not a defined test" for node in row.tests if node not in index
+    ]
+    if not row.tests:
+        reasons.append("no test id is mapped")
+    elif proof_test(row) is None:
+        reasons.append("only browser tests are mapped; they skip outside the runner")
+    return reasons
 
 
 def _assess(
     row: Mitigation,
     index: frozenset[str],
-    outcomes: Mapping[str, str] | None,
+    outcomes: Mapping[str, str],
 ) -> tuple[list[str], list[JsonValue]]:
-    reasons: list[str] = []
+    reasons = _mapping_reasons(row, index)
     tests: list[JsonValue] = []
-    if not row.tests:
-        reasons.append("no test id is mapped")
     for node in row.tests:
-        status = "defined" if node in index else "undefined"
-        if outcomes is not None and node in index:
-            status = outcomes.get(node, "not-run")
+        status = outcomes.get(node, "not-run") if node in index else "undefined"
         tests.append({"id": node, "browser": _browser(node), "status": status})
-        if node not in index:
-            reasons.append(f"{node} is not a defined test")
-        elif status == "failed":
+        if status == "failed":
             reasons.append(f"{node} failed")
     proof = [node for node in row.tests if not _browser(node)]
-    if row.tests and not proof:
-        reasons.append("only browser tests are mapped; they skip outside the runner")
-    if (
-        outcomes is not None
-        and proof
-        and not any(outcomes.get(node) == "passed" for node in proof)
-    ):
+    if proof and not any(outcomes.get(node) == "passed" for node in proof):
         reasons.append("no mapped non-browser test passed in this run")
     return reasons, tests
+
+
+def _gaps(rows: list[JsonValue]) -> list[JsonValue]:
+    return [
+        row["id"]
+        for row in rows
+        if isinstance(row, dict) and row.get("gap") is not None
+    ]
 
 
 def _browser(node: str) -> bool:
@@ -290,18 +359,32 @@ def _browser(node: str) -> bool:
 
 
 def run_cli(argv: list[str] | None = None) -> int:
-    """Write the coverage report and return 0 only when everything is covered."""
+    """Write a report; ``report`` exits 0 only when every mitigation passed."""
     parser = argparse.ArgumentParser(prog="threat_model_coverage")
     commands = parser.add_subparsers(dest="command", required=True)
     report = commands.add_parser("report")
     report.add_argument("--output", required=True, type=Path)
-    report.add_argument("--junit", action="append", type=Path)
+    report.add_argument("--junit", action="append", type=Path, required=True)
     report.add_argument("--root", type=Path, default=PROJECT_ROOT)
+    inventory = commands.add_parser("inventory")
+    inventory.add_argument("--output", required=True, type=Path)
+    inventory.add_argument("--root", type=Path, default=PROJECT_ROOT)
     arguments = parser.parse_args(argv)
     root: Path = arguments.root
-    outcomes = None if arguments.junit is None else executed_outcomes(arguments.junit)
-    result = coverage_report(load_mitigations(root), defined_tests(root), outcomes)
+    mitigations = load_mitigations(root)
     output: Path = arguments.output
+    if arguments.command == "inventory":
+        mapping = mapping_inventory(mitigations, defined_tests(root))
+        output.write_bytes(canonical_bytes(mapping))
+        missing = mapping["unmapped"]
+        sys.stdout.write(
+            f"threat-model mapping: {mapping['mapped']}/{mapping['mitigations']} "
+            "mapped (not a coverage verdict)\n"
+        )
+        return 0 if isinstance(missing, list) and not missing else 1
+    result = coverage_report(
+        mitigations, defined_tests(root), executed_outcomes(arguments.junit)
+    )
     output.write_bytes(canonical_bytes(result))
     uncovered = result["uncovered"]
     count = len(uncovered) if isinstance(uncovered, list) else -1

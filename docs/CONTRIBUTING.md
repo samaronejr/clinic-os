@@ -234,8 +234,10 @@ handoff.
 The `secret-scan` pre-commit hook refuses committed credentials. A synthetic
 fixture that must look like one goes in `ops/testing/secret-scan-allowlist.txt`
 with its reason; don't weaken a rule. A new threat-model mitigation needs a
-Tests cell naming at least one non-browser test, and a runtime dependency
-change needs `python -m ops.release.sbom write`.
+Tests cell whose first non-browser test proves it (a test that fails when the
+control is removed); a control that is not in place is written after
+`**Gap:**`, never mapped to an unrelated test. A runtime dependency change
+needs `python -m ops.release.sbom write`.
 
 Source anchors: [CI target](../Makefile),
 [hosted workflow](../.github/workflows/ci.yml),

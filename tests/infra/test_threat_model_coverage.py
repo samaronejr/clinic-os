@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -30,23 +32,66 @@ PROOF = "tests/core/test_x.py::test_proof"
 BROWSER = "tests/renewal/browser/test_x.py::test_page"
 
 
-def test_every_threat_model_mitigation_maps_to_a_defined_test() -> None:
+def test_every_threat_model_mitigation_is_mapped_to_a_defined_test() -> None:
     mitigations = coverage.load_mitigations()
-    report = coverage.coverage_report(mitigations, coverage.defined_tests())
-    assert report["uncovered"] == []
-    assert report["covered"] == report["mitigations"] == len(mitigations)
+    inventory = coverage.mapping_inventory(mitigations, coverage.defined_tests())
+    assert inventory["unmapped"] == []
+    assert inventory["mapped"] == inventory["mitigations"] == len(mitigations)
     assert {row.model for row in mitigations} == MODELS
-    for row in mitigations:
-        assert any(not test.startswith(coverage.BROWSER_PREFIX) for test in row.tests)
+    # A mapping is never a verdict: the inventory has no covered state.
+    rows = inventory["rows"]
+    assert isinstance(rows, list)
+    assert {row["state"] for row in rows if isinstance(row, dict)} == {"mapped"}
 
 
-def _tree(tmp_path: Path, tests_cell: str) -> Path:
+def test_every_mitigation_has_a_passing_mapped_test(tmp_path: Path) -> None:
+    """Acceptance: run each mitigation's designated proof and require it to pass.
+
+    The proof is the first non-browser id in its Tests cell. The child pytest
+    uses this session's database settings; ci-serial-tests.txt runs this test
+    in ci_pytest's single-process phase.
+    """
+    mitigations = coverage.load_mitigations()
+    proofs = sorted(
+        {proof for row in mitigations if (proof := coverage.proof_test(row))}
+    )
+    junit = tmp_path / "proofs.xml"
+    completed = subprocess.run(  # noqa: S603 - fixed pytest argv over committed ids
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--reuse-db",
+            f"--junitxml={junit}",
+            *proofs,
+        ],
+        cwd=coverage.PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stdout.decode()[-4000:]
+    report = coverage.coverage_report(
+        mitigations, coverage.defined_tests(), coverage.executed_outcomes([junit])
+    )
+    assert report["uncovered"] == []
+    assert report["covered"] == len(mitigations)
+
+
+def _tree(
+    tmp_path: Path, tests_cell: str, *, mitigation: str = "A mitigation."
+) -> Path:
     root = tmp_path / "repository"
     (root / coverage.MODEL_DIRECTORY).mkdir(parents=True)
     (root / "tests/core").mkdir(parents=True)
     (root / "tests/renewal/browser").mkdir(parents=True)
     (root / "tests/core/test_x.py").write_text(
+        "import pytest\n\n\n"
         "def test_proof():\n    pass\n\n\n"
+        '@pytest.mark.skip(reason="always skipped control")\n'
+        "def test_skipped():\n    raise AssertionError\n\n\n"
         "class TestGroup:\n    def test_member(self):\n        pass\n",
         encoding="utf-8",
     )
@@ -56,26 +101,105 @@ def _tree(tmp_path: Path, tests_cell: str) -> Path:
     (root / coverage.MODEL_DIRECTORY / "sample.md").write_text(
         "# Threat model: sample\n\n## Threats and mitigations\n\n"
         f"{coverage.TABLE_HEADER}\n{coverage.TABLE_RULE}\n"
-        f"| XX-S1 | Spoofing | A threat. | A mitigation. | 7, 73 | {tests_cell} |\n\n"
+        f"| XX-S1 | Spoofing | A threat. | {mitigation} | 7, 73 | {tests_cell} |\n\n"
         "## Residual risk\n",
         encoding="utf-8",
     )
     return root
 
 
-def _report(root: Path, outcomes: dict[str, str] | None = None) -> JsonObject:
+def _report(root: Path, outcomes: dict[str, str]) -> JsonObject:
     return coverage.coverage_report(
         coverage.load_mitigations(root), coverage.defined_tests(root), outcomes
     )
 
 
-def test_mapped_defined_test_covers_and_class_members_resolve(tmp_path: Path) -> None:
+def _run_pytest(root: Path, junit: Path) -> None:
+    (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    subprocess.run(  # noqa: S603 - fixed pytest argv in a scratch tree
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:django",
+            "-c",
+            str(root / "pytest.ini"),
+            "--rootdir",
+            str(root),
+            f"--junitxml={junit}",
+            "tests/core/test_x.py",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_an_always_skipped_mapped_test_never_covers(tmp_path: Path) -> None:
+    # Given a mitigation whose only mapped test is always skipped.
+    root = _tree(tmp_path, "`tests/core/test_x.py::test_skipped`")
+    junit = tmp_path / "run.xml"
+    # When the mapped tests really run under pytest.
+    _run_pytest(root, junit)
+    outcomes = coverage.executed_outcomes([junit])
+    assert outcomes["tests/core/test_x.py::test_skipped"] == "skipped"
+    # Then the mitigation is uncovered and the CLI exits non-zero.
+    report = _report(root, outcomes)
+    assert report["uncovered"] == ["XX-S1"]
+    output = tmp_path / "coverage.json"
+    argv = ["report", "--root", str(root), "--output", str(output)]
+    assert coverage.run_cli([*argv, "--junit", str(junit)]) == 1
+    # And without execution evidence the report refuses to run at all.
+    with pytest.raises(SystemExit):
+        coverage.run_cli(argv)
+    # A passing mapped test in the same run does cover it.
+    root_ok = _tree(
+        tmp_path / "ok", f"`{PROOF}`<br>`tests/core/test_x.py::test_skipped`"
+    )
+    _run_pytest(root_ok, tmp_path / "ok.xml")
+    assert (
+        _report(root_ok, coverage.executed_outcomes([tmp_path / "ok.xml"]))["uncovered"]
+        == []
+    )
+
+
+def test_inventory_maps_class_members_but_never_says_covered(tmp_path: Path) -> None:
     member = "tests/core/test_x.py::TestGroup::test_member"
     root = _tree(tmp_path, f"`{PROOF}`<br>`{member}`")
-    report = _report(root)
-    assert report["uncovered"] == []
+    inventory = coverage.mapping_inventory(
+        coverage.load_mitigations(root), coverage.defined_tests(root)
+    )
+    assert (inventory["mapped"], inventory["unmapped"]) == (1, [])
+    assert "covered" not in json.dumps(inventory)
     (row,) = coverage.load_mitigations(root)
     assert (row.identifier, row.todos, row.tests) == ("XX-S1", (7, 73), (PROOF, member))
+    assert coverage.proof_test(row) == PROOF
+    output = tmp_path / "inventory.json"
+    assert (
+        coverage.run_cli(["inventory", "--root", str(root), "--output", str(output)])
+        == 0
+    )
+    assert json.loads(output.read_text(encoding="utf-8"))["schema"] == (
+        "clinic-threat-mapping-v1"
+    )
+
+
+def test_a_gap_clause_is_reported_and_never_hidden(tmp_path: Path) -> None:
+    root = _tree(
+        tmp_path,
+        f"`{PROOF}`",
+        mitigation="An audited switch. **Gap:** the access log omits it.",
+    )
+    (row,) = coverage.load_mitigations(root)
+    assert row.gap == "the access log omits it."
+    report = _report(root, {PROOF: "passed"})
+    assert (report["uncovered"], report["gaps"]) == ([], ["XX-S1"])
+    inventory = coverage.mapping_inventory([row], coverage.defined_tests(root))
+    assert inventory["gaps"] == ["XX-S1"]
 
 
 @pytest.mark.parametrize(
@@ -89,8 +213,13 @@ def test_mapped_defined_test_covers_and_class_members_resolve(tmp_path: Path) ->
 def test_unmapped_unknown_or_browser_only_mitigation_is_uncovered(
     tmp_path: Path, cell: str, reason: str
 ) -> None:
-    report = _report(_tree(tmp_path, cell))
+    root = _tree(tmp_path, cell)
+    report = _report(root, {BROWSER: "passed"})
     assert report["uncovered"] == ["XX-S1"]
+    inventory = coverage.mapping_inventory(
+        coverage.load_mitigations(root), coverage.defined_tests(root)
+    )
+    assert inventory["unmapped"] == ["XX-S1"]
     rows = report["rows"]
     assert isinstance(rows, list)
     assert isinstance(rows[0], dict)

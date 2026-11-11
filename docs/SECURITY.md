@@ -330,16 +330,27 @@ database trust boundary, not as proof against a superuser.
   provisioning URIs, JWTs, `.env` files and Terraform state or variables. A
   synthetic fixture that must look like a credential is listed with a reason
   in `ops/testing/secret-scan-allowlist.txt`.
-- Each threat model's mitigation table has a Tests column, and
-  `tests/infra/test_threat_model_coverage.py` fails when a mitigation maps to
-  no defined test. `python -m ops.testing.threat_model_coverage report
-  --junit <pytest junit.xml> --output threat-coverage.json` also
-  requires each mitigation's mapped tests to have passed in that run.
+- Each threat model's mitigation table has a Tests column; its first
+  non-browser id is the mitigation's designated proof. A mitigation is
+  covered only by execution evidence: `python -m
+  ops.testing.threat_model_coverage report --junit <pytest junit.xml>
+  --output threat-coverage.json` requires a mapped non-browser test to have
+  passed and none to have failed, never counts skipped or not-run tests, and
+  refuses to run without JUnit. `tests/infra/test_threat_model_coverage.py`
+  runs every designated proof and applies that verdict; `inventory` only
+  checks the mapping. Text after `**Gap:**` in a mitigation is a known
+  missing control, listed under `gaps` in every report: today DG-R1, whose
+  patient access log does not show delegate access.
 - `ops/testing/sentinel_scan.py` is the shared PHI-sentinel scanner. It
   checks emitted logs, URLs, SSE frames, push payloads, artifact trees and
   every text, JSON and bytea column (audit and outbox rows included) for
   injected synthetic sentinels; `tests/security/test_sentinel_sinks.py` drives
-  it through real requests.
+  it through real requests. The renewal runner applies it to every browser
+  suite (`ops/testing/sentinel_runtime.py`): it records the suite's broker
+  frames and browser request URLs, sends fresh sentinels through the live
+  server after the suite, then scans the logs, URLs, frames, database and
+  artifacts, and fails the suite on any finding (`sentinel-runtime.json`).
+  No push sender exists, so push is not applicable.
 - [security/assessment-scope.md](security/assessment-scope.md) is the scope
   package for an independent assessment. No assessment has been performed,
   and EG-12 stays open until the owner accepts one.

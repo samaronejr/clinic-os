@@ -38,12 +38,13 @@
 | Operations endpoints | `/healthz`, `/readyz`, `/internal/metrics`, `sw.js` | Token and network allowlist on metrics, no clinical content in the service-worker cache | - |
 | Database (white-box) | Read-only review of `ops/db/bootstrap.sql`, migrations and `make db-posture` output | Role separation, FORCE RLS, SECURITY DEFINER resolvers, no hard deletes | [SECURITY.md](../SECURITY.md) |
 
-Each threat model's mitigation table lists the tests that prove its controls.
-`tests/infra/test_threat_model_coverage.py` fails if a mitigation has no
-defined test, and `python -m ops.testing.threat_model_coverage report
---junit <pytest junit.xml> --output threat-coverage.json` checks that the
-mapped tests passed in a given run. The assessor should test the controls
-directly, not rely on these tests.
+Each threat model's mitigation table lists the tests that prove its controls,
+and `python -m ops.testing.threat_model_coverage report --junit <pytest
+junit.xml> --output threat-coverage.json` calls a mitigation covered only when
+a mapped test passed in that run. Rows marked `**Gap:**` name controls known
+to be missing (DG-R1: the patient access log does not show delegate access);
+the assessor should treat them as open findings. The assessor should test the
+controls directly, not rely on these tests.
 
 ## Roles and test accounts
 
