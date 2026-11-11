@@ -19,7 +19,12 @@ from typing import TYPE_CHECKING, ClassVar
 from django.conf import settings
 from django.utils import timezone
 
-from apps.comms.adapters import PermanentSendError, SendResult, TransientSendError
+from apps.comms.adapters import (
+    AmbiguousSendError,
+    PermanentSendError,
+    SendResult,
+    TransientSendError,
+)
 from apps.comms.capabilities import channel_capability
 from apps.comms.inbound_providers import WebhookRejectedError, normalize_address
 from apps.comms.inbox_rules import SendRequest, decide_send
@@ -32,6 +37,7 @@ from apps.comms.inbox_services import (
 )
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
+from apps.core.fault_injection import injected_fault
 from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
@@ -143,6 +149,12 @@ class InboxAdapter:
             # Real delivery has no transport until EG-1; never pretend otherwise.
             raise PermanentSendError
         if self.channel in getattr(settings, "COMMS_SYNTHETIC_FAILURE_CHANNELS", ()):
+            raise TransientSendError
+        # Degraded-mode drills: an unknown outcome is held for reconciliation.
+        drill = injected_fault("messaging")
+        if drill == "ambiguous":
+            raise AmbiguousSendError
+        if drill is not None:
             raise TransientSendError
         return SendResult(f"synthetic:{self.channel}:{operation_id}")
 

@@ -13,6 +13,8 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
+import sys
 import time
 from contextlib import contextmanager
 from datetime import date, timedelta
@@ -239,7 +241,6 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         publish_text,
         record_consent,
     )
-    from apps.core.secrets import secret_store
     from apps.ehr.attachments import (
         AttachmentInput,
         scan_attachment,
@@ -813,7 +814,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
             body=event_body,
         )
 
-    kek = secret_store().get_secret("tenant-kek")
+    # The probe binds an envelope to its digest; key material never enters it.
     with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
         envelope = encrypt(purpose=PROBE_PURPOSE, plaintext=PROBE_PLAINTEXT)
     probe = {
@@ -823,7 +824,6 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         "envelope_hex": envelope.hex(),
         "expected_sha256": hashlib.sha256(PROBE_PLAINTEXT).hexdigest(),
         "invoice_id": str(invoice.pk),
-        "kek": kek,
         "organization_id": str(ORGANIZATION_ID),
         "owner_id": str(OWNER_ID),
         "patient_name": "Synthetic Recovery Persona",
@@ -841,6 +841,53 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def rotate() -> None:
+    """Rotate the tenant DEK, then the KEK, on the source before its backup.
+
+    Runs as ``clinic_owner`` the way an operator rotates keys: a new active
+    DEK version is issued, every DEK version is rewrapped under a fresh KEK
+    while the old KEK is still configured, and only then is the configured
+    KEK replaced. The restore must recover both DEK versions and needs the
+    rotated KEK from escrow; the pre-rotation KEK opens nothing any more.
+    """
+    from apps.tenancy.envelope import (
+        issue_tenant_key,
+        rewrap_tenant_keys,
+        tenant_key_status,
+    )
+    from django.conf import settings
+
+    new_kek = secrets.token_hex(32)
+    with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
+        issue_tenant_key()
+    with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
+        rewrapped = rewrap_tenant_keys(new_kek=new_kek)
+    _replace_secret(Path(str(settings.CLINIC_SECRET_DIR)), new_kek)
+    with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
+        versions = [(key.key_version, key.status) for key in tenant_key_status()]
+    if rewrapped != len(versions) or versions != [(1, "retired"), (2, "active")]:
+        _fail("synthetic key rotation did not complete")
+    sys.stdout.write(
+        json.dumps(
+            {"dek_versions": len(versions), "rewrapped_versions": rewrapped},
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _replace_secret(root: Path, value: str) -> None:
+    """Atomically replace the configured synthetic KEK file, kept private."""
+    staged = root / "tenant-kek.secret.rotating"
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(descriptor, value.encode("ascii"))
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    staged.replace(root / "tenant-kek.secret")
 
 
 def verify(probe_path: Path) -> None:
@@ -958,7 +1005,6 @@ def _read_probe(path: Path) -> dict[str, str]:
         "envelope_hex",
         "expected_sha256",
         "invoice_id",
-        "kek",
         "organization_id",
         "owner_id",
         "patient_name",
@@ -973,9 +1019,11 @@ def _read_probe(path: Path) -> dict[str, str]:
 
 
 def main() -> int:  # noqa: C901 - one flat argument dispatch
-    """Dispatch only the bootstrap, app-role TOTP, seed, or verify step."""
+    """Dispatch only the bootstrap, app-role TOTP, seed, rotate or verify step."""
     parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument("operation", choices=("bootstrap", "totp", "seed", "verify"))
+    parser.add_argument(
+        "operation", choices=("bootstrap", "totp", "seed", "rotate", "verify")
+    )
     parser.add_argument("--password-fd", type=int)
     parser.add_argument("--probe-path")
     arguments = parser.parse_args()
@@ -986,10 +1034,10 @@ def main() -> int:  # noqa: C901 - one flat argument dispatch
             _fail("verify requires exactly --probe-path")
         verify(Path(arguments.probe_path))
         return 0
-    if arguments.operation == "totp":
+    if arguments.operation in {"totp", "rotate"}:
         if arguments.password_fd is not None or arguments.probe_path is not None:
-            _fail("TOTP fixture received unexpected arguments")
-        create_totp()
+            _fail("fixture step received unexpected arguments")
+        (create_totp if arguments.operation == "totp" else rotate)()
         return 0
     if arguments.operation == "seed":
         if arguments.password_fd is not None or not arguments.probe_path:

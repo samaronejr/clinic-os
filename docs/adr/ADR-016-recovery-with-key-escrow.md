@@ -27,6 +27,11 @@ objects are missing.
 - Provider PITR and encrypted provider backup stay unverified until EG-12;
   local drills are L1 evidence only.
 - RPO and RTO are recorded from measured drills, not from targets.
+- Todo 72 implements the drill: `make restore-rehearsal` reads the KEK only
+  from an escrow and the objects only from a backup copy, refuses a missing or
+  stale escrow and a missing object before touching the target, and records
+  the measured RPO/RTO against the plan's proposals. The exercise rotates the
+  source keys before its backup and proves each refusal.
 
 ## Rejected
 

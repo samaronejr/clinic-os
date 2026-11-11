@@ -271,6 +271,42 @@ while `clinical` fails open so chart saves are never blocked by metering.
 A malformed stored quota fails closed as well; it never falls back to a
 larger allowance.
 
+## Degraded-mode drills
+
+Every synthetic provider adapter honours one fault toggle, so a drill can make
+one provider family fail while the rest of the product keeps working. Set
+`CLINIC_SYNTHETIC_FAULTS` to comma-separated `family=mode` pairs, for example
+`CLINIC_SYNTHETIC_FAULTS=ai=slow,payment=down`. The families are `ai`, `video`,
+`messaging`, `signing` and `payment`; the modes are `down`, `slow` and
+`ambiguous`. An unknown family or mode, a repeated family, or any fault in live
+data mode stops the process at startup, and live activation lists the variable
+as synthetic-only. Each adapter answers with its own existing failure
+vocabulary, so the drill exercises the real failure handling:
+
+| Family | `down` | `slow` | `ambiguous` |
+| --- | --- | --- | --- |
+| `ai` (gateway, scribe ASR) | `provider_unavailable`; nothing retained | `provider_timeout`; the circuit opens and the settings page shows degraded | over-limit truncated reply, rejected as `invalid_output` |
+| `video` | room operation retried, then failed | same as `down` | held `in_progress` for reconciliation, never re-sent |
+| `messaging` (reminders, inbox) | message retried later (`transient_send`) | same as `down` | held `in_progress` for reconciliation, never re-sent |
+| `signing` | operation stays `prepared` for retry | same as `down` | acceptance without a usable reference fails closed (`invalid_provider_reference`) |
+| `payment` | PIX code not generated; PSP status `unknown`, lookup-only recovery | same; a PSP create that may have happened stays `unknown` | PSP status `unknown`, lookup-only recovery |
+
+No fault reroutes work to another provider, marks a payment paid or issues a
+signature. Scheduling, charting and ordinary billing (invoice and manually
+confirmed settlement) need no provider and keep working with every family
+faulted. Portal messages stay inside the system and are never faulted. The
+drills are `tests/resilience/` (pytest on real roles, including real worker
+processes killed with SIGKILL right after a provider effect) and the
+`resilience` browser suite. Unknown AI charges stay conservatively accounted;
+a `provider_unavailable` failure does not open the circuit, so only the
+failed request shows unavailable.
+
+A worker killed after the provider effect never repeats it: an abandoned
+message reconciles without a resend, a PSP charge recovers by lookup only, and
+a signing operation is asked again under the same operation id, which a real
+signing adapter must honour as its idempotency key. The orphaned provider
+operation can never issue: its callback is rejected before scope lookup.
+
 ## Stop and reseed
 
 Stop containers while preserving local database data:
@@ -413,14 +449,83 @@ or clinical data into issues, logs, evidence files, or chat. Local example
 credentials are disposable only; production rotation requires the provider's
 approved procedure and a recorded incident timeline.
 
+### Tenant key rotation
+
+Tenant data keys (DEKs) live only wrapped in `tenancy_tenantdatakey`; one tenant
+KEK in the configured secret store unwraps them. Both rotations run as
+`clinic_owner` with the tenant GUC set, through `apps.tenancy.envelope`:
+
+1. DEK rotation: `issue_tenant_key()` creates a new active version and retires
+   the old one. Retired versions keep opening existing ciphertext and their
+   blind indexes stay searchable; `reencrypt` moves one envelope forward.
+2. KEK rotation: with the old KEK still configured, call
+   `rewrap_tenant_keys(new_kek=...)` for every organization. Switch the
+   configured KEK only after every organization is rewrapped: a tenant that
+   was not rewrapped cannot be read under the new KEK. A rewrap under the wrong
+   KEK changes nothing; it aborts as a whole.
+3. Escrow the new KEK immediately, before the next backup. An escrow that still
+   holds the old KEK opens nothing, and the recovery exercise refuses it.
+
+`tests/resilience/test_key_rotation.py` drills this order on real roles,
+including the stranded tenant of a partial rotation. Production key
+management, KMS policy and escrow custody remain deployment decisions behind
+EG-12; this is a synthetic procedure.
+
+## Incident response
+
+The private incident process is in [SECURITY.md](SECURITY.md). This section
+maps who does what and the timing duties, so the on-call team does not have to
+work them out during an incident. Owners, counsel and contacts are still
+unassigned and [INCIDENT-APPROVAL.md](compliance/INCIDENT-APPROVAL.md) is
+unapproved, so this is a draft for EG-2 and EG-12 review, not legal advice.
+
+Roles:
+
+- Incident commander (Clinic Ops on-call engineer): owns triage, containment,
+  the timeline and the restricted incident record.
+- Communications lead (Clinic Ops): drafts the customer, ANPD and data-subject
+  texts for the controller; never sends patient data through tickets or chat.
+- Clinic controller and its encarregado (DPO): the clinic decides and makes
+  the ANPD and data-subject communications. Clinic Ops is the operator and
+  supports them.
+- Recovery owner: runs containment and recovery steps on the provider's
+  approved procedure; the synthetic recovery exercise below is only the
+  technical rehearsal of that procedure.
+
+Timeline:
+
+1. Detection (T0): page the incident commander; preserve payload-free evidence
+   such as audit-chain verification output and role/policy posture.
+2. Containment: revoke or rotate the affected credentials, use the AI kill
+   switches to stop affected AI flows, and keep scheduling and charting
+   available through their manual paths.
+3. Assessment: decide whether personal data were affected and whether the
+   incident may cause relevant risk or damage (CD/ANPD Res. 15/2024 arts. 4 and
+   5). Health data are sensitive personal data, one of the art. 5 criteria.
+4. Controller notice: tell each affected clinic as soon as personal data are
+   confirmed affected. The legal clock starts when the controller knows the
+   incident affected personal data (art. 6, sec. 1), so the operator must not
+   consume it; the contractual operator deadline belongs to the DPA (EG-5).
+5. Communication: within three working days of that knowledge the controller
+   communicates the incident to the ANPD (art. 6) and to the affected data
+   subjects (art. 9), unless specific legislation sets another deadline.
+6. Record: keep the incident record for at least five years from its date,
+   including incidents that were not communicated (art. 10).
+7. Recovery and closure: restore from the earliest trusted point, verify
+   audit chains, rotate keys if they may be exposed, and record the lessons and
+   follow-up tests.
+
+These timing facts were re-read from the DOU text on 2026-11-11
+([reverification-log.md](compliance/reverification-log.md), RV-06).
+
 ## Disposable logical recovery rehearsal
 
 `make restore-rehearsal` is called only after the F3 supervisor has stopped
 source writers, migrated a distinct task-owned target as `clinic_owner`, and
 passed the two container IDs/database names plus their lease claim IDs, one
 private credential FD (source/target superuser passwords plus the target
-`clinic_app` password and TLS URL) and task-owned mode-0700 work/evidence
-paths. Before any mutation the command authenticates that each container
+`clinic_app` password and TLS URL), the KEK escrow and object backup, and
+task-owned mode-0700 work/evidence paths. Before any mutation the command authenticates that each container
 carries the `clinic.phase1a.claim` label equal to the passed claim, lives
 under the deterministic lease name derived from the claim token, and mounts
 the claim-labeled pgdata volume; it then requires the target to hold zero
@@ -437,10 +542,42 @@ ACL changes and triggers disabled for load order, then verifies row
 fingerprints, owner/RLS/role-attribute/closed-table-ACL posture, the audit
 hash chain plus recomputed canonical content hashes for every restored event,
 restored DEK metadata, one source envelope decrypted on the target through
-`tenant_decrypt` under the configured KEK, and every attachment object byte
-against the restored object store. It deletes and proves absence of the dump
-and hash. Restored verification is read-only except for advancing each
-restored sequence once; it runs no restored provisioning or browser command.
+`tenant_decrypt` under the KEK restored from escrow, and every attachment
+object byte against the restored object store. It deletes and proves absence
+of the dump and hash. Restored verification is read-only except for advancing
+each restored sequence once; it runs no restored provisioning or browser
+command.
+
+Rows, objects and keys are restored together (ADR-016). The command reads the
+tenant KEK only from `RESTORE_KEY_ESCROW`, a private directory holding
+`tenant-kek.secret`, never from the source's live secret store, and copies the
+attachment objects only from `RESTORE_OBJECT_BACKUP` into the empty restored
+object store. Before the target is touched it requires the escrow to exist and
+to open the live source keys, and every attachment row to have its backup
+object. Each gap fails with one explicit message: `restore drill failed: the
+tenant KEK escrow is missing`, `... the escrowed tenant KEK cannot open the
+source keys`, or `... N attachment object(s) are missing from the object
+backup`. The restored workflows run against a secret store built from the
+escrow and removed after verification. Purge tombstones are re-applied as
+before. After verification the source is fingerprinted again: any write after
+the recovery point fails the drill, so no acknowledged write is lost.
+
+The evidence (schema 2) records the measured objectives against the plan's
+proposals (RPO at most 300 s, RTO at most 3600 s including objects and keys).
+The RPO is the data-loss window from the archive snapshot to the restore start;
+the RTO runs from the restore start to the last proof. They are synthetic L1
+measurements, not service commitments.
+
+`python -m ops.testing.restore_rehearsal_acceptance` runs the whole exercise
+in a host quiet window: it claims two TLS databases through the isolation
+ledger, seeds the synthetic source, rotates its DEK and then its KEK, escrows
+the rotated KEK, backs up the objects, proves the three failure variants
+(missing KEK escrow, stale pre-rotation escrow, missing object) refuse before
+the target is touched, and then restores. It prints the exercise report
+validated by `docs/operations/recovery-exercise.schema.json`. The latest
+recorded exercise, `docs/operations/recovery-exercise.json`, is shown with its
+limits on the enterprise governance screen, which says so when none is
+recorded.
 
 Every relation in `clinic_app` has exactly one recovery classification in
 `ops/testing/restore_contract.py`: restored data (`DOMAIN_RELATIONS`, which

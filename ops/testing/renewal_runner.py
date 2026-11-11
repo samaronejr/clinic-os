@@ -134,6 +134,8 @@ SUITES: Final = {
     "device-capabilities": ("tests/renewal/browser/test_device_capabilities.py",),
     # Task 70: the public website and help center (no fixtures, no session).
     "website": ("tests/renewal/browser/test_website.py",),
+    # Task 72: core work while the in-request providers are faulted.
+    "resilience": ("tests/renewal/browser/test_resilience.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -179,6 +181,7 @@ FIXTURE_SUITES: Final = frozenset(
         "care-coordination",
         "public-booking",
         "reports",
+        "resilience",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -846,6 +849,19 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
         **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
         **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
+        # Plan item 72: the in-request payment and signing providers are faulted for
+        # the whole run; the worker-side families are drilled by pytest.
+        **(
+            {
+                "BILLING_SYNTHETIC_PIX": "true",
+                "CLINIC_SYNTHETIC_FAULTS": "payment=down,signing=down",
+                "COMMS_SYNTHETIC_CHANNELS": "email",
+                "PHYSICIAN_SYNTHETIC_REGISTRY": "true",
+                "PRESCRIPTION_SYNTHETIC_SIGNING": "true",
+            }
+            if suite == "resilience"
+            else {}
+        ),
         # A reserved .invalid address, so the contact page renders its link.
         **(
             {"CLINIC_WEBSITE_CONTACT_EMAIL": "equipe@clinic-ops.invalid"}

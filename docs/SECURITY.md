@@ -323,9 +323,13 @@ framework/session/migration state, and compares restored domain rows and
 posture read-only. `clinic_super` is confined to exact task database creation
 and data transport; source and target PostgreSQL clients run inside their own
 containers. The rehearsal executes no restored bootstrap, provisioning,
-password, login, TOTP, helper, browser, or runner action.
+password, login, TOTP, helper, browser, or runner action. It restores the
+attachment objects from a backup copy and the tenant KEK from a separate
+escrow, and refuses before touching the target when either is missing or the
+escrow no longer opens the live keys.
 
-This is not an encrypted backup, provider PITR, RPO/RTO, or recovery approval.
+This is not an encrypted backup, provider PITR or recovery approval; its
+measured RPO/RTO are synthetic L1 figures, not service commitments.
 Live data is prohibited until every item in
 [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md) is independently approved.
 

@@ -481,7 +481,6 @@ def test_probe_binding_file_must_be_private_and_exact(tmp_path: Path) -> None:
     probe = {
         "envelope_hex": ENVELOPE,
         "expected_sha256": DIGEST,
-        "kek": KEK,
         "organization_id": ORGANIZATION_ID,
     }
     path = tmp_path / "probe.json"
@@ -494,6 +493,10 @@ def test_probe_binding_file_must_be_private_and_exact(tmp_path: Path) -> None:
         restore_rehearsal._read_probe(path)
     path.chmod(0o600)
     path.write_text(json.dumps({**probe, "extra": "field"}))
+    with pytest.raises(RestoreContractError, match="invalid"):
+        restore_rehearsal._read_probe(path)
+    # Key material never travels in the binding: the KEK comes from escrow.
+    path.write_text(json.dumps({**probe, "kek": KEK}))
     with pytest.raises(RestoreContractError, match="invalid"):
         restore_rehearsal._read_probe(path)
     with pytest.raises(RestoreContractError, match="invalid"):
