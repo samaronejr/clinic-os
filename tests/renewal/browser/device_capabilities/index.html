@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinic Ops device capability study (synthetic)</title>
+</head>
+<body>
+<main>
+<h1>Device capability study</h1>
+<p>Synthetic probes for ADR-013. Nothing here stores or sends clinical data.</p>
+
+<section aria-labelledby="audio-title">
+<h2 id="audio-title">Background audio</h2>
+<button type="button" data-probe="audio">Start audio probe</button>
+<output data-result="audio">not run</output>
+<audio id="tone" loop></audio>
+</section>
+
+<section aria-labelledby="push-title">
+<h2 id="push-title">Push</h2>
+<button type="button" data-probe="push">Start push probe</button>
+<output data-result="push">not run</output>
+</section>
+
+<section aria-labelledby="camera-title">
+<h2 id="camera-title">Camera document capture</h2>
+<button type="button" data-probe="camera">Start camera probe</button>
+<output data-result="camera">not run</output>
+<video id="preview" playsinline muted width="320" height="240"></video>
+<canvas id="frame" width="320" height="240" hidden></canvas>
+<label for="fallback">Fallback capture input</label>
+<input id="fallback" type="file" accept="image/*" capture="environment">
+</section>
+
+<section aria-labelledby="webauthn-title">
+<h2 id="webauthn-title">Platform authenticator</h2>
+<button type="button" data-probe="webauthn">Start platform authenticator probe</button>
+<output data-result="webauthn">not run</output>
+</section>
+</main>
+<script src="probe.js"></script>
+</body>
+</html>

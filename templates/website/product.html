@@ -1,0 +1,121 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Product" %}{% endblock %}
+{% block meta_description %}{% trans "What Clinic Ops does for reception, clinicians, managers and patients, and which parts still run on simulated providers." %}{% endblock %}
+{% block content %}
+<div class="site-page">
+  <header class="page-head">
+    <h1 class="display">{% trans "One workspace for the whole clinic day." %}</h1>
+    <p class="page-lede">{% trans "What Clinic Ops does for reception, clinicians, managers and patients, and which parts still run on simulated providers." %}</p>
+    <ul class="legend" aria-label="{% trans "Status legend" %}">
+      <li><span class="badge badge--success" data-claim="legend-available">{% trans "Available" %}</span><span data-claim="legend-available-meaning">{% trans "works end to end today" %}</span></li>
+      <li><span class="badge badge--simulation" data-claim="legend-simulation">{% trans "Simulation" %}</span><span data-claim="legend-simulation-meaning">{% trans "depends on an outside provider; runs on a labelled simulation until approval" %}</span></li>
+    </ul>
+  </header>
+
+  <section class="role" aria-labelledby="role-reception">
+    <div class="role-head">
+      <h2 id="role-reception" class="display-2">{% trans "Reception" %}</h2>
+      <p data-claim="reception-board">{% trans "The front desk sees the day, the arrivals and the rooms on one screen." %}</p>
+    </div>
+    <ul class="modules">
+      <li class="module">
+        <h3>{% trans "Agenda" %} <span class="badge badge--success" data-claim="status-agenda">{% trans "Available" %}</span></h3>
+        <p data-claim="agenda">{% trans "Day and week agendas in the clinic's own time zone, with overlap protection." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Arrivals and rooms" %} <span class="badge badge--success" data-claim="status-arrivals">{% trans "Available" %}</span></h3>
+        <p data-claim="reception">{% trans "Register arrivals and call patients to rooms; optional consent, documents and payment never block an arrival." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Patient registry" %} <span class="badge badge--success" data-claim="status-registry">{% trans "Available" %}</span></h3>
+        <p data-claim="registry">{% trans "Search by name or exact document; the search never appears in the address bar." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Reminders" %} <span class="badge badge--simulation" data-claim="status-reminders">{% trans "Simulation" %}</span></h3>
+        <p data-claim="reminders">{% trans "Email, SMS and WhatsApp reminders leave through the integration outbox; each channel runs as a simulation until its provider is approved." %}</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="role" aria-labelledby="role-clinicians">
+    <div class="role-head">
+      <h2 id="role-clinicians" class="display-2">{% trans "Clinicians" %}</h2>
+      <p data-claim="clinician-flow">{% trans "From the next patient to the finalized note, with AI that only suggests." %}</p>
+    </div>
+    <ul class="modules">
+      <li class="module">
+        <h3>{% trans "Encounter and note" %} <span class="badge badge--success" data-claim="status-encounter">{% trans "Available" %}</span></h3>
+        <p data-claim="note-finalization">{% trans "SOAP notes are drafted on the server; finalizing makes the version immutable and asks for a fresh authenticator code." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "AI scribe" %} <span class="badge badge--simulation" data-claim="status-scribe">{% trans "Simulation" %}</span></h3>
+        <p data-claim="scribe">{% trans "With separate consent, the AI scribe proposes source-linked suggestions for the note. Real models are switched on only after approval." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Clinical documents" %} <span class="badge badge--simulation" data-claim="status-documents">{% trans "Simulation" %}</span></h3>
+        <p data-claim="documents">{% trans "Prescriptions, certificates, referrals and exam requests are drafted from the encounter; signing stays simulated until a provider is approved." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Results" %} <span class="badge badge--simulation" data-claim="status-results">{% trans "Simulation" %}</span></h3>
+        <p data-claim="results">{% trans "Each matched result opens a review task for the clinician who ordered it." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Video visits" %} <span class="badge badge--simulation" data-claim="status-video">{% trans "Simulation" %}</span></h3>
+        <p data-claim="teleconsult">{% trans "A video visit is bound to one encounter, its physician, its patient and the accepted consent; rooms come from a simulated provider until approval." %}</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="role" aria-labelledby="role-managers">
+    <div class="role-head">
+      <h2 id="role-managers" class="display-2">{% trans "Managers" %}</h2>
+      <p>{% trans "Team access, charges and reports." %}</p>
+    </div>
+    <ul class="modules">
+      <li class="module">
+        <h3>{% trans "Team and access" %} <span class="badge badge--simulation" data-claim="status-team">{% trans "Simulation" %}</span></h3>
+        <p data-claim="staff-access">{% trans "Invite staff by role; access starts only after a password and an authenticator are confirmed." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Charges" %} <span class="badge badge--simulation" data-claim="status-charges">{% trans "Simulation" %}</span></h3>
+        <p data-claim="charges">{% trans "Amounts are kept in whole centavos and a repeated submission never creates a second charge; PIX is a non-payable simulation." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Reports" %} <span class="badge badge--success" data-claim="status-reports">{% trans "Available" %}</span></h3>
+        <p data-claim="reports">{% trans "Metrics have versioned definitions: a changed formula becomes a new version instead of an edit." %}</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="role" aria-labelledby="role-patients">
+    <div class="role-head">
+      <h2 id="role-patients" class="display-2">{% trans "Patients" %}</h2>
+      <p data-claim="patient-privacy">{% trans "A direct path to the clinic that never shows another patient's agenda." %}</p>
+    </div>
+    <ul class="modules">
+      <li class="module">
+        <h3>{% trans "Online booking" %} <span class="badge badge--success" data-claim="status-booking">{% trans "Available" %}</span></h3>
+        <p data-claim="public-booking">{% trans "The clinic's booking page asks for no diagnosis or reason for the visit." %}</p>
+      </li>
+      <li class="module">
+        <h3>{% trans "Patient portal" %} <span class="badge badge--success" data-claim="status-portal">{% trans "Available" %}</span></h3>
+        <p data-claim="patient-booking">{% trans "Patients book from a private clinic invitation and see their appointments in the patient portal." %}</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="role" aria-labelledby="role-next">
+    <div class="role-head">
+      <h2 id="role-next" class="display-2">{% trans "See it on your screens" %}</h2>
+    </div>
+    <div>
+      <p class="section-lede" data-claim="guides-follow-product">{% trans "Every guide in the help center follows these screens, button by button." %}</p>
+      <div class="site-actions">
+        <a class="button" href="{% url 'website:contact' %}">{% trans "Talk to the team" %}</a>
+        <a class="button button--secondary" href="{% url 'website:help' %}">{% trans "Open the help center" %}</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

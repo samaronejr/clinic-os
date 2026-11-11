@@ -340,9 +340,10 @@ def test_tenant_key_status_must_match_source() -> None:
 def _reseed_provider_registry(superuser_database_url: str) -> None:
     """Rebuild the migration seed under fresh surrogate keys and timestamps."""
     with psycopg.connect(superuser_database_url, autocommit=True) as raw:
-        # PSP history references capability versions, so it is truncated with
-        # the registry; replica mode lifts its no-truncate guard for this
-        # session only, as the teardown flush lifts it per test.
+        # PSP history and RNDS submissions reference capability versions, so
+        # they are truncated with the registry; replica mode lifts their
+        # no-truncate guards for this session only, as the teardown flush
+        # lifts them per test.
         raw.execute("SET session_replication_role = replica")
         raw.execute(
             "TRUNCATE clinic_app.providers_healthevent, "
@@ -353,7 +354,8 @@ def _reseed_provider_registry(superuser_database_url: str) -> None:
             "clinic_app.billing_pspbinding, "
             "clinic_app.billing_pspevidence, "
             "clinic_app.billing_pspintent, "
-            "clinic_app.billing_pspreceipt"
+            "clinic_app.billing_pspreceipt, "
+            "clinic_app.interop_rndssubmission"
         )
     seed_capabilities()
 

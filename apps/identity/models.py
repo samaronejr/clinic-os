@@ -12,12 +12,22 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
-from apps.identity import passkey_models
+from apps.identity import federation_models, governance_models, passkey_models
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
 Passkey = passkey_models.Passkey
+SsoConnection = federation_models.SsoConnection
+ScimToken = federation_models.ScimToken
+ScimResource = federation_models.ScimResource
+ScimMembership = federation_models.ScimMembership
+ScimRoleMapping = federation_models.ScimRoleMapping
+ScimRoleBinding = federation_models.ScimRoleBinding
+BreakGlassGrant = governance_models.BreakGlassGrant
+SupportAccessGrant = governance_models.SupportAccessGrant
+GovernanceNotice = governance_models.GovernanceNotice
+UnitGovernanceChange = governance_models.UnitGovernanceChange
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint

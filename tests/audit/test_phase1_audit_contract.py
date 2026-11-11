@@ -17,6 +17,63 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "subscriptions.subscription",
         "changed",
     ),
+    "interop.api_client.created": (
+        "tenant",
+        "clinic-os-web",
+        "interop.api_client",
+        "created",
+    ),
+    "interop.api_client.rotated": (
+        "tenant",
+        "clinic-os-web",
+        "interop.api_client",
+        "rotated",
+    ),
+    "interop.api_client.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "interop.api_client",
+        "revoked",
+    ),
+    "interop.webhook_subscription.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "interop.webhook_subscription",
+        "revoked",
+    ),
+    "interop.organization_export.requested": (
+        "tenant",
+        "clinic-os-web",
+        "interop.organization_export",
+        "requested",
+    ),
+    "interop.organization_export.ready": (
+        "tenant",
+        "clinic-os-web",
+        "interop.organization_export",
+        "ready",
+    ),
+    "interop.organization_export.failed": (
+        "tenant",
+        "clinic-os-web",
+        "interop.organization_export",
+        "failed",
+    ),
+    "interop.organization_export.downloaded": (
+        "tenant",
+        "clinic-os-web",
+        "interop.organization_export",
+        "downloaded",
+    ),
+    **{
+        f"interop.rnds_submission.{verb}": (
+            "tenant",
+            "clinic-os-web",
+            "interop.rnds_submission",
+            verb,
+        )
+        for verb in ("requested", "accepted", "rejected")
+    },
     "billing.psp.policy": ("tenant", "clinic-os-web", "billing.psp", "policy"),
     "billing.psp.prepared": ("tenant", "clinic-os-web", "billing.psp", "prepared"),
     "billing.psp.evidence": ("tenant", "clinic-os-web", "billing.psp", "evidence"),
@@ -216,6 +273,25 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "set_minimum_stock",
     ),
     **{
+        f"interop.{kind}.{verb}": ("tenant", "clinic-os-web", f"interop.{kind}", verb)
+        for kind, verbs in {
+            "job": (
+                "uploaded",
+                "profiled",
+                "mapped",
+                "dry_run",
+                "approved",
+                "committed",
+                "rolled_back",
+            ),
+            "mapping": ("saved",),
+            "batch": ("committed",),
+            "report": ("exported",),
+            "records": ("viewed",),
+        }.items()
+        for verb in verbs
+    },
+    **{
         f"insurance.{kind}.{verb}": (
             "tenant",
             "clinic-os-web",
@@ -384,6 +460,144 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "billing.journal_book",
         "exported",
+    ),
+    "identity.sso.configured": (
+        "tenant",
+        "clinic-os-web",
+        "identity.sso_connection",
+        "configured",
+    ),
+    "identity.sso.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.sso_connection",
+        "revoked",
+    ),
+    "identity.sso.authenticated": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_resource",
+        "authenticated",
+    ),
+    "identity.scim.token_issued": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_token",
+        "created",
+    ),
+    "identity.scim.token_revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_token",
+        "revoked",
+    ),
+    "identity.scim.mapping_approved": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_role_mapping",
+        "approved",
+    ),
+    "identity.scim.resource_created": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_resource",
+        "created",
+    ),
+    "identity.scim.resource_changed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_resource",
+        "changed",
+    ),
+    "identity.scim.resource_revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_resource",
+        "revoked",
+    ),
+    "identity.scim.binding_created": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_role_binding",
+        "created",
+    ),
+    "identity.scim.binding_revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.scim_role_binding",
+        "revoked",
+    ),
+    "identity.break_glass.granted": (
+        "tenant",
+        "clinic-os-web",
+        "identity.break_glass_grant",
+        "granted",
+    ),
+    "identity.break_glass.read": (
+        "tenant",
+        "clinic-os-web",
+        "identity.break_glass_grant",
+        "read",
+    ),
+    "identity.break_glass.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.break_glass_grant",
+        "revoked",
+    ),
+    "identity.break_glass.reviewed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.break_glass_grant",
+        "reviewed",
+    ),
+    "identity.break_glass.notified": (
+        "tenant",
+        "clinic-os-web",
+        "identity.governance_notice",
+        "created",
+    ),
+    "identity.support.approved": (
+        "tenant",
+        "clinic-os-web",
+        "identity.support_access_grant",
+        "approved",
+    ),
+    "identity.support.read": (
+        "tenant",
+        "clinic-os-web",
+        "identity.support_access_grant",
+        "read",
+    ),
+    "identity.support.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.support_access_grant",
+        "revoked",
+    ),
+    "identity.unit_policy.changed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.unit_governance_change",
+        "changed",
+    ),
+    "identity.unit_template.propagated": (
+        "tenant",
+        "clinic-os-web",
+        "identity.unit_governance_change",
+        "propagated",
+    ),
+    "identity.credential.rotated": (
+        "tenant",
+        "clinic-os-web",
+        "identity.unit_governance_change",
+        "rotated",
+    ),
+    "identity.recovery.slot_recorded": (
+        "tenant",
+        "clinic-os-web",
+        "identity.unit_governance_change",
+        "recorded",
     ),
     "scheduling.queue.arrived": (
         "tenant",

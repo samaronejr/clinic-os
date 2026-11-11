@@ -1,0 +1,1171 @@
+openapi: 3.0.3
+info:
+  title: Clinic Ops external API
+  version: '1'
+  description: Versioned partner API. OAuth 2.0 client credentials issue 15-minute
+    bearer tokens limited to the client's scopes and clinic. Patient-linked records
+    use opaque external ids; unknown and foreign ids are the same 404. Every client
+    has a per-minute token bucket (429 with Retry-After). Writes require an Idempotency-Key.
+    Errors are {code, message_key}; the token endpoint uses RFC 6749 error bodies.
+paths:
+  /api/v1/appointments:
+    get:
+      operationId: appointments_list
+      description: Return one keyset page ordered by start time and id.
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type: string
+        description: The previous page's next_cursor.
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 1-100, default 50.
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      tags:
+      - appointments
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentPage'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+  /api/v1/appointments/{appointment_id}:
+    get:
+      operationId: appointments_retrieve
+      description: Unknown, foreign and malformed ids are the same 404.
+      parameters:
+      - in: path
+        name: appointment_id
+        schema:
+          type: string
+        description: An opaque external id returned by this API.
+        required: true
+      tags:
+      - appointments
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+  /api/v1/availability:
+    get:
+      operationId: availability_list
+      description: Return at most 1000 entries ordered by start time.
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      tags:
+      - availability
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Availability'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+  /api/v1/invoices:
+    get:
+      operationId: invoices_list
+      description: Return one keyset page ordered by issue time and id.
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type: string
+        description: The previous page's next_cursor.
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 1-100, default 50.
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO 8601 with offset.
+        required: true
+      tags:
+      - invoices
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoicePage'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+  /api/v1/invoices/{invoice_id}:
+    get:
+      operationId: invoices_retrieve
+      description: Drafts are never visible; unknown and foreign ids are the same
+        404.
+      parameters:
+      - in: path
+        name: invoice_id
+        schema:
+          type: string
+        description: An opaque external id returned by this API.
+        required: true
+      tags:
+      - invoices
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+  /api/v1/oauth/token:
+    post:
+      operationId: oauth_token
+      description: Issue a 15-minute bearer token for an active, authorized client.
+      tags:
+      - oauth
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      security:
+      - clientBasic: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+          description: invalid_request or invalid_scope.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+          description: invalid_client for any refusal.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+          description: Token requests are metered too.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+          description: Rate metering is unavailable.
+  /api/v1/patients/{patient_id}:
+    get:
+      operationId: patients_retrieve
+      description: Return only the display name and birth date; no other field exists.
+      parameters:
+      - in: path
+        name: patient_id
+        schema:
+          type: string
+        description: An opaque external id returned by this API.
+        required: true
+      tags:
+      - patients
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+  /api/v1/webhook-subscriptions:
+    get:
+      operationId: webhook_subscriptions_list
+      description: Return every registration of this client; secrets are never listed.
+      tags:
+      - webhooks
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscriptionList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+    post:
+      operationId: webhook_subscriptions_create
+      description: Register an endpoint; the signing secret is in the response.
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: 1-64 characters of [A-Za-z0-9._:-]; replays return the stored
+          result.
+        required: true
+      tags:
+      - webhooks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreate'
+        required: true
+      security:
+      - bearerToken: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecret'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Idempotency-Key reused for another request, or revoked target.
+  /api/v1/webhook-subscriptions/{subscription_id}/revoke:
+    post:
+      operationId: webhook_subscriptions_revoke
+      description: Stop deliveries; queued deliveries cancel at send time.
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: 1-64 characters of [A-Za-z0-9._:-]; replays return the stored
+          result.
+        required: true
+      - in: path
+        name: subscription_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - webhooks
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Idempotency-Key reused for another request, or revoked target.
+  /api/v1/webhook-subscriptions/{subscription_id}/rotate-secret:
+    post:
+      operationId: webhook_subscriptions_rotate_secret
+      description: Sign with both secrets for 24 hours, then with the new one only.
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: 1-64 characters of [A-Za-z0-9._:-]; replays return the stored
+          result.
+        required: true
+      - in: path
+        name: subscription_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - webhooks
+      security:
+      - bearerToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecret'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Invalid input.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Missing, expired or revoked bearer token.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The token lacks this resource's scope.
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: The client's token bucket is empty.
+        '503':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before the next attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rate metering is unavailable; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Unknown, foreign and malformed ids alike.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Idempotency-Key reused for another request, or revoked target.
+components:
+  schemas:
+    Appointment:
+      type: object
+      description: One appointment with opaque ids; no clinical content.
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/AppointmentStatusEnum'
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        patient:
+          type: string
+        practitioner:
+          type: string
+        service_type:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - end_at
+      - id
+      - patient
+      - practitioner
+      - service_type
+      - start_at
+      - status
+      - updated_at
+    AppointmentPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appointment'
+        next_cursor:
+          type: string
+          nullable: true
+      required:
+      - data
+      - next_cursor
+    AppointmentStatusEnum:
+      enum:
+      - requested
+      - held
+      - booked
+      - arrived
+      - in_progress
+      - completed
+      - cancelled
+      - expired
+      - no_show
+      type: string
+      description: |-
+        * `requested` - requested
+        * `held` - held
+        * `booked` - booked
+        * `arrived` - arrived
+        * `in_progress` - in_progress
+        * `completed` - completed
+        * `cancelled` - cancelled
+        * `expired` - expired
+        * `no_show` - no_show
+    Availability:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityEntry'
+        truncated:
+          type: boolean
+      required:
+      - data
+      - truncated
+    AvailabilityEntry:
+      type: object
+      description: A working window, a busy interval or a clinic closure.
+      properties:
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        practitioner:
+          type: string
+          nullable: true
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+      required:
+      - end_at
+      - kind
+      - practitioner
+      - start_at
+    Error:
+      type: object
+      description: The ``{code, message_key}`` refusal body.
+      properties:
+        code:
+          type: string
+        message_key:
+          type: string
+      required:
+      - code
+      - message_key
+    ErrorEnum:
+      enum:
+      - invalid_request
+      - invalid_client
+      - invalid_scope
+      - unsupported_grant_type
+      - temporarily_unavailable
+      type: string
+      description: |-
+        * `invalid_request` - invalid_request
+        * `invalid_client` - invalid_client
+        * `invalid_scope` - invalid_scope
+        * `unsupported_grant_type` - unsupported_grant_type
+        * `temporarily_unavailable` - temporarily_unavailable
+    EventsEnum:
+      enum:
+      - appointment.created
+      - appointment.status_changed
+      - appointment.rescheduled
+      - invoice.status_changed
+      type: string
+      description: |-
+        * `appointment.created` - appointment.created
+        * `appointment.status_changed` - appointment.status_changed
+        * `appointment.rescheduled` - appointment.rescheduled
+        * `invoice.status_changed` - invoice.status_changed
+    GrantTypeEnum:
+      enum:
+      - client_credentials
+      type: string
+      description: '* `client_credentials` - client_credentials'
+    Invoice:
+      type: object
+      description: Issued invoice status in integer BRL centavos.
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/InvoiceStatusEnum'
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+        appointment:
+          type: string
+          nullable: true
+        patient:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+      required:
+      - amount_minor
+      - appointment
+      - currency
+      - id
+      - issued_at
+      - patient
+      - status
+    InvoicePage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invoice'
+        next_cursor:
+          type: string
+          nullable: true
+      required:
+      - data
+      - next_cursor
+    InvoiceStatusEnum:
+      enum:
+      - open
+      - paid
+      - cancelled
+      type: string
+      description: |-
+        * `open` - open
+        * `paid` - paid
+        * `cancelled` - cancelled
+    KindEnum:
+      enum:
+      - window
+      - busy
+      - closed
+      type: string
+      description: |-
+        * `window` - window
+        * `busy` - busy
+        * `closed` - closed
+    OAuthError:
+      type: object
+      description: RFC 6749 section 5.2 token error body.
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorEnum'
+      required:
+      - error
+    Patient:
+      type: object
+      description: 'Minimal demographics: the display name and birth date only.'
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        birth_date:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - birth_date
+      - display_name
+      - id
+    StateEnum:
+      enum:
+      - active
+      - revoked
+      type: string
+      description: |-
+        * `active` - active
+        * `revoked` - revoked
+    TokenRequest:
+      type: object
+      description: Client credentials grant; credentials in Basic auth or in the form.
+      properties:
+        grant_type:
+          $ref: '#/components/schemas/GrantTypeEnum'
+        scope:
+          type: string
+          maxLength: 200
+        client_id:
+          type: string
+          format: uuid
+        client_secret:
+          type: string
+          maxLength: 67
+      required:
+      - grant_type
+    TokenResponse:
+      type: object
+      description: RFC 6749 section 5.1 token response.
+      properties:
+        access_token:
+          type: string
+        token_type:
+          $ref: '#/components/schemas/TokenTypeEnum'
+        expires_in:
+          type: integer
+        scope:
+          type: string
+      required:
+      - access_token
+      - expires_in
+      - scope
+      - token_type
+    TokenTypeEnum:
+      enum:
+      - Bearer
+      type: string
+      description: '* `Bearer` - Bearer'
+    WebhookCreate:
+      type: object
+      description: An HTTPS endpoint without query, fragment or credentials.
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventsEnum'
+          maxItems: 4
+          minItems: 1
+      required:
+      - events
+      - url
+    WebhookSecret:
+      type: object
+      description: A registration plus its signing secret, returned on create and
+        rotate.
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventsEnum'
+        state:
+          $ref: '#/components/schemas/StateEnum'
+        secret_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        secret:
+          type: string
+      required:
+      - created_at
+      - events
+      - id
+      - revoked_at
+      - secret
+      - secret_version
+      - state
+      - url
+    WebhookSubscription:
+      type: object
+      description: One endpoint registration of the calling client.
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventsEnum'
+        state:
+          $ref: '#/components/schemas/StateEnum'
+        secret_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - events
+      - id
+      - revoked_at
+      - secret_version
+      - state
+      - url
+    WebhookSubscriptionList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSubscription'
+      required:
+      - data
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+    clientBasic:
+      type: http
+      scheme: basic

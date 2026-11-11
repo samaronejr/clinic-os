@@ -306,3 +306,59 @@ the pre-0050 posture (the runtime role can read the seed again) and never
 strands a user. Irreversibility was rejected: identity migration tests and
 rollback rehearsals migrate past 0050 on populated databases, and a reverse that
 dropped the seeds would lock every TOTP user out of code that verifies in Python.
+
+## Enterprise identity and the staff-context fence (0051)
+
+SSO, SCIM, break-glass, support access and unit governance live in the ten
+tables of `apps/identity/enterprise_contract.py`, each FORCE RLS with
+resolver-owned SECURITY DEFINER authority. Only the deterministic synthetic
+OIDC/SCIM fixture is runnable (`CLINIC_ENTERPRISE_SYNTHETIC` in synthetic data
+mode); real IdP and SCIM legs stay behind the provider lifecycle. SCIM is
+bearer-only under `/scim/v2/` (`apps/identity/scim_paths.py`): opaque
+server-generated UUID4 resource ids are the only path selectors (Root decision,
+2026-10-23); filters, names and every other selector travel in POST bodies.
+
+IdP claims never grant a role: only an organization administrator's approved
+group mapping does, and SSO never stamps OTP freshness. Break-glass needs a
+current clinician, a non-blank reason, an enrollment or encounter scope and an
+expiry of at most four hours; it notifies the clinic manager, writes a
+patient-visible access-log entry and opens a mandatory review task. Support
+access is approved by the customer administrator, masked and never writes
+clinical rows. Every governance action needs organization administration in
+every unit; a unit-scoped administrator who opens the governance page sees an
+explanation and no organization data.
+
+SCIM, pre-auth SSO and support diagnostics set a tenant for envelope
+encryption, so 0051 narrows every other policy that applies to `clinic_app`
+(PUBLIC or `clinic_app` itself) with `enterprise_staff_context()`, which is
+false for `clinic_app` while any of those GUCs is set. Owner-only setup policies
+and the machine principal's reviewed gates are never touched: under those roles
+the fence is constantly true. The fence keeps each expression's meaning (an
+ALL/UPDATE policy without WITH CHECK is checked with its USING; an absent
+expression grants nothing when permissive and restricts nothing when
+restrictive). Its statements are static, built from the reviewed rows in
+`migrations/_enterprise_fence_policies.py`, so the clock census decodes every
+one, and the forward refuses to finish while any applicable policy is unfenced.
+0051 therefore depends on every app's leaf, and a migration that creates a
+`clinic_app` policy after it must carry the fence itself:
+`tests/identity/test_enterprise_migration.py` and
+`tests/infra/test_schema_policy.py` fail otherwise.
+
+Because nothing may follow it, 0051 also applies the interop rules for the
+relations it creates: import rollback activity v2
+(`apps/interop/migrations/_import_activity_v2_sql.py`) counts its break-glass
+grants as use of an imported enrollment, and organization export v3
+(`apps/interop/migrations/_export_v3_sql.py`, `docs/api/export-v3.md`)
+classifies its ten relations. Export v4
+(`apps/interop/migrations/_export_v4_sql.py`, `docs/api/export-v4.md`) adds
+todo 68's RNDS submission log, which precedes 0051 but extends v3's relation
+set, so 0051 applies it too.
+
+Migration 0051 reverses only while every enterprise table is empty; populated
+authority history rolls back by restore. An unused install's reverse restores
+the prior coordination workflow guard, audit append, import rollback check and
+export reader, strips the fence and
+removes every object and grant it added. Rollback tests that cross it (0050's
+TOTP reverse, analytics, subscriptions, care plans, inventory, teleconsult)
+therefore return to identical functions, triggers and grants, with policy
+expressions re-parsed to the same meaning, and re-apply 0051 byte for byte.

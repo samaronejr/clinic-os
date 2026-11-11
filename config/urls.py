@@ -1,10 +1,11 @@
 from apps.core import command_views, telemetry, views
 from apps.realtime.views import ticket_view
+from apps.website import views as website_views
 from django.urls import include, path
 from django.urls.resolvers import URLPattern, URLResolver
 
 urlpatterns: list[URLPattern | URLResolver] = [
-    path("", views.index, name="index"),
+    path("", website_views.home, name="index"),
     path("workspace/", views.workspace_home, name="workspace-home"),
     path("workspace/command/", command_views.command_page, name="workspace-command"),
     path(
@@ -28,11 +29,13 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("api/ui/v1/", include("apps.core.api.urls")),
     path("internal/metrics", telemetry.internal_metrics, name="internal-metrics"),
     path("rt/stream", ticket_view, name="realtime-ticket"),
+    path("", include("apps.website.urls")),
     path("", include("apps.identity.urls")),
     path("", include("apps.ai.urls")),
     path("", include("apps.analytics.urls")),
     path("", include("apps.scribe.urls")),
     path("", include("apps.subscriptions.urls")),
+    path("", include("apps.interop.urls")),
     path("", include("apps.workflows.urls")),
     path("", include("apps.orders.urls")),
     path("", include("apps.comms.urls")),

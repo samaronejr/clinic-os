@@ -13,8 +13,12 @@ Synthetic, purpose-specific consent, notices and disclosure records are
 implemented; no live legal approval is implied. Consent here is never the
 sole legal-basis claim for care processing. The supported purposes are
 `teleconsultation`, `consultation_recording`, `ai_assistance`,
-`transactional_messaging`, `marketing` and `research_model_improvement`,
-all in `pt-BR`. Channel preferences also remain in intake and are never
+`transactional_messaging`, `marketing`, `research_model_improvement` and
+`rnds_exchange` (sharing laboratory results with the national health data
+network, todo 68), all in `pt-BR`. `rnds_exchange` gates every RNDS submission;
+whether it is the legal basis or an added safeguard (LGPD art. 11 II a or f)
+is open for the owner's compliance reviewer. Delegate grants may carry it like
+any other consent purpose (`delegate_purposes_check`). Channel preferences also remain in intake and are never
 inferred from this consent. Care records and explicit record releases do
 not depend on consent, and refusing or revoking any purpose never blocks
 care.

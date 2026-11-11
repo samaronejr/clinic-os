@@ -42,6 +42,12 @@ def clear_connection_tenant_gucs() -> None:
         cursor.execute("RESET app.current_tenant")
         cursor.execute("RESET app.current_patient_session")
         cursor.execute("RESET app.current_principal")
+        cursor.execute(
+            "SELECT set_config('app.current_scim_token','',false),"
+            "set_config('app.current_sso_connection','',false),"
+            "set_config('app.current_support_grant','',false),"
+            "set_config('app.enterprise_factor','',false)"
+        )
 
 
 @contextmanager

@@ -34,6 +34,12 @@ dated 2026-07-28, the pins are:
 - FHIR-shaped data alone is never presented as RNDS integration; only a
   credentialed, homologated adapter counts.
 - Per-operadora connectivity stays behind EG-8.
+- 2026-11-10 (todo 68): the RNDS stub is replaced by the laboratory-result
+  adapter. RNDS profiles are pinned per release like the TISS components:
+  BRResultadoExameLaboratorial-1.1, BRDiagnosticoLaboratorioClinico-1.0 and
+  BRAmostraBiologica-1.0, from the guide's documentation example, because the
+  definitions package returned HTTP 404. Only a fixture homologation leg runs;
+  RNDS live stays behind EG-7.
 
 ## Rejected
 

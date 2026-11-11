@@ -307,13 +307,16 @@ def test_sign_in_page_severs_a_cross_origin_opener(
 # Self-tests of the CSP-safe wait every suite uses instead of
 # ``Page.wait_for_function`` (which evals in the page and is refused by the
 # strict policy). They run on the real, CSP-protected login page.
-# The page captures animation-frame callbacks instead of running them, so the
-# test decides exactly when the watcher polls again.
+# The page captures animation-frame callbacks instead of running them, and its
+# clock (``performance.now``) stands still until the test moves it, so the test
+# decides exactly when the watcher polls again and when its deadline has passed.
 CAPTURE_FRAMES_JS = """() => {
   window.finished = false;
   window.checks = 0;
   window.frameRequests = 0;
   window.pendingFrame = null;
+  window.pageClock = 0;
+  performance.now = () => window.pageClock;
   window.requestAnimationFrame = (callback) => {
     window.frameRequests += 1;
     window.pendingFrame = callback;
@@ -409,10 +412,14 @@ def test_wait_for_js_deadline_does_not_depend_on_animation_frames(
         )
 
     # The predicate turns true only after the deadline: the stopped watcher
-    # does not evaluate it again, report it, or ask for another frame.
+    # does not evaluate it again, report it, or ask for another frame. Its own
+    # deadline counts from its start in the page (page clock 0), which can come
+    # well after the driver's timer started (hosted run 42994455375), so the
+    # page clock moves 1 ms past that deadline before the late frame runs.
     assert csp_page.evaluate("[window.checks, window.frameRequests]") == [1, 1]
     with csp_page.expect_console_message() as reported:
         csp_page.evaluate("window.finished = true")
+        csp_page.evaluate("window.pageClock = 26")
         assert csp_page.evaluate(RUN_PENDING_FRAME_JS) == 1
         csp_page.evaluate("console.debug('after-late-frame')")
     assert reported.value.text == "after-late-frame"

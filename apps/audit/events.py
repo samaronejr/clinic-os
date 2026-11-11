@@ -10,7 +10,9 @@ from uuid import UUID
 from django.utils import timezone
 
 from apps.audit.canonical import AuditEventInput
+from apps.identity.enterprise_contract import EVENTS as ENTERPRISE_EVENTS
 from apps.insurance.audit_catalog import EVENTS as INSURANCE_EVENTS
+from apps.interop.audit_catalog import EVENTS as INTEROP_EVENTS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -50,6 +52,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "subscriptions.subscription.changed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "subscriptions.subscription", "changed"
         ),
+        **{
+            f"interop.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"interop.{kind}", verb
+            )
+            for kind, verbs in {
+                "api_client": ("created", "rotated", "revoked"),
+                "webhook_subscription": ("revoked",),
+                "organization_export": ("requested", "ready", "failed", "downloaded"),
+                "rnds_submission": ("requested", "accepted", "rejected"),
+            }.items()
+            for verb in verbs
+        },
         **{
             f"crm.{kind}.{verb}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", f"crm.{kind}", verb
@@ -221,6 +235,13 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             for kind, verbs in INSURANCE_EVENTS.items()
             for verb in verbs
         },
+        **{
+            f"interop.{kind}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"interop.{kind}", verb
+            )
+            for kind, verbs in INTEROP_EVENTS.items()
+            for verb in verbs
+        },
         "billing.book.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "billing.journal_book", "created"
         ),
@@ -276,6 +297,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "billing.journal.exported": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "billing.journal_book", "exported"
         ),
+        **{
+            event_type: Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", record_type, verb
+            )
+            for event_type, (record_type, verb) in ENTERPRISE_EVENTS.items()
+        },
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"
         ),

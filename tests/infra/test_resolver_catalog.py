@@ -9,10 +9,12 @@ from infra import (
     coordination_catalog,
     crm_catalog,
     duplicate_catalog,
+    enterprise_catalog,
     fiscal_catalog,
     front_desk_catalog,
     identity_lifecycle_catalog,
     insurance_catalog,
+    interop_catalog,
     inventory_catalog,
     journal_catalog,
     longitudinal_catalog,
@@ -32,6 +34,7 @@ RECORD_APPROVAL_ARGUMENTS: Final = (
 )
 RESOLVER_TABLE_GRANTS: Final = {
     *crm_catalog.TABLE_GRANTS,
+    *interop_catalog.TABLE_GRANTS,
     *analytics_catalog.TABLE_GRANTS,
     *subscriptions_catalog.TABLE_GRANTS,
     *retention_catalog.TABLE_GRANTS,
@@ -40,6 +43,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *journal_catalog.TABLE_GRANTS,
     *psp_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
+    *enterprise_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
     ("scheduling_displaydevice", "SELECT"),
@@ -212,6 +216,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
     ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
     *inventory_catalog.COLUMN_GRANTS,
+    *interop_catalog.COLUMN_GRANTS,
     *insurance_catalog.COLUMN_GRANTS,
     *journal_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
@@ -223,6 +228,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("consent_aiusedisclosure", "patient_id", "SELECT"),
     ("consent_aiusedisclosure", "informed", "SELECT"),
     ("consent_aiusedisclosure", "refused", "SELECT"),
+    *enterprise_catalog.COLUMN_GRANTS,
     ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
     ("identity_passkey", "last_used", "UPDATE"),
     ("identity_passkey", "removed_at", "UPDATE"),
@@ -282,6 +288,7 @@ POSTURE_OVERRIDES: Final = {
     **fiscal_catalog.POSTURE,
     **journal_catalog.POSTURE,
     **psp_catalog.POSTURE,
+    **enterprise_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -586,6 +593,7 @@ POSTURE_OVERRIDES: Final = {
     **front_desk_catalog.POSTURE,
     **coordination_catalog.POSTURE,
     **inventory_catalog.POSTURE,
+    **interop_catalog.POSTURE,
     **insurance_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
@@ -594,6 +602,7 @@ FUNCTION_SIGNATURES: Final = {
     *subscriptions_catalog.RESULTS,
     *retention_catalog.RESULTS,
     *fiscal_catalog.RESULTS,
+    *enterprise_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
@@ -908,6 +917,7 @@ FUNCTION_SIGNATURES: Final = {
     *front_desk_catalog.RESULTS,
     *coordination_catalog.RESULTS,
     *inventory_catalog.RESULTS,
+    *interop_catalog.RESULTS,
     *insurance_catalog.RESULTS,
     *journal_catalog.RESULTS,
     *psp_catalog.RESULTS,
@@ -928,6 +938,7 @@ FUNCTION_RESULTS: Final = {
     **retention_catalog.RESULTS,
     **journal_catalog.RESULTS,
     **psp_catalog.RESULTS,
+    **enterprise_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (
@@ -1403,6 +1414,7 @@ FUNCTION_RESULTS: Final = {
     **front_desk_catalog.RESULTS,
     **coordination_catalog.RESULTS,
     **inventory_catalog.RESULTS,
+    **interop_catalog.RESULTS,
     **insurance_catalog.RESULTS,
 }
 
@@ -1496,7 +1508,10 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         )
         assert function[2:9] == (
             "clinic_resolver",
-            name not in journal_catalog.INVOKERS | subscriptions_catalog.INVOKERS,
+            name
+            not in journal_catalog.INVOKERS
+            | subscriptions_catalog.INVOKERS
+            | interop_catalog.INVOKERS,
             volatility,
             "u",
             [
@@ -1504,6 +1519,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
                 if name in identity_lifecycle_catalog.POSTURE
                 or name in duplicate_catalog.POSTURE
                 or name in journal_catalog.PG_ONLY
+                or name in enterprise_catalog.POSTURE
                 else "search_path=pg_catalog, clinic_app, pg_temp"
             ],
             True,

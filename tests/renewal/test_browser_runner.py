@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import SupervisedMaster
+from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.isolation_common import IsolationError, JsonObject
 from playwright.sync_api import (
     ElementHandle,
@@ -91,6 +92,8 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "care-coordination",
         "public-booking",
         "reports",
+        "device-capabilities",
+        "website",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
     assert {
@@ -1666,6 +1669,7 @@ def test_provisioned_database_uses_unique_names_and_cleans_only_its_own(
     ) in calls
     [started] = [call for call in calls if call[0] == "run"]
     assert "--memory" not in started
+    assert started[started.index(runner.POSTGRES_IMAGE) + 1 :] == TEST_DATABASE_SETTINGS
     assert removed == [("container", "rm", "-f", db.container)]
     assert volumes == [("volume", "rm", db.volume)]
     assert all("app_mei" not in " ".join(call) for call in calls)
@@ -1700,7 +1704,13 @@ def test_coverage_database_bounds_memory_and_retains_durability_defaults() -> No
         [started] = [call for call in calls if call[0] == "run"]
         assert started[started.index("--memory") + 1] == "6g"
         assert started[started.index("--memory-swap") + 1] == "6g"
-        assert started[-1] == runner.POSTGRES_IMAGE
+        # The image is followed only by the suite's lock budget: eight xdist
+        # workers flush at once (ops/testing/ci_postgres_settings.py).
+        assert started[started.index(runner.POSTGRES_IMAGE) :] == (
+            runner.POSTGRES_IMAGE,
+            "-c",
+            "max_locks_per_transaction=512",
+        )
         assert not any(
             "fsync=" in arg
             or "synchronous_commit=" in arg

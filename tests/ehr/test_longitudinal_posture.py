@@ -10,6 +10,7 @@ from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 from psycopg.errors import DivisionByZero
 
+from enterprise_fence_support import fenced
 from patients.test_intake_migrations import _default_connection, _scratch_database
 
 if TYPE_CHECKING:
@@ -97,12 +98,14 @@ def test_restriction_applies_to_source_rows_before_any_count() -> None:
             "WHERE schemaname='clinic_app' AND tablename='ehr_clinicaldocumentversion' "
             "AND policyname='restricted_note_visibility'"
         )
+        # Identity 0051 adds only its staff-context fence to the restriction.
+        restriction = fenced("clinic_app.ehr_note_visible(document_id)", qualified=True)
         assert cursor.fetchone() == (
             "RESTRICTIVE",
             ["clinic_app"],
             "ALL",
-            "clinic_app.ehr_note_visible(document_id)",
-            "clinic_app.ehr_note_visible(document_id)",
+            restriction,
+            restriction,
         )
 
 

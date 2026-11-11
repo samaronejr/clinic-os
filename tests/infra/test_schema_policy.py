@@ -3,6 +3,7 @@ from typing import Final
 import psycopg
 import pytest
 from apps.crm.rls import CUSTOM_RLS_TABLES as CRM_CUSTOM_RLS_TABLES
+from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
 from apps.identity.models import (
     Clinic,
     ClinicConfiguration,
@@ -10,6 +11,7 @@ from apps.identity.models import (
     UserClinicRole,
 )
 from apps.insurance.rls import TABLES as INSURANCE_TABLES
+from apps.interop.rls import CUSTOM_RLS_TABLES as INTEROP_CUSTOM_RLS_TABLES
 from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
 from django.apps import apps as django_apps
@@ -67,8 +69,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Then: missing models, missing policies, and extra policies all fail
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
-    assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+    assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | set(ENTERPRISE_TABLES) | {
         *CRM_CUSTOM_RLS_TABLES,
+        # Tasks 66 and 67: exact interop policies, grants, guards and triggers:
+        # tests/interop (posture.json).
+        *INTEROP_CUSTOM_RLS_TABLES,
         # Requester-bound reporting policies: tests/analytics/test_posture.py.
         "analytics_metricdefinitionversion",
         "analytics_readmodelrefresh",
@@ -316,6 +321,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("scheduling_roomstatus", "reception_scope"),
         ("scheduling_cliniciandelay", "reception_scope"),
         ("scheduling_displaydevice", "reception_scope"),
+        # Task 66: rolled-back imported enrollments are hidden from every read.
+        ("intake_patientclinicenrollment", "interop_import_visibility"),
+        ("intake_duplicatecandidate", "interop_import_visibility"),
     }
 
 
@@ -345,6 +353,7 @@ def test_tenant_policies_are_public_permissive_all_and_fail_closed() -> None:
             f"({tenant_column} = (NULLIF(current_setting("
             "'app.current_tenant'::text, true), ''::text))::uuid)"
         )
+        expected_expression = f"({expected_expression} AND enterprise_staff_context())"
         assert permissive == "PERMISSIVE"
         assert roles == ["public"]
         assert command == "ALL"

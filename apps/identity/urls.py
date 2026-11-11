@@ -1,11 +1,14 @@
 """Routes for Clinic OS authentication and TOTP lifecycle screens."""
 
-from django.urls import path
+from django.urls import path, re_path
 from django.urls.resolvers import URLPattern
 
 from apps.identity import (
     account_views,
     clinic_settings_views,
+    emergency_views,
+    enterprise_auth_views,
+    enterprise_views,
     invitation_views,
     lifecycle_views,
     onboarding_views,
@@ -14,14 +17,69 @@ from apps.identity import (
     passkey_assertion_views,
     passkey_views,
     preferences_views,
+    scim_views,
     staff_views,
     stepup_views,
     views,
 )
+from apps.identity.scim_paths import RESOURCE_PATH_PATTERN
 
 app_name = "identity"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "clinics/<uuid:clinic_id>/settings/emergency-reviews/",
+        emergency_views.emergency_reviews,
+        name="emergency-reviews",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/settings/governance/",
+        enterprise_views.governance_view,
+        name="governance",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/settings/governance/grants/",
+        enterprise_views.grant_command,
+        name="governance-grant-command",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/account/emergency/",
+        emergency_views.emergency_view,
+        name="emergency",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/account/emergency/read/",
+        emergency_views.emergency_read,
+        name="emergency-read",
+    ),
+    path(
+        "patient/security/access-log/",
+        emergency_views.patient_access_log,
+        name="patient-access-log",
+    ),
+    path("auth/sso/begin/", enterprise_auth_views.sso_begin, name="sso-begin"),
+    path("auth/sso/finish/", enterprise_auth_views.sso_finish, name="sso-finish"),
+    path(
+        "support/diagnostics/",
+        enterprise_auth_views.support_diagnostics_view,
+        name="support-diagnostics",
+    ),
+    re_path(
+        r"^scim/v2/(?P<kind>Users|Groups)$",
+        scim_views.scim_endpoint,
+        name="scim-collection",
+    ),
+    re_path(
+        r"^scim/v2/(?P<kind>Users|Groups)/\.search$",
+        scim_views.scim_endpoint,
+        {"search": True},
+        name="scim-search",
+    ),
+    re_path(
+        RESOURCE_PATH_PATTERN,
+        scim_views.scim_endpoint,
+        name="scim-resource",
+    ),
     path("account/passkeys/", passkey_account_views.passkeys_view, name="passkeys"),
     path(
         "account/passkeys/remove/",

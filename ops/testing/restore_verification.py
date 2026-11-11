@@ -530,6 +530,7 @@ def source_scope(client: _SqlClient) -> SourceScope:
         "tenant_data_key_count",
         "totp_without_identity_count",
         "users_without_role_count",
+        "directory_users_without_role_count",
         *REQUIRED_EMPTY,
     }
     if set(integers) != required:
@@ -545,6 +546,7 @@ def source_scope(client: _SqlClient) -> SourceScope:
         integers["totp_without_identity_count"],
         unexpected,
         integers["users_without_role_count"],
+        integers["directory_users_without_role_count"],
     )
 
 

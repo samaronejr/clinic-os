@@ -102,4 +102,45 @@ concurrency. A React runtime under the 60 KB budget alone does not reopen it.
 
 ## Owning todos
 
-23 (decision and slice). Consumers: 10, 24, 42, 51.
+23 (decision and slice). Consumers: 10, 24, 42, 51. Website surface
+note: 70.
+
+## Note (todo 70): public website and help center
+
+The plan left open whether the Clinic Ops website would be served by Django or
+by a separate static build. It is served by Django. The `apps/website` app
+renders the home, product, security, contact and brand pages and the pt-BR help
+center as server templates. They run in the same Gunicorn runtime, on GET-only
+routes that the tenancy middleware lists as public. The pages link
+`clinic-os.css` and `clinic-os-website.css` and nothing else. They load no
+JavaScript, write no session and run no tenant query. The home route still
+forwards a signed-in session to the workspace. Revert = remove the app, its
+URL include and its bypass entries.
+
+Why this way: the pages reuse the pt-BR catalog, the design tokens, the strict
+CSP, the private cache headers and the renewal browser runner without a second
+toolchain. Every text in the templates under `templates/website/` and in the help
+guides is registered in `docs/web/claims.yaml`: a
+statement of fact as a claim with an `evidence_ref` (marked `data-claim` on
+the page), anything else as a non-claim with a reason.
+`tests/website/test_claims.py` fails on any text in neither list in a template
+under `templates/website/` (subfolders included) or in a help guide, on a
+template form it cannot classify, on a claim without evidence, and on a
+website route that renders a template outside that tree and off its
+allowlist (the text-free icon include and the app-wide 404 page). Its route
+test walks every route of the website urlconf, every root route a website
+view serves and every route under `WEBSITE_PUBLIC`, the one constant the
+tenancy bypass is built from. Declared limits: the tests do not check values
+the views compute at request time or the pt-BR translations, and the route
+test renders each route once, anonymously, with no query string. Each help-guide step names the real URL,
+template, screen title and control label it describes, and
+`tests/website/test_guides.py` fails when one of them drifts. The pricing
+route returns 404 and appears in no navigation until todo 74 records
+owner-approved packaging.
+
+Rejected for this surface: a separate static build (a generator, a second
+deploy target, its own header and CSP stack and a copy of the tokens), a React
+island (nothing here is interactive) and a CMS (the copy is contract-bound and
+reviewed in git). Revisit when the site needs per-visitor content, experiments
+or a release cadence independent of the product. The next step would then be a
+static export of these same templates to a CDN origin.

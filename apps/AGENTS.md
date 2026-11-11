@@ -18,7 +18,7 @@
 | billing | invoices, synthetic PIX, payment reconciliation | 26 (tests/ops only) | billing/README.md |
 | insurance | versioned TISS guides, sealed batches, returns, appeals, payer checks and journal reconciliation; synthetic only | new | insurance/README.md |
 | teleconsult / retention / consent | video sessions / holds+exports / teleconsult consent | 13 / 7 / 16 | own README.md |
-| interop | deferred stub | 1 | - |
+| interop | governed data import (todo 66): checksummed sources, versioned mappings, dry runs, step-up commits on the bulk queue, imported provenance and hide-only rollback; partner API `/api/v1/` (OAuth2 client credentials, hashed secrets, Redis token bucket, opaque ids), signed webhooks on the action outbox, management API `/api/interop/v1/` and the organization export (todo 67; v2 adds the import relations, v3 the enterprise relations and v4 the RNDS submission log, both applied by identity 0051; v1 to v3 frozen); `exchange_clinical_record` (todo 68: RNDS laboratory results, fixture homologation leg only, BLOCKED-ON-EG-7) | 1 | interop/README.md |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
 | workflows | single Task entity, version-pinned runs, inbox/Today, care plans, referrals, recalls, PROs (care code in `care/`), result release notices and the urgent-concern queue | new | workflows/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
@@ -27,10 +27,11 @@
 | crm | encrypted prospects with separate retention, current purpose and channel consent, neutral campaigns, optional feedback, body-only public booking | new | crm/README.md |
 | analytics | versioned clinic metrics, journal-only money projections, requester-bound snapshots and a reviewed synthetic analyst | new | analytics/README.md |
 | subscriptions | Clinic Ops packaging, membership seats, lifecycle and source-derived usage, separate from clinic journals | new | subscriptions/README.md |
+| website | public product site and pt-BR help center: GET-only, no models or services, claims registered in `docs/web/claims.yaml`, guides bound to real screens | new | website/README.md |
 
 ## REQUEST AUTHORITY FLOW
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
-- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
+- Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`, `/api/v1/` (bearer authority comes only from `interop_api_session`), and the public website (`/product/`, `/security/`, `/contact/`, `/brand/`, `/pricing/`, `/help/`).
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.
 - `tenant_context` raises `TenantTransactionNestingError` inside an atomic block: request code already has context; only CLI/workers/tests open it.
 - Staff role gate: `identity.current_context.require_current_actor_clinic_roles`; privileged views: `identity.otp.privileged_totp_required`.
@@ -41,7 +42,7 @@
 | New tenant table | inherit `tenancy.models.TenantScopedModel`; add `(table, col)` to the app's `rls.py` `*_RLS_TARGETS` allowlist; migration runs `apply_*_rls` |
 | Policy/resolver/trigger SQL | `<app>/migrations/_<topic>_sql.py` constants, imported by numbered migrations via `RunSQL` |
 | Encrypted column | `tenancy/fields.py` (purpose-bound, bytea), `tenancy/envelope.py` `protect`/`reveal` |
-| External send/callback | `core/integration.py` `enqueue_operation`/`execute_operation`/`receive_provider_callback`; register via `register_send_adapter` + `register_subject_recheck` in `AppConfig.ready()` (comms, intake, prescription, teleconsult) |
+| External send/callback | `core/integration.py` `enqueue_operation`/`execute_operation`/`receive_provider_callback`; register via `register_send_adapter` + `register_subject_recheck` in `AppConfig.ready()` (comms, intake, prescription, teleconsult); `action` kind via `register_action_adapter` (interop webhooks) |
 | Subject mutation vs in-flight send | `hold_subject_mutation_lock` / `hold_subject_mutation_key` |
 | Audit event | `audit/events.py` fixed matrix; payload keys only `clinic_id, http_method, http_status, object_verb, reason_code, request_id` |
 | Idempotency fingerprint | `core/idempotency.py` (`clinic-idempotency-v1`) |
@@ -52,9 +53,9 @@
 ## CONVENTIONS
 - Per-app shape: `services.py` facade (explicit `__all__` in intake/scheduling/audit), split workflow modules, `*_views.py`, `*_presenter.py`, `rls.py`, `migrations/_*_sql.py`, `README.md` = binding domain contract; read it before editing.
 - Service params keyword-only with explicit scope (`clinic_id`, `encounter_id`...); never `actor`, `request`, `organization_id`. Signatures pinned in `tests/infra/test_module_boundaries.py`, which also pins all 14 AppConfig paths.
-- Deferred: `prescription.issue_prescription`, `retention.apply_retention_policy`, `interop.exchange_clinical_record` raise `NotImplementedError("Phase >=1")` (test-pinned).
+- No deferred service stub remains: `prescription.issue_prescription`, `retention.apply_retention_policy` and `interop.exchange_clinical_record` (todo 68) are implemented, each behind its own capability gate; their keyword-only signatures are pinned.
 - UUID PKs; frozen dataclass results; per-app `*AccessDeniedError`/`*ConflictError`; optimistic `expected_revision`/`expected_version`. Unknown vs wrong-clinic records return the same denial.
-- Load-bearing private cross-app imports: `ehr.services._denied` (prescription, ehr history/attachments), `_appointment`/`_assigned` (retention), `audit.services._content_hash` (consent), `tenancy.envelope._kek` (intake search). Renaming them is a multi-app change.
+- Load-bearing private cross-app imports: `ehr.services._denied` (prescription, ehr history/attachments), `_appointment`/`_assigned` (retention), `audit.services._content_hash` (consent), `tenancy.envelope._kek` (intake search, interop dry runs), `intake.demographics._apply_demographics`/`_DemographicsMutation`/`_append_identifier`/`_required_fields` and `intake.duplicate_detection._current_identifiers`/`_current_indexes` (interop import). Renaming them is a multi-app change.
 - Protected-field migrations (`00xx_protected_fields.py`): `atomic = False`, resumable, irreversible.
 - Billing: amounts are positive int BRL centavos (`amount_minor`); services reject float/Decimal.
 

@@ -9,6 +9,7 @@ from .contracts import (
     require_data_mode,
     resolve_attachment_root,
     resolve_csp_report_only,
+    resolve_website_contact_email,
     validate_secret_store_env,
 )
 from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
@@ -38,6 +39,9 @@ CLINIC_DATA_MODE: str = require_data_mode(env("CLINIC_DATA_MODE", default="synth
 # Strict CSP is enforced by default; report-only is a synthetic-only rollout
 # and rollback lever that live mode refuses (contracts.resolve_csp_report_only).
 CLINIC_CSP_REPORT_ONLY: bool = resolve_csp_report_only(os.environ, CLINIC_DATA_MODE)
+# Public contact address for the website's contact page (todo 70); empty means
+# the page says no address is published yet.
+CLINIC_WEBSITE_CONTACT_EMAIL: str = resolve_website_contact_email(os.environ)
 # Managed-secret boundary for key material; no default, no plaintext fallback.
 CLINIC_SECRET_BACKEND: str | None
 CLINIC_SECRET_DIR: str | None
@@ -83,6 +87,7 @@ INSTALLED_APPS: list[str] = [
     "apps.insurance.apps.InsuranceConfig",
     "apps.analytics.apps.AnalyticsConfig",
     "apps.subscriptions.apps.SubscriptionsConfig",
+    "apps.website.apps.WebsiteConfig",
 ]
 
 # Capture is an explicit synthetic rehearsal until the provider lifecycle and
@@ -128,6 +133,9 @@ LOGIN_URL: str = "/auth/login/"
 OTP_LOGIN_URL: str = "/auth/verify/"
 OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
+CLINIC_ENTERPRISE_SYNTHETIC: bool = env.bool(
+    "CLINIC_ENTERPRISE_SYNTHETIC", default=False
+)
 WEBAUTHN_RP_ID: str = env("CLINIC_WEBAUTHN_RP_ID", default="localhost")
 # Synthetic loopback environments can bind their ephemeral port at begin;
 # every non-loopback environment supplies its exact origin explicitly.
@@ -341,6 +349,9 @@ BILLING_SYNTHETIC_PIX_SECRET: str = env("BILLING_SYNTHETIC_PIX_SECRET", default=
 # Local recordings only; the registry must also name the approved fixture sandbox.
 BILLING_SYNTHETIC_PSP: bool = env.bool("BILLING_SYNTHETIC_PSP", default=False)
 BILLING_PSP_FIXTURE_SECRET: str = env("BILLING_PSP_FIXTURE_SECRET", default="")
+# RNDS fixture homologation rehearsal (EG-7 unmet); the registry must also name the
+# approved fixture sandbox version, and no real RNDS host is reachable.
+INTEROP_RNDS_HOMOLOGATION: bool = env.bool("INTEROP_RNDS_HOMOLOGATION", default=False)
 COMMS_REVOKED_REMINDER_TEMPLATES: list[str] = env.list(
     "COMMS_REVOKED_REMINDER_TEMPLATES", default=[]
 )

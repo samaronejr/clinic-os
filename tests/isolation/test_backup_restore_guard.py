@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
+from apps.identity.enterprise_contract import TABLES as ENTERPRISE_TABLES
 from ops.testing import (
     restore_container,
     restore_contract,
@@ -34,11 +35,15 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         == restore_contract.TABLE_DATA
     )
     # The Wave D catalog plus 12 journal, 5 PSP, 3 fiscal, 16 insurance, 4
-    # analytics, 7 subscription, 12 inventory and 7 CRM tables and identity
-    # 0050's resolver-owned TOTP seed store has 273 domain relations; the store
-    # is restored with its device so a restore never strands an authenticator.
-    # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 273
+    # analytics, 7 subscription, 12 inventory, 7 CRM, 7 import and 9 partner and
+    # export tables, the RNDS submission log, identity 0050's resolver-owned TOTP
+    # seed store and identity 0051's 10 enterprise tables has 300 domain
+    # relations; the store is restored with its device so a restore never
+    # strands an authenticator, and every enterprise relation is derived from
+    # source. tests/infra/test_recovery_manifest.py independently proves
+    # completeness against the live migrated catalog.
+    assert len(restore_contract.DOMAIN_RELATIONS) == 300
+    assert set(ENTERPRISE_TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
     assert "clinic_app.identity_totpsecret" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
@@ -176,6 +181,21 @@ def test_toc_and_source_scope_reject_before_restore() -> None:
         users_without_role_count=0,
     )
     restore_contract.require_source_scope(clean)
+    restore_contract.require_source_scope(
+        replace(
+            clean,
+            users_without_role_count=1,
+            directory_users_without_role_count=1,
+        )
+    )
+    with pytest.raises(restore_contract.RestoreContractError, match="identity"):
+        restore_contract.require_source_scope(
+            replace(clean, users_without_role_count=1)
+        )
+    with pytest.raises(restore_contract.RestoreContractError, match="identity"):
+        restore_contract.require_source_scope(
+            replace(clean, directory_users_without_role_count=1)
+        )
     with pytest.raises(restore_contract.RestoreContractError, match="data key"):
         restore_contract.require_source_scope(replace(clean, tenant_data_key_count=0))
     with pytest.raises(restore_contract.RestoreContractError, match="organization"):

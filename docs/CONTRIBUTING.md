@@ -66,7 +66,7 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 fails the run otherwise.
 
 Hosted CI divides both phases into four deterministic, file-atomic shards per
-Python version, keeping each hosted job within its 75-minute budget. Each shard collects the complete reference independently and
+Python version, keeping each hosted job within its 90-minute budget. Each shard collects the complete reference independently and
 retains its raw line coverage, exactly-once execution reports, refusal census
 and shared-catalog certificate. The `python-coverage` jobs require every shard,
 prove their disjoint union equals that reference, require every derived refusal
@@ -190,13 +190,12 @@ uv run pytest --reuse-db tests/auth/test_stepup_policy.py tests/auth/test_stepup
 
 ## Deferred domains, live data, and AI-assisted code
 
-The two remaining deferred `services.py` entrypoints
-(`prescription.issue_prescription`, `interop.exchange_clinical_record`)
-must continue to raise exactly
-`NotImplementedError("Phase >=1")` until their owning renewal task ships. Do
-not describe or expose these stubs as working clinical functionality. The
-[renewal roadmap](plans/clinic-os-renewal-roadmap.md) maps each deferred
-domain to its owning wave.
+No deferred `services.py` entrypoint remains: the last one,
+`interop.exchange_clinical_record`, shipped with todo 68 as a fixture-only RNDS
+homologation leg behind EG-7. Do not describe that leg, or any gated synthetic
+slice, as a working production integration. The
+[renewal roadmap](plans/clinic-os-renewal-roadmap.md) maps each formerly
+deferred domain to its owning wave.
 
 `retention.apply_retention_policy` implements only synthetic `raw_audio`,
 `ai_artifact` and `transcript_partial` retention. Preserve its exact keyword-only

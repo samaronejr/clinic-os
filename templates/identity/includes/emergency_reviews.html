@@ -1,0 +1,17 @@
+{% load i18n tz clinic_locale %}
+<p>{% trans "Every emergency grant creates an immediate manager notice, a patient access-log entry and a mandatory review task." %}</p>
+<ul>{% for grant in emergencies %}<li>
+  {% timezone clinic.timezone %}<time datetime="{{ grant.created_at|date:'c' }}">{{ grant.created_at|date:"Y-m-d\TH:i"|clinic_minute }}</time>{% endtimezone %}
+  <dl>
+    <dt>{% trans "Staff account ID" %}</dt><dd>{{ grant.clinician_id }}</dd>
+    <dt>{% trans "Patient enrollment ID" %}</dt><dd>{{ grant.enrollment_id }}</dd>
+    {% if grant.encounter_id %}<dt>{% trans "Encounter ID" %}</dt><dd>{{ grant.encounter_id }}</dd>{% endif %}
+    <dt>{% trans "Emergency access reason" %}</dt><dd>{{ grant.reason }}</dd>
+  </dl>
+  {% if grant.reviewed_at %}<span class="badge badge--success">{% trans "Reviewed" %}</span>{% else %}
+  <form method="post" action="{% url 'identity:governance-grant-command' clinic_id=clinic_id %}">{% csrf_token %}
+    <input type="hidden" name="grant_id" value="{{ grant.pk }}">
+    {% if grant.revoked_at or review_now >= grant.expires_at %}<button class="button button--secondary" name="action" value="break_glass_review" type="submit">{% trans "Complete post-event review" %}</button>{% else %}<p>{% trans "Review becomes available after access ends." %}</p>{% endif %}
+    {% if not grant.revoked_at %}<button class="button button--danger" name="action" value="break_glass_revoke" type="submit">{% trans "Revoke access" %}</button>{% endif %}
+  </form>{% endif %}
+</li>{% empty %}<li>{% trans "No emergency access has been granted." %}</li>{% endfor %}</ul>

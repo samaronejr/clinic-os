@@ -253,6 +253,7 @@ def test_route_table_maps_task_modules_to_queues() -> None:
         "apps.workflows.tasks.*": "bulk",
         "apps.analytics.tasks.*": "bulk",
         "apps.crm.tasks.*": "bulk",
+        "apps.interop.tasks.*": "bulk",
     }
     for pattern, queue in module_queues.items():
         assert routes[pattern]["queue"] == queue
@@ -260,8 +261,12 @@ def test_route_table_maps_task_modules_to_queues() -> None:
     assert routed["queue"].name == "clinic-integrations"
     routed = celery_app.amqp.router.route({}, "apps.ai.tasks.draft")
     assert routed["queue"].name == "ai-batch"
+    routed = celery_app.amqp.router.route({}, "apps.interop.tasks.commit_batch")
+    assert routed["queue"].name == "bulk"
     routed = celery_app.amqp.router.route({}, "apps.scheduling.tasks.expire_holds")
     assert routed["queue"].name == "clinical"
+    routed = celery_app.amqp.router.route({}, "apps.interop.tasks.expire_exports")
+    assert routed["queue"].name == "bulk"
 
 
 def test_beat_schedule_has_exact_durable_scanners() -> None:
@@ -294,6 +299,15 @@ def test_beat_schedule_has_exact_durable_scanners() -> None:
         "ehr-timeline-projection": {
             "task": "apps.ehr.tasks.refresh_timeline",
             "schedule": 60.0,
+        },
+        # Plan item 67: lost export hand-offs and archive expiry, bulk queue.
+        "interop-export-dispatch": {
+            "task": "apps.interop.tasks.dispatch_due_exports",
+            "schedule": 300.0,
+        },
+        "interop-export-expiry": {
+            "task": "apps.interop.tasks.expire_exports",
+            "schedule": 900.0,
         },
     }
 

@@ -297,6 +297,16 @@ SELECT json_build_object(
       SELECT 1 FROM clinic_app.identity_userclinicrole AS r WHERE r.user_id=u.id
     )
   ),
+  'directory_users_without_role_count', (
+    SELECT count(*) FROM clinic_app.identity_user AS u
+    WHERE NOT EXISTS (
+      SELECT 1 FROM clinic_app.identity_userclinicrole AS r WHERE r.user_id=u.id
+    )
+    AND EXISTS (
+      SELECT 1 FROM clinic_app.identity_scimresource AS resource
+      WHERE resource.kind='Users' AND resource.user_id=u.id
+    )
+  ),
   'totp_without_identity_count', (
     SELECT count(*) FROM clinic_app.otp_totp_totpdevice AS d
     WHERE NOT EXISTS (

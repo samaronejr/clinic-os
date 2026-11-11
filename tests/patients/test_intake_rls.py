@@ -16,6 +16,7 @@ from psycopg.errors import (
 )
 
 from database_urls import database_url_for_name
+from enterprise_fence_support import fenced
 from patients.test_intake_migrations import _default_connection, _scratch_database
 from tenant_key_support import issue_tenant_key_for
 
@@ -29,6 +30,24 @@ PATIENT_B = UUID(int=2202)
 ENROLLMENT_A = UUID(int=2301)
 ENROLLMENT_B = UUID(int=2302)
 ENROLLMENT_FOREIGN = UUID(int=2303)
+TENANT_POLICY = (
+    "(organization_id = (NULLIF(current_setting("
+    "'app.current_tenant'::text, true), ''::text))::uuid)"
+)
+# A rolled-back import (apps/interop) hides its unused enrollments and their
+# duplicate hints from every staff and owner read.
+IMPORT_VISIBILITY = {
+    "intake_duplicatecandidate": (
+        "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+        "  WHERE (h.enrollment_id = ANY (ARRAY["
+        "intake_duplicatecandidate.enrollment_a_id, "
+        "intake_duplicatecandidate.enrollment_b_id])))))"
+    ),
+    "intake_patientclinicenrollment": (
+        "(NOT (EXISTS ( SELECT 1\n   FROM interop_hiddenenrollment h\n"
+        "  WHERE (h.enrollment_id = intake_patientclinicenrollment.id))))"
+    ),
+}
 
 
 def _set_owner_tenant(organization_id: UUID) -> None:
@@ -215,20 +234,37 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 """,
                 [[table for table, _ in sorted(expected_targets)]],
             )
-            assert cursor.fetchall() == [
-                (
-                    table,
-                    "tenant_isolation",
-                    "PERMISSIVE",
-                    ["public"],
-                    "ALL",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
-                    "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)",
-                )
-                for table, _ in sorted(expected_targets)
-            ]
+            # Identity 0051's staff-context fence narrows both the tenant policy and
+            # task 66's restrictive import visibility (SELECT, so it has no check).
+            assert cursor.fetchall() == sorted(
+                [
+                    *(
+                        (
+                            table,
+                            "tenant_isolation",
+                            "PERMISSIVE",
+                            ["public"],
+                            "ALL",
+                            fenced(TENANT_POLICY),
+                            fenced(TENANT_POLICY),
+                        )
+                        for table, _ in expected_targets
+                    ),
+                    *(
+                        (
+                            table,
+                            "interop_import_visibility",
+                            "RESTRICTIVE",
+                            ["clinic_app", "clinic_owner"],
+                            "SELECT",
+                            fenced(qual),
+                            None,
+                        )
+                        for table, qual in IMPORT_VISIBILITY.items()
+                    ),
+                ],
+                key=lambda row: (row[0], row[1]),
+            )
             cursor.execute(
                 """
                 SELECT table_name, privilege_type

@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from inspect import Parameter, signature
-from typing import Final, NoReturn
+from typing import Final
 
 import pytest
 from apps.ai import (
@@ -61,6 +61,8 @@ from apps.insurance.appointment_coverage import record_booking_coverage
 from apps.intake import data_requests
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
+from apps.interop import services as interop_services
+from apps.interop.rnds_gate import require_rnds_homologation
 from apps.interop.services import exchange_clinical_record
 from apps.inventory import services as inventory_services
 from apps.orders import services as order_services
@@ -201,10 +203,8 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.orders.apps.OrdersConfig",
         "apps.inventory.apps.InventoryConfig",
         "apps.insurance.apps.InsuranceConfig",
+        "apps.website.apps.WebsiteConfig",
     }
-)
-DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    exchange_clinical_record,
 )
 
 
@@ -378,6 +378,76 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     ],
 )
 def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert {
+        name: p.default
+        for name, p in parameters.items()
+        if p.default is not Parameter.empty
+    } == defaults
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (
+            interop_services.upload_import,
+            ["clinic_id", "source_kind", "data", "declared_sha256", "idempotency_key"],
+            {},
+        ),
+        (
+            interop_services.profile_import,
+            ["clinic_id", "job_id", "expected_sequence"],
+            {},
+        ),
+        (interop_services.suggest_mapping, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.save_mapping,
+            ["clinic_id", "code", "document", "suggested"],
+            {"suggested": False},
+        ),
+        (
+            interop_services.apply_mapping,
+            ["clinic_id", "job_id", "mapping_id", "expected_sequence"],
+            {},
+        ),
+        (
+            interop_services.dry_run_import,
+            ["clinic_id", "job_id", "expected_sequence"],
+            {},
+        ),
+        (interop_services.dry_run_report, ["clinic_id", "job_id"], {}),
+        (interop_services.export_import_report, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.approve_import,
+            ["clinic_id", "job_id", "expected_sequence", "plan"],
+            {},
+        ),
+        (
+            interop_services.commit_import,
+            ["clinic_id", "job_id", "expected_sequence", "session_key"],
+            {},
+        ),
+        (interop_services.run_batch, ["clinic_id", "batch_id"], {}),
+        (interop_services.reconciliation_report, ["clinic_id", "job_id"], {}),
+        (
+            interop_services.rollback_import,
+            ["clinic_id", "job_id", "expected_sequence", "reason", "session_key"],
+            {},
+        ),
+        (interop_services.import_job, ["clinic_id", "job_id"], {}),
+        (interop_services.import_jobs, ["clinic_id"], {}),
+        (interop_services.imported_history, ["clinic_id", "enrollment_id"], {}),
+        (interop_services.imported_attachment, ["clinic_id", "record_id"], {}),
+    ],
+)
+def test_import_services_keep_exact_scoped_keyword_only_boundaries(
     entrypoint: Callable[..., object],
     names: list[str],
     defaults: dict[str, object],
@@ -956,21 +1026,22 @@ def test_domain_app_configs_are_registered() -> None:
 
 
 @pytest.mark.parametrize(
-    "entrypoint",
-    DEFERRED_SERVICE_ENTRYPOINTS,
-    ids=("interop.exchange_clinical_record",),
+    ("entrypoint", "names"),
+    [
+        (
+            exchange_clinical_record,
+            ["clinic_id", "result_version_id", "exam", "command_id"],
+        ),
+        (require_rnds_homologation, ["clinic_id"]),
+    ],
 )
-def test_deferred_service_entrypoint_raises_phase_boundary(
-    entrypoint: Callable[[], NoReturn],
+def test_rnds_exchange_keeps_explicit_clinic_scope_and_no_caller_authority(
+    entrypoint: Callable[..., object], names: list[str]
 ) -> None:
-    # Given: a public service entrypoint for a deferred domain
-    # When: the entrypoint is called before Phase >=1
-    with pytest.raises(NotImplementedError) as exc_info:
-        entrypoint()
-
-    # Then: it fails with the exact shared phase-boundary exception
-    assert type(exc_info.value) is NotImplementedError
-    assert exc_info.value.args == ("Phase >=1",)
+    # No deferred stub remains: the last one, RNDS exchange, is implemented.
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_prescription_draft_requires_explicit_encounter_patient_issuer_category() -> (

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load i18n tz %}
+{% block title %}{% trans "Your emergency access log | Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="patient-access-log-title">
+  <h1 id="patient-access-log-title">{% trans "Your emergency access log" %}</h1>
+  <p class="lede">{% trans "See when a clinician requested emergency access to your records and whether the event was reviewed." %}</p>
+  <ul>{% for entry in entries %}<li>
+    {{ entry.clinician }} /
+    {% timezone entry.timezone %}<time datetime="{{ entry.occurred_at|date:'c' }}">{{ entry.occurred_at|date:"d/m/Y H:i" }}</time>{% endtimezone %} /
+    {% if entry.reviewed %}{% trans "Reviewed" %}{% else %}{% trans "Review required" %}{% endif %}
+  </li>{% empty %}<li>{% trans "No emergency access has been recorded." %}</li>{% endfor %}</ul>
+  <div class="actions">
+    <form method="post">{% csrf_token %}<input type="hidden" name="page" value="{{ previous_page }}"><button class="button button--secondary" type="submit">{% trans "Previous" %}</button></form>
+    <form method="post">{% csrf_token %}<input type="hidden" name="page" value="{{ next_page }}"><button class="button button--secondary" type="submit">{% trans "Next" %}</button></form>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Governance change | Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow">
+  <h1>{% trans "Governance change recorded." %}</h1>
+  <p class="feedback feedback--success" role="status">{% trans "The current grant and its audit history have been updated." %}</p>
+  {% if emergency_command %}
+  <a class="button button--secondary" href="{% url 'identity:emergency-reviews' clinic_id=clinic_id %}">{% trans "Emergency access and required reviews" %}</a>
+  {% else %}
+  <a class="button button--secondary" href="{% url 'identity:governance' clinic_id=clinic_id %}">{% trans "Return to enterprise governance" %}</a>
+  {% endif %}
+</section>
+{% endblock %}
