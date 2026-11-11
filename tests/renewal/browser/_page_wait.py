@@ -19,8 +19,10 @@ The starting evaluation, the console outcome and a timer run concurrently:
   renderer busy or never returns, and even with frozen animation frames.
   Nothing on the timeout path waits for the page.
 - After the deadline the listener is gone, so a later outcome is never seen.
-  The watcher carries the same deadline and stays silent after it, so a late
-  truth is never even reported to the console.
+  The watcher carries the same timeout, counted from its own start in the
+  page, so its deadline never comes before the driver's (a start the page runs
+  late moves it later); after it, a late truth is not even reported to the
+  console.
 - A failed start (for example a syntax error), a closed or crashed page, or a
   predicate exception (``WaitPredicateError``) raises at once. A navigation
   destroys the watcher, so the wait then fails at its deadline.
