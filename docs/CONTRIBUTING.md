@@ -231,6 +231,12 @@ replace exercising the changed CLI, HTTP, or browser surface. Clean temporary
 containers, volumes, servers, ports, `.terraform/`, and scratch files before
 handoff.
 
+The `secret-scan` pre-commit hook refuses committed credentials. A synthetic
+fixture that must look like one goes in `ops/testing/secret-scan-allowlist.txt`
+with its reason; don't weaken a rule. A new threat-model mitigation needs a
+Tests cell naming at least one non-browser test, and a runtime dependency
+change needs `python -m ops.release.sbom write`.
+
 Source anchors: [CI target](../Makefile),
 [hosted workflow](../.github/workflows/ci.yml),
 [module boundaries](../tests/infra/test_module_boundaries.py),
