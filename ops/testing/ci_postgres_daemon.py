@@ -11,6 +11,7 @@ from typing import Final, Never
 
 from ops.testing.ci_postgres_controller import write_record
 from ops.testing.ci_postgres_runtime import ci_database_lease, write_environment
+from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.tls_export import public_ca_export
 from ops.testing.tls_materializer import materializer_lease
 
@@ -42,7 +43,12 @@ def main() -> int:
     with (
         materializer_lease(repository) as materializer,
         public_ca_export(materializer) as public_ca,
-        ci_database_lease(repository, materializer, public_ca) as database,
+        ci_database_lease(
+            repository,
+            materializer,
+            public_ca,
+            server_settings=TEST_DATABASE_SETTINGS,
+        ) as database,
     ):
         write_environment(root / "ci-postgres.env", database)
         write_record(root / "ready", {}, mode=0o600)

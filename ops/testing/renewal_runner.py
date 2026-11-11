@@ -44,6 +44,7 @@ from ops.testing.browser_server_supervisor import (
     start_master,
     supervised_argv,
 )
+from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.ci_pytest import coverage_targets
 from ops.testing.current_source_snapshot import (
     capture_current_source,
@@ -596,6 +597,7 @@ def _provision_database(
             "--mount",
             f"type=bind,src={init},dst=/docker-entrypoint-initdb.d,readonly",
             POSTGRES_IMAGE,
+            *TEST_DATABASE_SETTINGS,
         )
         _await_database(container, docker=docker)
         yield ProvisionedDatabase(

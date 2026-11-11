@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Final
 
+from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
+
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 HARNESS: Final = PROJECT_ROOT / "ops" / "testing" / "isolated_db.sh"
 COMMAND_PROBE: Final = Path(__file__).with_name("isolation_command_probe.py")
@@ -195,6 +197,7 @@ def test_compose_and_make_expose_only_parameterized_isolated_database_inputs() -
     # When: their database image, host binding, and named volume contracts are read.
     required_compose = {
         "    image: ${POSTGRES_IMAGE:-postgres:16}",
+        "    command: " + json.dumps(["postgres", *TEST_DATABASE_SETTINGS]),
         '      - "${POSTGRES_HOST_IP:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"',
         "    name: ${POSTGRES_DATA_VOLUME:-clinic_postgres_data}",
     }

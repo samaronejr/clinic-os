@@ -67,8 +67,14 @@ def ci_database_lease(
     materializer: MaterializerLease,
     public_ca: PublicCaExport,
     database_kind: str = "source",
+    *,
+    server_settings: tuple[str, ...] = (),
 ) -> Iterator[CiDatabaseLease]:
-    """Reserve before creating a unique TLS database and reverse-release it."""
+    """Reserve before creating a unique TLS database and reverse-release it.
+
+    ``server_settings`` extends the shared TLS service command; the hosted
+    quality gates pass the test suite's settings (``ci_postgres_settings``).
+    """
     claim_id = str(uuid4())
     token = claim_id.split("-", 1)[0]
     project = f"clinic_phase1a_ci_{token}"
@@ -91,6 +97,10 @@ def ci_database_lease(
         (tls_volume, database_host),
         environment,
     )
+    command = service["command"]
+    if not isinstance(command, list):
+        _fail("CI PostgreSQL command is invalid")
+    service["command"] = [*command, *server_settings]
     service["published_ports"] = [
         {"container_port": 5432, "host": "127.0.0.1", "port": port, "transport": "tcp"}
     ]

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from ops.testing import ci_postgres_controller as controller
+from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -27,6 +28,7 @@ def supervisor(
     bootstrap.write_text(
         f"#!{sys.executable}\n"
         "import sys\n"
+        "import json\n"
         "import os\n"
         "import signal\n"
         f"sys.path.insert(0, {str(controller.PROJECT_ROOT)!r})\n"
@@ -43,7 +45,8 @@ def supervisor(
         "def lease(*args):\n"
         "    yield None\n"
         "@contextmanager\n"
-        "def database(*args):\n"
+        "def database(*args, **kwargs):\n"
+        "    (root.parent / 'database-options.json').write_text(json.dumps(kwargs))\n"
         "    if mode == 'realtime':\n"
         "        from infra.ci_realtime_cleanup_fixture import redis_cleanup_lease\n"
         "        with redis_cleanup_lease(root.parent):\n"
@@ -104,6 +107,9 @@ def test_normal_supervisor_lifecycle_cleans_owned_state(supervisor: Path) -> Non
     controller._up()
     root = supervisor / controller.STATE_NAME
     assert (root / "ready").is_file()
+    # The hosted quality gates' database carries the suite's lock budget.
+    options = json.loads((supervisor / "database-options.json").read_text())
+    assert options == {"server_settings": list(TEST_DATABASE_SETTINGS)}
 
     # When: stop traverses the real signal and context-manager teardown path.
     status = _stop_daemon(root)
