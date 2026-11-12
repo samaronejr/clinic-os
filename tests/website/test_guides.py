@@ -13,7 +13,16 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 import pytest
-from apps.website.guides import AUDIENCES, FIRST_STEPS, GUIDES, Label, Step
+from apps.identity.models import UserClinicRole
+from apps.website.guides import (
+    AUDIENCES,
+    FIRST_STEPS,
+    GUIDES,
+    ROLE_AUDIENCES,
+    Label,
+    Step,
+    guides_for,
+)
 from django.test import Client
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
 from django.urls.converters import (
@@ -140,3 +149,12 @@ def test_guide_page_shows_every_step_with_the_screens_labels(guide: Guide) -> No
         for step in guide.steps:
             assert escape(step.control.text) in body
             assert escape(step.screen.title.text) in body
+
+
+def test_every_staff_role_is_trained_by_a_published_audience() -> None:
+    # Training per role (plan item 78): a new stored role fails until trained.
+    assert set(ROLE_AUDIENCES) == set(UserClinicRole.Role.values)
+    for role, audience in ROLE_AUDIENCES.items():
+        assert audience in AUDIENCES, role
+        assert guides_for(audience), role
+    assert {guide.audience for guide in GUIDES} == set(AUDIENCES)

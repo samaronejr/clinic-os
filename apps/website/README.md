@@ -23,9 +23,12 @@ under `pricing` in `docs/web/claims.yaml`.
 
 `/status/` renders `docs/operations/status-incidents.json` through the closed
 content model in `status.py`: incident ids, component, impact and state keys,
-and dated updates, with every sentence a msgid chosen by state. Any deviation
-makes the page say status is unavailable, never an all-clear
-(`tests/website/test_status.py`).
+and dated updates, with every sentence a msgid chosen by state. Values are
+checked by exact JSON type (a boolean is never the integer schema version) and
+times must fall in 2020-2099 UTC. Any deviation, including unreadable bytes,
+makes the page say status is unavailable with HTTP 200, never an all-clear or
+a server error (`tests/website/test_status.py`, including a malformed-shape
+table).
 
 `/contact/` shows `CLINIC_WEBSITE_CONTACT_EMAIL`
 (`config.settings.contracts.resolve_website_contact_email`), which the owner
@@ -73,7 +76,8 @@ page renders the control's own pt-BR label in its place.
 `tests/website/test_guides.py` reverses each route and finds each title and
 control in its template, so a changed screen breaks its guide rather than
 leaving a stale instruction. `FIRST_STEPS` is the onboarding path for a new
-clinic team.
+clinic team. `ROLE_AUDIENCES` maps every stored staff role to the audience
+whose guides train it, and the guide tests fail when a role has no guide.
 
 ## Styles and verification
 

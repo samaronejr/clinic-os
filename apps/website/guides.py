@@ -89,6 +89,21 @@ AUDIENCES: Final[dict[str, str]] = {
     "clinicians": _("Clinicians"),
     "patients": _("Patients"),
     "support": _("Support operators"),
+    "finance": _("Finance"),
+}
+# Every stored staff role (apps.identity.models.UserClinicRole.Role) and the
+# audience whose guides train it; tests/website/test_guides.py pins the full set.
+ROLE_AUDIENCES: Final[dict[str, str]] = {
+    "owner": "managers",
+    "org_admin": "managers",
+    "clinic_admin": "managers",
+    "clinic_manager": "managers",
+    "receptionist": "reception",
+    "scheduler": "reception",
+    "physician": "clinicians",
+    "nurse": "clinicians",
+    "allied_professional": "clinicians",
+    "finance": "finance",
 }
 
 LOGIN = Screen("identity:login", "identity/login.html", Label("Sign in to Clinic OS"))
@@ -154,6 +169,16 @@ SUPPORT = Screen(
     "identity/support_diagnostics.html",
     Label("Support diagnostics"),
 )
+CHARGES = Screen(
+    "billing:charges", "billing/charges.html", Label("Cobranças", translated=False)
+)
+INVOICE = Screen(
+    "billing:invoice",
+    "billing/invoice.html",
+    Label("Dados da cobrança", translated=False),
+)
+FINANCE = Screen("billing:finance", "billing/finance.html", Label("Finance"))
+FINANCE_CONTENT = "billing/partials/finance_content.html"
 PUBLIC_BOOKING = Screen(
     "crm:public-booking", "crm/public.html", Label("Your next visit starts here.")
 )
@@ -639,6 +664,77 @@ GUIDES: Final[tuple[Guide, ...]] = (
             _(
                 "In this version no support desk is staffed. This procedure is "
                 "rehearsed on synthetic data only."
+            ),
+        ),
+    ),
+    Guide(
+        slug="finance-day",
+        audience="finance",
+        title=_("Charge, record payments and close the day"),
+        summary=_(
+            "Issue charges, record confirmed payments and close the day from "
+            "verified money and a sealed journal."
+        ),
+        before=(
+            _(
+                "You hold the finance role in this clinic and confirmed your "
+                "authenticator."
+            ),
+        ),
+        steps=(
+            Step(
+                CHARGES,
+                Label("Criar rascunho", translated=False),
+                _("Choose the patient, enter the amount and press {control}."),
+                _(
+                    "A draft can be checked before it is issued, and issuing "
+                    "freezes the amount."
+                ),
+            ),
+            Step(
+                INVOICE,
+                Label("Emitir cobrança", translated=False),
+                _("Open the charge, check the draft and press {control}."),
+            ),
+            Step(
+                INVOICE,
+                Label("Confirmar pagamento", translated=False),
+                _(
+                    "After checking a payment outside the system, enter its "
+                    "reference and amount and press {control}."
+                ),
+                _(
+                    "The receipt comes from this confirmation, never from "
+                    "generating a payment code."
+                ),
+            ),
+            Step(
+                FINANCE,
+                Label("Day close"),
+                _("At the end of the day, go to {control} and count the cash."),
+                _(
+                    "A cash count must match the sealed journal. Unposted money, "
+                    "unidentified receipts, suspense and unknown outcomes prevent "
+                    "close."
+                ),
+                control_template=FINANCE_CONTENT,
+            ),
+            Step(
+                FINANCE,
+                Label("Download journal"),
+                _("To send the period to your accountant, press {control}."),
+                _(
+                    "CSV and the documented OFX-like journal contain the same "
+                    "sealed centavo lines. This is not a bank statement or a "
+                    "fiscal document."
+                ),
+                control_template=FINANCE_CONTENT,
+            ),
+        ),
+        notes=(
+            _(
+                "In this version payments, refunds and payouts are simulations. "
+                "No real money moves."
             ),
         ),
     ),

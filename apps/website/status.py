@@ -27,6 +27,8 @@ STATUS_FILE: Final = (
     Path(__file__).resolve().parents[2] / "docs/operations/status-incidents.json"
 )
 SCHEMA_VERSION: Final = 1
+EARLIEST: Final = datetime(2020, 1, 1, tzinfo=UTC)
+LATEST: Final = datetime(2100, 1, 1, tzinfo=UTC)
 INCIDENT_ID: Final = re.compile(r"^INC-[0-9]{4}-[0-9]{4}$")
 COMPONENTS: Final[dict[str, str]] = {
     "agenda": _("Agenda and booking"),
@@ -56,6 +58,7 @@ MESSAGES: Final[dict[str, str]] = {
     "monitoring": _("A fix is in place and the results are being watched."),
     "resolved": _("This incident is resolved."),
 }
+DOCUMENT_KEYS: Final = frozenset({"schema_version", "incidents"})
 INCIDENT_KEYS: Final = frozenset({"id", "components", "impact", "updates"})
 UPDATE_KEYS: Final = frozenset({"at", "state"})
 
@@ -96,70 +99,98 @@ def _fail(reason: str) -> Never:
     raise StatusFileError(reason)
 
 
+def _text(raw: object, reason: str) -> str:
+    # Exact type: a JSON number, boolean, list or object is never a key, so it
+    # can never reach a dictionary lookup or a set as an unhashable value.
+    if type(raw) is not str:
+        _fail(reason)
+    return raw
+
+
+def _record(raw: object, keys: frozenset[str], reason: str) -> dict[str, object]:
+    if type(raw) is not dict or set(raw) != keys:
+        _fail(reason)
+    return raw
+
+
+def _items(raw: object, reason: str) -> list[object]:
+    if type(raw) is not list or not raw:
+        _fail(reason)
+    return raw
+
+
 def _timestamp(raw: object) -> datetime:
-    if not isinstance(raw, str):
-        _fail("update time must be text")
+    text = _text(raw, "update time must be text")
     try:
-        value = datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         _fail("update time must be ISO 8601")
-    if value.tzinfo is None:
+    if parsed.tzinfo is None:
         _fail("update time needs an offset")
-    return value.astimezone(UTC)
+    try:
+        value = parsed.astimezone(UTC)
+    except OverflowError:
+        _fail("update time is out of range")
+    # Bounded so every time also renders in Brasília time without overflow.
+    if not EARLIEST <= value < LATEST:
+        _fail("update time is out of range")
+    return value
 
 
 def _update(raw: object) -> Update:
-    if not isinstance(raw, dict) or set(raw) != UPDATE_KEYS:
-        _fail("update keys are closed")
-    if raw["state"] not in STATES:
+    record = _record(raw, UPDATE_KEYS, "update keys are closed")
+    state = _text(record["state"], "update state must be text")
+    if state not in STATES:
         _fail("unknown update state")
-    return Update(_timestamp(raw["at"]), raw["state"])
+    return Update(_timestamp(record["at"]), state)
 
 
 def _incident(raw: object) -> Incident:
-    if not isinstance(raw, dict) or set(raw) != INCIDENT_KEYS:
-        _fail("incident keys are closed")
-    identifier, components, impact, updates = (
-        raw["id"],
-        raw["components"],
-        raw["impact"],
-        raw["updates"],
-    )
-    if not isinstance(identifier, str) or not INCIDENT_ID.match(identifier):
+    record = _record(raw, INCIDENT_KEYS, "incident keys are closed")
+    identifier = _text(record["id"], "incident id must be text")
+    if not INCIDENT_ID.fullmatch(identifier):
         _fail("incident id must look like INC-2026-0001")
-    if (
-        not isinstance(components, list)
-        or not components
-        or len(set(components)) != len(components)
-        or not set(components) <= set(COMPONENTS)
+    components = tuple(
+        _text(item, "components must be text")
+        for item in _items(record["components"], "components must be a list")
+    )
+    if len(set(components)) != len(components) or not set(components) <= set(
+        COMPONENTS
     ):
         _fail("components must be distinct known keys")
+    impact = _text(record["impact"], "impact must be text")
     if impact not in IMPACTS:
         _fail("unknown impact")
-    if not isinstance(updates, list) or not updates:
-        _fail("an incident needs at least one update")
-    parsed = tuple(_update(item) for item in updates)
+    parsed = tuple(
+        _update(item)
+        for item in _items(record["updates"], "an incident needs at least one update")
+    )
     if any(later.at <= earlier.at for earlier, later in pairwise(parsed)):
         _fail("updates must be in strictly increasing time order")
     if any(update.state == "resolved" for update in parsed[:-1]):
         _fail("nothing follows a resolved update")
-    return Incident(identifier, tuple(components), impact, parsed)
+    return Incident(identifier, components, impact, parsed)
 
 
 def load_incidents(path: Path | None = None) -> tuple[Incident, ...]:
-    """Parse and validate every posted incident, newest first."""
+    """Parse and validate every posted incident, newest first.
+
+    Every failure, from unreadable bytes to a value of the wrong JSON type, is
+    a ``StatusFileError``; nothing else escapes to the page.
+    """
     try:
         document = json.loads((path or STATUS_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         _fail("status file is unreadable")
-    if (
-        not isinstance(document, dict)
-        or set(document) != {"schema_version", "incidents"}
-        or document["schema_version"] != SCHEMA_VERSION
-        or not isinstance(document["incidents"], list)
+    record = _record(document, DOCUMENT_KEYS, "status file keys are closed")
+    # Exact int: JSON true equals 1 in Python and must not pass as version 1.
+    if type(record["schema_version"]) is not int or (
+        record["schema_version"] != SCHEMA_VERSION
     ):
-        _fail("status file keys are closed")
-    incidents = tuple(_incident(item) for item in document["incidents"])
+        _fail("unknown schema version")
+    if type(record["incidents"]) is not list:
+        _fail("incidents must be a list")
+    incidents = tuple(_incident(item) for item in record["incidents"])
     if len({incident.id for incident in incidents}) != len(incidents):
         _fail("incident ids must be unique")
     return tuple(sorted(incidents, key=lambda item: item.updates[0].at, reverse=True))

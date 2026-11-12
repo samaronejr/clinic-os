@@ -707,6 +707,43 @@ claims:
     evidence_quote:
       - "No support desk is staffed in this version"
       - "rehearsed on synthetic data only"
+  - id: g-finance-summary
+    claim: "Issue charges, record confirmed payments and close the day from verified money and a sealed journal."
+    surface: guides
+    evidence_ref: templates/billing/partials/finance_content.html
+    evidence_quote:
+      - "Close the day from verified money and a sealed journal."
+      - "Collections"
+  - id: g-finance-draft
+    claim: "A draft can be checked before it is issued, and issuing freezes the amount."
+    surface: guides
+    evidence_ref: templates/billing/charges.html
+    evidence_quote:
+      - "O rascunho pode ser conferido antes de emitir. Emitir congela o valor"
+  - id: g-finance-receipt
+    claim: "The receipt comes from this confirmation, never from generating a payment code."
+    surface: guides
+    evidence_ref: templates/billing/invoice.html
+    evidence_quote:
+      - "O recibo é emitido por esta confirmação, nunca pela geração do código."
+  - id: g-finance-close
+    claim: "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close."
+    surface: guides
+    evidence_ref: templates/billing/partials/finance_content.html
+    evidence_quote:
+      - "A cash count must match the sealed journal. Unposted money, unidentified receipts, suspense and unknown outcomes prevent close."
+  - id: g-finance-export
+    claim: "CSV and the documented OFX-like journal contain the same sealed centavo lines. This is not a bank statement or a fiscal document."
+    surface: guides
+    evidence_ref: templates/billing/partials/finance_content.html
+    evidence_quote:
+      - "CSV and the documented OFX-like journal contain the same sealed centavo lines. This is not a bank statement or a fiscal document."
+  - id: g-finance-simulated
+    claim: "In this version payments, refunds and payouts are simulations. No real money moves."
+    surface: guides
+    evidence_ref: templates/billing/partials/finance_content.html
+    evidence_quote:
+      - "No real money is moved."
 
 non_claims:
   - text: "· Clinic Ops"
@@ -1294,4 +1331,34 @@ non_claims:
   - text: "Support grant ID"
     reason: label
   - text: "Open diagnostics"
+    reason: label
+  - text: "Finance"
+    reason: label
+  - text: "Charge, record payments and close the day"
+    reason: heading
+  - text: "You hold the finance role in this clinic and confirmed your authenticator."
+    reason: instruction
+  - text: "Choose the patient, enter the amount and press {control}."
+    reason: instruction
+  - text: "Criar rascunho"
+    reason: label
+  - text: "Cobranças"
+    reason: label
+  - text: "Open the charge, check the draft and press {control}."
+    reason: instruction
+  - text: "Emitir cobrança"
+    reason: label
+  - text: "Dados da cobrança"
+    reason: label
+  - text: "After checking a payment outside the system, enter its reference and amount and press {control}."
+    reason: instruction
+  - text: "Confirmar pagamento"
+    reason: label
+  - text: "At the end of the day, go to {control} and count the cash."
+    reason: instruction
+  - text: "Day close"
+    reason: label
+  - text: "To send the period to your accountant, press {control}."
+    reason: instruction
+  - text: "Download journal"
     reason: label

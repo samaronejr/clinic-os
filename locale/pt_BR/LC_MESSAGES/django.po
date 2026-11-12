@@ -11520,3 +11520,36 @@ msgstr "Uma aprovação expirada ou revogada recebe a mesma recusa que uma inexi
 
 msgid "In this version no support desk is staffed. This procedure is rehearsed on synthetic data only."
 msgstr "Nesta versão não há central de suporte com equipe. Este procedimento é ensaiado apenas com dados sintéticos."
+
+msgid "Charge, record payments and close the day"
+msgstr "Cobrar, registrar pagamentos e fechar o dia"
+
+msgid "Issue charges, record confirmed payments and close the day from verified money and a sealed journal."
+msgstr "Emita cobranças, registre pagamentos confirmados e feche o dia com dinheiro verificado e um diário selado."
+
+msgid "You hold the finance role in this clinic and confirmed your authenticator."
+msgstr "Você tem o papel financeiro nesta clínica e confirmou seu autenticador."
+
+msgid "Choose the patient, enter the amount and press {control}."
+msgstr "Escolha o paciente, informe o valor e pressione {control}."
+
+msgid "A draft can be checked before it is issued, and issuing freezes the amount."
+msgstr "O rascunho pode ser conferido antes de emitir, e emitir congela o valor."
+
+msgid "Open the charge, check the draft and press {control}."
+msgstr "Abra a cobrança, confira o rascunho e pressione {control}."
+
+msgid "After checking a payment outside the system, enter its reference and amount and press {control}."
+msgstr "Depois de conferir um pagamento fora do sistema, informe a referência e o valor e pressione {control}."
+
+msgid "The receipt comes from this confirmation, never from generating a payment code."
+msgstr "O recibo é emitido por esta confirmação, nunca pela geração do código de pagamento."
+
+msgid "At the end of the day, go to {control} and count the cash."
+msgstr "No fim do dia, vá até {control} e conte o dinheiro."
+
+msgid "To send the period to your accountant, press {control}."
+msgstr "Para enviar o período ao seu contador, pressione {control}."
+
+msgid "In this version payments, refunds and payouts are simulations. No real money moves."
+msgstr "Nesta versão, pagamentos, reembolsos e repasses são simulações. Nenhum dinheiro real é movimentado."

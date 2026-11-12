@@ -171,3 +171,123 @@ def test_invalid_file_says_unavailable_instead_of_all_clear(
     assert ("data-state", "unavailable") in marks
     assert ("data-status-unavailable", None) in marks
     assert ("data-status-component", None) not in marks
+
+
+BASE_INCIDENT: Final = {
+    "id": "INC-2026-0001",
+    "components": ["ai"],
+    "impact": "partial_outage",
+    "updates": [{"at": "2026-11-12T12:00:00Z", "state": "investigating"}],
+}
+
+
+def _with(field: str, value: object, /) -> str:
+    return json.dumps(
+        {"schema_version": 1, "incidents": [{**BASE_INCIDENT, field: value}]}
+    )
+
+
+BASE_UPDATE: Final = {"at": "2026-11-12T12:00:00Z", "state": "investigating"}
+
+
+def _with_update(field: str, value: object) -> str:
+    return _with("updates", [{**BASE_UPDATE, field: value}])
+
+
+# Malformed documents by layer: every one must render "unavailable", HTTP 200.
+MALFORMED: Final = {
+    # The gate review's reproductions.
+    "review-state-list": _with_update("state", []),
+    "review-impact-object": _with("impact", {}),
+    "review-component-object": _with("components", [{}]),
+    "review-schema-true": json.dumps({"schema_version": True, "incidents": []}),
+    # Document shapes.
+    "syntax": "{not json",
+    "deep-nesting": "[" * 100_000 + "]" * 100_000,
+    "top-null": "null",
+    "top-list": "[]",
+    "top-text": json.dumps("status"),
+    "top-number": "1",
+    "empty-object": "{}",
+    "missing-incidents": json.dumps({"schema_version": 1}),
+    "extra-key": json.dumps({"schema_version": 1, "incidents": [], "note": "x"}),
+    "schema-false": json.dumps({"schema_version": False, "incidents": []}),
+    "schema-float": json.dumps({"schema_version": 1.0, "incidents": []}),
+    "schema-text": json.dumps({"schema_version": "1", "incidents": []}),
+    "schema-nan": '{"schema_version": NaN, "incidents": []}',
+    "schema-two": json.dumps({"schema_version": 2, "incidents": []}),
+    "incidents-object": json.dumps({"schema_version": 1, "incidents": {}}),
+    "incidents-null": json.dumps({"schema_version": 1, "incidents": None}),
+    "incident-null": json.dumps({"schema_version": 1, "incidents": [None]}),
+    "incident-list": json.dumps({"schema_version": 1, "incidents": [[]]}),
+    "incident-text": json.dumps({"schema_version": 1, "incidents": ["INC"]}),
+    # Incident fields.
+    "id-number": _with("id", 1),
+    "id-null": _with("id", None),
+    "id-list": _with("id", ["INC-2026-0001"]),
+    "id-trailing-newline": _with("id", "INC-2026-0001\n"),
+    "components-text": _with("components", "ai"),
+    "components-object": _with("components", {}),
+    "components-empty": _with("components", []),
+    "component-number": _with("components", [1]),
+    "component-null": _with("components", [None]),
+    "component-list": _with("components", [["ai"]]),
+    "component-bool": _with("components", [True]),
+    "impact-list": _with("impact", []),
+    "impact-number": _with("impact", 1),
+    "impact-null": _with("impact", None),
+    "impact-bool": _with("impact", json.loads("true")),
+    "updates-object": _with("updates", {}),
+    "updates-null": _with("updates", None),
+    "update-list": _with("updates", [[]]),
+    "update-null": _with("updates", [None]),
+    "update-extra-key": _with_update("note", "x"),
+    # Update fields.
+    "state-object": _with_update("state", {}),
+    "state-number": _with_update("state", 1),
+    "state-null": _with_update("state", None),
+    "at-number": _with_update("at", 1_700_000_000),
+    "at-null": _with_update("at", None),
+    "at-list": _with_update("at", ["2026-11-12T12:00:00Z"]),
+    "at-empty": _with_update("at", ""),
+    "at-invalid-month": _with_update("at", "2026-13-01T00:00:00Z"),
+    "at-naive": _with_update("at", "2026-11-12T12:00:00"),
+    "at-underflow": _with_update("at", "0001-01-01T00:00:00+05:00"),
+    "at-overflow": _with_update("at", "9999-12-31T23:59:59-03:00"),
+    "at-before-range": _with_update("at", "1999-12-31T23:59:59Z"),
+    "at-after-range": _with_update("at", "2100-01-01T00:00:00Z"),
+}
+
+
+@pytest.mark.parametrize("document", list(MALFORMED.values()), ids=list(MALFORMED))
+def test_every_malformed_shape_renders_unavailable_never_clear_or_500(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, document: str
+) -> None:
+    path = tmp_path / "status.json"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(StatusFileError):
+        load_incidents(path)
+    marks = _page(monkeypatch, path)
+
+    assert ("data-state", "unavailable") in marks
+    assert ("data-status-unavailable", None) in marks
+    assert ("data-status-component", None) not in marks
+    assert ("data-status-incident", None) not in marks
+
+
+def test_undecodable_bytes_render_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "status.json"
+    path.write_bytes(b"\xff\xfe{")
+
+    marks = _page(monkeypatch, path)
+
+    assert ("data-state", "unavailable") in marks
+
+
+def test_the_base_incident_of_the_table_is_itself_valid(tmp_path: Path) -> None:
+    path = _write(tmp_path / "status.json", [BASE_INCIDENT])
+
+    assert [incident.id for incident in load_incidents(path)] == ["INC-2026-0001"]
