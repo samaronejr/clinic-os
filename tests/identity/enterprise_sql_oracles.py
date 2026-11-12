@@ -90,6 +90,7 @@ CASES = {
         *UNIT_CASES,
         *CONTEXT_CASES,
         test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log,
     )
 }
 SQL_PROTOCOL_ORACLES = {
@@ -130,7 +131,8 @@ SQL_PROTOCOL_ORACLES = {
     ],
     "clinic_app.enterprise_support_scope": [case.__name__ for case in SUPPORT_CASES],
     "clinic_app.record_delegate_access": [
-        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log.__name__,
     ],
     **{
         f"clinic_app.{name}": [case.__name__ for case in UNIT_CASES]

@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 MAX_ACCESS_LOG_PAGE_DIGITS = 5
 
 
+DELEGATE_KIND_LABELS: Final = {
+    PatientDelegateGrant.AuthorityKind.GUARDIAN: _("Legal guardian of a minor"),
+    PatientDelegateGrant.AuthorityKind.CURATOR: _("Curator"),
+    PatientDelegateGrant.AuthorityKind.ADULT: _("Patient-authorized adult"),
+}
 DELEGATE_RECORD_LABELS: Final = {
     "clinical_record": _("Clinical record"),
     "result": _("Result"),
@@ -182,9 +187,7 @@ def patient_access_log(request: HttpRequest) -> HttpResponseBase:
                 "record_type": DELEGATE_RECORD_LABELS.get(row[7], ""),
                 "record_type_key": row[7] or "",
                 "grant_id": row[8],
-                "delegate_kind": (
-                    PatientDelegateGrant.AuthorityKind(row[9]).label if row[9] else ""
-                ),
+                "delegate_kind": DELEGATE_KIND_LABELS.get(row[9], ""),
             }
             for row in cursor.fetchall()
         ]

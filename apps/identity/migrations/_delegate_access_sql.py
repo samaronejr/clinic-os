@@ -74,14 +74,23 @@ CREATE POLICY delegate_access_owner ON clinic_app.identity_delegateaccessevent
 GRANT SELECT,INSERT ON clinic_app.identity_delegateaccessevent TO clinic_resolver;
 SET LOCAL ROLE clinic_resolver;
 CREATE FUNCTION clinic_app.record_delegate_access(requested_type text)
-RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,pg_temp AS $f$
+DECLARE recorded integer;
+BEGIN
+ -- The same 'records' authority that let the reader return the rows.
  INSERT INTO clinic_app.identity_delegateaccessevent(
   id,organization_id,clinic_id,grant_id,enrollment_id,record_type,accessed_at)
  SELECT gen_random_uuid(),a.organization_id,a.clinic_id,a.delegate_grant_id,
   a.enrollment_id,requested_type,statement_timestamp()
- FROM clinic_app.current_patient_authority('enrollment_view') a
- WHERE a.delegate_grant_id IS NOT NULL
+ FROM clinic_app.current_patient_authority('records') a
+ WHERE a.delegate_grant_id IS NOT NULL;
+ GET DIAGNOSTICS recorded = ROW_COUNT;
+ -- A delegate read that cannot be logged fails with the read.
+ IF recorded = 0 AND clinic_app.patient_is_delegate() THEN
+  RAISE EXCEPTION 'delegate read without a loggable binding' USING ERRCODE='42501';
+ END IF;
+END
 $f$;
 REVOKE ALL ON FUNCTION clinic_app.record_delegate_access(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION clinic_app.record_delegate_access(text) TO clinic_app;

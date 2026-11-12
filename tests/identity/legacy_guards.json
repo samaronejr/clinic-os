@@ -17783,6 +17783,7 @@
           "clinic_app.crm_contact_version",
           "clinic_app.crm_guard",
           "clinic_app.prescription_patient_documents",
+          "clinic_app.record_delegate_access",
           "clinic_app.retention_patient_releases"
         ],
         "signatures": [
@@ -27729,7 +27730,8 @@
       "kind": "domain_protocol",
       "reason": "Delegate-access writer (DG-R1): it records only the current patient session's own delegate binding; bound to an executable real-role test. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate.",
       "probes": [
-        "test_delegate_read_appears_in_the_represented_patients_access_log"
+        "test_delegate_read_appears_in_the_represented_patients_access_log",
+        "test_delegate_result_read_appears_in_the_represented_patients_access_log"
       ]
     }
   },
