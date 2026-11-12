@@ -8,7 +8,6 @@ then runs in a fresh process state.
 
 from __future__ import annotations
 
-import copy
 import os
 import signal
 import subprocess
@@ -41,6 +40,7 @@ from renewal.test_reminders import _book, _due, _operation
 from renewal.test_reminders import setup as reminder_setup
 from renewal.test_signatures import owner_scope
 from renewal.test_signatures import setup as signing_setup
+from resilience.death_worker import record_effect
 from resilience.test_messaging_faults import CountingEmailAdapter
 
 if TYPE_CHECKING:
@@ -171,12 +171,17 @@ def test_a_killed_messaging_worker_reconciles_without_resending(  # noqa: PLR091
 class RecordingSigner(SyntheticSignatureProvider):
     """The synthetic signer, keeping every recovery request it receives."""
 
-    def __init__(self) -> None:
+    def __init__(self, ledger: Path) -> None:
+        self.ledger = ledger
         self.requests: list[SignatureRequest] = []
 
     def begin(self, request: SignatureRequest) -> SignatureAcceptance:
         self.requests.append(request)
-        return super().begin(request)
+        acceptance = super().begin(request)
+        record_effect(
+            self.ledger, f"signing:{request.operation_id}:{acceptance.operation_ref}"
+        )
+        return acceptance
 
 
 def test_a_killed_signing_worker_binds_one_operation_and_issues_once(  # noqa: PLR0913
@@ -202,16 +207,15 @@ def test_a_killed_signing_worker_binds_one_operation_and_issues_once(  # noqa: P
     )
     assert worker.returncode == -signal.SIGKILL, worker.stderr[-2000:]
     [effect] = effects(ledger)
-    orphan = effect.rsplit(":", 1)[1]
+    accepted_reference = effect.rsplit(":", 1)[1]
     assert effect.startswith(f"signing:{operation.pk}:")
     killed = setup.refresh(operation)
     assert (killed.state, killed.operation_id) == ("prepared", "")
-    # Recovery asks the provider again under the same operation id, which a real
-    # provider must honour as its idempotency key (EG-5 adapter contract).
+    # Both worker receipts must identify the same provider operation.
     await_released(
         superuser_database_url, f"{signing._CLAIM_LOCK_NAMESPACE}{operation.pk}"
     )
-    signer = RecordingSigner()
+    signer = RecordingSigner(ledger)
     monkeypatch.setattr(signing, "signature_provider_for", lambda _name: signer)
     assert setup.dispatch(operation.pk) == "signing"
     [retry] = signer.requests
@@ -220,12 +224,12 @@ def test_a_killed_signing_worker_binds_one_operation_and_issues_once(  # noqa: P
         killed.content_digest,
     )
     bound = setup.refresh(operation)
-    assert bound.operation_id not in {"", orphan}
-    # The orphaned provider operation can never issue anything.
-    stray = copy.copy(bound)
-    stray.operation_id = orphan
-    assert setup.receive(*setup.callback(stray)) == "rejected"
-    assert setup.receive(*setup.callback(bound)) == "applied"
+    assert bound.operation_id == accepted_reference
+    assert effects(ledger) == [effect, effect]
+    assert len({line.rsplit(":", 1)[1] for line in effects(ledger)}) == 1
+    callback = setup.callback(bound)
+    assert setup.receive(*callback) == "applied"
+    assert setup.receive(*callback) == "duplicate"
     assert setup.refresh(operation).state == "rehearsal_complete"
     with owner_scope(setup.graph.organization_a):
         assert SignatureOperation.objects.count() == 1

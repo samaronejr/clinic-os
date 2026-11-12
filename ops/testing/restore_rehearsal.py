@@ -184,6 +184,8 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         _fail("restore rehearsal binding is invalid")
     require_lease_claim(source.container_id, source_claim)
     require_lease_claim(target.container_id, target_claim)
+    # Read the escrow before invoking any PostgreSQL client, including probes.
+    kek = read_key_escrow(key_escrow)
     archive = work_dir / "logical-recovery.dump"
     sidecar = work_dir / "logical-recovery.dump.sha256"
     source_version = source.require_postgresql_16_14()
@@ -200,7 +202,6 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     # database that already holds domain rows is never a rehearsal target.
     require_empty_target(target)
     # Keys and objects are recovered with the rows; a gap in either fails here.
-    kek = read_key_escrow(key_escrow)
     require_escrow_opens_source(source, probe, kek)
     backup_objects = require_object_backup(source, object_backup)
     source_fingerprints = relation_fingerprints(source)

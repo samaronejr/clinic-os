@@ -308,7 +308,10 @@ class SyntheticSignatureProvider:
             return SignatureAcceptance(operation_ref="")
         if drill is not None:
             raise SignatureProviderTransientError
-        return SignatureAcceptance(operation_ref=f"synop-{secrets.token_hex(16)}")
+        # The immutable local operation UUID is the provider idempotency key.
+        # Replacing a worker must address the same synthetic operation, even
+        # when the first worker died before persisting this acceptance.
+        return SignatureAcceptance(operation_ref=f"synop-{request.operation_id.hex}")
 
     def sign(
         self, request: SignatureRequest, operation_ref: str

@@ -296,6 +296,44 @@ def test_each_recovery_gap_refuses_before_the_archive_or_target_is_touched(
     assert not (tmp_path / "work" / "secrets-restored").exists()
 
 
+def test_missing_key_invokes_no_postgresql_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_rehearsal(monkeypatch)
+    commands: list[tuple[str, ...]] = []
+
+    def runner(
+        argv: tuple[str, ...],
+        standard_input: bytes | None,
+        environment: dict[str, str],
+    ) -> bytes:
+        commands.append(argv)
+        if "pg_dump" in argv:
+            return b"pg_dump (PostgreSQL) 16.14\n"
+        if "pg_restore" in argv:
+            return b"pg_restore (PostgreSQL) 16.14\n"
+        return b"160014\n"
+
+    source = ContainerPostgres("a" * 64, "source", "synthetic", runner=runner)
+    target = ContainerPostgres("b" * 64, "target", "synthetic", runner=runner)
+    with pytest.raises(
+        RestoreContractError,
+        match=r"^restore drill failed: the tenant KEK escrow is missing$",
+    ):
+        restore_rehearsal.run_rehearsal(
+            source,
+            target,
+            private_dir(tmp_path / "work"),
+            PROBE,
+            private_dir(tmp_path / "objects"),
+            source_claim=str(uuid4()),
+            target_claim=str(uuid4()),
+            key_escrow=private_dir(tmp_path / "empty-escrow"),
+            object_backup=backup_with(tmp_path, OBJECT_KEY, RESULT_KEY),
+        )
+    assert commands == []
+
+
 def test_a_complete_drill_restores_objects_and_keys_and_measures_rpo_and_rto(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -303,7 +341,27 @@ def test_a_complete_drill_restores_objects_and_keys_and_measures_rpo_and_rto(
     source, target = containers()
     escrow = escrow_with(tmp_path)
     backup = backup_with(tmp_path, OBJECT_KEY, RESULT_KEY)
+    observations: list[str] = []
+    read_escrow = restore_escrow.read_key_escrow
+
+    def read(path: Path) -> str:
+        observations.append("escrow")
+        return read_escrow(path)
+
+    monkeypatch.setattr(restore_rehearsal, "read_key_escrow", read)
+
+    def source_version() -> VersionEvidence:
+        observations.append("source-version")
+        return VersionEvidence("16.14", "16.14", "16.14")
+
+    def target_version() -> VersionEvidence:
+        observations.append("target-version")
+        return VersionEvidence("16.14", "16.14", "16.14")
+
+    source.require_postgresql_16_14.side_effect = source_version
+    target.require_postgresql_16_14.side_effect = target_version
     evidence = rehearse(tmp_path, source, target, escrow=escrow, backup=backup)
+    assert observations == ["escrow", "source-version", "target-version"]
     target.restore.assert_called_once_with(b"synthetic logical archive")
     restored = tmp_path / "attachments-restored"
     assert (restored / OBJECT_KEY).is_file()
