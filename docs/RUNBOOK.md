@@ -427,9 +427,10 @@ problem. An incident has an id (`INC-<year>-<number>`), one or more components
 impact (`maintenance`, `degraded`, `partial_outage`, `major_outage`) and dated
 updates whose states are `investigating`, `identified`, `monitoring` and
 `resolved`. The page builds every sentence from those keys, so there is no
-free-text field: never try to add customer, patient or error details. A file
-that breaks the model makes the page say status is unavailable, never an
-all-clear. Validate a change with
+free-text field: never try to add customer, patient or error details. The
+file may be at most 256 KiB (`MAX_STATUS_BYTES` in `apps/website/status.py`)
+and no object may repeat a key. A file that breaks the model, exceeds the limit
+or repeats a key makes the page say status is unavailable, never an all-clear. Validate a change with
 `uv run --frozen --no-sync --no-env-file pytest -q tests/website/test_status.py`
 before deploying it.
 

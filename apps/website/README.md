@@ -25,7 +25,9 @@ under `pricing` in `docs/web/claims.yaml`.
 content model in `status.py`: incident ids, component, impact and state keys,
 and dated updates, with every sentence a msgid chosen by state. Values are
 checked by exact JSON type (a boolean is never the integer schema version) and
-times must fall in 2020-2099 UTC. Any deviation, including unreadable bytes,
+times must fall in 2020-2099 UTC. The file is read only up to 256 KiB
+(`MAX_STATUS_BYTES`) and decoding rejects any repeated key, so a second
+`incidents` cannot hide the first. Any deviation, including unreadable bytes,
 makes the page say status is unavailable with HTTP 200, never an all-clear or
 a server error (`tests/website/test_status.py`, including a malformed-shape
 table).

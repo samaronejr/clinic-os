@@ -27,6 +27,10 @@ STATUS_FILE: Final = (
     Path(__file__).resolve().parents[2] / "docs/operations/status-incidents.json"
 )
 SCHEMA_VERSION: Final = 1
+# The committed file is a few hundred bytes even with a long incident history;
+# 256 KiB leaves room for years of hand-posted incidents, and anything larger
+# is refused before parsing (docs/RUNBOOK.md "Status page incidents").
+MAX_STATUS_BYTES: Final = 256 * 1024
 EARLIEST: Final = datetime(2020, 1, 1, tzinfo=UTC)
 LATEST: Final = datetime(2100, 1, 1, tzinfo=UTC)
 INCIDENT_ID: Final = re.compile(r"^INC-[0-9]{4}-[0-9]{4}$")
@@ -97,6 +101,15 @@ class Incident:
 
 def _fail(reason: str) -> Never:
     raise StatusFileError(reason)
+
+
+def _unique_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    # json.loads keeps the last of repeated keys, so a second "incidents" could
+    # silently replace an open incident; any repeat makes the file invalid.
+    record = dict(pairs)
+    if len(record) != len(pairs):
+        _fail("a key appears twice in one object")
+    return record
 
 
 def _text(raw: object, reason: str) -> str:
@@ -175,12 +188,24 @@ def _incident(raw: object) -> Incident:
 def load_incidents(path: Path | None = None) -> tuple[Incident, ...]:
     """Parse and validate every posted incident, newest first.
 
-    Every failure, from unreadable bytes to a value of the wrong JSON type, is
-    a ``StatusFileError``; nothing else escapes to the page.
+    Every failure, from an oversized or unreadable file and repeated keys to a
+    value of the wrong JSON type, is a ``StatusFileError``; nothing else
+    escapes to the page.
     """
     try:
-        document = json.loads((path or STATUS_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
+        with (path or STATUS_FILE).open("rb") as handle:
+            # One byte past the limit is enough to know the file is too large;
+            # an oversized file is never read or parsed in full.
+            raw = handle.read(MAX_STATUS_BYTES + 1)
+    except OSError:
+        _fail("status file is unreadable")
+    if len(raw) > MAX_STATUS_BYTES:
+        _fail("status file is larger than the documented limit")
+    try:
+        document = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_keys)
+    except StatusFileError:
+        raise
+    except (ValueError, RecursionError):
         _fail("status file is unreadable")
     record = _record(document, DOCUMENT_KEYS, "status file keys are closed")
     # Exact int: JSON true equals 1 in Python and must not pass as version 1.

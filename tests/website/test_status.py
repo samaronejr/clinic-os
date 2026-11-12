@@ -291,3 +291,97 @@ def test_the_base_incident_of_the_table_is_itself_valid(tmp_path: Path) -> None:
     path = _write(tmp_path / "status.json", [BASE_INCIDENT])
 
     assert [incident.id for incident in load_incidents(path)] == ["INC-2026-0001"]
+
+
+OPEN_MAJOR: Final = json.dumps({**BASE_INCIDENT, "impact": "major_outage"})
+# Repeated keys at each level. json.loads alone keeps the last one, so the
+# first two documents used to hide an open incident or a bad schema value.
+DUPLICATE_KEYS: Final = {
+    "incidents-then-empty": (
+        '{"schema_version": 1, "incidents": [' + OPEN_MAJOR + '], "incidents": []}'
+    ),
+    "schema-true-then-one": (
+        '{"schema_version": true, "schema_version": 1, "incidents": []}'
+    ),
+    "incident-impact-twice": (
+        '{"schema_version": 1, "incidents": ['
+        + OPEN_MAJOR[:-1]
+        + ', "impact": "maintenance"}]}'
+    ),
+    "update-state-twice": _with("updates", ["__UPDATE__"]).replace(
+        '"__UPDATE__"',
+        '{"at": "2026-11-12T12:00:00Z", "state": "investigating", "state": "resolved"}',
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "document", list(DUPLICATE_KEYS.values()), ids=list(DUPLICATE_KEYS)
+)
+def test_a_repeated_key_at_any_level_renders_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, document: str
+) -> None:
+    path = tmp_path / "status.json"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(StatusFileError):
+        load_incidents(path)
+    marks = _page(monkeypatch, path)
+
+    assert ("data-state", "unavailable") in marks
+    assert ("data-status-unavailable", None) in marks
+    assert ("data-status-incident", None) not in marks
+
+
+def test_the_size_limit_is_pinned_and_the_committed_file_is_far_below_it() -> None:
+    assert status.MAX_STATUS_BYTES == 256 * 1024
+    assert status.STATUS_FILE.stat().st_size < status.MAX_STATUS_BYTES // 100
+
+
+def _padded(path: Path, size: int) -> Path:
+    body = json.dumps({"schema_version": 1, "incidents": []})
+    path.write_text(" " * (size - len(body)) + body, encoding="utf-8")
+    assert path.stat().st_size == size
+    return path
+
+
+def test_a_valid_file_exactly_at_the_limit_still_renders(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = _padded(tmp_path / "status.json", status.MAX_STATUS_BYTES)
+
+    assert load_incidents(path) == ()
+    assert ("data-state", "clear") in _page(monkeypatch, path)
+
+
+@pytest.mark.parametrize(
+    "size",
+    [256 * 1024 + 1, 16 * 1024 * 1024 + 35],
+    ids=["one-byte-over", "sixteen-mib-padding"],
+)
+def test_an_oversized_valid_document_renders_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, size: int
+) -> None:
+    path = _padded(tmp_path / "status.json", size)
+
+    with pytest.raises(StatusFileError):
+        load_incidents(path)
+    marks = _page(monkeypatch, path)
+
+    assert ("data-state", "unavailable") in marks
+    assert ("data-status-unavailable", None) in marks
+
+
+def test_a_valid_open_incident_still_renders_after_the_new_checks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "status.json"
+    path.write_text(
+        '{"schema_version": 1, "incidents": [' + OPEN_MAJOR + "]}", encoding="utf-8"
+    )
+
+    marks = _page(monkeypatch, path)
+
+    assert ("data-state", "open") in marks
+    assert ("data-status-incident", None) in marks
+    assert ("data-status-unavailable", None) not in marks
