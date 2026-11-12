@@ -136,6 +136,8 @@ SUITES: Final = {
     "website": ("tests/renewal/browser/test_website.py",),
     # Task 72: core work while the in-request providers are faulted.
     "resilience": ("tests/renewal/browser/test_resilience.py",),
+    # Task 78: masked support diagnostics under a customer-approved grant.
+    "support-diagnostics": ("tests/renewal/browser/test_support_diagnostics.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -182,6 +184,7 @@ FIXTURE_SUITES: Final = frozenset(
         "public-booking",
         "reports",
         "resilience",
+        "support-diagnostics",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -868,6 +871,12 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
                 "PRESCRIPTION_SYNTHETIC_SIGNING": "true",
             }
             if suite == "resilience"
+            else {}
+        ),
+        # Governance approves support grants only with the enterprise simulation.
+        **(
+            {"CLINIC_ENTERPRISE_SYNTHETIC": "true"}
+            if suite == "support-diagnostics"
             else {}
         ),
         # A reserved .invalid address, so the contact page renders its link.

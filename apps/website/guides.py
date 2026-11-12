@@ -88,6 +88,7 @@ AUDIENCES: Final[dict[str, str]] = {
     "reception": _("Reception"),
     "clinicians": _("Clinicians"),
     "patients": _("Patients"),
+    "support": _("Support operators"),
 }
 
 LOGIN = Screen("identity:login", "identity/login.html", Label("Sign in to Clinic OS"))
@@ -142,6 +143,17 @@ TRANSCRIPT = Screen(
     "scribe:transcript", "scribe/transcript.html", Label("Consultation transcript")
 )
 AI_REVIEW = Screen("scribe:review", "scribe/review.html", Label("Clinician AI review"))
+GOVERNANCE = Screen(
+    "identity:governance", "identity/governance.html", Label("Enterprise governance")
+)
+EMERGENCY = Screen(
+    "identity:emergency", "identity/emergency.html", Label("Emergency access")
+)
+SUPPORT = Screen(
+    "identity:support-diagnostics",
+    "identity/support_diagnostics.html",
+    Label("Support diagnostics"),
+)
 PUBLIC_BOOKING = Screen(
     "crm:public-booking", "crm/public.html", Label("Your next visit starts here.")
 )
@@ -510,6 +522,124 @@ GUIDES: Final[tuple[Guide, ...]] = (
                 "simulated model. Real models are switched on only after approval."
             ),
             _("You can always continue the note manually, without AI."),
+        ),
+    ),
+    Guide(
+        slug="time-limited-support-access",
+        audience="managers",
+        title=_("Give support time-limited access"),
+        summary=_(
+            "Approve masked, read-only support access for one named person, for a "
+            "stated purpose and a few minutes or hours at most."
+        ),
+        before=(
+            _(
+                "Approve access only for a named support person and only for the "
+                "problem you reported."
+            ),
+        ),
+        steps=(
+            Step(
+                GOVERNANCE,
+                Label("Approved support access"),
+                _("On the governance screen, review the list under {control}."),
+                _(
+                    "Support sees masked diagnostics only and can never write "
+                    "clinical records."
+                ),
+            ),
+            Step(
+                GOVERNANCE,
+                Label("Revoke support access"),
+                _("When the work is done, press {control} next to the approval."),
+                _("The approval stops working at the next request."),
+            ),
+        ),
+        notes=(_("Support access lasts at most four hours."),),
+    ),
+    Guide(
+        slug="emergency-access",
+        audience="clinicians",
+        title=_("Use emergency access"),
+        summary=_(
+            "Read a patient's record outside your care team when care cannot "
+            "wait, with a reason, a time limit and a mandatory review."
+        ),
+        before=(
+            _(
+                "Use emergency access only when a patient outside your care team "
+                "needs care now."
+            ),
+        ),
+        steps=(
+            Step(
+                EMERGENCY,
+                Label("Request emergency access"),
+                _(
+                    "Enter the patient enrollment, the clinical reason and the "
+                    "duration, then press {control}."
+                ),
+                _(
+                    "Every emergency grant creates an immediate manager notice, a "
+                    "patient access-log entry and a mandatory review task."
+                ),
+            ),
+            Step(
+                EMERGENCY,
+                Label("Read through this grant"),
+                _("Press {control} to open the read-only record."),
+                _(
+                    "Restricted notes, clinical writes, finalization and prescribing "
+                    "remain protected. A manager and the patient are notified."
+                ),
+            ),
+        ),
+        notes=(_("Emergency access lasts at most four hours."),),
+    ),
+    Guide(
+        slug="support-diagnostics",
+        audience="support",
+        title=_("Read masked support diagnostics"),
+        summary=_(
+            "Check a clinic's integrations, outbox queue and work tasks without "
+            "seeing patients, names or clinical records."
+        ),
+        before=(
+            _(
+                "The clinic administrator approved support access for your own "
+                "named account."
+            ),
+        ),
+        steps=(
+            Step(
+                SUPPORT,
+                Label("Clinic ID"),
+                _("Type the {control} the clinic administrator shared with you."),
+            ),
+            Step(
+                SUPPORT,
+                Label("Support grant ID"),
+                _("Type the {control} from the same approval."),
+            ),
+            Step(
+                SUPPORT,
+                Label("Open diagnostics"),
+                _("Press {control}."),
+                _(
+                    "The page shows counts and states, never patients, names or "
+                    "clinical records."
+                ),
+            ),
+        ),
+        notes=(
+            _(
+                "An expired or revoked approval gets the same refusal as a missing "
+                "one. Ask the clinic administrator for a new approval."
+            ),
+            _(
+                "In this version no support desk is staffed. This procedure is "
+                "rehearsed on synthetic data only."
+            ),
         ),
     ),
     Guide(

@@ -150,10 +150,19 @@ RENDERED_OUTSIDE_SCAN: Final = {
 ROUTE_ARGUMENTS: Final = {"website:guide": [{"slug": guide.slug} for guide in GUIDES]}
 # Every {{ }} output and blocktrans argument, by template, with {% for %}
 # variables resolved to their iterable ("steps[].place"). The values come from
-# the views: counters, a slug, the configured contact address, step counts and
-# guide strings built from apps/website/guides.py.
+# the views: counters, a slug, the configured contact address, step counts,
+# guide strings built from apps/website/guides.py and the status page's
+# closed-vocabulary labels, incident ids and times (apps/website/status.py).
+_STATUS_INCIDENT_PATHS: Final = frozenset(
+    f"{group}[].{field}"
+    for group in ("open_incidents", "past_incidents")
+    for field in ("id", "title", "updates[].at", "updates[].state", "updates[].message")
+)
 OUTPUT_PATHS: Final = {
     "contact.html": frozenset({"contact_email"}),
+    "status.html": frozenset(
+        {"state", "components[].label", "components[].status"} | _STATUS_INCIDENT_PATHS
+    ),
     "help_guide.html": frozenset(
         {
             "forloop.counter",

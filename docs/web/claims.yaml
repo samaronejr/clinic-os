@@ -624,6 +624,90 @@ claims:
     evidence_ref: templates/ehr/encounter.html
     evidence_quote:
       - "With JavaScript on, the draft is saved to the server while you type"
+  - id: status-manual
+    claim: "Incidents on this page are posted by hand. Automated monitoring alerts are not connected yet, so a problem can appear here late."
+    evidence_ref: docs/RUNBOOK.md
+    evidence_quote:
+      - "Incidents are posted by hand"
+      - "Automated monitoring alerts are not connected"
+  - id: g-support-scope
+    claim: "Approve masked, read-only support access for one named person, for a stated purpose and a few minutes or hours at most."
+    surface: guides
+    evidence_ref: apps/identity/enterprise_support_access.py
+    evidence_quote:
+      - "Grant at most four hours to a named support user under customer approval."
+  - id: g-support-masked
+    claim: "Support sees masked diagnostics only and can never write clinical records."
+    surface: guides
+    evidence_ref: templates/identity/governance.html
+    evidence_quote:
+      - "Support sees masked diagnostics only and can never write clinical records."
+  - id: g-support-revoke
+    claim: "The approval stops working at the next request."
+    surface: guides
+    evidence_ref: apps/identity/enterprise_support_access.py
+    evidence_quote:
+      - "Revoke customer-approved access irreversibly at the next request."
+  - id: g-support-hours
+    claim: "Support access lasts at most four hours."
+    surface: guides
+    evidence_ref: apps/identity/enterprise_support_access.py
+    evidence_quote:
+      - "Grant at most four hours"
+  - id: g-emergency-summary
+    claim: "Read a patient's record outside your care team when care cannot wait, with a reason, a time limit and a mandatory review."
+    surface: guides
+    evidence_ref: docs/threat-models/support-access.md
+    evidence_quote:
+      - "Reason required, clinic manager notified at once, patient-visible access log entry, mandatory post-event review task."
+      - "capped at 4 h"
+  - id: g-emergency-notice
+    claim: "Every emergency grant creates an immediate manager notice, a patient access-log entry and a mandatory review task."
+    surface: guides
+    evidence_ref: templates/identity/includes/emergency_reviews.html
+    evidence_quote:
+      - "Every emergency grant creates an immediate manager notice, a patient access-log entry and a mandatory review task."
+  - id: g-emergency-protected
+    claim: "Restricted notes, clinical writes, finalization and prescribing remain protected. A manager and the patient are notified."
+    surface: guides
+    evidence_ref: templates/identity/emergency.html
+    evidence_quote:
+      - "Restricted notes, clinical writes, finalization and prescribing remain protected. A manager and the patient are notified."
+  - id: g-emergency-hours
+    claim: "Emergency access lasts at most four hours."
+    surface: guides
+    evidence_ref: docs/threat-models/support-access.md
+    evidence_quote:
+      - "capped at 4 h"
+  - id: g-diag-summary
+    claim: "Check a clinic's integrations, outbox queue and work tasks without seeing patients, names or clinical records."
+    surface: guides
+    evidence_ref: templates/identity/support_diagnostics.html
+    evidence_quote:
+      - "Integration status"
+      - "Integration queue"
+      - "Task health"
+      - "never patients, names or clinical records"
+  - id: g-diag-counts
+    claim: "The page shows counts and states, never patients, names or clinical records."
+    surface: guides
+    evidence_ref: templates/identity/support_diagnostics.html
+    evidence_quote:
+      - "It shows counts and states, never patients, names or clinical records."
+  - id: g-diag-refusal
+    claim: "An expired or revoked approval gets the same refusal as a missing one. Ask the clinic administrator for a new approval."
+    surface: guides
+    evidence_ref: templates/identity/support_diagnostics.html
+    evidence_quote:
+      - "The support approval is missing, expired or revoked, or this session is not verified. Ask the clinic administrator for a new approval."
+  - id: g-no-desk
+    claim: "In this version no support desk is staffed. This procedure is rehearsed on synthetic data only."
+    surface: guides
+    evidence_ref: docs/RUNBOOK.md
+    evidence_quote:
+      - "No support desk is staffed in this version"
+      - "rehearsed on synthetic data only"
+
 non_claims:
   - text: "· Clinic Ops"
     reason: metadata
@@ -1138,4 +1222,76 @@ non_claims:
   - text: "Pick a time and press {control}."
     reason: instruction
   - text: "Book this time"
+    reason: label
+  - text: "Service status"
+    reason: heading
+  - text: "Incidents and planned maintenance posted for Clinic Ops services."
+    reason: metadata
+  - text: "Incidents and planned maintenance that affect Clinic Ops services."
+    reason: intro
+  - text: "Status information is unavailable right now. This is not an all-clear."
+    reason: label
+  - text: "Components"
+    reason: heading
+  - text: "Current state of each component"
+    reason: heading
+  - text: "Component"
+    reason: label
+  - text: "Current state"
+    reason: label
+  - text: "Times are shown in Brasília time."
+    reason: label
+  - text: "Open incidents"
+    reason: heading
+  - text: "No incident is posted right now."
+    reason: label
+  - text: "Resolved incidents"
+    reason: heading
+  - text: "No resolved incident is posted."
+    reason: label
+  - text: "Support operators"
+    reason: label
+  - text: "Give support time-limited access"
+    reason: heading
+  - text: "Use emergency access"
+    reason: heading
+  - text: "Read masked support diagnostics"
+    reason: heading
+  - text: "Approve access only for a named support person and only for the problem you reported."
+    reason: advice
+  - text: "On the governance screen, review the list under {control}."
+    reason: instruction
+  - text: "Approved support access"
+    reason: label
+  - text: "Enterprise governance"
+    reason: label
+  - text: "When the work is done, press {control} next to the approval."
+    reason: instruction
+  - text: "Revoke support access"
+    reason: label
+  - text: "Use emergency access only when a patient outside your care team needs care now."
+    reason: advice
+  - text: "Enter the patient enrollment, the clinical reason and the duration, then press {control}."
+    reason: instruction
+  - text: "Request emergency access"
+    reason: label
+  - text: "Emergency access"
+    reason: label
+  - text: "Press {control} to open the read-only record."
+    reason: instruction
+  - text: "Read through this grant"
+    reason: label
+  - text: "The clinic administrator approved support access for your own named account."
+    reason: instruction
+  - text: "Type the {control} the clinic administrator shared with you."
+    reason: instruction
+  - text: "Clinic ID"
+    reason: label
+  - text: "Support diagnostics"
+    reason: label
+  - text: "Type the {control} from the same approval."
+    reason: instruction
+  - text: "Support grant ID"
+    reason: label
+  - text: "Open diagnostics"
     reason: label

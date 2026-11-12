@@ -46,7 +46,15 @@ class PublicSpace(NamedTuple):
 # tests/website/test_claims.py renders every route that lies in it.
 WEBSITE_PUBLIC: Final = PublicSpace(
     paths=frozenset(
-        {"/", "/product/", "/security/", "/contact/", "/brand/", "/pricing/"}
+        {
+            "/",
+            "/product/",
+            "/security/",
+            "/contact/",
+            "/brand/",
+            "/pricing/",
+            "/status/",
+        }
     ),
     prefixes=("/help/",),
 )

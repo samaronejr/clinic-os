@@ -1,0 +1,52 @@
+{% extends "website/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Service status" %}{% endblock %}
+{% block meta_description %}{% trans "Incidents and planned maintenance posted for Clinic Ops services." %}{% endblock %}
+{% block content %}
+<div class="site-page" data-status-page data-state="{{ state }}">
+  <header class="page-head">
+    <h1 class="display">{% trans "Service status" %}</h1>
+    <p class="page-lede">{% trans "Incidents and planned maintenance that affect Clinic Ops services." %}</p>
+  </header>
+  <div class="prose">
+    <p data-claim="status-manual">{% trans "Incidents on this page are posted by hand. Automated monitoring alerts are not connected yet, so a problem can appear here late." %}</p>
+    {% if state == "unavailable" %}
+    <p class="feedback feedback--error" role="alert" data-status-unavailable>{% trans "Status information is unavailable right now. This is not an all-clear." %}</p>
+    {% else %}
+    <section aria-labelledby="status-components-title">
+      <h2 id="status-components-title">{% trans "Components" %}</h2>
+      <div class="table-scroll" role="region" aria-labelledby="status-components-caption" tabindex="0">
+        <table class="table">
+          <caption id="status-components-caption">{% trans "Current state of each component" %}</caption>
+          <thead><tr><th scope="col">{% trans "Component" %}</th><th scope="col">{% trans "Current state" %}</th></tr></thead>
+          <tbody>{% for component in components %}<tr data-status-component><td>{{ component.label }}</td><td>{{ component.status }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <p>{% trans "Times are shown in Brasília time." %}</p>
+    </section>
+    <section aria-labelledby="status-open-title">
+      <h2 id="status-open-title">{% trans "Open incidents" %}</h2>
+      {% for incident in open_incidents %}
+      <article aria-labelledby="incident-{{ incident.id }}" data-status-incident>
+        <h3 id="incident-{{ incident.id }}">{{ incident.title }}</h3>
+        <ol>{% for update in incident.updates %}<li><strong>{{ update.at }}</strong> <span>{{ update.state }}</span> <span>{{ update.message }}</span></li>{% endfor %}</ol>
+      </article>
+      {% empty %}
+      <p data-status-none>{% trans "No incident is posted right now." %}</p>
+      {% endfor %}
+    </section>
+    <section aria-labelledby="status-past-title">
+      <h2 id="status-past-title">{% trans "Resolved incidents" %}</h2>
+      {% for incident in past_incidents %}
+      <article aria-labelledby="incident-{{ incident.id }}" data-status-incident>
+        <h3 id="incident-{{ incident.id }}">{{ incident.title }}</h3>
+        <ol>{% for update in incident.updates %}<li><strong>{{ update.at }}</strong> <span>{{ update.state }}</span> <span>{{ update.message }}</span></li>{% endfor %}</ol>
+      </article>
+      {% empty %}
+      <p>{% trans "No resolved incident is posted." %}</p>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

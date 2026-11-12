@@ -324,7 +324,14 @@ current clinician, a non-blank reason, an enrollment or encounter scope and an
 expiry of at most four hours; it notifies the clinic manager, writes a
 patient-visible access-log entry and opens a mandatory review task. Support
 access is approved by the customer administrator, masked and never writes
-clinical rows. Every governance action needs organization administration in
+clinical rows. `/support/diagnostics/` (GET form, POST body selectors) renders
+the masked snapshot: provider capability states plus the aggregates of
+`enterprise_support_overview(grant, clinic, session_hash)` (migration 0052), a
+SECURITY DEFINER resolver that re-runs `enterprise_support_scope` and also
+requires the grant installed in `app.current_support_grant`. It returns only
+closed labels, counts and oldest timestamps for outbox operations, work tasks,
+units and active staff by role; no identifier, name, payload or error text.
+Every refusal renders the same 403 page. Every governance action needs organization administration in
 every unit; a unit-scoped administrator who opens the governance page sees an
 explanation and no organization data.
 

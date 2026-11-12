@@ -46,6 +46,7 @@
           <ul>
             <li><a href="{% url 'website:help' %}">{% trans "Help center" %}</a></li>
             <li><a href="{% url 'website:contact' %}">{% trans "Contact" %}</a></li>
+            <li><a href="{% url 'website:status' %}"{% if page == "status" %} aria-current="page"{% endif %}>{% trans "Service status" %}</a></li>
             <li><a href="{% url 'identity:login' %}">{% trans "Sign in" %}</a></li>
           </ul>
         </nav>

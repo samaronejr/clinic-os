@@ -25,6 +25,7 @@ PAGES: Final = (
     "/contact/",
     "/brand/",
     "/help/",
+    "/status/",
     *(f"/help/{guide.slug}/" for guide in GUIDES),
 )
 PRIVATE_DIRECTIVES: Final = ("no-store", "private")

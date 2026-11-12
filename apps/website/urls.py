@@ -12,6 +12,7 @@ urlpatterns: list[URLPattern] = [
     path("contact/", views.contact, name="contact"),
     path("brand/", views.brand, name="brand"),
     path("pricing/", views.pricing, name="pricing"),
+    path("status/", views.status, name="status"),
     path("help/", views.help_index, name="help"),
     path("help/<slug:slug>/", views.help_guide, name="guide"),
 ]

@@ -11,7 +11,7 @@ The surface decision is the todo 70 note in
 Every view is GET/HEAD only (`require_safe`) and renders a template from
 `templates/website/`. Each path is listed in the tenancy bypass
 (`apps/tenancy/middleware.py`): `/product/`, `/security/`, `/contact/`,
-`/brand/` and `/pricing/` are exact paths, and `/help/` is a prefix. `/` stays
+`/brand/`, `/pricing/` and `/status/` are exact paths, and `/help/` is a prefix. `/` stays
 named `index`. It forwards a signed-in staff session to `/workspace/` and
 greets everyone else with the website. No page sets a cookie, links a script,
 renders a form or puts a selector in a query string. The privacy middleware
@@ -20,6 +20,12 @@ keeps the default private, no-store cache headers.
 `/pricing/` is a reserved slot. It returns 404 and no page links to it. Todo 74
 replaces it after the owner approves the packaging, and records that approval
 under `pricing` in `docs/web/claims.yaml`.
+
+`/status/` renders `docs/operations/status-incidents.json` through the closed
+content model in `status.py`: incident ids, component, impact and state keys,
+and dated updates, with every sentence a msgid chosen by state. Any deviation
+makes the page say status is unavailable, never an all-clear
+(`tests/website/test_status.py`).
 
 `/contact/` shows `CLINIC_WEBSITE_CONTACT_EMAIL`
 (`config.settings.contracts.resolve_website_contact_email`), which the owner
