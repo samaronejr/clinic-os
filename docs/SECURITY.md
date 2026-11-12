@@ -342,10 +342,11 @@ database trust boundary, not as proof against a superuser.
   missing control (state `gap`); text after `**Unproved:**` is a clause no
   mapped test proves (state `partial`). Neither counts as covered, every
   report lists them, and `report` exits 0 only when all rows are covered.
-  Today: 97 covered and 1 partial (SM-I1: the 60 s capture-time cap runs
-  only in the scribe-capture browser suite). The patient access log now lists
+  Today: all 98 covered, 0 partial, 0 gap. The patient access log lists
   each delegate read (grant, record type, time) next to break-glass reads
-  (DG-R1).
+  (DG-R1), and the shipped scribe-capture script's 60 s capture-time cap also
+  runs outside the browser, under the Node runtime of the locked `playwright`
+  wheel (SM-I1).
 - `ops/testing/sentinel_scan.py` is the shared PHI-sentinel scanner. It
   checks emitted logs, URLs, SSE frames, push payloads, artifact trees and
   every text, JSON and bytea column (audit and outbox rows included) for

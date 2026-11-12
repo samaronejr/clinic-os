@@ -29,8 +29,8 @@ MODELS = {
     "support-access",
 }
 # Open rows recorded in the threat-model tables: PARTIAL clauses are marked
-# **Unproved:**, GAPS (missing controls, owners todos 19 and 50) **Gap:**.
-PARTIAL = ["SM-I1"]
+# **Unproved:**, GAPS (missing controls) **Gap:**. Both are empty today.
+PARTIAL: list[str] = []
 GAPS: list[str] = []
 PROOF = "tests/core/test_x.py::test_proof"
 BROWSER = "tests/renewal/browser/test_x.py::test_page"
@@ -81,12 +81,13 @@ def test_every_mitigation_has_a_passing_mapped_test(tmp_path: Path) -> None:
         mitigations, coverage.defined_tests(), coverage.executed_outcomes([junit])
     )
     # Recorded open rows never count as covered: the exact totals are pinned so
-    # closing or adding one is a deliberate change to this acceptance.
+    # opening or adding one is a deliberate change to this acceptance. Every
+    # row is covered today, so the report is complete.
     assert report["uncovered"] == []
     assert report["partial"] == PARTIAL
     assert report["gaps"] == GAPS
-    assert report["covered"] == len(mitigations) - len(PARTIAL) - len(GAPS) == 97
-    assert report["complete"] is False
+    assert report["covered"] == len(mitigations) - len(PARTIAL) - len(GAPS) == 98
+    assert report["complete"] is True
 
 
 def _tree(

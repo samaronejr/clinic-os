@@ -9,7 +9,6 @@ patient's own session, next to break-glass reads.
 
 from __future__ import annotations
 
-import re
 from typing import Final
 
 from apps.identity.enterprise_contract import TABLES as _ENTERPRISE_TABLES
@@ -95,14 +94,11 @@ RESET ROLE;
     ),
 )
 
-_ORIGINAL_LOG: Final = re.search(
-    r"CREATE FUNCTION clinic_app\.enterprise_patient_access_log\(.*?\$f\$;",
-    _ENTERPRISE_ACCESS,
-    re.DOTALL,
+_LOG_START: Final = _ENTERPRISE_ACCESS.index(
+    "CREATE FUNCTION clinic_app.enterprise_patient_access_log("
 )
-if _ORIGINAL_LOG is None:  # pragma: no cover - import-time contract
-    _MISSING = "todo 65 access-log definition not found"
-    raise RuntimeError(_MISSING)
+_LOG_END: Final = _ENTERPRISE_ACCESS.index("$f$;\n", _LOG_START) + len("$f$;\n")
+_ORIGINAL_LOG: Final = _ENTERPRISE_ACCESS[_LOG_START:_LOG_END]
 # Like 0051, the reverse is the unused rollback only: it refuses, before any
 # change, while an enterprise or delegate-access row exists.
 _POPULATED: Final = "\n OR ".join(
@@ -127,4 +123,4 @@ GRANT EXECUTE ON FUNCTION clinic_app.enterprise_patient_access_log(uuid,integer)
  TO clinic_app;
 RESET ROLE;
 DROP POLICY delegate_access_owner ON clinic_app.identity_delegateaccessevent;
-""".replace("__original__", _ORIGINAL_LOG.group(0)).replace("__POPULATED__", _POPULATED)
+""".replace("__original__", _ORIGINAL_LOG).replace("__POPULATED__", _POPULATED)

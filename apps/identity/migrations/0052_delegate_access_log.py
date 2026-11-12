@@ -9,6 +9,7 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 from apps.identity.migrations._delegate_access_sql import REVERSE_SQL, SQL
+from apps.interop.migrations import _export_v5_sql, _import_activity_v3_sql
 
 
 class Migration(migrations.Migration):
@@ -84,4 +85,8 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.RunSQL(SQL, REVERSE_SQL),
+        migrations.RunSQL(
+            _import_activity_v3_sql.FORWARD, _import_activity_v3_sql.REVERSE
+        ),
+        migrations.RunSQL(_export_v5_sql.FORWARD, _export_v5_sql.REVERSE),
     ]

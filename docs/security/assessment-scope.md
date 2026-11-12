@@ -43,7 +43,7 @@ and `python -m ops.testing.threat_model_coverage report --junit <pytest
 junit.xml> --output threat-coverage.json` calls a mitigation covered only when
 a mapped test passed in that run. Rows marked `**Gap:**` name controls known
 to be missing and rows marked `**Unproved:**` name clauses no test proves
-(today SM-I1); neither counts as covered, and the assessor should treat them as
+(today none); neither counts as covered, and the assessor should treat them as
 open findings. The assessor should test the
 controls directly, not rely on these tests.
 
