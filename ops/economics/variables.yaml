@@ -1,0 +1,174 @@
+# Economics variables for ops/economics/model.py (todo 74, docs/business/economics.md).
+#
+# Every variable carries: value, unit, source, and either `date` (when the
+# source was read) or `assumption: true`. A value is a number or a
+# {low, expected, high} mapping. A value of null means nobody has a sourced
+# number yet; those also set `owner_input_required: true`, and the model
+# reports every cost that depends on them as null instead of guessing.
+#
+# Nothing here is a market price, a vendor quote or a willingness-to-pay
+# figure. Provider prices stay null until the owner records a contracted or
+# published price with its date (EG-1, EG-5).
+version: 1
+variables:
+  # P-100 reference profile (plan section PF).
+  clinics:
+    value: 100
+    unit: clinics
+    source: "plan clinic-ops-premium-intelligence, section PF, profile P-100"
+    date: "2026-09-24"
+  clinicians_per_clinic:
+    value: 10
+    unit: clinicians/clinic
+    source: "plan clinic-ops-premium-intelligence, section PF, profile P-100"
+    date: "2026-09-24"
+  visits_per_clinician_day:
+    value: 25
+    unit: visits/clinician/day
+    source: "plan clinic-ops-premium-intelligence, section PF, profile P-100"
+    date: "2026-09-24"
+  capture_share:
+    value: 0.6
+    unit: fraction of visits with audio capture
+    source: "plan clinic-ops-premium-intelligence, section PF, profile P-100"
+    date: "2026-09-24"
+  capture_minutes_per_visit:
+    value: 20
+    unit: audio minutes/captured visit
+    source: "plan clinic-ops-premium-intelligence, section PF, profile P-100"
+    date: "2026-09-24"
+  retry_overhead:
+    value: 0.15
+    unit: fraction of extra provider work from retries
+    source: "plan clinic-ops-premium-intelligence, section EC"
+    date: "2026-09-24"
+  burst_factor:
+    value: 2
+    unit: provisioned capacity / average load
+    source: "plan clinic-ops-premium-intelligence, section EC"
+    date: "2026-09-24"
+  # Usage mix. These are modelling assumptions, not measurements.
+  working_days_per_month:
+    value: {low: 20, expected: 22, high: 24}
+    unit: days/month
+    source: "modelling assumption; owner confirms clinic opening calendar"
+    assumption: true
+  long_consult_share:
+    value: {low: 0.05, expected: 0.1, high: 0.2}
+    unit: fraction of captured visits that run long
+    source: "modelling assumption; replace with todo 63 metrics after real use"
+    assumption: true
+  long_consult_factor:
+    value: {low: 1.5, expected: 2, high: 3}
+    unit: audio multiplier for a long visit
+    source: "modelling assumption"
+    assumption: true
+  caregiver_share:
+    value: {low: 0.05, expected: 0.1, high: 0.25}
+    unit: fraction of captured visits with a caregiver speaking
+    source: "modelling assumption; EV corpus class caregiver_child"
+    assumption: true
+  caregiver_factor:
+    value: {low: 1.1, expected: 1.25, high: 1.5}
+    unit: audio multiplier for a caregiver-heavy visit
+    source: "modelling assumption"
+    assumption: true
+  attachments_per_visit:
+    value: {low: 0.2, expected: 0.5, high: 1.5}
+    unit: attachments/visit
+    source: "modelling assumption"
+    assumption: true
+  attachment_gb:
+    value: {low: 0.001, expected: 0.002, high: 0.005}
+    unit: GB/attachment
+    source: "modelling assumption"
+    assumption: true
+  teleconsult_share:
+    value: {low: 0.05, expected: 0.15, high: 0.3}
+    unit: fraction of visits by video
+    source: "modelling assumption"
+    assumption: true
+  video_participants:
+    value: 2
+    unit: participants/teleconsult
+    source: "modelling assumption: one clinician and one patient"
+    assumption: true
+  messages_per_visit:
+    value: {low: 1, expected: 2, high: 4}
+    unit: messages/visit (reminder, confirmation, follow-up)
+    source: "modelling assumption"
+    assumption: true
+  # Measured per visit by todo 48 only on synthetic fakes so far.
+  llm_input_tokens_per_visit:
+    value: null
+    unit: tokens/captured visit
+    source: "docs/ai/provider-selection-2026-10-29.md (synthetic adapters only; provider_leg BLOCKED-ON-EG)"
+    date: "2026-10-29"
+    owner_input_required: true
+  llm_output_tokens_per_visit:
+    value: null
+    unit: tokens/captured visit
+    source: "docs/ai/provider-selection-2026-10-29.md (synthetic adapters only; provider_leg BLOCKED-ON-EG)"
+    date: "2026-10-29"
+    owner_input_required: true
+  llm_cached_tokens_per_visit:
+    value: null
+    unit: tokens/captured visit
+    source: "docs/ai/provider-selection-2026-10-29.md (synthetic adapters only; provider_leg BLOCKED-ON-EG)"
+    date: "2026-10-29"
+    owner_input_required: true
+  # Prices. All null until the owner records a dated price (EG-1, EG-5).
+  p_asr:
+    value: null
+    unit: BRL/audio minute
+    source: "owner-input-required: contracted ASR price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_llm_input:
+    value: null
+    unit: BRL/1M input tokens
+    source: "owner-input-required: contracted LLM price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_llm_output:
+    value: null
+    unit: BRL/1M output tokens
+    source: "owner-input-required: contracted LLM price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_llm_cached:
+    value: null
+    unit: BRL/1M cached tokens
+    source: "owner-input-required: contracted LLM price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_video:
+    value: null
+    unit: BRL/participant minute
+    source: "owner-input-required: contracted video price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_message:
+    value: null
+    unit: BRL/message (blended across template categories)
+    source: "owner-input-required: BSP/SMS/email price per template category (EG-5)"
+    assumption: true
+    owner_input_required: true
+  p_storage:
+    value: null
+    unit: BRL/GB-month including backup
+    source: "owner-input-required: storage/KMS price (EG-5)"
+    assumption: true
+    owner_input_required: true
+  fees_per_visit:
+    value: null
+    unit: BRL/visit (PSP, NFS-e, signing)
+    source: "owner-input-required: PSP/NFS-e/signing fees (EG-5, EG-9)"
+    assumption: true
+    owner_input_required: true
+  fixed_per_clinic_month:
+    value: null
+    unit: BRL/clinic-month (allocated core infra, DB, monitoring, support, licensed content)
+    source: "owner-input-required: infra bill and support staffing (EG-1, EG-13)"
+    assumption: true
+    owner_input_required: true
