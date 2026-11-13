@@ -9,6 +9,7 @@ from .contracts import (
     require_data_mode,
     resolve_attachment_root,
     resolve_csp_report_only,
+    resolve_synthetic_faults,
     resolve_website_contact_email,
     validate_secret_store_env,
 )
@@ -39,6 +40,11 @@ CLINIC_DATA_MODE: str = require_data_mode(env("CLINIC_DATA_MODE", default="synth
 # Strict CSP is enforced by default; report-only is a synthetic-only rollout
 # and rollback lever that live mode refuses (contracts.resolve_csp_report_only).
 CLINIC_CSP_REPORT_ONLY: bool = resolve_csp_report_only(os.environ, CLINIC_DATA_MODE)
+# Degraded-mode drills: synthetic adapter faults by provider family (todo 72).
+# Empty by default; live mode refuses any fault (contracts.resolve_synthetic_faults).
+CLINIC_SYNTHETIC_FAULTS: dict[str, str] = resolve_synthetic_faults(
+    os.environ, CLINIC_DATA_MODE
+)
 # Public contact address for the website's contact page (todo 70); empty means
 # the page says no address is published yet.
 CLINIC_WEBSITE_CONTACT_EMAIL: str = resolve_website_contact_email(os.environ)

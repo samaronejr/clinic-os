@@ -22,6 +22,21 @@ The formula/source/version and input contracts are recorded in
 [specialty-packs.md](../clinical/specialty-packs.md). No external gate is
 closed by this retrieval.
 
+## Incident communication re-check, 2026-11-11
+
+Todo 72 fetched the [DOU text of CD/ANPD Res. 15/2024](https://www.in.gov.br/en/web/dou/-/resolucao-cd/anpd-n-15-de-24-de-abril-de-2024-556243024)
+again before writing the incident runbook (HTTP 200, digest
+`2bedaf7d6704cd07`). Arts. 4 to 6, 9 and 10 were read. Art. 6 sets three
+working days for the controller's communication to the ANPD, counted from the
+controller's knowledge that the incident affected personal data, unless
+specific legislation sets another deadline. Art. 9 sets the same three working
+days for the communication to data subjects. Art. 10 requires the incident
+record, including incidents not communicated, for at least five years from the
+record date. Arts. 4 and 5 tie the duty to incidents that may cause relevant
+risk or damage and list sensitive personal data among the criteria. The
+[RUNBOOK](../RUNBOOK.md) incident section uses these facts. This retrieval
+draws no legal conclusion and clears neither EG-2 nor EG-12.
+
 This log turns every regulatory row that wasn't backed by a fetched primary
 text into a dated re-check step. It records what was actually retrieved, from
 where and when. It draws no legal conclusions and clears no gate. Todo 77
@@ -89,7 +104,7 @@ in it; it never means the instrument applies or that a gate is cleared.
 | RV-03 | Teleconsult video and consultation recording | Fetch CFM 2.314/2022; record consent and record-keeping facts | 2026-09-24 | Closed: art. 15 consent and art. 3 record facts present | Before recording enablement (todo 37); todo 77 |
 | RV-04 | EHR retention, signatures and paperless claims | Fetch Lei 13.787/2018, CFM 1.821/2007, CFM 2.299/2021, Lei 14.063/2020 | 2026-09-24 | Closed: 20-year minimum, NGS2 and signature-level facts present. CFM 1.821 carries changes by CFM Res. 2.218/2018, not fetched | Before any 'paperless' or 'certified' claim (EG-16); todo 77 |
 | RV-05 | International processing by providers | Fetch CD/ANPD Res. 19/2024 and LGPD art. 33 | 2026-09-24 | Closed: 12-month incorporation window from 23/08/2024 publication present | Before each provider reaches `approved_to_test`; todo 77 |
-| RV-06 | Security incident response | Fetch CD/ANPD Res. 15/2024 and LGPD art. 48 | 2026-09-24 | Closed: three-working-day and five-year record facts present | Before the incident runbook is approved (todo 72, EG-12) |
+| RV-06 | Security incident response | Fetch CD/ANPD Res. 15/2024 and LGPD art. 48 | 2026-09-24; 2026-11-11 | Closed: three-working-day and five-year record facts present; re-read for the todo 72 incident runbook (arts. 4 to 6, 9 and 10) | Before EG-12 approves the incident runbook; todo 77 |
 | RV-07 | Minors, guardians and delegates | Fetch ECA and CFM Code of Ethics; record the provisions cited | 2026-09-24 | Closed: ECA art. 17 and CEM art. 74 present. Which ECA provisions matter for delegate exceptions is for EG-2 and EG-3 | Before delegate grants go live (todo 19); todo 77 |
 | RV-08 | Prescriptions and clinical documents (ordinary and regulated classes) | Fetch Portaria SVS/MS 344/1998 and the gov.br SNCR notice behind the 30/09/2026 and 30/10/2026 stages; read RDC 1.000/2025 amendments to RDC 873/2024 | 2026-09-24 | Open: Portaria 344 not retrieved (HTTP 503). SNCR stage dates remain plan research (gov.br notice of 21/09/2026), not fetched here. RDC 873/2024 fetched | Before any regulated-class electronic issuance (EG-6, todo 36); retry Portaria 344 on the next pass |
 | RV-09 | RNDS exchange | Read the credentialing steps (Portal de Servicos, digital certificate, homologation to production) in the RNDS guide | 2026-11-10 | Partly done: passo-a-passo, ambientes, servicos, homologar, requisicoes, erros, autenticacao and certificado read for todo 68; the definitions package zip returned HTTP 404. The LGPD art. 11 basis (II a or f) stays open for the owner's compliance reviewer; EG-7 not started | Before EG-7 credentialing starts; when the definitions package becomes downloadable |

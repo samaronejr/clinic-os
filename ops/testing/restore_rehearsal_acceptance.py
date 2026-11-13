@@ -1,4 +1,12 @@
-"""Create two claimed TLS databases and drive the disposable rehearsal."""
+"""Create two claimed TLS databases and drive the disposable recovery exercise.
+
+The exercise seeds a synthetic source, rotates its tenant DEK and KEK the way
+an operator would, escrows the rotated KEK and backs up the attachment objects,
+then proves three failure variants refuse before the target is touched (no
+KEK escrow, a stale pre-rotation escrow, an object missing from the backup)
+before one full restore of rows, objects and keys. Stdout carries the exercise
+report validated by ``docs/operations/recovery-exercise.schema.json``.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +16,7 @@ import os
 import secrets
 import shutil
 import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, Never
 
@@ -17,8 +26,17 @@ from ops.testing.ci_postgres_runtime import (
     database_url,
 )
 from ops.testing.isolation_common import (
+    JsonObject,
+    JsonValue,
+    canonical_bytes,
     ensure_private_directory,
     load_json,
+    utc_now,
+)
+from ops.testing.restore_escrow import (
+    KEK_SECRET_FILE,
+    MISSING_ESCROW,
+    STALE_ESCROW,
 )
 from ops.testing.runtime_paths import runtime_directory
 from ops.testing.tls_export import public_ca_export
@@ -27,10 +45,16 @@ from ops.testing.tls_materializer import materializer_lease
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 PYTHON: Final = Path(sys.executable)
 UV: Final = Path(shutil.which("uv") or "")
+GIT: Final = Path("/usr/bin/git")
+MISSING_OBJECT: Final = "attachment object(s) are missing from the object backup"
+RECEIPT_STATEMENT: Final = (
+    "logical restore only; provider PITR not verified; "
+    "encrypted provider backup not verified"
+)
 
 
 def main(repository: Path | None = None) -> int:
-    """Run target-first migration, synthetic source seed, restore, and cleanup.
+    """Run target-first migration, seed, rotation, failure variants and restore.
 
     ``repository`` locates only the isolation ledger; a QA caller passes a
     root holding a fresh same-boot ledger so the retained prior-boot ledger
@@ -43,6 +67,7 @@ def main(repository: Path | None = None) -> int:
         strict=True
     )
     run_root = _run_root(ledger_path)
+    started_at = utc_now()
     with (
         materializer_lease(root) as materializer,
         public_ca_export(materializer) as public_ca,
@@ -59,18 +84,45 @@ def main(repository: Path | None = None) -> int:
         attachment_source.mkdir(mode=0o700)
         (work_dir / "media-source").mkdir(mode=0o700)
         _seed(source, work_dir, secret_dir, attachment_source)
-        attachment_restored = work_dir / "attachments-restored"
-        shutil.copytree(attachment_source, attachment_restored)
-        evidence = _run_restore(
-            source,
-            target,
-            work_dir,
-            work_dir / "probe.json",
-            attachment_restored,
-            secret_dir,
+        stale_kek = (secret_dir / KEK_SECRET_FILE).read_text(encoding="ascii")
+        rotation = _rotate(source, secret_dir)
+        # Backup time: escrow the rotated KEK and copy the object store.
+        key_escrow = _escrow(work_dir / "key-escrow", secret_dir)
+        object_backup = work_dir / "object-backup"
+        shutil.copytree(attachment_source, object_backup)
+        restored = work_dir / "attachments-restored"
+        restored.mkdir(mode=0o700)
+        inputs = RestoreInputs(
+            work_dir / "probe.json", restored, key_escrow, object_backup
         )
-        sys.stdout.buffer.write(evidence)
+        variants = _failure_variants(source, target, work_dir, inputs, stale_kek)
+        evidence = _run_restore(source, target, work_dir, inputs)
+        report: JsonObject = {
+            "drill": json.loads(evidence),
+            "evidence_level": "L1",
+            "exercise": "synthetic-logical-recovery",
+            "failure_variants": variants,
+            "finished_at": utc_now(),
+            "key_rotation": {**rotation, "rotated_before_backup": True},
+            "receipt_statement": RECEIPT_STATEMENT,
+            "schema_version": 1,
+            "source_revision": _source_revision(),
+            "started_at": started_at,
+            "synthetic": True,
+            "verdict": "passed",
+        }
+        sys.stdout.buffer.write(canonical_bytes(report))
     return 0
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreInputs:
+    """The probe binding and the recovery inputs of one restore attempt."""
+
+    probe: Path
+    object_store: Path
+    key_escrow: Path
+    object_backup: Path
 
 
 def _secret_dir(work_dir: Path) -> Path:
@@ -211,19 +263,128 @@ def _seed(
     )
 
 
-def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
+def _rotate(lease: CiDatabaseLease, secret_dir: Path) -> JsonObject:
+    """Rotate the source's DEK and KEK through the owner fixture step."""
+    environment = _base_environment()
+    environment.update(
+        {
+            "CLINIC_SECRET_BACKEND": "synthetic-file",
+            "CLINIC_SECRET_DIR": str(secret_dir),
+            "DJANGO_SETTINGS_MODULE": "config.settings.test",
+            "MIGRATION_DATABASE_URL": database_url(
+                "clinic_owner", lease.owner_password, lease
+            ),
+        }
+    )
+    raw = _run(
+        (str(PYTHON), "-m", "ops.testing.restore_fixture", "rotate"), environment
+    )
+    lines = raw.strip().splitlines()
+    value: object = json.loads(lines[-1]) if lines else None
+    if not isinstance(value, dict) or set(value) != {
+        "dek_versions",
+        "rewrapped_versions",
+    }:
+        _fail("restore acceptance key rotation report is invalid")
+    return {str(key): item for key, item in value.items()}
+
+
+def _escrow(root: Path, secret_dir: Path) -> Path:
+    """Escrow the source's current KEK beside, never inside, the backup."""
+    root.mkdir(mode=0o700)
+    _write_kek(root, (secret_dir / KEK_SECRET_FILE).read_text(encoding="ascii"))
+    return root
+
+
+def _write_kek(root: Path, value: str) -> None:
+    descriptor = os.open(
+        root / KEK_SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400
+    )
+    try:
+        os.write(descriptor, value.encode("ascii"))
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _failure_variants(
     source: CiDatabaseLease,
     target: CiDatabaseLease,
     work_dir: Path,
-    probe_path: Path,
-    object_store: Path,
-    secret_dir: Path,
+    inputs: RestoreInputs,
+    stale_kek: str,
+) -> list[JsonValue]:
+    """Prove each missing or stale recovery input refuses before any mutation.
+
+    The full restore that follows starts with the empty-target gate, so it also
+    proves none of these refusals touched the target.
+    """
+    missing_key = work_dir / "escrow-missing"
+    missing_key.mkdir(mode=0o700)
+    stale_key = work_dir / "escrow-stale"
+    stale_key.mkdir(mode=0o700)
+    _write_kek(stale_key, stale_kek)
+    incomplete = work_dir / "object-backup-incomplete"
+    shutil.copytree(inputs.object_backup, incomplete)
+    objects = sorted(
+        path for path in incomplete.rglob("*") if path.is_file() and path.suffix == ""
+    )
+    if not objects:
+        _fail("restore acceptance object backup is empty")
+    objects[0].unlink()
+    results: list[JsonValue] = []
+    for variant, variant_inputs, expected in (
+        ("missing-key", replace(inputs, key_escrow=missing_key), MISSING_ESCROW),
+        ("stale-key", replace(inputs, key_escrow=stale_key), STALE_ESCROW),
+        ("missing-object", replace(inputs, object_backup=incomplete), MISSING_OBJECT),
+    ):
+        code, output = _attempt_restore(source, target, work_dir, variant_inputs)
+        message = next(
+            (
+                line.split("RestoreContractError: ", 1)[1]
+                for line in reversed(output.splitlines())
+                if "RestoreContractError: restore drill failed: " in line
+            ),
+            "",
+        )
+        if code == 0 or expected not in message:
+            _fail(f"restore drill variant {variant} was not refused honestly")
+        results.append(
+            {"exit_code": code, "message": message, "refused": True, "variant": variant}
+        )
+    return results
+
+
+def _run_restore(
+    source: CiDatabaseLease,
+    target: CiDatabaseLease,
+    work_dir: Path,
+    inputs: RestoreInputs,
 ) -> bytes:
+    """Run the full rehearsal and return its published evidence bytes."""
     evidence = work_dir / "restore-rehearsal.json"
+    code, output = _attempt_restore(source, target, work_dir, inputs, evidence)
+    if code != 0:
+        _fail(f"restore acceptance command failed: {output[-4000:]}")
+    raw = evidence.read_bytes()
+    evidence.chmod(0o600)
+    evidence.unlink()
+    return raw
+
+
+def _attempt_restore(
+    source: CiDatabaseLease,
+    target: CiDatabaseLease,
+    work_dir: Path,
+    inputs: RestoreInputs,
+    evidence: Path | None = None,
+) -> tuple[int, str]:
+    """Invoke ``make restore-rehearsal`` once; return its exit code and output."""
+    evidence = evidence or work_dir / "refused-rehearsal.json"
     media_store = work_dir / "media-restored"
-    media_store.mkdir(mode=0o700)
+    media_store.mkdir(mode=0o700, exist_ok=True)
     uv_cache = work_dir / "uv-cache"
-    uv_cache.mkdir(mode=0o700)
+    uv_cache.mkdir(mode=0o700, exist_ok=True)
     credentials = {
         "source_password": source.super_password,
         "target_app_password": target.app_password,
@@ -242,13 +403,14 @@ def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
         environment = _base_environment()
         environment.update(
             {
-                "RESTORE_ATTACHMENT_ROOT": str(object_store),
+                "RESTORE_ATTACHMENT_ROOT": str(inputs.object_store),
                 "RESTORE_CREDENTIALS_FD": str(read_descriptor),
                 "RESTORE_EVIDENCE_PATH": str(evidence),
+                "RESTORE_KEY_ESCROW": str(inputs.key_escrow),
                 "RESTORE_MEDIA_STORE": str(media_store),
-                "RESTORE_OBJECT_STORE": str(object_store),
-                "RESTORE_PROBE_PATH": str(probe_path),
-                "RESTORE_SECRET_DIR": str(secret_dir),
+                "RESTORE_OBJECT_BACKUP": str(inputs.object_backup),
+                "RESTORE_OBJECT_STORE": str(inputs.object_store),
+                "RESTORE_PROBE_PATH": str(inputs.probe),
                 "RESTORE_SOURCE_CLAIM": source.claim_id,
                 "RESTORE_SOURCE_CONTAINER": source.container_id,
                 "RESTORE_SOURCE_DATABASE": source.database,
@@ -261,7 +423,7 @@ def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
                 "UV_PROJECT_ENVIRONMENT": str(PYTHON.parents[1]),
             }
         )
-        _run(
+        return _attempt(
             ("/usr/bin/make", f"UV={UV}", "restore-rehearsal"),
             environment,
             (read_descriptor,),
@@ -270,10 +432,15 @@ def _run_restore(  # noqa: PLR0913 - the restore needs its full lease context
         os.close(read_descriptor)
         if write_descriptor >= 0:
             os.close(write_descriptor)
-    raw = evidence.read_bytes()
-    evidence.chmod(0o600)
-    evidence.unlink()
-    return raw
+
+
+def _source_revision() -> JsonObject:
+    """Bind the report to the exact source revision that ran it."""
+    environment = _base_environment()
+    commit = _run((str(GIT), "rev-parse", "HEAD"), environment).strip()
+    tree = _run((str(GIT), "rev-parse", "HEAD^{tree}"), environment).strip()
+    status = _run((str(GIT), "status", "--porcelain"), environment)
+    return {"clean": not status.strip(), "commit": commit, "tree": tree}
 
 
 def _base_environment() -> dict[str, str]:
@@ -290,15 +457,27 @@ def _run(
     argv: tuple[str, ...],
     environment: dict[str, str],
     pass_fds: tuple[int, ...] = (),
-) -> None:
-    asyncio.run(_run_async(argv, environment, pass_fds))
+) -> str:
+    code, output, stdout = asyncio.run(_run_async(argv, environment, pass_fds))
+    if code != 0:
+        _fail(f"restore acceptance command failed: {output[-4000:]}")
+    return stdout
+
+
+def _attempt(
+    argv: tuple[str, ...],
+    environment: dict[str, str],
+    pass_fds: tuple[int, ...] = (),
+) -> tuple[int, str]:
+    code, output, _stdout = asyncio.run(_run_async(argv, environment, pass_fds))
+    return code, output
 
 
 async def _run_async(
     argv: tuple[str, ...],
     environment: dict[str, str],
     pass_fds: tuple[int, ...],
-) -> None:
+) -> tuple[int, str, str]:
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=PROJECT_ROOT,
@@ -308,9 +487,12 @@ async def _run_async(
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await process.communicate()
-    if process.returncode != 0:
-        detail = (stdout + stderr).decode("utf-8", errors="replace")[-4000:]
-        _fail(f"restore acceptance command failed: {detail}")
+    code = process.returncode if process.returncode is not None else 1
+    return (
+        code,
+        (stdout + stderr).decode("utf-8", errors="replace"),
+        stdout.decode("utf-8", errors="replace"),
+    )
 
 
 def _fail(reason: str) -> Never:

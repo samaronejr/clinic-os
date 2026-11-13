@@ -56,9 +56,6 @@
       {% if not grant.revoked_at %}<form method="post" action="{% url 'identity:governance-grant-command' clinic_id=clinic_id %}">{% csrf_token %}<input type="hidden" name="grant_id" value="{{ grant.pk }}"><button class="button button--danger" type="submit" name="action" value="support_revoke">{% trans "Revoke support access" %}</button></form>{% else %}{% trans "Revoked" %}{% endif %}
     </li>{% empty %}<li>{% trans "No support access has been approved." %}</li>{% endfor %}</ul>
   </section>
-  <section class="panel" aria-labelledby="recovery-exercise-title">
-    <h2 id="recovery-exercise-title">{% trans "Recovery exercise report" %}</h2>
-    <p>{% trans "Awaiting the recovery-exercise evidence from task 72. This screen does not approve recovery or live operation." %}</p>
-  </section>
+  {% include "identity/includes/recovery_exercise.html" %}
 </section>
 {% endblock %}

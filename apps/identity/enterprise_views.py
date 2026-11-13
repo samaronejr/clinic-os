@@ -49,6 +49,7 @@ from apps.identity.models import (
     SupportAccessGrant,
 )
 from apps.identity.otp import auth_response, privileged_totp_required
+from apps.identity.recovery_exercise import latest_recovery_exercise
 from apps.identity.staff_directory import staff_directory
 
 if TYPE_CHECKING:
@@ -207,6 +208,7 @@ def governance_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
                     )[:100]
                 ),
                 "units": units,
+                "recovery_exercise": latest_recovery_exercise(),
             }
             return auth_response(
                 render(request, "identity/governance.html", context, status=status)

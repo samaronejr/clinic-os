@@ -22,6 +22,14 @@ from ops.testing.restore_contract import (
     require_exact_toc,
     require_source_scope,
 )
+from ops.testing.restore_escrow import (
+    delete_restored_secrets,
+    read_key_escrow,
+    require_escrow_opens_source,
+    require_object_backup,
+    restore_key_escrow,
+    restore_object_backup,
+)
 from ops.testing.restore_purge import (
     CURRENT_TOMBSTONES_SQL,
     reapply_purge_tombstones,
@@ -63,14 +71,20 @@ CLAIM_ID_PATTERN: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
 VERIFY_TIMEOUT_SECONDS: Final = 600
+# Plan PF proposals (RPO <= 5 min, RTO <= 60 min including objects and keys);
+# they are proposals, compared with what this synthetic drill measured.
+RPO_PROPOSAL_SECONDS: Final = 300
+RTO_PROPOSAL_SECONDS: Final = 3600
 
 
 @dataclass(frozen=True, slots=True)
 class KeyProbe:
-    """Bind one source envelope to its expected plaintext digest and KEK."""
+    """Bind one source envelope to its expected plaintext digest.
+
+    The binding never carries key material: the KEK comes only from escrow.
+    """
 
     organization_id: str
-    kek: str
     envelope_hex: str
     expected_sha256: str
 
@@ -79,6 +93,7 @@ class KeyProbe:
 class RehearsalEvidence:
     """Expose only redacted recovery proofs and explicit non-claims."""
 
+    acknowledged_writes_lost: int
     app_role_probes_verified: bool
     archive_absent: bool
     attachment_objects_verified: int
@@ -86,12 +101,19 @@ class RehearsalEvidence:
     audit_content_verified: int
     claim_binding_verified: bool
     encrypted_provider_backup_verified: bool
+    escrow_opens_source: bool
+    key_escrow_restored: bool
     logical_restore_only: bool
     no_restored_browser_runner_started: bool
     no_restored_provisioning_command_ran: bool
     normalized_toc: tuple[str, ...]
+    object_backup_objects: int
     provider_pitr_verified: bool
+    purge_tombstones_reapplied: int
+    restored_secrets_absent: bool
     restored_workflows_verified: bool
+    rpo_measured_seconds: float
+    rto_measured_seconds: float
     sequence_headroom: tuple[tuple[str, int, int], ...]
     source_version: VersionEvidence
     target_version: VersionEvidence
@@ -133,17 +155,22 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     *,
     source_claim: str,
     target_claim: str,
+    key_escrow: Path,
+    object_backup: Path,
     target_app: ContainerPostgres | None = None,
     verify_environment: dict[str, str] | None = None,
     probe_path: Path | None = None,
     media_store: Path | None = None,
     source_media_store: Path | None = None,
 ) -> RehearsalEvidence:
-    """Guard, dump, authenticate, restore, compare, and erase one archive.
+    """Guard, dump, authenticate, restore rows, objects and keys, then erase.
 
     Claim binding authenticates that both containers are the leased CI
     databases this run created before any mutation; the empty-target gate
-    refuses to overwrite a database that already holds domain rows.
+    refuses to overwrite a database that already holds domain rows. The KEK
+    comes only from ``key_escrow`` and the attachment objects only from
+    ``object_backup``; a missing or stale escrow, or a missing object, fails
+    before the target is touched (ADR-016).
     """
     if (
         not work_dir.is_absolute()
@@ -157,6 +184,8 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         _fail("restore rehearsal binding is invalid")
     require_lease_claim(source.container_id, source_claim)
     require_lease_claim(target.container_id, target_claim)
+    # Read the escrow before invoking any PostgreSQL client, including probes.
+    kek = read_key_escrow(key_escrow)
     archive = work_dir / "logical-recovery.dump"
     sidecar = work_dir / "logical-recovery.dump.sha256"
     source_version = source.require_postgresql_16_14()
@@ -172,6 +201,9 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     # The target must be a migrated-but-empty database: restoring into a
     # database that already holds domain rows is never a rehearsal target.
     require_empty_target(target)
+    # Keys and objects are recovered with the rows; a gap in either fails here.
+    require_escrow_opens_source(source, probe, kek)
+    backup_objects = require_object_backup(source, object_backup)
     source_fingerprints = relation_fingerprints(source)
     sequence_evidence: tuple[tuple[str, int, int], ...] = ()
     key_status = ""
@@ -181,7 +213,11 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     key_probe = False
     app_probes = False
     workflows = False
+    tombstones = 0
+    restored_secrets: Path | None = None
+    secrets_absent = True
     try:
+        snapshot_started = time.monotonic()
         write_private_archive(archive, source.dump())
         write_hash_sidecar(archive, sidecar)
         verify_hash_sidecar(archive, sidecar)
@@ -192,8 +228,10 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         require_exact_toc(target_toc)
         verify_hash_sidecar(archive, sidecar)
         current_tombstones = source.sql(CURRENT_TOMBSTONES_SQL)
+        restore_started = time.monotonic()
         target.restore(archive_bytes)
         require_equal_fingerprints(source_fingerprints, relation_fingerprints(target))
+        restore_object_backup(object_backup, object_store)
         media_binding = None
         if source_media_store is not None:
             if media_store is None:
@@ -201,7 +239,7 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
             media_binding = restore_media_copy(
                 source=source_media_store, destination=media_store, work_dir=work_dir
             )
-        reapply_purge_tombstones(
+        tombstones = reapply_purge_tombstones(
             target, current_tombstones, media_store, media_binding=media_binding
         )
         require_owner_rls_acl_posture(target)
@@ -209,25 +247,36 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         audit_chain = True
         audit_content = require_audit_content(target)
         key_status = require_equal_tenant_key_status(source, target)
+        restored_secrets = restore_key_escrow(kek, work_dir)
         require_key_probe(
             target,
             organization_id=probe.organization_id,
-            kek=probe.kek,
+            kek=kek,
             envelope_hex=probe.envelope_hex,
             expected_sha256=probe.expected_sha256,
         )
         key_probe = True
-        objects_verified = verify_object_store(target, object_store, probe.kek)
+        objects_verified = verify_object_store(target, object_store, kek)
         sequence_evidence = require_sequence_headroom(target)
         if target_app is not None:
             _probe_restored_app_role(target, target_app, probe)
             app_probes = True
             if verify_environment is not None and probe_path is not None:
-                _run_verify(verify_environment, probe_path)
+                _run_verify(
+                    {**verify_environment, "CLINIC_SECRET_DIR": str(restored_secrets)},
+                    probe_path,
+                )
                 workflows = True
+        # Writers were stopped: nothing acknowledged after the recovery point.
+        if relation_fingerprints(source) != source_fingerprints:
+            _fail("restore drill failed: the source changed after the recovery point")
+        verified = time.monotonic()
     finally:
         delete_private_artifacts(archive, sidecar)
+        if restored_secrets is not None:
+            secrets_absent = delete_restored_secrets(restored_secrets)
     return RehearsalEvidence(
+        acknowledged_writes_lost=0,
         app_role_probes_verified=app_probes,
         archive_absent=not archive.exists() and not sidecar.exists(),
         attachment_objects_verified=objects_verified,
@@ -235,12 +284,21 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         audit_content_verified=audit_content,
         claim_binding_verified=True,
         encrypted_provider_backup_verified=False,
+        escrow_opens_source=True,
+        key_escrow_restored=key_probe,
         logical_restore_only=True,
         no_restored_browser_runner_started=True,
         no_restored_provisioning_command_ran=True,
         normalized_toc=expected_toc(),
+        object_backup_objects=backup_objects,
         provider_pitr_verified=False,
+        purge_tombstones_reapplied=tombstones,
+        restored_secrets_absent=secrets_absent,
         restored_workflows_verified=workflows,
+        # The data-loss window: any write after the snapshot until the restore
+        # began would be lost; writers were stopped, so none was.
+        rpo_measured_seconds=restore_started - snapshot_started,
+        rto_measured_seconds=verified - restore_started,
         sequence_headroom=sequence_evidence,
         source_version=source_version,
         target_version=target_version,
@@ -368,6 +426,8 @@ def main() -> int:
         source_claim=arguments.source_claim,
         target_claim=arguments.target_claim,
         target_app=target_app,
+        key_escrow=Path(arguments.key_escrow),
+        object_backup=Path(arguments.object_backup),
         verify_environment=verify_environment,
         probe_path=Path(arguments.probe),
         media_store=Path(arguments.media_store),
@@ -381,7 +441,7 @@ def main() -> int:
             "logical restore only; provider PITR not verified; "
             "encrypted provider backup not verified"
         ),
-        "schema_version": 1,
+        "schema_version": 2,
     }
     _publish_evidence(evidence_path, canonical_bytes(value))
     return 0
@@ -430,7 +490,6 @@ def _read_probe(path: Path) -> KeyProbe:
     required = {
         "envelope_hex",
         "expected_sha256",
-        "kek",
         "organization_id",
     }
     allowed = required | {
@@ -458,7 +517,6 @@ def _read_probe(path: Path) -> KeyProbe:
         fields[key] = item
     return KeyProbe(
         organization_id=fields["organization_id"],
-        kek=fields["kek"],
         envelope_hex=fields["envelope_hex"],
         expected_sha256=fields["expected_sha256"],
     )
@@ -467,16 +525,16 @@ def _read_probe(path: Path) -> KeyProbe:
 def _verify_environment(
     arguments: argparse.Namespace, app_url: str
 ) -> dict[str, str] | None:
-    """Build the closed environment for the app-role verify subprocess."""
-    secret_dir = arguments.secret_dir
+    """Build the closed environment for the app-role verify subprocess.
+
+    The rehearsal adds ``CLINIC_SECRET_DIR`` itself, pointing at the secret
+    store it restored from escrow, never at the source's live store.
+    """
     attachment_root = arguments.attachment_root
-    if secret_dir is None and attachment_root is None:
+    if attachment_root is None:
         return None
-    if secret_dir is None or attachment_root is None:
-        _fail("app-role verification inputs are incomplete")
     return {
         "CLINIC_SECRET_BACKEND": "synthetic-file",
-        "CLINIC_SECRET_DIR": secret_dir,
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
         "EHR_ATTACHMENT_ROOT": attachment_root,
         "HOME": "/nonexistent",
@@ -495,6 +553,16 @@ def _evidence_json(evidence: RehearsalEvidence) -> JsonObject:
         {"maximum": maximum, "name": name, "next_value": next_value}
         for name, next_value, maximum in evidence.sequence_headroom
     ]
+    objectives: JsonObject = {
+        "acknowledged_writes_lost": evidence.acknowledged_writes_lost,
+        "basis": "synthetic logical drill, local L1 evidence; targets are proposals",
+        "rpo_measured_seconds": evidence.rpo_measured_seconds,
+        "rpo_proposal_seconds": RPO_PROPOSAL_SECONDS,
+        "rpo_within_proposal": evidence.rpo_measured_seconds <= RPO_PROPOSAL_SECONDS,
+        "rto_measured_seconds": evidence.rto_measured_seconds,
+        "rto_proposal_seconds": RTO_PROPOSAL_SECONDS,
+        "rto_within_proposal": evidence.rto_measured_seconds <= RTO_PROPOSAL_SECONDS,
+    }
     return {
         "app_role_probes_verified": evidence.app_role_probes_verified,
         "archive_absent": evidence.archive_absent,
@@ -505,6 +573,8 @@ def _evidence_json(evidence: RehearsalEvidence) -> JsonObject:
         "encrypted_provider_backup_verified": (
             evidence.encrypted_provider_backup_verified
         ),
+        "escrow_opens_source": evidence.escrow_opens_source,
+        "key_escrow_restored": evidence.key_escrow_restored,
         "logical_restore_only": evidence.logical_restore_only,
         "no_restored_browser_runner_started": (
             evidence.no_restored_browser_runner_started
@@ -513,7 +583,11 @@ def _evidence_json(evidence: RehearsalEvidence) -> JsonObject:
             evidence.no_restored_provisioning_command_ran
         ),
         "normalized_toc": list(evidence.normalized_toc),
+        "object_backup_objects": evidence.object_backup_objects,
         "provider_pitr_verified": evidence.provider_pitr_verified,
+        "purge_tombstones_reapplied": evidence.purge_tombstones_reapplied,
+        "recovery_objectives": objectives,
+        "restored_secrets_absent": evidence.restored_secrets_absent,
         "restored_workflows_verified": evidence.restored_workflows_verified,
         "sequence_headroom": sequences,
         "source_version": source,
@@ -545,11 +619,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--evidence", required=True)
     parser.add_argument("--probe", required=True)
     parser.add_argument("--object-store", required=True)
+    parser.add_argument("--object-backup", required=True)
+    parser.add_argument("--key-escrow", required=True)
     parser.add_argument("--media-store", required=True)
     parser.add_argument("--source-media-store", required=True)
     parser.add_argument("--source-claim", required=True)
     parser.add_argument("--target-claim", required=True)
-    parser.add_argument("--secret-dir")
     parser.add_argument("--attachment-root")
     return parser
 

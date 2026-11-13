@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/recovery-exercise-v1.json",
+  "title": "Synthetic recovery exercise report (todo 72, ADR-016)",
+  "description": "One local, synthetic logical recovery exercise: rows, attachment objects and tenant keys restored from a logical archive, an object backup and a KEK escrow, plus the failure variants that must refuse. Evidence level L1. It never verifies provider PITR or an encrypted provider backup (EG-12).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "drill",
+    "evidence_level",
+    "exercise",
+    "failure_variants",
+    "finished_at",
+    "key_rotation",
+    "receipt_statement",
+    "schema_version",
+    "source_revision",
+    "started_at",
+    "synthetic",
+    "verdict"
+  ],
+  "properties": {
+    "drill": {"$ref": "#/$defs/drill"},
+    "evidence_level": {"const": "L1"},
+    "exercise": {"const": "synthetic-logical-recovery"},
+    "failure_variants": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/missing_key"},
+        {"$ref": "#/$defs/stale_key"},
+        {"$ref": "#/$defs/missing_object"}
+      ],
+      "items": false
+    },
+    "finished_at": {"$ref": "#/$defs/timestamp"},
+    "key_rotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dek_versions", "rewrapped_versions", "rotated_before_backup"],
+      "properties": {
+        "dek_versions": {"type": "integer", "minimum": 2},
+        "rewrapped_versions": {"type": "integer", "minimum": 2},
+        "rotated_before_backup": {"const": true}
+      }
+    },
+    "receipt_statement": {"$ref": "#/$defs/receipt_statement"},
+    "schema_version": {"const": 1},
+    "source_revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clean", "commit", "tree"],
+      "properties": {
+        "clean": {"const": true},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "started_at": {"$ref": "#/$defs/timestamp"},
+    "synthetic": {"const": true},
+    "verdict": {"const": "passed"}
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "receipt_statement": {
+      "const": "logical restore only; provider PITR not verified; encrypted provider backup not verified"
+    },
+    "missing_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "message", "refused", "variant"],
+      "properties": {
+        "exit_code": {"type": "integer", "minimum": 1},
+        "message": {"const": "restore drill failed: the tenant KEK escrow is missing"},
+        "refused": {"const": true},
+        "variant": {"const": "missing-key"}
+      }
+    },
+    "stale_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "message", "refused", "variant"],
+      "properties": {
+        "exit_code": {"type": "integer", "minimum": 1},
+        "message": {
+          "const": "restore drill failed: the escrowed tenant KEK cannot open the source keys"
+        },
+        "refused": {"const": true},
+        "variant": {"const": "stale-key"}
+      }
+    },
+    "missing_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "message", "refused", "variant"],
+      "properties": {
+        "exit_code": {"type": "integer", "minimum": 1},
+        "message": {
+          "type": "string",
+          "pattern": "^restore drill failed: [1-9][0-9]* attachment object\\(s\\) are missing from the object backup$"
+        },
+        "refused": {"const": true},
+        "variant": {"const": "missing-object"}
+      }
+    },
+    "postgres_version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dump_client", "restore_client", "server"],
+      "properties": {
+        "dump_client": {"const": "16.14"},
+        "restore_client": {"const": "16.14"},
+        "server": {"const": "16.14"}
+      }
+    },
+    "drill": {
+      "description": "The make restore-rehearsal evidence (schema 2): every proof must hold and no provider recovery may be claimed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "app_role_probes_verified",
+        "archive_absent",
+        "attachment_objects_verified",
+        "audit_chain_verified",
+        "audit_content_verified",
+        "claim_binding_verified",
+        "elapsed_seconds",
+        "encrypted_provider_backup_verified",
+        "escrow_opens_source",
+        "key_escrow_restored",
+        "logical_restore_only",
+        "no_restored_browser_runner_started",
+        "no_restored_provisioning_command_ran",
+        "normalized_toc",
+        "object_backup_objects",
+        "provider_pitr_verified",
+        "purge_tombstones_reapplied",
+        "receipt_statement",
+        "recovery_objectives",
+        "restored_secrets_absent",
+        "restored_workflows_verified",
+        "schema_version",
+        "sequence_headroom",
+        "source_version",
+        "target_version",
+        "tenant_key_probe_verified",
+        "tenant_key_status"
+      ],
+      "properties": {
+        "app_role_probes_verified": {"const": true},
+        "archive_absent": {"const": true},
+        "attachment_objects_verified": {"type": "integer", "minimum": 1},
+        "audit_chain_verified": {"const": true},
+        "audit_content_verified": {"type": "integer", "minimum": 1},
+        "claim_binding_verified": {"const": true},
+        "elapsed_seconds": {"type": "number", "minimum": 0},
+        "encrypted_provider_backup_verified": {"const": false},
+        "escrow_opens_source": {"const": true},
+        "key_escrow_restored": {"const": true},
+        "logical_restore_only": {"const": true},
+        "no_restored_browser_runner_started": {"const": true},
+        "no_restored_provisioning_command_ran": {"const": true},
+        "normalized_toc": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(TABLE DATA|SEQUENCE SET) clinic_app\\.[a-z0-9_]+$"
+          }
+        },
+        "object_backup_objects": {"type": "integer", "minimum": 1},
+        "provider_pitr_verified": {"const": false},
+        "purge_tombstones_reapplied": {"type": "integer", "minimum": 0},
+        "receipt_statement": {"$ref": "#/$defs/receipt_statement"},
+        "recovery_objectives": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "acknowledged_writes_lost",
+            "basis",
+            "rpo_measured_seconds",
+            "rpo_proposal_seconds",
+            "rpo_within_proposal",
+            "rto_measured_seconds",
+            "rto_proposal_seconds",
+            "rto_within_proposal"
+          ],
+          "properties": {
+            "acknowledged_writes_lost": {"const": 0},
+            "basis": {
+              "const": "synthetic logical drill, local L1 evidence; targets are proposals"
+            },
+            "rpo_measured_seconds": {"type": "number", "minimum": 0},
+            "rpo_proposal_seconds": {"const": 300},
+            "rpo_within_proposal": {"type": "boolean"},
+            "rto_measured_seconds": {"type": "number", "minimum": 0},
+            "rto_proposal_seconds": {"const": 3600},
+            "rto_within_proposal": {"type": "boolean"}
+          }
+        },
+        "restored_secrets_absent": {"const": true},
+        "restored_workflows_verified": {"const": true},
+        "schema_version": {"const": 2},
+        "sequence_headroom": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["maximum", "name", "next_value"],
+            "properties": {
+              "maximum": {"type": "integer", "minimum": 0},
+              "name": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+              "next_value": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "source_version": {"$ref": "#/$defs/postgres_version"},
+        "target_version": {"$ref": "#/$defs/postgres_version"},
+        "tenant_key_probe_verified": {"const": true},
+        "tenant_key_status": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*\\|(active|retired)(\\n[1-9][0-9]*\\|(active|retired))*$"
+        }
+      }
+    }
+  }
+}

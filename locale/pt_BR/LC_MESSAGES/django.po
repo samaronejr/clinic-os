@@ -10225,8 +10225,41 @@ msgstr "Aprovar acesso de suporte com dados mascarados"
 msgid "Approved support access"
 msgstr "Acesso de suporte aprovado"
 
-msgid "Awaiting the recovery-exercise evidence from task 72. This screen does not approve recovery or live operation."
-msgstr "Aguardando as evidências do exercício de recuperação da tarefa 72. Esta tela não aprova a recuperação nem a operação com dados reais."
+#, python-format
+msgid "The latest synthetic recovery exercise passed on %(day)s (source revision %(revision)s)."
+msgstr "O exercício sintético de recuperação mais recente foi concluído com êxito em %(day)s (revisão do código-fonte %(revision)s)."
+
+msgid "Restored together"
+msgstr "Restaurados em conjunto"
+
+#, python-format
+msgid "Database rows, %(objects)s attachment objects from the object backup and %(versions)s tenant key versions under the KEK restored from escrow; %(events)s audit events re-verified and purge records re-applied."
+msgstr "Linhas do banco de dados, %(objects)s objetos de anexo da cópia de segurança de objetos e %(versions)s versões da chave de dados da organização sob a chave mestra restaurada da custódia; %(events)s eventos de auditoria verificados novamente e registros de descarte reaplicados."
+
+msgid "Recovery point"
+msgstr "Ponto de recuperação"
+
+#, python-format
+msgid "%(measured)s s measured; proposal: at most %(proposal)s s."
+msgstr "%(measured)s s medidos; proposta: no máximo %(proposal)s s."
+
+msgid "Recovery time"
+msgstr "Tempo de recuperação"
+
+msgid "Refused as required"
+msgstr "Recusas conforme exigido"
+
+msgid "A missing key escrow, a stale key escrow and a missing attachment object each stopped the restore before it started."
+msgstr "A falta da chave em custódia, uma chave em custódia desatualizada e um objeto de anexo ausente interromperam, cada um, a restauração antes do início."
+
+msgid "The recovery exercise record could not be read. No result is shown."
+msgstr "Não foi possível ler o registro do exercício de recuperação. Nenhum resultado é exibido."
+
+msgid "No recovery exercise has been recorded yet."
+msgstr "Nenhum exercício de recuperação foi registrado ainda."
+
+msgid "Synthetic local evidence only: a logical restore, with provider point-in-time recovery and encrypted provider backup not verified. This screen does not approve recovery or live operation."
+msgstr "Somente evidência sintética local: uma restauração lógica, sem verificação da recuperação pontual nem do backup criptografado do provedor. Esta tela não aprova a recuperação nem a operação com dados reais."
 
 msgid "Client identifier"
 msgstr "Identificador do cliente"

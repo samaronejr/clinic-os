@@ -13,9 +13,15 @@ from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.template.loader import render_to_string
 
-from apps.comms.adapters import PermanentSendError, SendResult, TransientSendError
+from apps.comms.adapters import (
+    AmbiguousSendError,
+    PermanentSendError,
+    SendResult,
+    TransientSendError,
+)
 from apps.comms.capabilities import channel_capability, template_enabled
 from apps.comms.models import AppointmentReminder
+from apps.core.fault_injection import injected_fault
 from apps.intake.models import PatientContact
 
 if TYPE_CHECKING:
@@ -82,6 +88,12 @@ class ReminderAdapter:
             raise PermanentSendError
         # Explicit fault injection only on the already-enabled synthetic path.
         if self.channel in getattr(settings, "COMMS_SYNTHETIC_FAILURE_CHANNELS", ()):
+            raise TransientSendError
+        # Degraded-mode drills: an unknown outcome is held for reconciliation.
+        drill = injected_fault("messaging")
+        if drill == "ambiguous":
+            raise AmbiguousSendError
+        if drill is not None:
             raise TransientSendError
         return SendResult(f"synthetic:{self.channel}:{operation_id}")
 

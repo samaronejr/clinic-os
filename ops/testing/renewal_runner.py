@@ -134,6 +134,8 @@ SUITES: Final = {
     "device-capabilities": ("tests/renewal/browser/test_device_capabilities.py",),
     # Task 70: the public website and help center (no fixtures, no session).
     "website": ("tests/renewal/browser/test_website.py",),
+    # Task 72: core work while the in-request providers are faulted.
+    "resilience": ("tests/renewal/browser/test_resilience.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -179,6 +181,7 @@ FIXTURE_SUITES: Final = frozenset(
         "care-coordination",
         "public-booking",
         "reports",
+        "resilience",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -827,6 +830,9 @@ def _synthetic_secret_store(run_root: Path) -> Iterator[dict[str, str]]:
 
 def _synthetic_adapters(suite: str) -> dict[str, str]:
     """Opt one suite's runtime into exactly the synthetic adapters it drives."""
+    resilience_mode = os.environ.get("CLINIC_RENEWAL_RESILIENCE_MODE", "down")
+    if suite == "resilience" and resilience_mode not in {"down", "slow", "ambiguous"}:
+        _fail("invalid resilience fault mode")
     return {
         **(
             {"COMMS_SYNTHETIC_CHANNELS": "email,sms,whatsapp"}
@@ -846,6 +852,24 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
         **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
         **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
+        # Each resilience run drives one mode through all five real boundaries.
+        **(
+            {
+                "BILLING_SYNTHETIC_PIX": "true",
+                "CLINIC_SYNTHETIC_FAULTS": ",".join(
+                    f"{family}={resilience_mode}"
+                    for family in ("ai", "video", "messaging", "payment", "signing")
+                ),
+                "CLINIC_RENEWAL_RESILIENCE_MODE": resilience_mode,
+                "CLINIC_ENTERPRISE_SYNTHETIC": "true",
+                "COMMS_SYNTHETIC_CHANNELS": "email,sms,whatsapp",
+                "TELECONSULT_SYNTHETIC_PROVIDER": "true",
+                "PHYSICIAN_SYNTHETIC_REGISTRY": "true",
+                "PRESCRIPTION_SYNTHETIC_SIGNING": "true",
+            }
+            if suite == "resilience"
+            else {}
+        ),
         # A reserved .invalid address, so the contact page renders its link.
         **(
             {"CLINIC_WEBSITE_CONTACT_EMAIL": "equipe@clinic-ops.invalid"}
@@ -1069,6 +1093,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     secret_key=server_environment["SECRET_KEY"],
                 ),
                 **secret_environment,
+                **(_synthetic_adapters(suite) if suite == "resilience" else {}),
                 **(
                     {"CLINIC_BROWSER_FAKE_MEDIA": "1"}
                     if suite == "scribe-capture"
@@ -1083,7 +1108,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite in {"agenda", "reminders", "messages"}
+                        if suite in {"agenda", "reminders", "messages", "resilience"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
                         else {}

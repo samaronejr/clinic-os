@@ -32,6 +32,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import now as utc_now
 
+from apps.core.fault_injection import injected_fault
 from apps.providers.services import is_live
 
 if TYPE_CHECKING:
@@ -300,7 +301,17 @@ class SyntheticSignatureProvider:
             or hashlib.sha256(request.content).hexdigest() != request.content_digest
         ):
             raise SignatureProviderRejectedError
-        return SignatureAcceptance(operation_ref=f"synop-{secrets.token_hex(16)}")
+        # Degraded-mode drills: an outage or a missed deadline stays retryable;
+        # an acceptance without a usable reference must fail closed.
+        drill = injected_fault("signing")
+        if drill == "ambiguous":
+            return SignatureAcceptance(operation_ref="")
+        if drill is not None:
+            raise SignatureProviderTransientError
+        # The immutable local operation UUID is the provider idempotency key.
+        # Replacing a worker must address the same synthetic operation, even
+        # when the first worker died before persisting this acceptance.
+        return SignatureAcceptance(operation_ref=f"synop-{request.operation_id.hex}")
 
     def sign(
         self, request: SignatureRequest, operation_ref: str
