@@ -63,6 +63,11 @@ from ops.testing.isolation_common import (
 )
 from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
+from ops.testing.sentinel_runtime import (
+    broker_tap,
+    scan_suite_runtime,
+    suite_injects_sentinels,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -956,6 +961,20 @@ def _junit_verdict(path: Path) -> tuple[int, int, int, int]:
     return counts[0], counts[1], counts[2], counts[3]
 
 
+def _passing_tests(junit: Path, pytest_code: int) -> int:
+    """Return the suite's test count, refusing a missing, empty or failed run."""
+    if not junit.is_file():
+        _fail(f"renewal suite produced no junit report (pytest exit {pytest_code})")
+    tests, failures, errors, skipped = _junit_verdict(junit)
+    if tests == 0:
+        _fail("renewal suite ran zero tests")
+    if skipped:
+        _fail("renewal suite skipped tests; the run proves nothing")
+    if pytest_code != 0 or failures or errors:
+        _fail(f"renewal suite failed (pytest exit {pytest_code})")
+    return tests
+
+
 def _capture_source(
     repository: Path,
     run_root: Path,
@@ -1070,6 +1089,13 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 enabled=suite in REALTIME_SUITES,
             )
         )
+        frames = extra_processes.enter_context(
+            broker_tap(
+                server_environment["REALTIME_REDIS_URL"]
+                if suite in REALTIME_SUITES
+                else None
+            )
+        )
         try:
             start_master(
                 supervised_argv(
@@ -1153,18 +1179,20 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 timeout=PYTEST_TIMEOUT_SECONDS,
                 cwd=repository,
             )
+            if provisioned is not None and pytest_code == 0:
+                scan_suite_runtime(
+                    suite=suite,
+                    base_url=f"http://127.0.0.1:{port}",
+                    artifact_root=artifact_root,
+                    browser_root=browser_root,
+                    frames=frames,
+                    super_dsn=provisioned.super_dsn,
+                    self_injecting=suite_injects_sentinels(SUITES[suite], repository),
+                )
         finally:
             if spawned:
                 _terminate_master(spawned[0])
-    if not junit.is_file():
-        _fail(f"renewal suite produced no junit report (pytest exit {pytest_code})")
-    tests, failures, errors, skipped = _junit_verdict(junit)
-    if tests == 0:
-        _fail("renewal suite ran zero tests")
-    if skipped:
-        _fail("renewal suite skipped tests; the run proves nothing")
-    if pytest_code != 0 or failures or errors:
-        _fail(f"renewal suite failed (pytest exit {pytest_code})")
+    tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     return {
         "artifact_root": str(artifact_root),

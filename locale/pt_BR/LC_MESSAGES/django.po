@@ -11553,3 +11553,18 @@ msgstr "Para enviar o período ao seu contador, pressione {control}."
 
 msgid "In this version payments, refunds and payouts are simulations. No real money moves."
 msgstr "Nesta versão, pagamentos, reembolsos e repasses são simulações. Nenhum dinheiro real é movimentado."
+
+msgid "Delegate access"
+msgstr "Acesso por representante"
+
+msgid "Reads by a delegate acting for you are listed too."
+msgstr "Leituras feitas por um representante em seu nome também aparecem aqui."
+
+msgid "Legal guardian of a minor"
+msgstr "Responsável legal por menor"
+
+msgid "Curator"
+msgstr "Curador(a)"
+
+msgid "Patient-authorized adult"
+msgstr "Adulto autorizado pelo paciente"

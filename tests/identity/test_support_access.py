@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -12,6 +12,7 @@ from apps.identity.enterprise_access import (
     approve_support_access,
     support_diagnostics,
 )
+from apps.identity.models import SupportAccessGrant
 from django.test import override_settings
 from django.utils import timezone
 
@@ -66,6 +67,14 @@ def test_jit_expiry_uses_a_clock_not_a_wait(
             expires_at=expires,
             session_key=setup.session_key,
         )
+    # The same session reads while the grant is current, so only expiry can
+    # refuse the read below.
+    with runtime_role():
+        assert support_diagnostics(
+            clinic_id=rbac_graph.clinic_a,
+            grant_id=grant.pk,
+            session_key=setup.session_key,
+        ).masked
     # When the clock reaches the exclusive upper bound.
     monkeypatch.setattr(clock, "utc_now", lambda: expires)
     # Then the same still-valid browser session cannot read through the grant.
@@ -75,3 +84,38 @@ def test_jit_expiry_uses_a_clock_not_a_wait(
             grant_id=grant.pk,
             session_key=setup.session_key,
         )
+
+
+@override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
+def test_support_grant_requires_a_purpose_and_at_most_four_hours(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given a customer admin with real recent TOTP and a frozen service clock,
+    # so only the purpose or the expiry can refuse.
+    setup = enterprise_setup(rbac_graph)
+    now = timezone.now()
+    monkeypatch.setattr(clock, "utc_now", lambda: now)
+
+    def approve(purpose: str, expires_at: datetime) -> SupportAccessGrant:
+        return approve_support_access(
+            clinic_id=rbac_graph.clinic_a,
+            support_user_id=rbac_graph.clinic_admin,
+            purpose=purpose,
+            expires_at=expires_at,
+            session_key=setup.session_key,
+        )
+
+    with permission_context(rbac_graph, rbac_graph.clinic_admin):
+        # When the purpose is blank, or the expiry is past four hours or now,
+        # the grant is refused and nothing persists ...
+        for purpose, expires_at in (
+            ("   ", now + timedelta(hours=1)),
+            ("Synthetic diagnostic", now + timedelta(hours=4, microseconds=1)),
+            ("Synthetic diagnostic", now),
+        ):
+            with pytest.raises(GovernanceDeniedError):
+                approve(purpose, expires_at)
+            assert not SupportAccessGrant.objects.exists()
+        # ... while the same approval for exactly four hours is granted.
+        granted = approve("Synthetic diagnostic", now + timedelta(hours=4))
+    assert granted.expires_at == now + timedelta(hours=4)

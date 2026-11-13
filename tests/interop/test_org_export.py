@@ -40,7 +40,12 @@ from apps.interop.management import (
     list_exports,
     request_export,
 )
-from apps.interop.migrations import _export_v2_sql, _export_v3_sql, _export_v4_sql
+from apps.interop.migrations import (
+    _export_v2_sql,
+    _export_v3_sql,
+    _export_v4_sql,
+    _export_v5_sql,
+)
 from apps.interop.migrations._export_sql import EXCLUDED_V1, EXPORT_V1
 from apps.interop.migrations._export_v2_sql import (
     EXCLUDED_V2,
@@ -55,6 +60,11 @@ from apps.interop.migrations._export_v3_sql import (
     EXPORT_V3,
 )
 from apps.interop.migrations._export_v4_sql import EXCLUDED_V4, EXPORT_V4, RNDS_EXPORTS
+from apps.interop.migrations._export_v5_sql import (
+    DELEGATE_EXPORTS,
+    EXCLUDED_V5,
+    EXPORT_V5,
+)
 from apps.interop.migrations._interop_sql import TABLES
 from apps.interop.models import RndsSubmission
 from apps.interop.rls import IMPORT_RLS_TABLES, RNDS_RLS_TABLES
@@ -113,7 +123,8 @@ __all__ = ("attachment_root",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 MANAGEMENT = "/api/interop/v1/"
-FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v4.md"
+FORMAT_DOCUMENT = Path(__file__).resolve().parents[2] / "docs" / "api" / "export-v5.md"
+V4_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v4.md")
 V3_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v3.md")
 V2_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v2.md")
 V1_DOCUMENT = FORMAT_DOCUMENT.with_name("export-v1.md")
@@ -137,10 +148,11 @@ STAFF_COLUMNS = {
     "date_joined",
     "last_login",
 }
-EXPORTED = [entry[0] for entry in EXPORT_V4]
+EXPORTED = [entry[0] for entry in EXPORT_V5]
 IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
 ENTERPRISE_RELATIONS = set(ENTERPRISE_TABLES)
 RNDS_RELATIONS = set(RNDS_RLS_TABLES)
+DELEGATE_RELATIONS = {"identity_delegateaccessevent"}
 
 
 @pytest.fixture
@@ -296,7 +308,7 @@ def test_export_registry_partitions_every_recovery_relation() -> None:
     assert set(EXCLUDED.values()) <= set(EXCLUSION_REASONS)
     by_relation = {dataset.relation: dataset for dataset in datasets()}
     assert list(by_relation) == EXPORTED
-    for relation, key, _kind, omitted, scope in EXPORT_V4:
+    for relation, key, _kind, omitted, scope in EXPORT_V5:
         names = {column.name for column in by_relation[relation].columns}
         assert key in names, relation
         assert names.isdisjoint(omitted), relation
@@ -313,6 +325,7 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
         - IMPORT_RELATIONS
         - ENTERPRISE_RELATIONS
         - RNDS_RELATIONS
+        - DELEGATE_RELATIONS
     )
     assert {entry[0] for entry in IMPORT_EXPORTS} | set(IMPORT_EXCLUSIONS) == (
         IMPORT_RELATIONS
@@ -328,7 +341,10 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
 def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -> None:
     v2 = {entry[0] for entry in EXPORT_V2} | set(EXCLUDED_V2)
     assert v2 == (
-        set(restore_contract.DOMAIN_RELATIONS) - ENTERPRISE_RELATIONS - RNDS_RELATIONS
+        set(restore_contract.DOMAIN_RELATIONS)
+        - ENTERPRISE_RELATIONS
+        - RNDS_RELATIONS
+        - DELEGATE_RELATIONS
     )
     assert {entry[0] for entry in ENTERPRISE_EXPORTS} | set(ENTERPRISE_EXCLUSIONS) == (
         ENTERPRISE_RELATIONS
@@ -343,7 +359,9 @@ def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -
 
 def test_export_v3_stays_frozen_and_v4_adds_exactly_the_rnds_submission_log() -> None:
     v3 = {entry[0] for entry in EXPORT_V3} | set(EXCLUDED_V3)
-    assert v3 == set(restore_contract.DOMAIN_RELATIONS) - RNDS_RELATIONS
+    assert v3 == (
+        set(restore_contract.DOMAIN_RELATIONS) - RNDS_RELATIONS - DELEGATE_RELATIONS
+    )
     assert {entry[0] for entry in RNDS_EXPORTS} == RNDS_RELATIONS
     assert tuple(sorted((*EXPORT_V3, *RNDS_EXPORTS))) == EXPORT_V4
     assert EXCLUDED_V4 == EXCLUDED_V3
@@ -351,6 +369,18 @@ def test_export_v3_stays_frozen_and_v4_adds_exactly_the_rnds_submission_log() ->
     assert _export_v4_sql.FORWARD.count("requested_relation='") == len(EXPORT_V4)
     assert _export_v4_sql.REVERSE == _export_v3_sql.FORWARD
     assert "GRANT SELECT ON" not in _export_v4_sql.FORWARD
+
+
+def test_export_v4_stays_frozen_and_v5_adds_exactly_the_delegate_access_log() -> None:
+    v4 = {entry[0] for entry in EXPORT_V4} | set(EXCLUDED_V4)
+    assert v4 == set(restore_contract.DOMAIN_RELATIONS) - DELEGATE_RELATIONS
+    assert {entry[0] for entry in DELEGATE_EXPORTS} == DELEGATE_RELATIONS
+    assert tuple(sorted((*EXPORT_V4, *DELEGATE_EXPORTS))) == EXPORT_V5
+    assert EXCLUDED_V5 == EXCLUDED_V4
+    # Identity 0052 replaces only the reader's branches; its reverse is v4's.
+    assert _export_v5_sql.FORWARD.count("requested_relation='") == len(EXPORT_V5)
+    assert _export_v5_sql.REVERSE == _export_v4_sql.FORWARD
+    assert "GRANT SELECT ON" not in _export_v5_sql.FORWARD
 
 
 def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
@@ -377,9 +407,10 @@ def test_live_reader_is_one_static_branch_per_exported_relation() -> None:
         (V1_DOCUMENT, "clinic-organization-export-v1", EXCLUDED_V1, EXPORT_V1),
         (V2_DOCUMENT, "clinic-organization-export-v2", EXCLUDED_V2, EXPORT_V2),
         (V3_DOCUMENT, "clinic-organization-export-v3", EXCLUDED_V3, EXPORT_V3),
-        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V4, EXPORT_V4),
+        (V4_DOCUMENT, "clinic-organization-export-v4", EXCLUDED_V4, EXPORT_V4),
+        (FORMAT_DOCUMENT, FORMAT, EXCLUDED_V5, EXPORT_V5),
     ],
-    ids=["v1", "v2", "v3", "v4"],
+    ids=["v1", "v2", "v3", "v4", "v5"],
 )
 def test_format_document_names_every_exclusion_and_omitted_column(
     path: Path,
@@ -416,7 +447,7 @@ def _assert_manifest(
     assert manifest["manifest_sha256"] == job.manifest_sha256
     assert [entry["relation"] for entry in manifest["datasets"]] == EXPORTED
     excluded = {entry["relation"]: entry["reason"] for entry in manifest["excluded"]}
-    assert excluded == EXCLUDED_V4
+    assert excluded == EXCLUDED_V5
     counts = (
         manifest["dataset_count"],
         manifest["record_count"],
@@ -830,7 +861,8 @@ def test_v4_exports_the_rnds_submission_log_with_its_sealed_bundle(
     assert verify_export_package(package).ok
     files = _files(package)
     manifest = json.loads(files["manifest.json"])
-    assert manifest["v"] == "clinic-organization-export-v4"
+    # Added in v4; every later version keeps the RNDS submission log.
+    assert manifest["v"] == FORMAT
     (dataset,) = [
         entry
         for entry in manifest["datasets"]

@@ -314,6 +314,53 @@ database trust boundary, not as proof against a superuser.
 - Use synthetic, non-identifying values in tests and evidence. Audit payloads
   are metadata, not a place for PHI.
 
+## Dependency provenance and security readiness
+
+- `uv run pip-audit --local` runs in `make ci` and the hosted workflow. An
+  accepted vulnerability needs a documented exception with an expiry date in
+  this file; there is none today. No `frontend/` island exists, so there is
+  no npm audit yet.
+- The CycloneDX runtime SBOM
+  ([docs/releases/sbom/clinic-os-runtime.cdx.json](releases/sbom/clinic-os-runtime.cdx.json))
+  is generated from `uv.lock` by `python -m ops.release.sbom write`;
+  `tests/infra/test_sbom.py` fails when the locked runtime closure drifts from
+  it. Each release record cites the SBOM's SHA-256.
+- The `secret-scan` pre-commit hook (`ops/testing/secret_scan.py`) refuses
+  private keys, provider tokens, credentialed connection URLs, OTP
+  provisioning URIs, JWTs, `.env` files and Terraform state or variables. A
+  synthetic fixture that must look like a credential is listed with a reason
+  in `ops/testing/secret-scan-allowlist.txt`.
+- Each threat model's mitigation table has a Tests column; its first
+  non-browser id is the mitigation's designated proof. A mitigation is
+  covered only by execution evidence: `python -m
+  ops.testing.threat_model_coverage report --junit <pytest junit.xml>
+  --output threat-coverage.json` requires a mapped non-browser test to have
+  passed and none to have failed, never counts skipped or not-run tests, and
+  refuses to run without JUnit. `tests/infra/test_threat_model_coverage.py`
+  runs every designated proof and applies that verdict; `inventory` only
+  checks the mapping. Text after `**Gap:**` in a mitigation is a known
+  missing control (state `gap`); text after `**Unproved:**` is a clause no
+  mapped test proves (state `partial`). Neither counts as covered, every
+  report lists them, and `report` exits 0 only when all rows are covered.
+  Today: all 98 covered, 0 partial, 0 gap. The patient access log lists
+  each delegate read (grant, record type, time) next to break-glass reads
+  (DG-R1), and the shipped scribe-capture script's 60 s capture-time cap also
+  runs outside the browser, under the Node runtime of the locked `playwright`
+  wheel (SM-I1).
+- `ops/testing/sentinel_scan.py` is the shared PHI-sentinel scanner. It
+  checks emitted logs, URLs, SSE frames, push payloads, artifact trees and
+  every text, JSON and bytea column (audit and outbox rows included) for
+  injected synthetic sentinels; `tests/security/test_sentinel_sinks.py` drives
+  it through real requests. The renewal runner applies it to every browser
+  suite (`ops/testing/sentinel_runtime.py`): it records the suite's broker
+  frames and browser request URLs, sends fresh sentinels through the live
+  server after the suite, then scans the logs, URLs, frames, database and
+  artifacts, and fails the suite on any finding (`sentinel-runtime.json`).
+  No push sender exists, so push is not applicable.
+- [security/assessment-scope.md](security/assessment-scope.md) is the scope
+  package for an independent assessment. No assessment has been performed,
+  and EG-12 stays open until the owner accepts one.
+
 ## Synthetic recovery and live-data gate
 
 `make restore-rehearsal` transports only the reviewed table/sequence manifest
@@ -372,8 +419,8 @@ Security-relevant decisions:
 | [ADR-016](adr/ADR-016-recovery-with-key-escrow.md) | Restore fails when keys or objects are missing |
 | [ADR-019](adr/ADR-019-service-principals.md) | `clinic_agent` NOBYPASSRLS login; principals never impersonate clinicians |
 
-Threat models (mitigation ids map to todo numbers; todo 73 maps them to
-tests):
+Threat models (mitigation ids map to todo numbers, and each table's Tests
+column maps them to the tests that prove them):
 
 | Surface | Threat model |
 | --- | --- |

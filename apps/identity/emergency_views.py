@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from django.db import connection
 from django.shortcuts import render
@@ -22,7 +22,7 @@ from apps.identity.enterprise_access import (
 )
 from apps.identity.enterprise_authority import GovernanceDeniedError, factor_scope
 from apps.identity.enterprise_forms import EmergencyAccessForm, GrantCommandForm
-from apps.identity.models import BreakGlassGrant, Clinic
+from apps.identity.models import BreakGlassGrant, Clinic, PatientDelegateGrant
 from apps.identity.otp import auth_response, privileged_totp_required
 
 if TYPE_CHECKING:
@@ -31,6 +31,17 @@ if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponseBase
 
 MAX_ACCESS_LOG_PAGE_DIGITS = 5
+
+
+DELEGATE_KIND_LABELS: Final = {
+    PatientDelegateGrant.AuthorityKind.GUARDIAN: _("Legal guardian of a minor"),
+    PatientDelegateGrant.AuthorityKind.CURATOR: _("Curator"),
+    PatientDelegateGrant.AuthorityKind.ADULT: _("Patient-authorized adult"),
+}
+DELEGATE_RECORD_LABELS: Final = {
+    "clinical_record": _("Clinical record"),
+    "result": _("Result"),
+}
 
 
 @require_http_methods(["GET"])
@@ -172,6 +183,11 @@ def patient_access_log(request: HttpRequest) -> HttpResponseBase:
                 "expires_at": row[3],
                 "reviewed": row[4],
                 "timezone": row[5],
+                "kind": row[6],
+                "record_type": DELEGATE_RECORD_LABELS.get(row[7], ""),
+                "record_type_key": row[7] or "",
+                "grant_id": row[8],
+                "delegate_kind": DELEGATE_KIND_LABELS.get(row[9], ""),
             }
             for row in cursor.fetchall()
         ]

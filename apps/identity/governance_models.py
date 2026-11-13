@@ -152,3 +152,36 @@ class UnitGovernanceChange(TenantScopedModel):
                 name="identity_unit_policy_version",
             ),
         ]
+
+
+class DelegateAccessEvent(TenantScopedModel):
+    """One delegate read, shown in the represented patient's access log.
+
+    Written only by ``clinic_app.record_delegate_access`` from the current
+    patient session's delegate binding; the runtime role holds no privilege.
+    """
+
+    class RecordType(models.TextChoices):
+        """The closed set of delegate-readable record types."""
+
+        CLINICAL_RECORD = "clinical_record"
+        RESULT = "result"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
+    grant = models.ForeignKey("identity.PatientDelegateGrant", on_delete=models.PROTECT)
+    enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment", on_delete=models.PROTECT
+    )
+    record_type = models.CharField(max_length=16, choices=RecordType)
+    accessed_at = models.DateTimeField()
+
+    class Meta:
+        """The record type is a closed vocabulary."""
+
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                condition=models.Q(record_type__in=("clinical_record", "result")),
+                name="identity_delegate_access_record_type",
+            ),
+        ]

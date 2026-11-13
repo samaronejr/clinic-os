@@ -13,6 +13,7 @@ from identity import (
     test_support_access,
     test_support_diagnostics,
 )
+from security import test_delegate_access_log
 
 ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.enterprise_governance_guard()": (
@@ -96,6 +97,8 @@ CASES = {
         *DIAGNOSTIC_CASES,
         *UNIT_CASES,
         *CONTEXT_CASES,
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log,
     )
 }
 SQL_PROTOCOL_ORACLES = {
@@ -122,7 +125,6 @@ SQL_PROTOCOL_ORACLES = {
             "enterprise_break_glass_usable",
             "enterprise_break_glass_versions",
             "enterprise_break_glass_observations",
-            "enterprise_patient_access_log",
             "enterprise_governance_guard",
             "enterprise_break_glass_complete",
             "enterprise_security_task",
@@ -130,9 +132,18 @@ SQL_PROTOCOL_ORACLES = {
             "enterprise_finish_review",
         )
     },
+    # The widened log (identity 0053, DG-R1) also lists delegate reads.
+    "clinic_app.enterprise_patient_access_log": [
+        *(case.__name__ for case in EMERGENCY_CASES),
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__,
+    ],
     "clinic_app.enterprise_support_scope": [case.__name__ for case in SUPPORT_CASES],
     "clinic_app.enterprise_support_overview": [
         case.__name__ for case in DIAGNOSTIC_CASES
+    ],
+    "clinic_app.record_delegate_access": [
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log.__name__,
     ],
     **{
         f"clinic_app.{name}": [case.__name__ for case in UNIT_CASES]

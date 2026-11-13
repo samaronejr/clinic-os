@@ -360,8 +360,9 @@ send time without a request.
 
 ### Organization export
 
-The archive format is `docs/api/export-v4.md`: export v3
-(`docs/api/export-v3.md`) plus todo 68's RNDS submission log, where v3 is export
+The archive format is `docs/api/export-v5.md`: export v4
+(`docs/api/export-v4.md`) plus todo 73's delegate-access log, where v4 is export
+v3 (`docs/api/export-v3.md`) plus todo 68's RNDS submission log, v3 is export
 v2 (`docs/api/export-v2.md`) plus identity 0051's enterprise relations and v2 is
 export v1 (`docs/api/export-v1.md`) plus the governed-import relations; every
 earlier version is frozen. `request_export` records the

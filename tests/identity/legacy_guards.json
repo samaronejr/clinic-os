@@ -14481,6 +14481,7 @@
           "clinic_app.patient_data_requests",
           "clinic_app.patient_session_overview",
           "clinic_app.questionnaire_patient_enrollment",
+          "clinic_app.record_delegate_access",
           "clinic_app.retention_records_session",
           "clinic_app.submit_data_request",
           "clinic_app.teleconsult_patient_match",
@@ -15650,6 +15651,7 @@
           "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
+          "clinic_app.record_delegate_access",
           "clinic_app.renew_delegate_grant",
           "clinic_app.request_delegate_grant",
           "clinic_app.retention_failure",
@@ -17781,6 +17783,7 @@
           "clinic_app.crm_contact_version",
           "clinic_app.crm_guard",
           "clinic_app.prescription_patient_documents",
+          "clinic_app.record_delegate_access",
           "clinic_app.retention_patient_releases"
         ],
         "signatures": [
@@ -26755,6 +26758,7 @@
           }
         ],
         "migrations": [
+          "apps/identity/migrations/_delegate_access_sql.py",
           "apps/identity/migrations/_enterprise_access_sql.py"
         ],
         "policies": [],
@@ -26768,7 +26772,8 @@
         "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
         "test_break_glass_cannot_use_someone_elses_verified_session",
         "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
-        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review",
+        "test_delegate_read_appears_in_the_represented_patients_access_log"
       ],
       "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
     },
@@ -27732,6 +27737,29 @@
           }
         ]
       }
+    },
+    "clinic_app.record_delegate_access": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_type text",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "reason": "Delegate-access writer (DG-R1): it records only the current patient session's own delegate binding; bound to an executable real-role test. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate.",
+      "probes": [
+        "test_delegate_read_appears_in_the_represented_patients_access_log",
+        "test_delegate_result_read_appears_in_the_represented_patients_access_log"
+      ]
     }
   },
   "sql_method": [

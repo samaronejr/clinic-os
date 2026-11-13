@@ -26,6 +26,7 @@ ScimRoleMapping = federation_models.ScimRoleMapping
 ScimRoleBinding = federation_models.ScimRoleBinding
 BreakGlassGrant = governance_models.BreakGlassGrant
 SupportAccessGrant = governance_models.SupportAccessGrant
+DelegateAccessEvent = governance_models.DelegateAccessEvent
 GovernanceNotice = governance_models.GovernanceNotice
 UnitGovernanceChange = governance_models.UnitGovernanceChange
 

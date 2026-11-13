@@ -11,6 +11,10 @@ repos:
         entry: uv run ruff format --check
         language: system
         types: [python]
+      - id: secret-scan
+        name: secret scan
+        entry: uv run python -m ops.testing.secret_scan
+        language: system
       - id: mypy
         name: mypy
         entry: uv run mypy .
