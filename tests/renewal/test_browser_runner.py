@@ -95,6 +95,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "device-capabilities",
         "website",
         "resilience",
+        "support-diagnostics",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
     assert {

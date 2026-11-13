@@ -307,6 +307,133 @@ a signing operation is asked again under the same operation id, which a real
 signing adapter must honour as its idempotency key. The orphaned provider
 operation can never issue: its callback is rejected before scope lookup.
 
+## Realtime transport
+
+Realtime carries refetch hints, never records, and is off unless
+`REALTIME_ENABLED` is true; the agenda keeps working without it and falls back
+to 30-second polling when `REALTIME_POLLING_FALLBACK` is true. Ordinary HTTP,
+including the ticket POST to `/rt/stream`, stays on Gunicorn. Only
+`GET /rt/stream?t=<ticket>` goes to the ASGI process
+(`config.asgi_realtime:application`, the image's `--target realtime` uvicorn
+command). Tickets live 60 seconds in Redis (`REALTIME_REDIS_URL`) and are
+consumed once. A stream closes after at most 600 seconds and on revocation.
+
+- Redis down: streams close and new tickets are refused. Booking and charting
+  are unaffected and the agenda polls. Do not point realtime at the Celery
+  broker database to "fix" it.
+- ASGI process down: restart it. No state is lost; clients refetch on the
+  next poll.
+- Hosted routing must send only `GET /rt/stream` to ASGI, disable proxy
+  buffering, keep a read timeout above 600 seconds and never log the stream
+  query string, which carries the ticket.
+
+Details and the verification commands are in
+[apps/realtime/README.md](../apps/realtime/README.md).
+
+## AI kill switches
+
+AI is off by default. Three switches stop it, from widest to narrowest, and
+each is rechecked at admission and again at the final send boundary:
+
+1. Global (owner CLI, as `clinic_owner`):
+   `uv run python manage.py ai_gateway global-switch --disable`. Re-enable
+   only with an approved region:
+   `uv run python manage.py ai_gateway global-switch --enable --approved-region br-synthetic`.
+2. Organization opt-in and capability enablement: the TOTP-protected AI
+   settings page at `/clinics/<clinic_id>/settings/ai/`.
+3. Circuits: a provider timeout opens one organization/configuration circuit.
+   Close it after the cause is fixed with
+   `uv run python manage.py ai_gateway circuit-reset --organization-id <uuid> --clinic-id <uuid> --configuration-id <uuid>`.
+
+Turning AI off never blocks clinical work: notes, scheduling and messages
+continue through their manual paths. An AI request that was already admitted
+fails closed with its own reason code and is not retried on another provider.
+See [apps/ai/README.md](../apps/ai/README.md).
+
+## Provider degrade and revoke
+
+Provider availability is read from the capability lifecycle registry
+(`apps/providers`), never from a constant. Owner commands, run as
+`clinic_owner`, record each change with an approver, a role and an evidence
+link, and append a `providers.capability.*` audit event:
+
+```sh
+uv run python manage.py provider_capability degrade --key <key> --approver-name <name> --approver-role <role> --evidence-uri <uri> --reason <text>
+uv run python manage.py provider_capability revoke --key <key> --approver-name <name> --approver-role <role> --evidence-uri <uri> --reason <text>
+uv run python manage.py provider_capability report --markdown
+```
+
+`degrade` moves an activated capability to `degraded`; `activate` returns it.
+`revoke` is terminal: a new capability version is needed to use that provider
+again. Neither command reroutes work to a different provider. The reason and
+evidence text go to owner records only, so keep customer and patient data out
+of them. Support diagnostics show each capability's state to a support user
+under a customer grant.
+
+## Support diagnostics
+
+Support never borrows a staff context. A clinic administrator with
+organization-wide authority approves a `SupportAccessGrant` on the enterprise
+governance screen for one named, active support account, with a purpose and at
+most four hours. The approval can be revoked there at any time and stops
+working at the next request.
+
+The support user signs in with their own verified account and opens
+`/support/diagnostics/`. The clinic ID and grant ID travel only in the POST
+body. The screen re-verifies the grant and the browser session in PostgreSQL
+(`enterprise_support_scope`, then `enterprise_support_overview`) and shows:
+
+- integration status: each provider capability and its lifecycle state;
+- the integration queue: outbox operations by channel and status, with the age
+  of the oldest waiting one;
+- task health: work tasks by state and whether any open task is overdue;
+- a masked tenant overview: the number of units and active staff by role.
+
+It shows no patient, name, username, identifier, message, error text, payload
+or clinical record, and has no write action. A missing, expired, revoked or
+foreign grant and an unverified session all get the same refusal. Every read
+appends `identity.support.read` against the named support user and the grant.
+The enterprise policy fence keeps every other tenant table empty under a support
+grant, so a support user who opens a patient chart or a staff page is refused.
+
+No support desk is staffed in this version. The procedure below is rehearsed
+on synthetic data only, and no customer support commitment or service level
+exists yet.
+
+### Support drills
+
+Each drill is an agent-executed synthetic simulation in
+`tests/resilience/test_support_drills.py`. In each one the customer approves
+access, the support user reads the screen, and the fix stays with the customer
+or the owner:
+
+| Report | What support sees | Who fixes it |
+| --- | --- | --- |
+| Lost authenticator | no account, device or code data; support's own account cannot request an authenticator reset for the customer's clinic | the user, with one saved recovery code, or a clinic manager through the delayed, notified authenticator reset |
+| Failed payment callback | provider capability states and counts, never the charge, amount or provider reference; a forged callback is rejected before scope lookup | the clinic's finance user, through payment reconciliation |
+| AI outage | one failed action in the integration queue and the model capability state, never the AI input or output | the owner, with the AI kill switches and circuit reset above; clinical work continues manually |
+
+Run them with
+`uv run --frozen --no-sync --no-env-file pytest --reuse-db -q tests/resilience/test_support_drills.py`.
+Each test records a `support_drill` JSON property in its JUnit report.
+
+## Status page incidents
+
+Incidents are posted by hand in `docs/operations/status-incidents.json` and
+shown at `/status/`. Automated monitoring alerts are not connected (monitoring
+delivery is still pending in LIVE-DATA-GATE.md), so the page can lag a real
+problem. An incident has an id (`INC-<year>-<number>`), one or more components
+(`agenda`, `records`, `portal`, `messaging`, `payments`, `video`, `ai`), an
+impact (`maintenance`, `degraded`, `partial_outage`, `major_outage`) and dated
+updates whose states are `investigating`, `identified`, `monitoring` and
+`resolved`. The page builds every sentence from those keys, so there is no
+free-text field: never try to add customer, patient or error details. The
+file may be at most 256 KiB (`MAX_STATUS_BYTES` in `apps/website/status.py`)
+and no object may repeat a key. A file that breaks the model, exceeds the limit
+or repeats a key makes the page say status is unavailable, never an all-clear. Validate a change with
+`uv run --frozen --no-sync --no-env-file pytest -q tests/website/test_status.py`
+before deploying it.
+
 ## Stop and reseed
 
 Stop containers while preserving local database data:

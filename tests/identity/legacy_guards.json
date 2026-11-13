@@ -27462,12 +27462,39 @@
           "apps/identity/migrations/_enterprise_access_sql.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.enterprise_support_overview"
+        ]
       },
       "kind": "domain_protocol",
       "probes": [
         "test_support_is_masked_and_purpose_bound",
         "test_jit_expiry_uses_a_clock_not_a_wait"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_support_overview": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid, requested_clinic uuid, requested_session bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_support_overview_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_support_screen_shows_masked_aggregates_and_no_identifiers",
+        "test_expired_revoked_foreign_and_malformed_grants_share_one_denial",
+        "test_another_users_session_or_no_session_cannot_use_the_grant",
+        "test_overview_resolver_refuses_without_the_installed_grant"
       ],
       "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
     },

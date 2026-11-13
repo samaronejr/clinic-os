@@ -11243,3 +11243,313 @@ msgstr "Com JavaScript ativo, o rascunho é salvo no servidor enquanto você dig
 
 msgid "Every statement of fact in this site's page templates and help guides is registered with its evidence; an automated test checks the templates and guides for unregistered text."
 msgstr "Toda afirmação de fato nos modelos de página e nos guias de ajuda deste site está registrada com a sua evidência; um teste automatizado verifica se há texto não registrado nos modelos e nos guias."
+
+msgid "Support diagnostics | Clinic OS"
+msgstr "Diagnóstico de suporte | Clinic OS"
+
+msgid "Support diagnostics"
+msgstr "Diagnóstico de suporte"
+
+msgid "A masked, read-only view of one clinic, open only while the customer's support approval lasts. It shows counts and states, never patients, names or clinical records."
+msgstr "Uma visão mascarada e somente leitura de uma clínica, aberta apenas enquanto durar a aprovação de suporte dada pelo cliente. Mostra contagens e estados, nunca pacientes, nomes ou registros clínicos."
+
+msgid "Simulated environment: providers are synthetic and no real customer data is shown."
+msgstr "Ambiente de simulação: os provedores são sintéticos e nenhum dado real de cliente é exibido."
+
+msgid "Access refused"
+msgstr "Acesso recusado"
+
+msgid "The support approval is missing, expired or revoked, or this session is not verified. Ask the clinic administrator for a new approval."
+msgstr "A aprovação de suporte não existe, expirou ou foi revogada, ou esta sessão não foi verificada. Peça uma nova aprovação ao administrador da clínica."
+
+msgid "Tenant overview"
+msgstr "Visão geral do cliente"
+
+msgid "Units in the organization"
+msgstr "Unidades na organização"
+
+msgid "Active staff in this clinic by role"
+msgstr "Equipe ativa nesta clínica por papel"
+
+msgid "People"
+msgstr "Pessoas"
+
+msgid "No active staff."
+msgstr "Nenhuma pessoa ativa na equipe."
+
+msgid "Integration status"
+msgstr "Situação das integrações"
+
+msgid "Provider capabilities from the lifecycle registry"
+msgstr "Capacidades de provedor do registro de ciclo de vida"
+
+msgid "No provider capability is registered."
+msgstr "Nenhuma capacidade de provedor registrada."
+
+msgid "Integration queue"
+msgstr "Fila de integrações"
+
+msgid "Outbox operations by channel and status"
+msgstr "Operações de envio por canal e estado"
+
+msgid "Oldest"
+msgstr "Mais antiga"
+
+msgid "finished"
+msgstr "concluída"
+
+msgid "No outbox operations."
+msgstr "Nenhuma operação de envio."
+
+msgid "Task health"
+msgstr "Situação das tarefas"
+
+msgid "Work tasks by state"
+msgstr "Tarefas de trabalho por estado"
+
+msgid "Some overdue"
+msgstr "Há tarefas atrasadas"
+
+msgid "None overdue"
+msgstr "Nenhuma atrasada"
+
+msgid "No work tasks."
+msgstr "Nenhuma tarefa de trabalho."
+
+msgid "Open masked diagnostics"
+msgstr "Abrir diagnóstico mascarado"
+
+msgid "Use the clinic ID and support grant ID the clinic administrator shared with you. Both travel only in this form, never in the address."
+msgstr "Use o ID da clínica e o ID da concessão de suporte que o administrador da clínica compartilhou com você. Os dois seguem apenas neste formulário, nunca no endereço."
+
+msgid "Clinic ID"
+msgstr "ID da clínica"
+
+msgid "Support grant ID"
+msgstr "ID da concessão de suporte"
+
+msgid "Open diagnostics"
+msgstr "Abrir diagnóstico"
+
+msgid "Selected in the plan"
+msgstr "Selecionado no plano"
+
+msgid "Approved for testing"
+msgstr "Aprovado para teste"
+
+msgid "Authorized for production"
+msgstr "Autorizado para produção"
+
+msgid "Action (no message channel)"
+msgstr "Ação (sem canal de mensagem)"
+
+msgid "Video"
+msgstr "Vídeo"
+
+msgid "Waiting to send"
+msgstr "Aguardando envio"
+
+msgid "Sent, awaiting confirmation"
+msgstr "Enviada, aguardando confirmação"
+
+msgid "Support access ends in %(minutes)s minute."
+msgid_plural "Support access ends in %(minutes)s minutes."
+msgstr[0] "O acesso de suporte termina em %(minutes)s minuto."
+msgstr[1] "O acesso de suporte termina em %(minutes)s minutos."
+
+msgid "waiting %(minutes)s minute"
+msgid_plural "waiting %(minutes)s minutes"
+msgstr[0] "aguardando há %(minutes)s minuto"
+msgstr[1] "aguardando há %(minutes)s minutos"
+
+msgid "Service status"
+msgstr "Status do serviço"
+
+msgid "Incidents and planned maintenance posted for Clinic Ops services."
+msgstr "Incidentes e manutenções programadas publicados para os serviços do Clinic Ops."
+
+msgid "Incidents and planned maintenance that affect Clinic Ops services."
+msgstr "Incidentes e manutenções programadas que afetam os serviços do Clinic Ops."
+
+msgid "Incidents on this page are posted by hand. Automated monitoring alerts are not connected yet, so a problem can appear here late."
+msgstr "Os incidentes desta página são publicados manualmente. Os alertas automáticos de monitoramento ainda não estão conectados, então um problema pode aparecer aqui com atraso."
+
+msgid "Status information is unavailable right now. This is not an all-clear."
+msgstr "As informações de status estão indisponíveis agora. Isso não significa que está tudo normal."
+
+msgid "Components"
+msgstr "Componentes"
+
+msgid "Current state of each component"
+msgstr "Estado atual de cada componente"
+
+msgid "Component"
+msgstr "Componente"
+
+msgid "Current state"
+msgstr "Estado atual"
+
+msgid "Times are shown in Brasília time."
+msgstr "Os horários estão no horário de Brasília."
+
+msgid "Open incidents"
+msgstr "Incidentes em aberto"
+
+msgid "No incident is posted right now."
+msgstr "Nenhum incidente publicado no momento."
+
+msgid "Resolved incidents"
+msgstr "Incidentes resolvidos"
+
+msgid "No resolved incident is posted."
+msgstr "Nenhum incidente resolvido publicado."
+
+msgid "No incident posted"
+msgstr "Nenhum incidente publicado"
+
+msgid "Agenda and booking"
+msgstr "Agenda e agendamento"
+
+msgid "Clinical records"
+msgstr "Prontuários"
+
+msgid "Messages and reminders"
+msgstr "Mensagens e lembretes"
+
+msgid "Payments"
+msgstr "Pagamentos"
+
+msgid "Teleconsultation video"
+msgstr "Vídeo da teleconsulta"
+
+msgid "Planned maintenance"
+msgstr "Manutenção programada"
+
+msgid "Degraded performance"
+msgstr "Desempenho degradado"
+
+msgid "Partial outage"
+msgstr "Indisponibilidade parcial"
+
+msgid "Major outage"
+msgstr "Indisponibilidade ampla"
+
+msgid "Investigating"
+msgstr "Em investigação"
+
+msgid "Cause identified"
+msgstr "Causa identificada"
+
+msgid "Monitoring the fix"
+msgstr "Correção em observação"
+
+msgid "A problem was reported and is being investigated."
+msgstr "Um problema foi relatado e está sendo investigado."
+
+msgid "The cause was found and a fix is in progress."
+msgstr "A causa foi encontrada e uma correção está em andamento."
+
+msgid "A fix is in place and the results are being watched."
+msgstr "Uma correção foi aplicada e os resultados estão sendo acompanhados."
+
+msgid "This incident is resolved."
+msgstr "Este incidente está resolvido."
+
+msgid "Support operators"
+msgstr "Operadores de suporte"
+
+msgid "Give support time-limited access"
+msgstr "Dar ao suporte acesso por tempo limitado"
+
+msgid "Approve masked, read-only support access for one named person, for a stated purpose and a few minutes or hours at most."
+msgstr "Aprove acesso de suporte mascarado e somente leitura para uma pessoa identificada, com um propósito declarado e por alguns minutos ou horas no máximo."
+
+msgid "Approve access only for a named support person and only for the problem you reported."
+msgstr "Aprove o acesso só para uma pessoa de suporte identificada e só para o problema que você relatou."
+
+msgid "On the governance screen, review the list under {control}."
+msgstr "Na tela de governança, confira a lista em {control}."
+
+msgid "When the work is done, press {control} next to the approval."
+msgstr "Quando o trabalho terminar, pressione {control} ao lado da aprovação."
+
+msgid "The approval stops working at the next request."
+msgstr "A aprovação deixa de valer na próxima requisição."
+
+msgid "Support access lasts at most four hours."
+msgstr "O acesso de suporte dura no máximo quatro horas."
+
+msgid "Use emergency access"
+msgstr "Usar o acesso de emergência"
+
+msgid "Read a patient's record outside your care team when care cannot wait, with a reason, a time limit and a mandatory review."
+msgstr "Leia o prontuário de um paciente fora da sua equipe de cuidado quando o atendimento não pode esperar, com motivo, prazo e revisão obrigatória."
+
+msgid "Use emergency access only when a patient outside your care team needs care now."
+msgstr "Use o acesso de emergência só quando um paciente fora da sua equipe de cuidado precisa de atendimento agora."
+
+msgid "Enter the patient enrollment, the clinical reason and the duration, then press {control}."
+msgstr "Informe o vínculo do paciente, o motivo clínico e a duração e pressione {control}."
+
+msgid "Press {control} to open the read-only record."
+msgstr "Pressione {control} para abrir o prontuário somente leitura."
+
+msgid "Emergency access lasts at most four hours."
+msgstr "O acesso de emergência dura no máximo quatro horas."
+
+msgid "Read masked support diagnostics"
+msgstr "Ler o diagnóstico de suporte mascarado"
+
+msgid "Check a clinic's integrations, outbox queue and work tasks without seeing patients, names or clinical records."
+msgstr "Confira as integrações, a fila de envios e as tarefas de uma clínica sem ver pacientes, nomes ou registros clínicos."
+
+msgid "The clinic administrator approved support access for your own named account."
+msgstr "O administrador da clínica aprovou o acesso de suporte para a sua própria conta identificada."
+
+msgid "Type the {control} the clinic administrator shared with you."
+msgstr "Digite o {control} que o administrador da clínica compartilhou com você."
+
+msgid "Type the {control} from the same approval."
+msgstr "Digite o {control} da mesma aprovação."
+
+msgid "The page shows counts and states, never patients, names or clinical records."
+msgstr "A página mostra contagens e estados, nunca pacientes, nomes ou registros clínicos."
+
+msgid "An expired or revoked approval gets the same refusal as a missing one. Ask the clinic administrator for a new approval."
+msgstr "Uma aprovação expirada ou revogada recebe a mesma recusa que uma inexistente. Peça uma nova aprovação ao administrador da clínica."
+
+msgid "In this version no support desk is staffed. This procedure is rehearsed on synthetic data only."
+msgstr "Nesta versão não há central de suporte com equipe. Este procedimento é ensaiado apenas com dados sintéticos."
+
+msgid "Charge, record payments and close the day"
+msgstr "Cobrar, registrar pagamentos e fechar o dia"
+
+msgid "Issue charges, record confirmed payments and close the day from verified money and a sealed journal."
+msgstr "Emita cobranças, registre pagamentos confirmados e feche o dia com dinheiro verificado e um diário selado."
+
+msgid "You hold the finance role in this clinic and confirmed your authenticator."
+msgstr "Você tem o papel financeiro nesta clínica e confirmou seu autenticador."
+
+msgid "Choose the patient, enter the amount and press {control}."
+msgstr "Escolha o paciente, informe o valor e pressione {control}."
+
+msgid "A draft can be checked before it is issued, and issuing freezes the amount."
+msgstr "O rascunho pode ser conferido antes de emitir, e emitir congela o valor."
+
+msgid "Open the charge, check the draft and press {control}."
+msgstr "Abra a cobrança, confira o rascunho e pressione {control}."
+
+msgid "After checking a payment outside the system, enter its reference and amount and press {control}."
+msgstr "Depois de conferir um pagamento fora do sistema, informe a referência e o valor e pressione {control}."
+
+msgid "The receipt comes from this confirmation, never from generating a payment code."
+msgstr "O recibo é emitido por esta confirmação, nunca pela geração do código de pagamento."
+
+msgid "At the end of the day, go to {control} and count the cash."
+msgstr "No fim do dia, vá até {control} e conte o dinheiro."
+
+msgid "To send the period to your accountant, press {control}."
+msgstr "Para enviar o período ao seu contador, pressione {control}."
+
+msgid "In this version payments, refunds and payouts are simulations. No real money moves."
+msgstr "Nesta versão, pagamentos, reembolsos e repasses são simulações. Nenhum dinheiro real é movimentado."

@@ -72,6 +72,13 @@ RESULTS: Final = {
     ): (
         "TABLE(organization_id uuid, user_id uuid, expires_at timestamp with time zone)"
     ),
+    (
+        "enterprise_support_overview",
+        "requested_grant uuid, requested_clinic uuid, requested_session bytea",
+    ): (
+        "TABLE(signal text, channel text, state text, item_count bigint, "
+        "oldest_at timestamp with time zone)"
+    ),
     ("enterprise_break_glass_observations", "requested_grant uuid"): (
         "SETOF ehr_observation"
     ),

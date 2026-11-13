@@ -8,11 +8,13 @@ session to its workspace.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Final, NoReturn
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.utils.translation import gettext
 from django.views.decorators.http import require_safe
 
 from apps.core.workspace import has_session_identity
@@ -24,9 +26,21 @@ from apps.website.guides import (
     guide_by_slug,
     guides_for,
 )
+from apps.website.status import (
+    COMPONENTS,
+    IMPACTS,
+    MESSAGES,
+    STATES,
+    Incident,
+    StatusFileError,
+    load_incidents,
+)
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse, HttpResponseBase
+
+STATUS_ZONE: Final = ZoneInfo("America/Sao_Paulo")
+PAST_INCIDENT_LIMIT: Final = 20
 
 
 @require_safe
@@ -77,6 +91,60 @@ def pricing(_request: HttpRequest) -> NoReturn:
     records that approval in ``docs/web/claims.yaml`` (``pricing``).
     """
     raise Http404
+
+
+def _incident_row(incident: Incident) -> dict[str, object]:
+    components = ", ".join(gettext(COMPONENTS[key]) for key in incident.components)
+    return {
+        "id": incident.id,
+        "title": f"{gettext(IMPACTS[incident.impact])}: {components}",
+        "updates": [
+            {
+                "at": update.at.astimezone(STATUS_ZONE).strftime("%d/%m/%Y %H:%M"),
+                "state": gettext(STATES[update.state]),
+                "message": gettext(MESSAGES[update.state]),
+            }
+            for update in reversed(incident.updates)
+        ],
+    }
+
+
+@require_safe
+def status(request: HttpRequest) -> HttpResponse:
+    """Show posted incidents; an invalid incident file is never an all-clear."""
+    try:
+        incidents = load_incidents()
+    except StatusFileError:
+        return render(
+            request, "website/status.html", {"page": "status", "state": "unavailable"}
+        )
+    current = [incident for incident in incidents if not incident.resolved]
+    impact_rank = list(IMPACTS)
+    components = []
+    for key, label in COMPONENTS.items():
+        impacts = [i.impact for i in current if key in i.components]
+        worst = max(impacts, key=impact_rank.index) if impacts else None
+        components.append(
+            {
+                "label": gettext(label),
+                "status": (
+                    gettext(IMPACTS[worst]) if worst else gettext("No incident posted")
+                ),
+            }
+        )
+    return render(
+        request,
+        "website/status.html",
+        {
+            "page": "status",
+            "state": "open" if current else "clear",
+            "components": components,
+            "open_incidents": [_incident_row(incident) for incident in current],
+            "past_incidents": [
+                _incident_row(incident) for incident in incidents if incident.resolved
+            ][:PAST_INCIDENT_LIMIT],
+        },
+    )
 
 
 @require_safe

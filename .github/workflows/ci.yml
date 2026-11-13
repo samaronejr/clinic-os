@@ -183,6 +183,7 @@ jobs:
           - "device-capabilities,device-capabilities@firefox,device-capabilities@webkit"
           - "website,website@firefox,website@webkit"
           - "resilience,resilience@firefox,resilience@webkit"
+          - "support-diagnostics,support-diagnostics@firefox,support-diagnostics@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
