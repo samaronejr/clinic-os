@@ -32,7 +32,7 @@ ALGORITHM: Final = "file-duration-lpt-sha256-v2"
 NODE_ID_ENCODING: Final = "file+sha256"
 DURATIONS: Final = Path(__file__).with_name("ci-pytest-durations.json")
 DURATIONS_SHA256: Final = (
-    "e1aed1b395f758acfe188262714e20ed4cbd5a96960979983811667195bc1b38"
+    "3c68f24aa92076d40d9c50fe88451395dadb68715ed532a861330f41e8e8a5b1"
 )
 DURATIONS_SCHEMA: Final = 1
 DURATION_SOURCES: Final = ("local", "hosted")
