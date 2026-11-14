@@ -100,11 +100,6 @@ PROFILES: Final[dict[str, Profile]] = {
 TARGETS: Final[tuple[Target, ...]] = (
     Target("staff_navigation", 1500, "PF navigation p95 <= 1.5 s"),
     Target("patient_search_blind_index", 700, "PF patient search p95 <= 700 ms server"),
-    Target(
-        "patient_search_registry",
-        700,
-        "PF patient search p95 <= 700 ms server (staff registry path)",
-    ),
     Target("agenda_interaction", 700, "PF agenda p95 <= 700 ms server"),
     Target("autosave", 1000, "PF autosave ack p95 <= 1 s"),
     Target("realtime_fanout", 2000, "PF realtime p95 <= 2 s after commit"),

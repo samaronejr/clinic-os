@@ -8,7 +8,18 @@ from typing import TYPE_CHECKING
 from ops.perf.runtime import CLIENT_HOST
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from multiprocessing.synchronize import Event
+
     from ops.perf.dataset import Tenant
+
+
+def wait_for_start(events: Sequence[Event], failed: Event, timeout: float) -> None:
+    """Require every process to warm before a load can become evidence."""
+    for event in events:
+        if not event.wait(timeout) or failed.is_set():
+            message = "background load did not start"
+            raise RuntimeError(message)
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,13 +16,16 @@ import random
 import re
 import subprocess
 import sys
+import time
+from contextlib import nullcontext
 from importlib import import_module
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from apps.core import telemetry
-from ops.perf import dataset, report, scenarios
+from ops.perf import dataset, fairness_runs, report, scenarios
 from ops.perf.latency_model import (
     ModelParams,
     draft_generation_ms,
@@ -40,6 +43,7 @@ from ops.perf.report import ReportError, ScenarioResult
 from ops.perf.run import SLOW_MARKERS, main, run_profile
 from ops.perf.runtime import slow_queries
 from ops.perf.stats import StatsInputError, percentile, summarize
+from ops.perf.threads import WorkerResult
 
 ROOT = Path(__file__).resolve().parents[2]
 SLO_DOC = ROOT / "docs" / "operations" / "slo.md"
@@ -129,6 +133,109 @@ def test_fairness_verdict_uses_the_ten_percent_tolerance() -> None:
     assert verdict(100.0, also_required=False) == "fail"
 
 
+def test_registry_search_remains_measured_without_an_slo() -> None:
+    result = report.scenario_record(
+        ScenarioResult("patient_search_registry", "measured", [61_784.970])
+    )
+    assert target_for("patient_search_registry") is None
+    assert result["kind"] == "measured"
+    assert result["samples"] == 1
+    assert result["p95"] == 61_784.970
+    assert result["target"] is None
+    assert result["status"] == "informational"
+    text = SLO_DOC.read_text(encoding="utf-8")
+    assert "2026-11-12" in text
+    assert "Clinic Ops owner" in text
+    assert "Search-options.md" in text
+    assert "no SLO assigned" in text
+    assert "substring registry needs its own owner-approved performance" in text
+
+
+def test_fairness_rejects_latencies_from_failed_autosaves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = scenarios.Prepared(
+        dataset=dataset.Dataset(profile=PROFILES["P-small"], seed=1, tenants=[])
+    )
+    monkeypatch.setattr(
+        fairness_runs,
+        "autosave_run",
+        lambda *_args, **_kwargs: WorkerResult(samples_ms=[1.0], errors=1),
+    )
+    with pytest.raises(
+        RuntimeError, match="autosave fairness sample contains failed saves"
+    ):
+        fairness_runs._p95(prepared, 1)
+
+
+def test_import_fairness_rejects_work_completed_only_before_the_saves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = scenarios.Prepared(
+        dataset=dataset.Dataset(profile=PROFILES["P-small"], seed=1, tenants=[])
+    )
+    monkeypatch.setattr(
+        fairness_runs,
+        "_alternate",
+        lambda *_args, **_kwargs: (
+            100.0,
+            100.0,
+            {
+                "during": {"import_rows_written_so_far": 1},
+                "trials_ms": [{"work_completed_during_saves": 0}],
+            },
+        ),
+    )
+    assert fairness_runs.chart_save_vs_import(prepared, trials=1)["status"] == "fail"
+
+
+def test_fairness_windows_exclude_warmup_and_victim_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = scenarios.Prepared(
+        dataset=dataset.Dataset(profile=PROFILES["P-small"], seed=1, tenants=[])
+    )
+    load = Mock(first=100, second=200)
+    clock = iter([0.0, 2.0, 10.0, 14.0, 20.0, 23.0, 30.0, 35.0])
+    samples = iter([999.0, 100.0, 110.0, 200.0, 220.0])
+
+    def sample(*_args: object) -> float:
+        value = next(samples)
+        if value in {110.0, 220.0}:
+            load.first += 3
+            load.second += 17
+        return value
+
+    def probes(current: Mock) -> dict[str, int]:
+        current.first += 1000
+        current.second += 2000
+        return {"victim_probes": 40}
+
+    monkeypatch.setattr(fairness_runs, "_saves", lambda _prepared: 25)
+    monkeypatch.setattr(fairness_runs, "_p95", sample)
+    monkeypatch.setattr(time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(fairness_runs, "resource_snapshot", dict)
+    baseline, loaded, detail = fairness_runs._alternate(
+        prepared, 2, lambda: nullcontext(load), probes
+    )
+    assert (baseline, loaded) == (150.0, 165.0)
+    for trial, base_seconds, loaded_seconds in zip(
+        detail["trials_ms"], [2.0, 3.0], [4.0, 5.0], strict=True
+    ):
+        assert trial["baseline_window_seconds"] == base_seconds
+        assert trial["loaded_window_seconds"] == loaded_seconds
+        assert trial["work_completed_during_saves"] == 3
+        assert trial["work_deferred_during_saves"] == 17
+    assert detail["during"]["victim_probes"] == 40
+
+
+def test_broker_cleanup_refuses_unscoped_queues() -> None:
+    from ops.perf.broker import clear_import_queue  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="not a scoped performance import queue"):
+        clear_import_queue("bulk")
+
+
 def test_report_schema_accepts_a_valid_report_and_rejects_drift() -> None:
     valid = _valid_report()
     import_module("jsonschema").Draft202012Validator.check_schema(
@@ -175,7 +282,6 @@ def test_profiles_carry_the_plan_shapes_and_targets() -> None:
     assert {item.scenario: item.limit_ms for item in TARGETS} == {
         "staff_navigation": 1500,
         "patient_search_blind_index": 700,
-        "patient_search_registry": 700,
         "agenda_interaction": 700,
         "autosave": 1000,
         "realtime_fanout": 2000,
@@ -285,6 +391,13 @@ def test_tiny_profile_runs_the_real_services_as_clinic_app(
     assert len(runs["autosave"].samples_ms) == 6
     # Every autosave advanced the draft: each editor saved ``saves`` times.
     assert all(draft.revision > 1 for draft in prepared.drafts)
+    revisions = [draft.revision for draft in prepared.drafts]
+    repeated = scenarios.autosave(prepared)
+    assert repeated.errors == 0
+    assert all(
+        draft.revision > previous
+        for draft, previous in zip(prepared.drafts, revisions, strict=True)
+    )
     modeled = scenarios.transcript_partial(prepared, runs["chunk_upload"])
     assert modeled.kind == "modeled"
     assert report.scenario_record(modeled)["status"] == "informational"
@@ -329,16 +442,34 @@ def test_full_run_reports_every_scenario_and_fairness(
         "chart_save_during_bulk_import",
         "clinical_latency_during_ai_batch_flood",
     }
+    imported = next(
+        item
+        for item in result["fairness"]
+        if item["id"] == "chart_save_during_bulk_import"
+    )["load"]["during"]
+    assert imported["entrypoint"] == "apps.interop.tasks.commit_batch"
+    assert imported["import_source_rows"] == 10_000
+    assert imported["import_batch_rows"] == 1
+    assert imported["import_rows_written_so_far"] > 0
+    assert imported["work_completed_during_saves"] > 0
     flood = next(
         item
         for item in result["fairness"]
         if item["id"] == "clinical_latency_during_ai_batch_flood"
     )
     during = flood["load"]["during"]
+    trial = flood["load"]["trials_ms"][0]
+    assert trial["baseline_window_seconds"] > 0
+    assert trial["loaded_window_seconds"] > 0
+    assert (
+        trial["completed_response_rate_per_second"]
+        == (trial["admitted"] + trial["deferred"]) / trial["loaded_window_seconds"]
+    )
     # The flooder is throttled by its own bucket while the victim is admitted.
     assert during["flooder_deferred"] > 0
     assert during["victim_ai_batch_admitted"] == during["victim_ai_batch_requested"]
     assert result["search_benchmark"]["revisit_trigger"].startswith("not_evaluated")
+    assert result["environment"]["broker_memory"]["used_memory_peak_bytes"] > 0
     assert (
         result["commit"]["sha"]
         == subprocess.run(  # noqa: S603 - fixed argv

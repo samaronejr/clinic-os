@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ops.perf.dataset import PASSWORD, Tenant
 
 if TYPE_CHECKING:
+    from apps.identity.models import User
     from django.test import Client
 
 
@@ -50,30 +51,35 @@ def provision_logins(tenant: Tenant, count: int) -> list[StaffLogin]:
                 clinic_id=tenant.clinic_id,
                 role=UserClinicRole.Role.RECEPTIONIST,
             )
-        secret = secrets.token_bytes(20)
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "INSERT INTO clinic_app.otp_totp_totpdevice "
-                "(user_id, name, confirmed, key, step, t0, digits, tolerance, "
-                "drift, last_t, throttling_failure_count, created_at, "
-                "last_used_at) VALUES (%s, 'Perf authenticator', true, '', 30, "
-                "0, 6, 1, 0, -1, 0, statement_timestamp(), NULL) RETURNING id",
-                [str(user.pk)],
-            )
-            row = cursor.fetchone()
-            if row is None:
-                raise StaffLoginError
-            device_id = int(row[0])
-            cursor.execute(
-                "INSERT INTO clinic_app.identity_totpsecret (device_id, secret) "
-                "VALUES (%s, %s)",
-                [device_id, secret],
-            )
-        logins.append(
-            StaffLogin(user.username, f"otp_totp.totpdevice/{device_id}", secret)
-        )
+        logins.append(provision_login(user))
     return logins
+
+
+def provision_login(user: User) -> StaffLogin:
+    """Provision a real authenticator for an existing synthetic staff member."""
+    from django.db import connection, transaction  # noqa: PLC0415
+
+    secret = secrets.token_bytes(20)
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(
+            "INSERT INTO clinic_app.otp_totp_totpdevice "
+            "(user_id, name, confirmed, key, step, t0, digits, tolerance, "
+            "drift, last_t, throttling_failure_count, created_at, "
+            "last_used_at) VALUES (%s, 'Perf authenticator', true, '', 30, "
+            "0, 6, 1, 0, -1, 0, statement_timestamp(), NULL) RETURNING id",
+            [str(user.pk)],
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise StaffLoginError
+        device_id = int(row[0])
+        cursor.execute(
+            "INSERT INTO clinic_app.identity_totpsecret (device_id, secret) "
+            "VALUES (%s, %s)",
+            [device_id, secret],
+        )
+    return StaffLogin(user.username, f"otp_totp.totpdevice/{device_id}", secret)
 
 
 def sign_in(client: Client, login: StaffLogin) -> None:

@@ -48,8 +48,10 @@ def _current_indexes() -> QuerySet[PatientDuplicateIndex]:
     return PatientDuplicateIndex.objects.filter(~Exists(newer))
 
 
-def refresh_duplicate_candidates(*, clinic_id: UUID, patient_id: UUID) -> None:
-    """Append current blind indexes and retain review hints, never merge data.
+def _write_duplicate_candidates(
+    *, clinic_id: UUID, patient_id: UUID
+) -> tuple[UUID, ...]:
+    """Write current blind indexes and return new hints for ordered auditing.
 
     The calling identity/contact service already holds its write authority.
     All predicates below compare metadata or purpose-bound HMACs, never
@@ -130,6 +132,7 @@ def refresh_duplicate_candidates(*, clinic_id: UUID, patient_id: UUID) -> None:
             .exclude(patient_id=patient_id)
         ):
             signals[other.patient_id].add("exact_identifier")
+    detected: list[UUID] = []
     for other_enrollment in PatientClinicEnrollment.objects.filter(
         clinic_id=clinic_id, patient_id__in=signals
     ).order_by("id"):
@@ -142,11 +145,20 @@ def refresh_duplicate_candidates(*, clinic_id: UUID, patient_id: UUID) -> None:
             defaults={"signals": sorted(signals[other_enrollment.patient_id])},
         )
         if created:
-            record_phase1_event(
-                "intake.duplicate.detected",
-                clinic_id=clinic_id,
-                affected_record_id=candidate.pk,
-            )
+            detected.append(candidate.pk)
+    return tuple(detected)
+
+
+def refresh_duplicate_candidates(*, clinic_id: UUID, patient_id: UUID) -> None:
+    """Append current blind indexes and audit new hints, never merge data."""
+    for candidate_id in _write_duplicate_candidates(
+        clinic_id=clinic_id, patient_id=patient_id
+    ):
+        record_phase1_event(
+            "intake.duplicate.detected",
+            clinic_id=clinic_id,
+            affected_record_id=candidate_id,
+        )
 
 
 def duplicate_candidates(*, clinic_id: UUID) -> tuple[DuplicateCandidate, ...]:

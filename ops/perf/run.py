@@ -32,6 +32,7 @@ from ops.perf.report import (
     scenario_record,
     write_report,
 )
+from ops.perf.rig import ResourceRig, resource_snapshot
 from ops.perf.runtime import PerfEnvironmentError, bootstrap_django
 
 if TYPE_CHECKING:
@@ -46,6 +47,8 @@ SLOW_MARKERS = ("full_name_index", "patient_registry_count")
 def _environment(injected_ms: int) -> dict[str, Any]:
     from django.db import connection  # noqa: PLC0415
 
+    from ops.perf.broker import broker_memory  # noqa: PLC0415
+
     with connection.cursor() as cursor:
         cursor.execute("SHOW server_version")
         row = cursor.fetchone()
@@ -54,7 +57,17 @@ def _environment(injected_ms: int) -> dict[str, Any]:
         "machine": platform.machine(),
         "cpu_count": os.cpu_count(),
         "postgres": row[0] if row else "unknown",
-        "load_location": "same workstation, one process, threads",
+        "broker_memory": broker_memory(),
+        "load_location": (
+            "shared PostgreSQL/Redis; fixed 2 CPU/4 GiB application parent; "
+            "clinical/API 1 CPU/3 GiB; AI/bulk 1 CPU/1 GiB; "
+            "external producers 2 CPU/1 GiB outside the application parent"
+        ),
+        "resource_rig": {
+            "owner_decision_date": "2026-11-13",
+            "kind": "production-isolated",
+            "roles": resource_snapshot(),
+        },
     }
     if injected_ms:
         environment["injected_fault"] = {
@@ -134,43 +147,46 @@ def run_profile(
     from ops.perf import fairness_runs, scenarios  # noqa: PLC0415
     from ops.perf.dataset import seed_dataset  # noqa: PLC0415
 
-    dataset = seed_dataset(profile, seed=seed)
-    editors = min(EDITORS, profile.clinicians_per_clinic)
-    prepared = scenarios.prepare(dataset, editors=editors)
-    records = [
-        scenario_record(item)
-        for item in _scenario_results(prepared, only, inject_slow_query_ms)
-    ]
-    fairness: list[dict[str, Any]] = []
-    if only is None or "fairness" in only:
-        if profile.bulk_import:
+    with ResourceRig():
+        dataset = seed_dataset(profile, seed=seed)
+        editors = min(EDITORS, profile.clinicians_per_clinic)
+        prepared = scenarios.prepare(dataset, editors=editors)
+        records = [
+            scenario_record(item)
+            for item in _scenario_results(prepared, only, inject_slow_query_ms)
+        ]
+        fairness: list[dict[str, Any]] = []
+        if only is None or "fairness" in only:
+            if profile.bulk_import:
+                fairness.append(
+                    fairness_runs.chart_save_vs_import(prepared, trials=fairness_trials)
+                )
             fairness.append(
-                fairness_runs.chart_save_vs_import(prepared, trials=fairness_trials)
+                fairness_runs.ai_batch_flood(prepared, trials=fairness_trials)
             )
-        fairness.append(fairness_runs.ai_batch_flood(prepared, trials=fairness_trials))
-    by_id = {item["id"]: item for item in records}
-    benchmark = None
-    if "patient_search_blind_index" in by_id and "patient_search_registry" in by_id:
-        benchmark = _search_benchmark(
-            dataset.focus.patient_count,
-            by_id["patient_search_blind_index"],
-            by_id["patient_search_registry"],
+        by_id = {item["id"]: item for item in records}
+        benchmark = None
+        if "patient_search_blind_index" in by_id and "patient_search_registry" in by_id:
+            benchmark = _search_benchmark(
+                dataset.focus.patient_count,
+                by_id["patient_search_blind_index"],
+                by_id["patient_search_registry"],
+            )
+        return build_report(
+            profile=profile,
+            dataset={
+                "organizations": len(dataset.tenants),
+                "clinics": len(dataset.tenants) * profile.clinics_per_org,
+                "patients": dataset.patients,
+                "focus_tenant_patients": dataset.focus.patient_count,
+                "seed": seed,
+            },
+            commit=commit_identity(ROOT),
+            scenarios=records,
+            fairness=fairness,
+            search_benchmark=benchmark,
+            environment=_environment(inject_slow_query_ms),
         )
-    return build_report(
-        profile=profile,
-        dataset={
-            "organizations": len(dataset.tenants),
-            "clinics": len(dataset.tenants) * profile.clinics_per_org,
-            "patients": dataset.patients,
-            "focus_tenant_patients": dataset.focus.patient_count,
-            "seed": seed,
-        },
-        commit=commit_identity(ROOT),
-        scenarios=records,
-        fairness=fairness,
-        search_benchmark=benchmark,
-        environment=_environment(inject_slow_query_ms),
-    )
 
 
 def _runnable(name: str) -> Profile:

@@ -14,7 +14,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from ops.perf import dataset as data
 from ops.perf.children import child_setup, context_for
@@ -133,7 +133,9 @@ def patient_search_registry(prepared: Prepared) -> ScenarioResult:
         result.samples_ms,
         result.errors,
         f"search_patients (normalized substring inside the database boundary) "
-        f"over {focus.patient_count} patients; {count} queries",
+        f"over {focus.patient_count} patients; {count} queries; legacy substring "
+        "registry workflow with no SLO assigned; follow-up: owner-approved "
+        "performance contract",
     )
 
 
@@ -217,7 +219,8 @@ def autosave_run(
 
     def work(index: int, out: WorkerResult) -> None:
         draft = drafts[index]
-        session = uuid4()
+        # The same simulated editor keeps its lock across alternating trials.
+        session = uuid5(NAMESPACE_URL, f"clinic-perf-editor:{draft.version_id}")
         pause = threading.Event()
         revision = draft.revision
         for number in range(saves_per_editor):

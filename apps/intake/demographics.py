@@ -681,7 +681,8 @@ class _RegistrationOptions(TypedDict, total=False):
     identifier_value: str
 
 
-def _apply_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
+def _write_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
+    """Write the version and correction; the caller appends its audit next."""
     clinic = mutation.clinic
     enrollment = mutation.enrollment
     actor_id = mutation.actor_id
@@ -766,12 +767,19 @@ def _apply_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
             or statuses.get(field) != previous_statuses.get(field)
         ],
     )
+    return row
+
+
+def _apply_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
+    row = _write_demographics(mutation)
     record_phase1_event(
         "intake.demographics.saved",
-        clinic_id=clinic.pk,
+        clinic_id=mutation.clinic.pk,
         affected_record_id=row.pk,
     )
-    refresh_duplicate_candidates(clinic_id=clinic.pk, patient_id=patient.pk)
+    refresh_duplicate_candidates(
+        clinic_id=mutation.clinic.pk, patient_id=mutation.enrollment.patient_id
+    )
     return row
 
 
@@ -1086,7 +1094,7 @@ def _latest_identifier(
     )
 
 
-def _append_identifier(
+def _write_identifier(
     *,
     clinic: Clinic,
     patient_id: UUID,
@@ -1130,16 +1138,34 @@ def _append_identifier(
         issuer=issuer,
         version=(latest.version + 1) if latest is not None else 1,
     )
-    record_phase1_event(
-        "intake.identifier.saved",
-        clinic_id=clinic.pk,
-        affected_record_id=identifier.pk,
-    )
-    refresh_duplicate_candidates(clinic_id=clinic.pk, patient_id=patient_id)
     return IdentifierOutcome(
         identifier_id=identifier.pk,
         matching_enrollment_id=matching_enrollment_id,
     )
+
+
+def _append_identifier(
+    *,
+    clinic: Clinic,
+    patient_id: UUID,
+    kind: str,
+    normalized: str,
+    issuer: str | None,
+) -> IdentifierOutcome:
+    outcome = _write_identifier(
+        clinic=clinic,
+        patient_id=patient_id,
+        kind=kind,
+        normalized=normalized,
+        issuer=issuer,
+    )
+    record_phase1_event(
+        "intake.identifier.saved",
+        clinic_id=clinic.pk,
+        affected_record_id=outcome.identifier_id,
+    )
+    refresh_duplicate_candidates(clinic_id=clinic.pk, patient_id=patient_id)
+    return outcome
 
 
 def add_identifier(
