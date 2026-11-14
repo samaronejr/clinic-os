@@ -148,6 +148,12 @@ def test_s12_changed_prescription_bytes_refuse_the_stale_review(
         goto_settled(editor, draft_url)
         editor.locator("#id_items-0-dose").fill("Dose alterada antes da assinatura")
         press_in_view(editor, "save")
+        press_in_view(editor, "render_document")
+        expect(editor.locator("[data-step]")).to_have_attribute("data-step", "review")
+        fresh = editor.locator("[data-document]").first.get_attribute("data-document")
+        assert fresh
+        assert fresh != reviewed
+        assert editor.locator("[data-digest]").get_attribute("data-digest") != digest
         # The open review still offers signing; requesting it is refused.
         with review.expect_response(
             lambda response: response.request.method == "POST"
@@ -157,14 +163,7 @@ def test_s12_changed_prescription_bytes_refuse_the_stale_review(
         expect(review.get_by_text(gettext(STALE_REVIEW))).to_be_visible()
         capture(review, renewal_artifact_root, "acceptance", "s12-stale-review")
         assert prescribing.operations(staff, reviewed) == []
-        # Control: the changed content, rendered and reviewed again, can sign.
-        goto_settled(editor, draft_url)
-        press_in_view(editor, "render_document")
-        expect(editor.locator("[data-step]")).to_have_attribute("data-step", "review")
-        fresh = editor.locator("[data-document]").first.get_attribute("data-document")
-        assert fresh
-        assert fresh != reviewed
-        assert editor.locator("[data-digest]").get_attribute("data-digest") != digest
+        # Control: the already-rendered changed bytes can sign from their own review.
         press_in_view(editor, "sign_document")
         expect(editor.locator("[data-state]")).to_have_attribute(
             "data-state", "signing"
@@ -177,6 +176,7 @@ def test_s12_changed_prescription_bytes_refuse_the_stale_review(
         "S12.prescription-bytes-changed",
         "adversarial",
         stale_sign_http=CONFLICT,
+        changed_pdf_before_sign=True,
         stale_operations=0,
         rereviewed_operations=1,
     )
