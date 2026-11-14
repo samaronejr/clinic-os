@@ -24,11 +24,12 @@ from renewal.browser._navigation import (
     goto_settled,
     reload_settled,
 )
-from renewal.browser._page_wait import evaluate_js
+from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot, grant_capture_audio
 from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
+from renewal.browser.test_patient_access import SETTLED_JS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -92,6 +93,9 @@ def open_capture(
     expect(page.locator("#agenda-shell")).to_have_attribute(
         "data-realtime-state", re.compile(r"^(connected|offline|denied)$")
     )
+    # Ready and denied both dispatch a poll. Its HTMX swap must finish before
+    # the opening button can receive a complete pointer click.
+    wait_for_js(page, SETTLED_JS)
     click_to_navigate(page.locator('button[value="open"]'))
     page.locator("#template-id").select_option(data["specialty"])
     click_to_navigate(page.locator('button[value="template"]'))
