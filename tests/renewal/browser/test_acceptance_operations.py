@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from django.contrib.auth.hashers import make_password
+from django.utils.translation import gettext
 from ops.testing.sentinel_scan import new_sentinel
 from playwright.sync_api import expect
 
@@ -30,9 +31,11 @@ import renewal.browser.test_messages as messages
 import renewal.browser.test_portal as portal
 import renewal.browser.test_prescribing as prescribing
 import renewal.browser.test_results as results
+import renewal.browser.test_retention as retention
 import renewal.browser.test_scribe_capture as scribe
 from renewal.browser._fixture_secrets import new_totp_key
-from renewal.browser._navigation import goto_settled, reload_settled
+from renewal.browser._guardian_support import seed_evidence
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._totp_devices import seed_totp_device
 from renewal.browser.flagship_support import (
@@ -43,7 +46,10 @@ from renewal.browser.flagship_support import (
     staff_context,
 )
 from renewal.browser.test_acceptance_clinical import rerun
+from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_billing import expect_state, seed_patient
+from renewal.browser.test_encounter import press_in_view
+from renewal.browser.test_encounter import seed as seed_encounter
 from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_retention import seed_manager, sign_in_manager
 from renewal.browser.test_scribe_capture import capture_page, open_capture
@@ -56,6 +62,17 @@ if TYPE_CHECKING:
 
 __all__ = ("capture_page",)
 OK: Final = 200
+CONFLICT: Final = 409
+# Each scenario owns its civil day, so no run shares a slot with another.
+S12_DAY: Final = "2035-08-28"
+S15_DAY: Final = "2047-03-18"
+S19_DAY: Final = "2047-03-25"
+QUEUED: Final = (
+    "Pending audio queued for transcription. Continue manually while waiting."
+)
+STALE_REVIEW: Final = (
+    "The draft changed after review. Render and review the saved version again."
+)
 KEK_FILE: Final = "tenant-kek.secret"
 SUBSCRIPTIONS: Final = "/api/subscriptions/v1/"
 
@@ -110,15 +127,58 @@ def test_s12_changed_prescription_bytes_refuse_the_stale_review(
     availability_staff: dict[str, str],
     flagship: FlagshipReport,
 ) -> None:
-    rerun(
-        flagship,
+    staff, base = availability_staff, renewal_base_url
+    seed_encounter(staff, S12_DAY)
+    prescribing.ensure_physician_profile(staff)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        locale="pt-BR", viewport={"width": 1280, "height": 900}
+    )
+    draft_url = f"{base}/prescription/clinics/{staff['clinic_a']}/draft/"
+    try:
+        review = context.new_page()
+        _sign_in_physician(review, base, staff)
+        # The physician reviews the exact rendered bytes (their digest).
+        reviewed = prescribing.author_and_render(review, base, staff, S12_DAY)
+        digest = review.locator("[data-digest]").get_attribute("data-digest")
+        assert digest
+        # Before any signature, the content those bytes came from changes.
+        editor = context.new_page()
+        goto_settled(editor, draft_url)
+        editor.locator("#id_items-0-dose").fill("Dose alterada antes da assinatura")
+        press_in_view(editor, "save")
+        # The open review still offers signing; requesting it is refused.
+        with review.expect_response(
+            lambda response: response.request.method == "POST"
+        ) as refused:
+            press_in_view(review, "sign_document")
+        assert refused.value.status == CONFLICT
+        expect(review.get_by_text(gettext(STALE_REVIEW))).to_be_visible()
+        capture(review, renewal_artifact_root, "acceptance", "s12-stale-review")
+        assert prescribing.operations(staff, reviewed) == []
+        # Control: the changed content, rendered and reviewed again, can sign.
+        goto_settled(editor, draft_url)
+        press_in_view(editor, "render_document")
+        expect(editor.locator("[data-step]")).to_have_attribute("data-step", "review")
+        fresh = editor.locator("[data-document]").first.get_attribute("data-document")
+        assert fresh
+        assert fresh != reviewed
+        assert editor.locator("[data-digest]").get_attribute("data-digest") != digest
+        press_in_view(editor, "sign_document")
+        expect(editor.locator("[data-state]")).to_have_attribute(
+            "data-state", "signing"
+        )
+        assert prescribing.operations(staff, fresh) == [("signing", "")]
+        assert prescribing.operations(staff, reviewed) == []
+    finally:
+        context.close()
+    flagship.cover(
         "S12.prescription-bytes-changed",
         "adversarial",
-        prescribing.test_prescribing_recovery_double_submit_and_stale_draft,
-        renewal_page=renewal_page,
-        renewal_base_url=renewal_base_url,
-        renewal_artifact_root=renewal_artifact_root,
-        availability_staff=availability_staff,
+        stale_sign_http=CONFLICT,
+        stale_operations=0,
+        rereviewed_operations=1,
     )
 
 
@@ -286,21 +346,61 @@ def test_s15_messaging_provider_down_shows_not_sent(
     )
 
 
-def test_s15_ai_unavailable_keeps_manual_care(
+def test_s15_ai_unavailable_keeps_manual_care(  # noqa: PLR0913 - outage proof fixtures
     capture_page: Page,
     renewal_base_url: str,
+    renewal_artifact_root: Path,
     availability_staff: dict[str, str],
     reference_clinic: ReferenceClinic,
     flagship: FlagshipReport,
 ) -> None:
-    rerun(
-        flagship,
+    staff, page = availability_staff, capture_page
+    scope = {
+        "actor": staff["physician_a_id"],
+        "clinic": staff["clinic_a"],
+        "organization": staff["organization"],
+    }
+    data = open_capture(page, renewal_base_url, staff, S15_DAY)
+    # The synthetic ASR provider times out while the worker transcribes.
+    outage = run_fixture(
+        staff["dsn"], "scribe-outage", {**scope, "appointment": data["appointment"]}
+    )
+    assert outage["outcomes"] == ["failed", "transcription_pending"], outage
+    assert outage["reason"] == "provider_timeout"
+    assert outage["open_circuits"] == 1
+    # No invented text and no silent fallback; the audio is retained.
+    assert outage["transcript_versions"] == 0
+    assert outage["retained_chunks"] == 2
+    reload_settled(page)
+    transcript = page.locator('form[action$="/scribe/transcript/"] button')
+    click_to_navigate(transcript)
+    expect(page.locator("[data-transcript-state]")).to_have_attribute(
+        "data-transcript-state", "transcription_pending"
+    )
+    expect(page.locator("[data-transcript-segment]")).to_have_count(0)
+    capture(page, renewal_artifact_root, "acceptance", "s15-asr-down")
+    # The clinical core stays usable: the note is saved by hand.
+    click_to_navigate(page.locator('a[href$="/encounter/"]').first)
+    scribe.save_manual_note(page)
+    # Recovery: the operator closes the circuit; pending audio can queue again.
+    closed = run_fixture(
+        staff["dsn"],
+        "scribe-circuit-reset",
+        {**scope, "configuration": str(outage["configuration"])},
+    )
+    assert closed == {"closed": 1}
+    click_to_navigate(transcript)
+    click_to_navigate(page.locator('button[value="queue"]'))
+    expect(page.get_by_text(gettext(QUEUED))).to_be_visible()
+    flagship.cover(
         "S15.provider-down",
-        "happy",
-        scribe.test_ai_refusal_hides_capture_without_blocking_manual_care,
-        capture_page=capture_page,
-        renewal_base_url=renewal_base_url,
-        availability_staff=availability_staff,
+        "failure",
+        asr_timeout=True,
+        circuit_opened=1,
+        fallback_admissions=0,
+        invented_segments=0,
+        manual_note_saved=True,
+        circuit_reset=1,
     )
     for capability in ("asr", "llm_inference", "whatsapp", "sms", "email"):
         flagship.blocked(reference_clinic, capability, "unit_a")
@@ -651,16 +751,95 @@ def test_s19_guardian_reads_are_logged_and_scoped(
     availability_staff: dict[str, str],
     flagship: FlagshipReport,
 ) -> None:
-    rerun(
-        flagship,
+    staff, base = availability_staff, renewal_base_url
+    browser = _browser(renewal_page)
+    represented = seed_encounter(staff, S19_DAY)
+    manager = seed_manager(staff)
+    guardian = portal._seed(
+        staff,
+        name="Responsável Sintético S19",
+        operations=("enrollment_view", "records"),
+    )
+    contexts = [portal._context(browser, 1280) for _ in range(3)]
+    physician, delegate, patient = (context.new_page() for context in contexts)
+    try:
+        # The represented patient's record is finalized and released for real.
+        version = retention.open_finalized(
+            physician, staff, base, S19_DAY, represented["specialty"]
+        )
+        # The screen releases delegate-restricted only, so the release the
+        # guardian may read runs the release service for this exact version.
+        released = run_fixture(
+            staff["dsn"],
+            "release-for-delegates",
+            {
+                "actor": staff["physician_a_id"],
+                "clinic": staff["clinic_a"],
+                "organization": staff["organization"],
+                "version": version,
+            },
+        )
+        assert released == {"released": True}
+        scope = {
+            "actor": manager["id"],
+            "clinic": staff["clinic_a"],
+            "organization": staff["organization"],
+        }
+        granted = run_fixture(
+            staff["dsn"],
+            "delegate-grant",
+            {
+                **scope,
+                "represented": represented["enrollment"],
+                "guardian": guardian["enrollment"],
+                "evidence": seed_evidence(staff, represented),
+            },
+        )
+        assert granted["state"] == "active"
+        grant = str(granted["grant"])
+        # The guardian switches to the representation and reads the record.
+        _redeem(delegate, base, staff["clinic_a"], guardian["code"])
+        delegate.locator("#portal-switch-grant").select_option(grant)
+        click_to_navigate(delegate.locator("[data-portal-switch] button[type=submit]"))
+        goto_settled(delegate, f"{base}/patient/records/")
+        expect(delegate.get_by_text(retention.FIRST["subjective"])).to_be_visible()
+        capture(delegate, renewal_artifact_root, "acceptance", "s19-delegate-read")
+        # The read is in the represented patient's own access log.
+        _redeem(
+            patient,
+            base,
+            staff["clinic_a"],
+            retention.grant_records(staff, represented),
+        )
+        reads = patient.locator(
+            f'li[data-access-kind="delegate"][data-delegate-grant="{grant}"]'
+        )
+        goto_settled(patient, base + portal.ACCESS_LOG_PATH)
+        expect(reads).to_have_count(1)
+        expect(reads).to_have_attribute("data-record-type", "clinical_record")
+        # The guardian authority changes: the clinic revokes the grant.
+        revoked = run_fixture(
+            staff["dsn"],
+            "delegate-revoke",
+            {**scope, "grant": grant, "revision": str(granted["revision"])},
+        )
+        assert revoked["state"] == "revoked"
+        # The same open session's next request is re-evaluated.
+        goto_settled(delegate, f"{base}/patient/records/")
+        expect(delegate.get_by_text(retention.FIRST["subjective"])).to_have_count(0)
+        capture(delegate, renewal_artifact_root, "acceptance", "s19-after-revoke")
+        reload_settled(patient)
+        expect(reads).to_have_count(1)
+    finally:
+        for context in contexts:
+            context.close()
+    flagship.cover(
         "S19.guardian-access-changes",
         "adversarial",
-        portal.test_access_log_lists_delegate_reads_without_emergency_review,
-        renewal_page=renewal_page,
-        renewal_base_url=renewal_base_url,
-        renewal_artifact_root=renewal_artifact_root,
-        availability_staff=availability_staff,
-        width=1280,
+        delegated_reads_before=1,
+        grant_revoked=True,
+        content_after_revoke=0,
+        delegated_reads_after=1,
     )
 
 

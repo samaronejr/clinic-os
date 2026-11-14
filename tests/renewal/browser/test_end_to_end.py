@@ -1288,10 +1288,17 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
         day=day,
         recovery=recovery,
         video=None,
+        clinical=None,
+        follow_up=None,
     )
 
 
-def clinic_day(  # noqa: PLR0913 - the day needs its full context
+if TYPE_CHECKING:
+    # An optional J2 step on the running day: the case and its actors' pages.
+    DayStep = Callable[[Day, dict[str, Page]], None]
+
+
+def clinic_day(  # noqa: PLR0913, PLR0915 - the day needs its full context
     *,
     renewal_base_url: str,
     renewal_artifact_root: Path,
@@ -1301,8 +1308,15 @@ def clinic_day(  # noqa: PLR0913 - the day needs its full context
     day: str,
     recovery: bool,
     video: Path | None,
+    clinical: DayStep | None,
+    follow_up: DayStep | None,
 ) -> None:
-    """Run one clinic day; ``video`` (flagship J2 only) films its actors."""
+    """Run one clinic day; the optional parts serve flagship J2 only.
+
+    ``video`` films its actors; ``clinical`` runs on the open encounter right
+    after the notes are saved and ``follow_up`` after the payment, both with
+    the same day's actors, so their records share its identities.
+    """
     root = renewal_artifact_root / "end-to-end"
     root.mkdir(mode=0o700, exist_ok=True)
     case = Day(
@@ -1345,11 +1359,15 @@ def clinic_day(  # noqa: PLR0913 - the day needs its full context
             physician_reads_answers(case, physician)
             reception_records_arrival(case, reception)
             encounter = write_notes(case, physician)
+            if clinical is not None:
+                clinical(case, pages)
             video_visit(case, physician, patient, encounter)
             finalize_notes(case, physician)
             handle = sign_document(case, physician, anonymous)
             patient_downloads_document(case, patient, str(case.facts["document_id"]))
             charge_and_receipt(case, reception, patient)
+            if follow_up is not None:
+                follow_up(case, pages)
             export_records(case, physician, patient)
             if width == min(run[1] for run in RUNS):
                 reflow_scenes(case, patient)

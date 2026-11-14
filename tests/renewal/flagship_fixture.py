@@ -111,6 +111,15 @@ def _scribe_ambiguous(data: dict[str, str]) -> dict[str, object]:
             expected_epoch=0,
         )
         epoch = CaptureEpoch.objects.get(session=recording, number=1)
+    if data.get("outage") == "asr-timeout":
+        return _asr_timeout(
+            actor=actor,
+            clinic=clinic,
+            organization=organization,
+            token=token,
+            recording=recording.pk,
+            epoch=epoch.pk,
+        )
     # Fixture 0 is a clear phrase; fixture 2 is "5 ou 15 mg" at 0.42 confidence.
     for sequence, fixture_index in enumerate((0, 2)):
         content = f"SINTETICO-ASR-FIXTURE:{fixture_index}".encode("ascii")
@@ -162,6 +171,279 @@ def _scribe_ambiguous(data: dict[str, str]) -> dict[str, object]:
         "segments": len(transcript.segments),
         "uncertain_segments": uncertain,
     }
+
+
+def _asr_timeout(  # noqa: PLR0913 - one recording's full scope
+    *,
+    actor: UUID,
+    clinic: UUID,
+    organization: UUID,
+    token: str,
+    recording: UUID,
+    epoch: UUID,
+) -> dict[str, object]:
+    """Run the real worker stages while the synthetic ASR adapter times out.
+
+    The adapter is down for this worker process only: its transcribe call
+    raises the provider timeout a network adapter would. Everything after it
+    is the product's own failure handling (invocation failure, circuit, no
+    fallback, retained audio).
+    """
+    from apps.ai.contracts import ProviderTimeoutError  # noqa: PLC0415
+    from apps.ai.ledger_models import AICircuit  # noqa: PLC0415
+    from apps.core.integration import execute_operation  # noqa: PLC0415
+    from apps.scribe import gateway  # noqa: PLC0415
+    from apps.scribe.contracts import ChunkInput  # noqa: PLC0415
+    from apps.scribe.models import (  # noqa: PLC0415
+        AudioChunk,
+        ChunkTranscription,
+        TranscriptVersion,
+    )
+    from apps.scribe.services import control_recording, ingest_chunk  # noqa: PLC0415
+    from apps.scribe.transcription import (  # noqa: PLC0415
+        prepare_audio,
+        request_transcription,
+    )
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    def timed_out(*_args: object, **_kwargs: object) -> object:
+        raise ProviderTimeoutError
+
+    for adapter in (gateway.ScribeSyntheticProvider, gateway.ScribeRecordedProvider):
+        setattr(adapter, "transcribe", timed_out)  # noqa: B010 - adapter down
+    outcomes: list[str] = []
+    for sequence in (0, 1):
+        content = b"SINTETICO-ASR-FIXTURE:0"
+        with runtime_role(), tenant_context(actor, organization):
+            assert (
+                ingest_chunk(
+                    clinic_id=clinic,
+                    encounter_token=token,
+                    chunk=ChunkInput(
+                        session_id=recording,
+                        epoch=epoch,
+                        track="microphone",
+                        seq=sequence,
+                        sha256=sha256(content).hexdigest(),
+                        duration_ms=2000,
+                        codec="audio/webm;codecs=opus",
+                        data=content,
+                    ),
+                ).ack
+                == "received"
+            )
+            chunk = AudioChunk.objects.get(
+                session_id=recording, epoch_id=epoch, seq=sequence
+            )
+        assert chunk.operation_id is not None
+        with runtime_role():
+            assert execute_operation(chunk.operation_id) == "succeeded"
+        with runtime_role(), tenant_context(actor, organization):
+            prepared = prepare_audio(clinic_id=clinic, chunk_id=chunk.pk)
+        ciphertext = prepared.storage.get(prepared.key)
+        with runtime_role(), tenant_context(actor, organization):
+            status = request_transcription(
+                clinic_id=clinic, chunk_id=chunk.pk, ciphertext=ciphertext
+            )
+            operation = (
+                ChunkTranscription.objects.filter(chunk_id=chunk.pk)
+                .values_list("invocation__operation_id", flat=True)
+                .first()
+            )
+        if status == "queued" and operation is not None:
+            with runtime_role():
+                outcomes.append(execute_operation(operation))
+        else:
+            outcomes.append(status)
+    # The physician stops the capture; the pending audio stays retained.
+    with runtime_role(), tenant_context(actor, organization):
+        control_recording(
+            clinic_id=clinic,
+            session_id=recording,
+            encounter_token=token,
+            command_id=uuid4(),
+            action="stop",
+            expected_epoch=1,
+            last_seq=1,
+        )
+    with runtime_role(), tenant_context(actor, organization):
+        first = ChunkTranscription.objects.select_related("invocation").get(
+            chunk__session_id=recording, chunk__seq=0
+        )
+        return {
+            "outcomes": outcomes,
+            "reason": first.invocation.reason_code,
+            "configuration": str(first.invocation.configuration_id),
+            "open_circuits": AICircuit.objects.filter(
+                configuration_id=first.invocation.configuration_id,
+                closed_at__isnull=True,
+            ).count(),
+            "transcript_versions": TranscriptVersion.objects.filter(
+                session_id=recording
+            ).count(),
+            "retained_chunks": AudioChunk.objects.filter(
+                session_id=recording, wrapped_key__isnull=False
+            ).count(),
+        }
+
+
+def _scribe_outage(data: dict[str, str]) -> dict[str, object]:
+    """A consented recording whose ASR provider times out during the work."""
+    return _scribe_ambiguous({**data, "outage": "asr-timeout"})
+
+
+def _circuit_reset(data: dict[str, str]) -> dict[str, object]:
+    """Close the open circuit exactly as ``ai_gateway circuit-reset`` does."""
+    from apps.ai.owner import reset_circuit  # noqa: PLC0415
+    from django.db import connection, transaction  # noqa: PLC0415
+
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [data["organization"]]
+        )
+        closed = reset_circuit(
+            clinic_id=UUID(data["clinic"]),
+            configuration_id=UUID(data["configuration"]),
+        )
+    return {"closed": closed}
+
+
+def _care_plan(data: dict[str, str]) -> dict[str, object]:
+    """Turn the day's finalized note version into its care plan (one return).
+
+    ``create_care_plan_from_version`` has no screen of its own; the physician
+    runs it on the finalized version the browser just produced.
+    """
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+    from apps.workflows.care import services as care  # noqa: PLC0415
+    from apps.workflows.care.validation import (  # noqa: PLC0415
+        CareActionSpec,
+        return_window,
+    )
+    from django.utils import timezone  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    start, end = return_window(now=timezone.now(), weeks=2)
+    with (
+        runtime_role(),
+        tenant_context(UUID(data["actor"]), UUID(data["organization"])),
+    ):
+        plan = care.create_care_plan_from_version(
+            clinic_id=UUID(data["clinic"]),
+            version_id=UUID(data["version"]),
+            actions=(
+                CareActionSpec(
+                    kind="return_window", window_start=start, window_end=end
+                ),
+            ),
+            idempotency_key=uuid4(),
+        )
+    return {"plan_id": str(plan.pk)}
+
+
+def _release_for_delegates(data: dict[str, str]) -> dict[str, object]:
+    """Release a finalized version that verified delegates may also read.
+
+    The retention screen always releases delegate-restricted (the service's
+    default), so a delegate-readable release runs ``release_version`` itself.
+    """
+    from apps.retention.services import release_version  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    with (
+        runtime_role(),
+        tenant_context(UUID(data["actor"]), UUID(data["organization"])),
+    ):
+        release = release_version(
+            clinic_id=UUID(data["clinic"]),
+            version_id=UUID(data["version"]),
+            restricted_from_delegates=False,
+        )
+    return {"released": release.pk is not None}
+
+
+def _delegate_grant(data: dict[str, str]) -> dict[str, object]:
+    """Request, verify and activate a guardian grant through its services.
+
+    The clinic's verifier staff attests the legal evidence; no staff screen
+    exists for these transitions, so the services run as the runtime role.
+    """
+    from datetime import timedelta  # noqa: PLC0415
+
+    from apps.identity.delegates import (  # noqa: PLC0415
+        DelegateGrantRequest,
+        activate,
+        request_delegate_grant,
+        verify_delegate_grant,
+    )
+    from apps.identity.models import PatientDelegateGrant  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+    from django.utils import timezone  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    clinic = UUID(data["clinic"])
+    with (
+        runtime_role(),
+        tenant_context(UUID(data["actor"]), UUID(data["organization"])),
+    ):
+        receipt = request_delegate_grant(
+            clinic_id=clinic,
+            grant=DelegateGrantRequest(
+                represented_enrollment_id=UUID(data["represented"]),
+                delegate_enrollment_id=UUID(data["guardian"]),
+                authority_kind=PatientDelegateGrant.AuthorityKind.GUARDIAN,
+                evidence_attachment_id=UUID(data["evidence"]),
+                purposes=("care_processing",),
+                operations=("enrollment_view", "records"),
+                expires_at=timezone.now() + timedelta(days=30),
+                idempotency_key=uuid4(),
+            ),
+        )
+        receipt = verify_delegate_grant(
+            clinic_id=clinic,
+            grant_id=receipt.grant_id,
+            expected_revision=receipt.revision,
+            verified=True,
+        )
+        receipt = activate(
+            clinic_id=clinic,
+            grant_id=receipt.grant_id,
+            expected_revision=receipt.revision,
+        )
+    return {
+        "grant": str(receipt.grant_id),
+        "revision": receipt.revision,
+        "state": receipt.state,
+    }
+
+
+def _delegate_revoke(data: dict[str, str]) -> dict[str, object]:
+    """Revoke a guardian grant through ``identity.delegates.revoke`` as staff.
+
+    The product has no staff screen for this transition; the service is the
+    one its offboarding and patient flows call, run as the runtime role.
+    """
+    from apps.identity.delegates import revoke  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    with (
+        runtime_role(),
+        tenant_context(UUID(data["actor"]), UUID(data["organization"])),
+    ):
+        receipt = revoke(
+            clinic_id=UUID(data["clinic"]),
+            grant_id=UUID(data["grant"]),
+            expected_revision=int(data["revision"]),
+        )
+    return {"state": receipt.state, "revision": receipt.revision}
 
 
 def _agent_supersede(data: dict[str, str]) -> dict[str, object]:
@@ -537,8 +819,84 @@ def _import_rehearsal(data: dict[str, str]) -> dict[str, object]:
     return result
 
 
+def _financial_documents(data: dict[str, str]) -> dict[str, object]:
+    """Exercise the service-only fiscal and payer-return legs of the close."""
+    from renewal.financial_close_fixture import reconcile_documents  # noqa: PLC0415
+
+    return reconcile_documents(data)
+
+
+def _approve_without_dispatch(data: dict[str, str]) -> dict[str, object]:
+    """Retain a real approval using the browser's persisted verified session.
+
+    The browser A1 handler immediately dispatches after approval. Calling its
+    approval service separately gives the scenario a deterministic mutation
+    point before the actual executor, without patching either service.
+    """
+    from apps.ai.approvals import approve_action  # noqa: PLC0415
+    from apps.ai.attestations import step_up_evidence  # noqa: PLC0415
+    from apps.ai.models import ActionProposal  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+    from django.contrib.auth import get_user  # noqa: PLC0415
+    from django.contrib.sessions.backends.db import SessionStore  # noqa: PLC0415
+    from django.http import HttpRequest, HttpResponse  # noqa: PLC0415
+    from django_otp.middleware import OTPMiddleware  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    request = HttpRequest()
+    request.session = SessionStore(session_key=data["session"])
+    clinic, actor, organization, proposal_id = (
+        UUID(data[key]) for key in ("clinic", "actor", "organization", "proposal")
+    )
+    with runtime_role(), tenant_context(actor, organization):
+        request.user = get_user(request)
+        OTPMiddleware(lambda _request: HttpResponse())(request)
+        assert request.user.pk == actor
+        proposal = ActionProposal.objects.get(pk=proposal_id, clinic_id=clinic)
+        approve_action(
+            clinic_id=clinic,
+            proposal_id=proposal.pk,
+            expected_digest=data["digest"],
+            evidence=step_up_evidence(request, clinic_id=clinic, digest=data["digest"]),
+        )
+        proposal.refresh_from_db()
+        return {"state": proposal.state}
+
+
+def _execute_approved(data: dict[str, str]) -> dict[str, object]:
+    """Call the actual executor after the independently committed authority change."""
+    from apps.ai.execution import execute_action  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    from patient_service_support import runtime_role  # noqa: PLC0415
+
+    with (
+        runtime_role(),
+        tenant_context(UUID(data["actor"]), UUID(data["organization"])),
+    ):
+        result = execute_action(
+            clinic_id=UUID(data["clinic"]), proposal_id=UUID(data["proposal"])
+        )
+        return {
+            "state": result.state,
+            "reason": result.reason.value if result.reason else None,
+            "execution_created": result.execution_id is not None,
+            "receipt_created": result.receipt_id is not None,
+        }
+
+
 ACTIONS: Final = {
+    "approve-without-dispatch": _approve_without_dispatch,
+    "execute-approved": _execute_approved,
+    "financial-documents": _financial_documents,
     "scribe-ambiguous": _scribe_ambiguous,
+    "scribe-outage": _scribe_outage,
+    "delegate-grant": _delegate_grant,
+    "release-for-delegates": _release_for_delegates,
+    "delegate-revoke": _delegate_revoke,
+    "care-plan": _care_plan,
+    "scribe-circuit-reset": _circuit_reset,
     "agent-supersede": _agent_supersede,
     "psp-prepare": _psp_prepare,
     "psp-send": _psp_send,

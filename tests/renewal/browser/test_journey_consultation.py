@@ -9,19 +9,20 @@ patient, one clinic, one encounter, one author and one document version
 carried by reception, the physician, the patient and a public verifier
 through booking, verified contact, questionnaire, arrival, notes, video,
 finalization, a signed and released document, PIX instructions and receipt,
-and the record export; the desktop and mobile days run it whole, the recovery
-day interrupts every step after the server committed. The legs that the
-spine's synthetic clinic does not exercise run through their owning todo's
-proofs in the same runtime: the clinician Today brief, consented capture and
-AI draft review with step-up finalization, prescribing, recorded PSP
-payment, and clinician-approved follow-up tasks. Insurance claims have no
-browser surface; the TISS submission leg stays BLOCKED-ON-EG (EG-8).
+and the record export. The filmed desktop day adds the encounter brief,
+service-backed synthetic audio capture, source-linked AI review and the care
+bundle derived from that same finalized note. Mobile and recovery runs retain
+the manual-care spine. Separate feature proofs supplement the connected day
+with Today, capture controls, prescribing, PSP and follow-up failure paths.
+Insurance claims have no browser surface; live TISS submission stays
+BLOCKED-ON-EG (EG-8).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import renewal.browser._j2_chain as j2
 import renewal.browser.test_billing_psp as psp
 import renewal.browser.test_care_coordination as care
 import renewal.browser.test_clinical_inbox as inbox
@@ -51,6 +52,8 @@ def _day(  # noqa: PLR0913 - the spine run needs its full context
     renewal_artifact_root: Path,
     availability_staff: dict[str, str],
     video: Path | None = None,
+    *,
+    chain: bool = False,
 ) -> None:
     name, width, civil_day, recovery = SPINE[run]
     rerun(
@@ -66,6 +69,8 @@ def _day(  # noqa: PLR0913 - the spine run needs its full context
         day=civil_day,
         recovery=recovery,
         video=video,
+        clinical=j2.clinical if chain else None,
+        follow_up=j2.follow_up if chain else None,
     )
 
 
@@ -98,11 +103,14 @@ def test_j2_adapters_and_provider_legs(
 def test_j2_desktop_day_from_booking_to_receipt(
     renewal_base_url: str,
     renewal_artifact_root: Path,
-    availability_staff: dict[str, str],
+    care_staff: dict[str, str],
     flagship: FlagshipReport,
 ) -> None:
-    # The QA film of the whole day: E/j2/<actor>.webm (reception, physician,
-    # patient), recorded by the real contexts of the spine run.
+    # One connected chain on the spine day's own patient, encounter, author
+    # and version: booking -> forms -> arrival -> brief -> capture -> review
+    # -> finalize -> document -> payment -> follow-up. The QA film of that
+    # whole day: E/j2/<actor>.webm (reception, physician, patient).
+    availability_staff = care_staff
     films = renewal_artifact_root / "E" / "j2"
     films.mkdir(mode=0o700, parents=True, exist_ok=True)
     _day(
@@ -113,6 +121,7 @@ def test_j2_desktop_day_from_booking_to_receipt(
         renewal_artifact_root,
         availability_staff,
         video=films,
+        chain=True,
     )
     recorded = sorted(path.name for path in films.glob("*.webm"))
     assert recorded == ["patient.webm", "physician.webm", "reception.webm"], recorded
@@ -122,13 +131,17 @@ def test_j2_desktop_day_from_booking_to_receipt(
         "confirmation",
         "forms",
         "arrival",
+        "brief",
+        "capture",
+        "ai-review",
         "documentation",
         "finalize",
         "document-release",
         "payment",
+        "follow-up",
         "export",
     ):
-        flagship.cover(f"J2.{step}", "happy", width=1280, spine=True)
+        flagship.cover(f"J2.{step}", "happy", width=1280, spine=True, chain=True)
 
 
 def test_j2_mobile_day_from_booking_to_receipt(
@@ -268,6 +281,8 @@ def test_j2_approved_follow_up_tasks(
     care_staff: dict[str, str],
     flagship: FlagshipReport,
 ) -> None:
+    # Other journey steps configure other AI purposes; restore the care one.
+    assert care.fixture(care_staff, "configure") == {"synthetic": True}
     rerun(
         flagship,
         "J2.follow-up",
@@ -287,6 +302,8 @@ def test_j2_invalid_follow_up_item_is_refused(
     care_staff: dict[str, str],
     flagship: FlagshipReport,
 ) -> None:
+    # Other journey steps configure other AI purposes; restore the care one.
+    assert care.fixture(care_staff, "configure") == {"synthetic": True}
     rerun(
         flagship,
         "J2.follow-up",

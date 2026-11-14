@@ -180,6 +180,114 @@ FLAGSHIP_SUITES: Final = frozenset(
         "acceptance-scenarios",
     }
 )
+# The exact adapters each flagship suite must label and the exact provider
+# capabilities it must assert BLOCKED-ON-EG: a dropped or added entry fails.
+FLAGSHIP_EXPECTED: Final[dict[str, tuple[frozenset[str], frozenset[str]]]] = {
+    "journey-first-day": (
+        frozenset({"email", "import", "runtime"}),
+        frozenset(
+            {
+                "asr",
+                "attachment_scanning",
+                "attachment_storage",
+                "competitor_import_formats",
+                "data_at_rest",
+                "email",
+                "hosted_pitr",
+                "llm_inference",
+                "managed_secrets",
+                "nfse",
+                "object_storage_media",
+                "pdf_rendering",
+                "physician_registration",
+                "pix",
+                "psp_card",
+                "qualified_signing",
+                "rnds",
+                "signature_verification",
+                "sms",
+                "sncr",
+                "tenant_key_management",
+                "tiss",
+                "tls_transport",
+                "video",
+                "whatsapp",
+            }
+        ),
+    ),
+    "journey-consultation": (
+        frozenset(
+            {
+                "asr_llm",
+                "email_delivery",
+                "media_devices",
+                "outbox_worker",
+                "pdf_rendering",
+                "physician_registry",
+                "pix",
+                "psp",
+                "record_export",
+                "runtime",
+                "signature_provider",
+                "video_room",
+            }
+        ),
+        frozenset(
+            {
+                "asr",
+                "email",
+                "llm_inference",
+                "physician_registration",
+                "pix",
+                "psp_card",
+                "qualified_signing",
+                "tiss",
+                "video",
+            }
+        ),
+    ),
+    "journey-reception-pressure": (
+        frozenset({"realtime", "runtime", "whatsapp"}),
+        frozenset({"email", "sms", "whatsapp"}),
+    ),
+    "journey-disrupted-session": (
+        frozenset({"media", "psp", "runtime", "signature", "video_room"}),
+        frozenset({"asr", "pix", "psp_card", "qualified_signing", "video"}),
+    ),
+    "journey-results": (
+        frozenset({"extraction", "lab", "runtime"}),
+        frozenset({"attachment_scanning", "email", "llm_inference", "rnds"}),
+    ),
+    "journey-financial-close": (
+        frozenset({"journal", "nfse", "pix", "psp", "runtime", "tiss"}),
+        frozenset({"nfse", "pix", "psp_card", "tiss"}),
+    ),
+    "journey-network-governance": (
+        frozenset({"identity_provider", "partner_api", "runtime"}),
+        frozenset({"hosted_pitr", "managed_secrets", "tenant_key_management"}),
+    ),
+    "acceptance-scenarios": (
+        frozenset(
+            {"agent_executor", "asr", "import", "llm", "psp", "realtime", "runtime"}
+        ),
+        frozenset(
+            {
+                "asr",
+                "competitor_import_formats",
+                "email",
+                "hosted_pitr",
+                "llm_inference",
+                "object_storage_media",
+                "pix",
+                "psp_card",
+                "saas_collection",
+                "sms",
+                "tenant_key_management",
+                "whatsapp",
+            }
+        ),
+    ),
+}
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
@@ -1252,6 +1360,15 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
     }
 
 
+def _require_flagship_sets(suite: str, adapters: set[str], legs: set[object]) -> None:
+    """Fail unless the suite labels and blocks exactly its required entries."""
+    expected_adapters, expected_legs = FLAGSHIP_EXPECTED[suite]
+    if adapters != expected_adapters:
+        _fail(f"flagship suite {suite} adapter set differs from its required set")
+    if legs != expected_legs:
+        _fail(f"flagship suite {suite} BLOCKED-ON-EG leg set differs from its set")
+
+
 def _flagship_report(
     browser_root: Path, suite: str, sentinel: JsonObject | None
 ) -> JsonObject:
@@ -1289,6 +1406,9 @@ def _flagship_report(
         for leg in legs
     ):
         _fail(f"flagship suite {suite} reports a provider leg that is not blocked")
+    _require_flagship_sets(
+        suite, set(adapters), {leg.get("capability") for leg in legs}
+    )
     findings = sentinel.get("findings")
     return {
         "adapters": adapters,

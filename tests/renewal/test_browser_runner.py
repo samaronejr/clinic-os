@@ -2375,10 +2375,19 @@ def _flagship_root(tmp_path: Path, document: object) -> Path:
     return browser_root
 
 
+FLAGSHIP_ADAPTERS: dict[str, object] = {
+    "extraction": {"label": "synthetic", "detail": "fixture"},
+    "lab": {"label": "synthetic", "detail": "fixture"},
+    "runtime": {"label": "real", "detail": "clinic_app"},
+}
+FLAGSHIP_LEGS: list[dict[str, str]] = [
+    {"capability": name, "status": "BLOCKED-ON-EG"}
+    for name in ("attachment_scanning", "email", "llm_inference", "rnds")
+]
 FLAGSHIP_DOCUMENT: dict[str, object] = {
     "suite": "journey-results",
-    "adapters": {"lab": {"label": "synthetic", "detail": "fixture"}},
-    "blocked_on_eg": [{"capability": "rnds", "status": "BLOCKED-ON-EG"}],
+    "adapters": FLAGSHIP_ADAPTERS,
+    "blocked_on_eg": FLAGSHIP_LEGS,
     "covers": [{"item": "J5.received", "branch": "happy"}],
 }
 SENTINEL_RECEIPT: JsonObject = {
@@ -2407,11 +2416,49 @@ def test_flagship_report_binds_adapters_legs_and_the_sentinel_scan(
     [
         ({"suite": "journey-first-day"}, "names another suite"),
         ({"adapters": {}}, "labels no adapter"),
-        ({"adapters": {"lab": {"label": "sandbox"}}}, "real/synthetic label"),
+        (
+            {"adapters": {**FLAGSHIP_ADAPTERS, "lab": {"label": "sandbox"}}},
+            "real/synthetic label",
+        ),
         ({"blocked_on_eg": []}, "asserts no BLOCKED-ON-EG"),
         (
-            {"blocked_on_eg": [{"capability": "rnds", "status": "activated"}]},
+            {
+                "blocked_on_eg": [
+                    *FLAGSHIP_LEGS[:3],
+                    {"capability": "rnds", "status": "activated"},
+                ]
+            },
             "not blocked",
+        ),
+        # Mutations of an otherwise valid multi-entry report.
+        ({"blocked_on_eg": FLAGSHIP_LEGS[:3]}, "leg set differs"),
+        (
+            {
+                "adapters": {
+                    key: value
+                    for key, value in FLAGSHIP_ADAPTERS.items()
+                    if key != "lab"
+                }
+            },
+            "adapter set differs",
+        ),
+        (
+            {
+                "blocked_on_eg": [
+                    *FLAGSHIP_LEGS,
+                    {"capability": "video", "status": "BLOCKED-ON-EG"},
+                ]
+            },
+            "leg set differs",
+        ),
+        (
+            {
+                "adapters": {
+                    **FLAGSHIP_ADAPTERS,
+                    "psp": {"label": "synthetic", "detail": "x"},
+                }
+            },
+            "adapter set differs",
         ),
     ],
 )
@@ -2421,6 +2468,13 @@ def test_flagship_report_refuses_a_live_or_unlabelled_claim(
     browser_root = _flagship_root(tmp_path, {**FLAGSHIP_DOCUMENT, **change})
     with pytest.raises(runner.RenewalRunnerError, match=message):
         runner._flagship_report(browser_root, "journey-results", SENTINEL_RECEIPT)
+
+
+def test_every_flagship_suite_pins_its_exact_adapters_and_legs() -> None:
+    assert set(runner.FLAGSHIP_EXPECTED) == runner.FLAGSHIP_SUITES
+    for adapters, legs in runner.FLAGSHIP_EXPECTED.values():
+        assert adapters
+        assert legs
 
 
 def test_flagship_report_requires_its_file_and_the_sentinel_scan(

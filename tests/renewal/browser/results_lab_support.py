@@ -31,7 +31,9 @@ class LabDelivery:
     headers: dict[str, str]
 
 
-def seed_delivery(staff: dict[str, str], data: dict[str, str]) -> LabDelivery:
+def seed_delivery(
+    staff: dict[str, str], data: dict[str, str], *, source: bytes = SOURCE
+) -> LabDelivery:
     """Seed only setup records; the real HTTP callback performs every result write."""
     principal, account, order, correlation, command, event = (uuid4() for _ in range(6))
     key = FixtureSecret(secrets.token_hex(32))
@@ -120,7 +122,7 @@ def seed_delivery(staff: dict[str, str], data: dict[str, str]) -> LabDelivery:
                 "identifier": "",
             },
             "content_type": "application/pdf",
-            "data_base64": base64.b64encode(SOURCE).decode("ascii"),
+            "data_base64": base64.b64encode(source).decode("ascii"),
             "observations": [],
             "critical": False,
             "result_id": None,

@@ -16,26 +16,28 @@ payouts (EG-1/EG-5) stay BLOCKED-ON-EG; the workspace says so.
 
 from __future__ import annotations
 
-import csv
-import io
-import json
-from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
 
 import psycopg
 from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+import renewal.browser._j6_close as j6
 import renewal.browser.test_billing as billing
 import renewal.browser.test_billing_psp as psp
 import renewal.browser.test_reports as reports
 from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._totp_devices import reset_totp_device
-from renewal.browser.flagship_support import capture, sign_in, staff_context
+from renewal.browser.flagship_support import (
+    capture,
+    run_fixture,
+    sign_in,
+    staff_context,
+)
 from renewal.browser.test_acceptance_clinical import rerun
+from renewal.browser.test_encounter import press
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,12 +46,10 @@ if TYPE_CHECKING:
 
     from renewal.browser.flagship_support import FlagshipReport, ReferenceClinic
 
-OK: Final = 200
 BLOCKED_COPY: Final = (
     "Refund and payout sending is a local rehearsal. No real money is moved. "
     "PSP and live legs remain BLOCKED-ON-EG."
 )
-STEP_UP_COPY: Final = "Verify your authenticator again before approving or reopening."
 
 
 def test_j6_adapters_and_provider_legs(
@@ -59,6 +59,8 @@ def test_j6_adapters_and_provider_legs(
     flagship.adapter("journal", "real", "double-entry operational journal (todo 56)")
     flagship.adapter("psp", "synthetic", "recorded-psp-v1 fixture provider")
     flagship.adapter("pix", "synthetic", "synthetic-pix-v1 non-payable code")
+    flagship.adapter("nfse", "synthetic", "local fiscal rehearsal, no fiscal validity")
+    flagship.adapter("tiss", "synthetic", "XSD-validated fixture return, separate cash")
     for capability in ("pix", "psp_card", "nfse", "tiss"):
         flagship.blocked(reference_clinic, capability, "unit_a")
 
@@ -141,11 +143,6 @@ def test_j6_governed_revenue_reports(
     )
 
 
-def _finance(page: Page, base: str, clinic: str) -> None:
-    goto_settled(page, f"{base}/billing/clinics/{clinic}/finance/")
-    expect(page.locator("[data-finance-workspace]")).to_be_visible()
-
-
 def _action(page: Page, action: str) -> None:
     """Open one action's disclosure and return with its form visible."""
     form = page.locator(f'form:has(input[name="action"][value="{action}"])')
@@ -158,13 +155,6 @@ def _action(page: Page, action: str) -> None:
 def _submit(page: Page, action: str) -> None:
     form = page.locator(f'form:has(input[name="action"][value="{action}"])')
     click_to_navigate(form.locator("button[type=submit]"))
-
-
-def _drawer(page: Page) -> tuple[str, int]:
-    row = page.locator("tr[data-cash-state]").first
-    state = row.get_attribute("data-cash-state")
-    assert state is not None
-    return state, int(row.locator("td").nth(1).inner_text().strip())
 
 
 def _close(page: Page, counted: str, revision: int) -> None:
@@ -192,35 +182,6 @@ def _reopen(page: Page, revision: int) -> None:
     _submit(page, "reopen_cash")
 
 
-def _export_balanced(page: Page, base: str, clinic: str) -> int:
-    tokens = [c for c in page.context.cookies() if "csrf" in c["name"].lower()]
-    assert len(tokens) == 1
-    today = date.today()  # noqa: DTZ011 - a generous window around the server day
-    response = page.request.post(
-        f"{base}/billing/clinics/{clinic}/journal-export/",
-        form={
-            "csrfmiddlewaretoken": str(tokens[0]["value"]),
-            "start": (today - timedelta(days=3)).isoformat(),
-            "end": (today + timedelta(days=3)).isoformat(),
-            "format": "csv",
-        },
-        headers={"Referer": page.url},
-    )
-    assert response.status == OK, response.status
-    rows = list(csv.DictReader(io.StringIO(response.text())))
-    assert rows, "the export holds the day's sealed journal lines"
-    # Each sealed entry balances on its own, so the whole export does too.
-    balance: dict[str, int] = {}
-    for row in rows:
-        assert row["side"] in {"debit", "credit"}, row["side"]
-        assert row["currency"] == "BRL"
-        signed = int(row["amount_minor"]) * (1 if row["side"] == "debit" else -1)
-        balance[row["entry_id"]] = balance.get(row["entry_id"], 0) + signed
-    unbalanced = sum(1 for total in balance.values() if total)
-    assert not unbalanced, json.dumps({"unbalanced_entries": unbalanced})
-    return len(rows)
-
-
 def test_j6_day_close_reopen_and_balanced_export(  # noqa: PLR0915 - one close procedure
     renewal_page: Page,
     renewal_base_url: str,
@@ -228,81 +189,248 @@ def test_j6_day_close_reopen_and_balanced_export(  # noqa: PLR0915 - one close p
     reference_clinic: ReferenceClinic,
     flagship: FlagshipReport,
 ) -> None:
-    reference = reference_clinic
+    reference, base = reference_clinic, renewal_base_url
     browser = renewal_page.context.browser
     assert browser is not None
     clinic = reference.unit_a
+    physician = reference.personas["physician_a1"].user_id
+    payer = billing.seed_patient(
+        {
+            "dsn": reference.dsn,
+            "organization": reference.organization,
+            "clinic_a": clinic,
+            "receptionist_id": reference.personas["reception_a1"].user_id,
+        },
+        "Paciente Sint\u00e9tica Fechamento J6",
+    )
     owner = staff_context(browser, 1280)
     try:
         page = owner.new_page()
-        sign_in(page, renewal_base_url, reference, "org_admin")
-        _finance(page, renewal_base_url, clinic)
-        # Book and opening balance are organization finance policy (org_admin).
+        sign_in(page, base, reference, "org_admin")
+        j6.finance(page, base, clinic)
+        # The book is organization finance policy: it exists before any money.
         if page.locator('input[name="action"][value="create_book"]').count():
-            _action(page, "create_book")
-            _submit(page, "create_book")
-        # The day's sealed fact: an attested opening bank balance.
-        _action(page, "opening_balance")
-        page.locator("#id_opening_balance_account").select_option("bank")
-        page.locator("#id_opening_balance_amount").fill("120,00")
-        page.locator("#id_opening_balance_evidence_reference").fill(str(uuid4()))
-        page.locator("#id_opening_balance_attested").check()
-        _submit(page, "opening_balance")
-        expect(page.locator("#accounts-caption")).to_be_visible()
+            j6.command(page, "create_book", {})
+        # The practitioner rule is organization finance policy too.
+        j6.command(
+            page,
+            "create_rule",
+            {
+                "practitioner_id": physician,
+                "kind": "percent",
+                "rule_value": str(j6.RULE_BASIS_POINTS),
+            },
+        )
+        j6.recorded(page)
     finally:
         owner.close()
     context = staff_context(browser, 1280)
     try:
         page = context.new_page()
-        sign_in(page, renewal_base_url, reference, "finance_a")
-        _finance(page, renewal_base_url, clinic)
+        sign_in(page, base, reference, "finance_a")
+        j6.finance(page, base, clinic)
         expect(page.get_by_text(gettext(BLOCKED_COPY))).to_be_visible()
-        _action(page, "open_cash")
-        page.locator("#id_open_cash_counted").fill("0,00")
-        _submit(page, "open_cash")
-        state, revision = _drawer(page)
-        assert state == "open"
-        # Failure branch: a count that disagrees with the journal never closes.
-        _close(page, "10,00", revision)
-        expect(page.locator('[role="alert"]').first).to_be_visible()
-        assert _drawer(page)[0] == "open"
-        capture(page, renewal_artifact_root, "journey-financial-close", "mismatch")
-        _finance(page, renewal_base_url, clinic)
-        _close(page, "0,00", _drawer(page)[1])
-        state, revision = _drawer(page)
-        assert state == "closed"
-        # Reopening is a step-up action with a recorded reason, then re-close.
-        # Without a fresh verification it is refused and the drawer stays shut.
-        _reopen(page, revision)
-        expect(page.get_by_text(gettext(STEP_UP_COPY))).to_be_visible()
-        assert _drawer(page) == ("closed", revision)
+        # Invoice: a real charge and its frozen terms with the policy rule.
+        charge_url = billing.create_charge(
+            page,
+            f"{base}/billing/clinics/{clinic}/charges/",
+            payer["patient"],
+            j6.reais(j6.CHARGE),
+        )
+        invoice = billing.invoice_id_of(charge_url)
+        # Issued and settled by attested confirmation: no payment code is
+        # needed, and the finance role may not generate one.
+        press(page, "issue")
+        billing.expect_state(page, "issued")
+        j6.finance(page, base, clinic)
+        j6.command(
+            page,
+            "prepare_terms",
+            {
+                "invoice_id": invoice,
+                "payer": "patient",
+                "discount": "0,00",
+                "adjustment": "0,00",
+                # Option zero explicitly means no practitioner rule.
+                "rule_id": 1,
+            },
+        )
+        j6.recorded(page)
+        j6.command(
+            page,
+            "complete_service",
+            {
+                "invoice_id": invoice,
+                "evidence_reference": j6.evidence(),
+                "attested": True,
+            },
+        )
+        j6.recorded(page)
+        # Settlement: confirmed on the charge screen, bridged into the journal.
+        goto_settled(page, charge_url)
+        billing.confirm_settlement(page, j6.reais(j6.CHARGE))
+        j6.finance(page, base, clinic)
+        expect(page.locator('tr[data-collection-state="posted"]')).to_have_count(1)
+        # Fee, refund and payout on that same collection and practitioner.
+        j6.command(
+            page, "psp_fee", {"amount": j6.reais(j6.FEE), "account": "psp_clearing"}
+        )
+        j6.recorded(page)
+        j6.command(page, "open_cash", {"counted": "0,00"})
+        j6.command(
+            page,
+            "request_refund",
+            {
+                "allocation_id": 0,
+                "amount": j6.reais(j6.REFUND),
+                "refund_kind": "refund",
+            },
+        )
+        j6.recorded(page)
+        j6.command(
+            page,
+            "request_payout",
+            {"practitioner_id": physician, "amount": j6.reais(j6.PAYOUT)},
+        )
+        j6.recorded(page)
+        # Outgoing money needs a fresh verification: refused, then stepped up.
+        j6.command(page, "approve_refund", {"refund_id": 0})
+        j6.needs_step_up(page)
         _step_up(page, reference, "finance_a")
-        _finance(page, renewal_base_url, clinic)
+        j6.finance(page, base, clinic)
+        j6.command(page, "approve_refund", {"refund_id": 0})
+        j6.recorded(page)
+        j6.command(page, "approve_payout", {"payout_id": 0})
+        j6.recorded(page)
+        for outcome in ("sending", "unknown"):
+            j6.command(
+                page,
+                "refund_state",
+                {"refund_id": 0, "outcome": outcome, "attested": True},
+            )
+            j6.recorded(page)
+        # Exception: an unknown refund outcome keeps the day open.
+        state, revision = j6.drawer(page)
+        assert state == "open"
+        _close(page, "0,00", revision)
+        expect(page.locator('[role="alert"]').first).to_be_visible()
+        assert j6.drawer(page)[0] == "open"
+        capture(page, renewal_artifact_root, "journey-financial-close", "exception")
+        j6.finance(page, base, clinic)
+        j6.command(
+            page,
+            "refund_state",
+            {
+                "refund_id": 0,
+                "outcome": "confirmed",
+                "outcome_evidence": j6.evidence(),
+                "attested": True,
+            },
+        )
+        j6.recorded(page)
+        for outcome in ("sending", "confirmed"):
+            fields: dict[str, str | int | bool] = {
+                "payout_id": 0,
+                "outcome": outcome,
+                "attested": True,
+            }
+            if outcome == "confirmed":
+                fields["outcome_evidence"] = j6.evidence()
+            j6.command(page, "payout_state", fields)
+            j6.recorded(page)
+        # No insurance operator screen exists. Its real services retain the
+        # claim and return and allocate independently verified cash in this
+        # same book. Fiscal authorization must not itself post any money.
+        documents = run_fixture(
+            reference.dsn,
+            "financial-documents",
+            {
+                "organization": reference.organization,
+                "clinic": clinic,
+                "actor": reference.personas["finance_a"].user_id,
+                "physician": physician,
+                "receptionist": reference.personas["reception_a1"].user_id,
+                "patient": payer["patient"],
+                "enrollment": payer["enrollment"],
+                "invoice": invoice,
+            },
+        )
+        assert documents == {
+            "fiscal_authorized": 1,
+            "insurer_charged_minor": 12345,
+            "insurer_collected_minor": 8345,
+            "insurer_outstanding_minor": 4000,
+            "return_replay_idempotent": True,
+            "payment_replay_idempotent": True,
+        }
+        j6.finance(page, base, clinic)
+        expect(
+            page.locator(
+                'tr[data-fiscal-state="authorized"][data-fiscal-rehearsal="true"]'
+            )
+        ).to_have_count(1)
+        # Failure branch: a count that disagrees with the journal never closes.
+        _close(page, "10,00", j6.drawer(page)[1])
+        expect(page.locator('[role="alert"]').first).to_be_visible()
+        assert j6.drawer(page)[0] == "open"
+        capture(page, renewal_artifact_root, "journey-financial-close", "mismatch")
+        j6.finance(page, base, clinic)
+        _close(page, "0,00", j6.drawer(page)[1])
+        state, revision = j6.drawer(page)
+        assert state == "closed"
+        # An auditable reopening with a recorded reason, then the re-close.
         _reopen(page, revision)
-        state, revision = _drawer(page)
+        state, revision = j6.drawer(page)
         assert state != "closed", state
         _close(page, "0,00", revision)
-        assert _drawer(page)[0] == "closed"
+        assert j6.drawer(page)[0] == "closed"
         capture(page, renewal_artifact_root, "journey-financial-close", "closed")
-        lines = _export_balanced(page, renewal_base_url, clinic)
+        lines, accounts = j6.journal_totals(page, base, clinic)
     finally:
         context.close()
+    # The same close reconciles every named fact to the centavo.
+    repasse = j6.CHARGE * j6.RULE_BASIS_POINTS // 10_000
+    clawback = j6.REFUND * j6.RULE_BASIS_POINTS // 10_000
+    assert accounts.get("patient_ar", 0) == 0, accounts
+    assert accounts.get("psp_fees") == j6.FEE, accounts
+    assert accounts.get("contra_revenue") == j6.REFUND, accounts
+    assert accounts.get("insurer_ar") == 4000, accounts
+    assert accounts.get("practitioner_payables") == -(repasse - clawback - j6.PAYOUT), (
+        accounts
+    )
     desk = staff_context(browser, 375)
     try:
         page = desk.new_page()
         # A nurse holds no financial permission: no financial action is offered.
-        sign_in(page, renewal_base_url, reference, "nurse_a6")
-        goto_settled(page, f"{renewal_base_url}/billing/clinics/{clinic}/finance/")
+        sign_in(page, base, reference, "nurse_a6")
+        goto_settled(page, f"{base}/billing/clinics/{clinic}/finance/")
         expect(page.locator('#finance-content input[name="action"]')).to_have_count(0)
     finally:
         desk.close()
     flagship.cover(
         "J6.close-reopen",
         "failure",
+        unknown_outcome_blocked_close=True,
         mismatch_refused=True,
-        reopen_without_step_up_refused=True,
+        approval_without_step_up_refused=True,
         reopened_with_reason=True,
         export_lines=lines,
         balanced=True,
+    )
+    flagship.cover(
+        "J6.reconciled-facts",
+        "happy",
+        invoice=2,
+        settlement=2,
+        fee=1,
+        refund=1,
+        payout=1,
+        reconciled_accounts=5,
+    )
+    flagship.cover(
+        "J6.fiscal-insurer",
+        "happy",
+        surface="runtime-services-and-finance-screen",
+        **documents,
     )
     flagship.cover("J6.fiscal-insurer", "blocked", nfse="EG-9", tiss="EG-8")

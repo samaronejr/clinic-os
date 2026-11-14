@@ -11,10 +11,17 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import django
+import rfc8785
 
 
-def seed(actor: UUID, clinic: UUID, organization: UUID) -> tuple[UUID, int]:
-    """Use production domain commands; only role and secret setup is owner-side."""
+def seed(
+    actor: UUID, clinic: UUID, organization: UUID, second: UUID | None = None
+) -> tuple[UUID, int]:
+    """Use production domain commands; only role and secret setup is owner-side.
+
+    With ``second`` the proposal lists both approvers and needs both votes
+    (quorum 2), so approval and execution are separated by a second human.
+    """
     from apps.ai.action_payload import parse_payload  # noqa: PLC0415
     from apps.ai.action_validation import (  # noqa: PLC0415
         authority_snapshot,
@@ -49,10 +56,17 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> tuple[UUID, int]:
         descriptor = os.open(secret, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "w") as stream:
             stream.write(secrets.token_hex(32))
+    approvers = (actor,) if second is None else (actor, second)
     with owner_context(organization):
-        UserClinicRole.objects.filter(user_id=actor).exclude(
+        UserClinicRole.objects.filter(user_id__in=approvers).exclude(
             workflow_bundle_version=2,
         ).update(workflow_bundle_version=2)
+    extra = []
+    if second is not None:
+        with runtime_role(), tenant_context(second, organization):
+            extra.append(
+                authority_snapshot(clinic_id=clinic, permission="tasks.assign")
+            )
     account = "synthetic-" + uuid4().hex
     for capability in ("llm_inference", "email"):
         version = propose_version(
@@ -132,13 +146,18 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> tuple[UUID, int]:
                 "expires_at": (now + timedelta(hours=1))
                 .isoformat()
                 .replace("+00:00", "Z"),
-                "approver_authority_snapshots": [
-                    authority_snapshot(clinic_id=clinic, permission="tasks.assign")
-                ],
+                # The payload lists approvers in RFC 8785 encoded-byte order.
+                "approver_authority_snapshots": sorted(
+                    [
+                        authority_snapshot(clinic_id=clinic, permission="tasks.assign"),
+                        *extra,
+                    ],
+                    key=rfc8785.dumps,
+                ),
                 "approval_policy": {
                     "policy_id": str(capability_policy.pk),
                     "version": capability_policy.version,
-                    "quorum": 1,
+                    "quorum": len(approvers),
                     "autonomy": "A1",
                 },
                 "compensation_policy": {"mode": "manual", "version": 1},
@@ -154,8 +173,8 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> tuple[UUID, int]:
 def main() -> int:
     """The browser runner supplies the isolated owner connection and secret root."""
     django.setup()
-    actor, clinic, organization = (UUID(value) for value in sys.argv[1:])
-    proposal, revision = seed(actor, clinic, organization)
+    actor, clinic, organization, *rest = (UUID(value) for value in sys.argv[1:])
+    proposal, revision = seed(actor, clinic, organization, rest[0] if rest else None)
     sys.stdout.write(
         json.dumps({"proposal_id": str(proposal), "source_revision": revision}) + "\n"
     )
