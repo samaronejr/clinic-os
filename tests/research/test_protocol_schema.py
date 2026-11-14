@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import tomllib
 from pathlib import Path
@@ -26,6 +27,18 @@ DENIED_FORM_FIELDS = frozenset(
     {"name", "email", "phone", "cpf", "birth_date", "date_of_birth", "notes", "quote"}
 )
 
+SCRIBE_SECONDARY_FIELDS = frozenset(
+    {
+        "omission_count",
+        "hallucination_count",
+        "medication_name_dose_error_count",
+        "allergy_error_count",
+        "negation_error_count",
+        "correction_count",
+        "nasa_tlx_raw_score",
+    }
+)
+
 
 def split_front_matter(text: str) -> tuple[dict[str, Any], str]:
     if not text.startswith(FENCE):
@@ -35,14 +48,18 @@ def split_front_matter(text: str) -> tuple[dict[str, Any], str]:
     return tomllib.loads(head), body
 
 
-def prereg_digest(body: str) -> str:
+def prereg_digest(text: str) -> str:
+    """Hash the registered machine fields together with the prereg block."""
+    meta, body = split_front_matter(text)
+    registered = {key: value for key, value in meta.items() if key != "prereg_sha256"}
     start = body.index(PREREG_BEGIN)
     end = body.index(PREREG_END, start) + len(PREREG_END)
-    return hashlib.sha256(body[start:end].encode()).hexdigest()
+    canonical = json.dumps(registered, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(f"{canonical}\n{body[start:end]}".encode()).hexdigest()
 
 
 def protocol_problems(text: str) -> list[str]:
-    meta, body = split_front_matter(text)
+    meta, _ = split_front_matter(text)
     problems: list[str] = []
     if meta.get("state") not in STATES:
         problems.append("state")
@@ -63,7 +80,7 @@ def protocol_problems(text: str) -> list[str]:
         problems.append("sample_size")
     if meta.get("state") == "pre-registered" and meta.get(
         "prereg_sha256"
-    ) != prereg_digest(body):
+    ) != prereg_digest(text):
         problems.append("prereg_sha256 mismatch")
     return problems
 
@@ -85,27 +102,57 @@ def test_missing_denominator_fails(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", PROTOCOLS, ids=lambda p: p.name)
-def test_outcome_edit_after_preregistration_is_flagged(path: Path) -> None:
+def test_prereg_block_edit_is_flagged(path: Path) -> None:
     text = path.read_text()
-    _, body = split_front_matter(text)
-    inner = body[body.index(PREREG_BEGIN) : body.index(PREREG_END)]
-    edited = text.replace(inner, inner + "edited outcome\n", 1)
-    assert prereg_digest(split_front_matter(edited)[1]) != prereg_digest(body)
+    edited = text.replace(PREREG_END, f"edited outcome\n{PREREG_END}", 1)
+    assert prereg_digest(edited) != prereg_digest(text)
+    assert "prereg_sha256 mismatch" in protocol_problems(edited)
+
+
+@pytest.mark.parametrize("path", PROTOCOLS, ids=lambda p: p.name)
+@pytest.mark.parametrize("field", ["metric", "value", "numerator", "denominator"])
+def test_machine_outcome_edit_is_flagged(path: Path, field: str) -> None:
+    text = path.read_text()
+    meta, _ = split_front_matter(text)
+    target = meta["targets"][0]
+    current = target[field]
+    if isinstance(current, str):
+        old, new = f'{field} = "{current}"', f'{field} = "{current} (edited)"'
+    else:
+        old, new = f"{field} = {current}", f"{field} = {current + 0.05}"
+    assert old in text
+    edited = text.replace(old, new, 1)
+    assert prereg_digest(edited) != prereg_digest(text)
+    assert "prereg_sha256 mismatch" in protocol_problems(edited)
+
+
+def test_sample_size_assumption_edit_is_flagged() -> None:
+    text = PROTOCOLS[1].read_text()
+    edited = text.replace("enrollment_target = 22", "enrollment_target = 12", 1)
+    assert edited != text
     assert "prereg_sha256 mismatch" in protocol_problems(edited)
 
 
 def test_scribe_sample_size_matches_its_assumptions() -> None:
     meta, _ = split_front_matter(PROTOCOLS[1].read_text())
     s = meta["sample_size"]
-    delta = s["baseline_minutes_assumption"] * s["target_reduction_fraction"]
-    effect = (
-        (s["z_alpha"] + s["z_beta"])
-        * s["sd_paired_difference_minutes_assumption"]
-        / delta
+    delta = (
+        s["baseline_median_minutes_assumption"] * s["target_median_reduction_fraction"]
     )
-    required = math.ceil(effect**2)
+    sd = s["sd_paired_difference_minutes_assumption"]
+    paired = ((s["z_alpha"] + s["z_beta"]) * sd / delta) ** 2
+    required = math.ceil(paired / s["wilcoxon_are_assumption"])
     assert s["required_completers"] == required
     assert s["enrollment_target"] == math.ceil(required / (1 - s["dropout_assumption"]))
+
+
+def test_scribe_primary_target_is_median_based() -> None:
+    meta, _ = split_front_matter(PROTOCOLS[1].read_text())
+    primary = meta["targets"][0]
+    assert primary["value"] == 0.30
+    assert "median" in primary["metric"]
+    assert primary["test"].startswith("Wilcoxon signed-rank")
+    assert primary["estimator"].startswith("Hodges-Lehmann")
 
 
 def test_usability_sample_size_has_strata() -> None:
@@ -135,3 +182,10 @@ def test_capture_forms_hold_session_ids_only() -> None:
     for form in meta["forms"]:
         assert form["fields"][0] == "session_id"
         assert not DENIED_FORM_FIELDS & set(form["fields"])
+    scribe_fields = {
+        field
+        for form in meta["forms"]
+        if form["protocol_id"] == "scribe-effort-v1"
+        for field in form["fields"]
+    }
+    assert scribe_fields >= SCRIBE_SECONDARY_FIELDS

@@ -6,7 +6,7 @@ external_gate = "EG-10"
 gate_status = "BLOCKED-ON-EG"
 results_template = "docs/research/results-template.md"
 capture_form = "docs/operations/research-capture-forms.md#usability-observation"
-prereg_sha256 = "ac1fe11e5c1ba9999f7e79f3e2fbdc31ac11702f43a5a134754507032a07ed4e"
+prereg_sha256 = "83d7fa9e5689c5a538cdf98921ee1806bd8e599712277cb6f76d57a0e8367b5b"
 
 [[targets]]
 id = "unassisted-completion"
@@ -98,8 +98,8 @@ its row. Results are reported per role and device cell, never only pooled.
 
 The observer fills the usability observation form in
 `docs/operations/research-capture-forms.md`. It records session id, task
-id, role and device stratum, outcome code, elapsed seconds, hint count and
-severity codes. It holds no names, no free-text quotes and no clinical
+id, role and device stratum, outcome code, elapsed seconds, hint count,
+severity codes and error class codes. It holds no names, no free-text quotes and no clinical
 content.
 
 ### Consent to participate

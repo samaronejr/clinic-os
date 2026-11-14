@@ -6,16 +6,18 @@ external_gate = "EG-10"
 gate_status = "BLOCKED-ON-EG"
 results_template = "docs/research/results-template.md"
 capture_form = "docs/operations/research-capture-forms.md#scribe-encounter-timing"
-prereg_sha256 = "1c60ccbfce938fa0392131608f2c2b92eba7aed72a3381e9bcfdf4dfd9250555"
+prereg_sha256 = "105b284296e96f49fc0be4e92c9b460c8664ae056d1fc27fe24bf4c5c72162aa"
 
 [[targets]]
 id = "documentation-effort-reduction"
 label = "proposal"
-metric = "relative reduction in mean total documentation plus correction time per encounter, scribe arm vs manual arm"
+metric = "median over clinicians of the paired relative reduction in median total documentation plus correction time per encounter, scribe arm vs manual arm"
 comparator = ">="
 value = 0.30
-numerator = "per-clinician mean manual-arm minutes minus scribe-arm minutes"
-denominator = "per-clinician mean manual-arm minutes, over clinicians completing both periods"
+numerator = "per-clinician median manual-arm minutes minus median scribe-arm minutes"
+denominator = "per-clinician median manual-arm minutes, over clinicians completing both periods"
+estimator = "Hodges-Lehmann median of paired relative reductions with exact 95% CI"
+test = "Wilcoxon signed-rank, two-sided"
 
 [[targets]]
 id = "significant-omission-rate"
@@ -29,18 +31,19 @@ denominator = "all scribe-arm finalized notes reviewed"
 [sample_size]
 label = "proposal"
 unit = "clinician completing both periods"
-design = "two-period two-sequence crossover, paired analysis"
+design = "two-period two-sequence crossover, paired rank-based analysis"
 alpha_two_sided = 0.05
 power = 0.80
 z_alpha = 1.96
 z_beta = 0.8416
-baseline_minutes_assumption = 10.0
-target_reduction_fraction = 0.30
+baseline_median_minutes_assumption = 10.0
+target_median_reduction_fraction = 0.30
 sd_paired_difference_minutes_assumption = 4.0
+wilcoxon_are_assumption = 0.864
 dropout_assumption = 0.20
 encounters_per_period = 10
-required_completers = 14
-enrollment_target = 18
+required_completers = 17
+enrollment_target = 22
 +++
 
 # Scribe documentation-effort study protocol (sec.11 scribe target, EG-10)
@@ -85,23 +88,31 @@ timestamps for the same session id.
 - Count of corrections per scribe draft.
 - Medication name or dose, allergy and negation errors left in finalized
   notes, per arm.
-- Participant workload score (NASA-TLX raw, proposal) per period.
+- Participant workload score (NASA-TLX raw, 0 to 100, proposal) per period.
+
+Each secondary measure has a coded or numeric field in the scribe
+encounter timing form or the scribe period workload form. Error classes are
+counted per finalized note, never described in free text.
 
 ### Sample size
 
-The unit is a clinician who completes both periods. With a paired
-difference, n = ((z_alpha + z_beta) x sd / delta)^2, where delta is the
-target reduction fraction times the assumed baseline minutes. Using the
-front matter assumptions (alpha 0.05 two-sided, power 0.80, baseline 10
-minutes, 30% reduction so delta 3 minutes, paired SD 4 minutes) gives 14
-completers. Allowing for 20% dropout gives an enrollment target of 18. Every
-input is an assumption to revisit with the owner; none came from data.
+The unit is a clinician who completes both periods. The primary test is
+rank-based, so the normal-approximation paired n, ((z_alpha + z_beta) x sd
+/ delta)^2, is divided by the Wilcoxon asymptotic relative efficiency lower
+bound of 0.864. Here delta is the target median reduction fraction times
+the assumed baseline median minutes. Using the front matter assumptions
+(alpha 0.05 two-sided, power 0.80, baseline median 10 minutes, 30% median
+reduction so delta 3 minutes, paired SD 4 minutes) gives 17 completers.
+Allowing for 20% dropout gives an enrollment target of 22. Every input is
+an assumption to revisit with the owner; none came from data.
 
 ### Analysis plan
 
-Per clinician, take the mean primary outcome per arm. Test the paired
-difference with a paired t-test, report the mean difference, its 95%
-interval and the relative reduction against the manual-arm mean. Report a
+Per clinician, take the median primary outcome per arm and the paired
+relative reduction (manual median minus scribe median, over manual
+median). Test the paired reductions with a two-sided Wilcoxon signed-rank
+test. Report the Hodges-Lehmann estimate of the median relative reduction
+with its exact 95% interval, and compare it with the 30% proposal. Report a
 period effect and a sequence effect as secondary checks. Clinicians who
 don't finish both periods are listed with their count and excluded from the
 paired analysis, and the denominator says so. Secondary outcomes are
