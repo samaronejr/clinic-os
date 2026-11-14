@@ -94,14 +94,35 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "reports",
         "device-capabilities",
         "website",
+        *runner.FLAGSHIP_SUITES,
     }
+    assert {
+        "journey-first-day",
+        "journey-consultation",
+        "journey-reception-pressure",
+        "journey-disrupted-session",
+        "journey-results",
+        "journey-financial-close",
+        "journey-network-governance",
+        "acceptance-scenarios",
+    } == runner.FLAGSHIP_SUITES
     assert "prescription-draft" in runner.FIXTURE_SUITES
+    # The flagship suites run with every synthetic provider adapter configured.
+    assert runner.FLAGSHIP_SUITES <= (
+        runner.FIXTURE_SUITES
+        & runner.VIDEO_SUITES
+        & runner.SIGNING_SUITES
+        & runner.PAYMENT_SUITES
+    )
     assert {
         "realtime",
         "agenda-slice",
         "agenda-grid",
         "reception",
         "messages",
+        "journey-first-day",
+        "journey-reception-pressure",
+        "acceptance-scenarios",
     } == runner.REALTIME_SUITES
     assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
@@ -120,6 +141,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
                 "end-to-end",
             }
         )
+        | runner.FLAGSHIP_SUITES
         == runner.VIDEO_SUITES
     )
     assert "scribe-capture" in runner.FIXTURE_SUITES
@@ -2344,3 +2366,70 @@ def test_server_signing_key_reaches_only_synthetic_fixture_environment(
     ]
     assert leaking_paths == []
     assert fixture_secrets.REDACTED in (root / "pytest.log").read_text()
+
+
+def _flagship_root(tmp_path: Path, document: object) -> Path:
+    browser_root = _private(tmp_path / "browser")
+    suite_root = _private(browser_root / "journey-results")
+    (suite_root / runner.FLAGSHIP_REPORT).write_text(json.dumps(document))
+    return browser_root
+
+
+FLAGSHIP_DOCUMENT: dict[str, object] = {
+    "suite": "journey-results",
+    "adapters": {"lab": {"label": "synthetic", "detail": "fixture"}},
+    "blocked_on_eg": [{"capability": "rnds", "status": "BLOCKED-ON-EG"}],
+    "covers": [{"item": "J5.received", "branch": "happy"}],
+}
+SENTINEL_RECEIPT: JsonObject = {
+    "clean": True,
+    "findings": [],
+    "scanned": {"logs": 3},
+}
+
+
+def test_flagship_report_binds_adapters_legs_and_the_sentinel_scan(
+    tmp_path: Path,
+) -> None:
+    browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
+    bound = runner._flagship_report(browser_root, "journey-results", SENTINEL_RECEIPT)
+    assert bound["blocked_on_eg"] == FLAGSHIP_DOCUMENT["blocked_on_eg"]
+    assert bound["sentinel_scan"] == {
+        "clean": True,
+        "findings": 0,
+        "scanned": {"logs": 3},
+        "receipt": "sentinel-runtime.json",
+    }
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"suite": "journey-first-day"}, "names another suite"),
+        ({"adapters": {}}, "labels no adapter"),
+        ({"adapters": {"lab": {"label": "sandbox"}}}, "real/synthetic label"),
+        ({"blocked_on_eg": []}, "asserts no BLOCKED-ON-EG"),
+        (
+            {"blocked_on_eg": [{"capability": "rnds", "status": "activated"}]},
+            "not blocked",
+        ),
+    ],
+)
+def test_flagship_report_refuses_a_live_or_unlabelled_claim(
+    tmp_path: Path, change: dict[str, object], message: str
+) -> None:
+    browser_root = _flagship_root(tmp_path, {**FLAGSHIP_DOCUMENT, **change})
+    with pytest.raises(runner.RenewalRunnerError, match=message):
+        runner._flagship_report(browser_root, "journey-results", SENTINEL_RECEIPT)
+
+
+def test_flagship_report_requires_its_file_and_the_sentinel_scan(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(runner.RenewalRunnerError, match="wrote no"):
+        runner._flagship_report(
+            _private(tmp_path / "empty"), "journey-results", SENTINEL_RECEIPT
+        )
+    browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
+    with pytest.raises(runner.RenewalRunnerError, match="sentinel scan"):
+        runner._flagship_report(browser_root, "journey-results", None)

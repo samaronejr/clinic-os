@@ -110,7 +110,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from playwright.sync_api import Browser, BrowserContext, Locator, Page, Route
+    from playwright.sync_api import (
+        Browser,
+        BrowserContext,
+        Locator,
+        Page,
+        Route,
+        ViewportSize,
+    )
 
 __all__ = ("availability_staff",)
 
@@ -210,6 +217,12 @@ EXPECTED_RECOVERY_CONSOLE: Final = (
     "htmx:afterRequest",
 )
 ADMIN_PERSONA: Final = "administração"
+# Actors whose contexts a recorded day (flagship J2) films, by file name.
+RECORDED_ACTORS: Final = {
+    "recepção": "reception",
+    "médico": "physician",
+    "paciente": "patient",
+}
 # Visible prose only: identifiers shown as <code> (signer subjects, reason
 # codes, digests) are data, not copy.
 PROSE_JS: Final = (
@@ -853,7 +866,12 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     click_to_navigate(card.locator('button[value="end"]'))
     expect(card).to_have_attribute("data-state", "ended")
     capture(case, physician, "physician-session-ended")
-    patient.locator("[data-refresh-status]").click()
+    # The room also refetches on realtime hints, so its own ended reply may
+    # disable the refresh button before a click lands; the room's poll hint
+    # refetches either way and is a no-op once the room is terminal.
+    evaluate_js(
+        patient, "() => document.body.dispatchEvent(new CustomEvent('rt:poll'))"
+    )
     expect(panel).to_have_attribute("data-state", "ended")
     capture(case, patient, "patient-room-ended")
     # A terminal session never reopens; the retry is a conflict, not a room.
@@ -1231,14 +1249,19 @@ def reflow_scenes(case: Day, patient: Page) -> None:
     patient.emulate_media(forced_colors="none", reduced_motion="no-preference")
 
 
-def _context(browser: Browser, case: Day, *, media: bool) -> BrowserContext:
+def _context(
+    browser: Browser, case: Day, *, media: bool, video: Path | None = None
+) -> BrowserContext:
     # Routed requests: WebKit's route() misses service-worker-controlled
     # pages (engines.py, Request interception).
+    size: ViewportSize = {"width": case.width, "height": 900}
     context = browser.new_context(
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
         viewport={"width": case.width, "height": 900},
         service_workers="block",
+        record_video_dir=str(video / "raw") if video else None,
+        record_video_size=size if video else None,
     )
     install_media(context, case.base, granted=media)
     return context
@@ -1256,6 +1279,30 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
     day: str,
     recovery: bool,
 ) -> None:
+    clinic_day(
+        renewal_base_url=renewal_base_url,
+        renewal_artifact_root=renewal_artifact_root,
+        availability_staff=availability_staff,
+        name=name,
+        width=width,
+        day=day,
+        recovery=recovery,
+        video=None,
+    )
+
+
+def clinic_day(  # noqa: PLR0913 - the day needs its full context
+    *,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    name: str,
+    width: int,
+    day: str,
+    recovery: bool,
+    video: Path | None,
+) -> None:
+    """Run one clinic day; ``video`` (flagship J2 only) films its actors."""
     root = renewal_artifact_root / "end-to-end"
     root.mkdir(mode=0o700, exist_ok=True)
     case = Day(
@@ -1272,8 +1319,8 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
     with sync_playwright() as driver:
         browser = launch_selected(driver, media=True)
         contexts: list[BrowserContext] = []
+        pages: dict[str, Page] = {}
         try:
-            pages: dict[str, Page] = {}
             for persona, media in (
                 (ADMIN_PERSONA, False),
                 ("recepção", False),
@@ -1281,7 +1328,8 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
                 ("paciente", True),
                 ("verificação pública", False),
             ):
-                context = _context(browser, case, media=media)
+                recorded = video if persona in RECORDED_ACTORS else None
+                context = _context(browser, case, media=media, video=recorded)
                 contexts.append(context)
                 pages[persona] = watch(case, persona, context.new_page())
             admin = pages[ADMIN_PERSONA]
@@ -1336,4 +1384,10 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
         finally:
             for context in contexts:
                 context.close()
+            # Closing a context finishes its recording; name it by actor.
+            for persona, slug in RECORDED_ACTORS.items():
+                movie = pages[persona].video if persona in pages else None
+                if video is not None and movie is not None:
+                    movie.save_as(video / f"{slug}.webm")
+                    movie.delete()
             browser.close()

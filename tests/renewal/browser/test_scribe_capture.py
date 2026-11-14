@@ -87,6 +87,11 @@ def open_capture(
     goto_settled(
         page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
     )
+    # Where realtime is on, the agenda requests its stream ticket on load; act
+    # once that settles, so the form navigation never races the ticket fetch.
+    expect(page.locator("#agenda-shell")).to_have_attribute(
+        "data-realtime-state", re.compile(r"^(connected|offline|denied)$")
+    )
     click_to_navigate(page.locator('button[value="open"]'))
     page.locator("#template-id").select_option(data["specialty"])
     click_to_navigate(page.locator('button[value="template"]'))

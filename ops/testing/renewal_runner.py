@@ -18,6 +18,7 @@ retained as evidence.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import secrets
 import shutil
@@ -64,6 +65,7 @@ from ops.testing.isolation_common import (
 from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 from ops.testing.sentinel_runtime import (
+    RECEIPT,
     broker_tap,
     scan_suite_runtime,
     suite_injects_sentinels,
@@ -139,7 +141,45 @@ SUITES: Final = {
     "device-capabilities": ("tests/renewal/browser/test_device_capabilities.py",),
     # Task 70: the public website and help center (no fixtures, no session).
     "website": ("tests/renewal/browser/test_website.py",),
+    # Task 75: flagship journeys J1-J7 and the sec.12 acceptance scenarios,
+    # appended as their own registration block.
+    "journey-first-day": ("tests/renewal/browser/test_journey_first_day.py",),
+    "journey-consultation": ("tests/renewal/browser/test_journey_consultation.py",),
+    "journey-reception-pressure": (
+        "tests/renewal/browser/test_journey_reception_pressure.py",
+    ),
+    "journey-disrupted-session": (
+        "tests/renewal/browser/test_journey_disrupted_session.py",
+    ),
+    "journey-results": ("tests/renewal/browser/test_journey_results.py",),
+    "journey-financial-close": (
+        "tests/renewal/browser/test_journey_financial_close.py",
+    ),
+    "journey-network-governance": (
+        "tests/renewal/browser/test_journey_network_governance.py",
+    ),
+    "acceptance-scenarios": (
+        "tests/renewal/browser/test_acceptance_clinical.py",
+        "tests/renewal/browser/test_acceptance_operations.py",
+    ),
 }
+# Task 75: the flagship suites run on the reference clinic with every
+# synthetic provider adapter of the product configured, as one fully set-up
+# clinic (the realtime stack only where their proofs need it, below).
+# Each writes <browser root>/<suite>/flagship.json (adapters, EG legs).
+FLAGSHIP_REPORT: Final = "flagship.json"
+FLAGSHIP_SUITES: Final = frozenset(
+    {
+        "journey-first-day",
+        "journey-consultation",
+        "journey-reception-pressure",
+        "journey-disrupted-session",
+        "journey-results",
+        "journey-financial-close",
+        "journey-network-governance",
+        "acceptance-scenarios",
+    }
+)
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
@@ -185,10 +225,22 @@ FIXTURE_SUITES: Final = frozenset(
         "public-booking",
         "reports",
     }
+    | FLAGSHIP_SUITES
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
+# Flagship suites whose re-run proofs need the realtime stack; the others re-run
+# proofs written for a runtime without it (their manual refresh paths).
 REALTIME_SUITES: Final = frozenset(
-    {"realtime", "agenda-slice", "agenda-grid", "reception", "messages"}
+    {
+        "realtime",
+        "agenda-slice",
+        "agenda-grid",
+        "reception",
+        "messages",
+        "journey-first-day",
+        "journey-reception-pressure",
+        "acceptance-scenarios",
+    }
 )
 # Suites that exercise the synthetic room provider through the real outbox.
 # ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
@@ -201,13 +253,14 @@ VIDEO_SUITES: Final = frozenset(
         "video-recovery",
         "end-to-end",
     }
+    | FLAGSHIP_SUITES
 )
 # Suites that drive the synthetic signing provider and physician registry.
-SIGNING_SUITES: Final = frozenset(
-    {"document-verification", "prescribing", "end-to-end"}
+SIGNING_SUITES: Final = (
+    frozenset({"document-verification", "prescribing", "end-to-end"}) | FLAGSHIP_SUITES
 )
 # Suites that exercise the synthetic, explicitly non-payable PIX rehearsal.
-PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end", "portal"})
+PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end", "portal"}) | FLAGSHIP_SUITES
 # Browser engines a suite can run on; chromium keeps CI parity as the default.
 ENGINES: Final = ("chromium", "firefox", "webkit")
 DEFAULT_ENGINE: Final = "chromium"
@@ -849,8 +902,22 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
             else {}
         ),
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
-        **({"BILLING_SYNTHETIC_PSP": "true"} if suite == "billing" else {}),
-        **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
+        **(
+            {"BILLING_SYNTHETIC_PSP": "true"}
+            if suite == "billing" or suite in FLAGSHIP_SUITES
+            else {}
+        ),
+        **(
+            {"ORDERS_SYNTHETIC_LAB_ENABLED": "true"}
+            if suite == "results" or suite in FLAGSHIP_SUITES
+            else {}
+        ),
+        # Every channel, after the signing slice narrowed it to email.
+        **(
+            {"COMMS_SYNTHETIC_CHANNELS": "email,sms,whatsapp"}
+            if suite in FLAGSHIP_SUITES
+            else {}
+        ),
         # A reserved .invalid address, so the contact page renders its link.
         **(
             {"CLINIC_WEBSITE_CONTACT_EMAIL": "equipe@clinic-ops.invalid"}
@@ -1011,6 +1078,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
     server_log = artifact_root / "server.log"
     provisioned: ProvisionedDatabase | None = None
     fixture: dict[str, str] = {"password": "", "username": ""}
+    sentinel_receipt: JsonObject | None = None
     database_cm = (
         contextlib.nullcontext()
         if override
@@ -1044,7 +1112,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "SCRIBE_SYNTHETIC_CAPTURE": "1",
                     "SCRIBE_MEDIA_ROOT": str(run_root / "scribe-media"),
                 }
-                if suite == "scribe-capture"
+                if suite == "scribe-capture" or suite in FLAGSHIP_SUITES
                 else {}
             ),
         }
@@ -1097,7 +1165,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 **secret_environment,
                 **(
                     {"CLINIC_BROWSER_FAKE_MEDIA": "1"}
-                    if suite == "scribe-capture"
+                    if suite == "scribe-capture" or suite in FLAGSHIP_SUITES
                     else {}
                 ),
             }
@@ -1146,7 +1214,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 cwd=repository,
             )
             if provisioned is not None and pytest_code == 0:
-                scan_suite_runtime(
+                sentinel_receipt = scan_suite_runtime(
                     suite=suite,
                     base_url=f"http://127.0.0.1:{port}",
                     artifact_root=artifact_root,
@@ -1160,7 +1228,13 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 _terminate_master(spawned[0])
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
+    flagship = (
+        _flagship_report(browser_root, suite, sentinel_receipt)
+        if suite in FLAGSHIP_SUITES
+        else {}
+    )
     return {
+        **flagship,
         "artifact_root": str(artifact_root),
         "base_url": base_url,
         "browser": browser,
@@ -1175,6 +1249,57 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         "tests": tests,
         "tree_sha": manifest.get("base_tree_sha"),
         "verified_record": str(record) if record is not None else None,
+    }
+
+
+def _flagship_report(
+    browser_root: Path, suite: str, sentinel: JsonObject | None
+) -> JsonObject:
+    """Bind a flagship suite's adapter labels, EG legs and sentinel scan.
+
+    The suite writes ``<browser root>/<suite>/flagship.json``; every adapter
+    must be labelled ``real`` or ``synthetic`` and every provider leg must be
+    ``BLOCKED-ON-EG``, so a synthetic run can never read as live readiness.
+    """
+    if sentinel is None:
+        _fail(f"flagship suite {suite} ran without the runtime sentinel scan")
+    path = browser_root / suite / FLAGSHIP_REPORT
+    if path.is_symlink() or not path.is_file():
+        _fail(f"flagship suite {suite} wrote no {FLAGSHIP_REPORT}")
+    try:
+        flagship = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        message = f"flagship suite {suite} report is malformed"
+        raise RenewalRunnerError(message) from error
+    if not isinstance(flagship, dict) or flagship.get("suite") != suite:
+        _fail(f"flagship suite {suite} report names another suite")
+    adapters = flagship.get("adapters")
+    legs = flagship.get("blocked_on_eg")
+    if not isinstance(adapters, dict) or not adapters:
+        _fail(f"flagship suite {suite} labels no adapter")
+    if any(
+        not isinstance(entry, dict) or entry.get("label") not in {"real", "synthetic"}
+        for entry in adapters.values()
+    ):
+        _fail(f"flagship suite {suite} has an adapter without a real/synthetic label")
+    if not isinstance(legs, list) or not legs:
+        _fail(f"flagship suite {suite} asserts no BLOCKED-ON-EG provider leg")
+    if any(
+        not isinstance(leg, dict) or leg.get("status") != "BLOCKED-ON-EG"
+        for leg in legs
+    ):
+        _fail(f"flagship suite {suite} reports a provider leg that is not blocked")
+    findings = sentinel.get("findings")
+    return {
+        "adapters": adapters,
+        "blocked_on_eg": legs,
+        "covers": flagship.get("covers", []),
+        "sentinel_scan": {
+            "clean": sentinel.get("clean") is True,
+            "findings": len(findings) if isinstance(findings, list) else None,
+            "scanned": sentinel.get("scanned"),
+            "receipt": RECEIPT,
+        },
     }
 
 
