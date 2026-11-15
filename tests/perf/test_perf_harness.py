@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import multiprocessing
 import os
 import random
 import re
@@ -46,6 +47,7 @@ from ops.perf.stats import StatsInputError, percentile, summarize
 from ops.perf.threads import WorkerResult
 
 from core.test_fairness import fairness_broker, metered_broker
+from perf_rig_support import UnconfinedProcess
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
@@ -449,6 +451,14 @@ def test_full_run_reports_every_scenario_and_fairness(
     monkeypatch: pytest.MonkeyPatch,
     settings: SettingsWrapper,
 ) -> None:
+    # Exercise real scenarios and load workers; cgroup placement has its own tests.
+    runner = import_module("ops.perf.run")
+    monkeypatch.setattr(runner, "ResourceRig", nullcontext)
+    monkeypatch.setattr(runner, "resource_snapshot", dict)
+    monkeypatch.setattr(fairness_runs, "resource_snapshot", dict)
+    monkeypatch.setattr(
+        multiprocessing.get_context("spawn"), "Process", UnconfinedProcess
+    )
     realtime_url = metered_broker.rsplit("/", 1)[0] + "/1"
     monkeypatch.setenv("CELERY_BROKER_URL", metered_broker)
     monkeypatch.setenv("REALTIME_REDIS_URL", realtime_url)
