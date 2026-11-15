@@ -590,16 +590,23 @@ def test_s10_unauthorized_summary_leaks_nothing(  # noqa: PLR0913 - owner proof 
     monkeypatch: pytest.MonkeyPatch,
     flagship: FlagshipReport,
 ) -> None:
-    rerun(
-        flagship,
-        "S10.unauthorized-summary",
-        "adversarial",
-        agenda.test_today_source_cited_brief_refuses_other_patient_and_preserves_manual_chart,
+    agenda.test_today_source_cited_brief_refuses_other_patient_and_preserves_manual_chart(
         renewal_page=renewal_page,
         renewal_base_url=renewal_base_url,
         renewal_artifact_root=renewal_artifact_root,
         availability_staff=availability_staff,
         monkeypatch=monkeypatch,
+    )
+    flagship.cover(
+        "S10.unauthorized-summary",
+        "adversarial",
+        principal="authenticated_receptionist",
+        commands=["generate", "display"],
+        denial_status=403,
+        same_as_unknown=True,
+        source_and_generated_content_absent=True,
+        authorized_source_visible_before_and_after=True,
+        forbidden_question_refusal_retained=True,
     )
 
 

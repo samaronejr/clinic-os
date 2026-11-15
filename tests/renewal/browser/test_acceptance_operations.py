@@ -448,6 +448,15 @@ def test_s16_partner_migration_reconciles_and_adjudicates_conflicts(
         ]
         assert committed["outcomes"] == ["committed"] * int(str(committed["batches"]))
         assert committed["imported"] == 4
+        reconciliation = committed["reconciliation"]
+        assert isinstance(reconciliation, dict)
+        assert reconciliation["source_sha256"] == committed["source_sha256"]
+        assert int(str(reconciliation["source_bytes"])) > 0
+        assert reconciliation["retained_source_matches"] is True
+        assert reconciliation["report_digest_verified"] is True
+        assert reconciliation["provenance_records_matched"] == 4
+        assert reconciliation["demographics_records_matched"] == 4
+        assert reconciliation["batch_hashes_match_source"] is True
         # A second partner file re-sends a patient that now exists: it is routed
         # to duplicate review, never merged or committed silently.
         again = run_fixture(
@@ -481,6 +490,7 @@ def test_s16_partner_migration_reconciles_and_adjudicates_conflicts(
         accepted=4,
         rejected=3,
         duplicates_routed=True,
+        reconciliation=reconciliation,
     )
 
 

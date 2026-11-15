@@ -756,6 +756,7 @@ def _import_rehearsal(data: dict[str, str]) -> dict[str, object]:
         run_batches,
         to_dry_run,
     )
+    from renewal.import_reconciliation_fixture import reconcile_source  # noqa: PLC0415
 
     # The interop helpers read only graph.organization_a/clinic_a, operator, session.
     world = cast(
@@ -816,6 +817,7 @@ def _import_rehearsal(data: dict[str, str]) -> dict[str, object]:
             "imported": job.valid_count,
         }
     )
+    result["reconciliation"] = reconcile_source(world, report.job.job_id, source, rows)
     return result
 
 
