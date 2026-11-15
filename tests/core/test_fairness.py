@@ -9,18 +9,22 @@ assertion depends on execution speed.
 
 from __future__ import annotations
 
+import logging
 import os
 import select
 import shutil
 import socket
 import subprocess
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from itertools import product
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
+import redis
 from apps.core import fairness
 from apps.identity.clinic_configuration import (
     ConfigurationContent,
@@ -680,6 +684,357 @@ def test_non_redis_broker_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     with runtime_role():
         assert fairness.fair_acquire(organization_id=uuid4(), queue="bulk") is False
         assert fairness.fair_acquire(organization_id=uuid4(), queue="clinical") is True
+
+
+def test_malformed_quota_still_denies_clinical_during_redis_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        fairness, "_broker_url", lambda: f"redis://127.0.0.1:{_free_port()}/0"
+    )
+    monkeypatch.setattr(fairness, "_organization_quotas", lambda _org: {"clinical": 0})
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=uuid4(), queue="clinical") is False
+    monkeypatch.setattr(fairness, "_organization_quotas", lambda _org: [60])
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=uuid4(), queue="clinical") is False
+
+
+def test_deferral_log_volume_is_bounded_by_closed_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    clock = {"t": 0.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(fairness, "_defer_log_times", {})
+    with caplog.at_level(logging.INFO, logger=fairness.__name__):
+        for _ in range(1000):
+            fairness._emit_metric(
+                "clinic_fairness.deferred", queue="ai-batch", reason="quota_exceeded"
+            )
+        assert len(caplog.records) == 1
+        clock["t"] += 1.0
+        fairness._emit_metric(
+            "clinic_fairness.deferred", queue="ai-batch", reason="quota_exceeded"
+        )
+        fairness._emit_metric(
+            "clinic_fairness.deferred", queue="bulk", reason="quota_exceeded"
+        )
+        fairness._emit_metric(
+            "clinic_fairness.deferred", queue="ai-batch", reason="malformed_quota"
+        )
+    assert len(caplog.records) == 4
+    assert set(fairness._defer_log_times) == {
+        ("ai-batch", "quota_exceeded"),
+        ("bulk", "quota_exceeded"),
+        ("ai-batch", "malformed_quota"),
+    }
+    for record in caplog.records:
+        assert isinstance(record.args, tuple)
+        assert record.args[0] == "clinic_fairness.deferred"
+        assert record.args[1] in fairness.QUEUE_NAMES
+        assert record.args[2] in {"quota_exceeded", "malformed_quota"}
+
+
+@GATED
+def test_empty_bucket_refusals_skip_database_and_emit_every_metric(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization_id = uuid4()
+    emitted: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(fairness, "_organization_quotas", lambda _org: {"ai-batch": 1})
+    monkeypatch.setattr(
+        fairness,
+        "_emit_metric",
+        lambda name, *, queue, reason: emitted.append((name, queue, reason)),
+    )
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+    client = fairness._client()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{organization_id}:ai-batch"
+    before = client.hgetall(key)
+    client.pexpire(key, 5000)
+
+    def forbidden(_organization_id: UUID) -> object:
+        pytest.fail("an impossible admission reached the quota resolver")
+
+    monkeypatch.setattr(fairness, "_organization_quotas", forbidden)
+    with runtime_role():
+        assert not any(
+            fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+            for _ in range(512)
+        )
+    assert client.hgetall(key) == before
+    ttl = client.pttl(key)
+    assert isinstance(ttl, int)
+    assert ttl > 5000
+    assert emitted == [("clinic_fairness.deferred", "ai-batch", "quota_exceeded")] * 512
+
+
+@GATED
+def test_negative_preflight_never_refuses_when_actual_quota_admits(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+) -> None:
+    """Real Lua checks include every threshold and a backwards-clock case."""
+    client = fairness._client()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{uuid4()}:ai-batch"
+    touched = frozen_clock["t"]
+    quotas = (1, 2, 59, 60, 600, 9999, 99999, fairness.MAX_QUOTA_PER_MINUTE)
+    balances = (-1.0, 0.0, 0.001, 0.5, 0.999, 1.0, 2.0, 100000.0)
+    elapsed_times = (-0.001, 0.0, 0.0000005, 0.0005, 0.0006, 0.001, 1.0, 60.0)
+    for quota, tokens, elapsed in product(quotas, balances, elapsed_times):
+        client.hset(key, mapping={"tokens": tokens, "touched": touched})
+        now = touched + elapsed
+        possible = bool(
+            client.eval(
+                fairness._CREDIT_POSSIBLE_LUA,
+                1,
+                key,
+                now,
+                fairness.MAX_QUOTA_PER_MINUTE / 60.0,
+                "bound-proof",
+            )
+        )
+        actual = bool(
+            client.eval(
+                fairness._BUCKET_LUA, 1, key, quota, now, quota / 60.0, "bound-proof"
+            )
+        )
+        assert possible or not actual, (quota, tokens, elapsed)
+
+
+@GATED
+def test_exhausted_bucket_observes_published_quota_increase_immediately(
+    rbac_graph: RbacGraph,
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+) -> None:
+    graph = rbac_graph
+    admin = _org_admin(graph, graph.organization_a)
+    _publish(graph, graph.clinic_a, actor=admin, queue_quotas={"ai-batch": 1})
+    with runtime_role():
+        assert fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+        assert not fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+    _publish(
+        graph,
+        graph.clinic_a,
+        actor=admin,
+        expected_version=1,
+        queue_quotas={"ai-batch": fairness.MAX_QUOTA_PER_MINUTE},
+    )
+    frozen_clock["t"] += 0.001
+    with runtime_role():
+        assert fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+
+
+@GATED
+def test_credited_bucket_observes_published_quota_decrease_immediately(
+    rbac_graph: RbacGraph,
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+) -> None:
+    graph = rbac_graph
+    admin = _org_admin(graph, graph.organization_a)
+    _publish(graph, graph.clinic_a, actor=admin, queue_quotas={"ai-batch": 600})
+    with runtime_role():
+        assert fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+    _publish(
+        graph,
+        graph.clinic_a,
+        actor=admin,
+        expected_version=1,
+        queue_quotas={"ai-batch": 1},
+    )
+    with runtime_role():
+        assert fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+        assert not fairness.fair_acquire(
+            organization_id=graph.organization_a, queue="ai-batch"
+        )
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{graph.organization_a}:ai-batch"
+    remaining = fairness._client().hget(key, "tokens")
+    assert isinstance(remaining, (bytes, str))
+    assert float(remaining) == 0
+
+
+@GATED
+def test_possible_credit_uses_fresh_quota_on_every_admission(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization_id = uuid4()
+    quota = {"value": 600}
+    reads: list[UUID] = []
+
+    def resolve(org: UUID) -> object:
+        reads.append(org)
+        return {"ai-batch": quota["value"]}
+
+    monkeypatch.setattr(fairness, "_organization_quotas", resolve)
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+        # Cached executable Lua must reload after a flush and must never
+        # cache the authority value alongside the code.
+        fairness._client().script_flush()
+        quota["value"] = 1
+        assert fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+        assert not fairness.fair_acquire(
+            organization_id=organization_id, queue="ai-batch"
+        )
+    assert reads == [organization_id, organization_id]
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{organization_id}:ai-batch"
+    tokens = fairness._client().hget(key, "tokens")
+    assert isinstance(tokens, (bytes, str))
+    assert float(tokens) == 0
+
+
+def test_redis_loss_after_preflight_retains_quota_and_outage_ordering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def eval_script(*args: object) -> int:
+        calls.append(args[0])
+        if len(calls) % 2:
+            return 1
+        message = "synthetic outage"
+        raise redis.ConnectionError(message)
+
+    monkeypatch.setattr(fairness, "_client", SimpleNamespace)
+    monkeypatch.setattr(
+        fairness,
+        "_evaluate",
+        lambda _client, source, key, *args: eval_script(source, 1, key, *args),
+    )
+    monkeypatch.setattr(fairness, "_organization_quotas", lambda _org: {})
+    assert fairness.fair_acquire(organization_id=uuid4(), queue="ai-batch") is False
+    assert fairness.fair_acquire(organization_id=uuid4(), queue="clinical") is True
+    assert len(calls) == 4
+    monkeypatch.setattr(fairness, "_organization_quotas", lambda _org: [60])
+    assert fairness.fair_acquire(organization_id=uuid4(), queue="clinical") is False
+    # Malformed authority never reaches a spend or its clinical fail-open.
+    assert len(calls) == 6
+    assert calls[-1] == fairness._RELEASE_RESOLVER_LUA
+
+
+@GATED
+@pytest.mark.parametrize("available", [False, True])
+def test_contended_decision_rechecks_credit_without_reusing_authority(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+    monkeypatch: pytest.MonkeyPatch,
+    available: bool,
+) -> None:
+    organization_id = uuid4()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{organization_id}:ai-batch"
+    quota = {"value": 3 if available else 1}
+    monkeypatch.setattr(
+        fairness, "_organization_quotas", lambda _org: {"ai-batch": quota["value"]}
+    )
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+    frozen_clock["t"] += 0.001
+    entered, release, contended = (threading.Event() for _ in range(3))
+    reads: list[int] = []
+    client = fairness._client()
+    original_eval = client.evalsha
+    credit_sha = fairness._script_hashes[fairness._CREDIT_POSSIBLE_LUA]
+
+    def observe(script: str, numkeys: int, *args: str | float | bytes) -> object:
+        outcome = original_eval(script, numkeys, *args)
+        if script == credit_sha and outcome == 2:
+            contended.set()
+        return outcome
+
+    def resolve(_organization_id: UUID) -> object:
+        value = quota["value"]
+        reads.append(value)
+        if len(reads) == 1:
+            # Hold the advisory deadline explicitly; event scheduling must
+            # not depend on the real Redis clock advancing by less than 1s.
+            client.hset(key, "resolve_until", 3_000_000_000)
+            entered.set()
+            assert release.wait(timeout=10)
+        return {"ai-batch": value}
+
+    def acquire() -> bool:
+        try:
+            with runtime_role():
+                return fairness.fair_acquire(
+                    organization_id=organization_id, queue="ai-batch"
+                )
+        finally:
+            connections.close_all()
+
+    monkeypatch.setattr(client, "evalsha", observe)
+    monkeypatch.setattr(fairness, "_organization_quotas", resolve)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        leader = pool.submit(acquire)
+        try:
+            assert entered.wait(timeout=10)
+            waiter = pool.submit(acquire)
+            assert contended.wait(timeout=10)
+            assert len(reads) == 1
+            if available:
+                # The waiting decision must read the newly lowered quota,
+                # rather than reuse its predecessor's in-flight result.
+                quota["value"] = 1
+        finally:
+            release.set()
+        assert leader.result(timeout=10) is available
+        assert waiter.result(timeout=10) is available
+    assert reads == ([3, 1] if available else [1])
+    if available:
+        remaining = client.hget(key, "tokens")
+        assert isinstance(remaining, (bytes, str))
+        assert float(remaining) == 0
+
+
+@GATED
+def test_expired_decision_slot_requires_fresh_authority(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization_id = uuid4()
+    client = fairness._client()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{organization_id}:ai-batch"
+    client.hset(
+        key,
+        mapping={
+            "tokens": 0,
+            "touched": frozen_clock["t"] - 60,
+            "resolving": "departed-worker",
+            "resolve_until": 0,
+        },
+    )
+    reads: list[UUID] = []
+
+    def resolve(org: UUID) -> object:
+        reads.append(org)
+        return {"ai-batch": 1}
+
+    monkeypatch.setattr(fairness, "_organization_quotas", resolve)
+    with runtime_role():
+        assert fairness.fair_acquire(organization_id=organization_id, queue="ai-batch")
+    assert reads == [organization_id]
+    assert client.hget(key, "resolving") is None
+    client.hset(key, mapping={"resolving": "current-worker", "resolve_until": 1})
+    client.eval(fairness._RELEASE_RESOLVER_LUA, 1, key, "departed-worker")
+    assert client.hget(key, "resolving") == b"current-worker"
 
 
 @GATED

@@ -14,7 +14,7 @@ from apps.billing.psp_models import PspEvidence
 from apps.billing.psp_services import prepare_psp_charge
 from apps.comms.models import IntegrationOperation
 from apps.core import integration
-from celery import Celery
+from celery import Celery, current_app
 
 from billing.journal_support import (
     FinanceSetup,
@@ -101,7 +101,11 @@ def test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicat
         "-l",
         "INFO",
     )
-    client = Celery("psp-gate-client", broker=broker.url, backend=broker.url)
+    original_app_name = current_app.main
+    client = Celery(
+        "psp-gate-client", broker=broker.url, backend=broker.url, set_as_current=False
+    )
+    assert current_app.main == original_app_name
     try:
         with event_process(
             argv, cwd=ROOT, environment=environment, ready_line="ready."
@@ -138,3 +142,4 @@ def test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicat
             )
     finally:
         client.close()
+        assert current_app.main == original_app_name

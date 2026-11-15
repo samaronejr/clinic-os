@@ -34,6 +34,7 @@ browser = [
 dev = [
   "django-stubs",
   "djangorestframework-stubs",
+  "locust>=2.47.0",
   "mypy",
   "model-bakery",
   "pip-audit>=2.10.1,<3",
