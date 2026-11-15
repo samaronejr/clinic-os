@@ -238,6 +238,8 @@ def seed_patients(tenant: Tenant, count: int, *, sample: int) -> None:
 
 def seed_dataset(profile: Profile, *, seed: int) -> Dataset:
     """Seed every tenant of the profile; tenant 0 is the focus tenant."""
+    from django.db import connection  # noqa: PLC0415
+
     tenants: list[Tenant] = []
     for index in range(profile.organizations):
         tenant = seed_tenant(profile, index=index)
@@ -250,6 +252,13 @@ def seed_dataset(profile: Profile, *, seed: int) -> Dataset:
         )
         seed_patients(tenant, count, sample=2000)
         tenants.append(tenant)
+    # Fresh tenant keys are absent from previous planner statistics. Under RLS,
+    # that can turn the exact-name join into repeated full tenant scans.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "ANALYZE clinic_app.intake_patient, "
+            "clinic_app.intake_patientclinicenrollment"
+        )
     return Dataset(profile=profile, seed=seed, tenants=tenants)
 
 

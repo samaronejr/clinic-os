@@ -90,6 +90,24 @@ The fairness load runs in
 separate processes, so the measured path never queues behind the load
 generator's own Python.
 
+After bulk fixture creation, the seed stage explicitly analyzes the patient
+and enrollment tables before any timed search. Fresh tenant keys are absent
+from older planner statistics; the resulting one-row estimates can otherwise
+produce a nested loop that scans a tenant's patients for every enrollment.
+This untimed statistics refresh keeps the normal application query and RLS
+policies in use.
+
+The public runner gives setup, dataset seeding, preparation, every scenario,
+each fairness measurement, report writing and teardown independent deadlines.
+The default is 900 seconds per stage; `--stage-timeout` accepts a positive
+value below 1200 seconds. `--watchdog-output` selects a new private evidence
+file; otherwise stage records and stacks go to stderr. On expiry the native
+faulthandler watchdog dumps all Python thread stacks and exits with status 1,
+including when the main thread is blocked in database or IPC polling. A
+timed-out run has no passing report. A systemd launcher must retain its logs
+and bind the resource groups to its lifetime so process termination also
+releases its children.
+
 ### Owner decision: production-like resource rig, 2026-11-13
 
 The Clinic Ops owner, through Root on 2026-11-13, selected a production-like

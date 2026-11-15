@@ -10,9 +10,11 @@ evidence on one workstation and never a production SLO claim.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import platform
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,15 +35,18 @@ from ops.perf.report import (
 )
 from ops.perf.rig import ResourceRig, resource_snapshot
 from ops.perf.runtime import PerfEnvironmentError, bootstrap_django
+from ops.perf.watchdog import DEFAULT_STAGE_SECONDS, StageWatchdog
 from ops.testing.isolation_common import IsolationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import TextIO
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED = 20261111
 EDITORS = 12
 SLOW_MARKERS = ("full_name_index", "patient_registry_count")
+MAX_STAGE_SECONDS = 1200
 
 
 def _environment(injected_ms: int) -> dict[str, Any]:
@@ -101,6 +106,7 @@ def _scenario_results(
     prepared: Any,  # noqa: ANN401 - ops.perf.scenarios.Prepared, imported lazily
     only: Sequence[str] | None,
     inject_slow_query_ms: int,
+    watchdog: StageWatchdog,
 ) -> list[ScenarioResult]:
     from ops.perf import scenarios  # noqa: PLC0415
     from ops.perf.runtime import slow_queries  # noqa: PLC0415
@@ -111,9 +117,11 @@ def _scenario_results(
     results: list[ScenarioResult] = []
     with slow_queries(inject_slow_query_ms, SLOW_MARKERS):
         if wanted("patient_search_blind_index"):
-            results.append(scenarios.patient_search_blind_index(prepared))
+            with watchdog.stage("patient_search_blind_index"):
+                results.append(scenarios.patient_search_blind_index(prepared))
         if wanted("patient_search_registry"):
-            results.append(scenarios.patient_search_registry(prepared))
+            with watchdog.stage("patient_search_registry"):
+                results.append(scenarios.patient_search_registry(prepared))
     for name, runner in (
         ("staff_navigation", scenarios.staff_navigation),
         ("agenda_interaction", scenarios.agenda_interaction),
@@ -121,18 +129,22 @@ def _scenario_results(
         ("realtime_fanout", scenarios.realtime_fanout),
     ):
         if wanted(name):
-            results.append(runner(prepared))
+            with watchdog.stage(name):
+                results.append(runner(prepared))
     if any(
         wanted(name)
         for name in ("chunk_upload", "transcript_partial", "draft_generation")
     ):
-        chunk = scenarios.chunk_upload(prepared)
+        with watchdog.stage("chunk_upload"):
+            chunk = scenarios.chunk_upload(prepared)
         if wanted("chunk_upload"):
             results.append(chunk)
         if wanted("transcript_partial"):
-            results.append(scenarios.transcript_partial(prepared, chunk))
+            with watchdog.stage("transcript_partial"):
+                results.append(scenarios.transcript_partial(prepared, chunk))
         if wanted("draft_generation"):
-            results.append(scenarios.draft_generation(prepared, chunk))
+            with watchdog.stage("draft_generation"):
+                results.append(scenarios.draft_generation(prepared, chunk))
     return results
 
 
@@ -151,23 +163,32 @@ def run_profile(
     from ops.perf import fairness_runs, scenarios  # noqa: PLC0415
     from ops.perf.dataset import seed_dataset  # noqa: PLC0415
 
-    with ResourceRig():
-        dataset = seed_dataset(profile, seed=seed)
-        editors = min(EDITORS, profile.clinicians_per_clinic)
-        prepared = scenarios.prepare(dataset, editors=editors)
+    watchdog = StageWatchdog.current()
+    with watchdog.context("resource_setup", ResourceRig()):
+        with watchdog.stage("seed_dataset"):
+            dataset = seed_dataset(profile, seed=seed)
+        with watchdog.stage("prepare"):
+            editors = min(EDITORS, profile.clinicians_per_clinic)
+            prepared = scenarios.prepare(dataset, editors=editors)
         records = [
             scenario_record(item)
-            for item in _scenario_results(prepared, only, inject_slow_query_ms)
+            for item in _scenario_results(
+                prepared, only, inject_slow_query_ms, watchdog
+            )
         ]
         fairness: list[dict[str, Any]] = []
         if only is None or "fairness" in only:
             if profile.bulk_import:
+                with watchdog.stage("chart_save_during_bulk_import"):
+                    fairness.append(
+                        fairness_runs.chart_save_vs_import(
+                            prepared, trials=fairness_trials
+                        )
+                    )
+            with watchdog.stage("clinical_latency_during_ai_batch_flood"):
                 fairness.append(
-                    fairness_runs.chart_save_vs_import(prepared, trials=fairness_trials)
+                    fairness_runs.ai_batch_flood(prepared, trials=fairness_trials)
                 )
-            fairness.append(
-                fairness_runs.ai_batch_flood(prepared, trials=fairness_trials)
-            )
         by_id = {item["id"]: item for item in records}
         benchmark = None
         if "patient_search_blind_index" in by_id and "patient_search_registry" in by_id:
@@ -176,21 +197,22 @@ def run_profile(
                 by_id["patient_search_blind_index"],
                 by_id["patient_search_registry"],
             )
-        return build_report(
-            profile=profile,
-            dataset={
-                "organizations": len(dataset.tenants),
-                "clinics": len(dataset.tenants) * profile.clinics_per_org,
-                "patients": dataset.patients,
-                "focus_tenant_patients": dataset.focus.patient_count,
-                "seed": seed,
-            },
-            commit=commit_identity(ROOT),
-            scenarios=records,
-            fairness=fairness,
-            search_benchmark=benchmark,
-            environment=_environment(inject_slow_query_ms),
-        )
+        with watchdog.stage("build_report"):
+            return build_report(
+                profile=profile,
+                dataset={
+                    "organizations": len(dataset.tenants),
+                    "clinics": len(dataset.tenants) * profile.clinics_per_org,
+                    "patients": dataset.patients,
+                    "focus_tenant_patients": dataset.focus.patient_count,
+                    "seed": seed,
+                },
+                commit=commit_identity(ROOT),
+                scenarios=records,
+                fairness=fairness,
+                search_benchmark=benchmark,
+                environment=_environment(inject_slow_query_ms),
+            )
 
 
 def _runnable(name: str) -> Profile:
@@ -210,6 +232,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--run-root", type=Path, help="existing executor-owned private directory (0700)"
     )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--stage-timeout", type=float, default=DEFAULT_STAGE_SECONDS)
+    parser.add_argument(
+        "--watchdog-output",
+        type=Path,
+        help="new stage log and timeout stack evidence file",
+    )
     parser.add_argument("--only", help="comma-separated scenario ids or 'fairness'")
     parser.add_argument(
         "--inject-slow-query-ms",
@@ -218,15 +246,54 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="QA fault injection: delay each patient lookup statement by this many ms",
     )
     args = parser.parse_args(argv)
+    if (
+        not math.isfinite(args.stage_timeout)
+        or not 0 < args.stage_timeout < MAX_STAGE_SECONDS
+    ):
+        parser.error("--stage-timeout must be greater than zero and below 1200 seconds")
     try:
         profile = _runnable(args.profile)
-        with bootstrap_django(args.run_root):
-            report = run_profile(
-                profile,
-                seed=args.seed,
-                only=args.only.split(",") if args.only else None,
-                inject_slow_query_ms=args.inject_slow_query_ms,
+        with ExitStack() as stack:
+            stream: TextIO | None = None
+            if args.watchdog_output is not None:
+                descriptor = os.open(
+                    args.watchdog_output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+                )
+                stream = stack.enter_context(
+                    os.fdopen(descriptor, "w", encoding="utf-8")
+                )
+            watchdog = StageWatchdog(stream, seconds=args.stage_timeout)
+            with (
+                watchdog.activate(),
+                watchdog.context("bootstrap", bootstrap_django(args.run_root)),
+            ):
+                report = run_profile(
+                    profile,
+                    seed=args.seed,
+                    only=args.only.split(",") if args.only else None,
+                    inject_slow_query_ms=args.inject_slow_query_ms,
+                )
+            output = (
+                args.output
+                or ROOT
+                / "var"
+                / "perf"
+                / f"{profile.name}-{report['commit']['sha'][:8]}.json"
             )
+            with watchdog.stage("write_report"):
+                write_report(report, output)
+                for item in report["scenarios"]:
+                    sys.stdout.write(
+                        f"{item['status']:13} {item['id']:28} p50={item['p50']} "
+                        f"p95={item['p95']} p99={item['p99']} n={item['samples']} "
+                        f"err={item['errors']}\n"
+                    )
+                for item in report["fairness"]:
+                    sys.stdout.write(
+                        f"{item['status']:13} {item['id']:28} ratio={item['ratio']}\n"
+                    )
+                sys.stdout.write(f"report: {output}\n")
+                sys.stdout.flush()
     except (
         UnknownProfileError,
         ProfileNotRunnableError,
@@ -235,20 +302,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     ) as error:
         sys.stderr.write(f"perf: {error}\n")
         return 2
-    output = (
-        args.output
-        or ROOT / "var" / "perf" / f"{profile.name}-{report['commit']['sha'][:8]}.json"
-    )
-    write_report(report, output)
-    for item in report["scenarios"]:
-        sys.stdout.write(
-            f"{item['status']:13} {item['id']:28} p50={item['p50']} "
-            f"p95={item['p95']} p99={item['p99']} n={item['samples']} "
-            f"err={item['errors']}\n"
-        )
-    for item in report["fairness"]:
-        sys.stdout.write(f"{item['status']:13} {item['id']:28} ratio={item['ratio']}\n")
-    sys.stdout.write(f"report: {output}\n")
     return 1 if report["summary"]["failed"] else 0
 
 
