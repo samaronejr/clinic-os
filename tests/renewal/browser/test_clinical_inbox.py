@@ -607,7 +607,7 @@ def _brief_source(
 ) -> dict[str, str]:
     encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
     assert encounter
-    marker = f"Synthetic protected summary source {uuid4().hex}"
+    marker = f"Synthetic protected summary source {str(uuid4()).replace('-', ' ')}"
     assert (
         _brief_command(
             monkeypatch,
@@ -645,8 +645,11 @@ def chart_brief_journey(
     page = renewal_page
     url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/today/"
     goto_settled(page, url)
+    # A focused form is retained by the realtime worklist refresh. Enter avoids
+    # a pointer click being split across replacement of the Today board.
+    page.locator(".today-next button[type=submit]").focus()
     with expect_document(page):
-        page.locator(".today-next button[type=submit]").click()
+        page.keyboard.press("Enter")
     expect(page.locator("[data-encounter]")).to_have_count(1)
     data.update(_brief_source(page, staff, monkeypatch))
     goto_settled(page, url)

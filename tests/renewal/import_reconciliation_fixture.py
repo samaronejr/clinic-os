@@ -13,8 +13,7 @@ import rfc8785
 from apps.identity.models import Clinic
 from apps.intake.models import PatientDemographics, PatientIdentifier
 from apps.interop import services
-from apps.interop.jobs import source_bytes
-from apps.interop.models import ImportedRecord, ImportJob
+from apps.interop.models import ImportedRecord, ImportFile, ImportJob
 
 from identity.permission_support import owner_context
 from interop.support import operating
@@ -39,7 +38,6 @@ def reconcile_source(
             clinic_id=world.graph.clinic_a, job_id=job_id
         )
         job = ImportJob.objects.get(pk=job_id)
-        assert source_bytes(job) == source
         assert job.source_sha256 == source_hash
         assert job.size_bytes == len(source)
     assert report.reconciled is True
@@ -64,6 +62,12 @@ def reconcile_source(
     # Owner access is an independent read-only oracle for encrypted provenance;
     # upload, approval, commit and the report above use the real operator role.
     with owner_context(world.graph.organization_a):
+        # The pipeline source resolver intentionally closes after commit.
+        # Inspect retained bytes as the owner without widening runtime access.
+        stored = ImportFile.objects.get(job_id=job_id, role="source")
+        assert stored.data == source
+        assert stored.sha256 == source_hash
+        assert stored.size_bytes == len(source)
         zone = ZoneInfo(Clinic.objects.get(pk=world.graph.clinic_a).timezone)
         records = list(
             ImportedRecord.objects.filter(job_id=job_id)
