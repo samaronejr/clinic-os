@@ -333,31 +333,88 @@ def realtime_fanout(prepared: Prepared) -> ScenarioResult:
 
 
 def chunk_upload(prepared: Prepared) -> ScenarioResult:
-    """Seal one 2 s audio slice (pgcrypto AES-256 plus envelope wrap)."""
+    """Measure committed ingestion acknowledgements for synthetic Opus slices."""
     import secrets  # noqa: PLC0415
+    from hashlib import sha256  # noqa: PLC0415
 
-    from apps.scribe.storage import seal_audio  # noqa: PLC0415
+    from apps.scribe.contracts import ChunkInput  # noqa: PLC0415
+    from apps.scribe.models import CaptureEpoch  # noqa: PLC0415
+    from apps.scribe.services import (  # noqa: PLC0415
+        control_recording,
+        ingest_chunk,
+    )
     from apps.tenancy.db import tenant_context  # noqa: PLC0415
+    from django.test.utils import override_settings  # noqa: PLC0415
 
     focus = prepared.dataset.focus
     result = WorkerResult()
     body = secrets.token_bytes(CHUNK_BYTES)
-    with runtime_role():
-        for _ in range(prepared.dataset.profile.samples):
-            key = secrets.token_hex(32)
-
-            def call(key: str = key) -> None:
+    with override_settings(SCRIBE_SYNTHETIC_CAPTURE=True):
+        recording = data.seed_recording(focus)
+        with runtime_role():
+            for number in range(prepared.dataset.profile.samples):
                 with tenant_context(focus.physician_ids[0], focus.organization_id):
-                    seal_audio(key=key, data=body)
+                    control_recording(
+                        clinic_id=focus.clinic_id,
+                        session_id=recording.session_id,
+                        encounter_token=recording.token,
+                        command_id=uuid4(),
+                        action="start" if number == 0 else "resume",
+                        expected_epoch=number,
+                    )
+                    epoch = CaptureEpoch.objects.get(
+                        session_id=recording.session_id, number=number + 1
+                    ).pk
+                chunk = ChunkInput(
+                    session_id=recording.session_id,
+                    epoch=epoch,
+                    track="microphone",
+                    seq=0,
+                    sha256=sha256(body).hexdigest(),
+                    duration_ms=2000,
+                    codec="audio/webm;codecs=opus",
+                    data=body,
+                )
 
-            result.samples_ms.append(_timed(call))
+                def call(chunk: ChunkInput = chunk) -> None:
+                    with tenant_context(focus.physician_ids[0], focus.organization_id):
+                        receipt = ingest_chunk(
+                            clinic_id=focus.clinic_id,
+                            encounter_token=recording.token,
+                            chunk=chunk,
+                        )
+                    if receipt.ack != "received":
+                        result.errors += 1
+
+                result.samples_ms.append(_timed(call))
+                with tenant_context(focus.physician_ids[0], focus.organization_id):
+                    control_recording(
+                        clinic_id=focus.clinic_id,
+                        session_id=recording.session_id,
+                        encounter_token=recording.token,
+                        command_id=uuid4(),
+                        action="pause",
+                        expected_epoch=number + 1,
+                        last_seq=0,
+                    )
+            with tenant_context(focus.physician_ids[0], focus.organization_id):
+                control_recording(
+                    clinic_id=focus.clinic_id,
+                    session_id=recording.session_id,
+                    encounter_token=recording.token,
+                    command_id=uuid4(),
+                    action="stop",
+                    expected_epoch=prepared.dataset.profile.samples,
+                )
     return ScenarioResult(
         "chunk_upload",
-        "component",
+        "measured",
         result.samples_ms,
         result.errors,
-        f"seal_audio of a {CHUNK_BYTES}-byte slice only; the full ingest_chunk "
-        "needs a consented recording session and is covered by tests/scribe",
+        f"ingest_chunk acknowledgement through tenant commit for {CHUNK_BYTES}-byte "
+        "synthetic two-second slices: authority/consent, encryption, AudioChunk, "
+        "outbox and receipt audit; untimed setup/control supplies a fresh server "
+        "epoch per sample, no clock changes; asynchronous object delivery excluded",
     )
 
 
@@ -380,7 +437,7 @@ def _modeled(
         samples,
         0,
         "modeled over assumed provider timings, not a measurement; chunk cost "
-        f"sampled from the measured seal scenario; assumptions={params}",
+        f"sampled from measured chunk ingestion; assumptions={params}",
     )
 
 

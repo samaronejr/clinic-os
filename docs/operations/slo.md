@@ -70,8 +70,14 @@ fairness checks assert behaviour, these alert on it.
 ## Scenarios and how honest each number is
 
 `measured` runs the application code as `clinic_app` on real PostgreSQL and
-Redis. `component` measures one primitive of a path whose full fixtures live in
-another suite (`chunk_upload` times the audio sealing step, not `ingest_chunk`).
+Redis. `chunk_upload` measures the real `ingest_chunk` acknowledgement through
+tenant commit: recording and consent authority, encryption, the durable
+AudioChunk, reference-only outbox operation and receipt audit. Consent and
+recording setup and pause/resume controls are outside the timed samples; each
+sample uses a fresh server-issued capture epoch without changing clocks.
+Asynchronous object-storage delivery is outside this acknowledgement boundary.
+Historical reports that label chunk upload `component` measured sealing alone
+and do not satisfy the ingestion measurement.
 `modeled` is seeded arithmetic over assumed provider timings (`transcript_partial`,
 `draft_generation`); it is never counted as a target met and reports as
 informational. HTTP scenarios (`staff_navigation`, `agenda_interaction`) are
@@ -182,12 +188,17 @@ or a missing victim response invalidate the run rather than count as evidence.
 
 ```bash
 systemd-run --user --scope -p "Delegate=cpu memory pids" \
-  uv run python -m ops.perf.run --profile P-large-tenant
+  uv run python -m ops.perf.run --profile P-large-tenant \
+    --run-root /absolute/private/task-owned-run-root
 ```
 
 This standard executor wrapper supplies the required return context; the
 public entrypoint remains `python -m ops.perf.run` and always uses the declared
 production-like rig. A private diagnostic is not acceptance.
+The explicit run root must already exist, be executor-owned with mode 0700,
+and have no symlink components. The `runtime_directory` context owns the
+synthetic KEK/media child and removes it on successful runs and setup failures.
+Do not run canonical performance measurements without the owner's quiet window.
 
 The report is JSON validated against `ops/perf/report-schema.json` and carries
 the profile, dataset, commit sha, per-scenario p50/p95/p99 and pass/fail against
@@ -198,6 +209,11 @@ patient lookup statement inside the database to prove a slow query is recorded
 as a failure.
 The Locust file `ops/perf/locustfile.py` drives the same pages over HTTP
 against a locally running synthetic server.
+It obtains fresh CSRF tokens for password and required TOTP submission and verifies
+the protected authenticated route before browsing. Authentication, CSRF or
+expired-session failures mark the request failed, stop the load and force
+exit status 1. One configured account/authenticator supports one virtual user;
+concurrent users must not replay a shared TOTP code.
 
 ## ADR-015 search benchmark
 

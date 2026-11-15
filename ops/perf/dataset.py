@@ -17,6 +17,8 @@ from uuid import UUID, uuid4
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from apps.identity.models import User
+
     from ops.perf.profiles import Profile
 
 PASSWORD = "perf-synthetic-credential-not-a-secret"  # noqa: S105
@@ -110,7 +112,7 @@ def _owner_tenant(organization_id: UUID) -> Iterator[None]:
         yield
 
 
-def _make_user(label: str, password_hash: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
+def _make_user(label: str, password_hash: str) -> User:
     from apps.identity.models import User  # noqa: PLC0415
 
     return User.objects.create(
@@ -266,6 +268,87 @@ class Draft:
     physician_id: UUID
     version_id: UUID
     revision: int
+
+
+@dataclass(frozen=True, slots=True)
+class Recording:
+    """A consented synthetic recording; its token never enters a report."""
+
+    session_id: UUID
+    token: str = field(repr=False)
+
+
+def seed_recording(tenant: Tenant) -> Recording:
+    """Exercise patient consent and clinician disclosure before chunk timing."""
+    import django.apps  # noqa: PLC0415
+    from apps.consent.services import (  # noqa: PLC0415
+        prepare_acceptance,
+        publish_text,
+        record_ai_disclosure,
+        record_consent,
+    )
+    from apps.ehr.services import open_unscheduled_encounter  # noqa: PLC0415
+    from apps.intake.patient_access import (  # noqa: PLC0415
+        issue_invitation,
+        patient_session_context,
+        redeem_invitation,
+    )
+    from apps.providers.migrations._seed_v2 import (  # noqa: PLC0415
+        seed_v2_capabilities,
+    )
+    from apps.scribe.services import (  # noqa: PLC0415
+        create_recording,
+        issue_encounter_token,
+    )
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    from ops.perf.runtime import PerfEnvironmentError, runtime_role  # noqa: PLC0415
+
+    seed_v2_capabilities(django.apps.apps)
+    with runtime_role(), tenant_context(tenant.admin_id, tenant.organization_id):
+        text = publish_text(
+            clinic_id=tenant.clinic_id,
+            purpose="consultation_recording",
+            text="Synthetic performance recording consent.",
+        )
+        invitation = issue_invitation(
+            clinic_id=tenant.clinic_id,
+            enrollment_id=tenant.sample_enrollments[0],
+        )
+    with runtime_role():
+        patient_session = redeem_invitation(tenant.clinic_id, invitation.secret)
+    if patient_session is None:
+        message = "synthetic recording consent session refused"
+        raise PerfEnvironmentError(message)
+    with runtime_role(), patient_session_context(patient_session):
+        _text, offer = prepare_acceptance(text_id=text.pk)
+        record_consent(offer=offer, purpose="consultation_recording", accepted=True)
+    with (
+        runtime_role(),
+        tenant_context(tenant.physician_ids[0], tenant.organization_id),
+    ):
+        encounter = open_unscheduled_encounter(
+            clinic_id=tenant.clinic_id,
+            enrollment_id=tenant.sample_enrollments[0],
+            reason="walk_in",
+        )
+        record_ai_disclosure(
+            clinic_id=tenant.clinic_id,
+            encounter_id=encounter.pk,
+            informed=True,
+            refused=False,
+        )
+        token = issue_encounter_token(
+            clinic_id=tenant.clinic_id,
+            encounter_id=encounter.pk,
+            browser_binding="synthetic-perf-chunk",
+        )
+        recording = create_recording(
+            clinic_id=tenant.clinic_id,
+            encounter_token=token,
+            command_id=uuid4(),
+        )
+    return Recording(recording.pk, token)
 
 
 def seed_drafts(tenant: Tenant, count: int) -> list[Draft]:

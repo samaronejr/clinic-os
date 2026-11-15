@@ -300,14 +300,14 @@ def test_profiles_carry_the_plan_shapes_and_targets() -> None:
 
 
 def test_cli_refuses_unrunnable_profiles_and_shared_databases(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     assert main(["--profile", "P-1000"]) == 2
     assert "definition only" in capsys.readouterr().err
     monkeypatch.setenv(
         "MIGRATION_DATABASE_URL", "postgresql://clinic_owner@localhost:5432/clinic"
     )
-    assert main(["--profile", "P-small"]) == 2
+    assert main(["--profile", "P-small", "--run-root", str(tmp_path)]) == 2
     assert "throwaway" in capsys.readouterr().err
 
 
@@ -395,6 +395,21 @@ def test_tiny_profile_runs_the_real_services_as_clinic_app(
         assert result.scenario_id == name
         assert result.errors == 0, name
         assert result.samples_ms, name
+    assert runs["chunk_upload"].kind == "measured"
+    from apps.scribe.models import AudioChunk, RecordingSession  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+    from ops.perf.runtime import runtime_role  # noqa: PLC0415
+
+    with (
+        runtime_role(),
+        tenant_context(world.focus.physician_ids[0], world.focus.organization_id),
+    ):
+        chunks = list(AudioChunk.objects.all())
+        assert len(chunks) == TINY.samples
+        assert all(chunk.operation_id and chunk.encrypted_data for chunk in chunks)
+        assert len({chunk.epoch_id for chunk in chunks}) == TINY.samples
+        assert all(chunk.seq == 0 for chunk in chunks)
+        assert RecordingSession.objects.get().state == "stopped"
     assert len(runs["autosave"].samples_ms) == 6
     # Every autosave advanced the draft: each editor saved ``saves`` times.
     assert all(draft.revision > 1 for draft in prepared.drafts)

@@ -1,6 +1,6 @@
 """Run one load profile and write a schema-valid perf report.
 
-    uv run python -m ops.perf.run --profile P-large-tenant
+    uv run python -m ops.perf.run --profile P-large-tenant --run-root /private/run
 
 Needs a private throwaway PostgreSQL (``MIGRATION_DATABASE_URL``, not port 5432)
 and Redis (``CELERY_BROKER_URL`` and ``REALTIME_REDIS_URL``). The output is L1
@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import os
 import platform
-import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +33,7 @@ from ops.perf.report import (
 )
 from ops.perf.rig import ResourceRig, resource_snapshot
 from ops.perf.runtime import PerfEnvironmentError, bootstrap_django
+from ops.testing.isolation_common import IsolationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -122,13 +122,17 @@ def _scenario_results(
     ):
         if wanted(name):
             results.append(runner(prepared))
-    chunk = scenarios.chunk_upload(prepared)
-    if wanted("chunk_upload"):
-        results.append(chunk)
-    if wanted("transcript_partial"):
-        results.append(scenarios.transcript_partial(prepared, chunk))
-    if wanted("draft_generation"):
-        results.append(scenarios.draft_generation(prepared, chunk))
+    if any(
+        wanted(name)
+        for name in ("chunk_upload", "transcript_partial", "draft_generation")
+    ):
+        chunk = scenarios.chunk_upload(prepared)
+        if wanted("chunk_upload"):
+            results.append(chunk)
+        if wanted("transcript_partial"):
+            results.append(scenarios.transcript_partial(prepared, chunk))
+        if wanted("draft_generation"):
+            results.append(scenarios.draft_generation(prepared, chunk))
     return results
 
 
@@ -202,6 +206,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m ops.perf.run")
     parser.add_argument("--profile", required=True, choices=sorted(PROFILES))
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--run-root", type=Path, help="existing executor-owned private directory (0700)"
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--only", help="comma-separated scenario ids or 'fairness'")
     parser.add_argument(
@@ -213,20 +220,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         profile = _runnable(args.profile)
-        secret_dir = bootstrap_django()
-        try:
+        with bootstrap_django(args.run_root):
             report = run_profile(
                 profile,
                 seed=args.seed,
                 only=args.only.split(",") if args.only else None,
                 inject_slow_query_ms=args.inject_slow_query_ms,
             )
-        finally:
-            shutil.rmtree(secret_dir, ignore_errors=True)
     except (
         UnknownProfileError,
         ProfileNotRunnableError,
         PerfEnvironmentError,
+        IsolationError,
     ) as error:
         sys.stderr.write(f"perf: {error}\n")
         return 2

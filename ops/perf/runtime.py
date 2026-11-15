@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import secrets
-import tempfile
 from contextlib import contextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from pathlib import Path
 
 SETTINGS_MODULE = "config.settings.test"
 CLIENT_HOST = "localhost"
@@ -20,8 +21,9 @@ class PerfEnvironmentError(RuntimeError):
     """Refuse to run outside a throwaway synthetic database."""
 
 
-def bootstrap_django() -> Path:
-    """Configure Django with a private synthetic KEK and return its directory.
+@contextmanager
+def bootstrap_django(run_root: Path | None) -> Iterator[Path]:
+    """Own Django's synthetic key/media directory for the entire run.
 
     The harness only writes synthetic tenants into the database named by
     ``MIGRATION_DATABASE_URL``; refusing the default port keeps it away from a
@@ -34,19 +36,31 @@ def bootstrap_django() -> Path:
             "(not port 5432)"
         )
         raise PerfEnvironmentError(message)
+    if run_root is None:
+        message = "set --run-root to an existing private directory"
+        raise PerfEnvironmentError(message)
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", SETTINGS_MODULE)
     os.environ.setdefault("ALLOWED_HOSTS", CLIENT_HOST)
-    secret_dir = Path(tempfile.mkdtemp(prefix="clinic-perf-secrets-"))
-    secret_dir.chmod(0o700)
-    kek = secret_dir / "tenant-kek.secret"
-    kek.write_text(secrets.token_hex(32), encoding="ascii")
-    kek.chmod(0o600)
-    os.environ["CLINIC_SECRET_BACKEND"] = "synthetic-file"  # noqa: S105 - backend name
-    os.environ["CLINIC_SECRET_DIR"] = str(secret_dir)
-    import django  # noqa: PLC0415 - settings must exist first
+    names = ("CLINIC_SECRET_BACKEND", "CLINIC_SECRET_DIR", "SCRIBE_MEDIA_ROOT")
+    previous = {name: os.environ.get(name) for name in names}
+    with runtime_directory(run_root, purpose="perf-secrets") as secret_dir:
+        kek = secret_dir / "tenant-kek.secret"
+        kek.write_text(secrets.token_hex(32), encoding="ascii")
+        kek.chmod(0o600)
+        try:
+            os.environ["CLINIC_SECRET_BACKEND"] = "synthetic-file"  # noqa: S105 - backend name
+            os.environ["CLINIC_SECRET_DIR"] = str(secret_dir)
+            os.environ["SCRIBE_MEDIA_ROOT"] = str(secret_dir / "media")
+            import django  # noqa: PLC0415 - settings must exist first
 
-    django.setup()
-    return secret_dir
+            django.setup()
+            yield secret_dir
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 @contextmanager
