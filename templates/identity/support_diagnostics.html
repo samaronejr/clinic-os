@@ -33,7 +33,7 @@
       <table class="table">
         <caption id="support-integrations-caption">{% trans "Provider capabilities from the lifecycle registry" %}</caption>
         <thead><tr><th scope="col">{% trans "Capability" %}</th><th scope="col">{% trans "State" %}</th></tr></thead>
-        <tbody>{% for row in providers %}<tr data-support-provider><td><code>{{ row.capability }}</code></td><td>{{ row.state }}</td></tr>{% empty %}<tr><td colspan="2"><p class="table-empty">{% trans "No provider capability is registered." %}</p></td></tr>{% endfor %}</tbody>
+        <tbody>{% for row in providers %}<tr data-support-provider><td><code>{{ row.capability }}</code></td><td>{{ row.state }}{% if not row.available %} · <span data-capability-unavailable>{% trans "Unavailable" %}</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="2"><p class="table-empty">{% trans "No provider capability is registered." %}</p></td></tr>{% endfor %}</tbody>
       </table>
     </div>
   </section>

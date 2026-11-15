@@ -6,9 +6,12 @@ nothing is a stored name, identifier or free text.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Final
 
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from ops.release import profiles
 
 from apps.identity import enterprise_authority as clock
 from apps.identity.models import UserClinicRole
@@ -66,9 +69,23 @@ def _minutes(later: datetime, earlier: datetime) -> int:
 def support_context(snapshot: SupportSnapshot) -> dict[str, object]:
     """Map the snapshot to template rows; an unknown stored value is an error."""
     now = clock.utc_now()
+    profile = profiles.PROFILES.get(
+        os.environ.get(profiles.PROFILE_ENV, profiles.DEFAULT_LIVE_PROFILE)
+    )
+    enabled = (
+        profile.providers
+        if profile is not None and settings.CLINIC_DATA_MODE == "live"
+        else ()
+    )
     return {
         "providers": [
-            {"capability": row["capability"], "state": PROVIDER_STATES[row["state"]]}
+            {
+                "capability": row["capability"],
+                "state": PROVIDER_STATES[row["state"]],
+                "available": (
+                    row["state"] == "activated" and row["capability"] in enabled
+                ),
+            }
             for row in snapshot.providers
         ],
         "queues": [

@@ -36,6 +36,7 @@ from ops.release import activation, readiness
 from ops.testing.renewal_runner import _provision_database
 
 from infra.test_production_settings import VALID_HOSTS, VALID_RUNTIME_TOKEN
+from release.profile_support import simulate_profile_approval
 from renewal.test_release_readiness import _live_bundle
 
 if TYPE_CHECKING:
@@ -153,7 +154,7 @@ def _approved_backend_environment(
     assert not any(
         "rehearsal" in finding and "backend" in finding for finding in patched
     )
-    return approved
+    return simulate_profile_approval(monkeypatch, approved)
 
 
 def _live_environment(tmp_path: Path, evidence_root: Path) -> dict[str, str]:
