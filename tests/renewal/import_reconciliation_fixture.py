@@ -83,15 +83,18 @@ def reconcile_source(
                 zip(records, accepted, strict=True), 1
             )
         ]
+    # Each patient commits in its own batch so a bulk import releases the
+    # organization audit lock between registrations.
     assert report.report["batches"] == [
         {
-            "sequence": 1,
+            "sequence": sequence,
             "dataset": "patients",
-            "rows": len(accepted),
-            "committed": len(accepted),
-            "rows_sha256": sha256(canonical_bytes(expected)).hexdigest(),
+            "rows": 1,
+            "committed": 1,
+            "rows_sha256": sha256(canonical_bytes([row])).hexdigest(),
             "verified": True,
         }
+        for sequence, row in enumerate(expected, 1)
     ]
     return {
         "source_sha256": source_hash,

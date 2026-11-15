@@ -16,18 +16,31 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.mark.parametrize(
-    "mismatch", ["none", "bytes", "source_id", "author", "time", "name"]
+    ("mismatch", "patient_count"),
+    [
+        pytest.param("none", 1, id="one-patient"),
+        pytest.param("none", 2, id="none"),
+        pytest.param("none", 4, id="s16-four-patients"),
+        pytest.param("bytes", 2, id="bytes"),
+        pytest.param("source_id", 2, id="source_id"),
+        pytest.param("author", 2, id="author"),
+        pytest.param("time", 2, id="time"),
+        pytest.param("name", 2, id="name"),
+    ],
 )
 def test_reconciliation_rejects_wrong_source_or_provenance(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, mismatch: str
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+    patient_count: int,
 ) -> None:
     world = import_world(rbac_graph)
-    rows = [patient_row(71601), patient_row(71602)]
+    rows = [patient_row(71601 + index) for index in range(patient_count)]
     source = patients_csv(0, extra=rows)
     report, _receipt = committed(world, source, monkeypatch)
     if mismatch == "none":
         result = reconcile_source(world, report.job.job_id, source, rows)
-        assert result["provenance_records_matched"] == 2
+        assert result["provenance_records_matched"] == patient_count
         assert result["retained_source_matches"] is True
         return
     if mismatch == "bytes":
