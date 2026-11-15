@@ -20,7 +20,7 @@ import time
 from contextlib import nullcontext
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock
 
 import pytest
@@ -44,6 +44,13 @@ from ops.perf.run import SLOW_MARKERS, main, run_profile
 from ops.perf.runtime import slow_queries
 from ops.perf.stats import StatsInputError, percentile, summarize
 from ops.perf.threads import WorkerResult
+
+from core.test_fairness import fairness_broker, metered_broker
+
+if TYPE_CHECKING:
+    from pytest_django.fixtures import SettingsWrapper
+
+__all__ = ["fairness_broker", "metered_broker"]
 
 ROOT = Path(__file__).resolve().parents[2]
 SLO_DOC = ROOT / "docs" / "operations" / "slo.md"
@@ -423,7 +430,16 @@ def test_injected_slow_query_is_recorded_as_a_failed_target(
 @pytest.mark.django_db(transaction=True)
 def test_full_run_reports_every_scenario_and_fairness(
     synthetic_secret_backend: Path,
+    metered_broker: str,
+    monkeypatch: pytest.MonkeyPatch,
+    settings: SettingsWrapper,
 ) -> None:
+    realtime_url = metered_broker.rsplit("/", 1)[0] + "/1"
+    monkeypatch.setenv("CELERY_BROKER_URL", metered_broker)
+    monkeypatch.setenv("REALTIME_REDIS_URL", realtime_url)
+    monkeypatch.setenv("REALTIME_ENABLED", "true")
+    settings.REALTIME_REDIS_URL = realtime_url
+    settings.REALTIME_ENABLED = True
     profile = dataclasses.replace(TINY, bulk_import=True, samples=12)
     result = run_profile(profile, seed=9, only=None, fairness_trials=1)
     ids = {item["id"] for item in result["scenarios"]}

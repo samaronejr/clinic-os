@@ -187,11 +187,15 @@ def _bind_broker(broker: _Broker, monkeypatch: pytest.MonkeyPatch) -> Iterator[N
     previous_retry = celery_app.conf.task_publish_retry
     # Celery gives the environment precedence over app.conf.
     monkeypatch.setenv("CELERY_BROKER_URL", broker.url)
+    # Configuration changes do not invalidate publishers acquired by earlier tests.
+    monkeypatch.setattr(celery_app, "_pool", None)
+    monkeypatch.setattr(celery_app.amqp, "_producer_pool", None)
     celery_app.conf.update(
         CELERY_BROKER_URL=broker.url,
         CELERY_TASK_PUBLISH_RETRY=False,
     )
     assert celery_app.conf.broker_url == broker.url
+    assert celery_app.amqp.producer_pool.connections.connection.as_uri() == broker.url
     yield
     celery_app.conf.update(
         CELERY_BROKER_URL=previous_url,
