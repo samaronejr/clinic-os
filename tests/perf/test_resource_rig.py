@@ -8,6 +8,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock
 from uuid import UUID
@@ -28,6 +29,17 @@ ORG_ID = UUID("00000000-0000-0000-0000-000000000071")
 SCOPE = ChildContext(
     "synthetic", "synthetic-file", "/synthetic", str(ORG_ID), str(ORG_ID), str(ORG_ID)
 )
+
+
+@pytest.fixture
+def _inprocess_load_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep mocked lifecycle children free of unused named semaphores."""
+    context = Mock(wraps=multiprocessing.get_context("spawn"))
+    context.Event = Event
+    context.Array = lambda _typecode, values: list(values)
+    module = Mock(get_context=Mock(return_value=context))
+    monkeypatch.setattr(ai_load, "multiprocessing", module)
+    monkeypatch.setattr(fairness_runs, "multiprocessing", module)
 
 
 def test_application_budget_is_fixed_and_producers_are_external() -> None:
@@ -249,6 +261,7 @@ def test_producer_only_transports_results_and_counts_them(
 
 
 @pytest.mark.parametrize("kind", ["ai", "bulk"])
+@pytest.mark.usefixtures("_inprocess_load_context")
 def test_partial_start_joins_only_children_that_started(
     monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -270,6 +283,7 @@ def test_partial_start_joins_only_children_that_started(
 
 
 @pytest.mark.parametrize("kind", ["ai", "bulk"])
+@pytest.mark.usefixtures("_inprocess_load_context")
 def test_interrupt_during_warmup_cleans_up_started_children(
     monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -291,6 +305,7 @@ def test_interrupt_during_warmup_cleans_up_started_children(
 
 
 @pytest.mark.parametrize("kind", ["ai", "bulk"])
+@pytest.mark.usefixtures("_inprocess_load_context")
 def test_nonzero_child_exit_invalidates_the_trial(
     monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -307,6 +322,7 @@ def test_nonzero_child_exit_invalidates_the_trial(
     assert load.failed.is_set()
 
 
+@pytest.mark.usefixtures("_inprocess_load_context")
 def test_victim_response_timeout_invalidates_the_trial(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
