@@ -34,6 +34,12 @@ from renewal.browser._fixture_secrets import (
     pytest_runtest_makereport,
 )
 from renewal.browser.engines import grant_capture_audio, launch, selected_engine
+from renewal.browser.flagship_support import (
+    FlagshipReport,
+    ReferenceClinic,
+    seed_reference_clinic,
+    suite_of,
+)
 from renewal.browser.test_availability import availability_staff
 
 if TYPE_CHECKING:
@@ -335,3 +341,30 @@ def browser_report(
     destination = renewal_artifact_root / "smoke-report.json"
     destination.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     destination.chmod(0o600)
+
+
+@pytest.fixture(scope="session")
+def reference_clinic(renewal_base_url: str) -> ReferenceClinic:
+    """Seed the D-17 reference clinic once per flagship suite session."""
+    del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
+    return seed_reference_clinic()
+
+
+@pytest.fixture(scope="session")
+def flagship_reports(
+    renewal_artifact_root: Path,
+) -> Iterator[dict[str, FlagshipReport]]:
+    """Collect each flagship suite's report; the finalizer writes flagship.json."""
+    reports: dict[str, FlagshipReport] = {}
+    yield reports
+    for report in reports.values():
+        report.write(renewal_artifact_root)
+
+
+@pytest.fixture(scope="module")
+def flagship(
+    request: pytest.FixtureRequest, flagship_reports: dict[str, FlagshipReport]
+) -> FlagshipReport:
+    """Return the report of the suite that owns the requesting module."""
+    suite = suite_of(Path(str(request.module.__file__)))
+    return flagship_reports.setdefault(suite, FlagshipReport(suite))

@@ -12,6 +12,7 @@ from apps.ai.models import ModelConfiguration
 from apps.ai.owner import set_global_switch, transition_model
 from apps.ai.policy import OrganizationPolicy
 from apps.core.integration import execute_operation
+from apps.ehr.history import HistoryChange, save_history
 from apps.identity.clinic_configuration import (
     ConfigurationContent,
     latest_configuration,
@@ -77,6 +78,17 @@ def main() -> None:
         status = "seeded"
     elif mode == "execute":
         status = execute_operation(UUID(sys.argv[2]))
+    elif mode == "source":
+        actor, clinic, organization, encounter = (UUID(item) for item in sys.argv[2:6])
+        with runtime_role(), tenant_context(actor, organization):
+            save_history(
+                clinic_id=clinic,
+                encounter_id=encounter,
+                change=HistoryChange(
+                    "problem", 0, "documented", sys.argv[6], "active", "Synthetic"
+                ),
+            )
+        status = "recorded"
     elif mode == "down":
         for active in ModelConfiguration.objects.filter(
             purpose="brief", state="active"

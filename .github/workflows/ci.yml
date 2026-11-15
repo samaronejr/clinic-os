@@ -184,6 +184,14 @@ jobs:
           - "website,website@firefox,website@webkit"
           - "resilience,resilience@firefox,resilience@webkit"
           - "support-diagnostics,support-diagnostics@firefox,support-diagnostics@webkit"
+          - "journey-first-day,journey-first-day@firefox,journey-first-day@webkit"
+          - "journey-consultation,journey-consultation@firefox,journey-consultation@webkit"
+          - "journey-reception-pressure,journey-reception-pressure@firefox,journey-reception-pressure@webkit"
+          - "journey-disrupted-session,journey-disrupted-session@firefox,journey-disrupted-session@webkit"
+          - "journey-results,journey-results@firefox,journey-results@webkit"
+          - "journey-financial-close,journey-financial-close@firefox,journey-financial-close@webkit"
+          - "journey-network-governance,journey-network-governance@firefox,journey-network-governance@webkit"
+          - "acceptance-scenarios,acceptance-scenarios@firefox,acceptance-scenarios@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
