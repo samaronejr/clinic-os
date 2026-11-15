@@ -9,11 +9,11 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-import rfc8785
 from apps.identity.models import Clinic
 from apps.intake.models import PatientDemographics, PatientIdentifier
 from apps.interop import services
 from apps.interop.models import ImportedRecord, ImportFile, ImportJob
+from apps.interop.validation import canonical_bytes
 
 from identity.permission_support import owner_context
 from interop.support import operating
@@ -42,7 +42,7 @@ def reconcile_source(
         assert job.size_bytes == len(source)
     assert report.reconciled is True
     assert report.job.state == "committed"
-    assert report.digest == sha256(rfc8785.dumps(report.report)).hexdigest()
+    assert report.digest == sha256(canonical_bytes(report.report)).hexdigest()
     assert report.report["datasets"] == {
         "patients": {
             "rows": row_count,
@@ -68,7 +68,9 @@ def reconcile_source(
         assert stored.data == source
         assert stored.sha256 == source_hash
         assert stored.size_bytes == len(source)
-        zone = ZoneInfo(Clinic.objects.get(pk=world.graph.clinic_a).timezone)
+        timezone = Clinic.objects.get(pk=world.graph.clinic_a).timezone
+        assert isinstance(timezone, str)
+        zone = ZoneInfo(timezone)
         records = list(
             ImportedRecord.objects.filter(job_id=job_id)
             .select_related("patient", "enrollment", "batch")
@@ -87,7 +89,7 @@ def reconcile_source(
             "dataset": "patients",
             "rows": len(accepted),
             "committed": len(accepted),
-            "rows_sha256": sha256(rfc8785.dumps(expected)).hexdigest(),
+            "rows_sha256": sha256(canonical_bytes(expected)).hexdigest(),
             "verified": True,
         }
     ]
@@ -126,7 +128,7 @@ def _reconcile_record(
     assert record.source_record_id == code
     assert record.original_author == author
     assert record.original_recorded_at == recorded
-    assert record.content_sha256 == sha256(rfc8785.dumps(expected)).hexdigest()
+    assert record.content_sha256 == sha256(canonical_bytes(expected)).hexdigest()
     assert record.content == {
         "fields": sorted(key for key, value in expected.items() if value)
     }
