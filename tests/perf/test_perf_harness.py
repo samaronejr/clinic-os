@@ -438,6 +438,7 @@ def test_full_run_reports_every_scenario_and_fairness(
     monkeypatch.setenv("CELERY_BROKER_URL", metered_broker)
     monkeypatch.setenv("REALTIME_REDIS_URL", realtime_url)
     monkeypatch.setenv("REALTIME_ENABLED", "true")
+    settings.CELERY_BROKER_URL = metered_broker
     settings.REALTIME_REDIS_URL = realtime_url
     settings.REALTIME_ENABLED = True
     profile = dataclasses.replace(TINY, bulk_import=True, samples=12)
