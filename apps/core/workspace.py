@@ -2,11 +2,11 @@
 
 The destinations come from the ``apps.core.navigation`` registry, filtered by
 the actor's permission bundle and each route's own guard; every module route
-keeps its own server-side gate. A clinic enters the shell when the actor holds
-a staff role there or the actor's effective grants open at least one delivered
-place there, whatever page is being rendered; its landing is that place. Clinic
-visibility is bounded by row-level security on the active tenant, so a clinic
-from another organization can never be resolved.
+keeps its own server-side gate. A clinic enters the shell only when the actor's
+effective grants open at least one delivered place there, for every role and
+whatever page is being rendered; its landing is such a place. Clinic visibility
+is bounded by row-level security on the active tenant, so a clinic from another
+organization can never be resolved.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from apps.core.navigation import (
     granted_permissions,
 )
 from apps.core.patient_context import PatientBanner, resolve_patient_banner
-from apps.identity.current_context import MANAGER_ROLES
 from apps.identity.models import User, UserClinicRole
 
 if TYPE_CHECKING:
@@ -50,7 +49,6 @@ AUTH_FLOW_VIEWS: Final = frozenset(
         "identity:passkey-assert-finish",
     }
 )
-_STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)
 # Every registered place, sections first, in registry order.
 _PLACES: Final = {
     place.key: place
@@ -75,15 +73,14 @@ def _landing(
 ) -> str | None:
     """Return the first delivered place the roles and grants open, else ``None``.
 
-    Staff roles open today's agenda. Other bundles prefer their working queue:
-    reception, tasks, results for readers who do not book, Finance for bundles
-    without booking or organization configuration (task 56), then scheduling
-    settings; failing those, the first open place of the registry. Every
-    candidate passes the same check as the navigation link to it.
+    The Agenda comes first, then the working queues: reception, tasks, results
+    for readers who do not book, Finance for bundles without booking or
+    organization configuration (task 56), then scheduling settings; failing
+    those, the first open place of the registry. Every candidate, the Agenda
+    included, passes the same check as the navigation link to it, so a
+    narrowed grant never lands on a route that refuses.
     """
-    if roles.intersection(_STAFF_ROLES):
-        return reverse("scheduling:agenda", args=(clinic_id,))
-    preferred = [_PLACES["today"], _PLACES["tasks"]]
+    preferred = [_PLACES["agenda"], _PLACES["today"], _PLACES["tasks"]]
     if "appointment.book" not in granted:
         preferred.append(_PLACES["results"])
     if granted.isdisjoint({"appointment.book", "configuration.organization"}):
@@ -169,13 +166,9 @@ def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
     clinics: list[WorkspaceClinic] = []
     for clinic_id, (name, zone, assigned) in grouped.items():
         roles = frozenset(assigned)
-        # Staff roles land on the agenda without a grant lookup.
-        granted = (
-            frozenset()
-            if roles.intersection(_STAFF_ROLES)
-            else granted_permissions(clinic_id)
+        landing = _landing(
+            clinic_id, roles=roles, granted=granted_permissions(clinic_id)
         )
-        landing = _landing(clinic_id, roles=roles, granted=granted)
         if landing is not None:
             clinics.append(
                 WorkspaceClinic(
