@@ -2693,16 +2693,6 @@
       ]
     },
     {
-      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
-      ]
-    },
-    {
       "symbol": "apps.core.workspace._visible_clinics",
       "signals": [
         "membership",
@@ -8352,18 +8342,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links",
-      "signals": [
-        "actor",
-        "membership",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links#cut1"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.transition_views.appointment_cancel_view",
       "signals": [
         "decorator"
@@ -10805,7 +10783,6 @@
     "apps.core.navigation.granted_permissions",
     "apps.core.patient_context.patient_context_allowed",
     "apps.core.views.workspace_home",
-    "apps.core.workspace.WorkspaceClinic.agenda_url#cut1",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
     "apps.core.workspace_access._billing_surface_admitted",
@@ -11234,7 +11211,6 @@
     "apps.scheduling.resource_definitions._subject#cut1",
     "apps.scheduling.resource_definitions.configuration_clinic#cut1",
     "apps.scheduling.resource_views.resource_settings#cut1",
-    "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links#cut1",
     "apps.scheduling.transition_views.appointment_cancel_view",
     "apps.scheduling.transition_views.appointment_reschedule_view",
     "apps.scheduling.views.availability_list_view",
