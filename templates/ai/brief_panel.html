@@ -1,4 +1,4 @@
-{% load i18n tz ai_chart %}
+{% load i18n tz ai_chart ai_availability %}
 <section id="chart-panel" data-chart-state="{{ brief.state }}"{% if surface == "today" %} data-today-brief="{{ brief.state }}"{% endif %}>
   {% if can_request %}
   <button class="button button--secondary" type="button" data-drawer-toggle="chart-assistant" aria-controls="chart-assistant" aria-expanded="true">{% trans "Permitted chart assistant" %}</button>
@@ -41,7 +41,7 @@
       </section>
       {% endfor %}
       {% endif %}
-      {% if brief.state != "generating" %}
+      {% ai_enabled "brief" as brief_enabled %}{% if brief.state != "generating" and brief_enabled %}
       <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
         {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}">
         <button type="submit" name="command" value="generate">{% trans "Generate pre-visit brief" %}</button>

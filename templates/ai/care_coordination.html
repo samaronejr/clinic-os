@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load i18n clinic_locale workspace %}
+{% load i18n clinic_locale workspace ai_availability %}
 {% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
 {% block title %}{% trans "Care coordination" %} · Clinic OS{% endblock %}
 {% block content %}
@@ -111,16 +111,21 @@
   {% if clinician %}
   <section aria-labelledby="plans-title" data-care-plans>
     <h2 id="plans-title">{% trans "Your active care plans" %}</h2>
+    {% ai_enabled "care_coordination" as care_enabled %}
     {% for row in plans %}
     <article class="panel" data-care-plan="{{ row.plan_id }}">
       <h3>{{ row.patient }}</h3>
       <p>{% trans "Plan approved on" %} {{ row.created_at|clinic_minute }}</p>
+      {% if care_enabled %}
       <form method="post" novalidate>
         {% csrf_token %}
         <input type="hidden" name="action" value="request">
         <input type="hidden" name="plan_id" value="{{ row.plan_id }}">
         <div class="actions"><button class="button button--secondary" type="submit">{% trans "Request suggestions" %}<span class="visually-hidden">: {{ row.patient }}</span></button></div>
       </form>
+      {% else %}
+      <p role="status" data-care-request-unavailable>{% trans "Suggestions are unavailable. Continue planning manually." %}</p>
+      {% endif %}
       {% for invocation in row.bundles %}
       <form method="post" novalidate>
         {% csrf_token %}

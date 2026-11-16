@@ -21,6 +21,7 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         draft_article,
     )
     from apps.ai.models import AgentPolicyVersion  # noqa: PLC0415
+    from apps.ai.owner import set_global_switch  # noqa: PLC0415
     from apps.identity.clinic_configuration import (  # noqa: PLC0415
         ConfigurationContent,
         latest_configuration,
@@ -53,6 +54,8 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
             permission="agent.execute",
             grant_set_version=2,
         )
+    # The agent answers only while the owner's global AI switch is on.
+    set_global_switch(enabled=True, approved_regions=("br-synthetic",))
     with runtime_role(), tenant_context(actor, organization):
         configuration = latest_configuration(clinic)
         if configuration is None:

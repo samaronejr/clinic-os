@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load i18n workspace %}
+{% load i18n workspace ai_availability %}
 {% block workspace_refusal %}{% if denied or invalid or error %}{% workspace_refusal %}{% endif %}{% endblock %}
 {% block title %}{% trans "Consultation transcript" %} · Clinic OS{% endblock %}
 {% block content %}
@@ -26,7 +26,7 @@
       <input type="hidden" name="session_id" value="{{ recording.pk }}">
       <div class="actions">
         <button class="button button--secondary" name="action" value="refresh" type="submit">{% trans "Refresh transcript" %}</button>
-        {% if transcript.state != "final" %}<button class="button button--secondary" name="action" value="queue" type="submit"{% if not available %} disabled{% endif %}>{% trans "Queue pending transcription" %}</button>{% endif %}
+        {% ai_enabled "scribe_asr" as asr_enabled %}{% if transcript.state != "final" and asr_enabled %}<button class="button button--secondary" name="action" value="queue" type="submit"{% if not available %} disabled{% endif %}>{% trans "Queue pending transcription" %}</button>{% endif %}
       </div>
     </form>
     <ol class="record-review" aria-label="{% trans 'Transcript segments' %}">

@@ -243,11 +243,15 @@ or capability opt-in. Non-synthetic data mode refuses inference. The UI is a TOT
 protected native form at `/clinics/<clinic_id>/settings/ai/`; it shows disabled,
 degraded, validation, conflict, and unconfigured states without displaying
 content or provider credentials. Clinical work remains available manually.
-Manual fallback pages offer no AI control while the global switch or the
-organization opt-in refuses its purpose: Reports hides the analyst question,
-results and attachments hide extraction, and Finance hides the revenue-cycle
-assistant (`ai_availability.ai_enabled`, the same `enabled_policy` check).
-Their POST paths still refuse on their own. The `resilience` browser suite
+No page offers a control that starts AI work while the global switch or the
+organization opt-in refuses its purpose. Each such control renders under
+`{% ai_enabled "<purpose>" as name %}` (`ai_availability`, the same
+`enabled_policy` check): the chart brief and question, decision-support
+requests, extraction, the analyst question, care-coordination and revenue-cycle
+requests, drafting and section regeneration, the transcription queue, and
+Finance's revenue-cycle assistant link. Their POST paths still refuse on their
+own. `tests/infra/test_ai_control_guards.py` classifies every AI form command
+and fails on an unguarded or unclassified one. The `resilience` browser suite
 finishes every manual fallback with each switch off.
 
 ## Owner CLI
@@ -393,7 +397,9 @@ Default off. The agent answers a clinic's patient-initiated inbox messages
 the organization AI policy enables the `front_desk` purpose, and the clinic's
 latest `front_desk` agent policy is enabled at A2 with a service principal that
 still holds `agent.execute`. Turning either off stops every new turn; that is the
-rollback switch. The same assistant answers replies in clinic-opened portal
+rollback switch. The owner's global AI switch overrides both: while it is off,
+`enqueue_turn` and `run_portal_turn` queue no turn at all. The SQL bridges
+recheck only the two opt-ins. The same assistant answers replies in clinic-opened portal
 threads. The live portal session supplies identity; every scheduling call
 separately requires its current `booking` operation. A messages-only session
 cannot gain booking authority through a challenge.

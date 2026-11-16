@@ -19,6 +19,7 @@ import psycopg
 import pytest
 from django.utils.translation import gettext, pgettext
 from playwright.sync_api import expect
+from psycopg import sql
 
 from renewal.browser._fixture_secrets import worker_dsn
 from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
@@ -26,6 +27,7 @@ from renewal.browser._page_wait import evaluate_js
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.messages_support import (
+    count,
     latest_operation,
     message_body,
     seed_provider,
@@ -53,7 +55,13 @@ from renewal.browser.test_clinical_inbox import (
 )
 from renewal.browser.test_document_verification import _operation_row
 from renewal.browser.test_encounter import FIELDS, press, press_in_view, seed, stored
-from renewal.browser.test_messages import _inbox, _open_thread, _reply
+from renewal.browser.test_messages import (
+    ADMINISTRATIVE,
+    _enable_portal_assistant,
+    _inbox,
+    _open_thread,
+    _reply,
+)
 from renewal.browser.test_patient_access import _no_overflow, _overflowing, _redeem
 from renewal.browser.test_prescribing import (
     author_and_render,
@@ -101,6 +109,16 @@ DRAFTING_AI: Final = (
     "[data-review-accept]:enabled"
 )
 REPORT_DAY: Final = "02/06/2035"
+# The front-desk agent stores its replies as outbound messages without a sender.
+AGENT_REPLY: Final = "direction='out' AND sent_by_id IS NULL"
+# Owner-visible AI tables: every model call leaves an invocation and an input
+# artifact, and AI-use records (drafts and decisions, extraction jobs, care
+# proposals, front-desk threads and turns, agent runs) live in these tables.
+AI_TABLES: Final = (
+    "SELECT DISTINCT tablename FROM pg_policies WHERE schemaname='clinic_app' "
+    "AND 'clinic_owner'=ANY(roles) "
+    "AND (tablename LIKE 'ai\\_%' OR tablename LIKE 'scribe\\_%') ORDER BY tablename"
+)
 # Each case turns one switch off at one of the suite's widths.
 AI_OFF_CASES: Final = tuple(
     (switch, width) for switch in AI_SWITCHES for width in WIDTHS
@@ -548,29 +566,31 @@ def set_ai(staff: dict[str, str], administrator: str, *, off: str | None) -> Non
     assert state == expected, state
 
 
-def ai_records(staff: dict[str, str]) -> tuple[int, int, int]:
-    """Count the organization's AI invocations, input artifacts and care proposals.
+def ai_records(staff: dict[str, str]) -> dict[str, int]:
+    """Count the organization's rows in every owner-visible AI and scribe table.
 
-    Every AI path, and every AI-use record it can leave, starts with a governed
-    invocation and its input artifact. The owner's tenant policy counts the rows
-    of every user, where the runtime policy shows a reader only its own.
+    The owner's tenant policy counts the rows of every user and principal,
+    where the runtime policy shows a reader only its own.
     """
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
         )
-        row = conn.execute(
-            "SELECT (SELECT count(*) FROM clinic_app.ai_aiinvocation), "
-            "(SELECT count(*) FROM clinic_app.ai_aiartifact), "
-            "(SELECT count(*) FROM clinic_app.ai_careproposal)"
-        ).fetchone()
-    assert row is not None
-    return int(row[0]), int(row[1]), int(row[2])
+        counts: dict[str, int] = {}
+        for (table,) in conn.execute(AI_TABLES).fetchall():
+            query = sql.SQL("SELECT count(*) FROM {}").format(
+                sql.Identifier("clinic_app", str(table))
+            )
+            row = conn.execute(query).fetchone()
+            assert row is not None
+            counts[str(table)] = int(row[0])
+    assert {"ai_aiinvocation", "ai_aiartifact", "ai_frontdeskturn"} <= set(counts)
+    return counts
 
 
 def turn_ai_off(
     staff: dict[str, str], administrator: str, actor: str, switch: str
-) -> tuple[int, int, int]:
+) -> dict[str, int]:
     """Turn one switch off, prove the actor's runtime sees it, then count AI rows."""
     set_ai(staff, administrator, off=switch)
     with psycopg.connect(staff["dsn"]) as conn:
@@ -586,13 +606,18 @@ def turn_ai_off(
 def finish_ai_off(
     staff: dict[str, str],
     root: Path,
-    before: tuple[int, int, int],
+    before: dict[str, int],
     name: str,
 ) -> None:
     """Require that the manual path left no AI invocation or AI-use record."""
     after = ai_records(staff)
-    assert after == before, (name, before, after)
-    report(root, f"ai-off-{name}", {"ai_records": list(after), "manual": "done"})
+    changed = {table for table in after if after[table] != before.get(table)}
+    assert not changed, (name, sorted(changed))
+    report(
+        root,
+        f"ai-off-{name}",
+        {"ai_tables": len(after), "ai_rows": sum(after.values()), "changed": []},
+    )
 
 
 def add_role(staff: dict[str, str], user: str, role: str, bundle: int) -> None:
@@ -733,15 +758,26 @@ def test_ai_off_leaves_reception_to_people(
     availability_staff: dict[str, str],
     case: tuple[str, int],
 ) -> None:
-    """AI-04 off: the patient's message waits for a person, who answers it."""
+    """AI-04 off: the agent that answers with AI on stays silent; a person answers."""
     switch, width = case
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
     administrator = seed_ai_admin(staff, "light")["id"]
+    # Control: the A2 front-desk agent, enabled as the messages suite enables it,
+    # answers the patient's question while both switches are on.
+    _enable_portal_assistant(staff, administrator)
+    set_ai(staff, administrator, off=None)
+    control = seed_provider(staff)
+    turns = ai_records(staff)["ai_frontdeskturn"]
+    body = message_body(ADMINISTRATIVE)
+    assert control.deliver(renewal_page, base, body).status == 200
+    assert count(control, "comms_message", AGENT_REPLY) == 1
+    assert ai_records(staff)["ai_frontdeskturn"] == turns + 1
     before = turn_ai_off(staff, administrator, staff["receptionist_id"], switch)
+    # The same question in a new conversation: no thread, turn or agent reply.
     provider = seed_provider(staff)
-    # The patient writes only after AI is off, so no assistant turn is admitted.
-    body = message_body("Pergunta sintética para a recepção")
+    body = message_body(ADMINISTRATIVE)
     assert provider.deliver(renewal_page, base, body).status == 200
+    assert count(provider, "comms_message", AGENT_REPLY) == 0
     browser = renewal_page.context.browser
     assert browser is not None
     with browser.new_context(
