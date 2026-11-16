@@ -12828,6 +12828,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12865,6 +12866,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12904,6 +12906,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12941,12 +12944,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in and daily budget."
+      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in, global AI switch and daily budget."
     },
     "clinic_app.ai_front_desk_finish": {
       "discovery": {
@@ -12978,12 +12982,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Rechecks current owner, enabled policy, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
+      "reason": "Rechecks current owner, enabled policy, global AI switch, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
     },
     "clinic_app.ai_front_desk_guard": {
       "discovery": {
@@ -13015,6 +13020,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -13052,6 +13058,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -13089,6 +13096,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -13126,12 +13134,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Claims one pending owned turn under current A2 policy and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
+      "reason": "Claims one pending owned turn under current A2 policy, global AI switch and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
     },
     "clinic_app.ai_front_desk_verify": {
       "discovery": {
@@ -13163,6 +13172,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",

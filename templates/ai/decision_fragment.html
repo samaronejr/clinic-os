@@ -1,4 +1,4 @@
-{% load i18n tz ai_chart %}
+{% load i18n tz ai_chart ai_availability %}
 <section id="decision-support-panel" aria-labelledby="decision-support-title" data-cds-state="{{ cds.state }}">
   <h2 id="decision-support-title">{% trans "Clinician decision support" %}</h2>
   <p class="help-text">{% trans "Synthetic preview. Not validated for clinical use." %}</p>
@@ -41,7 +41,7 @@
   {% else %}
     <p role="status">{% trans "Decision support unavailable. The manual clinical record remains available." %}</p>
   {% endif %}
-  {% if cds.can_request %}
+  {% ai_enabled "decision_support" as cds_enabled %}{% if cds.can_request and cds_enabled %}
   <form method="post" action="{% url 'ai:decision-support' clinic_id %}" novalidate>
     {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter_id }}">
     <div class="field"><label for="cds-opt-in"><input id="cds-opt-in" name="opt_in" type="checkbox" value="yes"> {% trans "I choose to use decision support for this request only." %}</label></div>

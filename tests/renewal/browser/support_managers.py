@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import secrets
+import subprocess
+import sys
 from uuid import uuid4
 
 import psycopg
@@ -81,3 +85,46 @@ def seed_ai_admin(staff: dict[str, str], theme: str) -> dict[str, str]:
             [manager["id"], theme],
         )
     return manager
+
+
+def set_ai_switches(
+    staff: dict[str, str],
+    actor: str,
+    *,
+    global_enabled: bool,
+    organization_enabled: bool,
+) -> dict[str, bool]:
+    """Set the global AI switch and the organization opt-in as the owner would.
+
+    ``actor`` publishes the organization policy; the receipt is the state the
+    runtime role reads back after both writes.
+    """
+    environment = {
+        **os.environ,
+        "APP_DATABASE_URL": staff["dsn"],
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "CELERY_BROKER_URL": "memory://",
+        "PYTHONPATH": os.pathsep.join((".", "tests")),
+    }
+    result = subprocess.run(  # noqa: S603 - fixed fixture entrypoint, owned DSN
+        [
+            sys.executable,
+            "-c",
+            "import django; django.setup(); "
+            "from renewal.ai_switch_fixture import main; main()",
+            actor,
+            staff["clinic_a"],
+            staff["organization"],
+            "on" if global_enabled else "off",
+            "on" if organization_enabled else "off",
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    state: dict[str, bool] = json.loads(result.stdout)
+    return state

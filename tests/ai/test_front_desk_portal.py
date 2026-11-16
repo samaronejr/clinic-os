@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from apps.ai import front_desk
 from apps.ai.models import FrontDeskThread, FrontDeskTurn
+from apps.ai.owner import set_global_switch
 from apps.audit.models import AuditEvent
 from apps.comms.inbox_services import open_conversation
 from apps.comms.portal_messages import portal_thread, reply_to_portal_conversation
@@ -214,6 +215,20 @@ def test_disabled_portal_agent_keeps_the_human_message_path(
     desk = desk_world(rbac_graph, settings, monkeypatch)
     session, thread = portal(desk)
     set_policy(desk.gateway, cap=10_000_000, enabled=False)
+    assert say(desk, session, thread, "Quando é minha consulta?") == ()
+    with owner_context(desk.graph.organization_a):
+        assert not FrontDeskTurn.objects.filter(thread__conversation_id=thread).exists()
+
+
+def test_the_global_switch_stops_the_portal_agent(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desk = desk_world(rbac_graph, settings, monkeypatch)
+    session, thread = portal(desk)
+    # Both opt-ins stay on; only the owner's global stop is off.
+    set_global_switch(enabled=False, approved_regions=("br-synthetic",))
     assert say(desk, session, thread, "Quando é minha consulta?") == ()
     with owner_context(desk.graph.organization_a):
         assert not FrontDeskTurn.objects.filter(thread__conversation_id=thread).exists()

@@ -35,6 +35,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 
 from apps.ai.front_desk_kb import ArticleAnswer, best_answer, fold
+from apps.ai.models import GatewaySwitch
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import AuditTrustedContext, _content_hash
 from apps.comms.inbox_inbound import InboundRejectedError, inbound_context
@@ -247,15 +248,22 @@ def _when(moment: datetime, zone: ZoneInfo) -> str:
     return formats.date_format(moment.astimezone(zone), "SHORT_DATETIME_FORMAT")
 
 
+def _globally_enabled() -> bool:
+    """Report the owner's global AI switch; every SQL bridge rechecks it (ai.0013)."""
+    return GatewaySwitch.objects.filter(pk=1, enabled=True).exists()
+
+
 def enqueue_turn(message_id: UUID, channel: str) -> None:
     """Inbound hook: in the authenticated inbound transaction, queue one turn.
 
     Agent replies are simulated deliveries, so only a synthetic channel in
     synthetic mode gets a turn; a real provider channel stays BLOCKED-ON-EG.
+    With the global AI switch off no turn is queued, whatever the opt-ins say.
     """
     if (
         settings.CLINIC_DATA_MODE != "synthetic"
         or channel not in settings.COMMS_SYNTHETIC_CHANNELS
+        or not _globally_enabled()
     ):
         return
     with connection.cursor() as cursor:
@@ -688,7 +696,7 @@ def run_portal_turn(*, clinic_id: UUID, message_id: UUID) -> None:
     minted. Scheduling rechecks the current booking operation on every call;
     delegates whose booking grant was removed cannot read or move appointments.
     """
-    if settings.CLINIC_DATA_MODE != "synthetic":
+    if settings.CLINIC_DATA_MODE != "synthetic" or not _globally_enabled():
         return
     scope = portal_message_scope()
     if scope is None or scope.clinic_id != clinic_id:

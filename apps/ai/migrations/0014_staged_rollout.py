@@ -10,7 +10,7 @@ from apps.ai.migrations import _rollout_sql
 class Migration(migrations.Migration):
     """No new tenant table, encrypted column, provider, or external approval."""
 
-    dependencies: ClassVar = [("ai", "0012_approval_attestation")]
+    dependencies: ClassVar = [("ai", "0013_front_desk_global_switch")]
     operations: ClassVar = [
         migrations.AddField(
             model_name="gatewayswitch",
