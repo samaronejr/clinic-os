@@ -216,6 +216,17 @@ inline script, style, event handler or `javascript:` URL, and htmx runs with
 for those constructs, and every browser suite fails on a console CSP
 violation (`tests/renewal/browser/conftest.py`, report `csp-console.json`).
 
+The same meta turns the htmx history cache off (`historyCacheSize: 0`,
+`refreshOnHistoryMiss: true`): a boosted or pushed navigation never copies page
+HTML into `sessionStorage`, and Back reloads the page from the server instead of
+restoring a snapshot. htmx still writes the current path
+(`htmx-current-path-for-history`), which carries no PHI because record
+selectors travel in POST bodies. `tests/infra/test_htmx_history.py` pins the
+configuration and that only `base.html` loads htmx,
+`tests/security/test_browser_storage.py` admits no other storage-touching
+library, and the `patient-workspace` browser suite checks storage after tab
+switches and after Back.
+
 The policy is enforced by default. `CLINIC_CSP_REPORT_ONLY=true` switches to
 `Content-Security-Policy-Report-Only` with the same policy as a synthetic-only
 rollout and rollback lever; live data mode refuses it at startup. Per-route
