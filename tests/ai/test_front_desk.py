@@ -24,6 +24,7 @@ from apps.ai.agent_policies import PolicyTerms, publish_agent_policy
 from apps.ai.front_desk_kb import approve_article, draft_article
 from apps.ai.front_desk_staff import handoff_threads, resolve_handoff
 from apps.ai.models import FrontDeskThread, FrontDeskTurn
+from apps.ai.owner import set_global_switch
 from apps.comms import inbox_inbound, inbox_services
 from apps.comms.models import Conversation, Message
 from apps.identity.models import (
@@ -488,6 +489,23 @@ def test_the_agent_needs_both_opt_ins_and_the_policy_tools(
     # switch: with it off, a new conversation gets no agent at all.
     set_policy(off.gateway, cap=10_000_000, enabled=False)
     assert say(off, "Oi", sender=STRANGER) is None
+    with owner_context(rbac_graph.organization_a):
+        assert FrontDeskThread.objects.count() == 1
+
+
+def test_the_global_switch_stops_the_agent_despite_both_opt_ins(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desk = desk_world(rbac_graph, settings, monkeypatch)
+    assert say(desk, "Quero ver minha consulta") == first(pt(front_desk.CHALLENGE))
+    before = len(turns(desk))
+    # Both opt-ins stay on; the owner's global stop alone ends every new turn.
+    set_global_switch(enabled=False, approved_regions=("br-synthetic",))
+    assert say(desk, "02/01/2000") is None
+    assert say(desk, "Oi", sender=STRANGER) is None
+    assert len(turns(desk)) == before
     with owner_context(rbac_graph.organization_a):
         assert FrontDeskThread.objects.count() == 1
 

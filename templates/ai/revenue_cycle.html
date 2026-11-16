@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n ai_availability %}
 {% block title %}{% trans "Revenue-cycle assistant" %} · Clinic OS{% endblock %}
 {% block content %}
 <section class="page-stack" aria-labelledby="revenue-title">
@@ -9,6 +9,8 @@
   <p>{% trans "Clinical supporting evidence is not retrieved. Missing evidence means not found in the supplied sources, never absence of care." %}</p>
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
   {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% ai_enabled "revenue_cycle" as revenue_enabled %}
+  {% if revenue_enabled %}
   <form method="post" novalidate>
     {% csrf_token %}<input type="hidden" name="command" value="request">
     <label for="revenue-guide">{% trans "Claim guide" %}</label>
@@ -18,6 +20,9 @@
     <button class="button" type="submit"{% if not guides %} disabled{% endif %}>{% trans "Request financial review" %}</button>
   </form>
   {% if not guides %}<p role="status">{% trans "No claim sources are available in this clinic." %}</p>{% endif %}
+  {% else %}
+  <p class="feedback" role="status" data-revenue-unavailable>{% trans "The assistant is unavailable. Continue the financial workflow manually." %}</p>
+  {% endif %}
   {% if review %}
     {% if review.state == "generating" %}
       <p role="status">{% trans "The review is generating. Manual financial work remains available." %}</p>
