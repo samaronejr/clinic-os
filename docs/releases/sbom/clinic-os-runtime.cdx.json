@@ -196,25 +196,25 @@
       "version": "5.6.2"
     },
     {
-      "bom-ref": "opentelemetry-api-28@1.45.1",
+      "bom-ref": "opentelemetry-api-28@1.45.2",
       "name": "opentelemetry-api",
-      "purl": "pkg:pypi/opentelemetry-api@1.45.1",
+      "purl": "pkg:pypi/opentelemetry-api@1.45.2",
       "type": "library",
-      "version": "1.45.1"
+      "version": "1.45.2"
     },
     {
-      "bom-ref": "opentelemetry-sdk-29@1.45.1",
+      "bom-ref": "opentelemetry-sdk-29@1.45.2",
       "name": "opentelemetry-sdk",
-      "purl": "pkg:pypi/opentelemetry-sdk@1.45.1",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.45.2",
       "type": "library",
-      "version": "1.45.1"
+      "version": "1.45.2"
     },
     {
-      "bom-ref": "opentelemetry-semantic-conventions-30@0.66b1",
+      "bom-ref": "opentelemetry-semantic-conventions-30@0.66b2",
       "name": "opentelemetry-semantic-conventions",
-      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.66b1",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.66b2",
       "type": "library",
-      "version": "0.66b1"
+      "version": "0.66b2"
     },
     {
       "bom-ref": "packaging-31@26.3",
@@ -521,7 +521,7 @@
         "drf-spectacular-20@0.30.0",
         "gunicorn-22@26.0.0",
         "jsonschema-25@4.26.0",
-        "opentelemetry-sdk-29@1.45.1",
+        "opentelemetry-sdk-29@1.45.2",
         "psycopg-34@3.3.4",
         "qrcode-42@8.2",
         "redis-43@8.0.1",
@@ -627,22 +627,22 @@
       "dependsOn": [
         "typing-extensions-50@4.16.0"
       ],
-      "ref": "opentelemetry-api-28@1.45.1"
+      "ref": "opentelemetry-api-28@1.45.2"
     },
     {
       "dependsOn": [
-        "opentelemetry-api-28@1.45.1",
-        "opentelemetry-semantic-conventions-30@0.66b1",
+        "opentelemetry-api-28@1.45.2",
+        "opentelemetry-semantic-conventions-30@0.66b2",
         "typing-extensions-50@4.16.0"
       ],
-      "ref": "opentelemetry-sdk-29@1.45.1"
+      "ref": "opentelemetry-sdk-29@1.45.2"
     },
     {
       "dependsOn": [
-        "opentelemetry-api-28@1.45.1",
+        "opentelemetry-api-28@1.45.2",
         "typing-extensions-50@4.16.0"
       ],
-      "ref": "opentelemetry-semantic-conventions-30@0.66b1"
+      "ref": "opentelemetry-semantic-conventions-30@0.66b2"
     },
     {
       "dependsOn": [],
@@ -818,7 +818,7 @@
     "properties": [
       {
         "name": "clinic:runtime-closure-sha256",
-        "value": "b5d40288cd4a9d5ed22a9c01a8601c831326ed06c3368f2ef7d142b547b56e57"
+        "value": "d1f9d44233e28f3b3fe6c91ba2773ae6338801408006df83a342b6d4120b58e4"
       },
       {
         "name": "clinic:scope",
@@ -833,7 +833,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:4dbaa980-667b-583a-b8be-a2d3ee9cd86e",
+  "serialNumber": "urn:uuid:c4155b1c-e857-5012-a10c-42d6bed6743e",
   "specVersion": "1.5",
   "version": 1
 }
