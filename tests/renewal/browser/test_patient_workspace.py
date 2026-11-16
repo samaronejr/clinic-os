@@ -14,7 +14,7 @@ from renewal.browser._navigation import goto_settled, settle_service_worker
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import full_page_screenshot
+from renewal.browser.engines import full_page_screenshot, history_back
 from renewal.browser.patient_workspace_support import submit as _submit
 from renewal.browser.patient_workspace_support import tab as _tab
 from renewal.browser.specialty_accessibility import (
@@ -153,10 +153,13 @@ def _assert_private_storage(page: Page, data: dict[str, str]) -> None:
         assert sentinel not in kept
 
 
-def _back_reloads_from_server(page: Page) -> None:
+def _back_reloads_from_server(page: Page, url: str) -> None:
     """Back after a tab switch has no cached HTML: a whole new document loads."""
     evaluate_js(page, "() => { document.documentElement.dataset.beforeBack = '1'; }")
-    evaluate_js(page, "() => { history.back(); }")
+    # The document's own Back (engines.py, Session history): htmx answers the
+    # same-document entry with location.reload(), so the navigation may be seen
+    # before the new document commits; the state waits below await that one.
+    history_back(page, url)
     # A cached snapshot or a fragment restore would keep this document.
     expect(page.locator("html[data-before-back]")).to_have_count(0)
     expect(page.locator(".site-header")).to_have_count(1)
@@ -263,7 +266,7 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
     _capture(page, renewal_artifact_root, "keyboard-timeline")
     _tab(page, "overview")
     _assert_private_storage(page, data)
-    _back_reloads_from_server(page)
+    _back_reloads_from_server(page, url)
     _assert_private_storage(page, data)
     browser_report["checks"] = [
         "exact-decimal-comma",
