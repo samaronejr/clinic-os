@@ -34,6 +34,11 @@ CARE_TABLES: Final = frozenset({"ai_careproposal"})
 FRONT_DESK_TABLES: Final = frozenset(
     {"ai_knowledgearticle", "ai_frontdeskthread", "ai_frontdeskturn"}
 )
+# ai.0013 extends these existing tenant ledgers with scoped rollout FKs.
+# No tenant table, policy, runtime table grant or UPDATE column grant is added.
+ROLLOUT_TABLES: Final = frozenset(
+    {"ai_evaluationrun", "ai_modelchangerequest", "ai_aiinvocation", "ai_agentrun"}
+)
 CUSTOM_RLS_TABLES: Final = (
     frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"})
     | AGENT_TABLES

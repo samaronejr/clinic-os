@@ -26,7 +26,8 @@ from apps.ai.action_payload import (
 from apps.ai.agent_policies import TOOL_SCHEMAS
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
-from apps.ai.models import AgentPolicyVersion, AgentRun
+from apps.ai.evaluation.versions import source_versions
+from apps.ai.models import AgentPolicyVersion, AgentRun, ModelConfiguration
 from apps.ai.prompt_registry import load_prompt
 from apps.workflows.models import WorkflowDefinitionVersion
 
@@ -165,6 +166,33 @@ def validate_current(
     )
     if stored_prompt != load_prompt(Purpose(policy.capability))[1]:
         raise ActionRefusedError(Refusal.POLICY)
+    configuration_id = (
+        AgentRun.objects.using(using)
+        .filter(actionproposal__pk=proposal_id)
+        .values_list("configuration_id", flat=True)
+        .first()
+    )
+    if configuration_id is None:
+        raise ActionRefusedError(Refusal.POLICY)
+    configuration = ModelConfiguration.objects.filter(pk=configuration_id).first()
+    if configuration is None or source_versions(Purpose(policy.capability)) != {
+        "prompt": configuration.prompt_sha256,
+        "retrieval": configuration.retrieval_sha256,
+        "schema": configuration.schema_sha256,
+    }:
+        raise ActionRefusedError(Refusal.POLICY)
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_rollout_agent_allowed(%s)",
+            [
+                AgentRun.objects.using(using)
+                .filter(actionproposal__pk=proposal_id)
+                .values_list("pk", flat=True)
+                .first()
+            ],
+        )
+        if cursor.fetchone() != (True,):
+            raise ActionRefusedError(Refusal.POLICY)
     _validate_effect(data, policy, terms)
     _validate_provider(data, controls)
     _validate_sources(data=data, policy=policy, proposal_id=proposal_id, using=using)

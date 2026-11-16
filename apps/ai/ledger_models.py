@@ -67,6 +67,9 @@ class AIInvocation(TenantScopedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     purpose = models.CharField(max_length=24)
     configuration = models.ForeignKey("ai.ModelConfiguration", on_delete=models.PROTECT)
+    rollout_approval = models.ForeignKey(
+        "ai.ModelChangeRequest", null=True, on_delete=models.PROTECT, related_name="+"
+    )
     config_version = models.PositiveIntegerField()
     prompt_sha256 = models.CharField(max_length=64)
     inputs_ref = models.OneToOneField(

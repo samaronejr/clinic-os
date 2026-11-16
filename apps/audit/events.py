@@ -113,6 +113,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
                 "change_rejected",
             )
         },
+        **{
+            f"ai.rollout.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.rollout", state
+            )
+            for state in (
+                "shadow",
+                "reviewed_live",
+                "monitored_autonomy",
+                "invalidated",
+                "killed",
+            )
+        },
         "ai.care_coordination.requested": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ai.invocation", "care_requested"
         ),

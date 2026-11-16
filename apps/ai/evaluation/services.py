@@ -12,7 +12,7 @@ from django.db import connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError
 from apps.ai.evaluation.corpus import CAPABILITIES, load_corpus
 from apps.ai.evaluation.protocol import (
     EvaluationInputError,
@@ -20,16 +20,43 @@ from apps.ai.evaluation.protocol import (
     threshold_hash,
     validate_labels,
 )
+from apps.ai.evaluation.rollout import (
+    STAGES,
+    autonomy_allowed,
+    rollout_status,
+    stop_rollout,
+)
 from apps.ai.evaluation.versions import candidate_versions
 from apps.ai.models import (
     EvaluationProtocol,
     EvaluationRating,
     EvaluationRun,
+    GatewaySwitch,
     ModelChangeRequest,
     ModelConfiguration,
 )
 from apps.audit.services import record_phase1_event
 from apps.identity.models import Clinic
+
+__all__ = (
+    "PURPOSE_CAPABILITIES",
+    "ReviewerAssignment",
+    "authorized_run",
+    "autonomy_allowed",
+    "decide_change",
+    "evaluation_staff",
+    "finish_run",
+    "rate_case",
+    "register_protocol",
+    "request_change",
+    "review_slot",
+    "rollout_status",
+    "start_run",
+    "start_stage_run",
+    "stop_rollout",
+    "store_results",
+    "thresholds_for",
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -155,6 +182,43 @@ def start_run(
     reviewers: ReviewerAssignment,
 ) -> EvaluationRun:
     """Allocate an immutable candidate and three distinct current clinicians."""
+    return _start_run(
+        clinic_id=clinic_id,
+        protocol_id=protocol_id,
+        configuration_id=configuration_id,
+        reviewers=reviewers,
+        approval=None,
+    )
+
+
+@transaction.atomic
+def start_stage_run(
+    *, clinic_id: UUID, change_id: UUID, reviewers: ReviewerAssignment
+) -> EvaluationRun:
+    """Collect isolated evidence under one current, explicitly approved exposure."""
+    status = rollout_status(clinic_id=clinic_id, change_id=change_id)
+    if status not in STAGES or status == "offline":
+        raise GatewayRefusedError(reason="configuration_unavailable")
+    approval = ModelChangeRequest.objects.select_related("run").get(
+        pk=change_id, clinic_id=clinic_id
+    )
+    return _start_run(
+        clinic_id=clinic_id,
+        protocol_id=approval.run.protocol_id,
+        configuration_id=approval.configuration_id,
+        reviewers=reviewers,
+        approval=approval,
+    )
+
+
+def _start_run(
+    *,
+    clinic_id: UUID,
+    protocol_id: UUID,
+    configuration_id: UUID,
+    reviewers: ReviewerAssignment,
+    approval: ModelChangeRequest | None,
+) -> EvaluationRun:
     actor = evaluation_staff(clinic_id=clinic_id, mode="clinical_owner")
     protocol = EvaluationProtocol.objects.filter(
         pk=protocol_id, clinic_id=clinic_id
@@ -180,6 +244,8 @@ def start_run(
         configuration=configuration,
         configuration_version=configuration.version,
         versions=versions,
+        stage=approval.stage if approval is not None else "offline",
+        rollout_approval=approval,
         rater_one_id=reviewers.rater_one,
         rater_two_id=reviewers.rater_two,
         adjudicator_id=reviewers.adjudicator,
@@ -287,12 +353,19 @@ def request_change(*, clinic_id: UUID, run_id: UUID) -> ModelChangeRequest:
     """Request a change without activating even a configuration whose run passed."""
     actor = evaluation_staff(clinic_id=clinic_id, mode="owner")
     run = authorized_run(clinic_id=clinic_id, run_id=run_id)
+    if run.stage not in STAGES:
+        raise EvaluationInputError
+    stage, exposure = STAGES[run.stage]
+    control = GatewaySwitch.objects.filter(pk=1).first()
     change = ModelChangeRequest.objects.create(
         organization_id=run.organization_id,
         clinic_id=clinic_id,
         configuration_id=run.configuration_id,
         run=run,
         requested_by_id=actor,
+        stage=stage,
+        exposure=exposure,
+        switch_generation=control.generation if control is not None else 0,
     )
     record_phase1_event(
         "ai.evaluation.change_requested",
@@ -335,6 +408,12 @@ def decide_change(
         clinic_id=clinic_id,
         affected_record_id=change.pk,
     )
+    if decision == "approved":
+        record_phase1_event(
+            f"ai.rollout.{change.stage}",
+            clinic_id=clinic_id,
+            affected_record_id=change.pk,
+        )
     return change
 
 

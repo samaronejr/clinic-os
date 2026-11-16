@@ -27,6 +27,7 @@ from ai import (
     test_evaluation_runtime,
     test_gateway,
     test_posture,
+    test_rollout,
 )
 from ai.agent_support import agent_world
 from ai.brief_support import seeded
@@ -199,11 +200,23 @@ def exercise_ai_authority(
         test_evaluation_runtime.test_two_independent_reviews_and_explicit_owner_change_are_required,
         test_evaluation_runtime.test_assignments_scope_and_raw_verdict_writes_cannot_be_forged,
         test_evaluation_cli.test_cli_owner_scope_restores_role_after_service_failure_and_denies_runtime_entry,
+        test_rollout.test_progression_requires_reviewed_preceding_stage_and_separate_autonomy,
+        test_rollout.test_native_skipped_stage_and_foreign_receipt_inserts_are_refused,
+        test_rollout.test_revoked_approval_membership_invalidates_the_stage_and_its_receipt,
+        test_rollout.test_kill_is_durable_across_reenable_and_requires_new_stage_evidence,
     ):
         proofs.run(
             f"Evaluation current authority:{evaluation_oracle.__name__}",
             partial(evaluation_oracle, graph()),
         )
+    proofs.run(
+        "Rollout current owner stop and stale receipt",
+        partial(
+            test_rollout.test_stage_receipt_cannot_be_foreign_or_stale,
+            graph(),
+            foreign=False,
+        ),
+    )
     with patch.context() as local:
         test_evaluation_native.fixed_review_freshness._get_wrapped_function()(local)
         proofs.run(

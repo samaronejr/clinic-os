@@ -17,7 +17,7 @@ from apps.ai.action_payload import JSON, ActionPayload, closed, identifier, inte
 from apps.ai.action_validation import validate_current
 from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
-from apps.ai.policy import check_configuration, select_configuration
+from apps.ai.policy import check_configuration, rollout_approval, select_configuration
 from apps.ai.prompt_registry import load_prompt
 from apps.ai.revenue_sources import require_finance
 from apps.audit.services import record_phase1_event
@@ -149,6 +149,11 @@ def propose_action(
         user_id=actor,
         principal_id=policy.principal_id,
         configuration=configuration,
+        rollout_approval_id=rollout_approval(
+            clinic_id=clinic_id,
+            configuration_id=configuration.pk,
+            autonomy=policy.autonomy_ceiling in ("A2", "A3"),
+        ),
         prompt_sha256=prompt_hash,
         trigger=context.trigger,
         contract=contract,

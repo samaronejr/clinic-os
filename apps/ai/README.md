@@ -165,8 +165,10 @@ It stores purpose, capability key, provider/model, region and jurisdiction,
 retention/training terms, integer micro-BRL prices, version, review reference,
 primary/fallback route, timeout, and state. The DB permits only
 `draft -> approved -> active -> retired`, with retirement also possible before
-activation. Todo 47 additionally requires a passing, preregistered evaluation
-and an explicit clinic-owner change approval before activation. The platform
+activation. Todos 47 and 80 additionally require a passing, preregistered
+offline evaluation, an approved isolated shadow stage, a separately reviewed
+shadow receipt and an explicit clinic-owner permission for reviewed use before
+activation. The platform
 owner still performs the model-state transition. Terms never mutate; changes
 require a new version. Model review
 references are synthetic configuration approvals, not provider/EG approvals.
@@ -678,13 +680,15 @@ strata. A synthetic pass and zero observed critical errors are not safety or
 real-world performance claims. Real clinical thresholds, adjudication and lawful
 representative data remain EG-3/EG-11.
 
-`ModelChangeRequest` is requested/approved/rejected. Only a current clinic owner
+`ModelChangeRequest` retains requested/approved/rejected decisions and explicit
+invalidated/killed stops. Only a current clinic owner
 other than its requester can decide it. A single-owner clinic must appoint a
 second independent owner before an evaluated model change can activate; the
 manual clinical workflow remains available. This deliberately accepts the
 onboarding cost rather than a self-approval exception. Approval requires a
 passing, current, unsuperseded run. A separate
-database trigger refuses model activation without that decision; admission and
+database trigger refuses model activation without the reviewed-live decision;
+admission and
 dispatch require the calling clinic's own current approval and recheck current
 source hashes. A platform state transition needs at least one current clinic
 approval, but it does not admit any other clinic. Registering a newer protocol
@@ -707,6 +711,58 @@ additionally names a configuration and three reviewers. `finish`, `report`
 `ai_eval --help` lists the required scope options. Final platform activation
 continues through `ai_gateway model-state`; an evaluation command alone never
 activates a configuration.
+
+Todo 80 extends these same four relations, rather than adding a rollout
+registry. An `EvaluationRun` starts offline. Its independently approved
+`ModelChangeRequest` permits only shadow exposure (`none` for domain use).
+`ai_eval stage-run --change-id ...` creates another immutable evaluation run,
+bound by composite organization/clinic foreign keys to that approval and its
+same model, prompt, retrieval, schema, corpus and threshold registration.
+The existing synthetic runner can store its output only as encrypted evaluation
+observations. It has no domain adapter, tool executor, gateway invocation,
+output artifact or outbox projection. Normal inference and agent admission
+refuse every shadow-only configuration, including raw runtime writes.
+
+Two independent ratings and any required adjudication must finish that shadow
+receipt before a different current owner approves `reviewed_live` exposure
+(`human_review`). This grants no administrative autonomy. Only front-desk and
+analyst configurations can subsequently collect a reviewed-live monitoring
+receipt and obtain another explicit `monitored_autonomy` permission
+(`bounded_admin`). Existing agent policies, finite budgets, allowlisted tools,
+human approvals where required, provider checks and send revalidation continue
+to narrow that permission. Clinical, care and revenue configurations cannot
+obtain this expansion. The deterministic front-desk workflow retains its own
+versioned, bounded policy; this mechanism adds no tool to it.
+
+Each approval captures the exact current owner/clinical-review membership
+identities. Revocation, replacement, inactive humans, a superseding protocol,
+retirement or changed governed bytes invalidate the relevant approval and its
+descendants. `ai_eval stop --change-id ... --state invalidated|killed` retains
+the evidence and emits a registered audit event. A database-maintained global
+kill generation and retained organization disable snapshots permanently kill
+older stage permissions, even after reenabling. A new offline-to-shadow review
+is required. Ordinary budget edits do not create a new permission or revive an
+old one. Invocation and agent-run foreign keys pin the admitted permission;
+new permissions cannot rescue old queued work or retained output. Dispatch,
+settlement, display and agent effects recheck the pinned permission.
+
+The governed identity covers all application/configuration Python and versioned
+JSON/SQL/Markdown resources plus the locked dependency definitions. Discovery
+is automatic, so a newly imported validator, dynamic bridge or fixture cannot
+escape an enumerated file list. The tradeoff is conservative shared
+invalidation across capabilities. The import-closure and each of F5's four
+omitted-file admission mutations are tested. The committed
+`evaluation/engineering-registration.json` pins the engineering threshold hash
+for later source-bound reports; it is not an EG-3 clinical registration.
+
+Migration `0013_staged_rollout` adds only metadata and scoped references to the
+existing FORCE-RLS ledgers. It changes no table/column runtime grants and adds
+no encrypted field. Its RunSQL bodies and schema reverse on the owned empty
+database. The reverse operation refuses retained rollout evidence; after stage
+history, rollback = restore or disable the feature. Historical configurations
+without staged permission stay unavailable. Provider adapters
+remain synthetic/recorded only, and all live, clinical-owner, real-corpus and
+paid legs remain BLOCKED-ON-EG. IS-17 remains PENDING-EXTERNAL under EG-3/EG-11.
 
 Migration `0005_evaluation` adds four durable, FORCE-RLS relations, exact column
 grants, composite scope bindings, no-delete/truncate guards and resolver-owned

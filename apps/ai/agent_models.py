@@ -98,6 +98,9 @@ class AgentRun(AgentRecord):
         on_delete=models.PROTECT,
     )
     configuration = models.ForeignKey("ai.ModelConfiguration", on_delete=models.PROTECT)
+    rollout_approval = models.ForeignKey(
+        "ai.ModelChangeRequest", null=True, on_delete=models.PROTECT, related_name="+"
+    )
     invocation = models.ForeignKey(
         "ai.AIInvocation",
         null=True,

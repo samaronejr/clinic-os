@@ -599,6 +599,13 @@ def test_subscription_services_keep_explicit_scope_and_keyword_only_authority(
             ["clinic_id", "protocol_id", "configuration_id", "reviewers"],
         ),
         (
+            evaluation_services.start_stage_run,
+            ["clinic_id", "change_id", "reviewers"],
+        ),
+        (evaluation_services.rollout_status, ["clinic_id", "change_id"]),
+        (evaluation_services.autonomy_allowed, ["clinic_id", "configuration_id"]),
+        (evaluation_services.stop_rollout, ["clinic_id", "change_id", "state"]),
+        (
             evaluation_services.store_results,
             ["clinic_id", "run_id", "results"],
         ),

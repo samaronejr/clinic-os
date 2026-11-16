@@ -98,7 +98,8 @@
     {
       "symbol": "apps.ai.action_validation.validate_current",
       "signals": [
-        "denial"
+        "denial",
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
@@ -486,6 +487,42 @@
       ]
     },
     {
+      "symbol": "apps.ai.evaluation.rollout.rollout_status",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.rollout.rollout_status#cut1"
+      ],
+      "reason": "Executed todo-80 staged evaluation oracles cover current owner authority, independent shadow review, scoped admission, retained kill generations and refusal at the domain boundary."
+    },
+    {
+      "symbol": "apps.ai.evaluation.rollout.stop_rollout",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.rollout.stop_rollout#cut1"
+      ],
+      "reason": "Executed todo-80 staged evaluation oracles cover current owner authority, independent shadow review, scoped admission, retained kill generations and refusal at the domain boundary."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services._start_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services._start_run#cut1",
+        "apps.ai.evaluation.services._start_run#observed"
+      ],
+      "observe": true,
+      "reason": "Executed todo-80 staged evaluation oracles cover current owner authority, independent shadow review, scoped admission, retained kill generations and refusal at the domain boundary."
+    },
+    {
       "symbol": "apps.ai.evaluation.services.authorized_run",
       "signals": [
         "denial",
@@ -549,19 +586,6 @@
       "probes": [
         "apps.ai.evaluation.services.review_slot#cut1",
         "apps.ai.evaluation.services.review_slot#observed"
-      ],
-      "observe": true,
-      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
-    },
-    {
-      "symbol": "apps.ai.evaluation.services.start_run",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.evaluation.services.start_run#cut1",
-        "apps.ai.evaluation.services.start_run#observed"
       ],
       "observe": true,
       "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
@@ -1066,6 +1090,17 @@
       "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
     },
     {
+      "symbol": "apps.ai.policy.check_rollout_binding",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.policy.check_rollout_binding#cut1"
+      ],
+      "reason": "Executed todo-80 staged evaluation oracles cover current owner authority, independent shadow review, scoped admission, retained kill generations and refusal at the domain boundary."
+    },
+    {
       "symbol": "apps.ai.policy.organization_policy",
       "signals": [
         "resolver"
@@ -1074,6 +1109,17 @@
       "probes": [
         "apps.ai.policy.organization_policy#cut1"
       ]
+    },
+    {
+      "symbol": "apps.ai.policy.rollout_approval",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.policy.rollout_approval#cut1"
+      ],
+      "reason": "Executed todo-80 staged evaluation oracles cover current owner authority, independent shadow review, scoped admission, retained kill generations and refusal at the domain boundary."
     },
     {
       "symbol": "apps.ai.proposals.propose_action",
@@ -10686,6 +10732,10 @@
     "apps.ai.decision_support.request_decision_support#observed",
     "apps.ai.decision_views.decision_support#cut1",
     "apps.ai.decision_views.decision_support#observed",
+    "apps.ai.evaluation.rollout.rollout_status#cut1",
+    "apps.ai.evaluation.rollout.stop_rollout#cut1",
+    "apps.ai.evaluation.services._start_run#cut1",
+    "apps.ai.evaluation.services._start_run#observed",
     "apps.ai.evaluation.services.authorized_run#cut1",
     "apps.ai.evaluation.services.authorized_run#observed",
     "apps.ai.evaluation.services.decide_change#cut1",
@@ -10696,8 +10746,6 @@
     "apps.ai.evaluation.services.finish_run#observed",
     "apps.ai.evaluation.services.review_slot#cut1",
     "apps.ai.evaluation.services.review_slot#observed",
-    "apps.ai.evaluation.services.start_run#cut1",
-    "apps.ai.evaluation.services.start_run#observed",
     "apps.ai.evaluation.services.store_results#cut1",
     "apps.ai.evaluation.services.store_results#observed",
     "apps.ai.evaluation.views._review#cut1",
@@ -10738,7 +10786,9 @@
     "apps.ai.owner.transition_model#cut1",
     "apps.ai.policy.check_configuration#cut1",
     "apps.ai.policy.check_configuration#observed",
+    "apps.ai.policy.check_rollout_binding#cut1",
     "apps.ai.policy.organization_policy#cut1",
+    "apps.ai.policy.rollout_approval#cut1",
     "apps.ai.proposals.propose_action#cut1",
     "apps.ai.services.invoke#cut1",
     "apps.ai.tasks.run_agent#cut1",
@@ -12185,7 +12235,8 @@
     "clinic_app.ai_eval_activation_allowed": {
       "discovery": {
         "migrations": [
-          "apps/ai/migrations/_evaluation_sql.py"
+          "apps/ai/migrations/_evaluation_sql.py",
+          "apps/ai/migrations/_rollout_sql.py"
         ],
         "policies": [],
         "resolvers": [
@@ -12208,7 +12259,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12236,7 +12294,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12264,7 +12329,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12294,7 +12366,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12322,7 +12401,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12354,7 +12440,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12372,7 +12465,8 @@
           "clinic_app.ai_eval_finalize",
           "clinic_app.ai_eval_rating_visible",
           "clinic_app.ai_eval_record_guard",
-          "clinic_app.ai_eval_run_visible"
+          "clinic_app.ai_eval_run_visible",
+          "clinic_app.ai_rollout_status_for"
         ],
         "signatures": [
           {
@@ -12391,7 +12485,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -12402,9 +12503,9 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.ai_eval_activation_allowed",
           "clinic_app.ai_eval_finalize",
-          "clinic_app.ai_eval_record_guard"
+          "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_rollout_status"
         ],
         "signatures": [
           {
@@ -12423,7 +12524,14 @@
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
         "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
@@ -13175,6 +13283,266 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Immutable closed JSON schema validation; reads no staff, tenant, principal or patient state."
+    },
+    "clinic_app.ai_rollout_admission": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "candidate uuid, clinic uuid, autonomy boolean",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_agent_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_rollout_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_authority": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_rollout_guard",
+          "clinic_app.ai_rollout_status"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid, requester uuid, approver uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_bound": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_rollout_admission",
+          "clinic_app.ai_rollout_agent_allowed",
+          "clinic_app.ai_rollout_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid, clinic uuid, autonomy boolean",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_status": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_eval_activation_allowed",
+          "clinic_app.ai_rollout_bound",
+          "clinic_app.ai_rollout_guard",
+          "clinic_app.ai_rollout_status",
+          "clinic_app.ai_rollout_status_for"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Existing-ledger staged AI evaluation protocol. Executed progression, native scope/skip refusal, independent review, authority invalidation and durable kill oracles cover this exact resolver."
+    },
+    "clinic_app.ai_rollout_status_for": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, subject uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
+        "test_offline_approval_cannot_skip_shadow",
+        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
+        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
+        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
+        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
+        "test_revoked_approver_blocks_after_approval",
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+      ],
+      "reason": "Clinic/tenant/current-owner scoped rollout status reader. The unrestricted recursive stage function is resolver-only; executed foreign-tenant direct-call refusal and scoped-reader tests pin the boundary."
     },
     "clinic_app.ai_staff": {
       "discovery": {
@@ -14835,6 +15203,7 @@
           "clinic_app.ai_eval_record_guard",
           "clinic_app.ai_front_desk_audit",
           "clinic_app.ai_front_desk_verify",
+          "clinic_app.ai_rollout_authority",
           "clinic_app.analytics_authorization",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",

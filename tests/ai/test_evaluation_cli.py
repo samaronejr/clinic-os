@@ -15,7 +15,11 @@ from apps.ai.models import EvaluationRun
 from django.core.management import CommandError, call_command
 from django.db import connection
 
-from ai.evaluation_support import as_reviewer, complete_reviews, evaluation_world
+from ai.evaluation_support import (
+    as_reviewer,
+    complete_reviews,
+    evaluation_world,
+)
 from otp_test_support import runtime_role
 
 if TYPE_CHECKING:
@@ -94,6 +98,59 @@ def test_owner_cli_runs_registered_corpus_and_exports_adjudicated_report(
         )
         == "approved"
     )
+    with pytest.raises(CommandError):
+        call_command(
+            "ai_gateway",
+            "model-state",
+            "--configuration-id",
+            str(world.configuration.pk),
+            "--state",
+            "active",
+            stdout=sink,
+        )
+    shadow_metadata = json.loads(
+        call_command(
+            "ai_eval",
+            "stage-run",
+            *common,
+            "--change-id",
+            change,
+            "--rater-one",
+            str(world.reviewers.rater_one),
+            "--rater-two",
+            str(world.reviewers.rater_two),
+            "--adjudicator",
+            str(world.reviewers.adjudicator),
+            stdout=sink,
+        )
+    )
+    with as_reviewer(world, world.owner):
+        shadow_run = EvaluationRun.objects.get(pk=UUID(shadow_metadata["run_id"]))
+    assert shadow_run.stage == "shadow"
+    assert complete_reviews(replace(world, run=shadow_run)).status == "passed"
+    live_change = call_command(
+        "ai_eval",
+        "request-change",
+        *common,
+        "--run-id",
+        str(shadow_run.pk),
+        stdout=sink,
+    )
+    assert (
+        call_command(
+            "ai_eval",
+            "decide",
+            *decider,
+            "--change-id",
+            live_change,
+            "--decision",
+            "approved",
+            "--approval-ref",
+            "synthetic-cli-reviewed-shadow",
+            stdout=sink,
+        )
+        == "approved"
+    )
     assert call_command(
         "ai_gateway",
         "model-state",
@@ -123,6 +180,19 @@ def test_owner_cli_runs_registered_corpus_and_exports_adjudicated_report(
     assert b"<script" not in html.read_bytes()
     (destination / "eval-report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    assert (
+        call_command(
+            "ai_eval",
+            "stop",
+            *common,
+            "--change-id",
+            live_change,
+            "--state",
+            "killed",
+            stdout=sink,
+        )
+        == "killed"
     )
     with pytest.raises(CommandError):
         call_command(
