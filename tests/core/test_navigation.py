@@ -906,6 +906,85 @@ def _patient_token(client: Client, graph: RbacGraph) -> str:
     return str(next(row["token"] for row in rows if row["kind"] == "patient"))
 
 
+@pytest.mark.parametrize("role", ["finance", "receptionist"])
+@pytest.mark.parametrize("htmx", [False, True])
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [("/workspace/command/", OK), (OPTIONS, OK), (CLOSE, FOUND)],
+)
+def test_command_clinic_selectors_preserve_the_session_on_refusal(
+    rbac_graph: RbacGraph, role: str, htmx: bool, path: str, status: int
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    assert _get(client, "/workspace/").status_code == FOUND
+    key = f"{patient_context.SESSION_PREFIX}{rbac_graph.clinic_a}"
+    if role == "receptionist":
+        seed_patients(rbac_graph, user.pk, rbac_graph.clinic_a, (PATIENT,))
+        assert (
+            _post(
+                client, RUN, {"token": _patient_token(client, rbac_graph)}
+            ).status_code
+            == FOUND
+        )
+        assert key in client.session
+    snapshot = dict(client.session)
+    headers = {**_csrf(client), **({"HX-Request": "true"} if htmx else {})}
+    bodies = []
+    for selector in (
+        "",
+        "invalid",
+        str(uuid4()),
+        rbac_graph.clinic_b,
+        rbac_graph.clinic_c,
+    ):
+        with runtime_role(), fixed_otp_time():
+            response = client.post(
+                path, {"clinic_id": str(selector), "q": PATIENT}, headers=headers
+            )
+        assert response.status_code == NOT_FOUND
+        assert response.wsgi_request.session.modified is False
+        unchanged = dict(client.session) == snapshot
+        assert unchanged
+        assert not response.cookies
+        bodies.append(_main(response))
+    assert len(set(bodies)) == 1
+    with runtime_role(), fixed_otp_time():
+        accepted = client.post(
+            path,
+            {"clinic_id": str(rbac_graph.clinic_a).upper(), "q": PATIENT},
+            headers=headers,
+        )
+    assert accepted.status_code == status
+    if path == CLOSE:
+        assert key not in client.session
+
+
+@pytest.mark.parametrize("htmx", [False, True])
+def test_finance_refusal_does_not_render_the_pinned_patient(
+    rbac_graph: RbacGraph, htmx: bool
+) -> None:
+    client, user = _client_for(rbac_graph, "receptionist")
+    seed_patients(rbac_graph, user.pk, rbac_graph.clinic_a, (PATIENT,))
+    assert _get(client, "/workspace/").status_code == FOUND
+    pinned = _post(client, RUN, {"token": _patient_token(client, rbac_graph)})
+    assert pinned.status_code == FOUND
+    finance = reverse("billing:finance", kwargs={"clinic_id": rbac_graph.clinic_a})
+    assert PATIENT in _get(client, finance).content.decode()
+    snapshot = dict(client.session)
+    with runtime_role(), fixed_otp_time():
+        response = client.post(
+            finance,
+            {"action": "invalid"},
+            headers={**_csrf(client), **({"HX-Request": "true"} if htmx else {})},
+        )
+    assert response.status_code == FORBIDDEN
+    assert PATIENT not in response.content.decode()
+    assert response.wsgi_request.session.modified is False
+    unchanged = dict(client.session) == snapshot
+    assert unchanged
+    assert not response.cookies
+
+
 def test_choosing_a_patient_pins_the_banner_without_leaking_identity(
     rbac_graph: RbacGraph,
 ) -> None:
