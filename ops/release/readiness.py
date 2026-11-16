@@ -25,7 +25,12 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, NamedTuple
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
+
+from ops.release import profiles
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 SYSTEM_IDENTIFIER: Final = "clinic-os"
 EVIDENCE_ROOT_ENV: Final = "CLINIC_RELEASE_EVIDENCE_ROOT"
@@ -442,7 +447,11 @@ def _evaluate_record(
             detail.append(f"unexpected fields {extra}")
         return [f"{label}: record violates the closed schema ({'; '.join(detail)})"]
     findings: list[str] = []
-    if not isinstance(capability, str) or capability not in REQUIRED_CAPABILITIES:
+    recognized = {
+        *REQUIRED_CAPABILITIES,
+        *(key for profile in profiles.PROFILES.values() for key in profile.providers),
+    }
+    if not isinstance(capability, str) or capability not in recognized:
         findings.append(f"{label}: unrecognized capability {capability!r}")
     elif path.name != f"{capability}{RECORD_SUFFIX}":
         findings.append(
@@ -472,7 +481,13 @@ def _load_records(root: Path) -> tuple[list[tuple[Path, object]], list[str]]:
     return records, errors
 
 
-def _evaluate(root: Path, mode: str, now: datetime) -> dict[str, Any]:
+def _evaluate(
+    root: Path,
+    mode: str,
+    now: datetime,
+    *,
+    required: tuple[str, ...] = REQUIRED_CAPABILITIES,
+) -> dict[str, Any]:
     """Evaluate one evidence root for one mode and return the report body."""
     records, errors = _load_records(root)
     evaluation = _Evaluation(
@@ -489,19 +504,25 @@ def _evaluate(root: Path, mode: str, now: datetime) -> dict[str, Any]:
         if count > 1:
             errors.append(f"{capability}: {count} records claim the same capability")
     findings_by_capability: dict[str, list[str]] = {
-        capability: [] for capability in REQUIRED_CAPABILITIES
+        capability: [] for capability in required
     }
     for path, record in records:
-        findings = _evaluate_record(path, record, root, evaluation)
         capability = record.get("capability") if isinstance(record, dict) else None
-        if isinstance(capability, str) and capability in REQUIRED_CAPABILITIES:
+        if (
+            isinstance(capability, str)
+            and capability in REQUIRED_CAPABILITIES
+            and capability not in required
+        ):
+            continue
+        findings = _evaluate_record(path, record, root, evaluation)
+        if isinstance(capability, str) and capability in required:
             findings_by_capability[capability].extend(findings)
         else:
             errors.extend(
                 findings or [f"{path.name}: unrecognized capability {capability!r}"]
             )
     capabilities: dict[str, Any] = {}
-    for capability in REQUIRED_CAPABILITIES:
+    for capability in required:
         findings = findings_by_capability[capability]
         if not claimed.get(capability):
             findings = [*findings, "no approval record supplied"]
@@ -553,6 +574,45 @@ def evaluate_evidence(
     return report
 
 
+def evaluate_release(
+    root: Path,
+    mode: str,
+    release_id: str,
+    *,
+    profile_name: str,
+    environment: Mapping[str, str],
+) -> dict[str, Any]:
+    """Check a capability bundle without authorizing or changing live mode."""
+    from ops.release.profile_records import Evaluation, evaluate  # noqa: PLC0415
+
+    evaluated_at = datetime.now(UTC)
+    report = evaluate_evidence(root, mode, release_id, evaluated_at)
+    profile = profiles.PROFILES.get(profile_name)
+    if profile is None:
+        report["ready"] = False
+        report["errors"].append("release profile is unknown")
+        return report
+    if mode == "live":
+        report.update(
+            _evaluate(root, mode, evaluated_at, required=profile.evidence_capabilities)
+        )
+        report["required_capabilities"] = list(profile.evidence_capabilities)
+    result = evaluate(Evaluation(root, profile, release_id, evaluated_at, environment))
+    report["profile"] = profile.name
+    report["required_records"] = list(profile.required_records)
+    report["records"] = result["records"]
+    report["missing_records"] = result["missing_records"]
+    report["errors"].extend(result["errors"])
+    if profile.mode != mode:
+        report["errors"].append(
+            "release profile does not match the requested data mode"
+        )
+    report["missing"].extend(result["missing_records"])
+    report["ready"] = not report["missing"] and not report["errors"]
+    report["availability"] = profiles.availability(profile, ready=report["ready"])
+    return report
+
+
 def _check(arguments: argparse.Namespace) -> int:
     """Run the ``check`` operation and print the JSON report."""
     mode: str = arguments.mode
@@ -578,7 +638,16 @@ def _check(arguments: argparse.Namespace) -> int:
                 f"readiness: {RELEASE_ID_ENV} is required for live checks\n"
             )
             return 2
-    report = evaluate_evidence(root, mode, release_id)
+    if arguments.profile is None:
+        report = evaluate_evidence(root, mode, release_id)
+    else:
+        report = evaluate_release(
+            root,
+            mode,
+            release_id,
+            profile_name=arguments.profile,
+            environment=dict(os.environ),
+        )
     sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return 0 if report["ready"] else 1
 
@@ -589,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     operations = parser.add_subparsers(dest="operation", required=True)
     check = operations.add_parser("check", help="evaluate release-readiness evidence")
     check.add_argument("--mode", choices=("synthetic", "live"), required=True)
+    check.add_argument("--profile", choices=tuple(profiles.PROFILES))
     arguments = parser.parse_args(argv)
     if arguments.operation == "check":
         return _check(arguments)

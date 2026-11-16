@@ -212,6 +212,10 @@ def test_support_reads_masked_diagnostics_until_the_customer_revokes(  # noqa: P
         expect(ready).to_be_visible()
         expect(page.locator("[data-support-queue]").first).to_be_visible()
         expect(page.locator("[data-support-provider]").first).to_be_visible()
+        expect(page.locator("[data-capability-unavailable]").first).to_be_visible()
+        expect(page.locator("[data-capability-unavailable]").first).to_have_text(
+            gettext("Unavailable")
+        )
         body = page.content()
         for hidden in (
             SENTINEL,
