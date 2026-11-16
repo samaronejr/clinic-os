@@ -23,7 +23,7 @@ from renewal.browser.test_patient_access import _redeem
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page, Route
+    from playwright.sync_api import Locator, Page, Route
 
 __all__ = ("availability_staff",)
 PATH = "/patient/appointments/"
@@ -34,6 +34,7 @@ def _seed(
     day: str,
     *,
     name: str = "Paciente Sintético Agendamento",
+    start_hour_utc: int = 11,
 ) -> dict[str, str]:
     data = {
         key: str(uuid4()) for key in ("patient", "enrollment", "grant", "availability")
@@ -98,7 +99,7 @@ def _seed(
                 staff["organization"],
                 staff["clinic_a"],
                 staff["physician_a_id"],
-                day + " 11:00+00",
+                f"{day} {start_hour_utc:02d}:00+00",
                 day + " 15:00+00",
                 str(uuid4()),
                 secrets.token_bytes(32),
@@ -119,12 +120,10 @@ def _choose_day(page: Page, day: str) -> None:
     click_to_navigate(page.get_by_role("button", name="Ver horários"))
 
 
-def _body(page: Page) -> dict[str, str]:
+def _body(slot: Locator) -> dict[str, str]:
     return cast(
         "dict[str, str]",
-        page.locator("[data-slot]").first.evaluate(
-            "form => Object.fromEntries(new FormData(form))"
-        ),
+        slot.evaluate("form => Object.fromEntries(new FormData(form))"),
     )
 
 
@@ -172,7 +171,7 @@ def test_patient_journey(
         _choose_day(page, day)
         expect(page.locator("[data-slot]")).to_have_count(8)
         _capture(page, renewal_artifact_root, "eligible", width)
-        body = _body(page)
+        body = _body(page.locator("[data-slot]").first)
         body["action"] = "book"
         page.locator("[data-slot] button").first.focus()
         with expect_document(page):
@@ -223,7 +222,7 @@ def _failure_journey(
     width = page.viewport_size["width"] if page.viewport_size else 1280
     _choose_day(page, data["day"])
     tampered = {
-        **_body(page),
+        **_body(page.locator("[data-slot]").first),
         "action": "book",
         "enrollment_id": str(uuid4()),
         "practitioner_id": staff["physician_b_id"],
@@ -232,7 +231,7 @@ def _failure_journey(
     assert _post(page, tampered) == 403
     _capture(page, root, "scope-denied", width)
     goto_settled(page, url)
-    stale = {**_body(page), "action": "book"}
+    stale = {**_body(page.locator("[data-slot]").first), "action": "book"}
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
@@ -277,7 +276,9 @@ def test_staff_patient_race(
     availability_staff: dict[str, str],
 ) -> None:
     staff = availability_staff
-    data = _seed(staff, "2035-06-05")
+    # Keep a real earlier slot available: choosing the first form must not
+    # silently turn this race into two valid bookings at different times.
+    data = _seed(staff, "2035-06-05", start_hour_utc=10)
     browser = renewal_page.context.browser
     assert browser is not None
     # Routed requests: WebKit's route() misses service-worker-controlled
@@ -293,7 +294,13 @@ def test_staff_patient_race(
     try:
         _redeem(patient, renewal_base_url, staff["clinic_a"], data["code"])
         goto_settled(patient, renewal_base_url + PATH + "?day=" + data["day"])
-        patient_body = {**_body(patient), "action": "book"}
+        slot = patient.locator("[data-slot]").filter(
+            has=patient.get_by_text(
+                f"08:00\u201308:30 · {staff['physician_a']}", exact=True
+            )
+        )
+        expect(slot).to_have_count(1)
+        patient_body = {**_body(slot), "action": "book"}
         staff_body = _prepare_staff(manager, renewal_base_url, staff, data)
         booking_url = (
             f"{renewal_base_url}/scheduling/clinics/"
