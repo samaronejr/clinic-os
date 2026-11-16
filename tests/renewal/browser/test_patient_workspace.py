@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -9,10 +10,11 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import goto_settled
+from renewal.browser._navigation import goto_settled, settle_service_worker
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import full_page_screenshot
+from renewal.browser.engines import full_page_screenshot, history_back
 from renewal.browser.patient_workspace_support import submit as _submit
 from renewal.browser.patient_workspace_support import tab as _tab
 from renewal.browser.specialty_accessibility import (
@@ -30,6 +32,7 @@ from renewal.browser.specialty_packs_scenario import (
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_retention import post_action
+from renewal.browser.test_workspace_navigation import ALLOWED_SESSION_KEYS, STORAGE_JS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,6 +50,9 @@ __all__ = (
     "test_specialty_pack_offline_and_denial_states",
     "test_specialty_pack_zoom_and_reduced_motion",
 )
+# Synthetic text the journey renders (the patient seeded by
+# test_questionnaires._seed, the reported medication); none may reach storage.
+STORED_SENTINELS = ("Paciente Sintético Questionário", "Medicamento sintético 28")
 
 
 def _patient(staff: dict[str, str], day: str) -> dict[str, str]:
@@ -134,6 +140,31 @@ def _medication_review(page: Page) -> None:
     row.locator('[name="status"]').select_option("active")
     _submit(page, row.locator('button[name="action"][value="reconcile"]'))
     expect(row.locator('[data-provenance="confirmed"]')).to_be_visible()
+
+
+def _assert_private_storage(page: Page, data: dict[str, str]) -> None:
+    """Only htmx's path key may stay: no history HTML, no clinical text (SD-8b)."""
+    stored = evaluate_js(page, STORAGE_JS)
+    assert "htmx-history-cache" not in stored["session"]
+    assert stored["local"] == {}
+    assert set(stored["session"]) <= ALLOWED_SESSION_KEYS
+    kept = json.dumps(stored, ensure_ascii=False)
+    for sentinel in (*STORED_SENTINELS, data["patient"], data["enrollment"]):
+        assert sentinel not in kept
+
+
+def _back_reloads_from_server(page: Page, url: str) -> None:
+    """Back after a tab switch has no cached HTML: a whole new document loads."""
+    evaluate_js(page, "() => { document.documentElement.dataset.beforeBack = '1'; }")
+    # The document's own Back (engines.py, Session history): htmx answers the
+    # same-document entry with location.reload(), so the navigation may be seen
+    # before the new document commits; the state waits below await that one.
+    history_back(page, url)
+    # A cached snapshot or a fragment restore would keep this document.
+    expect(page.locator("html[data-before-back]")).to_have_count(0)
+    expect(page.locator(".site-header")).to_have_count(1)
+    expect(page.locator("#patient-workspace-title")).to_be_visible()
+    settle_service_worker(page)
 
 
 def _vitals(page: Page, artifact_root: Path) -> None:
@@ -234,6 +265,9 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
     expect(page.locator("#patient-workspace-title")).to_be_focused()
     _capture(page, renewal_artifact_root, "keyboard-timeline")
     _tab(page, "overview")
+    _assert_private_storage(page, data)
+    _back_reloads_from_server(page, url)
+    _assert_private_storage(page, data)
     browser_report["checks"] = [
         "exact-decimal-comma",
         "deterministic-bmi",
@@ -245,6 +279,8 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
         "keyboard-sequence-focus",
         "reflow-320-640",
         "reduced-motion",
+        "no-history-html-in-storage",
+        "back-reloads-from-server",
     ]
     check_page(
         page, renewal_base_url, renewal_artifact_root, "patient-workspace-overview"
