@@ -243,6 +243,12 @@ or capability opt-in. Non-synthetic data mode refuses inference. The UI is a TOT
 protected native form at `/clinics/<clinic_id>/settings/ai/`; it shows disabled,
 degraded, validation, conflict, and unconfigured states without displaying
 content or provider credentials. Clinical work remains available manually.
+Manual fallback pages offer no AI control while the global switch or the
+organization opt-in refuses its purpose: Reports hides the analyst question,
+results and attachments hide extraction, and Finance hides the revenue-cycle
+assistant (`ai_availability.ai_enabled`, the same `enabled_policy` check).
+Their POST paths still refuse on their own. The `resilience` browser suite
+finishes every manual fallback with each switch off.
 
 ## Owner CLI
 
