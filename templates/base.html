@@ -1,15 +1,17 @@
 {% load static i18n workspace clinic_branding ui_preferences scheduling_navigation %}
 {% get_current_language as LANGUAGE_CODE %}
-{% block workspace_refusal %}{% endblock %}{% workspace_context as workspace %}
+{# Refusal hooks run for their side effect only: their output is dropped, so no child markup precedes the doctype or the privacy htmx-config (SD-8b). #}
+{% filter slice:":0" %}{% block workspace_refusal %}{% endblock %}{% endfilter %}{% workspace_context as workspace %}
 {% if workspace %}{% ui_preferences as ui %}{% scheduling_settings_links as scheduling_clinics %}{% endif %}
 <!doctype html>
 <html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js" data-theme="{{ ui.theme }}" data-density="{{ ui.density }}"{% endif %}>
   <head>
     <meta charset="utf-8">
+    {# htmx reads the first htmx-config meta; this one renders before every child block. #}
+    <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"attributesToSettle":["class","width","height"],"historyCacheSize":0,"refreshOnHistoryMiss":true}'>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="{% block meta_description %}{% trans "Clinic OS secure clinical workspace." %}{% endblock %}">
     <meta name="theme-color" content="#0f2d3a">
-    <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"attributesToSettle":["class","width","height"]}'>
     <title>{% block title %}Clinic OS{% endblock %}</title>
     <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
     <link rel="icon" href="{% static 'icons/clinic-os.svg' %}" type="image/svg+xml">

@@ -2,8 +2,10 @@
 
 The shipped bytes are the boundary: every first-party script the pages load,
 the scribe capture buffer and the service worker the server actually serves.
-The browser suites (scribe-privacy, scribe-capture) inspect live storage after
-capture; these checks fail first whenever a script gains a storage write.
+Vendored libraries are not exempt: one a template loads may touch storage only
+through a feature the served page configuration switches off.
+The browser suites (scribe-privacy, scribe-capture, patient-workspace) inspect
+live storage; these checks fail first whenever a script gains a storage write.
 """
 
 from __future__ import annotations
@@ -14,7 +16,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from django.test import Client
 
+from infra.test_htmx_history import HTMX_SCRIPT, htmx_config
 from patient_http_support import receptionist_client
 from patient_service_support import runtime_role
 
@@ -28,6 +32,7 @@ STORAGE_API = re.compile(
     r"\b(?:localStorage|sessionStorage|indexedDB|openDatabase|caches\s*\.|"
     r"CacheStorage|navigator\s*\.\s*storage)\b|document\s*\.\s*cookie\s*=(?!=)"
 )
+STATIC_SCRIPT = re.compile(r"""\{%\s*static\s+['"]([^'"]+\.js)['"]\s*%\}""")
 OK = 200
 
 
@@ -51,6 +56,26 @@ def test_first_party_scripts_never_write_browser_storage() -> None:
         if match is not None
     }
     assert offending == {}
+
+
+def test_loaded_vendor_scripts_reach_storage_only_through_disabled_features() -> None:
+    loaded = {
+        match.group(1)
+        for path in (ROOT / "templates").rglob("*.html")
+        for match in STATIC_SCRIPT.finditer(path.read_text(encoding="utf-8"))
+    }
+    storing = sorted(
+        name
+        for name in loaded
+        if name.startswith("vendor/")
+        and STORAGE_API.search((ROOT / "static" / name).read_text(encoding="utf-8"))
+    )
+    # htmx stores the current path and, through its history cache, the page
+    # body; the configuration the shell is served with turns the cache off.
+    assert storing == [HTMX_SCRIPT]
+    page = Client().get("/auth/login/")
+    assert page.status_code == OK
+    assert htmx_config(page.content.decode())["historyCacheSize"] == 0
 
 
 def test_scribe_capture_buffer_is_memory_only_and_capped_from_capture_time() -> None:
