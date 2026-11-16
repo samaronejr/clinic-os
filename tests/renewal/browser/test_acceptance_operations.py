@@ -733,8 +733,11 @@ def test_s18_failed_subscription_payment_restricts_without_losing_care(  # noqa:
     finally:
         context.close()
     # Clinical care continues: a clinician still saves a manual note.
-    note_page = renewal_page.context.new_page()
+    # A previous scenario can leave the receptionist's conversation polling.
+    # Its responses must not share cookies with the physician's fresh login.
+    note_context = staff_context(browser, 1280)
     try:
+        note_page = note_context.new_page()
         open_capture(note_page, renewal_base_url, availability_staff, "2047-04-08")
         with note_page.expect_response(
             lambda response: (
@@ -744,7 +747,7 @@ def test_s18_failed_subscription_payment_restricts_without_losing_care(  # noqa:
             note_page.locator("#id_subjective").fill("Atendimento sintético mantido.")
         assert saved.value.status == OK
     finally:
-        note_page.close()
+        note_context.close()
     flagship.blocked(reference, "saas_collection", "unit_a")
     flagship.cover(
         "S18.subscription-payment-failed",
