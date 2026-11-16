@@ -249,7 +249,7 @@ def _when(moment: datetime, zone: ZoneInfo) -> str:
 
 
 def _globally_enabled() -> bool:
-    """Report the owner's global AI switch; the SQL bridges recheck the opt-ins."""
+    """Report the owner's global AI switch; every SQL bridge rechecks it (ai.0013)."""
     return GatewaySwitch.objects.filter(pk=1, enabled=True).exists()
 
 

@@ -398,8 +398,10 @@ the organization AI policy enables the `front_desk` purpose, and the clinic's
 latest `front_desk` agent policy is enabled at A2 with a service principal that
 still holds `agent.execute`. Turning either off stops every new turn; that is the
 rollback switch. The owner's global AI switch overrides both: while it is off,
-`enqueue_turn` and `run_portal_turn` queue no turn at all. The SQL bridges
-recheck only the two opt-ins. The same assistant answers replies in clinic-opened portal
+`enqueue_turn` and `run_portal_turn` queue no turn at all, and migration
+`0013_front_desk_global_switch` makes the enqueue, turn, verify, state and
+finish bridges require the enabled switch in PostgreSQL as well. Its reverse
+restores the 0008 bodies. The same assistant answers replies in clinic-opened portal
 threads. The live portal session supplies identity; every scheduling call
 separately requires its current `booking` operation. A messages-only session
 cannot gain booking authority through a challenge.

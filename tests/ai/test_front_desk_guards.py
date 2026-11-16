@@ -13,8 +13,12 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.ai import front_desk
 from apps.ai.front_desk_kb import approve_article, draft_article
+from apps.ai.migrations._front_desk_switch_sql import BRIDGES
 from apps.ai.models import FrontDeskThread, FrontDeskTurn, KnowledgeArticle
+from apps.ai.owner import set_global_switch
+from apps.comms import inbox_inbound
 from apps.comms.inbox_inbound import inbound_context
 from apps.comms.models import Message
 from apps.core.secrets import secret_store
@@ -23,9 +27,10 @@ from apps.tenancy.envelope import KEK_SECRET_NAME, protect
 from django.db import DatabaseError, connection
 from django.utils import timezone
 
-from ai.test_front_desk import desk_world, say
+from ai.test_front_desk import STRANGER, desk_world, say
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context, permission_context
+from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -63,6 +68,19 @@ def _raw(sql: str, record: UUID) -> None:
 def _refused(graph: RbacGraph, actor: UUID, forge: Callable[[], object]) -> None:
     with pytest.raises(DatabaseError), permission_context(graph, actor):
         forge()
+
+
+def _claimable(desk: Desk, turn: UUID, kek: str) -> bool:
+    """Whether the turn bridge hands its provider principal this pending turn."""
+    with (
+        runtime_role(),
+        inbound_context(account_id=desk.inbox.account, proof=desk.inbox.key),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "SELECT * FROM clinic_app.ai_front_desk_turn(%s,%s)", [turn, kek]
+        )
+        return cursor.fetchone() is not None
 
 
 def _answered(desk: Desk) -> tuple[FrontDeskThread, FrontDeskTurn]:
@@ -243,3 +261,37 @@ def test_front_desk_sql_rechecks_inactive_and_foreign_actor(
             ).state
             == "approved"
         )
+
+
+def test_front_desk_sql_refuses_while_the_global_switch_is_off(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desk = desk_world(rbac_graph, settings, monkeypatch)
+    kek = secret_store().get_secret(KEK_SECRET_NAME)
+    # No runner answers, so the queued turn stays pending for direct bridge calls.
+    monkeypatch.setattr(inbox_inbound, "_RUNNERS", [])
+    assert say(desk, "Oi") is None
+    with owner_context(rbac_graph.organization_a):
+        turn = FrontDeskTurn.objects.get(state="pending").pk
+    assert _claimable(desk, turn, kek)
+    set_global_switch(enabled=False, approved_regions=("br-synthetic",))
+    # Python admission is bypassed: from here only PostgreSQL decides (ai.0013).
+    monkeypatch.setattr(front_desk, "_globally_enabled", lambda: True)
+    assert not _claimable(desk, turn, kek)
+    assert say(desk, "Oi", sender=STRANGER) is None
+    with owner_context(rbac_graph.organization_a):
+        assert FrontDeskThread.objects.count() == 1
+        assert list(FrontDeskTurn.objects.values_list("id", flat=True)) == [turn]
+    # Every bridge that selects the enabled policy requires the switch too.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT p.proname, p.prosrc FROM pg_catalog.pg_proc p "
+            "JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace "
+            "WHERE n.nspname='clinic_app' AND p.proname = ANY(%s)",
+            [list(BRIDGES)],
+        )
+        bodies = dict(cursor.fetchall())
+    assert sorted(bodies) == sorted(BRIDGES)
+    assert all("clinic_app.ai_gatewayswitch" in body for body in bodies.values())
