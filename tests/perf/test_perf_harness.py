@@ -367,10 +367,16 @@ def test_locust_file_defines_staff_tasks_and_a_correct_totp() -> None:
     done = subprocess.run(  # noqa: S603 - fixed argv
         [sys.executable, "-c", probe],
         cwd=ROOT,
+        # This library probe must not monkey-patch SSL loaded by coverage startup.
+        env={**os.environ, "LOCUST_SKIP_MONKEY_PATCH": "1"},
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
         timeout=60,
+    )
+    assert done.returncode == 0, (
+        f"Locust import probe exited {done.returncode}\n"
+        f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
     )
     assert done.stdout.strip() == "287082"
 
