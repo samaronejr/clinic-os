@@ -50,7 +50,7 @@
     {% timezone clinic_timezone %}
     <p role="status">{% if result.status == "stale" %}{% trans "Stale" %} · {% elif result.status == "partial" %}{% trans "Partial data" %} · {% elif result.status == "null" %}{% trans "No denominator; no rate is inferred." %} · {% else %}{% trans "Fresh" %} · {% endif %}{% trans "Data as of" %} {{ result.as_of|date:"H:i" }} ({{ result.as_of|date:"d/m/Y" }})</p>
     <div class="table-scroll" role="region" aria-labelledby="metric-caption" tabindex="0">
-      <table class="table"><caption id="metric-caption">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
+      <table class="table"><caption id="metric-caption" data-report-metric="{{ result.query.metric_id }}" data-report-start="{{ result.query.start|date:'Y-m-d H:i' }}" data-report-end="{{ result.query.end|date:'Y-m-d H:i' }}">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
         <thead><tr><th scope="col">{% trans "Period" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Numerator" %}</th><th scope="col">{% trans "Denominator" %}</th><th scope="col">{% trans "Unresolved" %}</th></tr></thead>
         <tbody>{% for row in result.rows %}<tr><th scope="row">{{ row.dimension|default:"—" }}</th><td>{% if row.value != None %}{{ row.value }} {% if selected.unit == "percent" %}%{% elif selected.unit == "seconds" %}{% trans "seconds" %}{% elif selected.unit == "minor" %}{% trans "BRL centavos" %}{% endif %}{% else %}{% trans "Unavailable" %}{% endif %}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td><td>{{ row.missing }}</td></tr>{% endfor %}</tbody>
       </table>

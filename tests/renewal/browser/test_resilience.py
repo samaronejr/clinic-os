@@ -77,6 +77,7 @@ from renewal.browser.test_teleconsult import (
     _room_operation,
 )
 from renewal.browser.test_teleconsult import _seed as seed_video
+from renewal.report_descriptor import REPORT_DAY_DESCRIPTOR, governed_report
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -925,6 +926,12 @@ def test_ai_off_leaves_reports_manual(
         ) as refreshed:
             page.locator('button[value="refresh"]').click()
         assert refreshed.value.status == 200
-        expect(page.locator('[data-report-state="fresh"]')).to_be_visible()
+        # The governed result is the selected no_show metric for REPORT_DAY. With
+        # no completed visit that day it has no denominator ("null"), which is
+        # still a complete manual report.
+        expect(page.locator("#metric-caption")).to_be_visible()
+        assert governed_report(page.content()) == REPORT_DAY_DESCRIPTOR | {
+            "state": "null"
+        }
         capture(page, root, f"ai-off-reports-{switch}", width)
     finish_ai_off(staff, root, before, f"reports-{switch}-{width}")
