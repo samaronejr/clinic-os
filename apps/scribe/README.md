@@ -212,6 +212,13 @@ hypotheses. Finalization requires a stopped recording and full coverage or
 explicit, unchecked-by-default acknowledgment of incompleteness. Late model
 results never change a final; correcting one creates a new final successor.
 
+Recognized versions and their segments require authenticated current source
+evidence for the request's original invocation in the writing transaction.
+Settlement supplies that evidence before projecting recognition events.
+Supersession, source drift, stage revocation and either kill switch prevent new
+AI recognition provenance from an old invocation. Clinician correction,
+speaker relabeling and the existing finalization rules remain independent.
+
 An ASR refusal/outage retains audio under its existing policy and leaves
 `transcription_pending`. There is no invented text or automatic replay of an
 unknown charged outcome. The queue action admits only not-yet-requested chunks.

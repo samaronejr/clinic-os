@@ -22610,12 +22610,17 @@
     },
     "clinic_app.scribe_transcript_guard": {
       "kind": "domain_protocol",
-      "reason": "Todo 41 binds immutable requests and transcript successors to their real session, accepted chunk, governed invocation and complete or explicitly acknowledged coverage.",
+      "reason": "Todo 41 binds immutable requests and transcript successors to their real session, accepted chunk, governed invocation and complete or explicitly acknowledged coverage. Todo 80 also fences recognized versions and segments to the exact request invocation and authenticated current source evidence; manual review and finalize rules remain independent.",
       "probes": [
         "test_governed_completion_review_and_final_are_retained_successors",
         "test_finalize_without_full_coverage_requires_explicit_disposition",
         "test_database_coverage_change_is_a_recoverable_transcript_conflict",
-        "test_native_coverage_storage_has_per_version_and_recording_bounds"
+        "test_native_coverage_storage_has_per_version_and_recording_bounds",
+        "test_native_recognition_refuses_invalidated_original_invocation",
+        "test_native_segments_independently_require_current_original_invocation",
+        "test_native_recognition_cannot_reuse_a_prior_transactions_evidence",
+        "test_native_segments_cannot_reuse_a_prior_transactions_evidence",
+        "test_manual_correction_relabel_and_finalization_survive_ai_invalidation"
       ],
       "discovery": {
         "migrations": [
@@ -28283,7 +28288,12 @@
         "test_retained_extraction_cannot_file_after_rollout_invalidation",
         "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
         "test_retained_administrative_care_cannot_repropose_under_new_permission",
-        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+        "test_retained_analyst_review_cannot_borrow_current_model_permission",
+        "test_native_recognition_refuses_invalidated_original_invocation",
+        "test_native_segments_independently_require_current_original_invocation",
+        "test_native_recognition_cannot_reuse_a_prior_transactions_evidence",
+        "test_native_segments_cannot_reuse_a_prior_transactions_evidence",
+        "test_manual_correction_relabel_and_finalization_survive_ai_invalidation"
       ],
       "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
     },
@@ -28312,7 +28322,12 @@
         "test_retained_extraction_cannot_file_after_rollout_invalidation",
         "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
         "test_retained_administrative_care_cannot_repropose_under_new_permission",
-        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+        "test_retained_analyst_review_cannot_borrow_current_model_permission",
+        "test_native_recognition_refuses_invalidated_original_invocation",
+        "test_native_segments_independently_require_current_original_invocation",
+        "test_native_recognition_cannot_reuse_a_prior_transactions_evidence",
+        "test_native_segments_cannot_reuse_a_prior_transactions_evidence",
+        "test_manual_correction_relabel_and_finalization_survive_ai_invalidation"
       ],
       "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
     },
@@ -28332,7 +28347,8 @@
           "clinic_app.ai_rollout_agent_allowed",
           "clinic_app.ai_rollout_guard",
           "clinic_app.analytics_guard",
-          "clinic_app.scribe_draft_guard"
+          "clinic_app.scribe_draft_guard",
+          "clinic_app.scribe_transcript_guard"
         ],
         "signatures": [
           {
@@ -28349,7 +28365,12 @@
         "test_retained_extraction_cannot_file_after_rollout_invalidation",
         "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
         "test_retained_administrative_care_cannot_repropose_under_new_permission",
-        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+        "test_retained_analyst_review_cannot_borrow_current_model_permission",
+        "test_native_recognition_refuses_invalidated_original_invocation",
+        "test_native_segments_independently_require_current_original_invocation",
+        "test_native_recognition_cannot_reuse_a_prior_transactions_evidence",
+        "test_native_segments_cannot_reuse_a_prior_transactions_evidence",
+        "test_manual_correction_relabel_and_finalization_survive_ai_invalidation"
       ],
       "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
     },
@@ -28375,7 +28396,12 @@
         "test_retained_extraction_cannot_file_after_rollout_invalidation",
         "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
         "test_retained_administrative_care_cannot_repropose_under_new_permission",
-        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+        "test_retained_analyst_review_cannot_borrow_current_model_permission",
+        "test_native_recognition_refuses_invalidated_original_invocation",
+        "test_native_segments_independently_require_current_original_invocation",
+        "test_native_recognition_cannot_reuse_a_prior_transactions_evidence",
+        "test_native_segments_cannot_reuse_a_prior_transactions_evidence",
+        "test_manual_correction_relabel_and_finalization_survive_ai_invalidation"
       ],
       "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
     },
