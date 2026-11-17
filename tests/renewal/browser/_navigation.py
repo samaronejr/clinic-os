@@ -82,7 +82,7 @@ is safe once the context has settled (above).
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING, Final, Literal
 
 from playwright.sync_api import Error as PlaywrightError
@@ -150,17 +150,25 @@ def expect_document(
     url: UrlMatch | None = None,
     wait_until: LoadState | None = None,
     timeout: float | None = None,
+    new_document: bool = False,
 ) -> Iterator[EventInfo[Response]]:
     """``page.expect_navigation`` entered only after the worker settled.
 
     ``timeout`` bounds each of the two waits; ``None`` uses the page's
-    default timeout.
+    default timeout. ``new_document`` also awaits the page ``load`` of the
+    document that replaces this one: a same-document step that the page
+    answers with ``location.reload()`` (htmx's Back on a history-cache miss)
+    reports its navigation first, and settling then would evaluate in the
+    document the reload is destroying ("Execution context was destroyed").
     """
     settle_service_worker(page, timeout=timeout)
-    with page.expect_navigation(
-        url=url, wait_until=wait_until, timeout=timeout
-    ) as navigation:
-        yield navigation
+    with ExitStack() as stack:
+        if new_document:
+            stack.enter_context(page.expect_event("load", timeout=timeout))
+        with page.expect_navigation(
+            url=url, wait_until=wait_until, timeout=timeout
+        ) as navigation:
+            yield navigation
     settle_service_worker(page, timeout=timeout)
 
 
