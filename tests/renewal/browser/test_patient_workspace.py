@@ -10,11 +10,15 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import goto_settled, settle_service_worker
+from renewal.browser._navigation import (
+    expect_document,
+    goto_settled,
+    settle_service_worker,
+)
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import full_page_screenshot, history_back
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.patient_workspace_support import submit as _submit
 from renewal.browser.patient_workspace_support import tab as _tab
 from renewal.browser.specialty_accessibility import (
@@ -156,10 +160,10 @@ def _assert_private_storage(page: Page, data: dict[str, str]) -> None:
 def _back_reloads_from_server(page: Page, url: str) -> None:
     """Back after a tab switch has no cached HTML: a whole new document loads."""
     evaluate_js(page, "() => { document.documentElement.dataset.beforeBack = '1'; }")
-    # The document's own Back (engines.py, Session history): htmx answers the
-    # same-document entry with location.reload(), so the navigation may be seen
-    # before the new document commits; the state waits below await that one.
-    history_back(page, url)
+    # The document's own Back (engines.py, Session history). htmx answers the
+    # same-document entry with location.reload(): await the reloaded document.
+    with expect_document(page, url=url, new_document=True):
+        evaluate_js(page, "() => { history.back(); }")
     # A cached snapshot or a fragment restore would keep this document.
     expect(page.locator("html[data-before-back]")).to_have_count(0)
     expect(page.locator(".site-header")).to_have_count(1)
