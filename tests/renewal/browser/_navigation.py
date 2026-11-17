@@ -137,36 +137,46 @@ SETTLE_WAIT_JS: Final = "() => String(window.__clinicSettleWait || 'nothing')"
 # Bounds the one read that names a stuck settle; never a wait for the page.
 SETTLE_PROBE_MS: Final = 2_000
 # Installed before a tracked page's first document (``track_realtime``).
-# Counts the htmx requests of realtime-refreshed regions (an ``rt:`` event in
-# ``hx-trigger``) from ``htmx:beforeSend`` to ``htmx:afterRequest``, which htmx
-# fires on load, error, abort and timeout alike. ``quiet()`` cancels every
-# later trigger at ``htmx:confirm`` (before ``hx-sync`` could abort the request
-# in flight) and resolves once none is in flight: a navigation started then
-# cuts off no refresh, so Firefox and WebKit log no htmx abort or send error.
+# Tracks the htmx requests of realtime-refreshed regions (an ``rt:`` event in
+# ``hx-trigger``) by request identity, not by element. A request joins at
+# ``htmx:beforeSend``, dispatched on the still-attached region with the
+# request's ``detail.xhr``. It leaves at that XMLHttpRequest's own ``loadend``,
+# which fires after load, error, abort and timeout alike. ``htmx:afterRequest``
+# cannot drain it: after an outerHTML swap, htmx 2.0.10 dispatches it on the
+# replaced, detached region (never reaching ``document``) and again on the
+# first surviving ancestor, whose ``detail.elt`` is that ancestor, not the
+# region. ``quiet()`` cancels every later trigger at ``htmx:confirm`` (before
+# ``hx-sync`` could abort the request in flight) and resolves once none is in
+# flight: a navigation started then cuts off no refresh, so Firefox and WebKit
+# log no htmx abort or send error.
 REALTIME_TRACKER_JS: Final = """(() => {
   const realtime = (element) => element instanceof Element &&
     /(^|[\\s,])rt:/.test(element.getAttribute("hx-trigger") || "");
-  let inflight = 0;
+  const inflight = new Set();
   let frozen = false;
   let waiters = [];
+  const drained = () => {
+    if (inflight.size !== 0) return;
+    waiters.forEach((resolve) => resolve(true));
+    waiters = [];
+  };
   document.addEventListener("htmx:confirm", (event) => {
     if (frozen && realtime(event.detail.elt)) event.preventDefault();
   }, true);
   document.addEventListener("htmx:beforeSend", (event) => {
-    if (realtime(event.detail.elt)) inflight += 1;
-  }, true);
-  document.addEventListener("htmx:afterRequest", (event) => {
-    if (!realtime(event.detail.elt)) return;
-    inflight = Math.max(0, inflight - 1);
-    if (inflight === 0) {
-      waiters.forEach((resolve) => resolve(true));
-      waiters = [];
-    }
+    const request = event.detail.xhr;
+    if (!realtime(event.detail.elt) || !request || inflight.has(request)) return;
+    inflight.add(request);
+    request.addEventListener("loadend", () => {
+      inflight.delete(request);
+      drained();
+    }, {once: true});
   }, true);
   window.__clinicRealtime = {
     quiet() {
       frozen = true;
-      return inflight === 0 ? true : new Promise((resolve) => waiters.push(resolve));
+      return inflight.size === 0
+        ? true : new Promise((resolve) => waiters.push(resolve));
     },
     resume() { frozen = false; },
   };

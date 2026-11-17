@@ -33,6 +33,7 @@ from playwright.sync_api import (
 
 from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
+from renewal.browser._navigation import REALTIME_TRACKER_JS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1137,6 +1138,92 @@ def test_navigation_helpers_quiet_tracked_realtime_around_each_navigation() -> N
     assert "track_realtime" in {
         _call_name(node) for node in ast.walk(watch) if isinstance(node, ast.Call)
     }
+
+
+HTMX_SOURCE = REPOSITORY / "static" / "vendor" / "htmx" / "htmx.min.js"
+# htmx 2.0.10's onload, after the swap M(r,T): afterRequest on the original
+# element r, then (when r left the body, as an outerHTML swap does) again on
+# the first surviving ancestor e. ae() rewrites detail.elt to the target.
+HTMX_RETARGET = re.compile(
+    r"g\.onload=function\(\)\{try\{const t=In\(r\);.*?M\(r,T\);.*?"
+    r'ae\(r,"htmx:afterRequest",T\);.*?if\(!se\(r\)\)\{.*?'
+    r'if\(e\)\{ae\(e,"htmx:afterRequest",T\)'
+)
+HTMX_REWRITES_ELT = "function ae(e,t,n){e=S(e);if(n==null){n={}}n.elt=e;"
+# The tracker's rules, read from its own source.
+JOIN = re.compile(
+    r'document\.addEventListener\("(htmx:[\w]+)", \(event\) => \{\s*'
+    r"const request = event\.detail\.xhr;\s*if \(!realtime\(event\.detail\.elt\)"
+)
+REQUEST_LEAVE = re.compile(r'request\.addEventListener\("(\w+)"')
+DOCUMENT_LEAVE = re.compile(
+    r'document\.addEventListener\("(htmx:[\w]+)", \(event\) => \{\s*'
+    r"if \(!realtime\(event\.detail\.elt\)\) return;\s*inflight"
+)
+
+
+def _drains(tracker: str, completion: list[tuple[str, str, bool]]) -> bool:
+    """Replay one region refresh through the tracker's join and leave rules.
+
+    ``completion`` lists (event, detail.elt kind, dispatched on an attached
+    node). Document listeners hear only attached dispatches; a listener on the
+    request itself always hears its request's events.
+    """
+    join = JOIN.search(tracker)
+    joined_on = join.group(1) if join else "htmx:beforeSend"
+    request_leave = REQUEST_LEAVE.findall(tracker)
+    document_leave = DOCUMENT_LEAVE.findall(tracker)
+    inflight = 1 if joined_on == "htmx:beforeSend" else 0  # region, attached
+    for event, elt, attached in completion:
+        if event in request_leave or (
+            event in document_leave and attached and elt == "region"
+        ):
+            inflight = 0
+    return inflight == 0
+
+
+# 5fa335bb's completion rule: filtered by the event's element, not its request.
+ELEMENT_KEYED_TRACKER = """
+  document.addEventListener("htmx:afterRequest", (event) => {
+    if (!realtime(event.detail.elt)) return;
+    inflight = Math.max(0, inflight - 1);
+  }, true);
+"""
+# What htmx dispatches for one region request on each completion path.
+COMPLETIONS = {
+    "load + outerHTML swap": [
+        ("htmx:afterRequest", "region", False),  # on r, replaced and detached
+        ("htmx:afterRequest", "ancestor", True),  # on the surviving ancestor
+        ("loadend", "request", True),
+    ],
+    "load, no swap away": [
+        ("htmx:afterRequest", "region", True),
+        ("loadend", "request", True),
+    ],
+    "error": [("htmx:afterRequest", "region", True), ("loadend", "request", True)],
+    "abort": [("htmx:afterRequest", "region", True), ("loadend", "request", True)],
+    "timeout": [
+        ("htmx:afterRequest", "region", True),
+        ("loadend", "request", True),
+    ],
+}
+
+
+def test_realtime_tracker_drains_by_request_identity_on_every_completion() -> None:
+    htmx = HTMX_SOURCE.read_text(encoding="utf-8")
+    assert HTMX_RETARGET.search(htmx), "re-check htmx's afterRequest retarget"
+    assert HTMX_REWRITES_ELT in htmx
+    tracker = REALTIME_TRACKER_JS
+    assert JOIN.search(tracker) is not None
+    assert REQUEST_LEAVE.findall(tracker) == ["loadend"]
+    assert "htmx:afterRequest" not in tracker
+    assert {path: _drains(tracker, events) for path, events in COMPLETIONS.items()} == (
+        dict.fromkeys(COMPLETIONS, True)
+    )
+    # Control: the element-keyed completion of 5fa335bb never drains after an
+    # outerHTML swap, so the model is not vacuous.
+    assert DOCUMENT_LEAVE.findall(ELEMENT_KEYED_TRACKER) == ["htmx:afterRequest"]
+    assert not _drains(ELEMENT_KEYED_TRACKER, COMPLETIONS["load + outerHTML swap"])
 
 
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
