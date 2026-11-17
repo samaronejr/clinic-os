@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from typing import TYPE_CHECKING, Final
@@ -925,6 +926,11 @@ def test_ai_off_leaves_reports_manual(
         ) as refreshed:
             page.locator('button[value="refresh"]').click()
         assert refreshed.value.status == 200
-        expect(page.locator('[data-report-state="fresh"]')).to_be_visible()
+        # A governed result renders; with no completed visit that day it has no
+        # denominator ("null"), which is still a complete manual report.
+        expect(page.locator("#metric-caption")).to_be_visible()
+        expect(page.locator("[data-report-state]")).to_have_attribute(
+            "data-report-state", re.compile(r"^(fresh|null)$")
+        )
         capture(page, root, f"ai-off-reports-{switch}", width)
     finish_ai_off(staff, root, before, f"reports-{switch}-{width}")
