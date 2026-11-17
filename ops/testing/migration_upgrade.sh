@@ -102,6 +102,7 @@ echo "== seed representative data at base revision =="
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_HELPER_ROOT="$project_root" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_seed.py")
 
