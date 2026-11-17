@@ -1201,20 +1201,122 @@ def _js_block(text: str, brace: int) -> str:
     pytest.fail("unbalanced block in the tracker script")
 
 
+IIFE = re.compile(r"\A\s*\(\(\) => \{")
+IIFE_CALL = re.compile(r"\}\)\(\);\s*\Z")
+
+
+def _strip_js(text: str) -> str:
+    """``text`` without ``//`` and ``/* */`` comments; string literals kept."""
+    kept: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        char, pair = text[index], text[index : index + 2]
+        if quote is not None:
+            kept.append(char)
+            if char == "\\" and index + 1 < len(text):
+                kept.append(text[index + 1])
+                index += 1
+            elif char == quote:
+                quote = None
+        elif pair == "//":
+            index = text.find("\n", index)
+            index = len(text) if index < 0 else index
+            continue
+        elif pair == "/*":
+            close = text.find("*/", index + 2)
+            index = len(text) if close < 0 else close + 2
+            continue
+        else:
+            if char in "'\"`":
+                quote = char
+            kept.append(char)
+        index += 1
+    return "".join(kept)
+
+
+def _blank_strings(text: str) -> str:
+    """``text`` with string-literal contents blanked; offsets unchanged."""
+    out = list(text)
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote is None:
+            quote = char if char in "'\"`" else None
+        elif char == "\\":
+            out[index] = " "
+            if index + 1 < len(text):
+                out[index + 1] = " "
+            index += 1
+        elif char == quote:
+            quote = None
+        else:
+            out[index] = " "
+        index += 1
+    return "".join(out)
+
+
+def _executed(body: str) -> list[int]:
+    """Offsets in ``body`` that run each time ``body`` runs.
+
+    Statement starts at brace depth 0, up to the first statement-level
+    ``return``: nothing inside a nested function or block (an uncalled
+    function, ``if (false) { ... }``), and nothing after the return. A guard
+    such as ``if (...) return;`` is conditional and does not end the path.
+    """
+    code = _blank_strings(body)
+    starts: list[int] = []
+    depth = 0
+    statement = True
+    for index, char in enumerate(code):
+        if char in "{}":
+            depth += 1 if char == "{" else -1
+            statement = char == "{" or depth == 0
+        elif char == ";" and depth == 0:
+            statement = True
+        elif statement and depth == 0 and not char.isspace():
+            if re.match(r"return\b", code[index:]):
+                break
+            starts.append(index)
+            statement = False
+    return starts
+
+
+def _on_path(pattern: re.Pattern[str], body: str) -> re.Match[str] | None:
+    """The first ``pattern`` match that starts an executed statement of ``body``."""
+    starts = set(_executed(body))
+    return next((m for m in pattern.finditer(body) if m.start() in starts), None)
+
+
 def _tracker_rules(script: str) -> TrackerRules | None:
-    """The add and remove registrations, or ``None`` when nothing adds."""
-    for listener in DOCUMENT_LISTENER.finditer(script):
-        body = _js_block(script, listener.end() - 1)
-        binding = KEY_BINDING.search(body)
-        add = ADD.search(body)
+    """The executed add and remove registrations, or ``None`` when nothing adds.
+
+    Comments are stripped, the script must be an invoked arrow IIFE, and each
+    registration counts only on its body's executed path.
+    """
+    code = _strip_js(script)
+    head = IIFE.match(code)
+    if head is None or IIFE_CALL.search(code) is None:
+        return None
+    install = _js_block(code, head.end() - 1)
+    installed = set(_executed(install))
+    for listener in DOCUMENT_LISTENER.finditer(install):
+        if listener.start() not in installed:
+            continue
+        body = _js_block(install, listener.end() - 1)
+        binding = _on_path(KEY_BINDING, body)
+        add = _on_path(ADD, body)
         if binding is None or add is None or add.group(1) != binding.group(1):
             continue
-        guard = HINT_GUARD.search(body)
+        guard = _on_path(HINT_GUARD, body)
         remove_on, removes_key = "", False
         for inner in OBJECT_LISTENER.finditer(body):
+            if inner.start() not in set(_executed(body)):
+                continue
             if inner.group(1) != binding.group(1) or inner.start() < add.start():
                 continue
-            delete = DELETE.search(_js_block(body, inner.end() - 1))
+            delete = _on_path(DELETE, _js_block(body, inner.end() - 1))
             if delete is not None:
                 remove_on = inner.group(2)
                 removes_key = delete.group(1) == binding.group(1)
@@ -1278,6 +1380,37 @@ def _replay(rules: TrackerRules, path: str) -> tuple[set[str], set[str]]:
     return sent, inflight
 
 
+TRACKER_RULES = TrackerRules(
+    add_on="htmx:beforeSend",
+    key="xhr",
+    hint_only=True,
+    remove_on="loadend",
+    removes_key=True,
+)
+ADD_LINE = "    inflight.add(request);\n"
+DELETE_LINE = "      inflight.delete(request);\n"
+# Registrations that never run, each made the only add or remove.
+UNEXECUTED = {
+    "commented-out add": (ADD_LINE, "    // inflight.add(request);\n"),
+    "commented-out remove": (DELETE_LINE, "      /* inflight.delete(request); */\n"),
+    "add in an uncalled function": (
+        ADD_LINE,
+        "    const unused = () => { inflight.add(request); };\n",
+    ),
+    "add after return": (ADD_LINE, "    return;\n    inflight.add(request);\n"),
+    "add in a dead branch": (ADD_LINE, "    if (false) { inflight.add(request); }\n"),
+}
+
+
+@pytest.mark.parametrize("decoy", sorted(UNEXECUTED))
+def test_tracker_rules_count_only_executed_registrations(decoy: str) -> None:
+    old, new = UNEXECUTED[decoy]
+    assert REALTIME_TRACKER_JS.count(old) == 1
+    variant = REALTIME_TRACKER_JS.replace(old, new)
+
+    assert _tracker_rules(variant) != TRACKER_RULES
+
+
 def test_realtime_tracker_drains_by_request_identity_on_every_completion() -> None:
     htmx = HTMX_SOURCE.read_text(encoding="utf-8")
     assert HTMX_RETARGET.search(htmx), "re-check htmx's afterRequest retarget"
@@ -1287,13 +1420,7 @@ def test_realtime_tracker_drains_by_request_identity_on_every_completion() -> No
     rules = _tracker_rules(REALTIME_TRACKER_JS)
 
     assert rules is not None, "no listener adds a request to the in-flight set"
-    assert rules == TrackerRules(
-        add_on="htmx:beforeSend",
-        key="xhr",
-        hint_only=True,
-        remove_on="loadend",
-        removes_key=True,
-    )
+    assert rules == TRACKER_RULES
     replays = {path: _replay(rules, path) for path in COMPLETIONS}
     # Only the hint-driven region's request is tracked, and every completion
     # path drains it, including after an outerHTML swap.
