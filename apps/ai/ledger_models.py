@@ -70,6 +70,7 @@ class AIInvocation(TenantScopedModel):
     rollout_approval = models.ForeignKey(
         "ai.ModelChangeRequest", null=True, on_delete=models.PROTECT, related_name="+"
     )
+    effect_xid = models.CharField(max_length=20, blank=True, default="")
     config_version = models.PositiveIntegerField()
     prompt_sha256 = models.CharField(max_length=64)
     inputs_ref = models.OneToOneField(

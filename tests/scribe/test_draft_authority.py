@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.ai.contracts import Purpose
 from apps.scribe.draft_contracts import DraftAccessDeniedError, ReviewInput
 from apps.scribe.draft_sources import note_frame
 from apps.scribe.models import DraftSectionSuggestion, ReviewDecision
@@ -13,6 +14,7 @@ from apps.scribe.reviews import review_suggestion
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, IntegrityError, connection, transaction
 
+from ai.retained_rollout_support import authorize_native
 from patient_service_support import runtime_role
 from scribe.draft_support import generate
 from scribe.test_draft_runtime import draft_world
@@ -159,6 +161,11 @@ def test_raw_review_guard_enforces_applied_text_by_decision_kind(
                 [decision.pk],
             )
             assert cursor.fetchone() == (True,)
+        assert authorize_native(
+            invocation_id=queued.invocation_id,
+            clinic_id=graph.clinic_a,
+            purpose=Purpose.SCRIBE_DRAFT,
+        )
         for action, payload in (
             ("accepted", None),
             ("modified", None),

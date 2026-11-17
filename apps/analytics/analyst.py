@@ -14,6 +14,7 @@ from apps.ai.contracts import (
     Purpose,
     Usage,
 )
+from apps.ai.effects import check_invocation
 from apps.ai.models import AIInvocation
 from apps.ai.policy import check_configuration, enabled_policy
 from apps.ai.services import invoke
@@ -139,6 +140,7 @@ def review_proposal(
         raise AnalyticsConflictError
     actor, _version = authorize(clinic_id=clinic_id, metric_id=query.metric_id)
     invocation = AIInvocation.objects.select_for_update().get(pk=invocation_id)
+    check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
     previous = AnalystReview.objects.filter(invocation=invocation).first()
     if previous is not None:
         if previous.decision != decision or previous.descriptor != query.payload():
@@ -162,4 +164,5 @@ def review_proposal(
         )
     if decision == "rejected":
         return None
+    check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
     return refresh_metric(clinic_id=clinic_id, query=query, command_id=invocation_id)

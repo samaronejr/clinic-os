@@ -259,6 +259,11 @@ unchanged. Otherwise, a changed epoch or C != B is a conflict, including a
 deletion or edit followed by revert. Only an untouched section can take M.
 Acceptance always calls the clinician's own `record_clinical_note` with CAS.
 An explicit edited replacement is a clinician decision, not an automatic merge.
+Before applying retained output, review rechecks the draft invocation's original
+rollout permission and fresh governed source identity. The native review guard
+requires authenticated evidence for that invocation and transaction as well.
+A new model permission cannot revive an older draft after drift, revocation or
+a kill switch; manual clinical documentation remains available.
 Refused commands roll back every effect, including read audits; the HTTP boundary
 does not mutate the session. Refresh preserves posted unsaved content and refuses
 to silently rebase it onto another editor's revision.

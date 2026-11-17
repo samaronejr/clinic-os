@@ -26,6 +26,7 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET, model, seed
 from ai.test_extraction import pdf_fixture
 from auth.stepup_test_support import verified_request
@@ -192,8 +193,14 @@ def test_extraction_sql_rechecks_inactive_and_foreign_actor(
                 "set_config('app.current_tenant',%s,true)",
                 [str(rbac_graph.physician), str(tenant)],
             )
-            cursor.execute(query, arguments)
             allowed = active and tenant == rbac_graph.organization_a
+            if allowed:
+                assert authorize_native(
+                    invocation_id=job.invocation_id,
+                    clinic_id=job.clinic_id,
+                    purpose=Purpose.EXTRACTION,
+                )
+            cursor.execute(query, arguments)
             assert cursor.fetchone() == (allowed, allowed, allowed)
             if allowed:
                 continue

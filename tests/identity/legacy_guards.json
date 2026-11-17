@@ -847,6 +847,18 @@
       "reason": "Authenticates only an inbox principal and its verified-contact enrollment, limits challenge attempts, and mints a booking-only session after a successful challenge. Portal sessions are refused and cannot widen their existing scope."
     },
     {
+      "symbol": "apps.ai.effects.check_invocation",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.effects.check_invocation#cut1"
+      ],
+      "reason": "Executed retained-output and gateway witnesses recheck exact clinic, current source identity, original stage authority and kill switches; native source receipts cannot give retained output a later permission."
+    },
+    {
       "symbol": "apps.ai.front_desk._authorize",
       "signals": [
         "resolver"
@@ -11456,6 +11468,7 @@
     "clinic_app.user_has_org",
     "clinic_app.user_organizations",
     "clinic_app.waitlist_staff",
+    "apps.ai.effects.check_invocation#cut1",
     "apps.ai.front_desk._authorize#cut1",
     "apps.ai.front_desk._enqueue#cut1",
     "apps.ai.front_desk._propose#cut1"
@@ -12633,8 +12646,11 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_authorize_effect",
           "clinic_app.ai_care_guard",
-          "clinic_app.ai_care_visible"
+          "clinic_app.ai_care_visible",
+          "clinic_app.ai_effect_allowed",
+          "clinic_app.ai_effect_source"
         ],
         "signatures": [
           {
@@ -13298,6 +13314,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_effect_allowed",
           "clinic_app.ai_ledger_guard",
           "clinic_app.configuration_guard"
         ],
@@ -13473,6 +13490,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_effect_allowed",
           "clinic_app.ai_rollout_admission",
           "clinic_app.ai_rollout_agent_allowed",
           "clinic_app.ai_rollout_guard"
@@ -13626,6 +13644,9 @@
           "clinic_app.ai_aiartifact:ai_artifact_user"
         ],
         "resolvers": [
+          "clinic_app.ai_authorize_effect",
+          "clinic_app.ai_effect_allowed",
+          "clinic_app.ai_effect_source",
           "clinic_app.ai_ledger_guard",
           "clinic_app.ai_revenue_row",
           "clinic_app.retention_purge_visible"
@@ -18888,6 +18909,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_authorize_effect",
           "clinic_app.ai_front_desk_authorize",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
@@ -28208,6 +28230,122 @@
         "test_delegate_read_appears_in_the_represented_patients_access_log",
         "test_delegate_result_read_appears_in_the_represented_patients_access_log"
       ]
+    },
+    "clinic_app.ai_authorize_effect": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_effect_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, clinic uuid, receipt bytea, kek text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_draft_cannot_apply_after_rollout_invalidation",
+        "test_retained_extraction_cannot_file_after_rollout_invalidation",
+        "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
+        "test_retained_administrative_care_cannot_repropose_under_new_permission",
+        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+      ],
+      "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
+    },
+    "clinic_app.ai_effect_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_effect_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_authorize_effect",
+          "clinic_app.ai_effect_current"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid, clinic uuid, observed jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_draft_cannot_apply_after_rollout_invalidation",
+        "test_retained_extraction_cannot_file_after_rollout_invalidation",
+        "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
+        "test_retained_administrative_care_cannot_repropose_under_new_permission",
+        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+      ],
+      "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
+    },
+    "clinic_app.ai_effect_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_effect_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_extraction_guard",
+          "clinic_app.ai_imported_observation",
+          "clinic_app.ai_review_extraction",
+          "clinic_app.ai_rollout_agent_allowed",
+          "clinic_app.ai_rollout_guard",
+          "clinic_app.analytics_guard",
+          "clinic_app.scribe_draft_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid, clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_draft_cannot_apply_after_rollout_invalidation",
+        "test_retained_extraction_cannot_file_after_rollout_invalidation",
+        "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
+        "test_retained_administrative_care_cannot_repropose_under_new_permission",
+        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+      ],
+      "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
+    },
+    "clinic_app.ai_effect_source": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_effect_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, clinic uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_draft_cannot_apply_after_rollout_invalidation",
+        "test_retained_extraction_cannot_file_after_rollout_invalidation",
+        "test_retained_clinical_care_cannot_apply_after_rollout_invalidation",
+        "test_retained_administrative_care_cannot_repropose_under_new_permission",
+        "test_retained_analyst_review_cannot_borrow_current_model_permission"
+      ],
+      "reason": "Scoped retained-invocation metadata and authenticated current-transaction source evidence protect scribe, extraction, care and analyst effects. The native matrices bypass Python admission and exercise drift, kills, revoked authority and later-permission non-rescue; private predicates have no runtime EXECUTE."
     },
     "clinic_app.ai_front_desk_allowed": {
       "discovery": {

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.contracts import GatewayAccessDeniedError, Purpose
 from apps.ai.extraction import (
     candidate_data,
     collect_extraction,
@@ -36,6 +36,7 @@ from apps.tenancy.envelope import protect
 from django.db import DatabaseError, connection, transaction
 from psycopg import sql
 
+from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
 from ai.test_extraction import pdf_fixture
 from ai.test_extraction_runtime import extracted_job
@@ -76,8 +77,15 @@ def matching_submission(job: ExtractionJob) -> ResultInput:
         )
 
 
-def raw_confirmation(row: ExtractionCandidateRecord, target: UUID) -> tuple[UUID, bool]:
+def raw_confirmation(
+    row: ExtractionCandidateRecord, target: UUID, *, clinic_id: UUID | None = None
+) -> tuple[UUID, bool]:
     """Bypass Python checks, but send the real encrypted confirmation envelope."""
+    authorize_native(
+        invocation_id=row.job.invocation_id,
+        clinic_id=row.clinic_id if clinic_id is None else clinic_id,
+        purpose=Purpose.EXTRACTION,
+    )
     payload = filing_payload(candidate_data(row), confirmer=str(row.job.user_id))
     payload["extraction_candidate"] = str(row.pk)
     source = protect(

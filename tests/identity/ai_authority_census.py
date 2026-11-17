@@ -25,6 +25,7 @@ from ai import (
     test_evaluation_cli,
     test_evaluation_native,
     test_evaluation_runtime,
+    test_extraction_rollout,
     test_gateway,
     test_posture,
     test_rollout,
@@ -217,6 +218,18 @@ def exercise_ai_authority(
             foreign=False,
         ),
     )
+    for native in (False, True):
+        with patch.context() as local:
+            proofs.run(
+                f"Retained invocation cannot borrow a new permission:{native}",
+                partial(
+                    test_extraction_rollout.test_retained_extraction_cannot_file_after_rollout_invalidation,
+                    graph(),
+                    local,
+                    "advanced_stage",
+                    native,
+                ),
+            )
     with patch.context() as local:
         test_evaluation_native.fixed_review_freshness._get_wrapped_function()(local)
         proofs.run(

@@ -368,6 +368,11 @@ treatment or messages a patient.
 - **Clinician decisions.** A clinical item becomes a care action only when the
   patient's clinician accepts it through `add_care_action`, which records them
   as its approver; staff can only decline administrative items.
+- **Retained output.** Clinical acceptance and administrative proposal, approval
+  and execution recheck the originating bundle's exact invocation permission
+  and current governed source identity. A later model configuration or agent
+  permission cannot authorize an older bundle. The native care and agent guards
+  require the same authenticated invocation evidence before committing effects.
 - **Stale sources (scenario 8 variant).** A superseded plan, a changed plan
   revision or a source note that is no longer finalized makes every pending
   item stale at its next approval or acceptance, in the service and again in
@@ -651,6 +656,9 @@ independently identity-matched result version with identical source bytes and
 enrollment. The clinician must first use the existing result ingestion and
 identity verification workflow. The resolver checks the same bindings, expiry,
 deterministic parse and exact encrypted confirmation payload independently.
+Confirmation also rechecks the originating invocation's pinned rollout permission
+and current source identity before filing. The confirmation resolver and imported
+observation guard independently require its authenticated transaction receipt.
 It shares the result-series correction/review fence. One confirmation creates
 one immutable `ResultObservation`, with `provenance="imported"`, confirmer,
 candidate id and page/bbox. Replays do not create another observation.
@@ -796,6 +804,22 @@ is required. Ordinary budget edits do not create a new permission or revive an
 old one. Invocation and agent-run foreign keys pin the admitted permission;
 new permissions cannot rescue old queued work or retained output. Dispatch,
 settlement, display and agent effects recheck the pinned permission.
+
+Retained note acceptance, extraction confirmation, care acceptance or
+administrative reproposal, and analyst review provenance retain that same
+invocation ancestry. `effects.check_invocation` resolves only clinic-scoped
+configuration and permission metadata, computes fresh governed source identities,
+and supplies encrypted evidence through the existing tenant envelope. PostgreSQL
+checks the pinned permission, current human authority, source identity, provider
+and kill switches before stamping `AIInvocation.effect_xid` for this transaction.
+Runtime cannot write that column. Private native predicates require the stamp
+and recheck current permission before domain effects; a later permission cannot
+rescue an old invocation. Independent human charting and result workflows retain
+their existing authority.
+
+Migration `0016_retained_effects` adds only that invocation metadata
+and resolver column grant, preserving the previous global-switch and front-desk
+checks. Empty installations can reverse; retained effect receipts require restore.
 
 The governed identity covers all application/configuration Python and versioned
 JSON/SQL/Markdown resources plus the locked dependency definitions. Discovery
