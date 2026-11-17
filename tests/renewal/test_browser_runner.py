@@ -13,6 +13,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -1150,80 +1151,153 @@ HTMX_RETARGET = re.compile(
     r'if\(e\)\{ae\(e,"htmx:afterRequest",T\)'
 )
 HTMX_REWRITES_ELT = "function ae(e,t,n){e=S(e);if(n==null){n={}}n.elt=e;"
-# The tracker's rules, read from its own source.
-JOIN = re.compile(
-    r'document\.addEventListener\("(htmx:[\w]+)", \(event\) => \{\s*'
-    r"const request = event\.detail\.xhr;\s*if \(!realtime\(event\.detail\.elt\)"
+# The tracker's registrations, parsed from its own text (``_tracker_rules``).
+DOCUMENT_LISTENER = re.compile(
+    r'document\.addEventListener\("([\w:]+)", \(event\) => \{'
 )
-REQUEST_LEAVE = re.compile(r'request\.addEventListener\("(\w+)"')
-DOCUMENT_LEAVE = re.compile(
-    r'document\.addEventListener\("(htmx:[\w]+)", \(event\) => \{\s*'
-    r"if \(!realtime\(event\.detail\.elt\)\) return;\s*inflight"
+KEY_BINDING = re.compile(r"const (\w+) = event\.detail\.(\w+);")
+HINT_GUARD = re.compile(r"if \(!realtime\(event\.detail\.elt\)[^\n]*\) return;")
+ADD = re.compile(r"inflight\.add\((\w+)\);")
+OBJECT_LISTENER = re.compile(r'(\w+)\.addEventListener\("([\w:]+)", \(\) => \{')
+DELETE = re.compile(r"inflight\.delete\((\w+)\);")
+HINT_REGIONS = re.compile(
+    r"const realtime = \(element\) => element instanceof Element &&\s*"
+    r'/\(\^\|\[\\s,\]\)rt:/\.test\(element\.getAttribute\("hx-trigger"\)'
 )
 
 
-def _drains(tracker: str, completion: list[tuple[str, str, bool]]) -> bool:
-    """Replay one region refresh through the tracker's join and leave rules.
+@dataclass(frozen=True)
+class TrackerRules:
+    """What the tracker script registers to add and remove one request."""
 
-    ``completion`` lists (event, detail.elt kind, dispatched on an attached
-    node). Document listeners hear only attached dispatches; a listener on the
-    request itself always hears its request's events.
-    """
-    join = JOIN.search(tracker)
-    joined_on = join.group(1) if join else "htmx:beforeSend"
-    request_leave = REQUEST_LEAVE.findall(tracker)
-    document_leave = DOCUMENT_LEAVE.findall(tracker)
-    inflight = 1 if joined_on == "htmx:beforeSend" else 0  # region, attached
-    for event, elt, attached in completion:
-        if event in request_leave or (
-            event in document_leave and attached and elt == "region"
-        ):
-            inflight = 0
-    return inflight == 0
+    add_on: str  # the document event whose listener adds the request
+    key: str  # the event.detail field the request is keyed by
+    hint_only: bool  # the add is guarded by the hint-region predicate
+    remove_on: str  # the event, on the keyed object, whose listener removes it
+    removes_key: bool  # that listener deletes the same key the add added
 
 
-# 5fa335bb's completion rule: filtered by the event's element, not its request.
-ELEMENT_KEYED_TRACKER = """
-  document.addEventListener("htmx:afterRequest", (event) => {
-    if (!realtime(event.detail.elt)) return;
-    inflight = Math.max(0, inflight - 1);
-  }, true);
-"""
-# What htmx dispatches for one region request on each completion path.
-COMPLETIONS = {
+def _js_block(text: str, brace: int) -> str:
+    """The body of the ``{`` at ``brace`` up to its matching ``}``."""
+    depth = 0
+    quote: str | None = None
+    index = brace
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                quote = None
+        elif char in "'\"`":
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace + 1 : index]
+        index += 1
+    pytest.fail("unbalanced block in the tracker script")
+
+
+def _tracker_rules(script: str) -> TrackerRules | None:
+    """The add and remove registrations, or ``None`` when nothing adds."""
+    for listener in DOCUMENT_LISTENER.finditer(script):
+        body = _js_block(script, listener.end() - 1)
+        binding = KEY_BINDING.search(body)
+        add = ADD.search(body)
+        if binding is None or add is None or add.group(1) != binding.group(1):
+            continue
+        guard = HINT_GUARD.search(body)
+        remove_on, removes_key = "", False
+        for inner in OBJECT_LISTENER.finditer(body):
+            if inner.group(1) != binding.group(1) or inner.start() < add.start():
+                continue
+            delete = DELETE.search(_js_block(body, inner.end() - 1))
+            if delete is not None:
+                remove_on = inner.group(2)
+                removes_key = delete.group(1) == binding.group(1)
+                break
+        return TrackerRules(
+            add_on=listener.group(1),
+            key=binding.group(2),
+            hint_only=guard is not None and guard.start() < add.start(),
+            remove_on=remove_on,
+            removes_key=removes_key,
+        )
+    return None
+
+
+# What htmx 2.0.10 dispatches for one region request on each completion
+# path, as (object the event fires on, event). The request is "xhr"; after an
+# outerHTML swap the region is detached, and afterRequest fires again on the
+# surviving ancestor. A listener hears only events fired on its own object.
+COMPLETIONS: dict[str, list[tuple[str, str]]] = {
     "load + outerHTML swap": [
-        ("htmx:afterRequest", "region", False),  # on r, replaced and detached
-        ("htmx:afterRequest", "ancestor", True),  # on the surviving ancestor
-        ("loadend", "request", True),
+        ("region", "htmx:afterRequest"),
+        ("ancestor", "htmx:afterRequest"),
+        ("xhr", "load"),
+        ("xhr", "loadend"),
     ],
     "load, no swap away": [
-        ("htmx:afterRequest", "region", True),
-        ("loadend", "request", True),
+        ("region", "htmx:afterRequest"),
+        ("xhr", "load"),
+        ("xhr", "loadend"),
     ],
-    "error": [("htmx:afterRequest", "region", True), ("loadend", "request", True)],
-    "abort": [("htmx:afterRequest", "region", True), ("loadend", "request", True)],
+    "error": [("region", "htmx:afterRequest"), ("xhr", "error"), ("xhr", "loadend")],
+    "abort": [("region", "htmx:afterRequest"), ("xhr", "abort"), ("xhr", "loadend")],
     "timeout": [
-        ("htmx:afterRequest", "region", True),
-        ("loadend", "request", True),
+        ("region", "htmx:afterRequest"),
+        ("xhr", "timeout"),
+        ("xhr", "loadend"),
     ],
 }
+
+
+def _replay(rules: TrackerRules, path: str) -> tuple[set[str], set[str]]:
+    """In flight after the sends, and after ``path``'s completion events.
+
+    Two requests are sent: the hint-driven region's and a plain element's.
+    The keyed object is whatever ``rules.key`` names in the event detail.
+    """
+    details = {
+        "region": {"xhr": "xhr", "elt": "region", "requestConfig": "config"},
+        "plain": {"xhr": "other-xhr", "elt": "plain", "requestConfig": "other"},
+    }
+    inflight: set[str] = set()
+    for element, detail in details.items():
+        hinted = element == "region"
+        if rules.add_on == "htmx:beforeSend" and (hinted or not rules.hint_only):
+            inflight.add(detail.get(rules.key, ""))
+    sent = set(inflight)
+    keyed = details["region"].get(rules.key, "")
+    for target, event in COMPLETIONS[path]:
+        if rules.removes_key and target == keyed and event == rules.remove_on:
+            inflight.discard(keyed)
+    return sent, inflight
 
 
 def test_realtime_tracker_drains_by_request_identity_on_every_completion() -> None:
     htmx = HTMX_SOURCE.read_text(encoding="utf-8")
     assert HTMX_RETARGET.search(htmx), "re-check htmx's afterRequest retarget"
     assert HTMX_REWRITES_ELT in htmx
-    tracker = REALTIME_TRACKER_JS
-    assert JOIN.search(tracker) is not None
-    assert REQUEST_LEAVE.findall(tracker) == ["loadend"]
-    assert "htmx:afterRequest" not in tracker
-    assert {path: _drains(tracker, events) for path, events in COMPLETIONS.items()} == (
-        dict.fromkeys(COMPLETIONS, True)
+    assert HINT_REGIONS.search(REALTIME_TRACKER_JS) is not None
+
+    rules = _tracker_rules(REALTIME_TRACKER_JS)
+
+    assert rules is not None, "no listener adds a request to the in-flight set"
+    assert rules == TrackerRules(
+        add_on="htmx:beforeSend",
+        key="xhr",
+        hint_only=True,
+        remove_on="loadend",
+        removes_key=True,
     )
-    # Control: the element-keyed completion of 5fa335bb never drains after an
-    # outerHTML swap, so the model is not vacuous.
-    assert DOCUMENT_LEAVE.findall(ELEMENT_KEYED_TRACKER) == ["htmx:afterRequest"]
-    assert not _drains(ELEMENT_KEYED_TRACKER, COMPLETIONS["load + outerHTML swap"])
+    replays = {path: _replay(rules, path) for path in COMPLETIONS}
+    # Only the hint-driven region's request is tracked, and every completion
+    # path drains it, including after an outerHTML swap.
+    assert replays == dict.fromkeys(COMPLETIONS, ({"xhr"}, set()))
 
 
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
