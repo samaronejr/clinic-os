@@ -43,10 +43,10 @@ def workspace_home_continuation() -> str:
 @privileged_totp_required(workspace_home_continuation)
 @require_GET
 def workspace_home(request: HttpRequest) -> HttpResponseBase:
-    """Open today's agenda for the current clinic, or explain the missing clinic."""
+    """Open the current clinic's landing, or explain the missing clinic."""
     workspace = resolve_workspace(request)
     if workspace is not None and workspace.clinic is not None:
-        return redirect(workspace.clinic.agenda_url)
+        return redirect(workspace.clinic.landing_url)
     return render(request, "core/no_clinic.html")
 
 

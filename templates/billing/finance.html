@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% load static i18n %}
+{% load static i18n workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
 {% block title %}{% trans "Finance" %} · Clinic OS{% endblock %}
 {% block meta_description %}{% trans "Clinic journal, receivables, collections and day close." %}{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}">{% endblock %}
