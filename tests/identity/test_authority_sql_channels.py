@@ -490,6 +490,16 @@ def test_native_alias_cannot_inherit_a_builtin_allowance(
         # Qualified names and calls after any other token stay calls.
         ("SELECT (1) + leaves()", {("leaves",)}),
         ("SELECT coalesce((SELECT 1), leaves())", {("leaves",)}),
+        # Only a FROM-list subquery or VALUES list takes an AS-less alias:
+        # a call after OPERATOR(...) or any other ")" is still reported.
+        (
+            "SELECT 1 OPERATOR(pg_catalog.=) set_config('x','1',true)::int",
+            {("set_config",)},
+        ),
+        ("SELECT (SELECT 1) current_setting('x', true)", {("current_setting",)}),
+        ("SELECT (1) set_config('x','1',true)", {("set_config",)}),
+        ("SELECT * FROM t JOIN LATERAL (VALUES (1)) v(a) ON true", set()),
+        ("SELECT * FROM t, LATERAL (SELECT 1) v(a)", set()),
         (
             "INSERT INTO t(id) VALUES (1) ON CONFLICT(id) DO NOTHING",
             set(),

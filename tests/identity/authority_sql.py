@@ -154,12 +154,12 @@ def references(
         start = end - (2 * len(name) - 1)
         previous = items[start - 1][1].lower() if start else ""
         # Relation aliases and INSERT targets may declare column lists. Their
-        # names remain available for policy and write-effect traversal. An
-        # unqualified, unquoted name right after a closing parenthesis is the
-        # AS-less alias of a derived table or VALUES list: SQL has no call
-        # syntax in which a function name directly follows ")".
+        # names remain available for policy and write-effect traversal.
         if previous in {"as", "into"} or (
-            previous == ")" and len(name) == 1 and not quoted
+            previous == ")"
+            and len(name) == 1
+            and not quoted
+            and _closes_derived_relation(items, start - 1)
         ):
             continue
         called = name[-1]
@@ -169,6 +169,34 @@ def references(
         if called in {"current_setting", "set_config"}:
             _setting(items, end + 1, result)
     return result
+
+
+# A derived relation opens right after one of these and starts with a query.
+_RELATION_POSITIONS = frozenset({"from", "join", "lateral", ","})
+_QUERY_STARTS = frozenset({"select", "values", "with"})
+
+
+def _closes_derived_relation(items: Sequence[Token], close: int) -> bool:
+    """Report whether the ")" at ``close`` ends a FROM-list subquery or VALUES.
+
+    Only then may an AS-less alias column list follow it. OPERATOR(...),
+    argument lists, scalar subqueries and any other parenthesised expression
+    keep the next name(...) a call, so no setting reader or writer hides.
+    """
+    depth = 0
+    for index in range(close, -1, -1):
+        depth += {")": 1, "(": -1}.get(items[index][1], 0)
+        if depth == 0:
+            if index == 0 or index + 1 >= close:
+                return False
+            before = items[index - 1][1].lower().split()
+            first = items[index + 1][1].lower()
+            return (
+                bool(before)
+                and before[-1] in _RELATION_POSITIONS
+                and (first in _QUERY_STARTS)
+            )
+    return False
 
 
 def _keyword(
