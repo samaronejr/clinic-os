@@ -1,9 +1,13 @@
 """Historical AI coverage cannot silently regress to an empty-table upgrade."""
 
+import ast
+import inspect
 from types import SimpleNamespace
 
 import pytest
+from django.apps import apps
 from django.db import migrations, models
+from ops.testing import migration_upgrade_ai_seed as seed
 from ops.testing import migration_upgrade_ai_verify as upgrade
 
 
@@ -24,6 +28,15 @@ def test_upgrade_requires_every_changed_model_and_sql_trigger_table() -> None:
         "scribe_chunktranscription",
         "scribe_transcriptversion",
         "scribe_transcriptsegment",
+        "scribe_aidraft",
+        "scribe_draftsectionsuggestion",
+        "scribe_reviewdecision",
+        "ai_extractionjob",
+        "ai_extractioncandidate",
+        "orders_resultobservation",
+        "ai_careproposal",
+        "analytics_analystreview",
+        "ai_approval",
     } <= required
     assert not upgrade.coverage_failures({table: {"count": 1} for table in required})
     for table in required:
@@ -34,6 +47,72 @@ def test_upgrade_requires_every_changed_model_and_sql_trigger_table() -> None:
         ]
         rows[table] = {"count": 0}
         assert upgrade.coverage_failures(rows)
+
+
+def _seed_tables(source: str) -> set[str]:
+    """Read the actual fixture writes, never a second declared coverage list."""
+    return {
+        apps.get_model(node.args[0].value)._meta.db_table
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "make"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
+
+def test_real_seed_covers_migration_guard_tables() -> None:
+    tables = _seed_tables(inspect.getsource(seed))
+    assert not upgrade.coverage_failures({table: {"count": 1} for table in tables})
+
+
+def test_removing_real_seed_write_is_detected() -> None:
+    source = inspect.getsource(seed)
+    mutated = source.replace('"ai.Approval"', '"ai.ActionProposal"')
+    assert mutated != source
+    assert upgrade.coverage_failures(
+        {table: {"count": 1} for table in _seed_tables(mutated)}
+    ) == ["AI upgrade seed missing populated table: ai_approval"]
+
+
+def test_recreated_guard_finds_existing_nested_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    historical = SimpleNamespace(
+        operations=[
+            migrations.SeparateDatabaseAndState(
+                database_operations=[
+                    migrations.RunSQL(
+                        "CREATE TRIGGER original BEFORE INSERT "
+                        "ON clinic_app.ai_extractionjob FOR EACH ROW "
+                        "EXECUTE FUNCTION clinic_app.retained_probe();"
+                    )
+                ]
+            )
+        ]
+    )
+    candidate = SimpleNamespace(
+        operations=[
+            migrations.RunSQL(
+                "CREATE OR REPLACE FUNCTION clinic_app.retained_probe() "
+                "RETURNS trigger LANGUAGE plpgsql AS $f$ "
+                "BEGIN RETURN NEW; END $f$;"
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        upgrade,
+        "MigrationLoader",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            disk_migrations={
+                ("ai", "0004_historical"): historical,
+                ("ai", "0016_candidate"): candidate,
+            }
+        ),
+    )
+    assert "ai_extractionjob" in upgrade.altered_ai_tables()
 
 
 def test_new_affected_model_requires_new_populated_seed(

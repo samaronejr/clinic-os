@@ -77,7 +77,14 @@ git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
 worktree_added=1
 
 echo "== sync base dependencies =="
-(cd "$base_worktree" && uv sync --locked --all-groups --quiet)
+if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
+    # Reuse is safe only for an identical locked environment. This keeps local
+    # constrained-host rehearsals from rebuilding the same environment.
+    cmp "$base_worktree/uv.lock" "$project_root/uv.lock"
+    ln -s "$(realpath "$project_root/.venv")" "$base_worktree/.venv"
+else
+    (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
+fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.

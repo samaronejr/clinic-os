@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import timedelta
+from pathlib import Path
+from runpy import run_path
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -30,6 +33,12 @@ if TYPE_CHECKING:
 
 class _HistoricalModel(Protocol):
     objects: ClassVar[Manager[Model]]
+
+
+class _RetainedChecks(Protocol):
+    def __call__(
+        self, history: Mapping[str, str], *, upgraded: bool
+    ) -> dict[str, bool]: ...
 
 
 class LegacyRows:
@@ -74,6 +83,18 @@ class LegacyRows:
         if "clinic" in state.fields:
             fields.setdefault("clinic_id", self.clinic)
         manager = cast("type[_HistoricalModel]", model).objects
+        # Analytics intentionally has no owner RLS policy. Keep its existing
+        # writer grants and requester policies active even in the fixture loader.
+        if table.startswith("analytics_"):
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SET LOCAL ROLE clinic_resolver"
+                    if table == "analytics_metricdefinitionversion"
+                    else "SET LOCAL ROLE clinic_app"
+                )
+                row = manager.create(**fields)
+                cursor.execute("RESET ROLE")
+                return row
         return manager.create(**fields)
 
     def finish(self) -> dict[str, object]:
@@ -87,6 +108,8 @@ class LegacyRows:
                         sql.Identifier(table)
                     )
                 )
+                if table.startswith("analytics_"):
+                    cursor.execute("SET LOCAL ROLE clinic_resolver")
                 cursor.execute(
                     sql.SQL(
                         "SELECT id::text,to_jsonb(t) FROM clinic_app.{} t ORDER BY id"
@@ -98,11 +121,15 @@ class LegacyRows:
                     ).hexdigest()
                     for key, value in cursor.fetchall()
                 }
+                cursor.execute("RESET ROLE")
                 snapshots[table] = {
                     "columns": columns,
                     "rows": rows,
                     "count": len(rows),
                 }
+            # Native extraction links its deferred observation FK before inserting
+            # that observation. Restore normal timing after validating the load.
+            cursor.execute("SET CONSTRAINTS ALL DEFERRED")
         return snapshots
 
 
@@ -126,7 +153,13 @@ def _invocations(
                 None if purpose in {"front_desk", "revenue_cycle"} else enrollment_id
             ),
             kind="input",
-            method="transcribe" if purpose == "scribe_asr" else "complete",
+            method=(
+                "transcribe"
+                if purpose == "scribe_asr"
+                else "extract"
+                if purpose == "extraction"
+                else "complete"
+            ),
             content="Synthetic upgrade input; no clinical data.",
             retention_class="transient_input",
             expires_at=future,
@@ -174,7 +207,13 @@ def _invocations(
                     else enrollment_id
                 ),
                 kind="output",
-                method="transcribe" if purpose == "scribe_asr" else "complete",
+                method=(
+                    "transcribe"
+                    if purpose == "scribe_asr"
+                    else "extract"
+                    if purpose == "extraction"
+                    else "complete"
+                ),
                 invocation=invocation,
                 content="Synthetic retained output.",
                 retention_class="review_draft",
@@ -362,6 +401,283 @@ def _transcription(
         "transcription": str(request.pk),
         "last_version": str(previous.pk),
         "physician": str(physician),
+        "encounter": str(encounter.pk),
+        "consent": str(consent.pk),
+    }
+
+
+def _retained(
+    fixtures: LegacyRows,
+    markers: Mapping[str, object],
+    transcription: dict[str, str],
+    enrollment: object,
+    invocations: dict[str, Model],
+) -> dict[str, str]:
+    """Keep undecided native outputs beside retained historical decisions."""
+    physician = UUID(str(markers["practitioner_id"]))
+    owner = UUID(str(markers["owner_id"]))
+    now = timezone.now()
+    future = now + timedelta(days=30)
+    digest = "a" * 64
+    template = fixtures.make(
+        "ehr.SpecialtyTemplate", key="synthetic", version=1, title="Synthetic"
+    )
+    document = fixtures.make(
+        "ehr.ClinicalDocument", encounter_id=transcription["encounter"]
+    )
+    final = fixtures.make(
+        "ehr.ClinicalDocumentVersion",
+        document=document,
+        template=template,
+        author_id=physician,
+        version=1,
+        state="finalized",
+        finalized_at=now,
+        content={"synthetic": True},
+        content_digest=digest,
+        content_sha256=digest,
+    )
+    version = fixtures.make(
+        "ehr.ClinicalDocumentVersion",
+        document=document,
+        template=template,
+        author_id=physician,
+        version=2,
+        content={"synthetic": True},
+        content_sha256=digest,
+    )
+    draft = fixtures.make(
+        "scribe.AIDraft",
+        encounter_id=transcription["encounter"],
+        version=version,
+        transcript_id=transcription["last_version"],
+        consent_id=transcription["consent"],
+        invocation=invocations["scribe_draft:succeeded"],
+        requested_by_id=physician,
+        request_key=uuid4(),
+        generation=1,
+        base_revision=1,
+        base_epochs=dict.fromkeys(("subjective", "objective", "assessment", "plan"), 0),
+        base_content={"synthetic": True},
+        sections=["subjective", "objective"],
+        source_refs=[{"synthetic": True}],
+    )
+    suggestions = [
+        fixtures.make(
+            "scribe.DraftSectionSuggestion",
+            version=version,
+            draft=draft,
+            section=section,
+            text="Synthetic pending suggestion.",
+            citations=[{"synthetic": True}],
+            assertion_class="reported",
+        )
+        for section in ("subjective", "objective")
+    ]
+    fixtures.make(
+        "scribe.DraftActionProposal",
+        version=version,
+        draft=draft,
+        ordinal=0,
+        kind="task",
+        text="Synthetic separate proposal.",
+        citations=[{"synthetic": True}],
+    )
+    configuration = (
+        cast("type[_HistoricalModel]", apps.get_model("ai.ModelConfiguration"))
+        .objects.get(purpose="scribe_draft")
+        .pk
+    )
+    decision = fixtures.make(
+        "scribe.ReviewDecision",
+        version=version,
+        suggestion=suggestions[1],
+        reviewed_by_id=physician,
+        command_id=uuid4(),
+        request_digest=digest,
+        action="rejected",
+        section="objective",
+        expected_revision=1,
+        result_revision=1,
+        result_sha256=digest,
+        capability_snapshot={
+            "purpose": "scribe_draft",
+            "capability": "llm_inference",
+            "configuration_id": str(configuration),
+            "version": 1,
+        },
+    )
+    order = fixtures.make(
+        "orders.Order",
+        enrollment_id=enrollment,
+        ordered_by_id=physician,
+        command_id=uuid4(),
+        fingerprint=digest,
+    )
+    result = fixtures.make("orders.Result")
+    result_version = fixtures.make(
+        "orders.ResultVersion",
+        result=result,
+        number=1,
+        event_id=uuid4(),
+        fingerprint=digest,
+        identity={"synthetic": True},
+        storage_key=uuid4().hex,
+        sha256=digest,
+        size_bytes=1,
+        content_type="application/pdf",
+        uploader_id=physician,
+    )
+    fixtures.make(
+        "orders.ResultMatch",
+        version=result_version,
+        order=order,
+        factors={"synthetic": True},
+        operator_id=physician,
+    )
+    job = fixtures.make(
+        "ai.ExtractionJob",
+        user_id=physician,
+        patient_enrollment_id=enrollment,
+        invocation=invocations["extraction:succeeded"],
+        result_version=result_version,
+        sha256=digest,
+        rotations=[0],
+    )
+    observations = [
+        fixtures.make(
+            "orders.ResultObservation",
+            version=result_version,
+            position=position,
+            source={"synthetic": True},
+        )
+        for position in range(2)
+    ]
+    payload = {
+        "field": "synthetic",
+        "kind": "decimal",
+        "raw_text": "Synthetic 1 mg/dL",
+        "value": "1",
+        "parsed_value": "1",
+        "unit": "mg/dL",
+        "reference_interval": "",
+        "region": {"page": 1, "bbox": [0, 0, 100, 100]},
+        "status": "candidate",
+        "reason": "",
+    }
+    candidate = fixtures.make(
+        "ai.ExtractionCandidateRecord",
+        job=job,
+        position=0,
+        payload=payload,
+        status="candidate",
+        expires_at=future,
+    )
+    fixtures.make(
+        "ai.ExtractionCandidateRecord",
+        job=job,
+        position=1,
+        payload=payload,
+        status="confirmed",
+        observation=observations[0],
+        reviewed_by_id=physician,
+        reviewed_at=now,
+        expires_at=future,
+    )
+    plan = fixtures.make(
+        "workflows.CarePlan",
+        enrollment_id=enrollment,
+        encounter_id=transcription["encounter"],
+        source_version=final,
+        clinician_id=physician,
+        idempotency_key=uuid4(),
+        fingerprint=digest,
+    )
+    task = fixtures.make(
+        "workflows.Task",
+        kind="follow_up",
+        subject_ref={"kind": "enrollment", "id": str(enrollment)},
+        due_at=future,
+        idempotency_key=uuid4(),
+        fingerprint=digest,
+    )
+    action = fixtures.make(
+        "workflows.CareAction",
+        plan=plan,
+        kind="order",
+        window_start=now,
+        window_end=future,
+        origin_version=final,
+        task=task,
+        created_by_id=physician,
+        idempotency_key=uuid4(),
+        fingerprint=digest,
+    )
+    care = fixtures.make(
+        "ai.CareProposal",
+        invocation=invocations["care_coordination:succeeded"],
+        plan=plan,
+        enrollment_id=enrollment,
+        source_version=final,
+        plan_revision=1,
+        requested_by_id=physician,
+        position=0,
+        kind="order",
+        audience="clinical",
+        window_start=now,
+        window_end=future,
+        state="pending",
+    )
+    window_start = now.replace(microsecond=0)
+    window_end = window_start + timedelta(days=1)
+    descriptor = {
+        "metric_id": "no_show",
+        "version": 1,
+        "dimensions": [],
+        "filters": {},
+        "window": {
+            "start": window_start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "end": window_end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        },
+        "tz": "America/Sao_Paulo",
+    }
+    definition = fixtures.make(
+        "analytics.MetricDefinitionVersion",
+        metric_id="no_show",
+        specification={"synthetic": True},
+    )
+    fixtures.make(
+        "analytics.SavedReport",
+        user_id=owner,
+        definition=definition,
+        descriptor=descriptor,
+        window_start=window_start,
+        window_end=window_end,
+    )
+    review = fixtures.make(
+        "analytics.AnalystReview",
+        user_id=owner,
+        invocation=invocations["analyst:reserved"],
+        descriptor=descriptor,
+        window_start=window_start,
+        window_end=window_end,
+        authorization_version=digest,
+        decision="rejected",
+    )
+    return {
+        "pending_suggestion": str(suggestions[0].pk),
+        "review_decision": str(decision.pk),
+        "extraction_candidate": str(candidate.pk),
+        "result_version": str(result_version.pk),
+        "imported_observation": str(observations[0].pk),
+        "spare_observation": str(observations[1].pk),
+        "care_proposal": str(care.pk),
+        "care_action": str(action.pk),
+        "analyst_review": str(review.pk),
+        "analyst_invocation": str(invocations["analyst:succeeded"].pk),
+        "owner": str(owner),
+        "physician": str(physician),
+        "clinic": str(fixtures.clinic),
     }
 
 
@@ -430,6 +746,170 @@ def _baseline_approvals() -> None:
         cursor.execute("RESET ROLE")
 
 
+def _configuration(
+    fixtures: LegacyRows,
+    capability: str,
+    purpose: str,
+    markers: Mapping[str, object],
+    approver: Model,
+) -> tuple[Model, Model]:
+    now = timezone.now()
+    digest = "a" * 64
+    owner = UUID(str(markers["owner_id"]))
+    physician = UUID(str(markers["practitioner_id"]))
+    config = fixtures.make(
+        "ai.ModelConfiguration",
+        purpose=purpose,
+        capability_key="asr" if purpose == "scribe_asr" else "llm_inference",
+        provider="synthetic",
+        model_id="upgrade-synthetic",
+        region="synthetic",
+        jurisdiction_class="BR",
+        endpoint="https://ai.synthetic.invalid/",
+        retention_terms="synthetic",
+        training_terms="synthetic",
+        version=1,
+        route="primary",
+        state="active",
+        approval_ref="synthetic",
+        prompt_sha256=digest,
+        retrieval_sha256=digest,
+        schema_sha256=digest,
+    )
+    protocol = (
+        fixtures.make(
+            "ai.EvaluationProtocol",
+            capability=capability,
+            version=1,
+            corpus_version="synthetic-upgrade",
+            corpus_sha256=digest,
+            case_manifest=[{"id": "synthetic", "encounter": "synthetic"}],
+            thresholds_document=json.dumps(
+                {
+                    "minimum_cases": 1,
+                    "minimum_encounters": 1,
+                    "maximum_error_rate_ppm": 0,
+                    "minimum_citation_support_ppm": 1000000,
+                    "minimum_action_correctness_ppm": 1000000,
+                }
+            ),
+            thresholds_sha256=digest,
+            registered_by_id=owner,
+            clinical_owner_ref="synthetic-not-clinical-approval",
+        )
+        if purpose != "scribe_draft"
+        else cast(
+            "type[_HistoricalModel]", apps.get_model("ai.EvaluationProtocol")
+        ).objects.get(clinic_id=fixtures.clinic, capability=capability, version=1)
+    )
+    evaluation = fixtures.make(
+        "ai.EvaluationRun",
+        protocol=protocol,
+        configuration=config,
+        configuration_version=1,
+        versions={"prompt": digest, "retrieval": digest, "schema": digest},
+        rater_one_id=owner,
+        rater_two_id=physician,
+        adjudicator_id=approver.pk,
+        created_by_id=owner,
+        status="passed",
+        scored_at=now,
+        finished_at=now,
+        sample_results={"synthetic": True},
+    )
+    for slot, human in (("rater_one", owner), ("rater_two", physician)):
+        fixtures.make(
+            "ai.EvaluationRating",
+            run=evaluation,
+            case_id="synthetic",
+            slot=slot,
+            user_id=human,
+            labels=dict.fromkeys(
+                (
+                    "critical_error",
+                    "unsupported_citation",
+                    "incorrect_action",
+                    "policy_violation",
+                    "unauthorized_effect",
+                    "duplicate_effect",
+                    "missed_escalation",
+                ),
+                0,
+            ),
+        )
+    approval = fixtures.make(
+        "ai.ModelChangeRequest",
+        configuration=config,
+        run=evaluation,
+        requested_by_id=owner,
+        approved_by_id=approver.pk,
+        status="approved",
+        approval_ref="synthetic-upgrade",
+        decided_at=now,
+    )
+    return config, approval
+
+
+def _execution(
+    fixtures: LegacyRows, proposal: Model, approver: Model, digest: str
+) -> Model:
+    now = timezone.now()
+    fixtures.make(
+        "ai.Approval",
+        proposal=proposal,
+        approver_id=approver.pk,
+        digest=digest,
+        authority_snapshot={"synthetic": True},
+        step_up_evidence_ref=uuid4(),
+        step_up_evidence={"synthetic": True},
+        attestation=digest,
+        step_up_verified_at=now,
+    )
+    execution = fixtures.make(
+        "ai.ActionExecution",
+        proposal=proposal,
+        digest=digest,
+        provider_key=uuid4(),
+        intent_at=now,
+        deadline=now + timedelta(days=30),
+    )
+    fixtures.make(
+        "ai.ActionReceipt",
+        execution=execution,
+        kind="reconciliation",
+        outcome="unknown",
+        provider_reference=uuid4(),
+        digest=digest,
+        fencing_token=1,
+        attestation=digest,
+    )
+    fixtures.make(
+        "ai.Compensation",
+        execution=execution,
+        provider_key=uuid4(),
+        reason_code="synthetic",
+    )
+    return execution
+
+
+def _baseline_retained(retained: Mapping[str, str]) -> dict[str, bool]:
+    helper = run_path(
+        str(
+            Path(os.environ["UPGRADE_HELPER_ROOT"])
+            / "ops/testing/migration_upgrade_ai_retained.py"
+        )
+    )
+    checks = cast("_RetainedChecks", helper["retained_checks"])(
+        retained, upgraded=False
+    )
+    if not all(checks.values()):
+        message = "historical retained paths are not usable: " + ", ".join(
+            name for name, passed in checks.items() if not passed
+        )
+        raise RuntimeError(message)
+    return checks
+
+
 def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
     """Retain pre-rollout approvals, pending work, outputs and ASR provenance."""
     organization = UUID(str(markers["organization_id"]))
@@ -437,7 +917,6 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
     physician = UUID(str(markers["practitioner_id"]))
     patient = UUID(str(markers["patient_id"]))
     now = timezone.now()
-    future = now + timedelta(days=30)
     digest = "a" * 64
     fixtures = LegacyRows(organization, UUID(str(markers["clinic_id"])))
     with transaction.atomic(), connection.cursor() as cursor:
@@ -462,96 +941,17 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
         runs: list[str] = []
         proposals: list[str] = []
         executions: list[str] = []
-        labels = dict.fromkeys(
-            (
-                "critical_error",
-                "unsupported_citation",
-                "incorrect_action",
-                "policy_violation",
-                "unauthorized_effect",
-                "duplicate_effect",
-                "missed_escalation",
-            ),
-            0,
-        )
         for capability, purpose in (
             ("AI-04", "front_desk"),
             ("AI-05", "care_coordination"),
             ("AI-06", "revenue_cycle"),
             ("AI-01", "scribe_asr"),
+            ("AI-01", "scribe_draft"),
+            ("AI-03", "extraction"),
+            ("AI-07", "analyst"),
         ):
-            config = fixtures.make(
-                "ai.ModelConfiguration",
-                purpose=purpose,
-                capability_key="asr" if purpose == "scribe_asr" else "llm_inference",
-                provider="synthetic",
-                model_id="upgrade-synthetic",
-                region="synthetic",
-                jurisdiction_class="BR",
-                endpoint="https://ai.synthetic.invalid/",
-                retention_terms="synthetic",
-                training_terms="synthetic",
-                version=1,
-                route="primary",
-                state="active",
-                approval_ref="synthetic",
-                prompt_sha256=digest,
-                retrieval_sha256=digest,
-                schema_sha256=digest,
-            )
-            protocol = fixtures.make(
-                "ai.EvaluationProtocol",
-                capability=capability,
-                version=1,
-                corpus_version="synthetic-upgrade",
-                corpus_sha256=digest,
-                case_manifest=[{"id": "synthetic", "encounter": "synthetic"}],
-                thresholds_document=json.dumps(
-                    {
-                        "minimum_cases": 1,
-                        "minimum_encounters": 1,
-                        "maximum_error_rate_ppm": 0,
-                        "minimum_citation_support_ppm": 1000000,
-                        "minimum_action_correctness_ppm": 1000000,
-                    }
-                ),
-                thresholds_sha256=digest,
-                registered_by_id=owner,
-                clinical_owner_ref="synthetic-not-clinical-approval",
-            )
-            evaluation = fixtures.make(
-                "ai.EvaluationRun",
-                protocol=protocol,
-                configuration=config,
-                configuration_version=1,
-                versions={"prompt": digest, "retrieval": digest, "schema": digest},
-                rater_one_id=owner,
-                rater_two_id=physician,
-                adjudicator_id=approver.pk,
-                created_by_id=owner,
-                status="passed",
-                scored_at=now,
-                finished_at=now,
-                sample_results={"synthetic": True},
-            )
-            for slot, human in (("rater_one", owner), ("rater_two", physician)):
-                fixtures.make(
-                    "ai.EvaluationRating",
-                    run=evaluation,
-                    case_id="synthetic",
-                    slot=slot,
-                    user_id=human,
-                    labels=labels,
-                )
-            approval = fixtures.make(
-                "ai.ModelChangeRequest",
-                configuration=config,
-                run=evaluation,
-                requested_by_id=owner,
-                approved_by_id=approver.pk,
-                status="approved",
-                approval_ref="synthetic-upgrade",
-                decided_at=now,
+            config, approval = _configuration(
+                fixtures, capability, purpose, markers, approver
             )
             approvals.append(str(approval.pk))
             invocations.update(
@@ -559,11 +959,15 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
                     fixtures,
                     config,
                     purpose,
-                    owner if purpose in {"front_desk", "revenue_cycle"} else physician,
+                    (
+                        owner
+                        if purpose in {"front_desk", "revenue_cycle", "analyst"}
+                        else physician
+                    ),
                     enrollment_id,
                 )
             )
-            if purpose == "scribe_asr":
+            if purpose in {"scribe_asr", "scribe_draft", "extraction", "analyst"}:
                 continue
             policy = fixtures.make(
                 "ai.AgentPolicyVersion",
@@ -598,28 +1002,41 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
                     "ai.ActionProposal",
                     run=run,
                     payload='{"synthetic":true}',
-                    digest=uuid4().hex + uuid4().hex,
+                    digest=(proposal_digest := uuid4().hex + uuid4().hex),
                     idempotency_key=uuid4(),
                     state=state,
                     quorum=1,
                 )
                 proposals.append(str(proposal.pk))
                 if state == "approved":
-                    execution = fixtures.make(
-                        "ai.ActionExecution",
-                        proposal=proposal,
-                        digest=uuid4().hex + uuid4().hex,
-                        provider_key=uuid4(),
-                        intent_at=now,
-                        deadline=future,
+                    executions.append(
+                        str(
+                            _execution(fixtures, proposal, approver, proposal_digest).pk
+                        )
                     )
-                    executions.append(str(execution.pk))
+        fixtures.make(
+            "ai.AICircuit", configuration=config, opened_at=now, closed_at=now
+        )
+        fixtures.make(
+            "ai.KnowledgeArticle",
+            key="synthetic",
+            version=1,
+            topic="hours",
+            title="Synthetic",
+            body="Synthetic hours.",
+            keywords=["synthetic"],
+            created_by_id=owner,
+        )
         turns = _front_desk(fixtures, front_policy, enrollment_id)
         transcription = _transcription(
             fixtures, markers, enrollment_id, invocations["scribe_asr:succeeded"]
         )
+        retained = _retained(
+            fixtures, markers, transcription, enrollment_id, invocations
+        )
         snapshots = fixtures.finish()
         _baseline_approvals()
+        checks = _baseline_retained(retained)
     return {
         "tables": snapshots,
         "approvals": approvals,
@@ -627,6 +1044,8 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
         "proposals": proposals,
         "turns": turns,
         "executions": executions,
+        "retained": retained,
+        "base_retained_assertions": checks,
         **transcription,
         "invocations": {key: str(value.pk) for key, value in invocations.items()},
         "fixture_trigger_policy": (

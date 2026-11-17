@@ -15,10 +15,13 @@ from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState
 from psycopg import sql
 
+from ops.testing.migration_upgrade_ai_retained import retained_checks
+
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
 
     from django.db.backends.utils import CursorWrapper
+    from django.db.migrations.operations.base import Operation
 
 
 class _Snapshot(TypedDict):
@@ -39,6 +42,7 @@ class _History(TypedDict):
     last_version: str
     recording: str
     transcription: str
+    retained: dict[str, str]
 
 
 RETAINED_TABLES = frozenset(
@@ -54,14 +58,32 @@ FIRST_AI_MIGRATION = 14
 LAST_AI_MIGRATION = 18
 
 
+def _database_operations(operations: Iterable[Operation]) -> Iterator[Operation]:
+    for operation in operations:
+        if isinstance(operation, migrations.SeparateDatabaseAndState):
+            yield from _database_operations(operation.database_operations)
+        else:
+            yield operation
+
+
+def _selected_migration(app: str, name: str) -> bool:
+    return app == "ai" and FIRST_AI_MIGRATION <= int(name[:4]) <= LAST_AI_MIGRATION
+
+
 def altered_ai_tables() -> set[str]:
-    """Derive operation/SQL targets, including future changes to these migrations."""
+    """Include existing row triggers whose functions are replaced by the upgrade."""
     loader = MigrationLoader(None, ignore_no_migrations=True)
     found = set(RETAINED_TABLES)
+    rewritten: set[str] = set()
+    installed_sql: list[str] = []
     for (app, name), migration in loader.disk_migrations.items():
-        if app != "ai" or not FIRST_AI_MIGRATION <= int(name[:4]) <= LAST_AI_MIGRATION:
-            continue
-        for operation in migration.operations:
+        for operation in _database_operations(migration.operations):
+            if isinstance(operation, migrations.RunSQL) and isinstance(
+                operation.sql, str
+            ):
+                installed_sql.append(operation.sql)
+            if not _selected_migration(app, name):
+                continue
             if isinstance(
                 operation,
                 (
@@ -87,10 +109,28 @@ def altered_ai_tables() -> set[str]:
                     raise TypeError(message)
                 found.update(
                     re.findall(
-                        r"\b(?:ALTER TABLE|ON)\b\s+clinic_app\.([a-z_][a-z_0-9]*)",
+                        r"\b(?:ALTER TABLE|ON|UPDATE|INSERT INTO)\b"
+                        r"\s+clinic_app\.([a-z_][a-z_0-9]*)",
                         operation.sql,
                     )
                 )
+                rewritten.update(
+                    re.findall(
+                        r"CREATE (?:OR REPLACE )?FUNCTION clinic_app\.(\w+)\(",
+                        operation.sql,
+                    )
+                )
+    for statement in installed_sql:
+        found.update(
+            table
+            for table, function in re.findall(
+                r"CREATE (?:CONSTRAINT )?TRIGGER\b[^;]*?\bON\s+clinic_app\.(\w+)"
+                r"[^;]*?FOR EACH ROW[^;]*?EXECUTE (?:FUNCTION|PROCEDURE)"
+                r"\s+clinic_app\.(\w+)\(",
+                statement,
+            )
+            if function in rewritten
+        )
     return found
 
 
@@ -156,6 +196,8 @@ def _settlement_refused(invocation: str) -> bool:
 def _preserved(cursor: CursorWrapper, tables: dict[str, _Snapshot]) -> dict[str, bool]:
     assertions: dict[str, bool] = {}
     for table, snapshot in tables.items():
+        if table.startswith("analytics_"):
+            cursor.execute("SET LOCAL ROLE clinic_resolver")
         cursor.execute(
             sql.SQL(
                 "SELECT id::text,to_jsonb(t) FROM clinic_app.{} t ORDER BY id"
@@ -173,6 +215,7 @@ def _preserved(cursor: CursorWrapper, tables: dict[str, _Snapshot]) -> dict[str,
         assertions["preserved:" + table] = (
             actual == snapshot["rows"] and len(actual) == snapshot["count"]
         )
+        cursor.execute("RESET ROLE")
     cursor.execute(
         "SELECT count(*) FROM pg_constraint WHERE connamespace="
         "'clinic_app'::regnamespace AND NOT convalidated "
@@ -302,6 +345,7 @@ def verify_ai(markers: Mapping[str, object]) -> list[str]:
         assertions = _preserved(cursor, tables)
         assertions.update(_defaults(cursor))
         assertions.update(_stopped(cursor, history, markers))
+        assertions.update(retained_checks(history["retained"], upgraded=True))
     for name, passed in assertions.items():
         if not passed:
             failures.append("AI upgrade assertion failed: " + name)
