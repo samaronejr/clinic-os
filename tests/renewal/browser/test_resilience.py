@@ -2,6 +2,8 @@
 
 Run this suite with each CLINIC_RENEWAL_RESILIENCE_MODE: down, slow, ambiguous.
 Requests use the served runtime and workers use clinic_app on the same database.
+The AI-off cases turn the global switch or the organization opt-in off and
+finish every manual fallback of the AI capability table without any AI.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import psycopg
 import pytest
 from django.utils.translation import gettext, pgettext
 from playwright.sync_api import expect
+from psycopg import sql
 
 from renewal.browser._fixture_secrets import worker_dsn
 from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
@@ -24,11 +27,13 @@ from renewal.browser._page_wait import evaluate_js
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.messages_support import (
+    count,
     latest_operation,
     message_body,
     seed_provider,
 )
-from renewal.browser.support_managers import seed_ai_admin
+from renewal.browser.results_support import place, seed_result_patient, upload
+from renewal.browser.support_managers import seed_ai_admin, set_ai_switches
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -50,7 +55,13 @@ from renewal.browser.test_clinical_inbox import (
 )
 from renewal.browser.test_document_verification import _operation_row
 from renewal.browser.test_encounter import FIELDS, press, press_in_view, seed, stored
-from renewal.browser.test_messages import _inbox, _open_thread, _reply
+from renewal.browser.test_messages import (
+    ADMINISTRATIVE,
+    _enable_portal_assistant,
+    _inbox,
+    _open_thread,
+    _reply,
+)
 from renewal.browser.test_patient_access import _no_overflow, _overflowing, _redeem
 from renewal.browser.test_prescribing import (
     author_and_render,
@@ -70,7 +81,7 @@ from renewal.browser.test_teleconsult import _seed as seed_video
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import Locator, Page
 
 __all__ = ("availability_staff",)
 
@@ -82,6 +93,37 @@ PIX_UNAVAILABLE: Final = (
     "A geração de código de pagamento não está disponível neste ambiente. "
     "Nenhuma cobrança foi criada."
 )
+AI_SWITCHES: Final = ("global", "organization")
+# The runtime's view with one switch off: (organization "enabled", global switch).
+AI_OFF_STATE: Final = {"global": ("true", False), "organization": ("false", True)}
+ASSISTANT: Final = '#chart-panel [data-drawer-toggle="chart-assistant"]'
+# Controls that would start AI work on the chart: the brief/assistant drawer
+# (AI-02) and a decision-support request (AI-08).
+CHART_AI: Final = (
+    "#chart-panel button, #chart-panel input, "
+    '#decision-support-panel button[name="command"]'
+)
+# Controls that would start AI drafting from a transcript (AI-01).
+DRAFTING_AI: Final = (
+    'button[value="generate"]:enabled, button[value^="regenerate_"]:enabled, '
+    "[data-review-accept]:enabled"
+)
+REPORT_DAY: Final = "02/06/2035"
+# The front-desk agent stores its replies as outbound messages without a sender.
+AGENT_REPLY: Final = "direction='out' AND sent_by_id IS NULL"
+# Owner-visible AI tables: every model call leaves an invocation and an input
+# artifact, and AI-use records (drafts and decisions, extraction jobs, care
+# proposals, front-desk threads and turns, agent runs) live in these tables.
+AI_TABLES: Final = (
+    "SELECT DISTINCT tablename FROM pg_policies WHERE schemaname='clinic_app' "
+    "AND 'clinic_owner'=ANY(roles) "
+    "AND (tablename LIKE 'ai\\_%' OR tablename LIKE 'scribe\\_%') ORDER BY tablename"
+)
+# Each case turns one switch off at one of the suite's widths.
+AI_OFF_CASES: Final = tuple(
+    (switch, width) for switch in AI_SWITCHES for width in WIDTHS
+)
+AI_OFF_IDS: Final = tuple(f"{switch}-{width}" for switch, width in AI_OFF_CASES)
 
 
 def capture(page: Page, root: Path, state: str, width: int) -> None:
@@ -505,3 +547,384 @@ def test_a_payment_outage_still_allows_a_manual_settlement(
         report(root, f"payment-{width}", {"refused_status": 503, "state": "paid"})
     finally:
         context.close()
+
+
+def ai_off_day(month: str, switch: str, width: int) -> str:
+    """Give every switch and width its own day, so seeded rows never collide."""
+    return f"{month}-{5 + 2 * AI_SWITCHES.index(switch) + WIDTHS.index(width):02d}"
+
+
+def set_ai(staff: dict[str, str], administrator: str, *, off: str | None) -> None:
+    """Turn both AI switches on, or exactly the ``off`` switch off."""
+    expected = {"global": off != "global", "organization": off != "organization"}
+    state = set_ai_switches(
+        staff,
+        administrator,
+        global_enabled=expected["global"],
+        organization_enabled=expected["organization"],
+    )
+    assert state == expected, state
+
+
+def ai_records(staff: dict[str, str]) -> dict[str, int]:
+    """Count the organization's rows in every owner-visible AI and scribe table.
+
+    The owner's tenant policy counts the rows of every user and principal,
+    where the runtime policy shows a reader only its own.
+    """
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        counts: dict[str, int] = {}
+        for (table,) in conn.execute(AI_TABLES).fetchall():
+            query = sql.SQL("SELECT count(*) FROM {}").format(
+                sql.Identifier("clinic_app", str(table))
+            )
+            row = conn.execute(query).fetchone()
+            assert row is not None
+            counts[str(table)] = int(row[0])
+    assert {"ai_aiinvocation", "ai_aiartifact", "ai_frontdeskturn"} <= set(counts)
+    return counts
+
+
+def turn_ai_off(
+    staff: dict[str, str], administrator: str, actor: str, switch: str
+) -> dict[str, int]:
+    """Turn one switch off, prove the actor's runtime sees it, then count AI rows."""
+    set_ai(staff, administrator, off=switch)
+    with psycopg.connect(staff["dsn"]) as conn:
+        _runtime(conn, staff, actor)
+        row = conn.execute(
+            "SELECT clinic_app.ai_organization_policy()->>'enabled', "
+            "EXISTS (SELECT 1 FROM clinic_app.ai_gatewayswitch WHERE enabled)"
+        ).fetchone()
+    assert row == AI_OFF_STATE[switch], row
+    return ai_records(staff)
+
+
+def finish_ai_off(
+    staff: dict[str, str],
+    root: Path,
+    before: dict[str, int],
+    name: str,
+) -> None:
+    """Require that the manual path left no AI invocation or AI-use record."""
+    after = ai_records(staff)
+    changed = {table for table in after if after[table] != before.get(table)}
+    assert not changed, (name, sorted(changed))
+    report(
+        root,
+        f"ai-off-{name}",
+        {"ai_tables": len(after), "ai_rows": sum(after.values()), "changed": []},
+    )
+
+
+def add_role(staff: dict[str, str], user: str, role: str, bundle: int) -> None:
+    """Grant a seeded user one more clinic-A role, as the owner would."""
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_userclinicrole "
+            "(id,user_id,organization_id,clinic_id,role,workflow_bundle_version) "
+            "VALUES (%s,%s,%s,%s,%s,%s)",
+            [
+                str(uuid4()),
+                user,
+                staff["organization"],
+                staff["clinic_a"],
+                role,
+                bundle,
+            ],
+        )
+
+
+def post_tasks(page: Page, url: str, button: Locator) -> None:
+    """Subscribe to the Tasks POST before the click; enhanced or native alike."""
+    with page.expect_response(
+        lambda response: response.url == url and response.request.method == "POST"
+    ) as posted:
+        button.click()
+    assert posted.value.status == 200
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_documentation_and_chart_manual(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-01, AI-02 and AI-08 off: the clinician charts and saves by hand."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    day = ai_off_day("2039-09", switch, width)
+    register_physician(staff)
+    data = seed(staff, day)
+    administrator = seed_ai_admin(staff, "light")["id"]
+    set_ai(staff, administrator, off=None)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        _sign_in_physician(page, base, staff)
+        goto_settled(
+            page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+        )
+        press(page, "open")
+        chart = page.url
+        # Control: with both switches on, the same chart offers its assistant.
+        expect(page.locator(ASSISTANT)).to_have_count(1)
+        before = turn_ai_off(staff, administrator, staff["physician_a_id"], switch)
+        goto_settled(page, chart)
+        panel = page.locator("#chart-panel")
+        expect(panel).to_have_attribute("data-chart-state", "unavailable")
+        expect(panel).to_contain_text(
+            gettext(
+                "AI assistance is off for this clinic. "
+                "Review the record before the visit."
+            )
+        )
+        # AI-08 remains unavailable and nothing on the chart can start AI work.
+        expect(page.locator("#decision-support-panel")).to_have_attribute(
+            "data-cds-state", "unavailable"
+        )
+        expect(page.locator(CHART_AI)).to_have_count(0)
+        save_manual_note(page, staff, data["specialty"])
+        capture(page, root, f"ai-off-chart-{switch}", width)
+        # Drafting review stays reachable for retained drafts and starts nothing.
+        click_to_navigate(
+            page.get_by_role(
+                "button", name=gettext("Review source-linked AI suggestions")
+            )
+        )
+        expect(page.locator("[data-review-unavailable]")).to_be_visible()
+        expect(page.locator(DRAFTING_AI)).to_have_count(0)
+        capture(page, root, f"ai-off-drafting-{switch}", width)
+    finish_ai_off(staff, root, before, f"chart-{switch}-{width}")
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_result_entry_manual(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-03 off: identity, value, unit and interval are typed from the source."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    control = seed_result_patient(staff, ai_off_day("2040-09", switch, width))
+    manual = seed_result_patient(staff, ai_off_day("2040-10", switch, width))
+    administrator = seed_ai_admin(staff, "light")["id"]
+    set_ai(staff, administrator, off=None)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        _sign_in_physician(page, base, staff)
+        results = f"{base}/clinics/{staff['clinic_a']}/results/"
+        extraction = page.get_by_role(
+            "button", name=gettext("Review extraction candidates")
+        )
+        goto_settled(page, results)
+        place(page, control)
+        upload(page, control)
+        # Control: with both switches on, a matched source offers extraction.
+        expect(extraction.first).to_be_visible()
+        before = turn_ai_off(staff, administrator, staff["physician_a_id"], switch)
+        goto_settled(page, results)
+        expect(extraction).to_have_count(0)
+        place(page, manual)
+        upload(page, manual)
+        expect(extraction).to_have_count(0)
+        capture(page, root, f"ai-off-results-{switch}", width)
+    finish_ai_off(staff, root, before, f"results-{switch}-{width}")
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_reception_to_people(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-04 off: the agent that answers with AI on stays silent; a person answers."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    administrator = seed_ai_admin(staff, "light")["id"]
+    # Control: the A2 front-desk agent, enabled as the messages suite enables it,
+    # answers the patient's question while both switches are on.
+    _enable_portal_assistant(staff, administrator)
+    set_ai(staff, administrator, off=None)
+    control = seed_provider(staff)
+    turns = ai_records(staff)["ai_frontdeskturn"]
+    body = message_body(ADMINISTRATIVE)
+    assert control.deliver(renewal_page, base, body).status == 200
+    assert count(control, "comms_message", AGENT_REPLY) == 1
+    assert ai_records(staff)["ai_frontdeskturn"] == turns + 1
+    before = turn_ai_off(staff, administrator, staff["receptionist_id"], switch)
+    # The same question in a new conversation: no thread, turn or agent reply.
+    provider = seed_provider(staff)
+    body = message_body(ADMINISTRATIVE)
+    assert provider.deliver(renewal_page, base, body).status == 200
+    assert count(provider, "comms_message", AGENT_REPLY) == 0
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        _sign_in_receptionist(page, base, staff)
+        goto_settled(page, _inbox(staff, base))
+        _open_thread(page)
+        _reply(page, "Resposta sintética da recepção")
+        click_to_navigate(page.get_by_role("button", name=gettext("Assign to me")))
+        expect(
+            page.get_by_role("status").filter(has_text=gettext("Assignment updated."))
+        ).to_be_visible()
+        # The person's reply is the only one: no automated answer or disclosure.
+        expect(page.locator(".thread__item--out")).to_have_count(1)
+        capture(page, root, f"ai-off-reception-{switch}", width)
+    finish_ai_off(staff, root, before, f"reception-{switch}-{width}")
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_care_tasks_manual(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-05 off: staff create and take follow-up work in Tasks by hand."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    manager = seed_manager(staff)
+    # The workflow task bundle is what lets a clinic manager create and assign.
+    add_role(staff, manager["id"], "clinic_manager", 2)
+    administrator = seed_ai_admin(staff, "light")["id"]
+    before = turn_ai_off(staff, administrator, manager["id"], switch)
+    due = "/".join(reversed(ai_off_day("2036-10", switch, width).split("-")))
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        sign_in_manager(page, base, staff, manager)
+        url = f"{base}/clinics/{staff['clinic_a']}/tasks/"
+        goto_settled(page, url)
+        rows = page.locator("article[data-task]")
+        listed = "rows => rows.map(row => row.dataset.task)"
+        known = set(rows.evaluate_all(listed))
+        form = page.locator("#create-task")
+        form.locator('[name="kind"]').select_option("follow_up")
+        form.locator('[name="due_date"]').fill(due)
+        form.locator('[name="due_time"]').fill("10:00")
+        post_tasks(page, url, form.locator('button[value="create"]'))
+        expect(page.locator("#tasks-panel")).to_have_attribute(
+            "data-tasks-state", "success"
+        )
+        expect(rows).to_have_count(len(known) + 1)
+        created = set(rows.evaluate_all(listed)) - known
+        assert len(created) == 1, created
+        task = page.locator(f'article[data-task="{created.pop()}"]')
+        expect(task).to_have_attribute("data-task-state", "open")
+        post_tasks(page, url, task.get_by_role("button", name=gettext("Assign to me")))
+        expect(task).to_have_attribute("data-task-state", "assigned")
+        capture(page, root, f"ai-off-tasks-{switch}", width)
+    finish_ai_off(staff, root, before, f"tasks-{switch}-{width}")
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_finance_manual(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-06 off: finance issues a charge and settles money received by hand."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    manager = seed_manager(staff)
+    # Finance's tiss.manage is what opens the revenue-cycle assistant entry.
+    add_role(staff, manager["id"], "finance", 1)
+    payer = seed_patient(staff, f"Paciente Sintetico IA {switch} {width}")
+    administrator = seed_ai_admin(staff, "light")["id"]
+    set_ai(staff, administrator, off=None)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        sign_in_manager(page, base, staff, manager)
+        finance = f"{base}/billing/clinics/{staff['clinic_a']}/finance/"
+        assistant = page.get_by_role("link", name=gettext("Revenue-cycle assistant"))
+        goto_settled(page, finance)
+        # Control: with both switches on, Finance offers the assistant.
+        expect(assistant).to_be_visible()
+        before = turn_ai_off(staff, administrator, manager["id"], switch)
+        goto_settled(page, finance)
+        expect(assistant).to_have_count(0)
+        capture(page, root, f"ai-off-finance-{switch}", width)
+        create_charge(page, ledger_url(base, staff), payer["patient"], AMOUNT)
+        press(page, "issue")
+        expect_state(page, "issued")
+        confirm_settlement(page, AMOUNT)
+        expect_state(page, "paid")
+        capture(page, root, f"ai-off-settlement-{switch}", width)
+    finish_ai_off(staff, root, before, f"finance-{switch}-{width}")
+
+
+@pytest.mark.parametrize("case", AI_OFF_CASES, ids=AI_OFF_IDS)
+def test_ai_off_leaves_reports_manual(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    case: tuple[str, int],
+) -> None:
+    """AI-07 off: a manager refreshes a governed metric with no analyst."""
+    switch, width = case
+    staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
+    manager = seed_manager(staff)
+    administrator = seed_ai_admin(staff, "light")["id"]
+    set_ai(staff, administrator, off=None)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(
+        locale="pt-BR", viewport={"width": width, "height": 900}
+    ) as context:
+        page = context.new_page()
+        sign_in_manager(page, base, staff, manager)
+        url = f"{base}/reports/clinics/{staff['clinic_a']}/"
+        ask = page.locator('button[value="ask"]')
+        goto_settled(page, url)
+        # Control: with both switches on, Reports offers the analyst.
+        expect(ask).to_be_visible()
+        before = turn_ai_off(staff, administrator, manager["id"], switch)
+        goto_settled(page, url)
+        expect(ask).to_have_count(0)
+        expect(page.locator('[name="question"]')).to_have_count(0)
+        page.get_by_label(f"{gettext('From')}:", exact=True).fill(REPORT_DAY)
+        page.get_by_label(f"{gettext('Through')}:", exact=True).fill(REPORT_DAY)
+        with page.expect_response(
+            lambda response: response.url == url and response.request.method == "POST"
+        ) as refreshed:
+            page.locator('button[value="refresh"]').click()
+        assert refreshed.value.status == 200
+        expect(page.locator('[data-report-state="fresh"]')).to_be_visible()
+        capture(page, root, f"ai-off-reports-{switch}", width)
+    finish_ai_off(staff, root, before, f"reports-{switch}-{width}")

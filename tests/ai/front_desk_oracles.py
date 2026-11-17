@@ -22,6 +22,7 @@ CASES = {
         test_front_desk_views.test_handoff_page_lists_reasons_and_resolves_by_post_body,
         test_front_desk_guards.test_database_guards_refuse_raw_front_desk_forgery,
         test_front_desk_guards.test_front_desk_sql_rechecks_inactive_and_foreign_actor,
+        test_front_desk_guards.test_front_desk_sql_refuses_while_the_global_switch_is_off,
         test_front_desk_portal.test_verified_portal_books_only_after_accepting_the_exact_offer,
         test_front_desk_portal.test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person,
         test_front_desk_portal.test_portal_without_booking_scope_cannot_gain_it_through_the_agent,
