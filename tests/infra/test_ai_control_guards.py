@@ -10,12 +10,14 @@ Anything unclassified fails, so a new AI control cannot land unguarded.
 
 from __future__ import annotations
 
+import inspect
 import re
 from bisect import bisect_right
 from pathlib import Path
 from typing import Final
 
 import pytest
+from apps.scribe import transcript_views
 
 TEMPLATES: Final = Path(__file__).resolve().parents[2] / "templates"
 
@@ -63,6 +65,10 @@ GOVERNANCE: Final = frozenset(
 )
 # A link to an assistant page is itself an offer of AI work.
 ASSISTANT_LINKS: Final = {"ai:revenue-cycle": "revenue_cycle"}
+# A view-computed context flag that guards a template exactly like an ai_enabled
+# variable: the view derives it through enabled_policy for this purpose, so a
+# DB-free render never queries the switches (see the test below).
+VIEW_GUARDS: Final = {"scribe/transcript.html": {"available": "scribe_asr"}}
 # AI pages whose forms post back to the page itself.
 PAGES: Final = {
     "ai/agent_settings.html": "ai:agent-settings",
@@ -98,12 +104,12 @@ def _ai(endpoint: str) -> bool:
 class Scan:
     """One template's branch conditions and guard bindings, by offset."""
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, preset: dict[str, str] | None = None) -> None:
         self.text = COMMENT.sub(lambda match: " " * len(match.group()), text)
         self.offsets: list[int] = []
         self.states: list[tuple[tuple[str | None, ...], dict[str, str]]] = []
         stack: list[str | None] = []
-        bound: dict[str, str] = {}
+        bound: dict[str, str] = dict(preset or {})
         for tag in TAG.finditer(self.text):
             body = tag["body"]
             if body.startswith("if "):
@@ -169,7 +175,7 @@ def _form_problems(
 
 def scan(name: str, text: str) -> tuple[list[str], set[str]]:
     """Return unguarded or unclassified controls, and the AI starts found."""
-    template = Scan(text)
+    template = Scan(text, VIEW_GUARDS.get(name))
     problems: list[str] = []
     starts: set[str] = set()
     for form in FORM.finditer(template.text):
@@ -252,3 +258,10 @@ def test_the_scan_flags_unguarded_and_unclassified_controls(
     assert len(problems) == len(expected), problems
     for problem, fragment in zip(problems, expected, strict=True):
         assert fragment in problem
+
+
+def test_view_guards_are_derived_from_the_purpose_policy() -> None:
+    # The transcript view's available flag admits ASR only through this check.
+    source = inspect.getsource(transcript_views._available)
+    assert "enabled_policy(Purpose.SCRIBE_ASR)" in source
+    assert VIEW_GUARDS == {"scribe/transcript.html": {"available": "scribe_asr"}}
