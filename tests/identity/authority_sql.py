@@ -154,8 +154,13 @@ def references(
         start = end - (2 * len(name) - 1)
         previous = items[start - 1][1].lower() if start else ""
         # Relation aliases and INSERT targets may declare column lists. Their
-        # names remain available for policy and write-effect traversal.
-        if previous in {"as", "into"}:
+        # names remain available for policy and write-effect traversal. An
+        # unqualified, unquoted name right after a closing parenthesis is the
+        # AS-less alias of a derived table or VALUES list: SQL has no call
+        # syntax in which a function name directly follows ")".
+        if previous in {"as", "into"} or (
+            previous == ")" and len(name) == 1 and not quoted
+        ):
             continue
         called = name[-1]
         if quoted or len(name) > 1 or not _syntax_call(items, called, end, keywords):

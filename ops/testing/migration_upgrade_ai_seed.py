@@ -752,7 +752,7 @@ def _configuration(
     purpose: str,
     markers: Mapping[str, object],
     approver: Model,
-) -> tuple[Model, Model]:
+) -> tuple[Model, Model, Model]:
     now = timezone.now()
     digest = "a" * 64
     owner = UUID(str(markers["owner_id"]))
@@ -763,7 +763,7 @@ def _configuration(
         capability_key="asr" if purpose == "scribe_asr" else "llm_inference",
         provider="synthetic",
         model_id="upgrade-synthetic",
-        region="synthetic",
+        region="br-synthetic",
         jurisdiction_class="BR",
         endpoint="https://ai.synthetic.invalid/",
         retention_terms="synthetic",
@@ -847,7 +847,54 @@ def _configuration(
         approval_ref="synthetic-upgrade",
         decided_at=now,
     )
-    return config, approval
+    return config, approval, _pending_evaluation(fixtures, config, protocol, markers)
+
+
+def _pending_evaluation(
+    fixtures: LegacyRows,
+    configuration: Model,
+    protocol: Model,
+    markers: Mapping[str, object],
+) -> Model:
+    raters = []
+    for _slot in range(2):
+        human = fixtures.make("identity.User", username="upgrade-rater-" + uuid4().hex)
+        fixtures.make("identity.UserClinicRole", user=human, role="physician")
+        raters.append(human)
+    digest = "a" * 64
+    return fixtures.make(
+        "ai.EvaluationRun",
+        protocol=protocol,
+        configuration=configuration,
+        configuration_version=1,
+        versions={
+            "prompt": digest,
+            "retrieval": digest,
+            "schema": digest,
+            "model": digest,
+            "version": "1",
+        },
+        rater_one_id=markers["practitioner_id"],
+        rater_two=raters[0],
+        adjudicator=raters[1],
+        created_by_id=markers["owner_id"],
+        status="pending",
+    )
+
+
+def _auxiliary_guards(fixtures: LegacyRows, config: Model, owner: UUID) -> None:
+    now = timezone.now()
+    fixtures.make("ai.AICircuit", configuration=config, opened_at=now, closed_at=now)
+    fixtures.make(
+        "ai.KnowledgeArticle",
+        key="synthetic",
+        version=1,
+        topic="hours",
+        title="Synthetic",
+        body="Synthetic hours.",
+        keywords=["synthetic"],
+        created_by_id=owner,
+    )
 
 
 def _execution(
@@ -916,7 +963,6 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
     owner = UUID(str(markers["owner_id"]))
     physician = UUID(str(markers["practitioner_id"]))
     patient = UUID(str(markers["patient_id"]))
-    now = timezone.now()
     digest = "a" * 64
     fixtures = LegacyRows(organization, UUID(str(markers["clinic_id"])))
     with transaction.atomic(), connection.cursor() as cursor:
@@ -934,10 +980,11 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
         fixtures.make("identity.UserClinicRole", user_id=owner, role="finance")
         fixtures.make("identity.UserClinicRole", user_id=owner, role="clinic_admin")
         fixtures.make(
-            "ai.GatewaySwitch", id=1, enabled=True, approved_regions=["synthetic"]
+            "ai.GatewaySwitch", id=1, enabled=True, approved_regions=["br-synthetic"]
         )
         invocations: dict[str, Model] = {}
         approvals: list[str] = []
+        pending_evaluations: list[str] = []
         runs: list[str] = []
         proposals: list[str] = []
         executions: list[str] = []
@@ -950,10 +997,11 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
             ("AI-03", "extraction"),
             ("AI-07", "analyst"),
         ):
-            config, approval = _configuration(
+            config, approval, pending = _configuration(
                 fixtures, capability, purpose, markers, approver
             )
             approvals.append(str(approval.pk))
+            pending_evaluations.append(str(pending.pk))
             invocations.update(
                 _invocations(
                     fixtures,
@@ -1014,19 +1062,7 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
                             _execution(fixtures, proposal, approver, proposal_digest).pk
                         )
                     )
-        fixtures.make(
-            "ai.AICircuit", configuration=config, opened_at=now, closed_at=now
-        )
-        fixtures.make(
-            "ai.KnowledgeArticle",
-            key="synthetic",
-            version=1,
-            topic="hours",
-            title="Synthetic",
-            body="Synthetic hours.",
-            keywords=["synthetic"],
-            created_by_id=owner,
-        )
+        _auxiliary_guards(fixtures, config, owner)
         turns = _front_desk(fixtures, front_policy, enrollment_id)
         transcription = _transcription(
             fixtures, markers, enrollment_id, invocations["scribe_asr:succeeded"]
@@ -1040,6 +1076,7 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
     return {
         "tables": snapshots,
         "approvals": approvals,
+        "pending_evaluations": pending_evaluations,
         "runs": runs,
         "proposals": proposals,
         "turns": turns,

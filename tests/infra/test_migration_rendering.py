@@ -205,8 +205,10 @@ def test_full_migration_state_replay_has_bounded_model_renders(
         for operation in migration.operations:
             operation.state_forwards(migration.app_label, state)
 
-    # Then: repeated tenant-graph renders cannot return unnoticed.
-    assert rendered < 25_000
+    # Then: repeated tenant-graph renders cannot return unnoticed. Measured
+    # 27,640 after todo 80's ai 0014-0017 added 3,499 renders (24,141 before);
+    # their new foreign keys on existing models cannot use SchemaStateBatch.
+    assert rendered < 28_500
 
 
 def test_full_migrate_path_has_bounded_model_renders(
@@ -242,7 +244,8 @@ def test_full_migrate_path_has_bounded_model_renders(
 
     # Then: separated database operations cannot hide repeated renders, and the
     # clean release migrate keeps its measured margin under the 30 s probe.
-    assert rendered < 35_000
+    # Measured 36,812 after todo 80's ai 0014-0017 added 3,499 (33,313 before).
+    assert rendered < 38_000
 
 
 def test_wave_c_batch_renders_changed_models_once(

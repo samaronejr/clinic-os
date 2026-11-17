@@ -33,6 +33,7 @@ class _Snapshot(TypedDict):
 class _History(TypedDict):
     tables: dict[str, _Snapshot]
     approvals: list[str]
+    pending_evaluations: list[str]
     runs: list[str]
     proposals: list[str]
     turns: list[str]
@@ -55,7 +56,7 @@ RETAINED_TABLES = frozenset(
     }
 )
 FIRST_AI_MIGRATION = 14
-LAST_AI_MIGRATION = 18
+LAST_AI_MIGRATION = 19
 
 
 def _database_operations(operations: Iterable[Operation]) -> Iterator[Operation]:
@@ -146,7 +147,11 @@ def coverage_failures(
     return failures
 
 
-def _refused(statement: str, parameters: list[str], reason: str | None = None) -> bool:
+def _refused(
+    statement: str | sql.Composed,
+    parameters: list[str],
+    reason: str | None = None,
+) -> bool:
     """Observe real native guards; even an unexpected accepted write rolls back."""
     try:
         with transaction.atomic(), connection.cursor() as cursor:
@@ -157,6 +162,93 @@ def _refused(statement: str, parameters: list[str], reason: str | None = None) -
             reason is None or reason in str(error.__cause__)
         )
     return False
+
+
+def _clone(table: str, changes: str) -> sql.Composed:
+    return sql.SQL(
+        "INSERT INTO clinic_app.{table} SELECT (jsonb_populate_record("
+        "NULL::clinic_app.{table},to_jsonb(t)||jsonb_build_object("
+        "'id',gen_random_uuid(),{changes}))).* "
+        "FROM clinic_app.{table} t WHERE id=%s"
+    ).format(table=sql.Identifier(table), changes=sql.SQL(changes))
+
+
+def _rollout_guards(cursor: CursorWrapper, history: _History) -> dict[str, bool]:
+    """Keep valid offline work and reject invalid work on every rollout binding."""
+    cursor.execute(
+        "SELECT c.relname,p.proname,t.tgenabled FROM pg_trigger t "
+        "JOIN pg_class c ON c.oid=t.tgrelid "
+        "JOIN pg_proc p ON p.oid=t.tgfoid "
+        "WHERE t.tgname='evaluation_rollout_guard'"
+    )
+    shared = "ai_rollout_guard"
+    assertions = {
+        "rollout_exact_seven_bindings": set(cursor.fetchall())
+        == {
+            (table, shared, "O")
+            for table in (
+                "ai_gatewayswitch",
+                "ai_evaluationrating",
+                "ai_modelchangerequest",
+                "ai_aiinvocation",
+                "ai_agentrun",
+                "ai_actionexecution",
+            )
+        }
+        | {("ai_evaluationrun", "ai_evaluation_rollout_guard", "O")}
+    }
+    for pending in history["pending_evaluations"]:
+        with transaction.atomic(), connection.cursor() as probe:
+            probe.execute(_clone("ai_evaluationrun", "'stage','offline'"), [pending])
+            assertions["rollout_offline_evaluation_admitted:" + pending] = (
+                probe.rowcount == 1
+            )
+            probe.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            transaction.set_rollback(True)
+        assertions["rollout_table_refused:ai_evaluationrun:" + pending] = _refused(
+            _clone("ai_evaluationrun", "'stage','shadow'"),
+            [pending],
+            "rollout receipt denied",
+        )
+    assertions["rollout_table_refused:ai_modelchangerequest"] = _refused(
+        _clone(
+            "ai_modelchangerequest",
+            "'status','requested','approved_by_id',NULL,'approval_ref','',"
+            "'decided_at',NULL,'stage','reviewed_live','exposure','human_review'",
+        ),
+        [history["approvals"][0]],
+        "rollout stage evidence required",
+    )
+    rating = next(iter(history["tables"]["ai_evaluationrating"]["rows"]))
+    assertions["rollout_table_refused:ai_evaluationrating"] = _refused(
+        _clone("ai_evaluationrating", "'user_id',NULL"),
+        [rating],
+        "evaluation rating denied",
+    )
+    assertions["rollout_table_refused:ai_agentrun"] = _refused(
+        _clone("ai_agentrun", "'created_at',statement_timestamp()"),
+        [history["runs"][0]],
+    )
+    assertions["rollout_table_refused:ai_aiinvocation"] = _settlement_refused(
+        history["invocations"]["front_desk:reserved"]
+    )
+    assertions["rollout_table_refused:ai_actionexecution"] = _refused(
+        "UPDATE clinic_app.ai_actionexecution "
+        "SET send_started_at=statement_timestamp() WHERE id=%s",
+        [history["executions"][0]],
+    )
+    with transaction.atomic(), connection.cursor() as probe:
+        probe.execute("SELECT generation FROM clinic_app.ai_gatewayswitch WHERE id=1")
+        original = probe.fetchone()
+        probe.execute(
+            "UPDATE clinic_app.ai_gatewayswitch SET generation=generation+1000000 "
+            "WHERE id=1 RETURNING generation"
+        )
+        assertions["rollout_table_refused:ai_gatewayswitch"] = (
+            probe.fetchone() == original
+        )
+        transaction.set_rollback(True)
+    return assertions
 
 
 def _settlement_refused(invocation: str) -> bool:
@@ -346,6 +438,7 @@ def verify_ai(markers: Mapping[str, object]) -> list[str]:
         assertions.update(_defaults(cursor))
         assertions.update(_stopped(cursor, history, markers))
         assertions.update(retained_checks(history["retained"], upgraded=True))
+        assertions.update(_rollout_guards(cursor, history))
     for name, passed in assertions.items():
         if not passed:
             failures.append("AI upgrade assertion failed: " + name)
