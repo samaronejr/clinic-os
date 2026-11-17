@@ -408,6 +408,43 @@ threads. The live portal session supplies identity; every scheduling call
 separately requires its current `booking` operation. A messages-only session
 cannot gain booking authority through a challenge.
 
+The clinic must additionally hold the current evaluated configuration's
+`monitored_autonomy` permission before any automatic reply, verification grant,
+session, challenge, offer, appointment change or handoff. `shadow` and
+`reviewed_live` record only a closed `FrontDeskTurn` proposal (`proposed`, no
+reply). Their proposed tool names consume no action budget and execute nothing.
+Administrative expansion still requires the platform configuration to be active.
+An A2 policy is a further restriction, never a substitute for this permission.
+The thread's manual message and staff-resolution paths stay available.
+
+Each turn pins its immutable `ModelChangeRequest` through a composite
+organization/clinic foreign key. Python recomputes governed source bytes at
+admission and every effect. The source facts are authenticated through the
+existing tenant encryption boundary and bind their exact message or turn and
+database transaction. The resolver accepts only matching evaluated sources,
+current review authority, an available synthetic provider and the permitted
+stage. It stamps a transaction receipt on the existing turn; runtime has no
+write grant on it. No new key or permission registry is introduced.
+
+The native turn, article, verification, state, finish, reply-message and audit
+bridges recheck that receipt and pinned permission. Channel-issued booking
+sessions additionally require a current permitted turn in their transaction,
+so a direct database call cannot reuse a session after a kill or a stale
+permission. A new permission cannot rescue an old queued turn. Source proofs
+cannot be replayed across subjects or transactions, and callers cannot provide
+bare hashes or forge a GUC as a source receipt. PostgreSQL verifies application
+source evidence; the application reads the deployed files. The database does
+not claim to read the application host's filesystem.
+The permission predicate also requires READ COMMITTED: an older repeatable-read
+or serializable snapshot cannot continue from a pre-kill view of the controls.
+
+Migration `0015_front_desk_rollout` follows the preserved global-switch
+migration and `0014_staged_rollout`. It adds only turn metadata and scoped
+references, replaces the enqueue signature with its authenticated source
+receipt, and removes the old unbound entrypoint. No runtime write grant is
+added. Reverse refuses retained bound turns or proposals; after that history,
+rollback is restore or disable.
+
 - **Turn pipeline.** The comms inbound hook queues one `FrontDeskTurn` for each
   stored, supported inbound message inside the authenticated delivery
   transaction (`clinic_app.ai_front_desk_enqueue`). After commit the runner

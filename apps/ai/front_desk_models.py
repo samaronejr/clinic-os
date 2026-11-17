@@ -31,7 +31,7 @@ HANDOFF_REASONS: Final = (
     "verification_failed",
     "policy_limit",
 )
-TURN_STATES: Final = ("pending", "finishing", "done")
+TURN_STATES: Final = ("pending", "proposed", "finishing", "done")
 INTENTS: Final = (
     "",
     "greeting",
@@ -55,6 +55,7 @@ TOOLS: Final = (
 )
 OUTCOMES: Final = (
     "",
+    "proposed",
     "answered",
     "challenge",
     "verified",
@@ -240,6 +241,12 @@ class FrontDeskTurn(TenantScopedModel):
     policy = models.ForeignKey(
         "ai.AgentPolicyVersion", on_delete=models.PROTECT, related_name="+"
     )
+    rollout_approval = models.ForeignKey(
+        "ai.ModelChangeRequest", null=True, on_delete=models.PROTECT, related_name="+"
+    )
+    # Resolver-written transaction receipt, never caller-set execution authority.
+    # Every effect needs a fresh source check in its own transaction.
+    source_xid = models.CharField(max_length=20, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -255,6 +262,8 @@ class FrontDeskTurn(TenantScopedModel):
                 & models.Q(outcome__in=OUTCOMES)
                 & (
                     models.Q(state="pending", intent="", outcome="", reply__isnull=True)
+                    | models.Q(state="proposed", outcome="proposed", reply__isnull=True)
+                    & ~models.Q(intent="")
                     | models.Q(state__in=("finishing", "done"), reply__isnull=False)
                     & ~models.Q(intent="")
                     & ~models.Q(outcome="")

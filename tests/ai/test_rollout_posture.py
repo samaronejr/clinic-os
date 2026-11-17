@@ -79,6 +79,7 @@ def test_rollout_uses_existing_force_rls_ledgers_and_scoped_foreign_keys() -> No
                     "ai_rollout_run_scope",
                     "ai_rollout_invocation_scope",
                     "ai_rollout_agent_scope",
+                    "ai_frontdesk_rollout_scope",
                 ]
             ],
         )
@@ -87,6 +88,7 @@ def test_rollout_uses_existing_force_rls_ledgers_and_scoped_foreign_keys() -> No
             "ai_rollout_run_scope",
             "ai_rollout_invocation_scope",
             "ai_rollout_agent_scope",
+            "ai_frontdesk_rollout_scope",
         }
         assert all(
             "FOREIGN KEY (organization_id, clinic_id, rollout_approval_id)"

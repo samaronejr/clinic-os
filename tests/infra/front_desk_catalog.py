@@ -23,7 +23,23 @@ RESULTS: Final = {
     ("ai_front_desk_audit_scope", "requested_turn uuid"): (
         "TABLE(principal_id uuid, organization_id uuid, clinic_id uuid)"
     ),
-    ("ai_front_desk_enqueue", "requested_message uuid"): "uuid",
+    (
+        "ai_front_desk_enqueue",
+        "requested_message uuid, receipt bytea, kek text",
+    ): "uuid",
+    (
+        "ai_front_desk_allowed",
+        "approved uuid, clinic uuid, observed jsonb, autonomy boolean",
+    ): "boolean",
+    ("ai_front_desk_current", "requested uuid, autonomy boolean"): "boolean",
+    (
+        "ai_front_desk_authorize",
+        "requested uuid, receipt bytea, kek text",
+    ): "text",
+    (
+        "ai_front_desk_propose",
+        "requested uuid, proposed_intent text, proposed_tool text",
+    ): "void",
     ("ai_front_desk_pending", ""): "SETOF uuid",
     ("ai_front_desk_turn", "requested_turn uuid, kek text"): (
         "TABLE(turn_id uuid, thread_id uuid, clinic_id uuid, channel text, "
@@ -66,3 +82,5 @@ POSTURE["ai_front_desk_audit_scope"] = (
     True,
     ["clinic_app", "clinic_owner", "clinic_resolver"],
 )
+POSTURE["ai_front_desk_allowed"] = ("v", False, ["clinic_resolver"])
+POSTURE["ai_front_desk_current"] = ("v", False, ["clinic_resolver"])

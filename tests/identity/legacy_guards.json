@@ -847,26 +847,37 @@
       "reason": "Authenticates only an inbox principal and its verified-contact enrollment, limits challenge attempts, and mints a booking-only session after a successful challenge. Portal sessions are refused and cannot widen their existing scope."
     },
     {
-      "symbol": "apps.ai.front_desk.enqueue_turn",
+      "symbol": "apps.ai.front_desk._authorize",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.front_desk.enqueue_turn#cut1"
+        "apps.ai.front_desk._authorize#cut1"
       ],
-      "reason": "Queues only a just-stored message owned by the authenticated inbox principal under the current clinic A2 policy, live agent.execute principal and organization opt-in; portal admission uses run_portal_turn with its current patient session."
+      "reason": "Authenticates fresh source evidence for the pinned clinic permission and transaction through the native resolver; signed inbound, portal, native refusal and kill/replay witnesses execute this boundary."
     },
     {
-      "symbol": "apps.ai.front_desk.run_portal_turn",
+      "symbol": "apps.ai.front_desk._enqueue",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.front_desk.run_portal_turn#cut1"
+        "apps.ai.front_desk._enqueue#cut1"
       ],
-      "reason": "Runs inside the current portal messages session without staff or tenant GUCs. Enqueue, policy, reviewed answers, tool budget and booking services recheck that session and clinic; a messages-only session cannot obtain booking scope."
+      "reason": "Binds a stored inbound message to its current clinic evaluation permission through authenticated source evidence; the owning signed provider or verified portal session is rechecked in PostgreSQL."
+    },
+    {
+      "symbol": "apps.ai.front_desk._propose",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.front_desk._propose#cut1"
+      ],
+      "reason": "Records only closed turn proposal metadata for shadow or reviewed-live exposure; native source and stage checks forbid domain effects, replies, identity grants and handoffs."
     },
     {
       "symbol": "apps.ai.front_desk_kb._article",
@@ -10763,8 +10774,6 @@
     "apps.ai.front_desk._pending#cut1",
     "apps.ai.front_desk._state#cut1",
     "apps.ai.front_desk._verify#cut1",
-    "apps.ai.front_desk.enqueue_turn#cut1",
-    "apps.ai.front_desk.run_portal_turn#cut1",
     "apps.ai.front_desk_kb._article#cut1",
     "apps.ai.front_desk_kb.approve_article#cut1",
     "apps.ai.front_desk_kb.draft_article#cut1",
@@ -11446,7 +11455,10 @@
     "clinic_app.retention_care_patients",
     "clinic_app.user_has_org",
     "clinic_app.user_organizations",
-    "clinic_app.waitlist_staff"
+    "clinic_app.waitlist_staff",
+    "apps.ai.front_desk._authorize#cut1",
+    "apps.ai.front_desk._enqueue#cut1",
+    "apps.ai.front_desk._propose#cut1"
   ],
   "schema_version": 2,
   "method": [
@@ -12832,7 +12844,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Returns only approved reviewed answers of the turn clinic to its owning inbox principal or current verified portal messages session."
     },
@@ -12870,7 +12887,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Appends one metadata-only hash-chain event for a completed owned turn and reply created in the current transaction; principal, organization and clinic come from the source-backed audit scope, and repeated publication is idempotent."
     },
@@ -12910,7 +12932,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Returns only the current inbox principal or verified portal patient session and its stored organization/clinic for an owned completed turn whose reply was created in the current transaction."
     },
@@ -12923,7 +12950,7 @@
         "resolvers": [],
         "signatures": [
           {
-            "arguments": "requested_message uuid",
+            "arguments": "requested_message uuid, receipt bytea, kek text",
             "returns": "uuid",
             "security_definer": true,
             "set_returning": false
@@ -12948,7 +12975,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in, global AI switch and daily budget."
     },
@@ -12986,7 +13018,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Rechecks current owner, enabled policy, global AI switch, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
     },
@@ -13024,7 +13061,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Pins reviewed-answer administrator authorship and approval, staff handoff resolution, and the current owned turn bridge for agent rows. Raw foreign or inactive staff, forged reply bindings, deletes and truncation refuse."
     },
@@ -13062,7 +13104,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Lists pending turns only for the current authenticated inbox principal or matching verified portal messages session; unrelated staff and patient scopes get none."
     },
@@ -13100,7 +13147,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Allows only the owning inbox principal or verified portal messages session to record closed challenge, clear, handoff and verified future-offer transitions."
     },
@@ -13138,7 +13190,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Claims one pending owned turn under current A2 policy, global AI switch and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
     },
@@ -13176,7 +13233,12 @@
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
-        "test_disabled_portal_agent_keeps_the_human_message_path"
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "Compares a verified-contact inbox enrollment birth date server-side with a three-attempt bound, then mints only a short booking session. Portal callers refuse and cannot gain any new scope."
     },
@@ -13486,6 +13548,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.ai_eval_activation_allowed",
+          "clinic_app.ai_front_desk_allowed",
           "clinic_app.ai_rollout_bound",
           "clinic_app.ai_rollout_guard",
           "clinic_app.ai_rollout_status",
@@ -14217,9 +14280,11 @@
         "resolvers": [
           "clinic_app.ai_front_desk_articles",
           "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_authorize",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_propose",
           "clinic_app.ai_front_desk_state",
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
@@ -14829,10 +14894,11 @@
         "resolvers": [
           "clinic_app.ai_front_desk_articles",
           "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_authorize",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
-          "clinic_app.ai_front_desk_guard",
           "clinic_app.ai_front_desk_pending",
+          "clinic_app.ai_front_desk_propose",
           "clinic_app.ai_front_desk_state",
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
@@ -18822,6 +18888,8 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_authorize",
+          "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
@@ -18875,6 +18943,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_front_desk_guard",
           "clinic_app.protected_blind_index",
           "clinic_app.protected_decrypt",
           "clinic_app.protected_encrypt"
@@ -28139,6 +28208,192 @@
         "test_delegate_read_appears_in_the_represented_patients_access_log",
         "test_delegate_result_read_appears_in_the_represented_patients_access_log"
       ]
+    },
+    "clinic_app.ai_front_desk_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_front_desk_authorize",
+          "clinic_app.ai_front_desk_current",
+          "clinic_app.ai_front_desk_enqueue"
+        ],
+        "signatures": [
+          {
+            "arguments": "approved uuid, clinic uuid, observed jsonb, autonomy boolean",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
+      ],
+      "reason": "The existing front-desk permission is clinic-bound and source-authenticated for the current transaction. Real signed/portal and direct SQL witnesses cover shadow, absent autonomy, killed or drifted sources, replay and preserved human recovery; private helpers have no runtime EXECUTE."
+    },
+    "clinic_app.ai_front_desk_authorize": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, receipt bytea, kek text",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
+      ],
+      "reason": "The existing front-desk permission is clinic-bound and source-authenticated for the current transaction. Real signed/portal and direct SQL witnesses cover shadow, absent autonomy, killed or drifted sources, replay and preserved human recovery; private helpers have no runtime EXECUTE."
+    },
+    "clinic_app.ai_front_desk_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_front_desk_articles",
+          "clinic_app.ai_front_desk_audit_scope",
+          "clinic_app.ai_front_desk_finish",
+          "clinic_app.ai_front_desk_propose",
+          "clinic_app.ai_front_desk_state",
+          "clinic_app.ai_front_desk_turn",
+          "clinic_app.ai_front_desk_verify",
+          "clinic_app.comms_message_guard_v1",
+          "clinic_app.patient_authority"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid, autonomy boolean",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
+      ],
+      "reason": "The existing front-desk permission is clinic-bound and source-authenticated for the current transaction. Real signed/portal and direct SQL witnesses cover shadow, absent autonomy, killed or drifted sources, replay and preserved human recovery; private helpers have no runtime EXECUTE."
+    },
+    "clinic_app.ai_front_desk_propose": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_front_desk_rollout_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, proposed_intent text, proposed_tool text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_unverified_identity_cannot_learn_appointment_details",
+        "test_booking_happens_only_after_explicit_acceptance_of_the_offer",
+        "test_no_availability_offers_the_existing_waitlist",
+        "test_urgency_routes_to_a_human_with_fixed_safety_text",
+        "test_missing_answer_says_it_does_not_know_and_forwards",
+        "test_injected_commands_never_become_tool_calls",
+        "test_the_agent_needs_both_opt_ins_and_the_policy_tools",
+        "test_concurrent_acceptances_book_the_offer_once",
+        "test_knowledge_page_drafts_approves_and_retires_exact_versions",
+        "test_handoff_page_lists_reasons_and_resolves_by_post_body",
+        "test_database_guards_refuse_raw_front_desk_forgery",
+        "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
+        "test_verified_portal_books_only_after_accepting_the_exact_offer",
+        "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
+        "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
+        "test_disabled_portal_agent_keeps_the_human_message_path",
+        "test_forbidden_exposure_keeps_inbound_messages_without_ai_effects",
+        "test_native_effect_bridges_refuse_forbidden_exposure",
+        "test_native_channel_booking_authority_stops_with_rollout",
+        "test_reenable_does_not_revive_a_front_desk_turn",
+        "test_a_new_permission_does_not_rescue_an_old_queued_turn"
+      ],
+      "reason": "The existing front-desk permission is clinic-bound and source-authenticated for the current transaction. Real signed/portal and direct SQL witnesses cover shadow, absent autonomy, killed or drifted sources, replay and preserved human recovery; private helpers have no runtime EXECUTE."
     }
   },
   "sql_method": [
