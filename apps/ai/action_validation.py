@@ -29,6 +29,8 @@ from apps.ai.contracts import Purpose
 from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AgentPolicyVersion, AgentRun, ModelConfiguration
 from apps.ai.prompt_registry import load_prompt
+from apps.core.secrets import secret_store
+from apps.tenancy.envelope import KEK_SECRET_NAME
 from apps.workflows.models import WorkflowDefinitionVersion
 
 if TYPE_CHECKING:
@@ -181,6 +183,9 @@ def validate_current(
         "schema": configuration.schema_sha256,
     }:
         raise ActionRefusedError(Refusal.POLICY)
+    _validate_effect(data, policy, terms)
+    _validate_provider(data, controls)
+    _validate_sources(data=data, policy=policy, proposal_id=proposal_id, using=using)
     with connections[using].cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ai_rollout_agent_allowed(%s)",
@@ -193,9 +198,6 @@ def validate_current(
         )
         if cursor.fetchone() != (True,):
             raise ActionRefusedError(Refusal.POLICY)
-    _validate_effect(data, policy, terms)
-    _validate_provider(data, controls)
-    _validate_sources(data=data, policy=policy, proposal_id=proposal_id, using=using)
 
 
 def _validate_effect(
@@ -295,16 +297,23 @@ def _validate_sources(
         if using != "default":
             raise ActionRefusedError(Refusal.AUTHORITY)
         check_revenue_sources(clinic_id=policy.clinic_id, data=data)
-        return
-    if closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
+    elif closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
         # A1 runs in the approving human's request; machines never execute it.
         if using != "default":
             raise ActionRefusedError(Refusal.SOURCE)
         check_care_sources(data=data, clinic_id=policy.clinic_id)
+    else:
+        _validate_workflow_sources(
+            data=data, policy=policy, proposal_id=proposal_id, using=using
+        )
         return
-    _validate_workflow_sources(
-        data=data, policy=policy, proposal_id=proposal_id, using=using
-    )
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_authorize_retained_proposal(%s,%s,%s)",
+            [proposal_id, policy.clinic_id, secret_store().get_secret(KEK_SECRET_NAME)],
+        )
+        if cursor.fetchone() != (True,):
+            raise ActionRefusedError(Refusal.SOURCE)
 
 
 def _validate_workflow_sources(

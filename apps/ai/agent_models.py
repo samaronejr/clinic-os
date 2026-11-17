@@ -129,6 +129,7 @@ class ActionProposal(AgentRecord):
     # The payload's approval quorum, readable by the PostgreSQL vote guard;
     # null only on proposals recorded before ai.0012, which cannot advance.
     quorum = models.PositiveSmallIntegerField(null=True)
+    source_xid = models.CharField(max_length=20, blank=True, default="")
 
     class Meta(AgentRecord.Meta):
         """One action key per clinic; changed terms never reuse its approval."""

@@ -1160,7 +1160,6 @@
     {
       "symbol": "apps.ai.revenue_cycle._ready",
       "signals": [
-        "actor",
         "denial"
       ],
       "kind": "delegated",
@@ -10716,6 +10715,30 @@
       "probes": [
         "apps.interop.rnds_gate.require_rnds_rehearsal#cut1"
       ]
+    },
+    {
+      "symbol": "apps.ai.action_validation._validate_sources",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation._validate_sources#cut1"
+      ],
+      "reason": "The existing executed AI authority census now runs the real Finance source-validation witness; native encrypted-payload provenance is authenticated before a retained proposal validates or advances."
+    },
+    {
+      "symbol": "apps.ai.revenue_sources.retained_output",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.effects.check_invocation",
+        "apps.insurance.access.authority"
+      ],
+      "reason": "Requester-bound exact-clinic output selection retains existing RLS and Finance authority, then delegates original permission and current governed-source authentication to check_invocation before new or idempotent proposal admission."
     }
   ],
   "probes": [
@@ -11471,7 +11494,8 @@
     "apps.ai.effects.check_invocation#cut1",
     "apps.ai.front_desk._authorize#cut1",
     "apps.ai.front_desk._enqueue#cut1",
-    "apps.ai.front_desk._propose#cut1"
+    "apps.ai.front_desk._propose#cut1",
+    "apps.ai.action_validation._validate_sources#cut1"
   ],
   "schema_version": 2,
   "method": [
@@ -12647,6 +12671,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.ai_authorize_effect",
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_care_guard",
           "clinic_app.ai_care_visible",
           "clinic_app.ai_effect_allowed",
@@ -12656,8 +12681,8 @@
           {
             "arguments": "clinic uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -13415,14 +13440,15 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_rollout_guard"
         ],
         "signatures": [
           {
             "arguments": "subject uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -15297,6 +15323,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.agent_audit",
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_eval_record_guard",
           "clinic_app.ai_front_desk_audit",
           "clinic_app.ai_front_desk_verify",
@@ -15346,14 +15373,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           },
           {
             "arguments": "text, text",
             "returns": "bytea",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
         ]
       },
@@ -18910,6 +18937,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.ai_authorize_effect",
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_front_desk_authorize",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",
@@ -18929,8 +18957,8 @@
           {
             "arguments": "kek text, purpose text, envelope bytea",
             "returns": "bytea",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -22315,14 +22343,15 @@
           "clinic_app.agent_approval_current",
           "clinic_app.agent_controls",
           "clinic_app.agent_record_approval",
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_care_staff"
         ],
         "signatures": [
           {
             "arguments": "clinic uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -25929,7 +25958,8 @@
         "resolvers": [
           "clinic_app.agent_approval_current",
           "clinic_app.agent_controls",
-          "clinic_app.agent_record_approval"
+          "clinic_app.agent_record_approval",
+          "clinic_app.ai_authorize_retained_proposal"
         ]
       },
       "kind": "domain_protocol",
@@ -28293,9 +28323,11 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_care_guard",
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_imported_observation",
+          "clinic_app.ai_retained_proposal_guard",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_rollout_agent_allowed",
           "clinic_app.ai_rollout_guard",
@@ -28306,8 +28338,8 @@
           {
             "arguments": "requested uuid, clinic uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -28532,6 +28564,60 @@
         "test_a_new_permission_does_not_rescue_an_old_queued_turn"
       ],
       "reason": "The existing front-desk permission is clinic-bound and source-authenticated for the current transaction. Real signed/portal and direct SQL witnesses cover shadow, absent autonomy, killed or drifted sources, replay and preserved human recovery; private helpers have no runtime EXECUTE."
+    },
+    "clinic_app.ai_authorize_retained_proposal": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_proposal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, clinic uuid, kek text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_revenue_reproposal_keeps_original_permission",
+        "test_native_revenue_run_requires_its_original_invocation",
+        "test_retained_revenue_idempotent_preview_rechecks_source",
+        "test_retained_revenue_payload_cannot_borrow_another_invocation",
+        "test_native_care_payload_keeps_its_own_invocation",
+        "test_retained_proposal_source_receipt_is_not_runtime_writable"
+      ],
+      "reason": "Authenticated current-transaction receipts bind the immutable encrypted proposal digest and cited retained source to its exact original invocation. Real Finance and care tests prove positive validation, successor/drift refusal, no omitted origin, no payload cross-wiring and no runtime receipt write."
+    },
+    "clinic_app.ai_retained_proposal_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_retained_proposal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_retained_revenue_reproposal_keeps_original_permission",
+        "test_native_revenue_run_requires_its_original_invocation",
+        "test_retained_revenue_idempotent_preview_rechecks_source",
+        "test_retained_revenue_payload_cannot_borrow_another_invocation",
+        "test_native_care_payload_keeps_its_own_invocation",
+        "test_retained_proposal_source_receipt_is_not_runtime_writable"
+      ],
+      "reason": "Authenticated current-transaction receipts bind the immutable encrypted proposal digest and cited retained source to its exact original invocation. Real Finance and care tests prove positive validation, successor/drift refusal, no omitted origin, no payload cross-wiring and no runtime receipt write."
     }
   },
   "sql_method": [

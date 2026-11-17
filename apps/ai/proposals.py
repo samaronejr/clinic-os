@@ -20,7 +20,7 @@ from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
 from apps.ai.policy import check_configuration, rollout_approval, select_configuration
 from apps.ai.prompt_registry import load_prompt
-from apps.ai.revenue_sources import require_finance
+from apps.ai.revenue_sources import proposal_invocation, require_finance
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id, require_permission
 
@@ -93,6 +93,9 @@ def propose_action(
     ).first()
     if policy is None:
         raise ActionAccessDeniedError
+    source_invocation_id = proposal_invocation(
+        clinic_id=clinic_id, data=data, capability=policy.capability
+    )
     previous = ActionProposal.objects.filter(
         clinic_id=clinic_id,
         idempotency_key=identifier(data["idempotency_key"]),
@@ -113,7 +116,7 @@ def propose_action(
     source_invocation_id = (
         check_care_sources(data=data, clinic_id=clinic_id)
         if policy.capability == "care_coordination"
-        else None
+        else source_invocation_id
     )
     _prompt, prompt_hash = load_prompt(Purpose(policy.capability))
     contract: dict[str, JSON] = {

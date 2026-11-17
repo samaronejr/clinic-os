@@ -50,6 +50,22 @@ algorithm. Approval and execution reload source bindings, policy, provider and
 authority; new returns, allocations, reversal, supersession, expiry or revocation
 refuse stale work. The direct draft bridge also requires the matching executing
 intent and authenticated human approval. Replays retain one receipt/effect.
+Revenue proposal admission, including an idempotent preview lookup, rechecks the
+retained output's original invocation permission and governed source identity.
+The new run retains that invocation; a successor model permission cannot revive
+its output. Native run and execution guards enforce the same original binding.
+
+Before a care or revenue proposal can validate or advance, PostgreSQL decrypts
+its actual immutable payload through the existing tenant envelope, verifies its
+digest and scope, and binds the cited retained source to the run's invocation.
+It also requires that invocation's fresh authenticated source evidence. Only the
+resolver can update the proposal's transaction receipt; raw runtime DML cannot
+mint it or pair an old payload with a different current invocation. Quorum,
+Finance authority, step-up verification and human approval remain independent.
+Migration `0017_retained_proposal_sources` adds only this receipt metadata.
+Historical revenue runs without an invocation cannot advance; fresh output and
+preview are required, with no inferred provenance backfill.
+
 An appeal has no new clinical assertions and remains an unsubmitted insurance
 draft; its separate human submission approval is unchanged. Its body is only
 the reviewed wording: source identifiers and digests stay in the artifact and

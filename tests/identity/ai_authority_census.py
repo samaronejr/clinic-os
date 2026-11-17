@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import psycopg
 from apps.identity import stepup
+from django.conf import settings
 from django.db import connections
 from psycopg import sql
 
@@ -28,11 +29,14 @@ from ai import (
     test_extraction_rollout,
     test_gateway,
     test_posture,
+    test_revenue_rollout,
     test_rollout,
 )
 from ai.agent_support import agent_world
 from ai.brief_support import seeded
 from ai.decision_support_helpers import enable, world_for
+from ai.revenue_support import revenue_world
+from billing.journal_support import finance_setup
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -82,6 +86,20 @@ def exercise_ai_authority(
     secret_root: Path,
 ) -> None:
     """Bind source candidates to executed scope, role, owner and transport checks."""
+    with patch.context() as local:
+        local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
+        finance = finance_setup._get_wrapped_function()(graph())
+        revenue = revenue_world(finance, local, secret_root)
+        proofs.run(
+            "AI executed authority:retained Finance source validation",
+            partial(
+                test_revenue_rollout.test_retained_revenue_reproposal_keeps_original_permission,
+                revenue,
+                local,
+                "advanced_stage",
+                native=False,
+            ),
+        )
     with patch.context() as local:
         proofs.run(
             "AI executed authority:metering and protected sinks",

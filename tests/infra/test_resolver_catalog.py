@@ -206,6 +206,7 @@ RESOLVER_TABLE_GRANTS: Final = {
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("ai_aiinvocation", "effect_xid", "UPDATE"),
+    ("ai_actionproposal", "source_xid", "UPDATE"),
     *analytics_catalog.COLUMN_GRANTS,
     *subscriptions_catalog.COLUMN_GRANTS,
     ("ai_evaluationrun", "status", "UPDATE"),
@@ -430,6 +431,8 @@ POSTURE_OVERRIDES: Final = {
     "ai_effect_allowed": ("v", False, ["clinic_resolver"]),
     "ai_effect_current": ("v", False, ["clinic_resolver"]),
     "ai_authorize_effect": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "ai_authorize_retained_proposal": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "ai_retained_proposal_guard": ("v", False, ["clinic_resolver"]),
     "delegate_now": ("s", False, ["clinic_resolver"]),
     "patient_identity": ("s", False, ["clinic_resolver"]),
     "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
@@ -687,6 +690,8 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_effect_source", "requested uuid, clinic uuid"),
     ("ai_effect_allowed", "requested uuid, clinic uuid, observed jsonb"),
     ("ai_effect_current", "requested uuid, clinic uuid"),
+    ("ai_authorize_retained_proposal", "requested uuid, clinic uuid, kek text"),
+    ("ai_retained_proposal_guard", ""),
     (
         "ai_authorize_effect",
         "requested uuid, clinic uuid, receipt bytea, kek text",
@@ -986,6 +991,11 @@ FUNCTION_RESULTS: Final = {
     ): "TABLE(configuration_id uuid, purpose text, approval_id uuid)",
     ("ai_effect_allowed", "requested uuid, clinic uuid, observed jsonb"): "boolean",
     ("ai_effect_current", "requested uuid, clinic uuid"): "boolean",
+    (
+        "ai_authorize_retained_proposal",
+        "requested uuid, clinic uuid, kek text",
+    ): "boolean",
+    ("ai_retained_proposal_guard", ""): "trigger",
     (
         "ai_authorize_effect",
         "requested uuid, clinic uuid, receipt bytea, kek text",
