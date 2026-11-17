@@ -35,7 +35,7 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
     )
     from apps.tenancy.db import tenant_context  # noqa: PLC0415
 
-    from ai.support import policy  # noqa: PLC0415
+    from ai.support import model, policy  # noqa: PLC0415
     from identity.permission_support import owner_context  # noqa: PLC0415
     from patient_service_support import runtime_role  # noqa: PLC0415
 
@@ -66,6 +66,11 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         )
     # The agent answers only while the owner's global AI switch is on.
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
+    # Replies, bookings and handoffs need an active front-desk model admitted at
+    # monitored_autonomy. Reach it as the unit tests do: recorded evaluation
+    # runs, independent ratings and owner decisions for shadow, reviewed_live
+    # and monitored_autonomy, then platform activation.
+    rollout = model(organization=organization, clinic=clinic)
     with runtime_role(), tenant_context(actor, organization):
         configuration = latest_configuration(clinic)
         if configuration is None:
@@ -110,6 +115,7 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         )
     return {
         "synthetic": True,
+        "model_configuration": str(rollout.pk),
         "policy_version": publication.version,
         "article_version": approved.version,
     }
