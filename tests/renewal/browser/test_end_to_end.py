@@ -49,6 +49,7 @@ from renewal.browser._navigation import (
     expect_document,
     goto_settled,
     reload_settled,
+    track_realtime,
 )
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
@@ -341,8 +342,14 @@ def keyboard_reaches(case: Day, page: Page, target: Locator, scene: str) -> None
 
 
 def watch(case: Day, persona: str, page: Page) -> Page:
-    """Record page errors and console errors for one persona's page."""
+    """Record page errors and console errors for one persona's page.
+
+    The page's realtime refreshes are quieted around every helper navigation
+    (``track_realtime``): a refresh cut off by the persona's own navigation is
+    logged by Firefox (htmx:sendAbort) and WebKit (htmx:sendError) as an error.
+    """
     errors = case.errors.setdefault(persona, [])
+    track_realtime(page)
     page.set_default_timeout(TIMEOUT_MS)
     watch_page_errors(page, errors)
     page.on(
