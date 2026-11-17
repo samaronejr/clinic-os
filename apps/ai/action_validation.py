@@ -26,8 +26,11 @@ from apps.ai.action_payload import (
 from apps.ai.agent_policies import TOOL_SCHEMAS
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
-from apps.ai.models import AgentPolicyVersion, AgentRun
+from apps.ai.evaluation.versions import source_versions
+from apps.ai.models import AgentPolicyVersion, AgentRun, ModelConfiguration
 from apps.ai.prompt_registry import load_prompt
+from apps.core.secrets import secret_store
+from apps.tenancy.envelope import KEK_SECRET_NAME
 from apps.workflows.models import WorkflowDefinitionVersion
 
 if TYPE_CHECKING:
@@ -165,9 +168,36 @@ def validate_current(
     )
     if stored_prompt != load_prompt(Purpose(policy.capability))[1]:
         raise ActionRefusedError(Refusal.POLICY)
+    configuration_id = (
+        AgentRun.objects.using(using)
+        .filter(actionproposal__pk=proposal_id)
+        .values_list("configuration_id", flat=True)
+        .first()
+    )
+    if configuration_id is None:
+        raise ActionRefusedError(Refusal.POLICY)
+    configuration = ModelConfiguration.objects.filter(pk=configuration_id).first()
+    if configuration is None or source_versions(Purpose(policy.capability)) != {
+        "prompt": configuration.prompt_sha256,
+        "retrieval": configuration.retrieval_sha256,
+        "schema": configuration.schema_sha256,
+    }:
+        raise ActionRefusedError(Refusal.POLICY)
     _validate_effect(data, policy, terms)
     _validate_provider(data, controls)
     _validate_sources(data=data, policy=policy, proposal_id=proposal_id, using=using)
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_rollout_agent_allowed(%s)",
+            [
+                AgentRun.objects.using(using)
+                .filter(actionproposal__pk=proposal_id)
+                .values_list("pk", flat=True)
+                .first()
+            ],
+        )
+        if cursor.fetchone() != (True,):
+            raise ActionRefusedError(Refusal.POLICY)
 
 
 def _validate_effect(
@@ -267,16 +297,23 @@ def _validate_sources(
         if using != "default":
             raise ActionRefusedError(Refusal.AUTHORITY)
         check_revenue_sources(clinic_id=policy.clinic_id, data=data)
-        return
-    if closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
+    elif closed(data["operation"], {"name", "version"})["name"] == "care_action.create":
         # A1 runs in the approving human's request; machines never execute it.
         if using != "default":
             raise ActionRefusedError(Refusal.SOURCE)
         check_care_sources(data=data, clinic_id=policy.clinic_id)
+    else:
+        _validate_workflow_sources(
+            data=data, policy=policy, proposal_id=proposal_id, using=using
+        )
         return
-    _validate_workflow_sources(
-        data=data, policy=policy, proposal_id=proposal_id, using=using
-    )
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_authorize_retained_proposal(%s,%s,%s)",
+            [proposal_id, policy.clinic_id, secret_store().get_secret(KEK_SECRET_NAME)],
+        )
+        if cursor.fetchone() != (True,):
+            raise ActionRefusedError(Refusal.SOURCE)
 
 
 def _validate_workflow_sources(

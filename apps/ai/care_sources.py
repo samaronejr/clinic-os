@@ -16,6 +16,8 @@ import rfc8785
 from apps.ai.action_contracts import ActionRefusedError, Refusal
 from apps.ai.action_payload import care_window, closed, identifier
 from apps.ai.care_models import CareProposal
+from apps.ai.contracts import GatewayRefusedError
+from apps.ai.effects import check_invocation
 from apps.workflows.access import WorkflowAccessDeniedError
 from apps.workflows.care.access import version_scope
 from apps.workflows.care.models import CarePlan
@@ -87,7 +89,7 @@ def plan_is_current(plan: CarePlan) -> bool:
     return state == "finalized"
 
 
-def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> None:
+def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
     """Reload the plan and the proposal; any drift is a stale source."""
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
     sources = data["source_versions"]
@@ -130,3 +132,8 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> None:
         != (item.kind, item.window_start, item.window_end)
     ):
         raise ActionRefusedError(Refusal.SOURCE)
+    try:
+        check_invocation(clinic_id=clinic_id, invocation_id=item.invocation_id)
+    except GatewayRefusedError:
+        raise ActionRefusedError(Refusal.SOURCE) from None
+    return item.invocation_id

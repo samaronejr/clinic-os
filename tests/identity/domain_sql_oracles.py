@@ -19,6 +19,9 @@ from ai.extraction_oracles import CASES as EXTRACTION_CASES
 from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ai.front_desk_oracles import CASES as FRONT_DESK_CASES
 from ai.front_desk_oracles import SQL_PROTOCOL_ORACLES as FRONT_DESK_PROTOCOLS
+from ai.retained_oracles import ASR_CASES
+from ai.retained_oracles import CASES as RETAINED_EFFECT_CASES
+from ai.retained_oracles import SQL_PROTOCOL_ORACLES as RETAINED_EFFECT_PROTOCOLS
 from analytics.sql_oracles import CASES as ANALYTICS_CASES
 from analytics.sql_oracles import SQL_PROTOCOL_ORACLES as ANALYTICS_PROTOCOLS
 from billing.fiscal_oracles import CASES as FISCAL_CASES
@@ -356,6 +359,7 @@ SCRIBE_PROTOCOL_ORACLES = {
         "test_finalize_without_full_coverage_requires_explicit_disposition",
         "test_database_coverage_change_is_a_recoverable_transcript_conflict",
         "test_native_coverage_storage_has_per_version_and_recording_bounds",
+        *ASR_CASES,
     ],
     "clinic_app.scribe_assigned": [
         "test_native_capture_authority_refuses_inactive_actor",
@@ -441,6 +445,7 @@ PROTOCOL_ORACLES = {
     **EVALUATION_PROTOCOLS,
     **CARE_PROTOCOLS,
     **FRONT_DESK_PROTOCOLS,
+    **RETAINED_EFFECT_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
     **dict.fromkeys(
@@ -572,6 +577,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
                 callable(ENTERPRISE_CASES[name])
                 for names in ENTERPRISE_PROTOCOLS.values()
                 for name in names
+            ),
+            (
+                callable(RETAINED_EFFECT_CASES[name])
+                for cases in RETAINED_EFFECT_PROTOCOLS.values()
+                for name in cases
             ),
         )
     )

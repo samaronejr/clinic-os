@@ -28,7 +28,12 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse
 from django.utils import timezone
 
-from ai.evaluation_support import as_reviewer, complete_reviews, evaluation_world
+from ai.evaluation_support import (
+    as_reviewer,
+    complete_reviews,
+    evaluation_world,
+    promote_stage,
+)
 from ai.support import DEFAULT_BUDGET, policy
 from auth.stepup_test_support import verified_request
 from identity.delegation_probes import _as_owner
@@ -50,7 +55,7 @@ SYMBOLS = frozenset(
         "apps.ai.evaluation.services.evaluation_staff",
         "apps.ai.evaluation.services.finish_run",
         "apps.ai.evaluation.services.review_slot",
-        "apps.ai.evaluation.services.start_run",
+        "apps.ai.evaluation.services._start_run",
         "apps.ai.evaluation.services.store_results",
         "apps.ai.evaluation.views._review",
         "apps.ai.evaluation.views._workspace",
@@ -197,6 +202,7 @@ def evaluation_probes(graph: RbacGraph, actor: UUID) -> list[DifferentialProbe]:
             decision="approved",
             approval_ref="synthetic-census-clinic-approval",
         )
+    promote_stage(world, approval.pk)
     configuration = transition_model(
         configuration_id=world.configuration.pk, state="active"
     )
@@ -294,7 +300,7 @@ def evaluation_probes(graph: RbacGraph, actor: UUID) -> list[DifferentialProbe]:
             lambda: services.finish_run(clinic_id=world.clinic, run_id=world.run.pk),
             ("physician", "owner"),
         ),
-        "apps.ai.evaluation.services.start_run": (start, ("physician", "owner")),
+        "apps.ai.evaluation.services._start_run": (start, ("physician", "owner")),
         "apps.ai.evaluation.views._workspace": (
             lambda: views._workspace(request, world.clinic).status_code == 200,
             ("owner",),

@@ -50,6 +50,22 @@ algorithm. Approval and execution reload source bindings, policy, provider and
 authority; new returns, allocations, reversal, supersession, expiry or revocation
 refuse stale work. The direct draft bridge also requires the matching executing
 intent and authenticated human approval. Replays retain one receipt/effect.
+Revenue proposal admission, including an idempotent preview lookup, rechecks the
+retained output's original invocation permission and governed source identity.
+The new run retains that invocation; a successor model permission cannot revive
+its output. Native run and execution guards enforce the same original binding.
+
+Before a care or revenue proposal can validate or advance, PostgreSQL decrypts
+its actual immutable payload through the existing tenant envelope, verifies its
+digest and scope, and binds the cited retained source to the run's invocation.
+It also requires that invocation's fresh authenticated source evidence. Only the
+resolver can update the proposal's transaction receipt; raw runtime DML cannot
+mint it or pair an old payload with a different current invocation. Quorum,
+Finance authority, step-up verification and human approval remain independent.
+Migration `0017_retained_proposal_sources` adds only this receipt metadata.
+Historical revenue runs without an invocation cannot advance; fresh output and
+preview are required, with no inferred provenance backfill.
+
 An appeal has no new clinical assertions and remains an unsubmitted insurance
 draft; its separate human submission approval is unchanged. Its body is only
 the reviewed wording: source identifiers and digests stay in the artifact and
@@ -165,8 +181,10 @@ It stores purpose, capability key, provider/model, region and jurisdiction,
 retention/training terms, integer micro-BRL prices, version, review reference,
 primary/fallback route, timeout, and state. The DB permits only
 `draft -> approved -> active -> retired`, with retirement also possible before
-activation. Todo 47 additionally requires a passing, preregistered evaluation
-and an explicit clinic-owner change approval before activation. The platform
+activation. Todos 47 and 80 additionally require a passing, preregistered
+offline evaluation, an approved isolated shadow stage, a separately reviewed
+shadow receipt and an explicit clinic-owner permission for reviewed use before
+activation. The platform
 owner still performs the model-state transition. Terms never mutate; changes
 require a new version. Model review
 references are synthetic configuration approvals, not provider/EG approvals.
@@ -366,6 +384,11 @@ treatment or messages a patient.
 - **Clinician decisions.** A clinical item becomes a care action only when the
   patient's clinician accepts it through `add_care_action`, which records them
   as its approver; staff can only decline administrative items.
+- **Retained output.** Clinical acceptance and administrative proposal, approval
+  and execution recheck the originating bundle's exact invocation permission
+  and current governed source identity. A later model configuration or agent
+  permission cannot authorize an older bundle. The native care and agent guards
+  require the same authenticated invocation evidence before committing effects.
 - **Stale sources (scenario 8 variant).** A superseded plan, a changed plan
   revision or a source note that is no longer finalized makes every pending
   item stale at its next approval or acceptance, in the service and again in
@@ -405,6 +428,43 @@ restores the 0008 bodies. The same assistant answers replies in clinic-opened po
 threads. The live portal session supplies identity; every scheduling call
 separately requires its current `booking` operation. A messages-only session
 cannot gain booking authority through a challenge.
+
+The clinic must additionally hold the current evaluated configuration's
+`monitored_autonomy` permission before any automatic reply, verification grant,
+session, challenge, offer, appointment change or handoff. `shadow` and
+`reviewed_live` record only a closed `FrontDeskTurn` proposal (`proposed`, no
+reply). Their proposed tool names consume no action budget and execute nothing.
+Administrative expansion still requires the platform configuration to be active.
+An A2 policy is a further restriction, never a substitute for this permission.
+The thread's manual message and staff-resolution paths stay available.
+
+Each turn pins its immutable `ModelChangeRequest` through a composite
+organization/clinic foreign key. Python recomputes governed source bytes at
+admission and every effect. The source facts are authenticated through the
+existing tenant encryption boundary and bind their exact message or turn and
+database transaction. The resolver accepts only matching evaluated sources,
+current review authority, an available synthetic provider and the permitted
+stage. It stamps a transaction receipt on the existing turn; runtime has no
+write grant on it. No new key or permission registry is introduced.
+
+The native turn, article, verification, state, finish, reply-message and audit
+bridges recheck that receipt and pinned permission. Channel-issued booking
+sessions additionally require a current permitted turn in their transaction,
+so a direct database call cannot reuse a session after a kill or a stale
+permission. A new permission cannot rescue an old queued turn. Source proofs
+cannot be replayed across subjects or transactions, and callers cannot provide
+bare hashes or forge a GUC as a source receipt. PostgreSQL verifies application
+source evidence; the application reads the deployed files. The database does
+not claim to read the application host's filesystem.
+The permission predicate also requires READ COMMITTED: an older repeatable-read
+or serializable snapshot cannot continue from a pre-kill view of the controls.
+
+Migration `0015_front_desk_rollout` follows the preserved global-switch
+migration and `0014_staged_rollout`. It adds only turn metadata and scoped
+references, replaces the enqueue signature with its authenticated source
+receipt, and removes the old unbound entrypoint. No runtime write grant is
+added. Reverse refuses retained bound turns or proposals; after that history,
+rollback is restore or disable.
 
 - **Turn pipeline.** The comms inbound hook queues one `FrontDeskTurn` for each
   stored, supported inbound message inside the authenticated delivery
@@ -612,6 +672,9 @@ independently identity-matched result version with identical source bytes and
 enrollment. The clinician must first use the existing result ingestion and
 identity verification workflow. The resolver checks the same bindings, expiry,
 deterministic parse and exact encrypted confirmation payload independently.
+Confirmation also rechecks the originating invocation's pinned rollout permission
+and current source identity before filing. The confirmation resolver and imported
+observation guard independently require its authenticated transaction receipt.
 It shares the result-series correction/review fence. One confirmation creates
 one immutable `ResultObservation`, with `provenance="imported"`, confirmer,
 candidate id and page/bbox. Replays do not create another observation.
@@ -692,13 +755,15 @@ strata. A synthetic pass and zero observed critical errors are not safety or
 real-world performance claims. Real clinical thresholds, adjudication and lawful
 representative data remain EG-3/EG-11.
 
-`ModelChangeRequest` is requested/approved/rejected. Only a current clinic owner
+`ModelChangeRequest` retains requested/approved/rejected decisions and explicit
+invalidated/killed stops. Only a current clinic owner
 other than its requester can decide it. A single-owner clinic must appoint a
 second independent owner before an evaluated model change can activate; the
 manual clinical workflow remains available. This deliberately accepts the
 onboarding cost rather than a self-approval exception. Approval requires a
 passing, current, unsuperseded run. A separate
-database trigger refuses model activation without that decision; admission and
+database trigger refuses model activation without the reviewed-live decision;
+admission and
 dispatch require the calling clinic's own current approval and recheck current
 source hashes. A platform state transition needs at least one current clinic
 approval, but it does not admit any other clinic. Registering a newer protocol
@@ -721,6 +786,75 @@ additionally names a configuration and three reviewers. `finish`, `report`
 `ai_eval --help` lists the required scope options. Final platform activation
 continues through `ai_gateway model-state`; an evaluation command alone never
 activates a configuration.
+
+Todo 80 extends these same four relations, rather than adding a rollout
+registry. An `EvaluationRun` starts offline. Its independently approved
+`ModelChangeRequest` permits only shadow exposure (`none` for domain use).
+`ai_eval stage-run --change-id ...` creates another immutable evaluation run,
+bound by composite organization/clinic foreign keys to that approval and its
+same model, prompt, retrieval, schema, corpus and threshold registration.
+The existing synthetic runner can store its output only as encrypted evaluation
+observations. It has no domain adapter, tool executor, gateway invocation,
+output artifact or outbox projection. Normal inference and agent admission
+refuse every shadow-only configuration, including raw runtime writes.
+
+Two independent ratings and any required adjudication must finish that shadow
+receipt before a different current owner approves `reviewed_live` exposure
+(`human_review`). This grants no administrative autonomy. Only front-desk and
+analyst configurations can subsequently collect a reviewed-live monitoring
+receipt and obtain another explicit `monitored_autonomy` permission
+(`bounded_admin`). Existing agent policies, finite budgets, allowlisted tools,
+human approvals where required, provider checks and send revalidation continue
+to narrow that permission. Clinical, care and revenue configurations cannot
+obtain this expansion. The deterministic front-desk workflow retains its own
+versioned, bounded policy; this mechanism adds no tool to it.
+
+Each approval captures the exact current owner/clinical-review membership
+identities. Revocation, replacement, inactive humans, a superseding protocol,
+retirement or changed governed bytes invalidate the relevant approval and its
+descendants. `ai_eval stop --change-id ... --state invalidated|killed` retains
+the evidence and emits a registered audit event. A database-maintained global
+kill generation and retained organization disable snapshots permanently kill
+older stage permissions, even after reenabling. A new offline-to-shadow review
+is required. Ordinary budget edits do not create a new permission or revive an
+old one. Invocation and agent-run foreign keys pin the admitted permission;
+new permissions cannot rescue old queued work or retained output. Dispatch,
+settlement, display and agent effects recheck the pinned permission.
+
+Retained note acceptance, extraction confirmation, care acceptance or
+administrative reproposal, and analyst review provenance retain that same
+invocation ancestry. `effects.check_invocation` resolves only clinic-scoped
+configuration and permission metadata, computes fresh governed source identities,
+and supplies encrypted evidence through the existing tenant envelope. PostgreSQL
+checks the pinned permission, current human authority, source identity, provider
+and kill switches before stamping `AIInvocation.effect_xid` for this transaction.
+Runtime cannot write that column. Private native predicates require the stamp
+and recheck current permission before domain effects; a later permission cannot
+rescue an old invocation. Independent human charting and result workflows retain
+their existing authority.
+
+Migration `0016_retained_effects` adds only that invocation metadata
+and resolver column grant, preserving the previous global-switch and front-desk
+checks. Empty installations can reverse; retained effect receipts require restore.
+
+The governed identity covers all application/configuration Python and versioned
+JSON/SQL/Markdown resources plus the locked dependency definitions. Discovery
+is automatic, so a newly imported validator, dynamic bridge or fixture cannot
+escape an enumerated file list. The tradeoff is conservative shared
+invalidation across capabilities. The import-closure and each of F5's four
+omitted-file admission mutations are tested. The committed
+`evaluation/engineering-registration.json` pins the engineering threshold hash
+for later source-bound reports; it is not an EG-3 clinical registration.
+
+Migration `0014_staged_rollout` follows `0013_front_desk_global_switch` and adds
+only metadata and scoped references to the
+existing FORCE-RLS ledgers. It changes no table/column runtime grants and adds
+no encrypted field. Its RunSQL bodies and schema reverse on the owned empty
+database. The reverse operation refuses retained rollout evidence; after stage
+history, rollback = restore or disable the feature. Historical configurations
+without staged permission stay unavailable. Provider adapters
+remain synthetic/recorded only, and all live, clinical-owner, real-corpus and
+paid legs remain BLOCKED-ON-EG. IS-17 remains PENDING-EXTERNAL under EG-3/EG-11.
 
 Migration `0005_evaluation` adds four durable, FORCE-RLS relations, exact column
 grants, composite scope bindings, no-delete/truncate guards and resolver-owned

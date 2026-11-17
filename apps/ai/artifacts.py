@@ -17,6 +17,7 @@ from apps.ai.contracts import (
     request_schema,
 )
 from apps.ai.decision_policy import authorize_decision
+from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
 from apps.ai.revenue_sources import recheck_context as recheck_revenue_context
@@ -161,6 +162,11 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
     ).first()
     if artifact is None:
         raise GatewayAccessDeniedError
+    if artifact.kind == "output":
+        invocation = artifact.invocation
+        if invocation is None:
+            raise GatewayAccessDeniedError
+        check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
     check_authority(
         clinic_id=clinic_id,
         purpose=Purpose(artifact.purpose),

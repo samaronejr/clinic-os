@@ -9,9 +9,20 @@ from typing import TYPE_CHECKING
 from django.db import transaction
 from django.utils import timezone
 
-from apps.ai.contracts import MICROS_PER_CENTAVO, ProviderResult, Reason
+from apps.ai.contracts import (
+    MICROS_PER_CENTAVO,
+    GatewayRefusedError,
+    ProviderResult,
+    Purpose,
+    Reason,
+)
 from apps.ai.models import AIArtifact, AICircuit, AIInvocation
-from apps.ai.policy import price_for
+from apps.ai.policy import (
+    check_configuration,
+    check_rollout_binding,
+    enabled_policy,
+    price_for,
+)
 from apps.audit.services import record_phase1_event
 from apps.core.telemetry import METRICS
 
@@ -90,6 +101,15 @@ def finish_success(
         .get(pk=invocation_id)
     )
     if invocation.status != "reserved":
+        return
+    try:
+        enabled_policy(Purpose(invocation.purpose))
+        check_configuration(invocation.configuration, invocation.clinic_id)
+        check_rollout_binding(
+            clinic_id=invocation.clinic_id, approval_id=invocation.rollout_approval_id
+        )
+    except GatewayRefusedError as error:
+        finish_failure(invocation, reason=error.reason, latency_ms=latency_ms)
         return
     source = invocation.inputs_ref
     artifact = AIArtifact.objects.create(

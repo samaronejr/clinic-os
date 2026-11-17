@@ -10,6 +10,7 @@ from django.db import connection, transaction
 
 from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, GatewayRefusedError, Purpose, Usage
+from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact, AIInvocation
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
@@ -158,6 +159,7 @@ def draft_for_input(artifact: AIArtifact) -> AIDraft | None:
 def sources_for_draft(draft: AIDraft) -> tuple[DraftSource, ...]:
     """Recheck live authority, exact consent and every dependency before use."""
     frame = note_frame(clinic_id=draft.clinic_id, version_id=draft.version_id)
+    check_invocation(clinic_id=draft.clinic_id, invocation_id=draft.invocation_id)
     consent = drafting_consent(frame)
     if consent.pk != draft.consent_id:
         raise DraftAccessDeniedError

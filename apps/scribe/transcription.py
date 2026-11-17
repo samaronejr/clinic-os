@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, Purpose, Usage
+from apps.ai.effects import check_invocation
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
 from apps.consent.services import consent_for_future_use
@@ -250,6 +251,7 @@ def complete_transcription(*, invocation_id: UUID, content: str) -> None:
     previous = refresh_coverage(current_snapshot(recording), recording)
     if previous.state == "final":
         return
+    check_invocation(clinic_id=recording.clinic_id, invocation_id=request.invocation_id)
     events = parse_batch(content, duration_ms=chunk.duration_ms)
     offset = (
         int((chunk.epoch.started_at - recording.created_at).total_seconds() * 1000)

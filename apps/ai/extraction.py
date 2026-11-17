@@ -16,6 +16,7 @@ from apps.ai.contracts import (
     GatewayRefusedError,
     Purpose,
 )
+from apps.ai.effects import check_invocation
 from apps.ai.extraction_contracts import (
     ExtractionCandidate,
     ExtractionInputError,
@@ -164,6 +165,10 @@ def authorized_job(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     job = ExtractionJob.objects.filter(pk=job_id, clinic_id=clinic_id).first()
     if job is None:
         raise GatewayAccessDeniedError
+    try:
+        check_invocation(clinic_id=clinic_id, invocation_id=job.invocation_id)
+    except GatewayRefusedError:
+        raise GatewayAccessDeniedError from None
     source = extraction_source(
         clinic_id=clinic_id,
         result_version_id=job.result_version_id,
@@ -278,6 +283,7 @@ def review_extraction(
             purpose="orders.observation.source",
             plaintext=json.dumps(payload, separators=(",", ":")).encode(),
         )
+    check_invocation(clinic_id=clinic_id, invocation_id=job.invocation_id)
     try:
         with connection.cursor() as cursor:
             cursor.execute(

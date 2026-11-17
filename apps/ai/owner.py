@@ -109,7 +109,7 @@ def transition_model(
     state: Literal["approved", "active", "retired"],
     approval_ref: str = "",
 ) -> ModelConfiguration:
-    """Advance the DB-enforced model lifecycle, never a provider lifecycle."""
+    """Activate only after a clinic's reviewed shadow receipt, enforced in SQL."""
     assert_owner_database_role()
     configuration = ModelConfiguration.objects.select_for_update().get(
         pk=configuration_id
@@ -145,6 +145,11 @@ def set_global_switch(*, enabled: bool, approved_regions: Sequence[str]) -> None
         or not set(approved_regions) <= set(REGION_CLASSES)
     ):
         raise GatewayInputError
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended('agent-send-v1',0)),"
+            "pg_advisory_xact_lock(hashtextextended('ai-global-rollout-v1',0))"
+        )
     GatewaySwitch.objects.update_or_create(
         pk=1, defaults={"enabled": enabled, "approved_regions": list(approved_regions)}
     )

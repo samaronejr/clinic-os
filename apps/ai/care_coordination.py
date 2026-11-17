@@ -48,6 +48,7 @@ from apps.ai.contracts import (
     Purpose,
     Usage,
 )
+from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
 from apps.ai.policy import enabled_policy
@@ -550,6 +551,7 @@ def _accept(*, clinic_id: UUID, item: CareProposal) -> CareProposal:
     """Add the clinical action through the clinician's own care authority."""
     if item.audience != "clinical":
         raise CareConflictError
+    check_invocation(clinic_id=clinic_id, invocation_id=item.invocation_id)
     if (
         item.plan.revision != item.plan_revision
         or not plan_is_current(item.plan)

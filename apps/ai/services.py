@@ -17,7 +17,12 @@ from apps.ai.contracts import (
     Reason,
 )
 from apps.ai.models import AIInvocation
-from apps.ai.policy import enabled_policy, price_for, select_configuration
+from apps.ai.policy import (
+    enabled_policy,
+    price_for,
+    rollout_approval,
+    select_configuration,
+)
 from apps.ai.prompt_registry import load_prompt
 from apps.audit.services import record_phase1_event
 from apps.core.integration import ActionOperationRequest, enqueue_operation
@@ -111,6 +116,9 @@ def invoke(
         user_id=principal,
         purpose=purpose.value,
         configuration=configuration,
+        rollout_approval_id=rollout_approval(
+            clinic_id=clinic_id, configuration_id=configuration.pk
+        ),
         config_version=configuration.version,
         prompt_sha256=prompt_sha256,
         inputs_ref=artifact,

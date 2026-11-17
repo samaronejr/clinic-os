@@ -89,6 +89,10 @@ after-commit dispatch, kill switches and content-free metering. Admission,
 dispatch, artifact access and display recheck current authority. The model
 only proposes; an explicit human acceptance binds the exact descriptor digest
 and authorization version before a read-only refresh. Rejection is retained.
+Both the Python review boundary and native `AnalystReview` insert guard also
+require the originating invocation's pinned rollout permission and authenticated
+current source evidence. A current replacement model cannot authorize provenance
+for an older invocation after source drift, revocation or a kill switch.
 No clinical or financial record can be changed by this analyst.
 
 All provider, sandbox, paid and live legs stay **BLOCKED-ON-EG**. The only
