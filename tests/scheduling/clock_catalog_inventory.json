@@ -46,7 +46,8 @@
       "policy:ai_actionproposal.agent_machine",
       "policy:ai_actionproposal.agent_owner",
       "policy:ai_actionproposal.agent_staff",
-      "trigger:ai_actionproposal.agent_record_guard"
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard"
     ]
   },
   "constraint:ai_actionexecution.ai_actionexecution_proposal_id_3cf82112_fk_ai_actionproposal_id": {
@@ -63,7 +64,8 @@
       "policy:ai_actionproposal.agent_machine",
       "policy:ai_actionproposal.agent_owner",
       "policy:ai_actionproposal.agent_staff",
-      "trigger:ai_actionproposal.agent_record_guard"
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard"
     ]
   },
   "constraint:ai_actionexecution.ai_actionexecution_reserved_micros_check": {
@@ -112,13 +114,16 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "policy:ai_agentrun.agent_finance",
       "policy:ai_agentrun.agent_finance_bound",
       "policy:ai_agentrun.agent_machine",
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_actionproposal.ai_actionproposal_quorum_check": {
@@ -140,13 +145,16 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "policy:ai_agentrun.agent_finance",
       "policy:ai_agentrun.agent_finance_bound",
       "policy:ai_agentrun.agent_machine",
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_agentpolicyversion.ai_agent_policy_values": {
@@ -294,6 +302,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -301,9 +310,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -384,12 +395,48 @@
       "trigger:identity_serviceprincipal.principal_immutable"
     ]
   },
+  "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
   "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id": {
     "direct": {},
     "via": [
       "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_agentrun.ai_rollout_agent_scope": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_aiartifact.ai_aiartifact_clinic_id_e6745ce8_fk_identity_clinic_id": {
@@ -417,6 +464,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -424,9 +472,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -643,6 +693,24 @@
       "function:pg_catalog.int84ge(bigint, integer)"
     ]
   },
+  "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
   "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check": {
     "direct": {},
     "via": [
@@ -701,6 +769,24 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "constraint:ai_aiinvocation.ai_rollout_invocation_scope": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
   "constraint:ai_approval.ai_approval_approver_id_a43b1840_fk_identity_user_id": {
     "direct": {},
     "via": [
@@ -750,7 +836,8 @@
       "policy:ai_actionproposal.agent_machine",
       "policy:ai_actionproposal.agent_owner",
       "policy:ai_actionproposal.agent_staff",
-      "trigger:ai_actionproposal.agent_record_guard"
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard"
     ]
   },
   "constraint:ai_approval.ai_approval_proposal_id_ff6f6ddf_fk_ai_actionproposal_id": {
@@ -767,7 +854,8 @@
       "policy:ai_actionproposal.agent_machine",
       "policy:ai_actionproposal.agent_owner",
       "policy:ai_actionproposal.agent_staff",
-      "trigger:ai_actionproposal.agent_record_guard"
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard"
     ]
   },
   "constraint:ai_evaluationprotocol.ai_evaluationprotoco_organization_id_1f92a9cd_fk_identity_": {
@@ -817,10 +905,13 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "policy:ai_evaluationrun.evaluation_owner",
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_evaluationrating.ai_evaluationrating_clinic_id_a382347f_fk_identity_clinic_id": {
@@ -856,10 +947,13 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "policy:ai_evaluationrun.evaluation_owner",
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_evaluationrating.ai_evaluationrating_user_id_403e4498_fk_identity_user_id": {
@@ -973,6 +1067,42 @@
       "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
+  "constraint:ai_evaluationrun.ai_rollout_run_scope": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_extractioncandidate.ai_extraction_decision": {
@@ -1109,6 +1239,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -1116,9 +1247,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -1188,6 +1321,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -1195,9 +1329,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -1220,6 +1356,7 @@
   "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk": {
     "direct": {},
     "via": [
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
@@ -1228,6 +1365,7 @@
       "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
       "constraint:ai_frontdeskturn.ai_turn_terms",
@@ -1240,6 +1378,7 @@
   "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk": {
     "direct": {},
     "via": [
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
@@ -1248,6 +1387,7 @@
       "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
       "constraint:ai_frontdeskturn.ai_turn_terms",
@@ -1308,6 +1448,7 @@
   "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd": {
     "direct": {},
     "via": [
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
@@ -1316,6 +1457,7 @@
       "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
       "constraint:ai_frontdeskturn.ai_turn_terms",
@@ -1394,6 +1536,7 @@
   "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd": {
     "direct": {},
     "via": [
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
@@ -1402,6 +1545,7 @@
       "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
       "constraint:ai_frontdeskturn.ai_turn_terms",
@@ -1489,6 +1633,24 @@
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
       "policy:intake_patientclinicenrollment.interop_import_visibility",
       "policy:intake_patientclinicenrollment.tenant_isolation"
+    ]
+  },
+  "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id": {
@@ -1607,6 +1769,24 @@
       "trigger:comms_message.subscription_message_usage"
     ]
   },
+  "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
   "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id": {
     "direct": {},
     "via": [
@@ -1669,6 +1849,12 @@
     "direct": {},
     "via": [
       "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check": {
@@ -1759,10 +1945,13 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "policy:ai_evaluationrun.evaluation_owner",
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_": {
@@ -1830,10 +2019,19 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "policy:ai_evaluationrun.evaluation_owner",
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
+    ]
+  },
+  "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:ai_modelconfiguration.ai_configuration_values": {
@@ -12116,6 +12314,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -12123,9 +12322,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -12378,6 +12579,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -12385,9 +12587,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
@@ -14781,7 +14985,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:clinic_app.principal_has(text, uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -14796,13 +15002,15 @@
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
       "trigger:ai_actionproposal.agent_record_guard",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.agent_record_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 3,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 5,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
       "unanalysed-plpgsql:unanalysed-declaration-form:allowed": 1
     },
@@ -14841,7 +15049,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
       "constraint:identity_serviceprincipal.identity_principal_v1_identity",
       "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
@@ -14887,10 +15097,13 @@
       "policy:ai_agentrun.agent_staff",
       "policy:identity_serviceprincipal.principal_provision",
       "trigger:ai_actionexecution.agent_record_guard",
+      "trigger:ai_actionexecution.evaluation_rollout_guard",
       "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
       "trigger:ai_agentpolicyversion.agent_record_guard",
       "trigger:ai_agentpolicyversion.agent_send_mutation",
       "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard",
       "trigger:identity_serviceprincipal.agent_send_mutation",
       "trigger:identity_serviceprincipal.principal_immutable"
     ]
@@ -14939,7 +15152,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "constraint:ai_approval.ai_approval_approver_id_a43b1840_fk_identity_user_id",
       "constraint:ai_approval.ai_approval_clinic_fk",
       "constraint:ai_approval.ai_approval_clinic_id_708b8b00_fk_identity_clinic_id",
@@ -14978,9 +15193,11 @@
       "policy:ai_approval.agent_owner",
       "policy:ai_approval.agent_staff",
       "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
       "trigger:ai_agentpolicyversion.agent_record_guard",
       "trigger:ai_agentpolicyversion.agent_send_mutation",
       "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard",
       "trigger:ai_approval.agent_record_guard"
     ]
   },
@@ -15004,6 +15221,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -15011,6 +15229,7 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.date_trunc(text, interval)",
@@ -15027,28 +15246,57 @@
       "policy:ai_aiinvocation.ai_invocation_user",
       "policy:ai_aiinvocation.ai_owner",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage"
     ]
   },
-  "function:clinic_app.ai_eval_activation_allowed(uuid, uuid)": {
+  "function:clinic_app.ai_care_staff(uuid)": {
     "direct": {},
     "via": [
-      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_organization_id_1f92a9cd_fk_identity_",
-      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_registered_by_id_cc2a46b8_fk_identity_",
-      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_clinic_id_a015f83f_fk_identity_clinic_id",
-      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_version_check",
-      "constraint:ai_evaluationrun.ai_eval_run_protocol",
-      "constraint:ai_evaluationrun.ai_evaluationrun_adjudicator_id_fc5c4a64_fk_identity_user_id",
-      "constraint:ai_evaluationrun.ai_evaluationrun_automatic_failures_check",
-      "constraint:ai_evaluationrun.ai_evaluationrun_clinic_id_00a20be1_fk_identity_clinic_id",
-      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_id_7d5001d5_fk_ai_modelc",
-      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_version_check",
-      "constraint:ai_evaluationrun.ai_evaluationrun_created_by_id_4cd3bda2_fk_identity_user_id",
-      "constraint:ai_evaluationrun.ai_evaluationrun_organization_id_78f01a6b_fk_identity_",
-      "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
-      "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
-      "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "function:clinic_app.agent_staff(uuid)",
+      "function:clinic_app.has_permission(text, uuid, uuid)"
+    ]
+  },
+  "function:clinic_app.ai_effect_allowed(uuid, uuid, jsonb)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_aiartifact.ai_aiartifact_clinic_id_e6745ce8_fk_identity_clinic_id",
+      "constraint:ai_aiartifact.ai_aiartifact_invocation_id_03eeabd3_fk_ai_aiinvocation_id",
+      "constraint:ai_aiartifact.ai_aiartifact_organization_id_a201544c_fk_identity_",
+      "constraint:ai_aiartifact.ai_aiartifact_patient_enrollment_i_68a987fb_fk_intake_pa",
+      "constraint:ai_aiartifact.ai_aiartifact_user_id_d8f67554_fk_identity_user_id",
+      "constraint:ai_aiartifact.ai_artifact_clinic_fk",
+      "constraint:ai_aiartifact.ai_artifact_enrollment_fk",
+      "constraint:ai_aiartifact.ai_artifact_values",
+      "constraint:ai_aicircuit.ai_aicircuit_configuration_id_e2a0d546_fk_ai_modelc",
+      "constraint:ai_aicircuit.ai_aicircuit_organization_id_5da612df_fk_identity_",
+      "constraint:ai_aiinvocation.ai_aiinvocation_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_clinic_id_956db410_fk_identity_clinic_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_config_version_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_configuration_id_c896cffa_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_minor_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_inputs_ref_id_ed3c5cbf_fk_ai_aiartifact_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_latency_ms_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
+      "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
+      "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_user_id_71ed2fa9_fk_identity_user_id",
+      "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
+      "constraint:ai_aiinvocation.ai_invocation_input_fk",
+      "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
       "constraint:ai_modelchangerequest.ai_eval_change_run",
       "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
       "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
@@ -15056,6 +15304,7 @@
       "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
       "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
       "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
       "constraint:ai_modelconfiguration.ai_configuration_values",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
@@ -15063,23 +15312,116 @@
       "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
-      "function:clinic_app.ai_eval_verdict(uuid)",
+      "constraint:providers_capabilityversion.providers_capability_approval_id_9444454d_fk_providers",
+      "constraint:providers_capabilityversion.providers_capability_capability_id_c894e3fe_fk_providers",
+      "constraint:providers_capabilityversion.providers_capabilityversion_approval_pairing",
+      "constraint:providers_capabilityversion.providers_capabilityversion_state_vocab",
+      "constraint:providers_providercapability.providers_capability_key_format",
+      "constraint:providers_providercapability.providers_providerca_current_version_id_c23bdbfc_fk_providers",
+      "function:clinic_app.ai_care_staff(uuid)",
+      "function:clinic_app.ai_organization_policy()",
+      "function:clinic_app.ai_rollout_bound(uuid, uuid, boolean)",
+      "function:clinic_app.ai_staff(uuid, text, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
       "index:ai_configuration_primary_uniq",
-      "policy:ai_evaluationprotocol.evaluation_owner",
-      "policy:ai_evaluationprotocol.evaluation_staff",
-      "policy:ai_evaluationrun.evaluation_owner",
-      "policy:ai_evaluationrun.evaluation_staff",
+      "policy:ai_aiartifact.ai_artifact_user",
+      "policy:ai_aiartifact.ai_owner",
+      "policy:ai_aicircuit.ai_circuit_tenant",
+      "policy:ai_aicircuit.ai_owner",
+      "policy:ai_aiinvocation.ai_invocation_user",
+      "policy:ai_aiinvocation.ai_owner",
       "policy:ai_modelchangerequest.evaluation_owner",
       "policy:ai_modelchangerequest.evaluation_staff",
-      "trigger:ai_evaluationprotocol.evaluation_guard",
-      "trigger:ai_evaluationprotocol.evaluation_no_truncate",
-      "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_aiartifact.ai_artifact_guard",
+      "trigger:ai_aicircuit.ai_circuit_guard",
+      "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
+      "trigger:ai_aiinvocation.subscription_ai_admission",
+      "trigger:ai_aiinvocation.subscription_ai_usage",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
       "trigger:ai_modelchangerequest.evaluation_guard",
       "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard",
+      "trigger:providers_capabilityversion.agent_send_mutation",
+      "trigger:providers_capabilityversion.providers_version_transition",
+      "trigger:providers_providercapability.agent_send_mutation",
+      "trigger:providers_providercapability.providers_capability_binding"
+    ]
+  },
+  "function:clinic_app.ai_effect_current(uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_aiinvocation.ai_aiinvocation_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_clinic_id_956db410_fk_identity_clinic_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_config_version_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_configuration_id_c896cffa_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_minor_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_inputs_ref_id_ed3c5cbf_fk_ai_aiartifact_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_latency_ms_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
+      "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
+      "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_user_id_71ed2fa9_fk_identity_user_id",
+      "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
+      "constraint:ai_aiinvocation.ai_invocation_input_fk",
+      "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "function:clinic_app.ai_effect_allowed(uuid, uuid, jsonb)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.pg_current_xact_id()",
+      "index:ai_configuration_primary_uniq",
+      "policy:ai_aiinvocation.ai_invocation_user",
+      "policy:ai_aiinvocation.ai_owner",
+      "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
+      "trigger:ai_aiinvocation.subscription_ai_admission",
+      "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:ai_modelconfiguration.agent_send_mutation",
       "trigger:ai_modelconfiguration.ai_eval_model_gate",
       "trigger:ai_modelconfiguration.ai_model_guard"
+    ]
+  },
+  "function:clinic_app.ai_eval_activation_allowed(uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_eval_model_gate()": {
@@ -15092,11 +15434,13 @@
       "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
       "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
       "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
       "function:clinic_app.ai_eval_activation_allowed(uuid, uuid)",
       "policy:ai_modelchangerequest.evaluation_owner",
       "policy:ai_modelchangerequest.evaluation_staff",
       "trigger:ai_modelchangerequest.evaluation_guard",
-      "trigger:ai_modelchangerequest.evaluation_no_truncate"
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_eval_rating_visible(uuid, text, uuid)": {
@@ -15118,6 +15462,8 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "function:clinic_app.ai_eval_run_visible(uuid)",
       "function:clinic_app.ai_eval_staff(uuid, text)",
       "function:pg_catalog.count(\"any\")",
@@ -15130,15 +15476,17 @@
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrating.evaluation_guard",
       "trigger:ai_evaluationrating.evaluation_no_truncate",
+      "trigger:ai_evaluationrating.evaluation_rollout_guard",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_eval_record_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
       "pg_catalog.statement_timestamp()": 3,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 6,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 8,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
     },
     "via": [
@@ -15162,6 +15510,8 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "constraint:ai_modelconfiguration.ai_configuration_values",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
@@ -15243,8 +15593,10 @@
       "trigger:ai_evaluationprotocol.evaluation_no_truncate",
       "trigger:ai_evaluationrating.evaluation_guard",
       "trigger:ai_evaluationrating.evaluation_no_truncate",
+      "trigger:ai_evaluationrating.evaluation_rollout_guard",
       "trigger:ai_evaluationrun.evaluation_guard",
       "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard",
       "trigger:ai_modelconfiguration.agent_send_mutation",
       "trigger:ai_modelconfiguration.ai_eval_model_gate",
       "trigger:ai_modelconfiguration.ai_model_guard",
@@ -15274,13 +15626,16 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "function:clinic_app.ai_eval_staff(uuid, text)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:ai_evaluationrun.evaluation_owner",
       "policy:ai_evaluationrun.evaluation_staff",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_eval_staff(uuid, text)": {
@@ -15316,6 +15671,8 @@
       "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
       "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
       "function:pg_catalog.count(\"any\")",
       "function:pg_catalog.count()",
       "function:pg_catalog.jsonb_array_elements(jsonb)",
@@ -15330,8 +15687,10 @@
       "trigger:ai_evaluationprotocol.evaluation_no_truncate",
       "trigger:ai_evaluationrating.evaluation_guard",
       "trigger:ai_evaluationrating.evaluation_no_truncate",
+      "trigger:ai_evaluationrating.evaluation_rollout_guard",
       "trigger:ai_evaluationrun.evaluation_guard",
-      "trigger:ai_evaluationrun.evaluation_no_truncate"
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_extraction_guard()": {
@@ -15362,6 +15721,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -15369,6 +15729,7 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "constraint:ai_extractioncandidate.ai_extraction_decision",
       "constraint:ai_extractioncandidate.ai_extractioncandida_observation_id_e9b57709_fk_orders_re",
       "constraint:ai_extractioncandidate.ai_extractioncandida_organization_id_a19184e3_fk_identity_",
@@ -15385,6 +15746,7 @@
       "constraint:ai_extractionjob.ai_extractionjob_result_version_id_199d6fa2_fk_orders_re",
       "constraint:ai_extractionjob.ai_extractionjob_user_id_81ff9bed_fk_identity_user_id",
       "constraint:ai_extractionjob.extraction_invocation_scope",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
       "function:clinic_app.ai_extraction_job_allowed(uuid)",
       "function:clinic_app.ai_extraction_source_allowed(uuid, uuid, uuid, uuid, text)",
       "function:clinic_app.has_permission(text, uuid, uuid)",
@@ -15423,6 +15785,7 @@
       "policy:ai_extractionjob.extraction_staff",
       "trigger:ai_aiartifact.ai_artifact_guard",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:ai_extractioncandidate.extraction_guard",
@@ -15516,6 +15879,238 @@
       "trigger:orders_resultversion.orders_binding"
     ]
   },
+  "function:clinic_app.ai_front_desk_allowed(uuid, uuid, jsonb, boolean)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_aicircuit.ai_aicircuit_configuration_id_e2a0d546_fk_ai_modelc",
+      "constraint:ai_aicircuit.ai_aicircuit_organization_id_5da612df_fk_identity_",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:providers_capabilityversion.providers_capability_approval_id_9444454d_fk_providers",
+      "constraint:providers_capabilityversion.providers_capability_capability_id_c894e3fe_fk_providers",
+      "constraint:providers_capabilityversion.providers_capabilityversion_approval_pairing",
+      "constraint:providers_capabilityversion.providers_capabilityversion_state_vocab",
+      "constraint:providers_providercapability.providers_capability_key_format",
+      "constraint:providers_providercapability.providers_providerca_current_version_id_c23bdbfc_fk_providers",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "index:ai_configuration_primary_uniq",
+      "policy:ai_aicircuit.ai_circuit_tenant",
+      "policy:ai_aicircuit.ai_owner",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "policy:identity_clinic.tenant_isolation",
+      "trigger:ai_aicircuit.ai_circuit_guard",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard",
+      "trigger:providers_capabilityversion.agent_send_mutation",
+      "trigger:providers_capabilityversion.providers_version_transition",
+      "trigger:providers_providercapability.agent_send_mutation",
+      "trigger:providers_providercapability.providers_capability_binding"
+    ]
+  },
+  "function:clinic_app.ai_front_desk_current(uuid, boolean)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "constraint:ai_agentpolicyversion.ai_revenue_drafts_only",
+      "constraint:ai_frontdeskthread.ai_frontdesk_contact_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_handoff_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_offer_scope_fk",
+      "constraint:ai_frontdeskthread.ai_frontdesk_state",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_challenge_attempts_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_fk",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_clinic_id_79013c36_fk_identity_clinic_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_conversation_id_8cd10fd8_fk_comms_con",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_handoff_turn_id_cd7d6438_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_appointment__1571ba3e_fk_schedulin",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_practitioner_aa7e4ffa_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_offered_turn_id_dc23b32d_fk_ai_frontd",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_organization_id_28bb8943_fk_identity_",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_resolved_by_id_7c3b4081_fk_identity_user_id",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_revision_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_session_id_5d2d2f4e_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
+      "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "constraint:comms_conversation.comms_conversation_account_fk",
+      "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
+      "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
+      "constraint:comms_conversation.comms_conversation_contract",
+      "constraint:comms_conversation.comms_conversation_enrollment_fk",
+      "constraint:comms_conversation.comms_conversation_enrollment_id_025c6fdb_fk_intake_pa",
+      "constraint:comms_conversation.comms_conversation_org_clinic_fk",
+      "constraint:comms_conversation.comms_conversation_organization_id_338471cc_fk_identity_",
+      "constraint:comms_conversation.comms_conversation_provider_account_id_0e848ea0_fk_comms_pro",
+      "constraint:comms_conversation.comms_conversation_revision_check",
+      "constraint:identity_clinicconfiguration.config_clinic_org_fk",
+      "constraint:identity_clinicconfiguration.config_logo_bound",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_clinic_id_1d2b9c1d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_organization_id_7cad916d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_published_by_id_bf237669_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_hold_ttl_minutes_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_raw_audio_retention_days_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_reminder_hours_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_retention_backup_days_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_version_check",
+      "constraint:identity_clinicconfiguration.identity_config_bounded_values",
+      "constraint:identity_clinicconfiguration.identity_config_hold_ttl_bounds",
+      "constraint:identity_clinicconfiguration.identity_config_queue_quotas_shape",
+      "constraint:identity_clinicconfiguration.identity_config_retention_bounds",
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "constraint:identity_serviceprincipalgrant.identity_principal_grant_org_fk",
+      "constraint:identity_serviceprincipalgrant.identity_principal_grant_v1_scope",
+      "constraint:identity_serviceprincipalgrant.identity_serviceprin_organization_id_fa613e9c_fk_identity_",
+      "constraint:identity_serviceprincipalgrant.identity_serviceprin_principal_id_4f950f22_fk_identity_",
+      "constraint:identity_serviceprincipalgrant.identity_serviceprincipalgrant_grant_set_version_check",
+      "default:identity_clinicconfiguration.hold_ttl_minutes",
+      "default:identity_clinicconfiguration.raw_audio_retention_days",
+      "default:identity_clinicconfiguration.retention_backup_days",
+      "function:clinic_app.ai_front_desk_allowed(uuid, uuid, jsonb, boolean)",
+      "function:pg_catalog.jsonb_build_object(\"any\")",
+      "function:pg_catalog.jsonb_build_object()",
+      "function:pg_catalog.max(anyarray)",
+      "function:pg_catalog.max(anyenum)",
+      "function:pg_catalog.max(bigint)",
+      "function:pg_catalog.max(character)",
+      "function:pg_catalog.max(date)",
+      "function:pg_catalog.max(double precision)",
+      "function:pg_catalog.max(inet)",
+      "function:pg_catalog.max(integer)",
+      "function:pg_catalog.max(interval)",
+      "function:pg_catalog.max(money)",
+      "function:pg_catalog.max(numeric)",
+      "function:pg_catalog.max(oid)",
+      "function:pg_catalog.max(pg_lsn)",
+      "function:pg_catalog.max(real)",
+      "function:pg_catalog.max(smallint)",
+      "function:pg_catalog.max(text)",
+      "function:pg_catalog.max(tid)",
+      "function:pg_catalog.max(time with time zone)",
+      "function:pg_catalog.max(time without time zone)",
+      "function:pg_catalog.max(timestamp with time zone)",
+      "function:pg_catalog.max(timestamp without time zone)",
+      "function:pg_catalog.max(xid8)",
+      "function:pg_catalog.pg_current_xact_id()",
+      "index:ai_configuration_primary_uniq",
+      "index:comms_conversation_live_uniq",
+      "policy:ai_agentpolicyversion.agent_finance",
+      "policy:ai_agentpolicyversion.agent_finance_bound",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "policy:ai_frontdeskthread.front_desk_owner",
+      "policy:ai_frontdeskthread.front_desk_read",
+      "policy:ai_frontdeskthread.front_desk_update",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "policy:comms_conversation.tenant_isolation",
+      "policy:identity_clinicconfiguration.configuration_insert",
+      "policy:identity_clinicconfiguration.configuration_read",
+      "policy:identity_clinicconfiguration.setup_tenant",
+      "policy:identity_serviceprincipal.principal_provision",
+      "policy:identity_serviceprincipalgrant.principal_provision",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation",
+      "trigger:ai_frontdeskthread.front_desk_guard",
+      "trigger:ai_frontdeskthread.front_desk_truncate",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard",
+      "trigger:comms_conversation.comms_conversation_guard",
+      "trigger:comms_conversation.crm_marketing_boundary",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
+      "trigger:identity_clinicconfiguration.configuration_immutable",
+      "trigger:identity_clinicconfiguration.configuration_plain_text",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable",
+      "trigger:identity_serviceprincipalgrant.agent_send_mutation",
+      "trigger:identity_serviceprincipalgrant.principal_grant_version",
+      "trigger:identity_serviceprincipalgrant.principal_immutable"
+    ]
+  },
   "function:clinic_app.ai_front_desk_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
@@ -15529,8 +16124,8 @@
       "constraint:comms_message.comms_message_organization_id_9225a8d5_fk_identity_",
       "constraint:comms_message.comms_message_sent_by_id_797314ec_fk_identity_user_id",
       "constraint:comms_message.comms_message_template_id_98fbc003_fk_comms_templateversion_id",
-      "function:clinic_app.current_patient_authority(text)",
       "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.protected_tenant()",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.text(\"char\")",
@@ -15586,6 +16181,7 @@
       "constraint:orders_resultversion.orders_resultversion_result_id_158086b5_fk_orders_result_id",
       "constraint:orders_resultversion.orders_resultversion_size_bytes_check",
       "constraint:orders_resultversion.orders_resultversion_uploader_id_21db6083_fk_identity_user_id",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
       "function:clinic_app.ai_extraction_job_allowed(uuid)",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.orders_is_current(uuid)",
@@ -15624,7 +16220,7 @@
       "pg_catalog.timestamptz(date)": 1,
       "pg_catalog.timestamptz(date, time without time zone)": 1,
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 9,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 11,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 8
     },
     "via": [
@@ -15652,6 +16248,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -15659,6 +16256,8 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
       "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
       "constraint:ai_gatewayswitch.ai_switch_singleton",
       "constraint:ai_modelconfiguration.ai_configuration_values",
@@ -15738,10 +16337,12 @@
       "trigger:ai_aiartifact.ai_artifact_guard",
       "trigger:ai_aicircuit.ai_circuit_guard",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:ai_gatewayswitch.agent_send_mutation",
       "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
       "trigger:ai_modelconfiguration.agent_send_mutation",
       "trigger:ai_modelconfiguration.ai_eval_model_gate",
       "trigger:ai_modelconfiguration.ai_model_guard",
@@ -15821,6 +16422,57 @@
       "function:pg_catalog.text(xml)"
     ]
   },
+  "function:clinic_app.ai_retained_proposal_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "constraint:ai_agentpolicyversion.ai_revenue_drafts_only",
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
+      "function:pg_catalog.pg_current_xact_id()",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:ai_agentpolicyversion.agent_finance",
+      "policy:ai_agentpolicyversion.agent_finance_bound",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "policy:ai_agentrun.agent_finance",
+      "policy:ai_agentrun.agent_finance_bound",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
+    ]
+  },
   "function:clinic_app.ai_revenue_ancestry(uuid, text, uuid)": {
     "direct": {},
     "via": [
@@ -15858,7 +16510,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:ai_actionexecution.agent_finance",
@@ -15882,10 +16536,13 @@
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
       "trigger:ai_actionexecution.agent_record_guard",
+      "trigger:ai_actionexecution.evaluation_rollout_guard",
       "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
       "trigger:ai_agentpolicyversion.agent_record_guard",
       "trigger:ai_agentpolicyversion.agent_send_mutation",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "function:clinic_app.ai_revenue_row(uuid, text, uuid)": {
@@ -15925,7 +16582,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:clinic_app.ai_staff(uuid, text, uuid)",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
@@ -15951,10 +16610,373 @@
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
       "trigger:ai_actionexecution.agent_record_guard",
+      "trigger:ai_actionexecution.evaluation_rollout_guard",
       "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
       "trigger:ai_agentpolicyversion.agent_record_guard",
       "trigger:ai_agentpolicyversion.agent_send_mutation",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
+    ]
+  },
+  "function:clinic_app.ai_rollout_agent_allowed(uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "constraint:ai_agentpolicyversion.ai_revenue_drafts_only",
+      "constraint:ai_agentrun.ai_agentrun_clinic_fk",
+      "constraint:ai_agentrun.ai_agentrun_clinic_id_9f275827_fk_identity_clinic_id",
+      "constraint:ai_agentrun.ai_agentrun_configuration_id_0947066b_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_cost_micros_check",
+      "constraint:ai_agentrun.ai_agentrun_invocation_id_34509325_fk_ai_aiinvocation_id",
+      "constraint:ai_agentrun.ai_agentrun_latency_ms_check",
+      "constraint:ai_agentrun.ai_agentrun_organization_id_53d41274_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_parent_fk",
+      "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
+      "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
+      "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
+      "function:clinic_app.ai_rollout_bound(uuid, uuid, boolean)",
+      "function:pg_catalog.bool_or(boolean)",
+      "policy:ai_agentpolicyversion.agent_finance",
+      "policy:ai_agentpolicyversion.agent_finance_bound",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "policy:ai_agentrun.agent_finance",
+      "policy:ai_agentrun.agent_finance_bound",
+      "policy:ai_agentrun.agent_machine",
+      "policy:ai_agentrun.agent_owner",
+      "policy:ai_agentrun.agent_staff",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
+  "function:clinic_app.ai_rollout_authority(uuid, uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_organization_id_1f92a9cd_fk_identity_",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_registered_by_id_cc2a46b8_fk_identity_",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_clinic_id_a015f83f_fk_identity_clinic_id",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_version_check",
+      "constraint:ai_evaluationrun.ai_eval_run_protocol",
+      "constraint:ai_evaluationrun.ai_evaluationrun_adjudicator_id_fc5c4a64_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_automatic_failures_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_clinic_id_00a20be1_fk_identity_clinic_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_id_7d5001d5_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_version_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_created_by_id_4cd3bda2_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_organization_id_78f01a6b_fk_identity_",
+      "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
+      "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
+      "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicrole_workflow_bundle_version_check",
+      "constraint:identity_userclinicrole.identity_workflow_bundle_version",
+      "function:clinic_app.digest(bytea, text)",
+      "function:clinic_app.digest(text, text)",
+      "function:pg_catalog.convert_to(text, name)",
+      "function:pg_catalog.count(\"any\")",
+      "function:pg_catalog.count()",
+      "function:pg_catalog.encode(bytea, text)",
+      "function:pg_catalog.string_agg(bytea, bytea)",
+      "function:pg_catalog.string_agg(text, text)",
+      "policy:ai_evaluationprotocol.evaluation_owner",
+      "policy:ai_evaluationprotocol.evaluation_staff",
+      "policy:ai_evaluationrun.evaluation_owner",
+      "policy:ai_evaluationrun.evaluation_staff",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:ai_evaluationprotocol.evaluation_guard",
+      "trigger:ai_evaluationprotocol.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_guard",
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard",
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
+      "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
+      "trigger:identity_userclinicrole.enterprise_unit_membership",
+      "trigger:identity_userclinicrole.identity_membership_session_rejection",
+      "trigger:identity_userclinicrole.pending_membership_guard",
+      "trigger:identity_userclinicrole.subscription_membership_created",
+      "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
+  "function:clinic_app.ai_rollout_bound(uuid, uuid, boolean)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
+  "function:clinic_app.ai_rollout_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
+      "unresolved-temporal-coercion": 1
+    },
+    "via": [
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_clinic_id_474d4e59_fk_identity_clinic_id",
+      "constraint:ai_actionproposal.ai_actionproposal_organization_id_60bb6147_fk_identity_",
+      "constraint:ai_actionproposal.ai_actionproposal_parent_fk",
+      "constraint:ai_actionproposal.ai_actionproposal_quorum_check",
+      "constraint:ai_actionproposal.ai_actionproposal_run_id_c78dc73e_fk_ai_agentrun_id",
+      "constraint:ai_agentpolicyversion.ai_agent_policy_values",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_created_by_id_85ddbdde_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_organization_id_bba112a7_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversio_principal_id_98c64e36_fk_identity_",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_actions_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_budget_micros_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_fk",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_clinic_id_543ac7c5_fk_identity_clinic_id",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_timeout_seconds_check",
+      "constraint:ai_agentpolicyversion.ai_agentpolicyversion_version_check",
+      "constraint:ai_agentpolicyversion.ai_revenue_drafts_only",
+      "constraint:ai_aiinvocation.ai_aiinvocation_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_clinic_id_956db410_fk_identity_clinic_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_config_version_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_configuration_id_c896cffa_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_cost_minor_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_inputs_ref_id_ed3c5cbf_fk_ai_aiartifact_id",
+      "constraint:ai_aiinvocation.ai_aiinvocation_latency_ms_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_audio_seconds_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_limit_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
+      "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
+      "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_user_id_71ed2fa9_fk_identity_user_id",
+      "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
+      "constraint:ai_aiinvocation.ai_invocation_input_fk",
+      "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
+      "constraint:ai_evaluationrun.ai_eval_run_protocol",
+      "constraint:ai_evaluationrun.ai_evaluationrun_adjudicator_id_fc5c4a64_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_automatic_failures_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_clinic_id_00a20be1_fk_identity_clinic_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_id_7d5001d5_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_version_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_created_by_id_4cd3bda2_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_organization_id_78f01a6b_fk_identity_",
+      "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
+      "function:clinic_app.ai_rollout_agent_allowed(uuid)",
+      "function:clinic_app.ai_rollout_authority(uuid, uuid, uuid)",
+      "function:clinic_app.ai_rollout_bound(uuid, uuid, boolean)",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "index:ai_configuration_primary_uniq",
+      "policy:ai_actionproposal.agent_finance",
+      "policy:ai_actionproposal.agent_finance_bound",
+      "policy:ai_actionproposal.agent_machine",
+      "policy:ai_actionproposal.agent_owner",
+      "policy:ai_actionproposal.agent_staff",
+      "policy:ai_agentpolicyversion.agent_finance",
+      "policy:ai_agentpolicyversion.agent_finance_bound",
+      "policy:ai_agentpolicyversion.agent_machine",
+      "policy:ai_agentpolicyversion.agent_owner",
+      "policy:ai_agentpolicyversion.agent_staff",
+      "policy:ai_aiinvocation.ai_invocation_user",
+      "policy:ai_aiinvocation.ai_owner",
+      "policy:ai_evaluationrun.evaluation_owner",
+      "policy:ai_evaluationrun.evaluation_staff",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_actionproposal.agent_record_guard",
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
+      "trigger:ai_agentpolicyversion.agent_record_guard",
+      "trigger:ai_agentpolicyversion.agent_send_mutation",
+      "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
+      "trigger:ai_aiinvocation.subscription_ai_admission",
+      "trigger:ai_aiinvocation.subscription_ai_usage",
+      "trigger:ai_evaluationrun.evaluation_guard",
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard"
+    ]
+  },
+  "function:clinic_app.ai_rollout_status(uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_organization_id_1f92a9cd_fk_identity_",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotoco_registered_by_id_cc2a46b8_fk_identity_",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_clinic_id_a015f83f_fk_identity_clinic_id",
+      "constraint:ai_evaluationprotocol.ai_evaluationprotocol_version_check",
+      "constraint:ai_evaluationrun.ai_eval_run_protocol",
+      "constraint:ai_evaluationrun.ai_evaluationrun_adjudicator_id_fc5c4a64_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_automatic_failures_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_clinic_id_00a20be1_fk_identity_clinic_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_id_7d5001d5_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_version_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_created_by_id_4cd3bda2_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_organization_id_78f01a6b_fk_identity_",
+      "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "constraint:ai_modelconfiguration.ai_configuration_values",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_input_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_output_micros_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_timeout_seconds_check",
+      "constraint:ai_modelconfiguration.ai_modelconfiguration_version_check",
+      "constraint:identity_clinicconfiguration.config_clinic_org_fk",
+      "constraint:identity_clinicconfiguration.config_logo_bound",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_clinic_id_1d2b9c1d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_organization_id_7cad916d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_published_by_id_bf237669_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_hold_ttl_minutes_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_raw_audio_retention_days_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_reminder_hours_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_retention_backup_days_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_version_check",
+      "constraint:identity_clinicconfiguration.identity_config_bounded_values",
+      "constraint:identity_clinicconfiguration.identity_config_hold_ttl_bounds",
+      "constraint:identity_clinicconfiguration.identity_config_queue_quotas_shape",
+      "constraint:identity_clinicconfiguration.identity_config_retention_bounds",
+      "default:identity_clinicconfiguration.hold_ttl_minutes",
+      "default:identity_clinicconfiguration.raw_audio_retention_days",
+      "default:identity_clinicconfiguration.retention_backup_days",
+      "function:clinic_app.ai_eval_verdict(uuid)",
+      "function:clinic_app.ai_rollout_authority(uuid, uuid, uuid)",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "function:pg_catalog.version()",
+      "index:ai_configuration_primary_uniq",
+      "policy:ai_evaluationprotocol.evaluation_owner",
+      "policy:ai_evaluationprotocol.evaluation_staff",
+      "policy:ai_evaluationrun.evaluation_owner",
+      "policy:ai_evaluationrun.evaluation_staff",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "policy:identity_clinicconfiguration.configuration_insert",
+      "policy:identity_clinicconfiguration.configuration_read",
+      "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:ai_evaluationprotocol.evaluation_guard",
+      "trigger:ai_evaluationprotocol.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_guard",
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard",
+      "trigger:ai_modelconfiguration.agent_send_mutation",
+      "trigger:ai_modelconfiguration.ai_eval_model_gate",
+      "trigger:ai_modelconfiguration.ai_model_guard",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
+      "trigger:identity_clinicconfiguration.configuration_immutable",
+      "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
   },
   "function:clinic_app.ai_staff(uuid, text, uuid)": {
@@ -16038,6 +17060,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -16045,9 +17068,11 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "constraint:analytics_metricdefinitionversion.analytics_metricdefi_clinic_id_ed8d837f_fk_identity_",
       "constraint:analytics_metricdefinitionversion.analytics_metricdefi_organization_id_543134f1_fk_identity_",
       "constraint:analytics_metricdefinitionversion.analytics_metricdefinitionversion_version_check",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
       "function:clinic_app.analytics_authorization(uuid)",
       "function:clinic_app.analytics_validate(uuid, jsonb, timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.current_setting(text)",
@@ -16057,6 +17082,7 @@
       "policy:ai_aiinvocation.ai_owner",
       "policy:analytics_metricdefinitionversion.analytics_scope",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:analytics_metricdefinitionversion.analytics_immutable"
@@ -17481,6 +18507,7 @@
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
@@ -17489,6 +18516,7 @@
       "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
       "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
       "constraint:ai_frontdeskturn.ai_turn_terms",
@@ -17509,6 +18537,7 @@
       "constraint:comms_templateversion.comms_templateversion_org_clinic_fk",
       "constraint:comms_templateversion.comms_templateversion_parameter_count_check",
       "constraint:comms_templateversion.comms_templateversion_version_check",
+      "function:clinic_app.ai_front_desk_current(uuid, boolean)",
       "function:clinic_app.comms_ingest_account(uuid, text)",
       "function:clinic_app.comms_open_window(uuid)",
       "function:clinic_app.current_patient_authority(text)",
@@ -22707,6 +23736,19 @@
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_id_2374cad1_fk_intake_pa",
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_contact_version_check",
       "constraint:ai_frontdeskthread.ai_frontdeskthread_verified_enrollment__a87f21cc_fk_intake_pa",
+      "constraint:ai_frontdeskturn.ai_frontdesk_rollout_scope",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_id_20bb3d29_fk_ai_knowledgearticle_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_article_scope_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_fk",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_clinic_id_2b56defc_fk_identity_clinic_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_inbound_id_555f6446_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_organization_id_84117a72_fk_identity_",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_policy_id_97549882_fk_ai_agentpolicyversion_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_reply_id_4966e436_fk_comms_message_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_rollout_approval_id_620bd29c_fk_ai_modelc",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_id_fd673a0d_fk_ai_frontdeskthread_id",
+      "constraint:ai_frontdeskturn.ai_frontdeskturn_thread_scope_fk",
+      "constraint:ai_frontdeskturn.ai_turn_terms",
       "constraint:comms_conversation.comms_conversation_account_fk",
       "constraint:comms_conversation.comms_conversation_assignee_id_7af2831e_fk_identity_user_id",
       "constraint:comms_conversation.comms_conversation_clinic_id_47c32555_fk_identity_clinic_id",
@@ -22784,6 +23826,7 @@
       "constraint:intake_patientsession.intake_session_org_grant_fk",
       "constraint:intake_patientsession.intake_session_org_patient_fk",
       "constraint:intake_patientsession.session_delegate_pair",
+      "function:clinic_app.ai_front_desk_current(uuid, boolean)",
       "function:clinic_app.delegate_now()",
       "function:clinic_app.patient_identity(uuid)",
       "function:pg_catalog.unnest(anyarray)",
@@ -22793,6 +23836,8 @@
       "policy:ai_frontdeskthread.front_desk_owner",
       "policy:ai_frontdeskthread.front_desk_read",
       "policy:ai_frontdeskthread.front_desk_update",
+      "policy:ai_frontdeskturn.front_desk_owner",
+      "policy:ai_frontdeskturn.front_desk_read",
       "policy:comms_conversation.tenant_isolation",
       "policy:ehr_clinicalattachment.attachment_insert",
       "policy:ehr_clinicalattachment.attachment_read",
@@ -22807,6 +23852,8 @@
       "policy:intake_patientsession.tenant_isolation",
       "trigger:ai_frontdeskthread.front_desk_guard",
       "trigger:ai_frontdeskthread.front_desk_truncate",
+      "trigger:ai_frontdeskturn.front_desk_guard",
+      "trigger:ai_frontdeskturn.front_desk_truncate",
       "trigger:comms_conversation.comms_conversation_guard",
       "trigger:comms_conversation.crm_marketing_boundary",
       "trigger:ehr_clinicalattachment.ehr_attachment_binding",
@@ -23482,6 +24529,50 @@
       "trigger:identity_serviceprincipalgrant.agent_send_mutation",
       "trigger:identity_serviceprincipalgrant.principal_grant_version",
       "trigger:identity_serviceprincipalgrant.principal_immutable"
+    ]
+  },
+  "function:clinic_app.protected_tenant()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 2
+    },
+    "via": [
+      "constraint:intake_patientaccessgrant.intake_grant_expiry_check",
+      "constraint:intake_patientaccessgrant.intake_grant_operations_check",
+      "constraint:intake_patientaccessgrant.intake_grant_org_clinic_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_enrollment_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_patient_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_clinic_id_74051320_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_enrollment_id_a7d28acd_fk_intake_pa",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_issued_by_id_a73e9224_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_organization_id_510993a5_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_patient_id_3f1484a5_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
+      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
+      "constraint:intake_patientsession.intake_session_org_clinic_fk",
+      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
+      "constraint:intake_patientsession.intake_session_org_grant_fk",
+      "constraint:intake_patientsession.intake_session_org_patient_fk",
+      "constraint:intake_patientsession.session_delegate_pair",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.pg_input_is_valid(text, text)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:intake_patientaccessgrant.tenant_isolation",
+      "policy:intake_patientsession.tenant_isolation",
+      "trigger:intake_patientsession.delegate_session_binding"
     ]
   },
   "function:clinic_app.providers_capability_binding_v1()": {
@@ -26004,6 +27095,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -26011,6 +27103,7 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "constraint:ai_modelconfiguration.ai_configuration_values",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_audio_micros_check",
       "constraint:ai_modelconfiguration.ai_modelconfiguration_cached_micros_check",
@@ -26100,6 +27193,7 @@
       "constraint:scribe_transcriptversion.scribe_transcriptversion_latency_ms_check",
       "constraint:scribe_transcriptversion.scribe_transcriptversion_recognition_index_check",
       "constraint:scribe_transcriptversion.scribe_transcriptversion_revision_check",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
       "function:clinic_app.scribe_citation_allowed(uuid, uuid, jsonb)",
       "function:clinic_app.scribe_note_author(uuid)",
       "function:pg_catalog.count(\"any\")",
@@ -26206,6 +27300,7 @@
       "policy:scribe_transcriptversion.transcript_read",
       "trigger:ai_aiartifact.ai_artifact_guard",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:ai_modelconfiguration.agent_send_mutation",
@@ -26748,6 +27843,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -26755,6 +27851,7 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "constraint:scribe_audiochunk.scribe_audiochunk_duration_ms_check",
       "constraint:scribe_audiochunk.scribe_audiochunk_epoch_id_2110b0a6_fk_scribe_captureepoch_id",
       "constraint:scribe_audiochunk.scribe_audiochunk_operation_id_8dec7a76_fk_comms_int",
@@ -26785,6 +27882,7 @@
       "constraint:scribe_transcriptversion.scribe_transcriptversion_latency_ms_check",
       "constraint:scribe_transcriptversion.scribe_transcriptversion_recognition_index_check",
       "constraint:scribe_transcriptversion.scribe_transcriptversion_revision_check",
+      "function:clinic_app.ai_effect_current(uuid, uuid)",
       "function:clinic_app.scribe_asr_allowed(uuid, uuid)",
       "function:clinic_app.scribe_assigned(uuid)",
       "function:clinic_app.scribe_transcript_coverage(uuid)",
@@ -26837,6 +27935,7 @@
       "policy:scribe_transcriptversion.transcript_read",
       "trigger:ai_aiartifact.ai_artifact_guard",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:scribe_audiochunk.scribe_binding",
@@ -26989,6 +28088,7 @@
       "constraint:ai_aiinvocation.ai_aiinvocation_operation_id_6b5288c6_fk_comms_int",
       "constraint:ai_aiinvocation.ai_aiinvocation_organization_id_b64e6f86_fk_identity_",
       "constraint:ai_aiinvocation.ai_aiinvocation_reserved_micros_check",
+      "constraint:ai_aiinvocation.ai_aiinvocation_rollout_approval_id_235683bb_fk_ai_modelc",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_cached_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_in_check",
       "constraint:ai_aiinvocation.ai_aiinvocation_tokens_out_check",
@@ -26996,6 +28096,7 @@
       "constraint:ai_aiinvocation.ai_invocation_clinic_fk",
       "constraint:ai_aiinvocation.ai_invocation_input_fk",
       "constraint:ai_aiinvocation.ai_invocation_values",
+      "constraint:ai_aiinvocation.ai_rollout_invocation_scope",
       "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
       "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
       "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
@@ -27046,6 +28147,7 @@
       "policy:subscriptions_subscription.subscription_read",
       "policy:subscriptions_usagerollup.subscription_read",
       "trigger:ai_aiinvocation.ai_invocation_guard",
+      "trigger:ai_aiinvocation.evaluation_rollout_guard",
       "trigger:ai_aiinvocation.subscription_ai_admission",
       "trigger:ai_aiinvocation.subscription_ai_usage",
       "trigger:identity_userclinicrole.agent_send_mutation",
@@ -28394,6 +29496,12 @@
     },
     "via": []
   },
+  "function:pg_catalog.bool_or(boolean)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.bool_or(boolean)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.booleq(boolean, boolean)": {
     "direct": {
       "opaque:reviewed:pg_catalog.booleq(boolean, boolean)": 1
@@ -29438,6 +30546,12 @@
     },
     "via": []
   },
+  "function:pg_catalog.pg_current_xact_id()": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.pg_current_xact_id()": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.pg_has_role(name, name, text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.pg_has_role(name, name, text)": 1
@@ -29471,6 +30585,12 @@
   "function:pg_catalog.pg_has_role(oid, text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.pg_has_role(oid, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.pg_input_is_valid(text, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.pg_input_is_valid(text, text)": 1
     },
     "via": []
   },
@@ -30208,7 +31328,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:clinic_app.principal_has(text, uuid)",
       "function:clinic_app.principal_scope(uuid, uuid)",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
@@ -30223,7 +31345,9 @@
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
       "trigger:ai_actionproposal.agent_record_guard",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "policy:ai_actionexecution.agent_owner": {
@@ -30278,7 +31402,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:clinic_app.principal_has(text, uuid)",
       "function:clinic_app.principal_scope(uuid, uuid)",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
@@ -30287,7 +31413,8 @@
       "policy:ai_agentrun.agent_machine",
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "policy:ai_actionproposal.agent_owner": {
@@ -30502,7 +31629,9 @@
       "constraint:ai_agentrun.ai_agentrun_parent_fk",
       "constraint:ai_agentrun.ai_agentrun_policy_id_7bf8e88d_fk_ai_agentpolicyversion_id",
       "constraint:ai_agentrun.ai_agentrun_principal_id_28f457e3_fk_identity_",
+      "constraint:ai_agentrun.ai_agentrun_rollout_approval_id_8563df5a_fk_ai_modelc",
       "constraint:ai_agentrun.ai_agentrun_user_id_13bd8fdc_fk_identity_user_id",
+      "constraint:ai_agentrun.ai_rollout_agent_scope",
       "function:clinic_app.principal_has(text, uuid)",
       "function:clinic_app.principal_scope(uuid, uuid)",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
@@ -30517,7 +31646,9 @@
       "policy:ai_agentrun.agent_owner",
       "policy:ai_agentrun.agent_staff",
       "trigger:ai_actionproposal.agent_record_guard",
-      "trigger:ai_agentrun.agent_record_guard"
+      "trigger:ai_actionproposal.ai_retained_proposal_guard",
+      "trigger:ai_agentrun.agent_record_guard",
+      "trigger:ai_agentrun.evaluation_rollout_guard"
     ]
   },
   "policy:ai_approval.agent_owner": {
@@ -35628,10 +36759,22 @@
       "function:clinic_app.agent_record_guard()"
     ]
   },
+  "trigger:ai_actionexecution.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
+    ]
+  },
   "trigger:ai_actionproposal.agent_record_guard": {
     "direct": {},
     "via": [
       "function:clinic_app.agent_record_guard()"
+    ]
+  },
+  "trigger:ai_actionproposal.ai_retained_proposal_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_retained_proposal_guard()"
     ]
   },
   "trigger:ai_agentpolicyversion.agent_record_guard": {
@@ -35652,6 +36795,12 @@
       "function:clinic_app.agent_record_guard()"
     ]
   },
+  "trigger:ai_agentrun.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
+    ]
+  },
   "trigger:ai_aiartifact.ai_artifact_guard": {
     "direct": {},
     "via": [
@@ -35668,6 +36817,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.ai_ledger_guard()"
+    ]
+  },
+  "trigger:ai_aiinvocation.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
     ]
   },
   "trigger:ai_aiinvocation.subscription_ai_admission": {
@@ -35712,6 +36867,12 @@
       "function:clinic_app.ai_eval_record_guard()"
     ]
   },
+  "trigger:ai_evaluationrating.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
+    ]
+  },
   "trigger:ai_evaluationrun.evaluation_guard": {
     "direct": {},
     "via": [
@@ -35722,6 +36883,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.ai_eval_record_guard()"
+    ]
+  },
+  "trigger:ai_evaluationrun.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
     ]
   },
   "trigger:ai_extractioncandidate.extraction_guard": {
@@ -35784,6 +36951,12 @@
       "function:clinic_app.ai_platform_guard()"
     ]
   },
+  "trigger:ai_gatewayswitch.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
+    ]
+  },
   "trigger:ai_knowledgearticle.front_desk_guard": {
     "direct": {},
     "via": [
@@ -35806,6 +36979,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.ai_eval_record_guard()"
+    ]
+  },
+  "trigger:ai_modelchangerequest.evaluation_rollout_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ai_rollout_guard()"
     ]
   },
   "trigger:ai_modelconfiguration.agent_send_mutation": {
