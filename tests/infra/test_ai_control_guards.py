@@ -10,12 +10,21 @@ Anything unclassified fails, so a new AI control cannot land unguarded.
 
 from __future__ import annotations
 
+import ast
+import inspect
 import re
+import textwrap
 from bisect import bisect_right
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import pytest
+from apps.ai.contracts import Purpose
+from apps.ai.policy import enabled_policy
+from apps.scribe import transcript_views
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 TEMPLATES: Final = Path(__file__).resolve().parents[2] / "templates"
 
@@ -63,6 +72,10 @@ GOVERNANCE: Final = frozenset(
 )
 # A link to an assistant page is itself an offer of AI work.
 ASSISTANT_LINKS: Final = {"ai:revenue-cycle": "revenue_cycle"}
+# A view-computed context flag that guards a template exactly like an ai_enabled
+# variable: the view derives it through enabled_policy for this purpose, so a
+# DB-free render never queries the switches (see the test below).
+VIEW_GUARDS: Final = {"scribe/transcript.html": {"available": "scribe_asr"}}
 # AI pages whose forms post back to the page itself.
 PAGES: Final = {
     "ai/agent_settings.html": "ai:agent-settings",
@@ -98,12 +111,12 @@ def _ai(endpoint: str) -> bool:
 class Scan:
     """One template's branch conditions and guard bindings, by offset."""
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, preset: dict[str, str] | None = None) -> None:
         self.text = COMMENT.sub(lambda match: " " * len(match.group()), text)
         self.offsets: list[int] = []
         self.states: list[tuple[tuple[str | None, ...], dict[str, str]]] = []
         stack: list[str | None] = []
-        bound: dict[str, str] = {}
+        bound: dict[str, str] = dict(preset or {})
         for tag in TAG.finditer(self.text):
             body = tag["body"]
             if body.startswith("if "):
@@ -169,7 +182,7 @@ def _form_problems(
 
 def scan(name: str, text: str) -> tuple[list[str], set[str]]:
     """Return unguarded or unclassified controls, and the AI starts found."""
-    template = Scan(text)
+    template = Scan(text, VIEW_GUARDS.get(name))
     problems: list[str] = []
     starts: set[str] = set()
     for form in FORM.finditer(template.text):
@@ -252,3 +265,70 @@ def test_the_scan_flags_unguarded_and_unclassified_controls(
     assert len(problems) == len(expected), problems
     for problem, fragment in zip(problems, expected, strict=True):
         assert fragment in problem
+
+
+def _calls_policy(function: Callable[..., object], purpose: str) -> bool:
+    """Whether the function body itself calls enabled_policy(Purpose.<purpose>)."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        callee = node.func
+        attr = getattr(callee, "attr", "")
+        name = callee.id if isinstance(callee, ast.Name) else attr
+        target = node.args[0]
+        if (
+            name == "enabled_policy"
+            and isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "Purpose"
+            and target.attr == purpose
+        ):
+            return True
+    return False
+
+
+def _assigns_from(function: Callable[..., object], key: str, provider: str) -> bool:
+    """Whether the view stores context[key] from a direct call to provider."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    return any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Subscript)
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == key
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == provider
+        for node in ast.walk(tree)
+    )
+
+
+def test_view_guards_are_derived_from_the_purpose_policy() -> None:
+    # Each registered flag is stored from its provider, which calls the policy.
+    assert VIEW_GUARDS == {"scribe/transcript.html": {"available": "scribe_asr"}}
+    assert _assigns_from(transcript_views.transcript_review, "available", "_available")
+    assert _calls_policy(transcript_views._available, "SCRIBE_ASR")
+
+
+def _comment_only(recording: object) -> bool:
+    # enabled_policy(Purpose.SCRIBE_ASR)  # noqa: ERA001 - the reviewed fake
+    return recording is not None
+
+
+def _wrong_purpose(recording: object) -> bool:
+    enabled_policy(Purpose.BRIEF)
+    return recording is not None
+
+
+def _policy_text(recording: object) -> bool:
+    return str(recording) != "enabled_policy(Purpose.SCRIBE_ASR)"
+
+
+@pytest.mark.parametrize("fake", [_comment_only, _wrong_purpose, _policy_text])
+def test_provenance_rejects_providers_that_do_not_call_the_purpose_policy(
+    fake: Callable[..., object],
+) -> None:
+    assert not _calls_policy(fake, "SCRIBE_ASR")

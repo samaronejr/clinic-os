@@ -235,6 +235,9 @@ def transcript_review(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 context["segments"] = [
                     {"item": value, "runs": _runs(value)} for value in current.segments
                 ]
+            # Recheck at the end: a switch turned off during this request must
+            # not leave a stale offer to queue transcription in the response.
+            context["available"] = _available(recording)
     except (ScribeError, TranscriptAccessDeniedError):
         context = {"clinic_id": clinic_id, "denied": True}
         status = HTTPStatus.FORBIDDEN
