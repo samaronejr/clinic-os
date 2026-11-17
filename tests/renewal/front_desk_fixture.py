@@ -28,6 +28,7 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         publish_configuration,
     )
     from apps.identity.models import (  # noqa: PLC0415
+        Clinic,
         ServicePrincipal,
         ServicePrincipalGrant,
         UserClinicRole,
@@ -39,6 +40,15 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
     from patient_service_support import runtime_role  # noqa: PLC0415
 
     with owner_context(organization):
+        # Publishing the organization policy needs authority in every clinic,
+        # including units other scenarios added to this organization.
+        for target in Clinic.objects.filter(organization_id=organization):
+            UserClinicRole.objects.get_or_create(
+                organization_id=organization,
+                clinic=target,
+                user_id=actor,
+                role="org_admin",
+            )
         UserClinicRole.objects.filter(user_id=actor).update(workflow_bundle_version=2)
         principal = ServicePrincipal.objects.create(
             organization_id=organization,
