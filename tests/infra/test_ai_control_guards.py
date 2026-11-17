@@ -10,13 +10,17 @@ Anything unclassified fails, so a new AI control cannot land unguarded.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
+import textwrap
 from bisect import bisect_right
 from pathlib import Path
 from typing import Final
 
 import pytest
+from apps.ai.contracts import Purpose
+from apps.ai.policy import enabled_policy
 from apps.scribe import transcript_views
 
 TEMPLATES: Final = Path(__file__).resolve().parents[2] / "templates"
@@ -260,8 +264,68 @@ def test_the_scan_flags_unguarded_and_unclassified_controls(
         assert fragment in problem
 
 
+def _calls_policy(function: object, purpose: str) -> bool:
+    """Whether the function body itself calls enabled_policy(Purpose.<purpose>)."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))  # type: ignore[arg-type]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        callee = node.func
+        attr = getattr(callee, "attr", "")
+        name = callee.id if isinstance(callee, ast.Name) else attr
+        target = node.args[0]
+        if (
+            name == "enabled_policy"
+            and isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "Purpose"
+            and target.attr == purpose
+        ):
+            return True
+    return False
+
+
+def _assigns_from(function: object, key: str, provider: str) -> bool:
+    """Whether the view stores context[key] from a direct call to provider."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))  # type: ignore[arg-type]
+    return any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Subscript)
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == key
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == provider
+        for node in ast.walk(tree)
+    )
+
+
 def test_view_guards_are_derived_from_the_purpose_policy() -> None:
-    # The transcript view's available flag admits ASR only through this check.
-    source = inspect.getsource(transcript_views._available)
-    assert "enabled_policy(Purpose.SCRIBE_ASR)" in source
+    # Each registered flag is stored from its provider, which calls the policy.
     assert VIEW_GUARDS == {"scribe/transcript.html": {"available": "scribe_asr"}}
+    assert _assigns_from(transcript_views.transcript_review, "available", "_available")
+    assert _calls_policy(transcript_views._available, "SCRIBE_ASR")
+
+
+def _comment_only(recording: object) -> bool:
+    # enabled_policy(Purpose.SCRIBE_ASR)  # noqa: ERA001 - the reviewed fake
+    return recording is not None
+
+
+def _wrong_purpose(recording: object) -> bool:
+    enabled_policy(Purpose.BRIEF)
+    return recording is not None
+
+
+def _policy_text(recording: object) -> bool:
+    return str(recording) != "enabled_policy(Purpose.SCRIBE_ASR)"
+
+
+@pytest.mark.parametrize("fake", [_comment_only, _wrong_purpose, _policy_text])
+def test_provenance_rejects_providers_that_do_not_call_the_purpose_policy(
+    fake: object,
+) -> None:
+    assert not _calls_policy(fake, "SCRIBE_ASR")
