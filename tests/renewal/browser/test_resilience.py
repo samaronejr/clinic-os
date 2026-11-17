@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from typing import TYPE_CHECKING, Final
@@ -78,6 +77,7 @@ from renewal.browser.test_teleconsult import (
     _room_operation,
 )
 from renewal.browser.test_teleconsult import _seed as seed_video
+from renewal.report_descriptor import REPORT_DAY_DESCRIPTOR, governed_report
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -926,11 +926,12 @@ def test_ai_off_leaves_reports_manual(
         ) as refreshed:
             page.locator('button[value="refresh"]').click()
         assert refreshed.value.status == 200
-        # A governed result renders; with no completed visit that day it has no
-        # denominator ("null"), which is still a complete manual report.
+        # The governed result is the selected no_show metric for REPORT_DAY. With
+        # no completed visit that day it has no denominator ("null"), which is
+        # still a complete manual report.
         expect(page.locator("#metric-caption")).to_be_visible()
-        expect(page.locator("[data-report-state]")).to_have_attribute(
-            "data-report-state", re.compile(r"^(fresh|null)$")
-        )
+        assert governed_report(page.content()) == REPORT_DAY_DESCRIPTOR | {
+            "state": "null"
+        }
         capture(page, root, f"ai-off-reports-{switch}", width)
     finish_ai_off(staff, root, before, f"reports-{switch}-{width}")
