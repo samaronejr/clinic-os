@@ -16,12 +16,15 @@ import re
 import textwrap
 from bisect import bisect_right
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from apps.ai.contracts import Purpose
 from apps.ai.policy import enabled_policy
 from apps.scribe import transcript_views
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 TEMPLATES: Final = Path(__file__).resolve().parents[2] / "templates"
 
@@ -264,9 +267,9 @@ def test_the_scan_flags_unguarded_and_unclassified_controls(
         assert fragment in problem
 
 
-def _calls_policy(function: object, purpose: str) -> bool:
+def _calls_policy(function: Callable[..., object], purpose: str) -> bool:
     """Whether the function body itself calls enabled_policy(Purpose.<purpose>)."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))  # type: ignore[arg-type]
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not node.args:
             continue
@@ -285,9 +288,9 @@ def _calls_policy(function: object, purpose: str) -> bool:
     return False
 
 
-def _assigns_from(function: object, key: str, provider: str) -> bool:
+def _assigns_from(function: Callable[..., object], key: str, provider: str) -> bool:
     """Whether the view stores context[key] from a direct call to provider."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))  # type: ignore[arg-type]
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
     return any(
         isinstance(node, ast.Assign)
         and any(
@@ -326,6 +329,6 @@ def _policy_text(recording: object) -> bool:
 
 @pytest.mark.parametrize("fake", [_comment_only, _wrong_purpose, _policy_text])
 def test_provenance_rejects_providers_that_do_not_call_the_purpose_policy(
-    fake: object,
+    fake: Callable[..., object],
 ) -> None:
     assert not _calls_policy(fake, "SCRIBE_ASR")
