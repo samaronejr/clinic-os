@@ -12,6 +12,7 @@ from uuid import UUID
 import pytest
 from apps.ai.contracts import ProviderRequest, Usage
 from apps.ai.output_validation import call_provider
+from apps.ai.policy import OrganizationPolicy
 from apps.scribe import transcript_views, transcripts
 from apps.scribe.asr import AudioInput, parse_batch
 from apps.scribe.gateway import ScribeRecordedProvider, ScribeSyntheticProvider
@@ -229,3 +230,87 @@ def test_refresh_exposes_two_new_missing_slots_without_another_recognition(
     else:
         assert current.coverage == live_coverage
         assert current.missing == (pending, gap)
+
+
+class _Switches:
+    """DB-free stand-ins for the two switch reads inside the real enabled_policy."""
+
+    def __init__(self) -> None:
+        self.on = {"global": True, "organization": True}
+
+    def control(self, **_filters: object) -> SimpleNamespace:
+        found = SimpleNamespace(approved_regions=["br-synthetic"])
+        return SimpleNamespace(first=lambda: found if self.on["global"] else None)
+
+    def policy(self) -> OrganizationPolicy:
+        return OrganizationPolicy(
+            enabled=self.on["organization"],
+            purposes=("scribe_asr",),
+            monthly_budget_micros=1,
+            purpose_budgets=(("scribe_asr", 1),),
+        )
+
+
+def _review(switches: _Switches, *, flip: str | None) -> str:
+    """Render the real view with the real _available; flip a switch mid-request."""
+    snapshot = visit()
+    recording = SimpleNamespace(
+        pk=UUID(int=32),
+        clinic_id=UUID(int=30),
+        encounter_id=UUID(int=31),
+        state="stopped",
+    )
+    request = RequestFactory().post(
+        "/",
+        {
+            "action": "refresh",
+            "encounter_id": str(recording.encounter_id),
+            "session_id": str(recording.pk),
+        },
+    )
+    real_read = transcripts.read_transcript
+
+    def read_then_flip(*, clinic_id: UUID, session_id: UUID) -> object:
+        if flip is not None:
+            switches.on[flip] = False
+        return real_read(clinic_id=clinic_id, session_id=session_id)
+
+    chunk = SimpleNamespace(pk=UUID(int=5))
+    with (
+        patch("apps.scribe.transcripts.authorized_recording", return_value=recording),
+        patch("apps.scribe.transcripts.current_snapshot", return_value=snapshot),
+        patch("apps.scribe.transcripts.coverage_for", return_value=snapshot.coverage),
+        patch("apps.scribe.transcript_views.coverage_for", return_value=()),
+        patch("apps.scribe.transcript_views.browser_binding"),
+        patch("apps.scribe.transcript_views.encounter_scope"),
+        patch("apps.scribe.transcript_views._recording", return_value=recording),
+        patch(
+            "apps.scribe.transcript_views.AudioChunk.objects.filter",
+            return_value=SimpleNamespace(first=lambda: chunk),
+        ),
+        patch("apps.scribe.transcript_views.prepare_audio"),
+        patch("apps.scribe.transcript_views.select_configuration"),
+        patch("apps.ai.policy.GatewaySwitch.objects.filter", switches.control),
+        patch("apps.ai.policy.organization_policy", switches.policy),
+        patch("apps.scribe.transcript_views.read_transcript", read_then_flip),
+        override_settings(CLINIC_DATA_MODE="synthetic"),
+        override("en"),
+    ):
+        response = inspect.unwrap(transcript_views.transcript_review)(
+            request, recording.clinic_id
+        )
+    assert response.status_code == 200
+    return str(response.content, "utf-8")
+
+
+@pytest.mark.parametrize("switch", ["global", "organization"])
+def test_a_switch_turned_off_after_an_available_render_hides_the_queue(
+    switch: str,
+) -> None:
+    switches = _Switches()
+    # Control: both switches on, the real availability offers the queue.
+    assert 'value="queue"' in _review(switches, flip=None)
+    # The switch goes off after the request's first availability check.
+    assert 'value="queue"' not in _review(switches, flip=switch)
+    # And every later render stays without the control.
+    assert 'value="queue"' not in _review(switches, flip=None)
