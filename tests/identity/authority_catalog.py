@@ -48,6 +48,10 @@ CONTEXT_PRIMITIVES = frozenset(
         "row_to_json",
         "format",
         "length",
+        # STABLE only because of the encoding catalog: it re-encodes the
+        # supplied text and reads no setting or application row (todo 80's
+        # ai_rollout_authority digest input).
+        "convert_to",
     }
 )
 # Cross-type temporal comparisons are STABLE because of TimeZone, not because
