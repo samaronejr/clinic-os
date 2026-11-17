@@ -15,6 +15,8 @@ import json
 import os
 from datetime import UTC, date, datetime
 from pathlib import Path
+from runpy import run_path
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from apps.audit.canonical import AuditEventInput
@@ -27,6 +29,9 @@ from apps.scheduling.availability_creation import create_availability
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import issue_tenant_key
 from django.db import connection, transaction
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ORGANIZATION_ID = uuid4()
 CLINIC_ID = uuid4()
@@ -134,6 +139,19 @@ markers = {
     "practitioner_id": str(PRACTITIONER_ID),
     "patient_name": PATIENT_NAME,
 }
+with connection.cursor() as cursor:
+    cursor.execute("SELECT to_regclass('clinic_app.ai_aiinvocation') IS NOT NULL")
+    markers["ai_present"] = cursor.fetchone()[0]
+if markers["ai_present"]:
+    helper = (
+        Path(os.environ["UPGRADE_HELPER_ROOT"])
+        / "ops/testing/migration_upgrade_ai_seed.py"
+    )
+    seed_ai = cast(
+        "Callable[[dict[str, object]], dict[str, object]]",
+        run_path(str(helper))["seed_ai"],
+    )
+    markers["ai"] = seed_ai(markers)
 seed_path = os.environ.get("UPGRADE_SEED_FILE", "")
 if seed_path:
     Path(seed_path).write_text(

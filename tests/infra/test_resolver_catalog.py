@@ -427,6 +427,7 @@ POSTURE_OVERRIDES: Final = {
         ["clinic_agent", "clinic_app", "clinic_resolver"],
     ),
     "ai_rollout_guard": ("v", False, ["clinic_resolver"]),
+    "ai_evaluation_rollout_guard": ("v", False, ["clinic_resolver"]),
     "ai_effect_source": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ai_effect_allowed": ("v", False, ["clinic_resolver"]),
     "ai_effect_current": ("v", False, ["clinic_resolver"]),
@@ -687,6 +688,7 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_rollout_admission", "candidate uuid, clinic uuid, autonomy boolean"),
     ("ai_rollout_agent_allowed", "subject uuid"),
     ("ai_rollout_guard", ""),
+    ("ai_evaluation_rollout_guard", ""),
     ("ai_effect_source", "requested uuid, clinic uuid"),
     ("ai_effect_allowed", "requested uuid, clinic uuid, observed jsonb"),
     ("ai_effect_current", "requested uuid, clinic uuid"),
@@ -985,6 +987,7 @@ FUNCTION_RESULTS: Final = {
     ("ai_rollout_admission", "candidate uuid, clinic uuid, autonomy boolean"): "uuid",
     ("ai_rollout_agent_allowed", "subject uuid"): "boolean",
     ("ai_rollout_guard", ""): "trigger",
+    ("ai_evaluation_rollout_guard", ""): "trigger",
     (
         "ai_effect_source",
         "requested uuid, clinic uuid",

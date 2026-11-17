@@ -15693,6 +15693,49 @@
       "trigger:ai_evaluationrun.evaluation_rollout_guard"
     ]
   },
+  "function:clinic_app.ai_evaluation_rollout_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:ai_evaluationrun.ai_eval_run_protocol",
+      "constraint:ai_evaluationrun.ai_evaluationrun_adjudicator_id_fc5c4a64_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_automatic_failures_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_clinic_id_00a20be1_fk_identity_clinic_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_id_7d5001d5_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_evaluationrun_configuration_version_check",
+      "constraint:ai_evaluationrun.ai_evaluationrun_created_by_id_4cd3bda2_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_organization_id_78f01a6b_fk_identity_",
+      "constraint:ai_evaluationrun.ai_evaluationrun_protocol_id_a5070f02_fk_ai_evalua",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_one_id_9772a57c_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rater_two_id_00787aaa_fk_identity_user_id",
+      "constraint:ai_evaluationrun.ai_evaluationrun_rollout_approval_id_681b4315_fk_ai_modelc",
+      "constraint:ai_evaluationrun.ai_rollout_run_scope",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_generation_check",
+      "constraint:ai_gatewayswitch.ai_gatewayswitch_id_check",
+      "constraint:ai_gatewayswitch.ai_switch_singleton",
+      "constraint:ai_modelchangerequest.ai_eval_change_run",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_approved_by_id_7db7814f_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_configuration_id_7b774d2c_fk_ai_modelc",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_organization_id_76d891f9_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangereques_requested_by_id_5a5f5ffe_fk_identity_",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_clinic_id_cc8071fd_fk_identity_clinic_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_run_id_76e85dec_fk_ai_evaluationrun_id",
+      "constraint:ai_modelchangerequest.ai_modelchangerequest_switch_generation_check",
+      "function:clinic_app.ai_rollout_status(uuid)",
+      "policy:ai_evaluationrun.evaluation_owner",
+      "policy:ai_evaluationrun.evaluation_staff",
+      "policy:ai_modelchangerequest.evaluation_owner",
+      "policy:ai_modelchangerequest.evaluation_staff",
+      "trigger:ai_evaluationrun.evaluation_guard",
+      "trigger:ai_evaluationrun.evaluation_no_truncate",
+      "trigger:ai_evaluationrun.evaluation_rollout_guard",
+      "trigger:ai_gatewayswitch.agent_send_mutation",
+      "trigger:ai_gatewayswitch.ai_switch_guard",
+      "trigger:ai_gatewayswitch.evaluation_rollout_guard",
+      "trigger:ai_modelchangerequest.evaluation_guard",
+      "trigger:ai_modelchangerequest.evaluation_no_truncate",
+      "trigger:ai_modelchangerequest.evaluation_rollout_guard"
+    ]
+  },
   "function:clinic_app.ai_extraction_guard()": {
     "direct": {
       "pg_catalog.statement_timestamp()": 3,
@@ -16765,8 +16808,7 @@
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
-      "unresolved-temporal-coercion": 1
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
     },
     "via": [
       "constraint:ai_actionproposal.ai_actionproposal_clinic_fk",
@@ -36888,7 +36930,7 @@
   "trigger:ai_evaluationrun.evaluation_rollout_guard": {
     "direct": {},
     "via": [
-      "function:clinic_app.ai_rollout_guard()"
+      "function:clinic_app.ai_evaluation_rollout_guard()"
     ]
   },
   "trigger:ai_extractioncandidate.extraction_guard": {
