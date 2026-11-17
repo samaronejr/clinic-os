@@ -1095,6 +1095,50 @@ def test_browser_suites_navigate_only_through_the_navigation_helpers() -> None:
     assert offenders == []
 
 
+# Navigations whose helper brackets them with the realtime quiet (and the
+# worker settle); goto_refused never reaches a new document, so the recovery
+# day it serves accepts the refusal's own htmx errors instead.
+QUIETED_NAVIGATIONS = frozenset({"goto", "reload", "go_back", "go_forward"})
+UNQUIETED_HELPERS = frozenset({"goto_refused"})
+
+
+def test_navigation_helpers_quiet_tracked_realtime_around_each_navigation() -> None:
+    tree = ast.parse(NAVIGATION_MODULE.read_text(encoding="utf-8"))
+    checked: dict[str, tuple[bool, bool]] = {}
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name in (
+            UNQUIETED_HELPERS
+        ):
+            continue
+        calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+        starts = [
+            node.lineno
+            for node in calls
+            if _call_name(node) in QUIETED_NAVIGATIONS | {"expect_navigation"}
+        ]
+        if not starts:
+            continue
+        before = [n.lineno for n in calls if _call_name(n) == "_before_navigation"]
+        after = [n.lineno for n in calls if _call_name(n) == "_after_navigation"]
+        checked[function.name] = (
+            bool(before) and min(before) < min(starts),
+            bool(after) and max(after) > max(starts),
+        )
+
+    assert {"expect_document", "goto_settled", "reload_settled"} <= set(checked)
+    assert {name for name, ok in checked.items() if ok != (True, True)} == set()
+    # The clinic day opts every persona page in, before its first navigation.
+    day = (BROWSER_SUITES / "test_end_to_end.py").read_text(encoding="utf-8")
+    watch = next(
+        node
+        for node in ast.parse(day).body
+        if isinstance(node, ast.FunctionDef) and node.name == "watch"
+    )
+    assert "track_realtime" in {
+        _call_name(node) for node in ast.walk(watch) if isinstance(node, ast.Call)
+    }
+
+
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
     path = BROWSER_SUITES / "evaluation_journeys.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
