@@ -1210,11 +1210,25 @@ REFUSALS = frozenset(
 )
 
 
+# Keywords that pass a settling helper its receiver (``goto_settled(page=...)``,
+# ``click_to_navigate(locator=...)``); a positional first argument wins.
+RECEIVER_KEYWORDS = ("page", "locator")
+
+
 def _page_root(call: ast.Call) -> str | None:
-    """The name a helper acts on: ``page`` in ``helper(page.locator(...))``."""
-    if not call.args:
+    """The name a helper acts on: ``page`` in ``helper(page.locator(...).first)``.
+
+    The receiver is the first positional argument, else the ``page=`` or
+    ``locator=`` keyword; a locator resolves to the page it was built from.
+    """
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+    receivers = [
+        *call.args[:1],
+        *(keywords[name] for name in RECEIVER_KEYWORDS if name in keywords),
+    ]
+    if not receivers:
         return None
-    node: ast.expr = call.args[0]
+    node: ast.expr = receivers[0]
     while isinstance(node, ast.Attribute | ast.Call | ast.Subscript):
         node = node.func if isinstance(node, ast.Call) else node.value
     return node.id if isinstance(node, ast.Name) else None
@@ -1277,24 +1291,37 @@ def _pages_reused_after_refusal(
     return sorted(found)
 
 
-def test_refusal_reuse_guard_catches_the_hosted_smoke_shape() -> None:
-    reused = (
+# Each legal way to hand a settling helper its page: positionally, as page=,
+# or as a locator (positional or locator=) whose root is the page.
+REFUSAL_RECEIVERS = {
+    "positional page": "goto_settled(page, '/second')",
+    "positional locator.first": "click_to_navigate(page.locator('#press').first)",
+    "page= keyword": "goto_settled(page=page, url='/second')",
+    "locator= keyword": "click_to_navigate(locator=page.locator('#press').first)",
+}
+
+
+@pytest.mark.parametrize("first", sorted(REFUSAL_RECEIVERS))
+@pytest.mark.parametrize("reused", sorted(REFUSAL_RECEIVERS))
+def test_refusal_reuse_guard_catches_the_hosted_smoke_shape(
+    first: str, reused: str
+) -> None:
+    # The hosted shape (smoke 134685497901): a refusal, then another settling
+    # helper on the same page, in every receiver form on either side.
+    source = (
         "def test_x(page):\n"
         "    with pytest.raises(EvaluateTimeoutError):\n"
-        "        click_to_navigate(page.locator('#press'))\n"
+        f"        {REFUSAL_RECEIVERS[first]}\n"
         "    with pytest.raises(EvaluateTimeoutError):\n"
-        "        goto_settled(page, '/second')\n"
+        f"        {REFUSAL_RECEIVERS[reused]}\n"
     )
-    fresh = reused.replace(
-        "    with pytest.raises(EvaluateTimeoutError):\n        goto_settled",
-        "    page = held()\n    with pytest.raises(EvaluateTimeoutError):\n"
-        "        goto_settled",
-    )
+    lines = source.splitlines(keepends=True)
+    rebound = "".join([*lines[:3], "    page = held()\n", *lines[3:]])
     helpers = _settling_helpers()
-    assert _pages_reused_after_refusal(reused, "planted", helpers) == [
+    assert _pages_reused_after_refusal(source, "planted", helpers) == [
         "planted:5: page reused after a refusal"
     ]
-    assert _pages_reused_after_refusal(fresh, "planted", helpers) == []
+    assert _pages_reused_after_refusal(rebound, "planted", helpers) == []
 
 
 def test_no_suite_reuses_a_page_after_a_settle_refusal() -> None:
