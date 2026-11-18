@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import Page, Response
+    from playwright.sync_api import APIResponse, Page, Response, Route
 
 
 def fixture_command(
@@ -896,3 +896,75 @@ def test_transcript_pending_incomplete_final_and_manual_care(
     click_to_navigate(page.locator('a[href$="/encounter/"]'))
     expect(page.locator("#soap-form")).to_be_visible()
     save_manual_note(page)
+
+
+def test_a_status_poll_never_interrupts_the_clients_own_stop(
+    outage_page: Page,
+    renewal_base_url: str,
+    availability_staff: dict[str, str],
+) -> None:
+    # race-rootcause, Round 11: a 5 s status poll that returned after this
+    # client's own stop committed read "stopped" as an external stop and
+    # forced recovery. Both responses are held, then released stop-first.
+    page = outage_page
+    page.clock.install()
+    fake_microphone(page)
+    open_capture(page, renewal_base_url, availability_staff, "2036-04-23")
+    page.locator('[data-capture-action="start"]').click()
+    panel = page.locator("[data-scribe-capture]")
+    if not supported(page):
+        expect(panel).to_have_attribute("data-state", "disabled")
+        save_manual_note(page)
+        return
+    expect(panel).to_have_attribute(
+        "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
+    )
+    page.evaluate("""() => {
+      window.__scribePhases = [];
+      const panel = document.querySelector('[data-scribe-capture]');
+      new MutationObserver(() => window.__scribePhases.push(panel.dataset.phase))
+        .observe(panel, {attributes: true, attributeFilter: ['data-phase']});
+    }""")
+    control = panel.get_attribute("data-control-url")
+    assert control is not None
+    held: dict[str, tuple[Route, APIResponse]] = {}
+
+    def hold(route: Route) -> None:
+        action = (route.request.post_data_json or {}).get("action")
+        if action in {"stop", "status"} and action not in held:
+            # The server applies the command now; the page sees it only later.
+            held[action] = (route, route.fetch())
+        else:
+            route.continue_()
+
+    page.route(f"**{control}", hold)
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith(control)
+            and (request.post_data_json or {}).get("action") == "stop"
+        )
+    ):
+        page.locator('[data-capture-action="stop"]').click()
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith(control)
+            and (request.post_data_json or {}).get("action") == "status"
+        )
+    ):
+        page.clock.run_for(5000)
+    assert set(held) == {"stop", "status"}
+    stop_route, stop_response = held["stop"]
+    stop_route.fulfill(response=stop_response)
+    expect(panel).to_have_attribute("data-phase", "done")
+    status_route, status_response = held["status"]
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith(control)
+            and (response.request.post_data_json or {}).get("action") == "status"
+        )
+    ):
+        status_route.fulfill(response=status_response)
+    # A completed fetch is a task barrier: the status continuation has run.
+    page.evaluate("() => fetch('data:text/plain,barrier').then(r => r.text())")
+    assert "recovery" not in page.evaluate("() => window.__scribePhases")
+    expect(panel).to_have_attribute("data-phase", "done")
