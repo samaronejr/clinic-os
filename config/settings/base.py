@@ -209,6 +209,12 @@ DATABASES["locks"].setdefault("OPTIONS", {}).update(
     options="-c search_path=clinic_app,public", prepare_threshold=None
 )
 
+# Display for signed-in pages of a user without a stored UserPreference row.
+# Fixed here; only config.settings.renewal takes it from the browser runner
+# (config/display.py), so F3 can run a suite in each theme and density.
+CLINIC_DISPLAY_DEFAULT_THEME = "light"
+CLINIC_DISPLAY_DEFAULT_DENSITY = "comfortable"
+
 # Optional hints, never the authority for a read/write. Disable to retain polling.
 REALTIME_ENABLED: bool = env.bool("REALTIME_ENABLED", default=False)
 REALTIME_POLLING_FALLBACK: bool = env.bool("REALTIME_POLLING_FALLBACK", default=True)

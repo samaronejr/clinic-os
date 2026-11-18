@@ -113,6 +113,7 @@ contract builds the committed revision, so it requires a clean Git tree.
 ```sh
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
 CLINIC_BROWSER_ENGINE=webkit uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite primitives --theme dark --density compact
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 ```
 
