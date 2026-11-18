@@ -47,7 +47,7 @@ from renewal.browser.test_staff_intake import SEARCH, SETTLED_JS, _search
 from renewal.browser.test_workspace import desktop, workspace_browser, workspace_staff
 
 if TYPE_CHECKING:
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, Request, Response
 
     from renewal.browser.flagship_support import FlagshipReport, ReferenceClinic
 
@@ -72,6 +72,22 @@ def test_j7_adapters_and_provider_legs(
     flagship.adapter("partner_api", "real", "OAuth2 client credentials, hashed secrets")
     for capability in ("managed_secrets", "tenant_key_management", "hosted_pitr"):
         flagship.blocked(reference_clinic, capability, "unit_a")
+
+
+def _reload_evidence(response: Response, landed: str) -> str:
+    """Say how a revoked session's reload was answered: worker, cache or server."""
+    chain: list[str] = []
+    request: Request | None = response.request
+    while request is not None:
+        chain.append(request.url)
+        request = request.redirected_from
+    return (
+        f"revoked session reopened {landed}: response {response.url} "
+        f"status {response.status}, "
+        f"from_service_worker={response.from_service_worker}, "
+        f"redirects {list(reversed(chain))}, "
+        f"cache-control={response.headers.get('cache-control')!r}"
+    )
 
 
 def test_j7_unit_access_revocation_reaches_the_open_session(
@@ -112,7 +128,8 @@ def test_j7_unit_access_revocation_reaches_the_open_session(
         # The membership change ends the clinician's open session...
         reopened = goto_settled(own, agenda)
         assert reopened is not None
-        assert "/auth/login/" in own.url
+        assert "/auth/login/" in reopened.url, _reload_evidence(reopened, own.url)
+        assert "/auth/login/" in own.url, _reload_evidence(reopened, own.url)
         # ...and after signing in again unit A still opens while unit B is
         # refused exactly like a unit that does not exist.
         sign_in(own, renewal_base_url, reference, "physician_a2")

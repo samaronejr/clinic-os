@@ -33,6 +33,11 @@ from playwright.sync_api import (
 
 from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
+from renewal.browser._navigation import (
+    RESET_WORKERS_JS,
+    SETTLE_WORKER_JS,
+    settle_service_worker,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1137,6 +1142,61 @@ def test_navigation_helpers_quiet_tracked_realtime_around_each_navigation() -> N
     assert "track_realtime" in {
         _call_name(node) for node in ast.walk(watch) if isinstance(node, ast.Call)
     }
+
+
+def _js_branch(script: str, head: str) -> str:
+    """The body of the block opened by ``head`` (which ends in ``{``)."""
+    start = script.index(head) + len(head)
+    depth = 1
+    for index in range(start, len(script)):
+        depth += {"{": 1, "}": -1}.get(script[index], 0)
+        if depth == 0:
+            return script[start:index]
+    pytest.fail(f"unbalanced block after {head!r}")
+
+
+def test_settle_requests_an_update_before_waiting_on_a_workerless_registration() -> (
+    None
+):
+    script = SETTLE_WORKER_JS
+    branch = _js_branch(script, "} else if (!active) {")
+    # Only this branch waits for updatefound, and only raced with the update
+    # it requested: a registration without a worker never waits alone.
+    assert script.count('addEventListener("updatefound"') == 1
+    assert 'addEventListener("updatefound"' in branch
+    assert "await Promise.race([found, registration.update()]);" in branch
+    # A failed install never counts as settled: every exit is a named failure.
+    assert branch.count("return {failed: ") == 3
+    assert 'return "' not in branch
+    assert "return active" not in branch
+    # Python raises it at once and resets the shared page's workers first.
+    source = inspect.getsource(settle_service_worker)
+    assert "raise SettleFailedError(" in source
+    assert source.count("_reset_workers(page)") == 2
+
+
+def test_settle_fails_a_redundant_worker_without_awaiting_it_again() -> None:
+    branch = _js_branch(SETTLE_WORKER_JS, "    if (pending) {")
+    wait = branch.index('pending.addEventListener("statechange"')
+    redundant = 'if (pending.state === "redundant") return {failed: '
+    # A worker already redundant fails before any subscription, and one that
+    # turns redundant while awaited fails right after its statechange.
+    assert branch.count(redundant) == 2
+    assert branch.index(redundant) < wait < branch.rindex(redundant)
+
+
+def test_worker_reset_unblocks_the_marked_document() -> None:
+    marker = re.search(
+        r'document\.documentElement\.hasAttribute\("([\w-]+)"\)', SETTLE_WORKER_JS
+    )
+    assert marker is not None
+    # Without the marker the next settle reads getRegistration (now none)
+    # instead of awaiting a ready that no worker will ever resolve.
+    assert (
+        f'document.documentElement.removeAttribute("{marker.group(1)}");'
+        in RESET_WORKERS_JS
+    )
+    assert "delete window.__clinicSettleWait;" in RESET_WORKERS_JS
 
 
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
