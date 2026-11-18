@@ -26,21 +26,28 @@ DENSITY_VARIABLE: Final = "CLINIC_RENEWAL_DENSITY"
 
 
 class DisplayValueError(ValueError):
-    """Reject a theme or density outside the closed vocabulary."""
+    """Reject a theme or density outside the closed vocabulary.
 
-    def __init__(self, name: str, value: str) -> None:
-        """Name the axis and the refused value."""
-        super().__init__(f"unsupported renewal display {name}: {value!r}")
+    The message is stable and payload-free (ops/AGENTS.md): it names the
+    setting and its allowed values, never the value it received.
+    """
+
+    def __init__(self, variable: str, allowed: tuple[str, ...]) -> None:
+        """Name the setting and its closed vocabulary."""
+        super().__init__(
+            f"unsupported renewal display: {variable} must be one of "
+            + ", ".join(allowed)
+        )
 
 
 def resolve_display(environ: Mapping[str, str]) -> tuple[str, str]:
     """Return ``(theme, density)``, light and comfortable unless chosen."""
     theme = environ.get(THEME_VARIABLE, DEFAULT_THEME)
     density = environ.get(DENSITY_VARIABLE, DEFAULT_DENSITY)
-    for axis, value, allowed in (
-        ("theme", theme, THEMES),
-        ("density", density, DENSITIES),
+    for variable, value, allowed in (
+        (THEME_VARIABLE, theme, THEMES),
+        (DENSITY_VARIABLE, density, DENSITIES),
     ):
         if value not in allowed:
-            raise DisplayValueError(axis, value)
+            raise DisplayValueError(variable, allowed)
     return theme, density

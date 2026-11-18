@@ -24,7 +24,7 @@ from apps.identity.preferences import (
     UiPreferences,
     default_ui_preferences,
 )
-from config.display import DENSITIES, THEMES
+from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
 from config.settings import base as base_settings
 from django.test import override_settings
 from ops.testing import renewal_runner as runner
@@ -2783,6 +2783,40 @@ def test_display_refuses_an_unknown_value(
 ) -> None:
     with pytest.raises(runner.RenewalRunnerError, match="unsupported renewal display"):
         runner.DisplayRequest(theme, density).environment()
+
+
+@pytest.mark.parametrize(
+    ("theme", "density", "variable", "allowed"),
+    [
+        ("sepia-PAYLOAD-7f3a", None, "CLINIC_RENEWAL_THEME", "light, dark"),
+        (None, "cozy-PAYLOAD-7f3a", "CLINIC_RENEWAL_DENSITY", "comfortable, compact"),
+    ],
+)
+def test_display_refusals_never_echo_the_rejected_value(  # noqa: PLR0913 - one case per axis
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    theme: str | None,
+    density: str | None,
+    variable: str,
+    allowed: str,
+) -> None:
+    # ops/AGENTS.md: one stable non-identifying message, never a config value.
+    expected = f"unsupported renewal display: {variable} must be one of {allowed}"
+    rejected = theme if theme is not None else density
+    assert rejected is not None
+    with pytest.raises(DisplayValueError) as resolved:
+        resolve_display({variable: rejected})
+    with pytest.raises(runner.RenewalRunnerError) as refused:
+        runner.DisplayRequest(theme, density).environment()
+    assert str(resolved.value) == str(refused.value) == expected
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    option = "--theme" if theme is not None else "--density"
+    command = ["browser", "--suite", "smoke", option, rejected]
+    assert runner.main([*command, "--artifact-root", str(tmp_path / "a")]) == 2
+    printed = capsys.readouterr()
+    assert expected in printed.err
+    assert "PAYLOAD" not in printed.out + printed.err
 
 
 @pytest.mark.parametrize("arguments", [["--theme", "sepia"], ["--density", "cozy"]])
