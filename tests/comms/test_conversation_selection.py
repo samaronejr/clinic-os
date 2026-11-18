@@ -153,3 +153,29 @@ def test_missing_malformed_unknown_and_csrf_denials_do_not_write(
         assert (writes(), InternalNote.objects.count(), Message.objects.count()) == (
             before
         )
+
+
+def test_threads_open_by_post_and_no_url_carries_a_thread_id(
+    thread: tuple[Client, Conversation],
+) -> None:
+    # SC-7: the old /messages/<id>/ GET route is gone, and the inbox list opens
+    # each thread through a CSRF-protected POST carrying the id in its body.
+    client, conversation = thread
+    inbox = reverse("comms:inbox", args=(conversation.clinic_id,))
+    assert _get(client, f"{inbox}{conversation.pk}/").status_code == 404
+    page = _get(client, inbox)
+    html = page.content.decode()
+    assert page.status_code == 200
+    assert f"/{conversation.pk}" not in html
+    opener = html.index(f'name="conversation_id" value="{conversation.pk}"')
+    form = html[html.rindex("<form", 0, opener) : opener]
+    assert f'method="post" action="{inbox}"' in form
+    assert 'name="csrfmiddlewaretoken"' in form
+    assert 'name="action" value="show"' in form
+    _assert_selected(
+        _post(
+            client, inbox, {"action": "show", "conversation_id": str(conversation.pk)}
+        ),
+        inbox,
+        conversation,
+    )

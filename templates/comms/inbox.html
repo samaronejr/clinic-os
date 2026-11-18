@@ -39,7 +39,7 @@
         <td>{{ row.purpose_label }}</td>
         <td>{{ row.state_label }}</td>
         <td>{% if row.conversation.assignee_id %}{% trans "Assigned" %}{% else %}{% trans "Unassigned" %}{% endif %}</td>
-        <td><a class="button button--secondary" href="{% url 'comms:conversation' clinic_id row.conversation.pk %}">{% trans "Open" context "inbox action" %}<span class="visually-hidden"> {% blocktrans with label=row.label %}conversation with {{ label }}{% endblocktrans %}</span></a></td>
+        <td><form method="post" action="{% url 'comms:inbox' clinic_id %}" hx-boost="false">{% csrf_token %}<input type="hidden" name="action" value="show"><input type="hidden" name="conversation_id" value="{{ row.conversation.pk }}"><button type="submit" class="button button--secondary">{% trans "Open" context "inbox action" %}<span class="visually-hidden"> {% blocktrans with label=row.label %}conversation with {{ label }}{% endblocktrans %}</span></button></form></td>
       </tr>
       {% empty %}
       <tr><td colspan="6" class="table-empty">{% trans "No conversation in this filter. Messages received through authorized channels appear here." %}</td></tr>

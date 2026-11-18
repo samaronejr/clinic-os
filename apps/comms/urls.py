@@ -6,12 +6,8 @@ from apps.comms import inbox_views, portal_views, webhook_views
 
 app_name = "comms"
 urlpatterns = [
+    # A thread is selected by conversation_id in the POST body, never the URL.
     path("clinics/<uuid:clinic_id>/messages/", inbox_views.inbox, name="inbox"),
-    path(
-        "clinics/<uuid:clinic_id>/messages/<uuid:conversation_id>/",
-        inbox_views.conversation,
-        name="conversation",
-    ),
     # Patient-session page (todo 50): thread selectors travel in POST bodies.
     path(
         "patient/messages/",
