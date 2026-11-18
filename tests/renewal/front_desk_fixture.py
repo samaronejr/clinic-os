@@ -33,6 +33,10 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         ServicePrincipalGrant,
         UserClinicRole,
     )
+    from apps.providers.lifecycle import (  # noqa: PLC0415
+        VersionInput,
+        propose_version,
+    )
     from apps.tenancy.db import tenant_context  # noqa: PLC0415
 
     from ai.support import model, policy  # noqa: PLC0415
@@ -66,6 +70,18 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         )
     # The agent answers only while the owner's global AI switch is on.
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
+    # The native admission also needs a current, usable llm_inference provider
+    # version (ai_front_desk_authorize); the browser database has none.
+    propose_version(
+        "llm_inference",
+        version_input=VersionInput(
+            provider="synthetic",
+            account="synthetic-front-desk-" + uuid4().hex,
+            environment="synthetic",
+            region="synthetic",
+            retention_terms="synthetic-no-retention",
+        ),
+    )
     # Replies, bookings and handoffs need an active front-desk model admitted at
     # monitored_autonomy. Reach it as the unit tests do: recorded evaluation
     # runs, independent ratings and owner decisions for shadow, reviewed_live
