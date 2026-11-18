@@ -16653,9 +16653,11 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.enterprise_sync_directory",
           "clinic_app.identity_offboarding_execute",
           "clinic_app.identity_offboarding_revoke",
-          "clinic_app.identity_recovery_consume"
+          "clinic_app.identity_recovery_consume",
+          "clinic_app.identity_retire_authenticators"
         ],
         "signatures": [
           {
