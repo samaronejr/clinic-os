@@ -61,8 +61,9 @@ def remove_passkey(*, clinic_id: UUID, passkey_id: UUID, session_key: str) -> No
     except CurrentActorError as error:
         raise PasskeyDeniedError from error
     with transaction.atomic():
+        # NO KEY UPDATE, as every passkey-row lock (identity 0058 lock order).
         passkey = (
-            Passkey.objects.select_for_update()
+            Passkey.objects.select_for_update(no_key=True)
             .filter(pk=passkey_id, user_id=user_id)
             .first()
         )
