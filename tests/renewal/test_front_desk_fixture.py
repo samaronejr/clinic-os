@@ -23,7 +23,7 @@ from ai.test_front_desk import desk_world
 from ai.test_front_desk_portal import portal
 from ai.test_front_desk_portal import say as portal_say
 from identity.permission_support import owner_context
-from renewal.front_desk_fixture import seed
+from renewal.front_desk_fixture import seed, seed_environment
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -70,21 +70,19 @@ def test_seed_publishes_the_policy_after_another_scenario_added_a_clinic(
         ).exists()
 
 
-def _browser_seed(actor: UUID, graph: RbacGraph) -> None:
-    """Run the module exactly as test_messages._enable_portal_assistant does."""
+def _run_seed(
+    actor: UUID, graph: RbacGraph, *, drill_cleared: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """Run the module as test_messages._enable_portal_assistant does."""
     owner = urlsplit(os.environ["MIGRATION_DATABASE_URL"])
     database = str(connection.settings_dict["NAME"])
-    environment = {
-        **os.environ,
-        "APP_DATABASE_URL": urlunsplit(owner._replace(path=f"/{database}")),
-        "DJANGO_SETTINGS_MODULE": "config.settings.base",
-        "CLINIC_DATA_MODE": "synthetic",
-        "PYTHONPATH": ".:tests",
-        # The runner hands the server and the fixture one secret backend.
-        "CLINIC_SECRET_BACKEND": str(django_settings.CLINIC_SECRET_BACKEND),
-        "CLINIC_SECRET_DIR": str(django_settings.CLINIC_SECRET_DIR),
-    }
-    result = subprocess.run(  # noqa: S603 - fixed module and UUID-only arguments.
+    environment = seed_environment(urlunsplit(owner._replace(path=f"/{database}")))
+    # The runner hands the server and the fixture one secret backend.
+    environment["CLINIC_SECRET_BACKEND"] = str(django_settings.CLINIC_SECRET_BACKEND)
+    environment["CLINIC_SECRET_DIR"] = str(django_settings.CLINIC_SECRET_DIR)
+    if not drill_cleared:
+        environment["CLINIC_SYNTHETIC_FAULTS"] = os.environ["CLINIC_SYNTHETIC_FAULTS"]
+    return subprocess.run(  # noqa: S603 - fixed module and UUID-only arguments.
         [
             sys.executable,
             "-m",
@@ -99,8 +97,27 @@ def _browser_seed(actor: UUID, graph: RbacGraph) -> None:
         check=False,
         timeout=120,
     )
+
+
+def _browser_seed(actor: UUID, graph: RbacGraph) -> None:
+    result = _run_seed(actor, graph)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["synthetic"] is True
+
+
+def _setup_rows() -> tuple[int, ...]:
+    """Every row family the seed writes."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT (SELECT count(*) FROM clinic_app.providers_capabilityversion),"
+            "(SELECT count(*) FROM clinic_app.ai_modelconfiguration),"
+            "(SELECT count(*) FROM clinic_app.ai_agentpolicyversion),"
+            "(SELECT count(*) FROM clinic_app.identity_serviceprincipal),"
+            "(SELECT count(*) FROM clinic_app.identity_userclinicrole)"
+        )
+        row = cursor.fetchone()
+    assert row is not None
+    return tuple(int(value) for value in row)
 
 
 def test_browser_seed_entry_point_makes_the_portal_assistant_answer(
@@ -126,7 +143,19 @@ def test_browser_seed_entry_point_makes_the_portal_assistant_answer(
         reason="Synthetic browser database has no provider version",
     )
     actor = _browser_administrator(rbac_graph)
+    # The resilience runner exports its drill to the whole browser process.
+    monkeypatch.setenv("CLINIC_SYNTHETIC_FAULTS", "ai=down,messaging=down")
+    with owner_context(rbac_graph.organization_a):
+        before = _setup_rows()
+    # Run under the drill, the seed refuses before writing anything.
+    refused = _run_seed(actor.pk, rbac_graph, drill_cleared=False)
+    assert refused.returncode != 0
+    with owner_context(rbac_graph.organization_a):
+        assert _setup_rows() == before
+    assert "AI drill cleared" in refused.stderr
+    # The browser helper clears the drill for this setup step only.
     _browser_seed(actor.pk, rbac_graph)
+    assert os.environ["CLINIC_SYNTHETIC_FAULTS"] == "ai=down,messaging=down"
     session, thread = portal(desk)
     replies = portal_say(desk, session, thread, "Qual o horário de funcionamento?")
     # test_messages asserts the same text with to_contain_text.

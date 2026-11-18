@@ -71,6 +71,7 @@ from renewal.browser.test_portal import (
 )
 from renewal.browser.test_retention import sign_in_manager
 from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
+from renewal.front_desk_fixture import seed_environment
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -824,13 +825,7 @@ def test_a_patient_reads_and_replies_in_a_portal_thread_the_clinic_opened(
 
 
 def _enable_portal_assistant(staff: dict[str, str], actor: str) -> None:
-    environment = {
-        **os.environ,
-        "APP_DATABASE_URL": staff["dsn"],
-        "DJANGO_SETTINGS_MODULE": "config.settings.base",
-        "CLINIC_DATA_MODE": "synthetic",
-        "PYTHONPATH": ".:tests",
-    }
+    environment = seed_environment(staff["dsn"])
     result = subprocess.run(  # noqa: S603 - fixed fixture and UUID-only arguments.
         [
             sys.executable,
