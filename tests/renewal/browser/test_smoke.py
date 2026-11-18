@@ -53,10 +53,10 @@ from renewal.browser.engines import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
-    from playwright.sync_api import Page, Response
+    from playwright.sync_api import BrowserContext, Page, Response
 
 OK_STATUS = 200
 FOUND_STATUS = 302
@@ -767,17 +767,25 @@ class _HeldHandler(http.server.BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def held_origin() -> Iterator[_HeldOrigin]:
-    origin = _HeldOrigin()
-    serving = threading.Thread(target=origin.serve_forever, daemon=True)
-    serving.start()
+def held_origins() -> Iterator[Callable[[], _HeldOrigin]]:
+    """Start independent held origins; each holds its own worker's activation."""
+    started: list[tuple[_HeldOrigin, threading.Thread]] = []
+
+    def start() -> _HeldOrigin:
+        origin = _HeldOrigin()
+        serving = threading.Thread(target=origin.serve_forever, daemon=True)
+        serving.start()
+        started.append((origin, serving))
+        return origin
+
     try:
-        yield origin
+        yield start
     finally:
-        origin.gate.set()
-        origin.shutdown()
-        serving.join()
-        origin.server_close()
+        for origin, serving in started:
+            origin.gate.set()
+            origin.shutdown()
+            serving.join()
+            origin.server_close()
 
 
 def _unsafe_press(page: Page) -> None:
@@ -795,22 +803,32 @@ def _unsafe_goto(page: Page, url: str) -> None:
 
 
 def test_navigation_helper_waits_out_a_held_worker_activation(
-    renewal_page: Page, held_origin: _HeldOrigin
+    renewal_page: Page, held_origins: Callable[[], _HeldOrigin]
 ) -> None:
     browser = renewal_page.context.browser
     assert browser is not None
-    context = browser.new_context()
+    contexts: list[BrowserContext] = []
+    holds: list[tuple[_HeldOrigin, Page]] = []
     try:
-        page = context.new_page()
-        # The origin's own page registers the gated worker (it cannot settle).
-        page.goto(held_origin.url, wait_until="load")
-        assert held_origin.activating.wait(HELD_GATE_BOUND_S)
+        # A refusing helper resets its context's workers, which ends the hold
+        # (5debd122), so each refusal check, and the unsafe shapes after them,
+        # gets its own origin and context, each page holding a fresh worker.
+        for _ in range(3):
+            origin = held_origins()
+            context = browser.new_context()
+            contexts.append(context)
+            page = context.new_page()
+            # The origin's own page registers the gated worker (it cannot settle).
+            page.goto(origin.url, wait_until="load")
+            assert origin.activating.wait(HELD_GATE_BOUND_S)
+            holds.append((origin, page))
+        (_, pressed), (held_origin, page), (unsettled_origin, unsettled) = holds
 
         # The helpers refuse to press or navigate while the worker activates:
         # their precondition times out, no click is sent and no goto starts.
         with pytest.raises(EvaluateTimeoutError):
-            click_to_navigate(page.locator("#press"), timeout=HELD_PROBE_TIMEOUT_MS)
-        assert evaluate_js(page, "window.pressProbeClicks") == 0
+            click_to_navigate(pressed.locator("#press"), timeout=HELD_PROBE_TIMEOUT_MS)
+        assert evaluate_js(pressed, "window.pressProbeClicks") == 0
         with pytest.raises(EvaluateTimeoutError):
             goto_settled(
                 page, f"{held_origin.url}second", timeout=HELD_PROBE_TIMEOUT_MS
@@ -820,31 +838,32 @@ def test_navigation_helper_waits_out_a_held_worker_activation(
 
         # An unsettled goto into the scope is held too (gate review B1): it
         # times out in Page.goto.
-        second = context.new_page()
+        second = unsettled.context.new_page()
         with pytest.raises(PlaywrightTimeoutError, match=r"Page\.goto"):
-            _unsafe_goto(second, f"{held_origin.url}second")
+            _unsafe_goto(second, f"{unsettled_origin.url}second")
         second.close()
 
         # The pre-fix shape reproduces hosted retention@firefox 36349167980:
         # the click is dispatched, the POST is held and never sent, and the
         # click hangs in its own wait for the navigation it scheduled.
         with pytest.raises(PlaywrightTimeoutError) as held:
-            _unsafe_press(page)
+            _unsafe_press(unsettled)
         assert "waiting for scheduled navigations to finish" in str(held.value)
-        assert held_origin.posts() == []
+        assert unsettled_origin.posts() == []
 
         # Activation ends: the held POST goes out, exactly once.
-        held_origin.gate.set()
-        page.wait_for_url("**/done")
-        assert held_origin.posts() == ["POST /submit"]
+        unsettled_origin.gate.set()
+        unsettled.wait_for_url("**/done")
+        assert unsettled_origin.posts() == ["POST /submit"]
 
         # A settled worker: the helper presses once and awaits the document.
-        response = click_to_navigate(page.locator("#press"), url="**/done")
+        response = click_to_navigate(unsettled.locator("#press"), url="**/done")
         assert response is not None
         assert response.status == OK_STATUS
-        assert held_origin.posts() == ["POST /submit", "POST /submit"]
+        assert unsettled_origin.posts() == ["POST /submit", "POST /submit"]
     finally:
-        context.close()
+        for context in contexts:
+            context.close()
 
 
 @pytest.mark.parametrize(

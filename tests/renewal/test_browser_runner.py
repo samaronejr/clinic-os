@@ -1199,6 +1199,116 @@ def test_worker_reset_unblocks_the_marked_document() -> None:
     assert "delete window.__clinicSettleWait;" in RESET_WORKERS_JS
 
 
+# The errors a refusing settle raises inside ``pytest.raises``.
+REFUSALS = frozenset(
+    {
+        "EvaluateTimeoutError",
+        "SettleTimeoutError",
+        "SettleFailedError",
+        "PlaywrightTimeoutError",
+    }
+)
+
+
+def _page_root(call: ast.Call) -> str | None:
+    """The name a helper acts on: ``page`` in ``helper(page.locator(...))``."""
+    if not call.args:
+        return None
+    node: ast.expr = call.args[0]
+    while isinstance(node, ast.Attribute | ast.Call | ast.Subscript):
+        node = node.func if isinstance(node, ast.Call) else node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _expects_refusal(item: ast.withitem) -> bool:
+    call = item.context_expr
+    return (
+        isinstance(call, ast.Call)
+        and _call_name(call) == "raises"
+        and bool(call.args)
+        and isinstance(call.args[0], ast.Name)
+        and call.args[0].id in REFUSALS
+    )
+
+
+def _pages_reused_after_refusal(
+    source: str, label: str, settling: frozenset[str]
+) -> list[str]:
+    """A settling helper on a page an earlier refusal already reset.
+
+    A refusing settle resets the page's workers and unmarks its document, so a
+    later helper on the same page, unless the name is rebound first, no
+    longer meets the held state the refusal did (hosted smoke 134685497901).
+    """
+    found: set[str] = set()
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        calls = [
+            call
+            for call in ast.walk(function)
+            if isinstance(call, ast.Call) and _call_name(call) in settling
+        ]
+        refused = [
+            (node.end_lineno or node.lineno, root)
+            for node in ast.walk(function)
+            if isinstance(node, ast.With)
+            and any(_expects_refusal(item) for item in node.items)
+            for call in ast.walk(node)
+            if call in calls and (root := _page_root(call)) is not None
+        ]
+        bound = [
+            (node.lineno, node.id)
+            for node in ast.walk(function)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        ]
+        for call in calls:
+            root = _page_root(call)
+            if any(
+                name == root
+                and end < call.lineno
+                and not any(
+                    rebound == root and end < line <= call.lineno
+                    for line, rebound in bound
+                )
+                for end, name in refused
+            ):
+                found.add(f"{label}:{call.lineno}: {root} reused after a refusal")
+    return sorted(found)
+
+
+def test_refusal_reuse_guard_catches_the_hosted_smoke_shape() -> None:
+    reused = (
+        "def test_x(page):\n"
+        "    with pytest.raises(EvaluateTimeoutError):\n"
+        "        click_to_navigate(page.locator('#press'))\n"
+        "    with pytest.raises(EvaluateTimeoutError):\n"
+        "        goto_settled(page, '/second')\n"
+    )
+    fresh = reused.replace(
+        "    with pytest.raises(EvaluateTimeoutError):\n        goto_settled",
+        "    page = held()\n    with pytest.raises(EvaluateTimeoutError):\n"
+        "        goto_settled",
+    )
+    helpers = _settling_helpers()
+    assert _pages_reused_after_refusal(reused, "planted", helpers) == [
+        "planted:5: page reused after a refusal"
+    ]
+    assert _pages_reused_after_refusal(fresh, "planted", helpers) == []
+
+
+def test_no_suite_reuses_a_page_after_a_settle_refusal() -> None:
+    settling = _suite_settling()
+    offenders = [
+        offender
+        for path, source in _suite_sources().items()
+        for offender in _pages_reused_after_refusal(
+            source, str(path.relative_to(REPOSITORY)), settling[path]
+        )
+    ]
+    assert offenders == []
+
+
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
     path = BROWSER_SUITES / "evaluation_journeys.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
