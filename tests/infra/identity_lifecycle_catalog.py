@@ -99,6 +99,11 @@ RESULTS: Final = {
     ): "uuid",
     ("identity_session_revoke_hash", "requested_hash bytea"): "boolean",
     ("identity_session_revoked_cookie", "requested_hash bytea"): "boolean",
+    (
+        "identity_session_rotate",
+        "old_hash bytea, new_hash bytea, requested_network text, "
+        "requested_family text, requested_expiry timestamp with time zone",
+    ): "uuid",
     ("identity_session_rotate_hash", "requested_hash bytea"): "boolean",
     (
         "identity_session_step_up",

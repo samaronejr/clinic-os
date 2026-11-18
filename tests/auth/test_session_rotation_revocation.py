@@ -1,19 +1,17 @@
-"""REPRODUCER (expected to fail until fixed): rotation revives a revoked session.
+"""A rotation never revives a revoked session, nor rotates another user's.
 
 ``TenantMiddleware`` admits a staff request with one plain read of
-``identity_session_active`` (apps/tenancy/middleware.py:175) and takes no lock.
-A revocation can commit after that read and before the request's OTP step
-rotates the session key. The rotation then supersedes nothing, because
-``identity_session_rotate_hash`` only updates rows ``WHERE revoked_at IS NULL``
-(apps/identity/migrations/_session_rotation_sql.py). ``supersede_session_hash``
-drops that result (apps/identity/session_inventory.py:145), and
-``record_verified_session`` registers the new key unconditionally (:191-200).
-``identity_session_register`` checks only the user, never the old session
-(apps/identity/migrations/_lifecycle_sessions_sql.py:6-48).
+``identity_session_active`` (apps/tenancy/middleware.py:175) and takes no lock,
+so a revocation can commit after that read and before the request's OTP step
+rotates the session key. The old two-step rotation then superseded nothing,
+ignored that, and registered the new key as live.
+``identity_session_rotate`` (identity 0054) supersedes the old key only while
+it is live and the current user's, under the per-user lock the revocation
+trigger takes, and registers the new key only then.
 
 The state after that interleaving is exactly "the session is revoked, then the
-rotation runs for its old key", so this drives the real rotation service in
-that order, as the verify view does: a genuine code checked at the resolver,
+rotation runs for its old key", so these tests drive the real rotation service
+in that order, as the verify view does: a genuine code checked at the resolver,
 then ``record_otp_verification``, in one transaction. No threads or timing are
 involved. A control rotates a live session the same way and must succeed, so
 a setup defect cannot pass for a refusal.
@@ -21,6 +19,7 @@ a setup defect cannot pass for a refusal.
 
 from __future__ import annotations
 
+import secrets
 from typing import TYPE_CHECKING
 
 import pytest
@@ -29,6 +28,7 @@ from apps.identity.otp import record_otp_verification, verify_totp_code
 from apps.identity.session_inventory import (
     SessionInventoryDeniedError,
     revoke_session,
+    rotate_session,
     session_hash,
     session_is_active,
 )
@@ -119,3 +119,28 @@ def test_rotating_a_revoked_session_leaves_no_live_session(
             "rotation of a revoked session registered a live session "
             f"(new key live: {live})"
         )
+
+
+def test_a_rotation_for_another_users_session_is_refused(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given the physician's live session.
+    physician = User.objects.get(pk=rbac_graph.physician)
+    with runtime_role():
+        old_key = _signed_in(physician)
+        new_key = secrets.token_urlsafe(32)
+
+        # When another staff user's request tries to rotate it.
+        with pytest.raises(SessionInventoryDeniedError):
+            rotate_session(
+                user_id=rbac_graph.clinic_admin,
+                old_key=old_key,
+                new_key=new_key,
+                expires_at=SessionStore(session_key=old_key).get_expiry_date(),
+                meta={"REMOTE_ADDR": "127.0.0.1", "HTTP_USER_AGENT": ""},
+            )
+
+        # Then nothing changed: the physician's key stays live, no new key.
+        assert session_is_active(user_id=physician.pk, session_key=old_key)
+        for owner in (physician.pk, rbac_graph.clinic_admin):
+            assert not session_is_active(user_id=owner, session_key=new_key)

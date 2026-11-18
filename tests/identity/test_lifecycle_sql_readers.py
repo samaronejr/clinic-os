@@ -164,6 +164,10 @@ _ACCOUNT_ORACLES = {
     "clinic_app.identity_session_rotate_hash(bytea)": (
         "test_account_gates_refuse_inactive_and_foreign_actors",
     ),
+    "clinic_app.identity_session_rotate(bytea,bytea,text,text,"
+    "timestamp with time zone)": (
+        "test_account_gates_refuse_inactive_and_foreign_actors",
+    ),
     "clinic_app.identity_offboarding_clinics(uuid,uuid)": (
         "test_account_gates_refuse_inactive_and_foreign_actors",
     ),
@@ -735,6 +739,11 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
                     ("identity_recovery_consume(%s)", (code_digest,)),
                     ("identity_session_revoke_hash(%s)", (digest,)),
                     ("identity_session_rotate_hash(%s)", (digest,)),
+                    (
+                        "identity_session_rotate(%s,%s,'127.0.0.0/24','other',"
+                        "statement_timestamp() + interval '1 hour') IS NOT NULL",
+                        (digest, session_hash(uuid4().hex)),
+                    ),
                 )
                 for statement, parameters in queries:
                     with transaction.atomic():
