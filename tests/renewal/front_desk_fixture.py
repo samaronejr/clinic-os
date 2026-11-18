@@ -3,14 +3,42 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from uuid import UUID, uuid4
 
 import django
 
 
+def seed_environment(dsn: str) -> dict[str, str]:
+    """Return the setup subprocess environment, without the suite's drills.
+
+    The rollout runs real evaluations, which a configured AI drill would fail
+    part-way. Only this setup process loses the drill; the live server keeps
+    its own environment, so every turn under test still meets the drill.
+    """
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name != "CLINIC_SYNTHETIC_FAULTS"
+    }
+    return environment | {
+        "APP_DATABASE_URL": dsn,
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "PYTHONPATH": ".:tests",
+    }
+
+
 def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
     """Owner provisioning supplies only roles and the bounded service principal."""
+    from apps.core.fault_injection import injected_fault  # noqa: PLC0415
+
+    # Refuse before any write: a drill-failed evaluation would leave a
+    # proposed provider version and a half-promoted model behind.
+    if injected_fault("ai") is not None:
+        message = "seed the front-desk rollout with the AI drill cleared"
+        raise RuntimeError(message)
     from apps.ai.agent_policies import (  # noqa: PLC0415
         PolicyTerms,
         publish_agent_policy,
@@ -32,6 +60,10 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         ServicePrincipal,
         ServicePrincipalGrant,
         UserClinicRole,
+    )
+    from apps.providers.lifecycle import (  # noqa: PLC0415
+        VersionInput,
+        propose_version,
     )
     from apps.tenancy.db import tenant_context  # noqa: PLC0415
 
@@ -66,6 +98,18 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         )
     # The agent answers only while the owner's global AI switch is on.
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
+    # The native admission also needs a current, usable llm_inference provider
+    # version (ai_front_desk_authorize); the browser database has none.
+    propose_version(
+        "llm_inference",
+        version_input=VersionInput(
+            provider="synthetic",
+            account="synthetic-front-desk-" + uuid4().hex,
+            environment="synthetic",
+            region="synthetic",
+            retention_terms="synthetic-no-retention",
+        ),
+    )
     # Replies, bookings and handoffs need an active front-desk model admitted at
     # monitored_autonomy. Reach it as the unit tests do: recorded evaluation
     # runs, independent ratings and owner decisions for shadow, reviewed_live
