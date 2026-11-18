@@ -236,6 +236,10 @@ CHROMIUM_FAKE_MEDIA_ARG: Final = "--use-fake-device-for-media-stream"
 # Every Firefox the suites start (see Cross-origin opener policy above).
 FIREFOX_USER_PREFS: Final[dict[str, str | float | bool]] = {
     "browser.tabs.remote.useCrossOriginOpenerPolicy": False,
+    # Form history's dropdown is browser chrome: invisible to the page video and
+    # to the hit test, it swallowed a submit click right below a field whose
+    # value an earlier width case had submitted (race-rootcause, Rounds 10/12).
+    "browser.formfill.enable": False,
 }
 MEDIA_PERMISSIONS: Final = ("camera", "microphone")
 CLIPBOARD_PERMISSIONS: Final = ("clipboard-read", "clipboard-write")

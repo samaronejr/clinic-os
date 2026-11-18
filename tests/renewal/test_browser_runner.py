@@ -1599,7 +1599,10 @@ def test_every_firefox_the_suites_start_turns_coop_processing_off(
     with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
         pass
 
-    off = {"browser.tabs.remote.useCrossOriginOpenerPolicy": False}
+    off = {
+        "browser.tabs.remote.useCrossOriginOpenerPolicy": False,
+        "browser.formfill.enable": False,
+    }
     assert off == engines.FIREFOX_USER_PREFS
     scaled = {**off, "layout.css.devPixelsPerPx": "2.0"}
     assert [o.get("firefox_user_prefs") for o in launched["firefox"]] == [
@@ -2922,4 +2925,26 @@ def test_only_the_renewal_runtime_moves_the_server_display_default() -> None:
     ):
         assert default_ui_preferences() == UiPreferences(
             theme="dark", density="compact"
+        )
+
+
+def test_firefox_launches_without_form_history() -> None:
+    # Rounds 10 and 12: Firefox's form-history dropdown (browser chrome) took a
+    # submit click below a field refilled with an earlier case's value.
+    assert engines.FIREFOX_USER_PREFS["browser.formfill.enable"] is False
+    tree = ast.parse(Path(engines.__file__).read_text(encoding="utf-8"))
+    launches = [
+        keyword.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == "firefox_user_prefs"
+    ]
+    assert launches
+    for prefs in launches:
+        assert isinstance(prefs, ast.Dict)
+        spread = [v for k, v in zip(prefs.keys, prefs.values, strict=True) if k is None]
+        assert any(
+            isinstance(value, ast.Name) and value.id == "FIREFOX_USER_PREFS"
+            for value in spread
         )
