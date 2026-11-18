@@ -34,18 +34,18 @@ from ._passkey_retirement_sql import RETIREMENT_SQL
 _OPEN: Final = "$function$"
 
 
+# Both helpers use only the finite constructs the clock census decoder folds
+# (tests/scheduling/clock_static_values.py), like ai._front_desk_authority_sql
+# and ai._care_sql: no find/count/break, so RunSQL stays statically resolved.
 def _definition(sql: str, name: str, tag: str = _OPEN) -> str:
     """Return the installed ``clinic_app.<name>`` definition as a replacement."""
-    for head in (
-        f"CREATE OR REPLACE FUNCTION clinic_app.{name}(",
-        f"CREATE FUNCTION clinic_app.{name}(",
-    ):
-        start = sql.find(head)
-        if start >= 0:
-            break
-    else:
+    head = f"CREATE OR REPLACE FUNCTION clinic_app.{name}("
+    if head not in sql:
+        head = f"CREATE FUNCTION clinic_app.{name}("
+    if head not in sql:
         msg = f"no definition of {name}"
         raise ValueError(msg)
+    start = sql.index(head)
     body = sql.index(tag, start) + len(tag)
     end = sql.index(tag + ";", body) + len(tag) + 1
     signature = sql[start:end].split(" FUNCTION ", 1)[1]
@@ -54,7 +54,7 @@ def _definition(sql: str, name: str, tag: str = _OPEN) -> str:
 
 def _insert(text: str, anchor: str, replacement: str) -> str:
     """Replace the one occurrence of ``anchor``; anything else is a stale slice."""
-    if text.count(anchor) != 1:
+    if len(text.split(anchor)) - 1 != 1:
         msg = f"lock anchor not unique: {anchor[:60]!r}"
         raise ValueError(msg)
     return text.replace(anchor, replacement)

@@ -62,7 +62,11 @@ _SESSIONS: Final = "'clinic-lock-v1:sessions:'"
 
 # The installed text each function is replaced from (and restored to).
 _ROTATE: Final = _definition(ROTATION_SQL, "identity_session_rotate")
-_REVOKE, _REGISTER, _RETIRE, _CONSUME = _FORWARD
+# Indexed, not unpacked: the clock census decoder folds only name targets.
+_REVOKE: Final = _FORWARD[0]
+_REGISTER: Final = _FORWARD[1]
+_RETIRE: Final = _FORWARD[2]
+_CONSUME: Final = _FORWARD[3]
 _SYNC: Final = _SYNC_FORWARD
 _EXECUTE: Final = _definition(OFFBOARDING_SQL, "identity_offboarding_execute")
 _OFFBOARD_REVOKE: Final = _definition(OWNER_WRITERS, "identity_offboarding_revoke")
