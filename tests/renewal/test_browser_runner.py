@@ -1790,6 +1790,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         yield database
 
     captured: list[dict[str, str]] = []
+    bounded: list[tuple[list[str], int]] = []
 
     def fake_run(
         argv: list[str],
@@ -1799,8 +1800,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         timeout: int,
         cwd: Path | None = None,
     ) -> int:
-        assert timeout == 3600
-        assert "--workers=8" in argv
+        bounded.append((argv, timeout))
         captured.append(environment)
         return 0
 
@@ -1810,6 +1810,13 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     monkeypatch.setattr(runner, "_run_bounded", fake_run)
     results = runner._gate_coverage(REPOSITORY, tmp_path, "covpin")
     assert results == [{"command": "coverage", "exit": 0}]
+    # One bounded child runs the whole canonical command (collection and the
+    # parallel and serial phases live in ci_pytest) under one 90-minute deadline.
+    assert runner.COVERAGE_TIMEOUT_SECONDS == 5400
+    assert len(bounded) == 1
+    argv, timeout = bounded[0]
+    assert timeout == runner.COVERAGE_TIMEOUT_SECONDS
+    assert argv[1:4] == ["-m", "ops.testing.ci_pytest", "--workers=8"]
     assert len(captured) == 1
     environment = captured[0]
     assert environment["DJANGO_SETTINGS_MODULE"] == "config.settings.test"
@@ -1907,7 +1914,8 @@ def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
         log,
         timeout=2,
     )
-    assert code != 0
+    # The deadline still fails closed: the group is killed and the run reads 124.
+    assert code == 124
     assert time.monotonic() - started < 30
     assert log.read_text(errors="replace") == ""
 

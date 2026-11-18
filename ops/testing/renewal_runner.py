@@ -444,7 +444,10 @@ PROVISION_TIMEOUT_SECONDS: Final = 300
 PYTEST_TIMEOUT_SECONDS: Final = 900
 COMMAND_TIMEOUT_SECONDS: Final = 60
 STATIC_GATE_TIMEOUT_SECONDS: Final = 900
-COVERAGE_TIMEOUT_SECONDS: Final = 3600
+# One deadline for the whole canonical coverage command (ops.testing.ci_pytest:
+# collection, then the parallel and serial phases). It measured 41:13 on a
+# quiet host and was cut at 60:00 with no failed test.
+COVERAGE_TIMEOUT_SECONDS: Final = 5400
 # Same worker count as the hosted job and ``make ci``.
 CI_PYTEST_WORKERS: Final = 8
 DEPENDENCY_TIMEOUT_SECONDS: Final = 900
