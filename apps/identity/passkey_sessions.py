@@ -17,11 +17,8 @@ from apps.identity.passkey_challenges import (
     now_seconds,
 )
 from apps.identity.session_inventory import (
-    coarse_network,
-    register_session,
+    rotate_session,
     session_hash,
-    supersede_session_hash,
-    user_agent_family,
 )
 
 if TYPE_CHECKING:
@@ -40,14 +37,12 @@ def record_passkey_verification(request: HttpRequest, *, passkey_id: UUID) -> No
     new_key = request.session.session_key
     if new_key is None:
         raise PasskeyDeniedError
-    if old_key is not None:
-        supersede_session_hash(session_key=old_key)
-    register_session(
+    rotate_session(
         user_id=user.pk,
-        session_key=new_key,
+        old_key=old_key,
+        new_key=new_key,
         expires_at=request.session.get_expiry_date(),
-        network=coarse_network(request.META.get("REMOTE_ADDR", "")),
-        family=user_agent_family(request.META.get("HTTP_USER_AGENT", "")),
+        meta=request.META,
     )
     with connection.cursor() as cursor:
         cursor.execute(

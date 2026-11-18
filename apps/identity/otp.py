@@ -96,27 +96,15 @@ type PrivilegedView[**P] = Callable[Concatenate[HttpRequest, P], HttpResponseBas
 type SafeContinuation[**P] = Callable[P, str]
 
 
-def confirmed_devices(
-    user_id: UUID,
-    *,
-    for_update: bool = False,
-) -> tuple[TotpDevice, ...]:
+def confirmed_devices(user_id: UUID) -> tuple[TotpDevice, ...]:
     """Return confirmed TOTP devices explicitly scoped to one user id."""
     devices = TOTPDevice.objects.filter(user_id=user_id, confirmed=True).order_by("pk")
-    if for_update:
-        devices = devices.select_for_update()
     return cast("tuple[TotpDevice, ...]", tuple(devices))
 
 
-def pending_devices(
-    user_id: UUID,
-    *,
-    for_update: bool = False,
-) -> tuple[TotpDevice, ...]:
+def pending_devices(user_id: UUID) -> tuple[TotpDevice, ...]:
     """Return pending TOTP devices explicitly scoped to one user id."""
     devices = TOTPDevice.objects.filter(user_id=user_id, confirmed=False).order_by("pk")
-    if for_update:
-        devices = devices.select_for_update()
     return cast("tuple[TotpDevice, ...]", tuple(devices))
 
 

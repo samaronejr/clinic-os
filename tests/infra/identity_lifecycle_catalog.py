@@ -87,6 +87,7 @@ RESULTS: Final = {
     ("identity_reset_recipient", "requested_reset uuid"): "text",
     ("identity_reset_target", "requested_clinic uuid, requested_user uuid"): "boolean",
     ("identity_retire_authenticators", "requested_user uuid"): "void",
+    ("identity_lock_authenticators", "requested_user uuid"): "void",
     ("identity_revoke_changed_sessions", ""): "trigger",
     (
         "identity_session_active",
@@ -99,6 +100,11 @@ RESULTS: Final = {
     ): "uuid",
     ("identity_session_revoke_hash", "requested_hash bytea"): "boolean",
     ("identity_session_revoked_cookie", "requested_hash bytea"): "boolean",
+    (
+        "identity_session_rotate",
+        "old_hash bytea, new_hash bytea, requested_network text, "
+        "requested_family text, requested_expiry timestamp with time zone",
+    ): "uuid",
     ("identity_session_rotate_hash", "requested_hash bytea"): "boolean",
     (
         "identity_session_step_up",
@@ -131,6 +137,9 @@ NO_APP_EXECUTE: Final = {
     "identity_retire_authenticators",
     "identity_reset_notification_clock",
     "identity_revoke_changed_sessions",
+    "identity_lock_authenticators",
+    # Retired by identity 0055: installed, but the runtime may not call it.
+    "identity_session_rotate_hash",
 }
 STABLE: Final = {
     "identity_invitation_device_secret",
@@ -146,6 +155,7 @@ OWNER_EXECUTE: Final = {
     "identity_offboarding_clinics",
     "identity_pending_authority_guard",
     "identity_retire_authenticators",
+    "identity_lock_authenticators",
 }
 POSTURE: Final = {
     name: (
