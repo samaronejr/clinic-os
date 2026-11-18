@@ -214,6 +214,56 @@ def test_native_skipped_stage_and_foreign_receipt_inserts_are_refused(
                 )
 
 
+def _stage_run(
+    world: EvaluationWorld, approval: ModelChangeRequest | None, **terms: object
+) -> EvaluationRun:
+    """Insert a stage run with start_stage_run's exact terms, some forged."""
+    values: dict[str, object] = {
+        "organization_id": world.organization,
+        "clinic_id": world.clinic,
+        "protocol": world.protocol,
+        "configuration": world.configuration,
+        "configuration_version": world.configuration.version,
+        "versions": world.run.versions,
+        "stage": approval.stage if approval is not None else "shadow",
+        "rollout_approval": approval,
+        "rater_one_id": world.reviewers.rater_one,
+        "rater_two_id": world.reviewers.rater_two,
+        "adjudicator_id": world.reviewers.adjudicator,
+        "created_by_id": world.owner,
+    }
+    values.update(terms)
+    return EvaluationRun.objects.create(**values)
+
+
+def test_native_evaluation_run_forgery_is_refused_by_its_row_guard(
+    rbac_graph: RbacGraph,
+) -> None:
+    world = evaluation_world(rbac_graph)
+    shadow = approve_stage(world)
+    with as_reviewer(world, world.owner):
+        # Control: the service's own row shape is admitted under the receipt.
+        admitted = _stage_run(world, shadow)
+        assert (admitted.stage, admitted.rollout_approval_id) == ("shadow", shadow.pk)
+        # Raw inserts that skip the service: only ai_evaluation_rollout_guard
+        # (ai.0019) decides, by its own refusal.
+        for forged in ({"stage": "reviewed_live"}, {"rollout_approval": None}):
+            with (
+                pytest.raises(DatabaseError, match="rollout receipt denied"),
+                transaction.atomic(),
+            ):
+                _stage_run(world, shadow, **forged)
+        services.stop_rollout(
+            clinic_id=world.clinic, change_id=shadow.pk, state="invalidated"
+        )
+        # A stopped receipt admits no further evidence on the same row shape.
+        with (
+            pytest.raises(DatabaseError, match="rollout receipt denied"),
+            transaction.atomic(),
+        ):
+            _stage_run(world, shadow)
+
+
 def test_revoked_approval_membership_invalidates_the_stage_and_its_receipt(
     rbac_graph: RbacGraph,
 ) -> None:

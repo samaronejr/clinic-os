@@ -26,10 +26,15 @@ CASES = {
         test_rollout.test_kill_is_durable_across_reenable_and_requires_new_stage_evidence,
         test_agent_execution.test_revoked_approver_blocks_after_approval,
         test_rollout_posture.test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader,
+        test_rollout.test_native_evaluation_run_forgery_is_refused_by_its_row_guard,
     )
 }
+# ai.0019's evaluation-run guard is reached only by raw run forgery; the
+# shared cases go through the services, which refuse first.
+_ROW_GUARD_CASE = "test_native_evaluation_run_forgery_is_refused_by_its_row_guard"
+_SHARED_CASES = [name for name in CASES if name != _ROW_GUARD_CASE]
 SQL_PROTOCOL_ORACLES = {
-    name: list(CASES)
+    name: list(_SHARED_CASES)
     for name in (
         "clinic_app.ai_eval_activation_allowed",
         "clinic_app.ai_eval_finalize",
@@ -48,6 +53,10 @@ SQL_PROTOCOL_ORACLES = {
         "clinic_app.ai_rollout_guard",
     )
 }
+SQL_PROTOCOL_ORACLES["clinic_app.ai_evaluation_rollout_guard"] = [
+    *_SHARED_CASES,
+    _ROW_GUARD_CASE,
+]
 ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
     (
         "clinic_app.ai_eval_rating_visible(uuid,text,uuid)",

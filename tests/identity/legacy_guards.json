@@ -13591,9 +13591,10 @@
         "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
         "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
         "test_revoked_approver_blocks_after_approval",
-        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader",
+        "test_native_evaluation_run_forgery_is_refused_by_its_row_guard"
       ],
-      "reason": "ai.0019's evaluation-run half of the staged rollout guard, split from ai_rollout_guard so NEW is typed as ai_evaluationrun. The same executed progression, native skip/foreign-receipt refusal, independent review, authority invalidation and durable kill oracles drive every evaluation-run insert through it."
+      "reason": "ai.0019's evaluation-run half of the staged rollout guard, split from ai_rollout_guard so NEW is typed as ai_evaluationrun. The same executed progression, native skip/foreign-receipt refusal, independent review, authority invalidation and durable kill oracles drive every evaluation-run insert through it; a raw run forgery case reaches only this guard."
     },
     "clinic_app.ai_rollout_status": {
       "discovery": {
