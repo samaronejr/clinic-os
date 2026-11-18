@@ -1,7 +1,9 @@
-"""Every per-user session revocation waits for the user's rotation lock (S1).
+"""Every per-user session revocation waits for the user's session lock (S1).
 
 ``identity_session_rotate`` registers a rotated key under
-``pg_advisory_xact_lock(hashtextextended('clinic-lock-v1:user:' || user, 0))``.
+``pg_advisory_xact_lock(hashtextextended('clinic-lock-v1:sessions:' || user, 0))``
+(identity 0056; the lock is taken after every row lock, see
+``test_session_lock_order.py``).
 A revocation that does not take the same key can run while a rotation is in
 flight and miss the key it registers. Each test holds that key for one user on
 a second connection, the way an uncommitted rotation does, and then runs one
@@ -39,9 +41,9 @@ Statement = tuple[str, "Sequence[object]"]
 
 @contextmanager
 def _rotation_in_flight(url: str, user_id: UUID) -> Iterator[None]:
-    """Hold the user's rotation lock, as an uncommitted rotation does."""
+    """Hold the user's session lock, as an uncommitted rotation does."""
     with psycopg.connect(url) as holder:
-        holder.execute(USER_LOCK, [f"clinic-lock-v1:user:{user_id}"])
+        holder.execute(USER_LOCK, [f"clinic-lock-v1:sessions:{user_id}"])
         try:
             yield
         finally:

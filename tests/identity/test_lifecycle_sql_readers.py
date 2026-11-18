@@ -67,6 +67,7 @@ HISTORICAL_CALLABLES = {
     "clinic_app.identity_invitation_finish(bytea,text)": "NULL,NULL",
     "clinic_app.identity_offboarding_execute(uuid,uuid)": "NULL,NULL",
     "clinic_app.identity_retire_authenticators(uuid)": "NULL",
+    "clinic_app.identity_lock_authenticators(uuid)": "NULL",
 }
 LIFECYCLE_TRIGGERS = {
     "clinic_app.identity_invitation_guard": {
@@ -304,6 +305,12 @@ SQL_PROTOCOL_ORACLES = (
             "identity.test_lifecycle_sql_readers."
             "test_historical_lifecycle_callables_are_not_runtime_capabilities",
             "auth.test_recovery_codes.test_recovery_codes_are_once_shown_hash_only_and_one_use",
+        ),
+        "clinic_app.identity_lock_authenticators": (
+            "identity.test_lifecycle_sql_readers."
+            "test_historical_lifecycle_callables_are_not_runtime_capabilities",
+            "auth.test_session_lock_order."
+            "test_password_change_and_offboarding_cannot_deadlock",
         ),
         "clinic_app.identity_session_active": (
             "identity.test_lifecycle_sql_readers."

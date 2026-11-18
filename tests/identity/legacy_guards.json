@@ -16646,6 +16646,33 @@
       ],
       "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
     },
+    "clinic_app.identity_lock_authenticators": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_lock_order_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke",
+          "clinic_app.identity_recovery_consume"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
+        "auth.test_session_lock_order.test_password_change_and_offboarding_cannot_deadlock"
+      ],
+      "reason": "Installed lock-order boundary: locks a user's live passkey and recovery-batch rows before the session key. Offboarding lock-order and callable ACL controls are bound."
+    },
     "clinic_app.identity_revoke_changed_sessions": {
       "discovery": {
         "migrations": [

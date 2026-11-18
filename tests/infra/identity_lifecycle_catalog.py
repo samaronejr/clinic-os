@@ -87,6 +87,7 @@ RESULTS: Final = {
     ("identity_reset_recipient", "requested_reset uuid"): "text",
     ("identity_reset_target", "requested_clinic uuid, requested_user uuid"): "boolean",
     ("identity_retire_authenticators", "requested_user uuid"): "void",
+    ("identity_lock_authenticators", "requested_user uuid"): "void",
     ("identity_revoke_changed_sessions", ""): "trigger",
     (
         "identity_session_active",
@@ -136,6 +137,7 @@ NO_APP_EXECUTE: Final = {
     "identity_retire_authenticators",
     "identity_reset_notification_clock",
     "identity_revoke_changed_sessions",
+    "identity_lock_authenticators",
     # Retired by identity 0055: installed, but the runtime may not call it.
     "identity_session_rotate_hash",
 }
@@ -153,6 +155,7 @@ OWNER_EXECUTE: Final = {
     "identity_offboarding_clinics",
     "identity_pending_authority_guard",
     "identity_retire_authenticators",
+    "identity_lock_authenticators",
 }
 POSTURE: Final = {
     name: (
