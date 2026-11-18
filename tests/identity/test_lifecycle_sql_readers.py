@@ -738,7 +738,6 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
                     ("identity_session_verify(%s,%s)", (digest, device_id)),
                     ("identity_recovery_consume(%s)", (code_digest,)),
                     ("identity_session_revoke_hash(%s)", (digest,)),
-                    ("identity_session_rotate_hash(%s)", (digest,)),
                     (
                         "identity_session_rotate(%s,%s,'127.0.0.0/24','other',"
                         "statement_timestamp() + interval '1 hour') IS NOT NULL",
@@ -750,6 +749,15 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
                         cursor.execute("SELECT clinic_app." + statement, parameters)
                         assert cursor.fetchone() == (allowed,), statement
                         transaction.set_rollback(True)
+                # Retired two-step rotation (identity 0055): refused for every
+                # actor, before its own actor gate is reached.
+                with (
+                    pytest.raises(ProgrammingError, match="permission denied"),
+                    transaction.atomic(),
+                ):
+                    cursor.execute(
+                        "SELECT clinic_app.identity_session_rotate_hash(%s)", [digest]
+                    )
             transaction.set_rollback(True)
 
 

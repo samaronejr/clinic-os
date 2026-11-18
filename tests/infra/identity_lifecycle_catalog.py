@@ -136,6 +136,8 @@ NO_APP_EXECUTE: Final = {
     "identity_retire_authenticators",
     "identity_reset_notification_clock",
     "identity_revoke_changed_sessions",
+    # Retired by identity 0055: installed, but the runtime may not call it.
+    "identity_session_rotate_hash",
 }
 STABLE: Final = {
     "identity_invitation_device_secret",
