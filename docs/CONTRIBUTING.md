@@ -66,9 +66,18 @@ role or database settings, databases, `ALTER SYSTEM`, migrations through
 fails the run otherwise.
 
 Hosted CI divides both phases into four deterministic, file-atomic shards per
-Python version, keeping each hosted job within its 90-minute budget. Each shard collects the complete reference independently and
-retains its raw line coverage, exactly-once execution reports, refusal census
-and shared-catalog certificate. The `python-coverage` jobs require every shard,
+Python version, keeping each hosted job within its 90-minute budget. The split
+is balanced by recorded test durations: `ops/testing/ci-pytest-durations.json`
+holds each test file's milliseconds per phase, and a file it does not list
+weighs its test count times the table's fixed fallback. `DURATIONS_SHA256` in
+`ops/testing/ci_pytest_partition.py` pins the table's bytes, and every shard
+manifest records that hash. Refresh the table from one Python version's four
+green shard bundles with `python -m ops.testing.ci_pytest_durations --source
+hosted --note TEXT BUNDLE...` and update the pin in the same commit. Each shard
+collects the complete reference independently and retains its raw line
+coverage, exactly-once execution reports with each test's duration, refusal
+census and shared-catalog certificate. The `python-coverage` jobs require every
+shard and the same duration table,
 prove their disjoint union equals that reference, require every derived refusal
 exit across the union, revalidate every catalog certificate, and combine raw
 coverage before enforcing the same 90% floor. `Renewal RC acceptance` requires
@@ -230,6 +239,16 @@ behavior, test counts, and anything not tested. A green static check does not
 replace exercising the changed CLI, HTTP, or browser surface. Clean temporary
 containers, volumes, servers, ports, `.terraform/`, and scratch files before
 handoff.
+
+The `secret-scan` pre-commit hook refuses committed credentials. A synthetic
+fixture that must look like one goes in `ops/testing/secret-scan-allowlist.txt`
+with its reason; don't weaken a rule. A new threat-model mitigation needs a
+Tests cell whose first non-browser test proves it (a test that fails when the
+control is removed); a control that is not in place is written after
+`**Gap:**` and a clause no test proves after `**Unproved:**`, never mapped to
+an unrelated test. Closing or adding such a row changes the totals that
+`tests/infra/test_threat_model_coverage.py` pins. A runtime dependency change
+needs `python -m ops.release.sbom write`.
 
 Source anchors: [CI target](../Makefile),
 [hosted workflow](../.github/workflows/ci.yml),

@@ -12,6 +12,7 @@ from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
+from renewal.browser.support_managers import seed_ai_admin, set_ai_switches
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_retention import seed_manager, sign_in_manager
 
@@ -37,6 +38,17 @@ def _complete_source(staff: dict[str, str]) -> None:
             )
 
 
+def _analyst_manager(staff: dict[str, str]) -> dict[str, str]:
+    """Seed the reports manager; the opt-in analyst needs both AI switches on."""
+    assert set_ai_switches(
+        staff,
+        seed_ai_admin(staff, "light")["id"],
+        global_enabled=True,
+        organization_enabled=True,
+    ) == {"global": True, "organization": True}
+    return seed_manager(staff)
+
+
 def _native_refresh(page: Page) -> None:
     # Form labels carry Django's label suffix (':'), as duplicate_accessibility matches.
     page.get_by_label(f"{gettext('From')}:", exact=True).fill("02/06/2035")
@@ -54,7 +66,7 @@ def test_reports_sources_review_boundaries_and_accessibility(
     browser = renewal_page.context.browser
     assert browser is not None
     staff = availability_staff
-    manager = seed_manager(staff)
+    manager = _analyst_manager(staff)
     _complete_source(staff)
     root = renewal_artifact_root / "reports"
     root.mkdir(mode=0o700, exist_ok=True)

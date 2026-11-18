@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 from apps.audit.models import AuditEvent
+from apps.identity import enterprise_access
 from apps.identity import enterprise_authority as clock
 from apps.identity.enterprise_access import (
     EmergencyScope,
@@ -53,22 +54,38 @@ def test_break_glass_without_reason_leaves_no_grant(rbac_graph: RbacGraph) -> No
         assert not GovernanceNotice.objects.exists()
 
 
-@pytest.mark.parametrize("hours", [0, 5])
+@override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
 def test_break_glass_rejects_unbounded_or_elapsed_expiry(
-    rbac_graph: RbacGraph, hours: int
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    clinician, enrollment = permission_actor(rbac_graph, "physician")
-    with (
-        permission_context(rbac_graph, clinician),
-        pytest.raises(GovernanceDeniedError),
-    ):
-        grant_break_glass(
+    # Given a verified clinician with emergency authority over another
+    # patient's enrollment, and a frozen service clock: only expiry can refuse.
+    enterprise_setup(rbac_graph)
+    clinician, _own = permission_actor(rbac_graph, "physician")
+    _other, enrollment = permission_actor(rbac_graph, "physician")
+    key = session_key(verified_actor_client(clinician))
+    now = timezone.now()
+    monkeypatch.setattr(enterprise_access, "utc_now", lambda: now)
+
+    def grant(expires_at: datetime) -> BreakGlassGrant:
+        return grant_break_glass(
             clinic_id=rbac_graph.clinic_a,
             scope=EmergencyScope(enrollment),
             reason="Synthetic emergency",
-            expires_at=timezone.now() + timedelta(hours=hours),
-            session_key="not-a-session",
+            expires_at=expires_at,
+            session_key=key,
         )
+
+    with permission_context(rbac_graph, clinician):
+        # When the expiry is past four hours or not after now, it is refused
+        # and nothing persists ...
+        for expires_at in (now + timedelta(hours=4, microseconds=1), now):
+            with pytest.raises(GovernanceDeniedError):
+                grant(expires_at)
+            assert not BreakGlassGrant.objects.exists()
+        # ... while the same authority at exactly four hours is granted.
+        granted = grant(now + timedelta(hours=4))
+        assert granted.expires_at == now + timedelta(hours=4)
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
@@ -139,6 +156,10 @@ def test_expired_break_glass_cannot_read_with_a_monkeypatched_clock(
             expires_at=issued + timedelta(hours=1),
             session_key=session_key(client),
         )
+    # The same authority reads while the grant is current, so only expiry
+    # can refuse the read below.
+    with permission_context(rbac_graph, clinician):
+        assert read_break_glass(clinic_id=rbac_graph.clinic_a, grant_id=grant.pk)
     # When the read clock reaches or passes the exclusive expiry boundary.
     monkeypatch.setattr(clock, "utc_now", lambda: issued + elapsed)
     with (

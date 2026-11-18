@@ -1,11 +1,12 @@
-"""Export v4 datasets: the frozen relation set described by live model metadata.
+"""Export v5 datasets: the frozen relation set described by live model metadata.
 
 Each exported relation becomes one dataset with a JSON Lines file and a CSV file.
 Encrypted columns are decrypted with their field's envelope purpose and codec;
 other binary columns are base64. ``EXCLUDED`` names every relation left out and
 why, so the union always equals the recovery manifest's domain relations. Export
-v1 to v3 stay frozen; v2 added the governed-import relations, v3 identity
-0051's enterprise relations and v4 todo 68's RNDS submission log.
+v1 to v4 stay frozen; v2 added the governed-import relations, v3 identity
+0051's enterprise relations, v4 todo 68's RNDS submission log and v5 todo 73's
+delegate-access log.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from django.apps import apps as django_apps
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
-from apps.interop.migrations._export_v4_sql import EXCLUDED_V4, EXPORT_V4
+from apps.interop.migrations._export_v5_sql import EXCLUDED_V5, EXPORT_V5
 from apps.tenancy.fields import (
     EncryptedBytesField,
     EncryptedDateField,
@@ -29,7 +30,7 @@ from apps.tenancy.fields import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-FORMAT: Final = "clinic-organization-export-v4"
+FORMAT: Final = "clinic-organization-export-v5"
 EXCLUSION_REASONS: Final = {
     "credential": "authentication secrets, sessions and device material",
     "platform": "platform-wide records without a tenant owner",
@@ -40,7 +41,7 @@ EXCLUSION_REASONS: Final = {
     "transient_media": "raw audio retained only until its purge policy",
     "derived_archive": "the encrypted bytes of export archives themselves",
 }
-EXCLUDED: Final[Mapping[str, str]] = EXCLUDED_V4
+EXCLUDED: Final[Mapping[str, str]] = EXCLUDED_V5
 _TYPES: Final[tuple[tuple[type[models.Field[object, object]], str], ...]] = (
     (models.BooleanField, "boolean"),
     (models.UUIDField, "uuid"),
@@ -99,13 +100,13 @@ def _column(field: models.Field[object, object]) -> Column:
 
 @cache
 def datasets() -> tuple[Dataset, ...]:
-    """Return every export v4 dataset in archive order."""
+    """Return every export v5 dataset in archive order."""
     by_table = {
         model._meta.db_table: model  # noqa: SLF001 - Django model metadata API
         for model in django_apps.get_models(include_auto_created=True)
     }
     result: list[Dataset] = []
-    for relation, key, _kind, omitted, _scope in EXPORT_V4:
+    for relation, key, _kind, omitted, _scope in EXPORT_V5:
         model = by_table.get(relation)
         columns = (
             ()

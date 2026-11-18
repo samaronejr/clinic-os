@@ -91,6 +91,50 @@ def resolve_csp_report_only(environment: Mapping[str, str], data_mode: str) -> b
     return report_only
 
 
+# Degraded-mode drills (todo 72) fault one synthetic provider family at a time.
+SYNTHETIC_FAULT_FAMILIES: Final = ("ai", "video", "messaging", "signing", "payment")
+SYNTHETIC_FAULT_MODES: Final = ("down", "slow", "ambiguous")
+
+
+def resolve_synthetic_faults(
+    environment: Mapping[str, str], data_mode: str
+) -> dict[str, str]:
+    """Return the synthetic provider faults to inject, keyed by family.
+
+    ``CLINIC_SYNTHETIC_FAULTS`` lists comma-separated ``family=mode`` pairs,
+    for example ``ai=slow,payment=down``: the named synthetic adapters behave
+    as unavailable (``down``), past their deadline (``slow``) or unsure of
+    the outcome (``ambiguous``). Empty means no fault. Unknown families or
+    modes, repeated families and any fault outside synthetic data mode fail
+    closed at startup, so a drill can never reach a real provider and a
+    misspelled fault never turns into a silent no-op.
+    """
+    resolver = environ.Env()
+    resolver.ENVIRON = environment
+    raw: str = resolver.str("CLINIC_SYNTHETIC_FAULTS", default="").strip()
+    if not raw:
+        return {}
+    if data_mode != SYNTHETIC_DATA_MODE:
+        message = "CLINIC_SYNTHETIC_FAULTS is allowed only in synthetic data mode"
+        raise ImproperlyConfigured(message)
+    faults: dict[str, str] = {}
+    for entry in raw.split(","):
+        family, separator, mode = entry.strip().partition("=")
+        if (
+            not separator
+            or family not in SYNTHETIC_FAULT_FAMILIES
+            or mode not in SYNTHETIC_FAULT_MODES
+            or family in faults
+        ):
+            message = (
+                "CLINIC_SYNTHETIC_FAULTS must list distinct family=mode pairs "
+                "from the closed fault vocabulary"
+            )
+            raise ImproperlyConfigured(message)
+        faults[family] = mode
+    return faults
+
+
 def resolve_website_contact_email(environment: Mapping[str, str]) -> str:
     """Return the website's public contact address, or "" when unpublished.
 

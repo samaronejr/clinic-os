@@ -216,6 +216,20 @@ inline script, style, event handler or `javascript:` URL, and htmx runs with
 for those constructs, and every browser suite fails on a console CSP
 violation (`tests/renewal/browser/conftest.py`, report `csp-console.json`).
 
+The same meta turns the htmx history cache off (`historyCacheSize: 0`,
+`refreshOnHistoryMiss: true`): a boosted or pushed navigation never copies page
+HTML into `sessionStorage`, and Back reloads the page from the server instead of
+restoring a snapshot. htmx applies only the first `htmx-config` meta, so the
+shell renders it before every child block and drops the output of the
+`workspace_refusal` hook that runs before the doctype. htmx still writes the
+current path (`htmx-current-path-for-history`), which carries no PHI because
+record selectors travel in POST bodies. `tests/infra/test_htmx_history.py`
+checks rendered pages for that single configuration, that no child block can
+pre-empt it and that only `base.html` loads htmx,
+`tests/security/test_browser_storage.py` admits no other storage-touching
+library, and the `patient-workspace` browser suite checks storage after tab
+switches and after Back.
+
 The policy is enforced by default. `CLINIC_CSP_REPORT_ONLY=true` switches to
 `Content-Security-Policy-Report-Only` with the same policy as a synthetic-only
 rollout and rollback lever; live data mode refuses it at startup. Per-route
@@ -314,6 +328,53 @@ database trust boundary, not as proof against a superuser.
 - Use synthetic, non-identifying values in tests and evidence. Audit payloads
   are metadata, not a place for PHI.
 
+## Dependency provenance and security readiness
+
+- `uv run pip-audit --local` runs in `make ci` and the hosted workflow. An
+  accepted vulnerability needs a documented exception with an expiry date in
+  this file; there is none today. No `frontend/` island exists, so there is
+  no npm audit yet.
+- The CycloneDX runtime SBOM
+  ([docs/releases/sbom/clinic-os-runtime.cdx.json](releases/sbom/clinic-os-runtime.cdx.json))
+  is generated from `uv.lock` by `python -m ops.release.sbom write`;
+  `tests/infra/test_sbom.py` fails when the locked runtime closure drifts from
+  it. Each release record cites the SBOM's SHA-256.
+- The `secret-scan` pre-commit hook (`ops/testing/secret_scan.py`) refuses
+  private keys, provider tokens, credentialed connection URLs, OTP
+  provisioning URIs, JWTs, `.env` files and Terraform state or variables. A
+  synthetic fixture that must look like a credential is listed with a reason
+  in `ops/testing/secret-scan-allowlist.txt`.
+- Each threat model's mitigation table has a Tests column; its first
+  non-browser id is the mitigation's designated proof. A mitigation is
+  covered only by execution evidence: `python -m
+  ops.testing.threat_model_coverage report --junit <pytest junit.xml>
+  --output threat-coverage.json` requires a mapped non-browser test to have
+  passed and none to have failed, never counts skipped or not-run tests, and
+  refuses to run without JUnit. `tests/infra/test_threat_model_coverage.py`
+  runs every designated proof and applies that verdict; `inventory` only
+  checks the mapping. Text after `**Gap:**` in a mitigation is a known
+  missing control (state `gap`); text after `**Unproved:**` is a clause no
+  mapped test proves (state `partial`). Neither counts as covered, every
+  report lists them, and `report` exits 0 only when all rows are covered.
+  Today: all 98 covered, 0 partial, 0 gap. The patient access log lists
+  each delegate read (grant, record type, time) next to break-glass reads
+  (DG-R1), and the shipped scribe-capture script's 60 s capture-time cap also
+  runs outside the browser, under the Node runtime of the locked `playwright`
+  wheel (SM-I1).
+- `ops/testing/sentinel_scan.py` is the shared PHI-sentinel scanner. It
+  checks emitted logs, URLs, SSE frames, push payloads, artifact trees and
+  every text, JSON and bytea column (audit and outbox rows included) for
+  injected synthetic sentinels; `tests/security/test_sentinel_sinks.py` drives
+  it through real requests. The renewal runner applies it to every browser
+  suite (`ops/testing/sentinel_runtime.py`): it records the suite's broker
+  frames and browser request URLs, sends fresh sentinels through the live
+  server after the suite, then scans the logs, URLs, frames, database and
+  artifacts, and fails the suite on any finding (`sentinel-runtime.json`).
+  No push sender exists, so push is not applicable.
+- [security/assessment-scope.md](security/assessment-scope.md) is the scope
+  package for an independent assessment. No assessment has been performed,
+  and EG-12 stays open until the owner accepts one.
+
 ## Synthetic recovery and live-data gate
 
 `make restore-rehearsal` transports only the reviewed table/sequence manifest
@@ -323,9 +384,13 @@ framework/session/migration state, and compares restored domain rows and
 posture read-only. `clinic_super` is confined to exact task database creation
 and data transport; source and target PostgreSQL clients run inside their own
 containers. The rehearsal executes no restored bootstrap, provisioning,
-password, login, TOTP, helper, browser, or runner action.
+password, login, TOTP, helper, browser, or runner action. It restores the
+attachment objects from a backup copy and the tenant KEK from a separate
+escrow, and refuses before touching the target when either is missing or the
+escrow no longer opens the live keys.
 
-This is not an encrypted backup, provider PITR, RPO/RTO, or recovery approval.
+This is not an encrypted backup, provider PITR or recovery approval; its
+measured RPO/RTO are synthetic L1 figures, not service commitments.
 Live data is prohibited until every item in
 [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md) is independently approved.
 
@@ -368,8 +433,8 @@ Security-relevant decisions:
 | [ADR-016](adr/ADR-016-recovery-with-key-escrow.md) | Restore fails when keys or objects are missing |
 | [ADR-019](adr/ADR-019-service-principals.md) | `clinic_agent` NOBYPASSRLS login; principals never impersonate clinicians |
 
-Threat models (mitigation ids map to todo numbers; todo 73 maps them to
-tests):
+Threat models (mitigation ids map to todo numbers, and each table's Tests
+column maps them to the tests that prove them):
 
 | Surface | Threat model |
 | --- | --- |

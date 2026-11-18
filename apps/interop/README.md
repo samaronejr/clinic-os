@@ -99,13 +99,32 @@ EG-1 `approved_to_test` record first.
 
 ## Commit, provenance and reconciliation
 
-`commit_import` records immutable batches of at most 200 rows (patients
-first, then history) and queues `apps.interop.tasks.commit_batch` on the
+`commit_import` records immutable batches (patients first, then history) and
+queues `apps.interop.tasks.commit_batch` on the
 `bulk` queue after commit. The task carries only the batch id; it resolves the
 stored scope (`clinic_app.interop_batch_scope`), spends one token of the
 organization's `bulk` fairness bucket (deferring with a countdown otherwise)
 and commits under the requester's re-checked current authority. Each batch
 re-verifies the source checksum and its own row digest before writing.
+
+Each patient registration is one batch and one committed tenant transaction.
+Intake prepares its encrypted identity versions, identifiers, duplicate hints
+and import provenance before appending their original ordered audit events.
+Only opaque event references are retained in memory inside that transaction.
+The importer re-checks current identity authority after the first append pins
+revocation; lost authority rolls back all prepared rows and events together.
+Another registration cannot extend the same audit critical section.
+Batch metadata and reconciliation checks also precede the chain pin. A bulk
+task first probes that same canonical lock without waiting, in an empty
+savepoint that is rolled back to release the probe. An already-busy chain
+defers the task before source decryption or protected-row preparation.
+Preparation does not retain the probe's pin. The task tries the chain again
+before auditing: if a clinical writer arrived meanwhile, the prepared rows
+roll back and the task is deferred on the existing bulk queue.
+It cannot join ahead of clinical appenders already waiting for the chain.
+Normal ordered audit appends and synchronous commit remain mandatory.
+History batches remain bounded to 200 rows and append their batch audit after
+the writes. Stored batch bounds and replay semantics remain immutable.
 
 Patients are registered through intake's own invariants (name index, first
 demographics version with its receipt, identifier blind indexes, duplicate
@@ -360,8 +379,9 @@ send time without a request.
 
 ### Organization export
 
-The archive format is `docs/api/export-v4.md`: export v3
-(`docs/api/export-v3.md`) plus todo 68's RNDS submission log, where v3 is export
+The archive format is `docs/api/export-v5.md`: export v4
+(`docs/api/export-v4.md`) plus todo 73's delegate-access log, where v4 is export
+v3 (`docs/api/export-v3.md`) plus todo 68's RNDS submission log, v3 is export
 v2 (`docs/api/export-v2.md`) plus identity 0051's enterprise relations and v2 is
 export v1 (`docs/api/export-v1.md`) plus the governed-import relations; every
 earlier version is frozen. `request_export` records the

@@ -8,7 +8,7 @@
 |-----|------|------------------|-------|
 | tenancy | `tenant_context`, `TenantScopedModel`, `Encrypted*Field`, `TenantMiddleware` | 141 | here |
 | identity | users/orgs/clinics, `UserClinicRole`, OTP, step-up, owner CLI | 244 | identity/AGENTS.md |
-| core | privacy + live-halt + CSP middleware, workspace shell, `/sw.js`, outbox `integration.py`, `idempotency.py`, `secrets.py`, `fairness.py`, typed UI API `api/` (`/api/ui/v1/`), PHI-safe `telemetry.py` (JSON logs, OTel spans, `/internal/metrics`, Sentry scrub) | 49 | here |
+| core | privacy + live-halt + CSP middleware, workspace shell, `/sw.js`, outbox `integration.py`, `idempotency.py`, `secrets.py`, `fairness.py`, `fault_injection.py` (`CLINIC_SYNTHETIC_FAULTS` drills, synthetic adapters only), typed UI API `api/` (`/api/ui/v1/`), PHI-safe `telemetry.py` (JSON logs, OTel spans, `/internal/metrics`, Sentry scrub) | 49 | here |
 | audit | hash-chained append-only ledger (`record_phase1_event`, `record_event`) | 94 | here |
 | comms | `IntegrationOperation` outbox rows, reminders, Celery tasks, synthetic channels | 51 | comms/README.md |
 | intake | patients, enrollment, contacts, patient sessions, questionnaires | 122 | intake/AGENTS.md |

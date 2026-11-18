@@ -55,6 +55,7 @@ NAMES: Final = {
     "/brand/": "brand",
     "/help/": "help",
     "/help/book-appointment/": "guide-book-appointment",
+    "/status/": "status",
 }
 # Standalone targets only; links inside running text are exempt (WCAG 2.5.8).
 TARGETS: Final = (
@@ -187,7 +188,7 @@ def test_rendered_claims_match_the_registry_word_for_word(
             claim.id: " ".join(translation.gettext(claim.claim).split())
             for claim in claims.values()
         }
-    for path in ("/", "/product/", "/security/", "/brand/", "/help/"):
+    for path in ("/", "/product/", "/security/", "/brand/", "/help/", "/status/"):
         goto_settled(renewal_page, renewal_base_url + path, wait_until="load")
         for claim_id, text in renewal_page.evaluate(CLAIMS_JS):
             assert text == expected[claim_id], (path, claim_id)

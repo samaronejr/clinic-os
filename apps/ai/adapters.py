@@ -18,6 +18,7 @@ from apps.ai.contracts import (
     Method,
     ProviderRequest,
     ProviderResult,
+    ProviderTimeoutError,
     ProviderUnavailableError,
     Usage,
     request_schema,
@@ -33,6 +34,7 @@ from apps.ai.revenue_contracts import SCHEMA as REVENUE_SCHEMA
 from apps.ai.revenue_contracts import synthetic_reply as synthetic_revenue_reply
 from apps.analytics.analyst_contracts import synthetic_reply as synthetic_analyst_reply
 from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
+from apps.core.fault_injection import injected_fault
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -93,6 +95,25 @@ class AdapterBase:
         ):
             raise ProviderUnavailableError
 
+    def drill_reply(self, request: ProviderRequest) -> ProviderResult | None:
+        """Apply a configured degraded-mode drill; ``None`` answers normally.
+
+        ``down`` and ``slow`` raise the gateway's unavailable and timeout
+        errors. ``ambiguous`` answers with a truncated reply that claims more
+        usage than was reserved, so output validation must reject it.
+        """
+        match injected_fault("ai"):
+            case "down":
+                raise ProviderUnavailableError
+            case "slow":
+                raise ProviderTimeoutError
+            case "ambiguous":
+                return ProviderResult(
+                    '{"schema":', Usage(tokens_out=request.limits.tokens_out + 1)
+                )
+            case None:
+                return None
+
 
 class SyntheticProvider(AdapterBase):
     """Deterministic offline provider; it never imports a network client."""
@@ -103,6 +124,9 @@ class SyntheticProvider(AdapterBase):
     def complete(self, *, request: ProviderRequest) -> ProviderResult:
         """Return a fixed review-only draft without echoing source content."""
         self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         content = "Synthetic draft. Human review required."
         schema = request_schema(request.content)
         if schema == ANALYST_SCHEMA:
@@ -130,6 +154,9 @@ class SyntheticProvider(AdapterBase):
     def transcribe(self, *, request: ProviderRequest) -> ProviderResult:
         """Return a fixed transcript with exact, bounded whole audio seconds."""
         self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         return ProviderResult(
             "Synthetic transcript. Human review required.",
             Usage(audio_seconds=min(request.limits.audio_seconds, 1)),
@@ -137,6 +164,10 @@ class SyntheticProvider(AdapterBase):
 
     def extract(self, *, request: ProviderRequest) -> ProviderResult:
         """Produce only the extraction schema the gateway accepts."""
+        self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         result = self.complete(request=request)
         if request.content.startswith('{"schema":"document-extraction-v1",'):
             try:
@@ -156,21 +187,31 @@ class RecordedFixtureProvider(SyntheticProvider):
     def complete(self, *, request: ProviderRequest) -> ProviderResult:
         """Load the one reviewed recording by its closed model identifier."""
         self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         return self._record(request, "complete")
 
     def stream(self, *, request: ProviderRequest) -> Iterator[ProviderResult]:
         """Replay the recording's terminal delta with cumulative metering."""
         self.check_boundary(request)
-        yield self._record(request, "stream")
+        drill = self.drill_reply(request)
+        yield drill if drill is not None else self._record(request, "stream")
 
     def transcribe(self, *, request: ProviderRequest) -> ProviderResult:
         """Replay the recorded transcript and its exact whole-second usage."""
         self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         return self._record(request, "transcribe")
 
     def extract(self, *, request: ProviderRequest) -> ProviderResult:
         """Replay a closed-schema extraction, not a generated completion."""
         self.check_boundary(request)
+        drill = self.drill_reply(request)
+        if drill is not None:
+            return drill
         if request.model_id == "extraction-fixture-v1":
             try:
                 content = recorded_document_extraction(request.content)

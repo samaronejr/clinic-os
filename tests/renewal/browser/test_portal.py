@@ -19,9 +19,12 @@ the access gate shows the same panel; the data-rights test files a correction an
 access request and downloads the verifiable copy on an emulated phone; the
 staff-queue test has management start and answer a filed correction, which the
 patient then sees answered; the preferences test keeps display choices
-server-side. No page registers a service
-worker, asks for notification permission or writes browser storage. Axe must
-report zero violations of any impact on every portal state captured here.
+server-side; the access-log test seeds a guardian grant through its real
+guards and two delegate reads, and the represented patient's own access log at
+1280 and 375 px lists both, translated, with no emergency review status. No page
+registers a service worker, asks for notification permission or writes browser
+storage. Axe must report zero violations of any impact on every portal state
+captured here.
 """
 
 from __future__ import annotations
@@ -775,5 +778,175 @@ def test_display_preferences_stay_server_side_and_push_stays_unavailable(
         assert _small_targets(page) == []
         _axe_clean(page, base, renewal_artifact_root, "home-large-contrast")
         _capture(page, renewal_artifact_root, "home-large-contrast")
+        _no_browser_storage(page)
+        assert errors == []
+
+
+ACCESS_LOG_PATH: Final = "/patient/security/access-log/"
+ACCESS_LOG_WIDTHS: Final = (1280, 375)
+
+
+def _seed_delegate_reads(
+    staff: dict[str, str], represented: dict[str, str], delegate: dict[str, str]
+) -> str:
+    """Seed scanned evidence, a guardian grant through its guards, and two reads.
+
+    Each step runs as the actor its guard requires: the physician owns the
+    documentation encounter and its scanned evidence, a clinic admin requests,
+    verifies and activates the grant. The two delegate-access rows are the ones
+    the recorder writes after a released-record and a result read.
+    """
+    manager = seed_manager(staff)
+    encounter, attachment, grant = (str(uuid4()) for _ in range(3))
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        conn.execute(
+            "SELECT set_config('app.current_user_id',%s,true)",
+            [staff["physician_a_id"]],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.ehr_encounter (id,state,revision,created_at,"
+            "clinic_id,organization_id,patient_id,physician_id,unscheduled_reason) "
+            "VALUES (%s,'open',1,now(),%s,%s,%s,%s,'documentation_only')",
+            [
+                encounter,
+                staff["clinic_a"],
+                staff["organization"],
+                represented["patient"],
+                staff["physician_a_id"],
+            ],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.ehr_clinicalattachment (id,storage_key,"
+            "file_name,declared_type,detected_type,size_bytes,sha256,state,"
+            "scan_attempts,scan_reason,created_at,clinic_id,encounter_id,"
+            "organization_id,patient_id,uploader_id) VALUES (%s,%s,"
+            "'autoridade-sintetica.pdf','application/pdf','application/pdf',64,%s,"
+            "'quarantined',0,'',now(),%s,%s,%s,%s,%s)",
+            [
+                attachment,
+                secrets.token_hex(32),
+                secrets.token_hex(32),
+                staff["clinic_a"],
+                encounter,
+                staff["organization"],
+                represented["patient"],
+                staff["physician_a_id"],
+            ],
+        )
+        conn.execute(
+            "UPDATE clinic_app.ehr_clinicalattachment SET state='available',"
+            "scan_attempts=1,scanned_at=now() WHERE id=%s",
+            [attachment],
+        )
+        conn.execute(
+            "SELECT set_config('app.current_user_id',%s,true)", [manager["id"]]
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_patientdelegategrant (id,"
+            "authority_kind,purposes,operations,state,revision,idempotency_key,"
+            "expires_at,created_at,organization_id,clinic_id,"
+            "represented_enrollment_id,delegate_enrollment_id,"
+            "evidence_attachment_id,requested_by_id) VALUES (%s,'legal_guardian_minor',"
+            "%s::varchar(32)[],%s::varchar(32)[],'pending_verification',1,%s,"
+            "now()+interval '30 days',now(),%s,%s,%s,%s,%s,%s)",
+            [
+                grant,
+                ["care_processing"],
+                ["records"],
+                str(uuid4()),
+                staff["organization"],
+                staff["clinic_a"],
+                represented["enrollment"],
+                delegate["enrollment"],
+                attachment,
+                manager["id"],
+            ],
+        )
+        conn.execute(
+            "UPDATE clinic_app.identity_patientdelegategrant SET state='verified',"
+            "revision=2,verified_by_id=%s WHERE id=%s",
+            [manager["id"], grant],
+        )
+        conn.execute(
+            "UPDATE clinic_app.identity_patientdelegategrant SET state='active',"
+            "revision=3 WHERE id=%s",
+            [grant],
+        )
+        for record_type, minutes in (("clinical_record", 20), ("result", 5)):
+            conn.execute(
+                "INSERT INTO clinic_app.identity_delegateaccessevent (id,"
+                "organization_id,clinic_id,grant_id,enrollment_id,record_type,"
+                "accessed_at) VALUES (%s,%s,%s,%s,%s,%s,"
+                "now()-make_interval(mins => %s))",
+                [
+                    str(uuid4()),
+                    staff["organization"],
+                    staff["clinic_a"],
+                    grant,
+                    represented["enrollment"],
+                    record_type,
+                    minutes,
+                ],
+            )
+    return grant
+
+
+@pytest.mark.parametrize("width", ACCESS_LOG_WIDTHS)
+def test_access_log_lists_delegate_reads_without_emergency_review(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    width: int,
+) -> None:
+    staff = availability_staff
+    represented = _seed(
+        staff,
+        name=f"Paciente Sintética Representada {width}",
+        operations=ALL_OPERATIONS,
+    )
+    delegate = _seed(
+        staff,
+        name=f"Responsável Sintético {width}",
+        operations=("enrollment_view",),
+    )
+    grant = _seed_delegate_reads(staff, represented, delegate)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with _context(browser, width) as context:
+        page = context.new_page()
+        errors = _watch_errors(page)
+        _redeem(page, renewal_base_url, staff["clinic_a"], represented["code"])
+        goto_settled(page, renewal_base_url + ACCESS_LOG_PATH)
+        expect(page.locator("h1")).to_have_text(gettext("Your emergency access log"))
+        expect(page.locator(".lede")).to_contain_text(
+            gettext("Reads by a delegate acting for you are listed too.")
+        )
+        entries = page.locator('li[data-access-kind="delegate"]')
+        expect(entries).to_have_count(2)
+        # Newest first: the result read, then the clinical-record read.
+        assert entries.evaluate_all(
+            "(items) => items.map((item) => [item.dataset.recordType,"
+            " item.dataset.delegateGrant])"
+        ) == [["result", grant], ["clinical_record", grant]]
+        expect(entries.nth(0)).to_contain_text(gettext("Delegate access"))
+        expect(entries.nth(0)).to_contain_text(gettext("Result"))
+        expect(entries.nth(1)).to_contain_text(gettext("Clinical record"))
+        expect(entries.nth(0)).to_contain_text(gettext("Legal guardian of a minor"))
+        # Delegate entries end at their time: no dangling review separator.
+        assert all(
+            not text.rstrip().endswith("/") for text in entries.all_inner_texts()
+        )
+        # Review status belongs to emergency access only.
+        for status in (gettext("Review required"), gettext("Reviewed")):
+            expect(entries.filter(has_text=status)).to_have_count(0)
+        expect(
+            page.get_by_text(gettext("No emergency access has been recorded."))
+        ).to_have_count(0)
+        _axe_clean(page, renewal_base_url, renewal_artifact_root, f"access-log-{width}")
+        _capture(page, renewal_artifact_root, f"access-log-{width}")
         _no_browser_storage(page)
         assert errors == []

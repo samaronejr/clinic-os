@@ -11,7 +11,9 @@ from identity import (
     test_scim_bundle_issuer,
     test_sso,
     test_support_access,
+    test_support_diagnostics,
 )
+from security import test_delegate_access_log
 
 ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.enterprise_governance_guard()": (
@@ -72,6 +74,12 @@ SUPPORT_CASES = (
     test_support_access.test_support_is_masked_and_purpose_bound,
     test_support_access.test_jit_expiry_uses_a_clock_not_a_wait,
 )
+DIAGNOSTIC_CASES = (
+    test_support_diagnostics.test_support_screen_shows_masked_aggregates_and_no_identifiers,
+    test_support_diagnostics.test_expired_revoked_foreign_and_malformed_grants_share_one_denial,
+    test_support_diagnostics.test_another_users_session_or_no_session_cannot_use_the_grant,
+    test_support_diagnostics.test_overview_resolver_refuses_without_the_installed_grant,
+)
 UNIT_CASES = (
     test_enterprise_units.test_unit_revocation_is_idempotent_and_preserves_other_unit_memberships,
     test_enterprise_units.test_template_propagation_appends_a_version_and_replays_the_same_receipt,
@@ -86,8 +94,11 @@ CASES = {
         *SCIM_CASES,
         *EMERGENCY_CASES,
         *SUPPORT_CASES,
+        *DIAGNOSTIC_CASES,
         *UNIT_CASES,
         *CONTEXT_CASES,
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log,
     )
 }
 SQL_PROTOCOL_ORACLES = {
@@ -114,7 +125,6 @@ SQL_PROTOCOL_ORACLES = {
             "enterprise_break_glass_usable",
             "enterprise_break_glass_versions",
             "enterprise_break_glass_observations",
-            "enterprise_patient_access_log",
             "enterprise_governance_guard",
             "enterprise_break_glass_complete",
             "enterprise_security_task",
@@ -122,7 +132,19 @@ SQL_PROTOCOL_ORACLES = {
             "enterprise_finish_review",
         )
     },
+    # The widened log (identity 0053, DG-R1) also lists delegate reads.
+    "clinic_app.enterprise_patient_access_log": [
+        *(case.__name__ for case in EMERGENCY_CASES),
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__,
+    ],
     "clinic_app.enterprise_support_scope": [case.__name__ for case in SUPPORT_CASES],
+    "clinic_app.enterprise_support_overview": [
+        case.__name__ for case in DIAGNOSTIC_CASES
+    ],
+    "clinic_app.record_delegate_access": [
+        test_delegate_access_log.test_delegate_read_appears_in_the_represented_patients_access_log.__name__,
+        test_delegate_access_log.test_delegate_result_read_appears_in_the_represented_patients_access_log.__name__,
+    ],
     **{
         f"clinic_app.{name}": [case.__name__ for case in UNIT_CASES]
         for name in (

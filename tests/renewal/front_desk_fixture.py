@@ -21,12 +21,14 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
         draft_article,
     )
     from apps.ai.models import AgentPolicyVersion  # noqa: PLC0415
+    from apps.ai.owner import set_global_switch  # noqa: PLC0415
     from apps.identity.clinic_configuration import (  # noqa: PLC0415
         ConfigurationContent,
         latest_configuration,
         publish_configuration,
     )
     from apps.identity.models import (  # noqa: PLC0415
+        Clinic,
         ServicePrincipal,
         ServicePrincipalGrant,
         UserClinicRole,
@@ -38,6 +40,15 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
     from patient_service_support import runtime_role  # noqa: PLC0415
 
     with owner_context(organization):
+        # Publishing the organization policy needs authority in every clinic,
+        # including units other scenarios added to this organization.
+        for target in Clinic.objects.filter(organization_id=organization):
+            UserClinicRole.objects.get_or_create(
+                organization_id=organization,
+                clinic=target,
+                user_id=actor,
+                role="org_admin",
+            )
         UserClinicRole.objects.filter(user_id=actor).update(workflow_bundle_version=2)
         principal = ServicePrincipal.objects.create(
             organization_id=organization,
@@ -53,6 +64,8 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> dict[str, object]:
             permission="agent.execute",
             grant_set_version=2,
         )
+    # The agent answers only while the owner's global AI switch is on.
+    set_global_switch(enabled=True, approved_regions=("br-synthetic",))
     with runtime_role(), tenant_context(actor, organization):
         configuration = latest_configuration(clinic)
         if configuration is None:

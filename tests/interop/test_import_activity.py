@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 from apps.identity.enterprise_access import EmergencyScope, grant_break_glass
 from apps.interop import services
-from apps.interop.migrations import _import_activity_v2_sql
+from apps.interop.migrations import _import_activity_v2_sql, _import_activity_v3_sql
 from apps.interop.models import ImportedRecord
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -90,14 +90,19 @@ def test_rollback_retains_an_imported_patient_opened_by_break_glass(
 def test_activity_v2_reverses_to_the_exact_v1_check() -> None:
     executor = MigrationExecutor(connection)
     targets = executor.loader.graph.leaf_nodes()
-    v2 = _source()
+    installed = _source()
     try:
         executor.migrate([BEFORE_ENTERPRISE])
         v1 = _source()
     finally:
         MigrationExecutor(connection).migrate(targets)
-    assert _source() == v2
-    assert v2 == _import_activity_v2_sql.FORWARD.split("$f$")[1]
+    assert _source() == installed
+    # Identity 0052 installs v3 (v2 plus delegate reads); its reverse is v2.
+    v2 = _import_activity_v2_sql.FORWARD.split("$f$")[1]
+    assert installed == _import_activity_v3_sql.FORWARD.split("$f$")[1]
+    assert _import_activity_v3_sql.REVERSE.split("$f$")[1] == v2
     assert v1 == _import_activity_v2_sql.REVERSE.split("$f$")[1]
     assert BREAK_GLASS in v2
     assert BREAK_GLASS not in v1
+    assert "identity_delegateaccessevent" in installed
+    assert "identity_delegateaccessevent" not in v2

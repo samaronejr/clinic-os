@@ -1,0 +1,839 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "amqp-2@5.3.1",
+      "name": "amqp",
+      "purl": "pkg:pypi/amqp@5.3.1",
+      "type": "library",
+      "version": "5.3.1"
+    },
+    {
+      "bom-ref": "asgiref-3@3.11.1",
+      "name": "asgiref",
+      "purl": "pkg:pypi/asgiref@3.11.1",
+      "type": "library",
+      "version": "3.11.1"
+    },
+    {
+      "bom-ref": "attrs-4@26.1.0",
+      "name": "attrs",
+      "purl": "pkg:pypi/attrs@26.1.0",
+      "type": "library",
+      "version": "26.1.0"
+    },
+    {
+      "bom-ref": "billiard-5@4.2.4",
+      "name": "billiard",
+      "purl": "pkg:pypi/billiard@4.2.4",
+      "type": "library",
+      "version": "4.2.4"
+    },
+    {
+      "bom-ref": "cbor2-6@6.1.5",
+      "name": "cbor2",
+      "purl": "pkg:pypi/cbor2@6.1.5",
+      "type": "library",
+      "version": "6.1.5"
+    },
+    {
+      "bom-ref": "celery-7@5.6.3",
+      "name": "celery",
+      "purl": "pkg:pypi/celery@5.6.3",
+      "type": "library",
+      "version": "5.6.3"
+    },
+    {
+      "bom-ref": "certifi-8@2026.10.19",
+      "name": "certifi",
+      "purl": "pkg:pypi/certifi@2026.10.19",
+      "type": "library",
+      "version": "2026.10.19"
+    },
+    {
+      "bom-ref": "cffi-9@2.1.1",
+      "name": "cffi",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_python_implementation != 'PyPy'"
+        }
+      ],
+      "purl": "pkg:pypi/cffi@2.1.1",
+      "type": "library",
+      "version": "2.1.1"
+    },
+    {
+      "bom-ref": "click-10@8.4.2",
+      "name": "click",
+      "purl": "pkg:pypi/click@8.4.2",
+      "type": "library",
+      "version": "8.4.2"
+    },
+    {
+      "bom-ref": "click-didyoumean-11@0.3.1",
+      "name": "click-didyoumean",
+      "purl": "pkg:pypi/click-didyoumean@0.3.1",
+      "type": "library",
+      "version": "0.3.1"
+    },
+    {
+      "bom-ref": "click-plugins-12@1.1.1.2",
+      "name": "click-plugins",
+      "purl": "pkg:pypi/click-plugins@1.1.1.2",
+      "type": "library",
+      "version": "1.1.1.2"
+    },
+    {
+      "bom-ref": "click-repl-13@0.3.0",
+      "name": "click-repl",
+      "purl": "pkg:pypi/click-repl@0.3.0",
+      "type": "library",
+      "version": "0.3.0"
+    },
+    {
+      "bom-ref": "colorama-14@0.4.6",
+      "name": "colorama",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "sys_platform == 'win32'"
+        }
+      ],
+      "purl": "pkg:pypi/colorama@0.4.6",
+      "type": "library",
+      "version": "0.4.6"
+    },
+    {
+      "bom-ref": "cryptography-15@50.0.2",
+      "name": "cryptography",
+      "purl": "pkg:pypi/cryptography@50.0.2",
+      "type": "library",
+      "version": "50.0.2"
+    },
+    {
+      "bom-ref": "django-16@5.2.17",
+      "name": "django",
+      "purl": "pkg:pypi/django@5.2.17",
+      "type": "library",
+      "version": "5.2.17"
+    },
+    {
+      "bom-ref": "django-environ-17@0.14.0",
+      "name": "django-environ",
+      "purl": "pkg:pypi/django-environ@0.14.0",
+      "type": "library",
+      "version": "0.14.0"
+    },
+    {
+      "bom-ref": "django-otp-18@1.7.0",
+      "name": "django-otp",
+      "purl": "pkg:pypi/django-otp@1.7.0",
+      "type": "library",
+      "version": "1.7.0"
+    },
+    {
+      "bom-ref": "djangorestframework-19@3.18.3",
+      "name": "djangorestframework",
+      "purl": "pkg:pypi/djangorestframework@3.18.3",
+      "type": "library",
+      "version": "3.18.3"
+    },
+    {
+      "bom-ref": "drf-spectacular-20@0.30.0",
+      "name": "drf-spectacular",
+      "purl": "pkg:pypi/drf-spectacular@0.30.0",
+      "type": "library",
+      "version": "0.30.0"
+    },
+    {
+      "bom-ref": "elementpath-21@5.1.4",
+      "name": "elementpath",
+      "purl": "pkg:pypi/elementpath@5.1.4",
+      "type": "library",
+      "version": "5.1.4"
+    },
+    {
+      "bom-ref": "gunicorn-22@26.0.0",
+      "name": "gunicorn",
+      "purl": "pkg:pypi/gunicorn@26.0.0",
+      "type": "library",
+      "version": "26.0.0"
+    },
+    {
+      "bom-ref": "h11-23@0.16.0",
+      "name": "h11",
+      "purl": "pkg:pypi/h11@0.16.0",
+      "type": "library",
+      "version": "0.16.0"
+    },
+    {
+      "bom-ref": "inflection-24@0.5.1",
+      "name": "inflection",
+      "purl": "pkg:pypi/inflection@0.5.1",
+      "type": "library",
+      "version": "0.5.1"
+    },
+    {
+      "bom-ref": "jsonschema-25@4.26.0",
+      "name": "jsonschema",
+      "purl": "pkg:pypi/jsonschema@4.26.0",
+      "type": "library",
+      "version": "4.26.0"
+    },
+    {
+      "bom-ref": "jsonschema-specifications-26@2025.9.1",
+      "name": "jsonschema-specifications",
+      "purl": "pkg:pypi/jsonschema-specifications@2025.9.1",
+      "type": "library",
+      "version": "2025.9.1"
+    },
+    {
+      "bom-ref": "kombu-27@5.6.2",
+      "name": "kombu",
+      "purl": "pkg:pypi/kombu@5.6.2",
+      "type": "library",
+      "version": "5.6.2"
+    },
+    {
+      "bom-ref": "opentelemetry-api-28@1.45.2",
+      "name": "opentelemetry-api",
+      "purl": "pkg:pypi/opentelemetry-api@1.45.2",
+      "type": "library",
+      "version": "1.45.2"
+    },
+    {
+      "bom-ref": "opentelemetry-sdk-29@1.45.2",
+      "name": "opentelemetry-sdk",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.45.2",
+      "type": "library",
+      "version": "1.45.2"
+    },
+    {
+      "bom-ref": "opentelemetry-semantic-conventions-30@0.66b2",
+      "name": "opentelemetry-semantic-conventions",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.66b2",
+      "type": "library",
+      "version": "0.66b2"
+    },
+    {
+      "bom-ref": "packaging-31@26.3",
+      "name": "packaging",
+      "purl": "pkg:pypi/packaging@26.3",
+      "type": "library",
+      "version": "26.3"
+    },
+    {
+      "bom-ref": "pillow-32@13.0.0",
+      "name": "pillow",
+      "purl": "pkg:pypi/pillow@13.0.0",
+      "type": "library",
+      "version": "13.0.0"
+    },
+    {
+      "bom-ref": "prompt-toolkit-33@3.0.52",
+      "name": "prompt-toolkit",
+      "purl": "pkg:pypi/prompt-toolkit@3.0.52",
+      "type": "library",
+      "version": "3.0.52"
+    },
+    {
+      "bom-ref": "psycopg-34@3.3.4",
+      "name": "psycopg",
+      "purl": "pkg:pypi/psycopg@3.3.4",
+      "type": "library",
+      "version": "3.3.4"
+    },
+    {
+      "bom-ref": "psycopg-binary-35@3.3.4",
+      "name": "psycopg-binary",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "implementation_name != 'pypy'"
+        }
+      ],
+      "purl": "pkg:pypi/psycopg-binary@3.3.4",
+      "type": "library",
+      "version": "3.3.4"
+    },
+    {
+      "bom-ref": "pyasn1-36@0.6.5",
+      "name": "pyasn1",
+      "purl": "pkg:pypi/pyasn1@0.6.5",
+      "type": "library",
+      "version": "0.6.5"
+    },
+    {
+      "bom-ref": "pyasn1-modules-37@0.4.2",
+      "name": "pyasn1-modules",
+      "purl": "pkg:pypi/pyasn1-modules@0.4.2",
+      "type": "library",
+      "version": "0.4.2"
+    },
+    {
+      "bom-ref": "pycparser-38@3.11",
+      "name": "pycparser",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'"
+        }
+      ],
+      "purl": "pkg:pypi/pycparser@3.11",
+      "type": "library",
+      "version": "3.11"
+    },
+    {
+      "bom-ref": "pyopenssl-39@26.4.0",
+      "name": "pyopenssl",
+      "purl": "pkg:pypi/pyopenssl@26.4.0",
+      "type": "library",
+      "version": "26.4.0"
+    },
+    {
+      "bom-ref": "python-dateutil-40@2.9.0.post0",
+      "name": "python-dateutil",
+      "purl": "pkg:pypi/python-dateutil@2.9.0.post0",
+      "type": "library",
+      "version": "2.9.0.post0"
+    },
+    {
+      "bom-ref": "pyyaml-41@6.0.3",
+      "name": "pyyaml",
+      "purl": "pkg:pypi/pyyaml@6.0.3",
+      "type": "library",
+      "version": "6.0.3"
+    },
+    {
+      "bom-ref": "qrcode-42@8.2",
+      "name": "qrcode",
+      "purl": "pkg:pypi/qrcode@8.2",
+      "type": "library",
+      "version": "8.2"
+    },
+    {
+      "bom-ref": "redis-43@8.0.1",
+      "name": "redis",
+      "purl": "pkg:pypi/redis@8.0.1",
+      "type": "library",
+      "version": "8.0.1"
+    },
+    {
+      "bom-ref": "referencing-44@0.37.0",
+      "name": "referencing",
+      "purl": "pkg:pypi/referencing@0.37.0",
+      "type": "library",
+      "version": "0.37.0"
+    },
+    {
+      "bom-ref": "rfc8785-45@0.1.4",
+      "name": "rfc8785",
+      "purl": "pkg:pypi/rfc8785@0.1.4",
+      "type": "library",
+      "version": "0.1.4"
+    },
+    {
+      "bom-ref": "rpds-py-46@2026.6.3",
+      "name": "rpds-py",
+      "purl": "pkg:pypi/rpds-py@2026.6.3",
+      "type": "library",
+      "version": "2026.6.3"
+    },
+    {
+      "bom-ref": "sentry-sdk-47@2.64.0",
+      "name": "sentry-sdk",
+      "purl": "pkg:pypi/sentry-sdk@2.64.0",
+      "type": "library",
+      "version": "2.64.0"
+    },
+    {
+      "bom-ref": "six-48@1.17.0",
+      "name": "six",
+      "purl": "pkg:pypi/six@1.17.0",
+      "type": "library",
+      "version": "1.17.0"
+    },
+    {
+      "bom-ref": "sqlparse-49@0.6.0",
+      "name": "sqlparse",
+      "purl": "pkg:pypi/sqlparse@0.6.0",
+      "type": "library",
+      "version": "0.6.0"
+    },
+    {
+      "bom-ref": "typing-extensions-50@4.16.0",
+      "name": "typing-extensions",
+      "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "type": "library",
+      "version": "4.16.0"
+    },
+    {
+      "bom-ref": "tzdata-51@2026.3",
+      "name": "tzdata",
+      "purl": "pkg:pypi/tzdata@2026.3",
+      "type": "library",
+      "version": "2026.3"
+    },
+    {
+      "bom-ref": "tzlocal-52@5.4.4",
+      "name": "tzlocal",
+      "purl": "pkg:pypi/tzlocal@5.4.4",
+      "type": "library",
+      "version": "5.4.4"
+    },
+    {
+      "bom-ref": "uritemplate-53@4.2.0",
+      "name": "uritemplate",
+      "purl": "pkg:pypi/uritemplate@4.2.0",
+      "type": "library",
+      "version": "4.2.0"
+    },
+    {
+      "bom-ref": "urllib3-54@2.8.0",
+      "name": "urllib3",
+      "purl": "pkg:pypi/urllib3@2.8.0",
+      "type": "library",
+      "version": "2.8.0"
+    },
+    {
+      "bom-ref": "uvicorn-55@0.54.0",
+      "name": "uvicorn",
+      "purl": "pkg:pypi/uvicorn@0.54.0",
+      "type": "library",
+      "version": "0.54.0"
+    },
+    {
+      "bom-ref": "vine-56@5.1.0",
+      "name": "vine",
+      "purl": "pkg:pypi/vine@5.1.0",
+      "type": "library",
+      "version": "5.1.0"
+    },
+    {
+      "bom-ref": "wcwidth-57@0.8.2",
+      "name": "wcwidth",
+      "purl": "pkg:pypi/wcwidth@0.8.2",
+      "type": "library",
+      "version": "0.8.2"
+    },
+    {
+      "bom-ref": "webauthn-58@3.0.1",
+      "name": "webauthn",
+      "purl": "pkg:pypi/webauthn@3.0.1",
+      "type": "library",
+      "version": "3.0.1"
+    },
+    {
+      "bom-ref": "whitenoise-59@6.12.0",
+      "name": "whitenoise",
+      "purl": "pkg:pypi/whitenoise@6.12.0",
+      "type": "library",
+      "version": "6.12.0"
+    },
+    {
+      "bom-ref": "xmlschema-60@4.3.2",
+      "name": "xmlschema",
+      "purl": "pkg:pypi/xmlschema@4.3.2",
+      "type": "library",
+      "version": "4.3.2"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "vine-56@5.1.0"
+      ],
+      "ref": "amqp-2@5.3.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "asgiref-3@3.11.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "attrs-4@26.1.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "billiard-5@4.2.4"
+    },
+    {
+      "dependsOn": [],
+      "ref": "cbor2-6@6.1.5"
+    },
+    {
+      "dependsOn": [
+        "billiard-5@4.2.4",
+        "click-10@8.4.2",
+        "click-didyoumean-11@0.3.1",
+        "click-plugins-12@1.1.1.2",
+        "click-repl-13@0.3.0",
+        "kombu-27@5.6.2",
+        "python-dateutil-40@2.9.0.post0",
+        "tzlocal-52@5.4.4",
+        "vine-56@5.1.0"
+      ],
+      "ref": "celery-7@5.6.3"
+    },
+    {
+      "dependsOn": [],
+      "ref": "certifi-8@2026.10.19"
+    },
+    {
+      "dependsOn": [
+        "pycparser-38@3.11"
+      ],
+      "ref": "cffi-9@2.1.1"
+    },
+    {
+      "dependsOn": [
+        "colorama-14@0.4.6"
+      ],
+      "ref": "click-10@8.4.2"
+    },
+    {
+      "dependsOn": [
+        "click-10@8.4.2"
+      ],
+      "ref": "click-didyoumean-11@0.3.1"
+    },
+    {
+      "dependsOn": [
+        "click-10@8.4.2"
+      ],
+      "ref": "click-plugins-12@1.1.1.2"
+    },
+    {
+      "dependsOn": [
+        "click-10@8.4.2",
+        "prompt-toolkit-33@3.0.52"
+      ],
+      "ref": "click-repl-13@0.3.0"
+    },
+    {
+      "dependsOn": [
+        "celery-7@5.6.3",
+        "django-16@5.2.17",
+        "django-environ-17@0.14.0",
+        "django-otp-18@1.7.0",
+        "djangorestframework-19@3.18.3",
+        "drf-spectacular-20@0.30.0",
+        "gunicorn-22@26.0.0",
+        "jsonschema-25@4.26.0",
+        "opentelemetry-sdk-29@1.45.2",
+        "psycopg-34@3.3.4",
+        "qrcode-42@8.2",
+        "redis-43@8.0.1",
+        "rfc8785-45@0.1.4",
+        "sentry-sdk-47@2.64.0",
+        "sqlparse-49@0.6.0",
+        "tzdata-51@2026.3",
+        "uvicorn-55@0.54.0",
+        "webauthn-58@3.0.1",
+        "whitenoise-59@6.12.0",
+        "xmlschema-60@4.3.2"
+      ],
+      "ref": "clinic-os-foundation-1@0.1.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "colorama-14@0.4.6"
+    },
+    {
+      "dependsOn": [
+        "cffi-9@2.1.1"
+      ],
+      "ref": "cryptography-15@50.0.2"
+    },
+    {
+      "dependsOn": [
+        "asgiref-3@3.11.1",
+        "sqlparse-49@0.6.0",
+        "tzdata-51@2026.3"
+      ],
+      "ref": "django-16@5.2.17"
+    },
+    {
+      "dependsOn": [],
+      "ref": "django-environ-17@0.14.0"
+    },
+    {
+      "dependsOn": [
+        "django-16@5.2.17"
+      ],
+      "ref": "django-otp-18@1.7.0"
+    },
+    {
+      "dependsOn": [
+        "django-16@5.2.17"
+      ],
+      "ref": "djangorestframework-19@3.18.3"
+    },
+    {
+      "dependsOn": [
+        "django-16@5.2.17",
+        "djangorestframework-19@3.18.3",
+        "inflection-24@0.5.1",
+        "jsonschema-25@4.26.0",
+        "pyyaml-41@6.0.3",
+        "uritemplate-53@4.2.0"
+      ],
+      "ref": "drf-spectacular-20@0.30.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "elementpath-21@5.1.4"
+    },
+    {
+      "dependsOn": [
+        "packaging-31@26.3"
+      ],
+      "ref": "gunicorn-22@26.0.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "h11-23@0.16.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "inflection-24@0.5.1"
+    },
+    {
+      "dependsOn": [
+        "attrs-4@26.1.0",
+        "jsonschema-specifications-26@2025.9.1",
+        "referencing-44@0.37.0",
+        "rpds-py-46@2026.6.3"
+      ],
+      "ref": "jsonschema-25@4.26.0"
+    },
+    {
+      "dependsOn": [
+        "referencing-44@0.37.0"
+      ],
+      "ref": "jsonschema-specifications-26@2025.9.1"
+    },
+    {
+      "dependsOn": [
+        "amqp-2@5.3.1",
+        "packaging-31@26.3",
+        "tzdata-51@2026.3",
+        "vine-56@5.1.0"
+      ],
+      "ref": "kombu-27@5.6.2"
+    },
+    {
+      "dependsOn": [
+        "typing-extensions-50@4.16.0"
+      ],
+      "ref": "opentelemetry-api-28@1.45.2"
+    },
+    {
+      "dependsOn": [
+        "opentelemetry-api-28@1.45.2",
+        "opentelemetry-semantic-conventions-30@0.66b2",
+        "typing-extensions-50@4.16.0"
+      ],
+      "ref": "opentelemetry-sdk-29@1.45.2"
+    },
+    {
+      "dependsOn": [
+        "opentelemetry-api-28@1.45.2",
+        "typing-extensions-50@4.16.0"
+      ],
+      "ref": "opentelemetry-semantic-conventions-30@0.66b2"
+    },
+    {
+      "dependsOn": [],
+      "ref": "packaging-31@26.3"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pillow-32@13.0.0"
+    },
+    {
+      "dependsOn": [
+        "wcwidth-57@0.8.2"
+      ],
+      "ref": "prompt-toolkit-33@3.0.52"
+    },
+    {
+      "dependsOn": [
+        "psycopg-binary-35@3.3.4",
+        "typing-extensions-50@4.16.0",
+        "tzdata-51@2026.3"
+      ],
+      "ref": "psycopg-34@3.3.4"
+    },
+    {
+      "dependsOn": [],
+      "ref": "psycopg-binary-35@3.3.4"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pyasn1-36@0.6.5"
+    },
+    {
+      "dependsOn": [
+        "pyasn1-36@0.6.5"
+      ],
+      "ref": "pyasn1-modules-37@0.4.2"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pycparser-38@3.11"
+    },
+    {
+      "dependsOn": [
+        "cryptography-15@50.0.2",
+        "typing-extensions-50@4.16.0"
+      ],
+      "ref": "pyopenssl-39@26.4.0"
+    },
+    {
+      "dependsOn": [
+        "six-48@1.17.0"
+      ],
+      "ref": "python-dateutil-40@2.9.0.post0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pyyaml-41@6.0.3"
+    },
+    {
+      "dependsOn": [
+        "colorama-14@0.4.6",
+        "pillow-32@13.0.0"
+      ],
+      "ref": "qrcode-42@8.2"
+    },
+    {
+      "dependsOn": [],
+      "ref": "redis-43@8.0.1"
+    },
+    {
+      "dependsOn": [
+        "attrs-4@26.1.0",
+        "rpds-py-46@2026.6.3",
+        "typing-extensions-50@4.16.0"
+      ],
+      "ref": "referencing-44@0.37.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "rfc8785-45@0.1.4"
+    },
+    {
+      "dependsOn": [],
+      "ref": "rpds-py-46@2026.6.3"
+    },
+    {
+      "dependsOn": [
+        "certifi-8@2026.10.19",
+        "django-16@5.2.17",
+        "urllib3-54@2.8.0"
+      ],
+      "ref": "sentry-sdk-47@2.64.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "six-48@1.17.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "sqlparse-49@0.6.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "typing-extensions-50@4.16.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "tzdata-51@2026.3"
+    },
+    {
+      "dependsOn": [
+        "tzdata-51@2026.3"
+      ],
+      "ref": "tzlocal-52@5.4.4"
+    },
+    {
+      "dependsOn": [],
+      "ref": "uritemplate-53@4.2.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "urllib3-54@2.8.0"
+    },
+    {
+      "dependsOn": [
+        "click-10@8.4.2",
+        "h11-23@0.16.0"
+      ],
+      "ref": "uvicorn-55@0.54.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "vine-56@5.1.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "wcwidth-57@0.8.2"
+    },
+    {
+      "dependsOn": [
+        "cbor2-6@6.1.5",
+        "cryptography-15@50.0.2",
+        "pyasn1-36@0.6.5",
+        "pyasn1-modules-37@0.4.2",
+        "pyopenssl-39@26.4.0"
+      ],
+      "ref": "webauthn-58@3.0.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "whitenoise-59@6.12.0"
+    },
+    {
+      "dependsOn": [
+        "elementpath-21@5.1.4"
+      ],
+      "ref": "xmlschema-60@4.3.2"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "clinic-os-foundation-1@0.1.0",
+      "name": "clinic-os-foundation",
+      "properties": [
+        {
+          "name": "uv:package:is_project_root",
+          "value": "true"
+        }
+      ],
+      "type": "library",
+      "version": "0.1.0"
+    },
+    "properties": [
+      {
+        "name": "clinic:runtime-closure-sha256",
+        "value": "d1f9d44233e28f3b3fe6c91ba2773ae6338801408006df83a342b6d4120b58e4"
+      },
+      {
+        "name": "clinic:scope",
+        "value": "runtime"
+      }
+    ],
+    "tools": [
+      {
+        "name": "uv",
+        "vendor": "Astral Software Inc.",
+        "version": "0.10.6"
+      }
+    ]
+  },
+  "serialNumber": "urn:uuid:c4155b1c-e857-5012-a10c-42d6bed6743e",
+  "specVersion": "1.5",
+  "version": 1
+}

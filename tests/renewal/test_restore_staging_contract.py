@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import stat
 import sys
 import tempfile
@@ -34,6 +35,17 @@ def _inert_leases(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(restore, "_bootstrap_database", inert_database_step)
     monkeypatch.setattr(restore, "_migrate", inert_database_step)
     monkeypatch.setattr(restore, "_seed", inert_database_step)
+    monkeypatch.setattr(
+        restore,
+        "_rotate",
+        lambda *_arguments: {"dek_versions": 2, "rewrapped_versions": 2},
+    )
+    monkeypatch.setattr(restore, "_failure_variants", lambda *_arguments: [])
+    monkeypatch.setattr(
+        restore,
+        "_source_revision",
+        lambda: {"clean": True, "commit": "0" * 40, "tree": "1" * 40},
+    )
 
 
 @pytest.mark.parametrize("run_name", ["one", "two"])
@@ -57,7 +69,7 @@ def test_restore_uses_private_disposable_workspace(
         assert stat.S_IMODE(run_root.stat().st_mode) == 0o700
         assert stat.S_IMODE(work.stat().st_mode) == 0o700
         _ = (work / "synthetic-output").write_bytes(b"temporary")
-        return b"synthetic evidence\n"
+        return b'{"synthetic": true}\n'
 
     def poison_tempfile(*_args: object, **_kwargs: object) -> None:
         pytest.fail("legacy tempfile staging is forbidden")
@@ -66,9 +78,16 @@ def test_restore_uses_private_disposable_workspace(
     monkeypatch.setattr(tempfile, "TemporaryDirectory", poison_tempfile)
     # When: the real restore entrypoint runs through its filesystem boundary.
     result = restore.main()
-    # Then: temporary output is removed and evidence bytes reach stdout unchanged.
+    # Then: temporary output is removed and the exercise report reaches stdout.
     assert result == 0
-    assert capsys.readouterr().out == "synthetic evidence\n"
+    report = json.loads(capsys.readouterr().out)
+    assert report["drill"] == {"synthetic": True}
+    assert report["key_rotation"] == {
+        "dek_versions": 2,
+        "rewrapped_versions": 2,
+        "rotated_before_backup": True,
+    }
+    assert (report["verdict"], report["evidence_level"]) == ("passed", "L1")
     assert list(run_root.iterdir()) == []
 
 

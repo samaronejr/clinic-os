@@ -27,6 +27,7 @@ from psycopg.types.json import Jsonb
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._room_join import (
+    is_status_request,
     refresh_room_state,
     room_action_finished,
     room_join_readiness,
@@ -81,6 +82,7 @@ if TYPE_CHECKING:
         BrowserContext,
         Dialog,
         Page,
+        Request,
         Response,
         Route,
     )
@@ -1354,14 +1356,6 @@ TARGET_JS = """(selectors) => selectors.flatMap((selector) =>
       return [selector, box.width, box.height]; }))"""
 
 
-def status_response(response: Response) -> bool:
-    """A metadata status refetch: POST answered with JSON to the room page."""
-    return (
-        response.request.method == "POST"
-        and response.request.headers.get("accept") == "application/json"
-    )
-
-
 def refresh_status(page: Page) -> None:
     with room_action_finished(page, page.url):
         page.locator("[data-refresh-status]").click()
@@ -1430,28 +1424,39 @@ def _v2_fallback_poll(physician: Page) -> None:
     """Without realtime the room refetches every 30 s, not on the old 5 s timer.
 
     The clock was installed before the workspace loaded, so realtime.js's
-    fallback interval is a controlled timer. Paused, every 30 s of page time
+    fallback interval is a controlled timer. Finish the pause's catch-up poll
+    before counting: browser request events can arrive after pause_at returns.
+    Paused, every 30 s of page time
     holds exactly one tick whatever the interval's phase: three windows give
     exactly three refetches (the removed 5 s timer would give eighteen).
     """
+    url = physician.url
+    # Python's pause_at takes epoch seconds; Date.now() returns milliseconds.
+    # Advance a full interval so the catch-up poll is guaranteed, then wait for
+    # that request's complete reply before starting the measured windows.
+    pause_at = (float(physician.evaluate("() => Date.now()")) + FALLBACK_POLL_MS) / 1000
+    with physician.expect_request(
+        lambda request: is_status_request(request, url)
+    ) as caught_up:
+        physician.clock.pause_at(pause_at)
+    response = caught_up.value.response()
+    assert response is not None
+    assert response.status == OK
+    response.finished()
     polls: list[str] = []
-    physician.clock.pause_at(int(physician.evaluate("() => Date.now()")) + 1)
-    # Requests are emitted when a fetch starts, so a refetch begun before the
-    # pause can never be counted inside the windows.
-    physician.on(
-        "request",
-        lambda request: (
+
+    def record(request: Request) -> None:
+        if is_status_request(request, url):
             polls.append(request.url)
-            if request.method == "POST"
-            and request.headers.get("accept") == "application/json"
-            else None
-        ),
-    )
-    for _ in range(FALLBACK_WINDOWS):
-        with physician.expect_response(status_response) as polled:
-            physician.clock.run_for(FALLBACK_POLL_MS)
-        assert polled.value.status == OK
-    assert len(polls) == FALLBACK_WINDOWS
+
+    physician.on("request", record)
+    try:
+        for _ in range(FALLBACK_WINDOWS):
+            with room_action_finished(physician, url):
+                physician.clock.run_for(FALLBACK_POLL_MS)
+        assert len(polls) == FALLBACK_WINDOWS
+    finally:
+        physician.remove_listener("request", record)
 
 
 def _v2_patient_joins(physician: Page, patient: Page, case: _Case) -> None:

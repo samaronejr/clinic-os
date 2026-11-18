@@ -51,9 +51,14 @@ def commit_batch(*, batch_id: str) -> str:
             outcome = run_batch(clinic_id=scope.clinic_id, batch_id=identifier)
     except (CurrentActorError, TenantAccessDeniedError, ImportAccessDeniedError):
         return "denied"
-    if outcome.state == "waiting":
+    if outcome.state in {"waiting", "deferred"}:
         commit_batch_job.apply_async(
-            kwargs={"batch_id": batch_id}, countdown=WAITING_COUNTDOWN_SECONDS
+            kwargs={"batch_id": batch_id},
+            countdown=(
+                WAITING_COUNTDOWN_SECONDS
+                if outcome.state == "waiting"
+                else DEFER_COUNTDOWN_SECONDS
+            ),
         )
     return outcome.state
 

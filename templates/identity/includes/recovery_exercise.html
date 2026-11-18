@@ -1,0 +1,22 @@
+{% load i18n %}
+<section class="panel" aria-labelledby="recovery-exercise-title" data-recovery-exercise="{{ recovery_exercise.state }}">
+  <h2 id="recovery-exercise-title">{% trans "Recovery exercise report" %}</h2>
+  {% if recovery_exercise.state == "recorded" %}
+  <p>{% blocktrans with day=recovery_exercise.finished_on revision=recovery_exercise.revision %}The latest synthetic recovery exercise passed on {{ day }} (source revision {{ revision }}).{% endblocktrans %}</p>
+  <dl>
+    <dt>{% trans "Restored together" %}</dt>
+    <dd>{% blocktrans with objects=recovery_exercise.attachment_objects events=recovery_exercise.audit_events versions=recovery_exercise.tenant_key_versions %}Database rows, {{ objects }} attachment objects from the object backup and {{ versions }} tenant key versions under the KEK restored from escrow; {{ events }} audit events re-verified and purge records re-applied.{% endblocktrans %}</dd>
+    <dt>{% trans "Recovery point" %}</dt>
+    <dd data-recovery-rpo>{% blocktrans with measured=recovery_exercise.rpo_seconds|floatformat:1 proposal=recovery_exercise.rpo_proposal_seconds %}{{ measured }} s measured; proposal: at most {{ proposal }} s.{% endblocktrans %}</dd>
+    <dt>{% trans "Recovery time" %}</dt>
+    <dd data-recovery-rto>{% blocktrans with measured=recovery_exercise.rto_seconds|floatformat:1 proposal=recovery_exercise.rto_proposal_seconds %}{{ measured }} s measured; proposal: at most {{ proposal }} s.{% endblocktrans %}</dd>
+    <dt>{% trans "Refused as required" %}</dt>
+    <dd>{% trans "A missing key escrow, a stale key escrow and a missing attachment object each stopped the restore before it started." %}</dd>
+  </dl>
+  {% elif recovery_exercise.state == "unreadable" %}
+  <p class="feedback feedback--error" role="alert">{% trans "The recovery exercise record could not be read. No result is shown." %}</p>
+  {% else %}
+  <p>{% trans "No recovery exercise has been recorded yet." %}</p>
+  {% endif %}
+  <p>{% trans "Synthetic local evidence only: a logical restore, with provider point-in-time recovery and encrypted provider backup not verified. This screen does not approve recovery or live operation." %}</p>
+</section>

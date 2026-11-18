@@ -202,7 +202,8 @@ restore-rehearsal:
 		--object-store "$${RESTORE_OBJECT_STORE:?}" \
 		--media-store "$${RESTORE_MEDIA_STORE:?}" \
 		--source-media-store "$${RESTORE_SOURCE_MEDIA_STORE:?}" \
-		--secret-dir "$${RESTORE_SECRET_DIR:?}" \
+		--object-backup "$${RESTORE_OBJECT_BACKUP:?}" \
+		--key-escrow "$${RESTORE_KEY_ESCROW:?}" \
 		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:

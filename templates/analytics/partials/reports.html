@@ -1,4 +1,4 @@
-{% load i18n tz clinic_locale %}
+{% load i18n tz clinic_locale ai_availability %}
 <section class="reports-shell" id="reports-content" aria-labelledby="reports-title" data-reports>
   <h1 id="reports-title">{% trans "Reports" %}</h1>
   <p class="lede">{% trans "Defined metrics, visible denominators and accountable decisions." %}</p>
@@ -8,14 +8,15 @@
   <form class="reports-form" method="post" action="{% url 'analytics:reports' clinic_id %}" novalidate data-auth-form data-auth-errors hx-post="{% url 'analytics:reports' clinic_id %}" hx-target="#reports-content" hx-swap="outerHTML">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="feedback feedback--error" role="alert" data-focus-error tabindex="-1">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="reports-fields">{% for field in form %}<div{% if field.name == "metric" or field.name == "question" %} class="reports-field-wide"{% endif %}>{% include "includes/field.html" with field=field hint=field.help_text hint_id=field.auto_id|add:"_helptext" %}</div>{% endfor %}</div>
+    {% ai_enabled "analyst" as analyst_enabled %}
+    <div class="reports-fields">{% for field in form %}{% if field.name != "question" or analyst_enabled %}<div{% if field.name == "metric" or field.name == "question" %} class="reports-field-wide"{% endif %}>{% include "includes/field.html" with field=field hint=field.help_text hint_id=field.auto_id|add:"_helptext" %}</div>{% endif %}{% endfor %}</div>
     <p class="hint">{% trans "Dates use the clinic timezone. Balance metrics and staff usage support totals only." %} {{ clinic_timezone }}</p>
     <div class="actions">
       <button class="button" type="submit" name="action" value="refresh">{% trans "Refresh metric" %}</button>
       <button class="button button--secondary" type="submit" name="action" value="cached">{% trans "Read saved snapshot" %}</button>
       <button class="button button--secondary" type="submit" name="action" value="drill">{% trans "Inspect no-show sources" %}</button>
       <button class="button button--secondary" type="submit" name="action" value="save">{% trans "Save report" %}</button>
-      <button class="button button--secondary" type="submit" name="action" value="ask">{% trans "Propose a metric query" %}</button>
+      {% if analyst_enabled %}<button class="button button--secondary" type="submit" name="action" value="ask">{% trans "Propose a metric query" %}</button>{% endif %}
     </div>
     <p class="reports-progress" role="status">{% trans "Refreshing governed data." %}</p>
     <p class="feedback feedback--error" role="alert" tabindex="-1" data-network-error hidden>{% trans "Connection unavailable. The displayed data may be stale; reconnect and refresh deliberately." %}</p>
@@ -49,7 +50,7 @@
     {% timezone clinic_timezone %}
     <p role="status">{% if result.status == "stale" %}{% trans "Stale" %} · {% elif result.status == "partial" %}{% trans "Partial data" %} · {% elif result.status == "null" %}{% trans "No denominator; no rate is inferred." %} · {% else %}{% trans "Fresh" %} · {% endif %}{% trans "Data as of" %} {{ result.as_of|date:"H:i" }} ({{ result.as_of|date:"d/m/Y" }})</p>
     <div class="table-scroll" role="region" aria-labelledby="metric-caption" tabindex="0">
-      <table class="table"><caption id="metric-caption">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
+      <table class="table"><caption id="metric-caption" data-report-metric="{{ result.query.metric_id }}" data-report-start="{{ result.query.start|date:'Y-m-d H:i' }}" data-report-end="{{ result.query.end|date:'Y-m-d H:i' }}">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
         <thead><tr><th scope="col">{% trans "Period" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Numerator" %}</th><th scope="col">{% trans "Denominator" %}</th><th scope="col">{% trans "Unresolved" %}</th></tr></thead>
         <tbody>{% for row in result.rows %}<tr><th scope="row">{{ row.dimension|default:"—" }}</th><td>{% if row.value != None %}{{ row.value }} {% if selected.unit == "percent" %}%{% elif selected.unit == "seconds" %}{% trans "seconds" %}{% elif selected.unit == "minor" %}{% trans "BRL centavos" %}{% endif %}{% else %}{% trans "Unavailable" %}{% endif %}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td><td>{{ row.missing }}</td></tr>{% endfor %}</tbody>
       </table>

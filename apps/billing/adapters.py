@@ -28,6 +28,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.billing.psp_contracts import PaymentProvider
+from apps.core.fault_injection import injected_fault
 from apps.providers.services import is_live
 
 __all__ = (
@@ -240,6 +241,10 @@ class SyntheticPixAdapter:
     def create_charge(self, request: PixRequest) -> PixResponse:
         """Generate one explicitly synthetic, non-payable charge response."""
         require_synthetic_pix()
+        # Degraded-mode drills: local generation has no remote effect, so every
+        # fault is an unavailable provider and no code is stored.
+        if injected_fault("payment") is not None:
+            raise PixUnavailableError
         return _synthetic_response(request)
 
     def verify(self, request: PixRequest, response: PixResponse) -> None:

@@ -4717,13 +4717,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.session_inventory.supersede_session_hash",
+      "symbol": "apps.identity.session_inventory.rotate_session",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.session_inventory.supersede_session_hash"
+        "apps.identity.session_inventory.rotate_session"
       ]
     },
     {
@@ -10963,9 +10963,9 @@
     "apps.identity.session_inventory.require_verified_session",
     "apps.identity.session_inventory.revoke_session",
     "apps.identity.session_inventory.revoke_session_hash",
+    "apps.identity.session_inventory.rotate_session",
     "apps.identity.session_inventory.session_cookie_is_revoked",
     "apps.identity.session_inventory.session_is_active",
-    "apps.identity.session_inventory.supersede_session_hash",
     "apps.identity.signup.submit_signup#observed",
     "apps.identity.staff_directory.staff_directory",
     "apps.identity.staff_views.invitation_revoke_view",
@@ -12720,6 +12720,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12757,6 +12758,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12796,6 +12798,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12833,12 +12836,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in and daily budget."
+      "reason": "Queues one just-stored message only for its owning authenticated inbox principal or verified portal messages session, under the current clinic A2 policy, live agent.execute principal, organization opt-in, global AI switch and daily budget."
     },
     "clinic_app.ai_front_desk_finish": {
       "discovery": {
@@ -12870,12 +12874,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Rechecks current owner, enabled policy, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
+      "reason": "Rechecks current owner, enabled policy, global AI switch, tool allowlist and cited approved answer; stores the sender-less reply only for this finishing turn and closes the turn before the source-backed audit."
     },
     "clinic_app.ai_front_desk_guard": {
       "discovery": {
@@ -12907,6 +12912,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12944,6 +12950,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -12981,6 +12988,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -13018,12 +13026,13 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
         "test_disabled_portal_agent_keeps_the_human_message_path"
       ],
-      "reason": "Claims one pending owned turn under current A2 policy and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
+      "reason": "Claims one pending owned turn under current A2 policy, global AI switch and budget, returning bounded facts and its decrypted inbound text to the owning inbox principal or verified portal session."
     },
     "clinic_app.ai_front_desk_verify": {
       "discovery": {
@@ -13055,6 +13064,7 @@
         "test_handoff_page_lists_reasons_and_resolves_by_post_body",
         "test_database_guards_refuse_raw_front_desk_forgery",
         "test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+        "test_front_desk_sql_refuses_while_the_global_switch_is_off",
         "test_verified_portal_books_only_after_accepting_the_exact_offer",
         "test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person",
         "test_portal_without_booking_scope_cannot_gain_it_through_the_agent",
@@ -14481,6 +14491,7 @@
           "clinic_app.patient_data_requests",
           "clinic_app.patient_session_overview",
           "clinic_app.questionnaire_patient_enrollment",
+          "clinic_app.record_delegate_access",
           "clinic_app.retention_records_session",
           "clinic_app.submit_data_request",
           "clinic_app.teleconsult_patient_match",
@@ -15650,6 +15661,7 @@
           "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
+          "clinic_app.record_delegate_access",
           "clinic_app.renew_delegate_grant",
           "clinic_app.request_delegate_grant",
           "clinic_app.retention_failure",
@@ -16634,6 +16646,35 @@
       ],
       "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
     },
+    "clinic_app.identity_lock_authenticators": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_lock_order_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_sync_directory",
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke",
+          "clinic_app.identity_recovery_consume",
+          "clinic_app.identity_retire_authenticators"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
+        "auth.test_session_lock_order.test_password_change_and_offboarding_cannot_deadlock"
+      ],
+      "reason": "Installed lock-order boundary: locks a user's live passkey and recovery-batch rows before the session key. Offboarding lock-order and callable ACL controls are bound."
+    },
     "clinic_app.identity_revoke_changed_sessions": {
       "discovery": {
         "migrations": [
@@ -16779,7 +16820,9 @@
           "apps/identity/migrations/_lifecycle_sessions_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.identity_session_rotate"
+        ],
         "signatures": [
           {
             "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
@@ -16829,6 +16872,28 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_rotate": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_atomic_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "old_hash bytea, new_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
+            "returns": "uuid",
             "security_definer": true,
             "set_returning": false
           }
@@ -17781,6 +17846,7 @@
           "clinic_app.crm_contact_version",
           "clinic_app.crm_guard",
           "clinic_app.prescription_patient_documents",
+          "clinic_app.record_delegate_access",
           "clinic_app.retention_patient_releases"
         ],
         "signatures": [
@@ -26755,6 +26821,7 @@
           }
         ],
         "migrations": [
+          "apps/identity/migrations/_delegate_access_sql.py",
           "apps/identity/migrations/_enterprise_access_sql.py"
         ],
         "policies": [],
@@ -26768,7 +26835,8 @@
         "test_expired_break_glass_cannot_read_with_a_monkeypatched_clock",
         "test_break_glass_cannot_use_someone_elses_verified_session",
         "test_emergency_reader_returns_a_finalized_version_and_stops_on_revoke",
-        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review"
+        "test_clinic_manager_can_read_reason_and_complete_only_an_ended_review",
+        "test_delegate_read_appears_in_the_represented_patients_access_log"
       ],
       "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
     },
@@ -27462,12 +27530,39 @@
           "apps/identity/migrations/_enterprise_access_sql.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.enterprise_support_overview"
+        ]
       },
       "kind": "domain_protocol",
       "probes": [
         "test_support_is_masked_and_purpose_bound",
         "test_jit_expiry_uses_a_clock_not_a_wait"
+      ],
+      "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
+    },
+    "clinic_app.enterprise_support_overview": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_grant uuid, requested_clinic uuid, requested_session bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_support_overview_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_support_screen_shows_masked_aggregates_and_no_identifiers",
+        "test_expired_revoked_foreign_and_malformed_grants_share_one_denial",
+        "test_another_users_session_or_no_session_cannot_use_the_grant",
+        "test_overview_resolver_refuses_without_the_installed_grant"
       ],
       "reason": "Enterprise protocol bound to executable real-role tests. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate."
     },
@@ -27705,6 +27800,29 @@
           }
         ]
       }
+    },
+    "clinic_app.record_delegate_access": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_type text",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "reason": "Delegate-access writer (DG-R1): it records only the current patient session's own delegate binding; bound to an executable real-role test. Discovery is source-derived; deployed signatures, policies, ACLs and actor reads remain subject to the admitted PostgreSQL gate.",
+      "probes": [
+        "test_delegate_read_appears_in_the_represented_patients_access_log",
+        "test_delegate_result_read_appears_in_the_represented_patients_access_log"
+      ]
     }
   },
   "sql_method": [

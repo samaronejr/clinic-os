@@ -232,7 +232,7 @@ def test_local_driver_checks_live_input_before_matching_saved_reports(
     for phase, nodes in (("parallel", reference[:1]), ("serial", reference[1:])):
         reports: JsonObject = {
             node: [
-                {"when": when, "outcome": "passed"}
+                {"when": when, "outcome": "passed", "duration": 0.0}
                 for when in ("setup", "call", "teardown")
             ]
             for node in nodes

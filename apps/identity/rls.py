@@ -26,6 +26,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         *ENTERPRISE_TABLES,
         "identity_patientdelegategrant",
+        "identity_delegateaccessevent",
         "identity_clinicconfiguration",
         "identity_rolegrant",
         "identity_serviceprincipal",
@@ -55,6 +56,8 @@ NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"identity_user"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     **ENTERPRISE_RUNTIME_GRANTS,
     "identity_patientdelegategrant": frozenset({"SELECT"}),
+    # Written and read only through resolver functions (DG-R1).
+    "identity_delegateaccessevent": frozenset(),
     "identity_passkey": frozenset({"SELECT", "INSERT"}),
     "identity_user": frozenset(),
     "identity_serviceprincipal": frozenset(),

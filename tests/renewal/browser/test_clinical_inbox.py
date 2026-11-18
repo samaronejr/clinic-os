@@ -38,6 +38,7 @@ from renewal.browser.test_availability import (
     availability_staff,
 )
 from renewal.browser.test_realtime import _today_scene
+from renewal.browser.test_retention import csrf
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -519,6 +520,110 @@ def _brief_post(page: Page, button: Locator) -> None:
     assert posted.value.status == 200
 
 
+def _unauthorized_brief(
+    page: Page,
+    base: str,
+    root: Path,
+    staff: dict[str, str],
+    data: dict[str, str],
+) -> None:
+    """A signed-in nonclinical principal cannot generate or read this summary."""
+    browser = page.context.browser
+    assert browser is not None
+    invocation = page.locator(
+        '#chart-panel input[name="invocation_id"]'
+    ).first.input_value()
+    protected = (
+        data["source_name"],
+        data["enrollment"],
+        data["encounter"],
+        data["marker"],
+        invocation,
+    )
+    with browser.new_context(locale="pt-BR") as context:
+        denied = context.new_page()
+        _sign_in_receptionist(denied, base, staff)
+        url = f"{base}/clinics/{staff['clinic_a']}/chart-assistant/"
+        for command in ("generate", "display"):
+            refusal = None
+            for label, enrollment in (
+                ("unknown", str(uuid4())),
+                ("unauthorized", data["enrollment"]),
+            ):
+                fields = {
+                    "csrfmiddlewaretoken": csrf(denied),
+                    "enrollment_id": enrollment,
+                    "surface": "workspace",
+                    "command": command,
+                    **({"invocation_id": invocation} if command == "display" else {}),
+                }
+                with (
+                    denied.expect_response(
+                        lambda response: (
+                            response.url == url and response.request.method == "POST"
+                        )
+                    ) as posted,
+                    expect_document(denied),
+                ):
+                    denied.evaluate(
+                        """([url, fields]) => {
+                          const form = document.createElement('form');
+                          form.method = 'POST'; form.action = url;
+                          for (const [name, value] of Object.entries(fields)) {
+                            const input = document.createElement('input');
+                            input.type = 'hidden'; input.name = name;
+                            input.value = value; form.append(input);
+                          }
+                          document.body.append(form); form.submit();
+                        }""",
+                        [url, fields],
+                    )
+                assert posted.value.status == 403
+                body = posted.value.text()
+                assert all(value not in body for value in protected)
+                expect(
+                    denied.locator("#chart-panel, [data-chart-citation]")
+                ).to_have_count(0)
+                expect(
+                    denied.get_by_role("heading", name=_("Access unavailable"))
+                ).to_be_visible()
+                shape = (posted.value.status, denied.locator("main").inner_text())
+                if refusal is None:
+                    refusal = shape
+                else:
+                    assert shape == refusal
+                    for width in (1280, 375):
+                        denied.set_viewport_size({"width": width, "height": 900})
+                        capture(denied, root, f"brief-{label}-{command}", width)
+    # The authorized browser still sees the same real source after both denials.
+    _brief_post(page, page.get_by_role("button", name=_("Recheck source access")).first)
+    expect(page.locator('[data-chart-citation="problem"]')).to_contain_text(
+        data["marker"]
+    )
+
+
+def _brief_source(
+    page: Page, staff: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> dict[str, str]:
+    encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
+    assert encounter
+    marker = f"Synthetic protected summary source {str(uuid4()).replace('-', ' ')}"
+    assert (
+        _brief_command(
+            monkeypatch,
+            staff["dsn"],
+            "source",
+            staff["physician_a_id"],
+            staff["clinic_a"],
+            staff["organization"],
+            encounter,
+            marker,
+        )["status"]
+        == "recorded"
+    )
+    return {"encounter": encounter, "marker": marker}
+
+
 def chart_brief_journey(
     renewal_page: Page,
     renewal_base_url: str,
@@ -540,9 +645,13 @@ def chart_brief_journey(
     page = renewal_page
     url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/today/"
     goto_settled(page, url)
+    # A focused form is retained by the realtime worklist refresh. Enter avoids
+    # a pointer click being split across replacement of the Today board.
+    page.locator(".today-next button[type=submit]").focus()
     with expect_document(page):
-        page.locator(".today-next button[type=submit]").click()
+        page.keyboard.press("Enter")
     expect(page.locator("[data-encounter]")).to_have_count(1)
+    data.update(_brief_source(page, staff, monkeypatch))
     goto_settled(page, url)
     administrator = seed_ai_admin(staff, "light")
     assert (
@@ -583,11 +692,15 @@ def chart_brief_journey(
         "data-today-brief", "ready"
     )
     expect(page.locator('[data-chart-citation="encounter"]')).to_have_count(1)
+    expect(page.locator('[data-chart-citation="problem"]')).to_contain_text(
+        data["marker"]
+    )
     for width in (1280, 375, 320):
         page.set_viewport_size({"width": width, "height": 900})
         themed(page, renewal_artifact_root, "brief", width)
         check_page(page, renewal_base_url, renewal_artifact_root, f"brief-{width}")
         targets(page)
+    _unauthorized_brief(page, renewal_base_url, renewal_artifact_root, staff, data)
     page.locator("#chart-question").fill("What allergies does Synthetic Other have?")
     _brief_post(page, page.get_by_role("button", name=_("Ask the chart")))
     expect(page.locator('[data-chart-answer="refused"]')).to_be_visible()

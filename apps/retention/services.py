@@ -725,6 +725,11 @@ def patient_released_records() -> list[ReleasedRecord]:
     with connection.cursor() as cursor:
         cursor.execute("SELECT * FROM clinic_app.retention_patient_releases()")
         rows = cursor.fetchall()
+        if rows:
+            # A delegate read appears in the represented patient's access log.
+            cursor.execute(
+                "SELECT clinic_app.record_delegate_access('clinical_record')"
+            )
     records = []
     for row in rows:
         # The resolver returns the tenant envelope; the live patient session

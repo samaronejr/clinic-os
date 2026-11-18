@@ -68,6 +68,12 @@ The policy defaults live in
 
 The public service facade is `services.py`; HTTP routes are in `urls.py`.
 
+The governed importer uses intake's private write primitives to prepare
+demographics, identifiers and duplicate hints before taking the organization
+audit-chain lock. It appends the same ordered intake events in that transaction,
+then re-checks identity authority while the first append pins revocation.
+The ordinary intake services continue to write and audit each operation together.
+
 Insurance registrations retain their original encrypted payer/card fields and
 append-only versions. The nullable `payer` catalog FK is the sole metadata
 exception: `insurance.backfill_membership_payers(*, clinic_id)` may populate

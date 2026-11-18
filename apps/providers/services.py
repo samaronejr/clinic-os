@@ -29,6 +29,7 @@ from collections.abc import Mapping
 from uuid import UUID
 
 from config.settings.contracts import LIVE_DATA_MODE, resolved_data_mode
+from ops.release import profiles
 from ops.release.activation import LiveModeHaltedError, require_live_runtime
 
 from apps.providers.models import CapabilityVersion, ProviderCapability
@@ -93,4 +94,7 @@ def is_live(
         require_live_runtime(runtime_environment)
     except LiveModeHaltedError:
         return False
-    return True
+    profile = profiles.PROFILES.get(
+        runtime_environment.get(profiles.PROFILE_ENV, profiles.DEFAULT_LIVE_PROFILE)
+    )
+    return profile is not None and key in profile.providers

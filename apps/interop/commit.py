@@ -14,7 +14,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.audit.services import record_phase1_event
 from apps.interop import contract
@@ -76,7 +76,7 @@ class CommitReceipt:
 
 @dataclass(frozen=True, slots=True)
 class BatchOutcome:
-    """What one batch run did: committed, waiting for patients, or skipped."""
+    """What one batch did: committed, deferred, waiting for patients, or skipped."""
 
     batch_id: UUID
     state: str
@@ -141,8 +141,10 @@ def commit_import(
         normalized = mapped_rows(job, clinic=clinic, mapping=mapping)
         if dataset_digest_for(job, mapping, normalized) != _signed_dry_run(job):
             raise ImportConflictError(Code.DRY_RUN_STALE)
+        # Each registration ends its audit critical section before another
+        # patient can extend it; history appends only at batch end.
         plan: list[tuple[str, Sequence[PatientRow] | Sequence[HistoryRow]]] = [
-            ("patients", chunk) for chunk in _chunks(normalized.patients)
+            ("patients", (row,)) for row in normalized.patients
         ]
         plan += [("history", chunk) for chunk in _chunks(normalized.history)]
         created: list[UUID] = []
@@ -171,7 +173,8 @@ def _content_digest(row: PatientRow | HistoryRow) -> str:
 
 def _commit_patients(
     *, clinic: Clinic, actor: UUID, batch: ImportBatch, rows: Sequence[PatientRow]
-) -> int:
+) -> tuple[tuple[str, UUID], ...]:
+    audits: list[tuple[str, UUID]] = []
     for row in rows:
         imported = register(clinic=clinic, actor_id=actor, job_id=batch.job_id, row=row)
         ImportedRecord.objects.create(
@@ -191,7 +194,8 @@ def _commit_patients(
             content_sha256=_content_digest(row),
             identifier_count=imported.identifier_count,
         )
-    return len(rows)
+        audits.extend(imported.audit_events)
+    return tuple(audits)
 
 
 def _commit_history(
@@ -252,6 +256,18 @@ def _batch_rows(
     ]
 
 
+def _try_audit_chain(*, clinic: Clinic) -> bool:
+    """Try audit_append_unchecked_v2's exact organization-chain key."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.pg_try_advisory_xact_lock("
+            "pg_catalog.hashtextextended(('clinic-audit:' || %s::uuid::text)"
+            ' COLLATE pg_catalog."C", 0::bigint))',
+            [str(clinic.organization_id)],
+        )
+        return cursor.fetchone()[0] is True
+
+
 def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
     """Commit one pending batch exactly once under re-checked current authority."""
     with transaction.atomic():
@@ -271,6 +287,13 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
             ).exists()
         ):
             return BatchOutcome(batch_id=batch.pk, state="waiting", committed=0)
+        # Do not generate protected rows and WAL for an already-busy chain.
+        # Roll back this empty probe so preparation cannot retain the pin.
+        with transaction.atomic():
+            available = _try_audit_chain(clinic=clinic)
+            transaction.set_rollback(True)
+        if not available:
+            return BatchOutcome(batch_id=batch.pk, state="deferred", committed=0)
         normalized = mapped_rows(
             job, clinic=clinic, mapping=cast("ImportMapping", latest.mapping)
         )
@@ -281,13 +304,15 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
         ):
             raise ImportConflictError(Code.CHECKSUM_MISMATCH)
         with translated(), transaction.atomic():
+            audits: tuple[tuple[str, UUID], ...] = ()
             if batch.dataset == "patients":
-                committed = _commit_patients(
+                audits = _commit_patients(
                     clinic=clinic,
                     actor=actor,
                     batch=batch,
                     rows=cast("Sequence[PatientRow]", rows),
                 )
+                committed = len(rows)
             else:
                 committed = _commit_history(
                     clinic=clinic, batch=batch, rows=cast("Sequence[HistoryRow]", rows)
@@ -295,11 +320,38 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
             ImportBatch.objects.filter(pk=batch.pk).update(
                 state="committed", committed_count=committed
             )
-        record_phase1_event(
-            "interop.batch.committed", clinic_id=clinic_id, affected_record_id=batch.pk
-        )
-        if not ImportBatch.objects.filter(job_id=job.pk, state="pending").exists():
-            _finish(job, latest, actor=actor, normalized=normalized)
+            completion: tuple[dict[str, object], str] | None = None
+            if not ImportBatch.objects.filter(job_id=job.pk, state="pending").exists():
+                report = reconciliation(job, normalized)
+                completion = report, contract.document_digest(report)
+            # A clinical writer may have arrived during preparation.
+            # Re-check without waiting and roll back if that race was lost.
+            if not _try_audit_chain(clinic=clinic):
+                transaction.set_rollback(True)
+                return BatchOutcome(batch_id=batch.pk, state="deferred", committed=0)
+            for event_type, record_id in audits:
+                record_phase1_event(
+                    event_type, clinic_id=clinic.pk, affected_record_id=record_id
+                )
+            record_phase1_event(
+                "interop.batch.committed",
+                clinic_id=clinic_id,
+                affected_record_id=batch.pk,
+            )
+            # The chain pin orders revocation. Authority lost during
+            # preparation rolls back all rows and ordered audit events.
+            identity_authority(clinic_id=clinic.pk)
+            if completion is not None:
+                report, digest = completion
+                append(
+                    job,
+                    latest,
+                    state="committed",
+                    actor_id=actor,
+                    mapping=latest.mapping,
+                    report=report,
+                    digest=digest,
+                )
         return BatchOutcome(batch_id=batch.pk, state="committed", committed=committed)
 
 
@@ -366,21 +418,6 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
             "batches_verified": batches_verified,
         },
     }
-
-
-def _finish(
-    job: ImportJob, latest: ImportTransition, *, actor: UUID, normalized: Normalized
-) -> None:
-    report = reconciliation(job, normalized)
-    append(
-        job,
-        latest,
-        state="committed",
-        actor_id=actor,
-        mapping=latest.mapping,
-        report=report,
-        digest=contract.document_digest(report),
-    )
 
 
 def reconciliation_report(*, clinic_id: UUID, job_id: UUID) -> ReconciliationReport:

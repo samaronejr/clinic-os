@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from apps.audit.models import AuditEvent
+from apps.audit.services import record_phase1_event
 from apps.identity.models import User, UserClinicRole
-from apps.interop import services, tasks
+from apps.intake.models import (
+    DemographicsCorrection,
+    Patient,
+    PatientDemographics,
+    PatientDuplicateIndex,
+    PatientIdentifier,
+)
+from apps.intake.patient_search import search_patients_exact
+from apps.interop import commit, services, tasks
+from apps.interop.jobs import mapped_rows
 from apps.interop.models import (
     ImportBatch,
     ImportedRecord,
@@ -40,6 +53,8 @@ from interop.support import (
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from apps.interop.validation import Normalized
+
     from interop.support import ImportWorld
     from rbac_fixtures import RbacGraph
 
@@ -221,10 +236,11 @@ def test_org_admin_prepares_and_signs_off_but_cannot_commit_identity(
             expected_sequence=approved.sequence,
             session_key=manager.session,
         )
-    # The queued batch runs under its requester, the clinic manager.
+    # Every queued patient batch runs under its requester, the clinic manager.
     monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
     with runtime_role():
-        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "committed"
+        for batch_id in receipt.batch_ids:
+            assert tasks.commit_batch(batch_id=str(batch_id)) == "committed"
     with operating(admin):
         rolled = services.rollback_import(
             clinic_id=rbac_graph.clinic_a,
@@ -234,6 +250,44 @@ def test_org_admin_prepares_and_signs_off_but_cannot_commit_identity(
             session_key=admin.session,
         )
     assert rolled.hidden == 3
+
+
+def test_patient_batches_commit_independently_and_replay_without_rewriting(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    report = to_dry_run(world, patients_csv(3))
+    approved = approve(world, report)
+    with operating(world):
+        receipt = services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+    assert len(receipt.batch_ids) == 3
+    monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
+    with runtime_role():
+        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "committed"
+        assert not connection.in_atomic_block
+    with operating(world):
+        assert list(
+            ImportBatch.objects.filter(job_id=report.job.job_id)
+            .order_by("sequence")
+            .values_list("state", flat=True)
+        ) == ["committed", "pending", "pending"]
+        assert ImportedRecord.objects.filter(job_id=report.job.job_id).count() == 1
+    with runtime_role():
+        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "skipped"
+        for batch_id in receipt.batch_ids[1:]:
+            assert tasks.commit_batch(batch_id=str(batch_id)) == "committed"
+            assert not connection.in_atomic_block
+    with operating(world):
+        reconciled = services.reconciliation_report(
+            clinic_id=rbac_graph.clinic_a, job_id=report.job.job_id
+        )
+        assert reconciled.reconciled
+        assert ImportedRecord.objects.filter(job_id=report.job.job_id).count() == 3
 
 
 def test_revoked_import_authority_stops_queued_batches(
@@ -259,6 +313,248 @@ def test_revoked_import_authority_stops_queued_batches(
         assert tasks.commit_batch(batch_id=str(uuid4())) == "missing"
     with owner_context(rbac_graph.organization_a):
         assert ImportBatch.objects.get(pk=receipt.batch_ids[0]).state == "pending"
+
+
+def test_import_prepares_identity_and_provenance_before_ordered_audits(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    report = to_dry_run(world, patients_csv(1))
+    approved = approve(world, report)
+    with operating(world):
+        receipt = services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+    append = record_phase1_event
+    seen: list[str] = []
+
+    def audit(event_type: str, *, clinic_id: UUID, affected_record_id: UUID) -> int:
+        if not seen:
+            assert ImportBatch.objects.get(pk=receipt.batch_ids[0]).state == "committed"
+            imported = ImportedRecord.objects.only("patient_id").get(
+                batch_id=receipt.batch_ids[0]
+            )
+            patient = imported.patient_id
+            assert PatientDemographics.objects.filter(patient_id=patient).count() == 1
+            assert (
+                DemographicsCorrection.objects.filter(patient_id=patient).count() == 1
+            )
+            assert PatientIdentifier.objects.filter(patient_id=patient).count() == 1
+            assert PatientDuplicateIndex.objects.filter(patient_id=patient).count() == 2
+        seen.append(event_type)
+        return append(
+            event_type, clinic_id=clinic_id, affected_record_id=affected_record_id
+        )
+
+    monkeypatch.setattr(commit, "record_phase1_event", audit)
+    monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
+    with runtime_role():
+        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "committed"
+    assert seen[:3] == [
+        "intake.patient.created",
+        "intake.identifier.saved",
+        "intake.demographics.saved",
+    ]
+    with owner_context(rbac_graph.organization_a):
+        assert (
+            list(
+                AuditEvent.objects.filter(
+                    actor_user_id=world.operator, event_type__startswith="intake."
+                )
+                .order_by("seq")
+                .values_list("event_type", flat=True)
+            )
+            == seen[:3]
+        )
+
+
+@pytest.mark.parametrize("retain_membership", [False, True])
+def test_revocation_after_import_preparation_rolls_back_rows_and_audits(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, retain_membership: bool
+) -> None:
+    world = import_world(rbac_graph)
+    report = to_dry_run(world, patients_csv(1))
+    approved = approve(world, report)
+    with operating(world):
+        receipt = services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+    # A role grant invalidates verified sessions, so it follows authorized
+    # planning. The worker derives current authority without that web session.
+    if retain_membership:
+        with owner_context(rbac_graph.organization_a):
+            UserClinicRole.objects.create(
+                organization_id=rbac_graph.organization_a,
+                clinic_id=rbac_graph.clinic_a,
+                user_id=world.operator,
+                role=UserClinicRole.Role.RECEPTIONIST,
+            )
+    with owner_context(rbac_graph.organization_a):
+        before_patients = Patient.objects.count()
+        before_audits = AuditEvent.objects.filter(actor_user_id=world.operator).count()
+    prepared, resume = threading.Event(), threading.Event()
+    reconcile = commit.reconciliation
+
+    def prepared_report(job: ImportJob, normalized: Normalized) -> dict[str, object]:
+        result = reconcile(job, normalized)
+        prepared.set()
+        assert resume.wait(30)
+        return result
+
+    def worker() -> str:
+        try:
+            with runtime_role():
+                return tasks.commit_batch(batch_id=str(receipt.batch_ids[0]))
+        finally:
+            connection.close()
+
+    monkeypatch.setattr(commit, "reconciliation", prepared_report)
+    monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(worker)
+        try:
+            assert prepared.wait(30)
+            with owner_context(rbac_graph.organization_a):
+                UserClinicRole.objects.filter(user_id=world.operator).exclude(
+                    role=UserClinicRole.Role.RECEPTIONIST
+                ).update(revoked_at=timezone.now())
+        finally:
+            resume.set()
+        assert future.result(timeout=30) == "denied"
+    with owner_context(rbac_graph.organization_a):
+        assert ImportBatch.objects.get(pk=receipt.batch_ids[0]).state == "pending"
+        assert ImportedRecord.objects.filter(job_id=report.job.job_id).count() == 0
+        assert Patient.objects.count() == before_patients
+        assert (
+            AuditEvent.objects.filter(actor_user_id=world.operator).count()
+            == before_audits
+        )
+
+
+def test_bulk_commit_yields_to_a_busy_chain_and_rolls_back_preparation(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    report = to_dry_run(world, patients_csv(1))
+    approved = approve(world, report)
+    with operating(world):
+        receipt = services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+    with owner_context(rbac_graph.organization_a):
+        before_patients = Patient.objects.count()
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        tasks.commit_batch_job, "apply_async", lambda **kwargs: sent.append(kwargs)
+    )
+    prepared, resume = threading.Event(), threading.Event()
+    reconcile = commit.reconciliation
+
+    def prepared_report(job: ImportJob, normalized: Normalized) -> dict[str, object]:
+        result = reconcile(job, normalized)
+        assert ImportedRecord.objects.filter(batch_id=receipt.batch_ids[0]).count() == 1
+        prepared.set()
+        assert resume.wait(30)
+        return result
+
+    monkeypatch.setattr(commit, "reconciliation", prepared_report)
+
+    def worker() -> str:
+        try:
+            with runtime_role():
+                return tasks.commit_batch(batch_id=str(receipt.batch_ids[0]))
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(worker)
+        try:
+            assert prepared.wait(30)
+            # This also proves the early probe released its pin: a different
+            # connection can acquire the real chain while rows are prepared.
+            with operating(world, actor=rbac_graph.clinic_admin):
+                search_patients_exact(
+                    clinic_id=rbac_graph.clinic_b, query="Sintetico ausente", limit=1
+                )
+                resume.set()
+                assert future.result(timeout=30) == "deferred"
+        finally:
+            resume.set()
+    assert sent == [
+        {"kwargs": {"batch_id": str(receipt.batch_ids[0])}, "countdown": 30}
+    ]
+    with owner_context(rbac_graph.organization_a):
+        assert Patient.objects.count() == before_patients
+        assert ImportedRecord.objects.filter(job_id=report.job.job_id).count() == 0
+        assert ImportBatch.objects.get(pk=receipt.batch_ids[0]).state == "pending"
+        assert (
+            AuditEvent.objects.filter(
+                affected_record_id=str(receipt.batch_ids[0])
+            ).count()
+            == 0
+        )
+    with runtime_role():
+        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "committed"
+
+
+def test_bulk_busy_chain_defers_before_source_and_patient_preparation(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = import_world(rbac_graph)
+    report = to_dry_run(world, patients_csv(1))
+    approved = approve(world, report)
+    with operating(world):
+        receipt = services.commit_import(
+            clinic_id=rbac_graph.clinic_a,
+            job_id=report.job.job_id,
+            expected_sequence=approved.sequence,
+            session_key=world.session,
+        )
+
+    def reject_preparation(*_args: object, **_kwargs: object) -> Normalized:
+        pytest.fail("an already-busy batch must not decrypt or prepare its source")
+
+    monkeypatch.setattr(commit, "mapped_rows", reject_preparation)
+    monkeypatch.setattr(tasks, "fair_acquire", lambda **_kwargs: True)
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tasks.commit_batch_job, "apply_async", lambda **kwargs: sent.append(kwargs)
+    )
+
+    def worker() -> str:
+        try:
+            with runtime_role():
+                return tasks.commit_batch(batch_id=str(receipt.batch_ids[0]))
+        finally:
+            connection.close()
+
+    with (
+        ThreadPoolExecutor(max_workers=1) as executor,
+        operating(world, actor=rbac_graph.clinic_admin),
+    ):
+        search_patients_exact(
+            clinic_id=rbac_graph.clinic_b, query="Sintetico ausente", limit=1
+        )
+        assert executor.submit(worker).result(timeout=30) == "deferred"
+    assert sent == [
+        {"kwargs": {"batch_id": str(receipt.batch_ids[0])}, "countdown": 30}
+    ]
+    with owner_context(rbac_graph.organization_a):
+        assert ImportedRecord.objects.filter(job_id=report.job.job_id).count() == 0
+        assert ImportBatch.objects.get(pk=receipt.batch_ids[0]).state == "pending"
+    monkeypatch.setattr(commit, "mapped_rows", mapped_rows)
+    with runtime_role():
+        assert tasks.commit_batch(batch_id=str(receipt.batch_ids[0])) == "committed"
 
 
 def test_bulk_fairness_defers_without_side_effects(

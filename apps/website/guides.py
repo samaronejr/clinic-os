@@ -88,6 +88,22 @@ AUDIENCES: Final[dict[str, str]] = {
     "reception": _("Reception"),
     "clinicians": _("Clinicians"),
     "patients": _("Patients"),
+    "support": _("Support operators"),
+    "finance": _("Finance"),
+}
+# Every stored staff role (apps.identity.models.UserClinicRole.Role) and the
+# audience whose guides train it; tests/website/test_guides.py pins the full set.
+ROLE_AUDIENCES: Final[dict[str, str]] = {
+    "owner": "managers",
+    "org_admin": "managers",
+    "clinic_admin": "managers",
+    "clinic_manager": "managers",
+    "receptionist": "reception",
+    "scheduler": "reception",
+    "physician": "clinicians",
+    "nurse": "clinicians",
+    "allied_professional": "clinicians",
+    "finance": "finance",
 }
 
 LOGIN = Screen("identity:login", "identity/login.html", Label("Sign in to Clinic OS"))
@@ -142,6 +158,27 @@ TRANSCRIPT = Screen(
     "scribe:transcript", "scribe/transcript.html", Label("Consultation transcript")
 )
 AI_REVIEW = Screen("scribe:review", "scribe/review.html", Label("Clinician AI review"))
+GOVERNANCE = Screen(
+    "identity:governance", "identity/governance.html", Label("Enterprise governance")
+)
+EMERGENCY = Screen(
+    "identity:emergency", "identity/emergency.html", Label("Emergency access")
+)
+SUPPORT = Screen(
+    "identity:support-diagnostics",
+    "identity/support_diagnostics.html",
+    Label("Support diagnostics"),
+)
+CHARGES = Screen(
+    "billing:charges", "billing/charges.html", Label("Cobranças", translated=False)
+)
+INVOICE = Screen(
+    "billing:invoice",
+    "billing/invoice.html",
+    Label("Dados da cobrança", translated=False),
+)
+FINANCE = Screen("billing:finance", "billing/finance.html", Label("Finance"))
+FINANCE_CONTENT = "billing/partials/finance_content.html"
 PUBLIC_BOOKING = Screen(
     "crm:public-booking", "crm/public.html", Label("Your next visit starts here.")
 )
@@ -510,6 +547,195 @@ GUIDES: Final[tuple[Guide, ...]] = (
                 "simulated model. Real models are switched on only after approval."
             ),
             _("You can always continue the note manually, without AI."),
+        ),
+    ),
+    Guide(
+        slug="time-limited-support-access",
+        audience="managers",
+        title=_("Give support time-limited access"),
+        summary=_(
+            "Approve masked, read-only support access for one named person, for a "
+            "stated purpose and a few minutes or hours at most."
+        ),
+        before=(
+            _(
+                "Approve access only for a named support person and only for the "
+                "problem you reported."
+            ),
+        ),
+        steps=(
+            Step(
+                GOVERNANCE,
+                Label("Approved support access"),
+                _("On the governance screen, review the list under {control}."),
+                _(
+                    "Support sees masked diagnostics only and can never write "
+                    "clinical records."
+                ),
+            ),
+            Step(
+                GOVERNANCE,
+                Label("Revoke support access"),
+                _("When the work is done, press {control} next to the approval."),
+                _("The approval stops working at the next request."),
+            ),
+        ),
+        notes=(_("Support access lasts at most four hours."),),
+    ),
+    Guide(
+        slug="emergency-access",
+        audience="clinicians",
+        title=_("Use emergency access"),
+        summary=_(
+            "Read a patient's record outside your care team when care cannot "
+            "wait, with a reason, a time limit and a mandatory review."
+        ),
+        before=(
+            _(
+                "Use emergency access only when a patient outside your care team "
+                "needs care now."
+            ),
+        ),
+        steps=(
+            Step(
+                EMERGENCY,
+                Label("Request emergency access"),
+                _(
+                    "Enter the patient enrollment, the clinical reason and the "
+                    "duration, then press {control}."
+                ),
+                _(
+                    "Every emergency grant creates an immediate manager notice, a "
+                    "patient access-log entry and a mandatory review task."
+                ),
+            ),
+            Step(
+                EMERGENCY,
+                Label("Read through this grant"),
+                _("Press {control} to open the read-only record."),
+                _(
+                    "Restricted notes, clinical writes, finalization and prescribing "
+                    "remain protected. A manager and the patient are notified."
+                ),
+            ),
+        ),
+        notes=(_("Emergency access lasts at most four hours."),),
+    ),
+    Guide(
+        slug="support-diagnostics",
+        audience="support",
+        title=_("Read masked support diagnostics"),
+        summary=_(
+            "Check a clinic's integrations, outbox queue and work tasks without "
+            "seeing patients, names or clinical records."
+        ),
+        before=(
+            _(
+                "The clinic administrator approved support access for your own "
+                "named account."
+            ),
+        ),
+        steps=(
+            Step(
+                SUPPORT,
+                Label("Clinic ID"),
+                _("Type the {control} the clinic administrator shared with you."),
+            ),
+            Step(
+                SUPPORT,
+                Label("Support grant ID"),
+                _("Type the {control} from the same approval."),
+            ),
+            Step(
+                SUPPORT,
+                Label("Open diagnostics"),
+                _("Press {control}."),
+                _(
+                    "The page shows counts and states, never patients, names or "
+                    "clinical records."
+                ),
+            ),
+        ),
+        notes=(
+            _(
+                "An expired or revoked approval gets the same refusal as a missing "
+                "one. Ask the clinic administrator for a new approval."
+            ),
+            _(
+                "In this version no support desk is staffed. This procedure is "
+                "rehearsed on synthetic data only."
+            ),
+        ),
+    ),
+    Guide(
+        slug="finance-day",
+        audience="finance",
+        title=_("Charge, record payments and close the day"),
+        summary=_(
+            "Issue charges, record confirmed payments and close the day from "
+            "verified money and a sealed journal."
+        ),
+        before=(
+            _(
+                "You hold the finance role in this clinic and confirmed your "
+                "authenticator."
+            ),
+        ),
+        steps=(
+            Step(
+                CHARGES,
+                Label("Criar rascunho", translated=False),
+                _("Choose the patient, enter the amount and press {control}."),
+                _(
+                    "A draft can be checked before it is issued, and issuing "
+                    "freezes the amount."
+                ),
+            ),
+            Step(
+                INVOICE,
+                Label("Emitir cobrança", translated=False),
+                _("Open the charge, check the draft and press {control}."),
+            ),
+            Step(
+                INVOICE,
+                Label("Confirmar pagamento", translated=False),
+                _(
+                    "After checking a payment outside the system, enter its "
+                    "reference and amount and press {control}."
+                ),
+                _(
+                    "The receipt comes from this confirmation, never from "
+                    "generating a payment code."
+                ),
+            ),
+            Step(
+                FINANCE,
+                Label("Day close"),
+                _("At the end of the day, go to {control} and count the cash."),
+                _(
+                    "A cash count must match the sealed journal. Unposted money, "
+                    "unidentified receipts, suspense and unknown outcomes prevent "
+                    "close."
+                ),
+                control_template=FINANCE_CONTENT,
+            ),
+            Step(
+                FINANCE,
+                Label("Download journal"),
+                _("To send the period to your accountant, press {control}."),
+                _(
+                    "CSV and the documented OFX-like journal contain the same "
+                    "sealed centavo lines. This is not a bank statement or a "
+                    "fiscal document."
+                ),
+                control_template=FINANCE_CONTENT,
+            ),
+        ),
+        notes=(
+            _(
+                "In this version payments, refunds and payouts are simulations. "
+                "No real money moves."
+            ),
         ),
     ),
     Guide(

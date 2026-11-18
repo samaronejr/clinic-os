@@ -24,11 +24,12 @@ from renewal.browser._navigation import (
     goto_settled,
     reload_settled,
 )
-from renewal.browser._page_wait import evaluate_js
+from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot, grant_capture_audio
 from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
+from renewal.browser.test_patient_access import SETTLED_JS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -62,6 +63,16 @@ def fixture_command(
     return result.stdout.strip()
 
 
+def _open_agenda_encounter(page: Page) -> None:
+    # Both readiness and denial dispatch an agenda poll. Wait for its HTMX
+    # replacement before a pointer click can span two different opening buttons.
+    expect(page.locator("#agenda-shell")).to_have_attribute(
+        "data-realtime-state", re.compile(r"^(connected|offline|denied)$")
+    )
+    wait_for_js(page, SETTLED_JS)
+    click_to_navigate(page.locator('button[value="open"]'))
+
+
 def open_capture(
     page: Page,
     base: str,
@@ -87,7 +98,7 @@ def open_capture(
     goto_settled(
         page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
     )
-    click_to_navigate(page.locator('button[value="open"]'))
+    _open_agenda_encounter(page)
     page.locator("#template-id").select_option(data["specialty"])
     click_to_navigate(page.locator('button[value="template"]'))
     expect(page.locator("#soap-form")).to_be_visible()
@@ -660,7 +671,7 @@ def test_patient_switch_requires_an_explicit_bound_audio_decision(
         f"{renewal_base_url}/scheduling/clinics/"
         f"{availability_staff['clinic_a']}/agenda/day/2036-04-26/1/",
     )
-    click_to_navigate(page.locator('button[value="open"]'))
+    _open_agenda_encounter(page)
     page.locator("#template-id").select_option(data["specialty"])
     click_to_navigate(page.locator('button[value="template"]'))
     expect(page.locator("[data-scribe-capture]")).to_have_count(0)

@@ -348,6 +348,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_supportaccessgrant",
     "identity_governancenotice",
     "identity_unitgovernancechange",
+    # DG-R1 (todo 73): delegate reads shown in the patient access log.
+    "identity_delegateaccessevent",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 # Catalog-derived platform domain data has no tenant discriminator. Its archive

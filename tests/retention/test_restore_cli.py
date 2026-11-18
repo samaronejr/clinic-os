@@ -53,6 +53,10 @@ def test_restore_cli_passes_the_explicit_media_root(
             str(media),
             "--source-media-store",
             str(tmp_path / "media-source"),
+            "--object-backup",
+            str(tmp_path / "object-backup"),
+            "--key-escrow",
+            str(tmp_path / "key-escrow"),
             "--source-claim",
             str(uuid4()),
             "--target-claim",
@@ -80,6 +84,8 @@ def test_restore_cli_passes_the_explicit_media_root(
     run.assert_called_once()
     assert run.call_args.kwargs["media_store"] == media
     assert run.call_args.kwargs["source_media_store"] == tmp_path / "media-source"
+    assert run.call_args.kwargs["object_backup"] == tmp_path / "object-backup"
+    assert run.call_args.kwargs["key_escrow"] == tmp_path / "key-escrow"
 
 
 def test_acceptance_caller_and_make_recipe_forward_an_isolated_media_root(
@@ -103,7 +109,7 @@ def test_acceptance_caller_and_make_recipe_forward_an_isolated_media_root(
         argv: tuple[str, ...],
         environment: dict[str, str],
         pass_fds: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[int, str]:
         assert argv[-1] == "restore-rehearsal"
         media = Path(environment["RESTORE_MEDIA_STORE"])
         assert media.is_absolute()
@@ -130,18 +136,29 @@ def test_acceptance_caller_and_make_recipe_forward_an_isolated_media_root(
         ), log.read_text()
         arguments = log.read_text().splitlines()
         assert arguments[arguments.index("--media-store") + 1] == str(media)
+        assert arguments[arguments.index("--key-escrow") + 1] == str(
+            tmp_path / "key-escrow"
+        )
+        assert arguments[arguments.index("--object-backup") + 1] == str(
+            tmp_path / "object-backup"
+        )
+        assert "--secret-dir" not in arguments
         observed.append(media)
         Path(environment["RESTORE_EVIDENCE_PATH"]).write_bytes(b"synthetic evidence")
+        return 0, ""
 
-    monkeypatch.setattr("ops.testing.restore_rehearsal_acceptance._run", run)
+    monkeypatch.setattr("ops.testing.restore_rehearsal_acceptance._attempt", run)
     assert (
         restore_rehearsal_acceptance._run_restore(
             lease,
             lease,
             tmp_path,
-            tmp_path / "probe.json",
-            tmp_path / "attachments",
-            tmp_path / "secrets",
+            restore_rehearsal_acceptance.RestoreInputs(
+                tmp_path / "probe.json",
+                tmp_path / "attachments",
+                tmp_path / "key-escrow",
+                tmp_path / "object-backup",
+            ),
         )
         == b"synthetic evidence"
     )
@@ -175,6 +192,10 @@ def _stub_rehearsal_database_boundaries(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(restore_rehearsal, "require_owner_rls_acl_posture", Mock())
     monkeypatch.setattr(restore_rehearsal, "require_audit_chain", Mock())
     monkeypatch.setattr(restore_rehearsal, "require_key_probe", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_escrow_opens_source", Mock())
+    monkeypatch.setattr(
+        restore_rehearsal, "require_object_backup", Mock(return_value=0)
+    )
     monkeypatch.setattr(restore_rehearsal, "_probe_restored_app_role", Mock())
     monkeypatch.setattr(restore_rehearsal, "_run_verify", Mock())
     monkeypatch.setattr(
@@ -218,6 +239,18 @@ def _stub_rehearsal_database_boundaries(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
 
+def _recovery_inputs(root: Path) -> tuple[Path, Path]:
+    """Create a private KEK escrow, an object backup and an empty object store."""
+    escrow = root / "key-escrow"
+    escrow.mkdir(mode=0o700)
+    (escrow / "tenant-kek.secret").write_text("ab" * 32)
+    (escrow / "tenant-kek.secret").chmod(0o400)
+    backup = root / "object-backup"
+    backup.mkdir(mode=0o700)
+    (root / "attachments").mkdir(mode=0o700)
+    return escrow, backup
+
+
 def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -252,12 +285,12 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
     probe.write_text(
         json.dumps(
             dict.fromkeys(
-                ("organization_id", "kek", "envelope_hex", "expected_sha256"),
-                "synthetic",
+                ("organization_id", "envelope_hex", "expected_sha256"), "synthetic"
             )
         )
     )
     probe.chmod(0o600)
+    escrow, backup = _recovery_inputs(tmp_path)
     deleted: list[str] = []
     original_delete = SyntheticPurgeStorage.delete
 
@@ -273,7 +306,7 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
         argv: tuple[str, ...],
         environment: dict[str, str],
         pass_fds: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[int, str]:
         log = tmp_path / "acceptance-argv.log"
         assert (
             renewal_runner._run_bounded(
@@ -299,8 +332,9 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
             ],
         )
         assert restore_rehearsal.main() == 0
+        return 0, ""
 
-    monkeypatch.setattr("ops.testing.restore_rehearsal_acceptance._run", run)
+    monkeypatch.setattr("ops.testing.restore_rehearsal_acceptance._attempt", run)
     credential = "synthetic"
     lease = Mock(
         spec=CiDatabaseLease,
@@ -327,9 +361,9 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
             lease,
             target_lease,
             tmp_path,
-            probe,
-            tmp_path / "attachments",
-            tmp_path / "secrets",
+            restore_rehearsal_acceptance.RestoreInputs(
+                probe, tmp_path / "attachments", escrow, backup
+            ),
         )
     )
 
@@ -340,3 +374,7 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
     assert source.sql.call_args.args == (CURRENT_TOMBSTONES_SQL,)
     target.restore.assert_called_once_with(b"synthetic logical archive")
     assert evidence["archive_absent"] is True
+    assert evidence["schema_version"] == 2
+    assert evidence["key_escrow_restored"] is True
+    assert evidence["restored_secrets_absent"] is True
+    assert not (tmp_path / "secrets-restored").exists()

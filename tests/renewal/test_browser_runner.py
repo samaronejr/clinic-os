@@ -33,6 +33,11 @@ from playwright.sync_api import (
 
 from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
+from renewal.browser._navigation import (
+    RESET_WORKERS_JS,
+    SETTLE_WORKER_JS,
+    settle_service_worker,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -94,14 +99,37 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "reports",
         "device-capabilities",
         "website",
+        "resilience",
+        "support-diagnostics",
+        *runner.FLAGSHIP_SUITES,
     }
+    assert {
+        "journey-first-day",
+        "journey-consultation",
+        "journey-reception-pressure",
+        "journey-disrupted-session",
+        "journey-results",
+        "journey-financial-close",
+        "journey-network-governance",
+        "acceptance-scenarios",
+    } == runner.FLAGSHIP_SUITES
     assert "prescription-draft" in runner.FIXTURE_SUITES
+    # The flagship suites run with every synthetic provider adapter configured.
+    assert runner.FLAGSHIP_SUITES <= (
+        runner.FIXTURE_SUITES
+        & runner.VIDEO_SUITES
+        & runner.SIGNING_SUITES
+        & runner.PAYMENT_SUITES
+    )
     assert {
         "realtime",
         "agenda-slice",
         "agenda-grid",
         "reception",
         "messages",
+        "journey-first-day",
+        "journey-reception-pressure",
+        "acceptance-scenarios",
     } == runner.REALTIME_SUITES
     assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
@@ -120,6 +148,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
                 "end-to-end",
             }
         )
+        | runner.FLAGSHIP_SUITES
         == runner.VIDEO_SUITES
     )
     assert "scribe-capture" in runner.FIXTURE_SUITES
@@ -1068,6 +1097,242 @@ def test_browser_suites_navigate_only_through_the_navigation_helpers() -> None:
         )
     ]
 
+    assert offenders == []
+
+
+# Navigations whose helper brackets them with the realtime quiet (and the
+# worker settle); goto_refused never reaches a new document, so the recovery
+# day it serves accepts the refusal's own htmx errors instead.
+QUIETED_NAVIGATIONS = frozenset({"goto", "reload", "go_back", "go_forward"})
+UNQUIETED_HELPERS = frozenset({"goto_refused"})
+
+
+def test_navigation_helpers_quiet_tracked_realtime_around_each_navigation() -> None:
+    tree = ast.parse(NAVIGATION_MODULE.read_text(encoding="utf-8"))
+    checked: dict[str, tuple[bool, bool]] = {}
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name in (
+            UNQUIETED_HELPERS
+        ):
+            continue
+        calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+        starts = [
+            node.lineno
+            for node in calls
+            if _call_name(node) in QUIETED_NAVIGATIONS | {"expect_navigation"}
+        ]
+        if not starts:
+            continue
+        before = [n.lineno for n in calls if _call_name(n) == "_before_navigation"]
+        after = [n.lineno for n in calls if _call_name(n) == "_after_navigation"]
+        checked[function.name] = (
+            bool(before) and min(before) < min(starts),
+            bool(after) and max(after) > max(starts),
+        )
+
+    assert {"expect_document", "goto_settled", "reload_settled"} <= set(checked)
+    assert {name for name, ok in checked.items() if ok != (True, True)} == set()
+    # The clinic day opts every persona page in, before its first navigation.
+    day = (BROWSER_SUITES / "test_end_to_end.py").read_text(encoding="utf-8")
+    watch = next(
+        node
+        for node in ast.parse(day).body
+        if isinstance(node, ast.FunctionDef) and node.name == "watch"
+    )
+    assert "track_realtime" in {
+        _call_name(node) for node in ast.walk(watch) if isinstance(node, ast.Call)
+    }
+
+
+def _js_branch(script: str, head: str) -> str:
+    """The body of the block opened by ``head`` (which ends in ``{``)."""
+    start = script.index(head) + len(head)
+    depth = 1
+    for index in range(start, len(script)):
+        depth += {"{": 1, "}": -1}.get(script[index], 0)
+        if depth == 0:
+            return script[start:index]
+    pytest.fail(f"unbalanced block after {head!r}")
+
+
+def test_settle_requests_an_update_before_waiting_on_a_workerless_registration() -> (
+    None
+):
+    script = SETTLE_WORKER_JS
+    branch = _js_branch(script, "} else if (!active) {")
+    # Only this branch waits for updatefound, and only raced with the update
+    # it requested: a registration without a worker never waits alone.
+    assert script.count('addEventListener("updatefound"') == 1
+    assert 'addEventListener("updatefound"' in branch
+    assert "await Promise.race([found, registration.update()]);" in branch
+    # A failed install never counts as settled: every exit is a named failure.
+    assert branch.count("return {failed: ") == 3
+    assert 'return "' not in branch
+    assert "return active" not in branch
+    # Python raises it at once and resets the shared page's workers first.
+    source = inspect.getsource(settle_service_worker)
+    assert "raise SettleFailedError(" in source
+    assert source.count("_reset_workers(page)") == 2
+
+
+def test_settle_fails_a_redundant_worker_without_awaiting_it_again() -> None:
+    branch = _js_branch(SETTLE_WORKER_JS, "    if (pending) {")
+    wait = branch.index('pending.addEventListener("statechange"')
+    redundant = 'if (pending.state === "redundant") return {failed: '
+    # A worker already redundant fails before any subscription, and one that
+    # turns redundant while awaited fails right after its statechange.
+    assert branch.count(redundant) == 2
+    assert branch.index(redundant) < wait < branch.rindex(redundant)
+
+
+def test_worker_reset_unblocks_the_marked_document() -> None:
+    marker = re.search(
+        r'document\.documentElement\.hasAttribute\("([\w-]+)"\)', SETTLE_WORKER_JS
+    )
+    assert marker is not None
+    # Without the marker the next settle reads getRegistration (now none)
+    # instead of awaiting a ready that no worker will ever resolve.
+    assert (
+        f'document.documentElement.removeAttribute("{marker.group(1)}");'
+        in RESET_WORKERS_JS
+    )
+    assert "delete window.__clinicSettleWait;" in RESET_WORKERS_JS
+
+
+# The errors a refusing settle raises inside ``pytest.raises``.
+REFUSALS = frozenset(
+    {
+        "EvaluateTimeoutError",
+        "SettleTimeoutError",
+        "SettleFailedError",
+        "PlaywrightTimeoutError",
+    }
+)
+
+
+# Keywords that pass a settling helper its receiver (``goto_settled(page=...)``,
+# ``click_to_navigate(locator=...)``); a positional first argument wins.
+RECEIVER_KEYWORDS = ("page", "locator")
+
+
+def _page_root(call: ast.Call) -> str | None:
+    """The name a helper acts on: ``page`` in ``helper(page.locator(...).first)``.
+
+    The receiver is the first positional argument, else the ``page=`` or
+    ``locator=`` keyword; a locator resolves to the page it was built from.
+    """
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+    receivers = [
+        *call.args[:1],
+        *(keywords[name] for name in RECEIVER_KEYWORDS if name in keywords),
+    ]
+    if not receivers:
+        return None
+    node: ast.expr = receivers[0]
+    while isinstance(node, ast.Attribute | ast.Call | ast.Subscript):
+        node = node.func if isinstance(node, ast.Call) else node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _expects_refusal(item: ast.withitem) -> bool:
+    call = item.context_expr
+    return (
+        isinstance(call, ast.Call)
+        and _call_name(call) == "raises"
+        and bool(call.args)
+        and isinstance(call.args[0], ast.Name)
+        and call.args[0].id in REFUSALS
+    )
+
+
+def _pages_reused_after_refusal(
+    source: str, label: str, settling: frozenset[str]
+) -> list[str]:
+    """A settling helper on a page an earlier refusal already reset.
+
+    A refusing settle resets the page's workers and unmarks its document, so a
+    later helper on the same page, unless the name is rebound first, no
+    longer meets the held state the refusal did (hosted smoke 134685497901).
+    """
+    found: set[str] = set()
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        calls = [
+            call
+            for call in ast.walk(function)
+            if isinstance(call, ast.Call) and _call_name(call) in settling
+        ]
+        refused = [
+            (node.end_lineno or node.lineno, root)
+            for node in ast.walk(function)
+            if isinstance(node, ast.With)
+            and any(_expects_refusal(item) for item in node.items)
+            for call in ast.walk(node)
+            if call in calls and (root := _page_root(call)) is not None
+        ]
+        bound = [
+            (node.lineno, node.id)
+            for node in ast.walk(function)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        ]
+        for call in calls:
+            root = _page_root(call)
+            if any(
+                name == root
+                and end < call.lineno
+                and not any(
+                    rebound == root and end < line <= call.lineno
+                    for line, rebound in bound
+                )
+                for end, name in refused
+            ):
+                found.add(f"{label}:{call.lineno}: {root} reused after a refusal")
+    return sorted(found)
+
+
+# Each legal way to hand a settling helper its page: positionally, as page=,
+# or as a locator (positional or locator=) whose root is the page.
+REFUSAL_RECEIVERS = {
+    "positional page": "goto_settled(page, '/second')",
+    "positional locator.first": "click_to_navigate(page.locator('#press').first)",
+    "page= keyword": "goto_settled(page=page, url='/second')",
+    "locator= keyword": "click_to_navigate(locator=page.locator('#press').first)",
+}
+
+
+@pytest.mark.parametrize("first", sorted(REFUSAL_RECEIVERS))
+@pytest.mark.parametrize("reused", sorted(REFUSAL_RECEIVERS))
+def test_refusal_reuse_guard_catches_the_hosted_smoke_shape(
+    first: str, reused: str
+) -> None:
+    # The hosted shape (smoke 134685497901): a refusal, then another settling
+    # helper on the same page, in every receiver form on either side.
+    source = (
+        "def test_x(page):\n"
+        "    with pytest.raises(EvaluateTimeoutError):\n"
+        f"        {REFUSAL_RECEIVERS[first]}\n"
+        "    with pytest.raises(EvaluateTimeoutError):\n"
+        f"        {REFUSAL_RECEIVERS[reused]}\n"
+    )
+    lines = source.splitlines(keepends=True)
+    rebound = "".join([*lines[:3], "    page = held()\n", *lines[3:]])
+    helpers = _settling_helpers()
+    assert _pages_reused_after_refusal(source, "planted", helpers) == [
+        "planted:5: page reused after a refusal"
+    ]
+    assert _pages_reused_after_refusal(rebound, "planted", helpers) == []
+
+
+def test_no_suite_reuses_a_page_after_a_settle_refusal() -> None:
+    settling = _suite_settling()
+    offenders = [
+        offender
+        for path, source in _suite_sources().items()
+        for offender in _pages_reused_after_refusal(
+            source, str(path.relative_to(REPOSITORY)), settling[path]
+        )
+    ]
     assert offenders == []
 
 
@@ -2344,3 +2609,124 @@ def test_server_signing_key_reaches_only_synthetic_fixture_environment(
     ]
     assert leaking_paths == []
     assert fixture_secrets.REDACTED in (root / "pytest.log").read_text()
+
+
+def _flagship_root(tmp_path: Path, document: object) -> Path:
+    browser_root = _private(tmp_path / "browser")
+    suite_root = _private(browser_root / "journey-results")
+    (suite_root / runner.FLAGSHIP_REPORT).write_text(json.dumps(document))
+    return browser_root
+
+
+FLAGSHIP_ADAPTERS: dict[str, object] = {
+    "extraction": {"label": "synthetic", "detail": "fixture"},
+    "lab": {"label": "synthetic", "detail": "fixture"},
+    "runtime": {"label": "real", "detail": "clinic_app"},
+}
+FLAGSHIP_LEGS: list[dict[str, str]] = [
+    {"capability": name, "status": "BLOCKED-ON-EG"}
+    for name in ("attachment_scanning", "email", "llm_inference", "rnds")
+]
+FLAGSHIP_DOCUMENT: dict[str, object] = {
+    "suite": "journey-results",
+    "adapters": FLAGSHIP_ADAPTERS,
+    "blocked_on_eg": FLAGSHIP_LEGS,
+    "covers": [{"item": "J5.received", "branch": "happy"}],
+}
+SENTINEL_RECEIPT: JsonObject = {
+    "clean": True,
+    "findings": [],
+    "scanned": {"logs": 3},
+}
+
+
+def test_flagship_report_binds_adapters_legs_and_the_sentinel_scan(
+    tmp_path: Path,
+) -> None:
+    browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
+    bound = runner._flagship_report(browser_root, "journey-results", SENTINEL_RECEIPT)
+    assert bound["blocked_on_eg"] == FLAGSHIP_DOCUMENT["blocked_on_eg"]
+    assert bound["sentinel_scan"] == {
+        "clean": True,
+        "findings": 0,
+        "scanned": {"logs": 3},
+        "receipt": "sentinel-runtime.json",
+    }
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"suite": "journey-first-day"}, "names another suite"),
+        ({"adapters": {}}, "labels no adapter"),
+        (
+            {"adapters": {**FLAGSHIP_ADAPTERS, "lab": {"label": "sandbox"}}},
+            "real/synthetic label",
+        ),
+        ({"blocked_on_eg": []}, "asserts no BLOCKED-ON-EG"),
+        (
+            {
+                "blocked_on_eg": [
+                    *FLAGSHIP_LEGS[:3],
+                    {"capability": "rnds", "status": "activated"},
+                ]
+            },
+            "not blocked",
+        ),
+        # Mutations of an otherwise valid multi-entry report.
+        ({"blocked_on_eg": FLAGSHIP_LEGS[:3]}, "leg set differs"),
+        (
+            {
+                "adapters": {
+                    key: value
+                    for key, value in FLAGSHIP_ADAPTERS.items()
+                    if key != "lab"
+                }
+            },
+            "adapter set differs",
+        ),
+        (
+            {
+                "blocked_on_eg": [
+                    *FLAGSHIP_LEGS,
+                    {"capability": "video", "status": "BLOCKED-ON-EG"},
+                ]
+            },
+            "leg set differs",
+        ),
+        (
+            {
+                "adapters": {
+                    **FLAGSHIP_ADAPTERS,
+                    "psp": {"label": "synthetic", "detail": "x"},
+                }
+            },
+            "adapter set differs",
+        ),
+    ],
+)
+def test_flagship_report_refuses_a_live_or_unlabelled_claim(
+    tmp_path: Path, change: dict[str, object], message: str
+) -> None:
+    browser_root = _flagship_root(tmp_path, {**FLAGSHIP_DOCUMENT, **change})
+    with pytest.raises(runner.RenewalRunnerError, match=message):
+        runner._flagship_report(browser_root, "journey-results", SENTINEL_RECEIPT)
+
+
+def test_every_flagship_suite_pins_its_exact_adapters_and_legs() -> None:
+    assert set(runner.FLAGSHIP_EXPECTED) == runner.FLAGSHIP_SUITES
+    for adapters, legs in runner.FLAGSHIP_EXPECTED.values():
+        assert adapters
+        assert legs
+
+
+def test_flagship_report_requires_its_file_and_the_sentinel_scan(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(runner.RenewalRunnerError, match="wrote no"):
+        runner._flagship_report(
+            _private(tmp_path / "empty"), "journey-results", SENTINEL_RECEIPT
+        )
+    browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
+    with pytest.raises(runner.RenewalRunnerError, match="sentinel scan"):
+        runner._flagship_report(browser_root, "journey-results", None)

@@ -47,6 +47,7 @@ PAGES: Final = (
     "/brand/",
     "/help/",
     "/help/book-appointment/",
+    "/status/",
 )
 LCP_JS: Final = """() => new Promise((resolve) => {
   const navigation = performance.getEntriesByType('navigation')[0];

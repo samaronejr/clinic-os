@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import errno
 import os
+import select
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -25,10 +25,6 @@ from ops.testing.browser_totp_helpers import HelperSequence
 from browser.browser_server_fakes import RecordingEffects
 
 TOKEN: Final = "9f2c0f1e5b7a4d3c8e6f1a2b3c4d5e6f"  # noqa: S105 - synthetic session token, not a credential.
-IGNORE_TERM: Final = (
-    "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-    "time.sleep(120)"
-)
 REVERSE_TEARDOWN: Final = ("runner_remove", "stop_master", "release_database")
 
 
@@ -40,11 +36,14 @@ def _alive(pid: int) -> bool:
     return True
 
 
-def _spawn(code: str, log: Path) -> supervisor.SupervisedMaster:
+def _spawn(
+    code: str, log: Path, *, pass_fds: tuple[int, ...] = ()
+) -> supervisor.SupervisedMaster:
     with log.open("wb") as stream:
         process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
             [sys.executable, "-c", code],
             start_new_session=True,
+            pass_fds=pass_fds,
             stdout=stream,
             stderr=subprocess.STDOUT,
         )
@@ -124,15 +123,29 @@ def test_term_resistant_master_is_escalated_to_kill_and_reaped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(supervisor, "TERMINATION_GRACE_SECONDS", 1)
-    master = _spawn(IGNORE_TERM, tmp_path / "kill.log")
-    pid = master.pid
-    time.sleep(0.5)
+    read_fd, write_fd = os.pipe()
+    with os.fdopen(read_fd, "rb") as ready:
+        try:
+            master = _spawn(
+                "import os, signal; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                f"os.write({write_fd}, b'R'); signal.pause()",
+                tmp_path / "kill.log",
+                pass_fds=(write_fd,),
+            )
+        finally:
+            os.close(write_fd)
+        try:
+            assert select.select([ready], [], [], 10)[0]
+            assert ready.read(1) == b"R"
+            pid = master.pid
 
-    master.terminate()
+            master.terminate()
 
-    assert master.process.poll() is not None
-    assert master.process.returncode == -signal.SIGKILL
-    assert not _alive(pid)
+            assert master.process.poll() is not None
+            assert master.process.returncode == -signal.SIGKILL
+            assert not _alive(pid)
+        finally:
+            master.terminate()
 
 
 def test_terminate_is_idempotent_and_leaves_no_zombie(tmp_path: Path) -> None:

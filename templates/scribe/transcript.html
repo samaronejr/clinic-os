@@ -26,7 +26,7 @@
       <input type="hidden" name="session_id" value="{{ recording.pk }}">
       <div class="actions">
         <button class="button button--secondary" name="action" value="refresh" type="submit">{% trans "Refresh transcript" %}</button>
-        {% if transcript.state != "final" %}<button class="button button--secondary" name="action" value="queue" type="submit"{% if not available %} disabled{% endif %}>{% trans "Queue pending transcription" %}</button>{% endif %}
+        {% if transcript.state != "final" and available %}<button class="button button--secondary" name="action" value="queue" type="submit">{% trans "Queue pending transcription" %}</button>{% endif %}
       </div>
     </form>
     <ol class="record-review" aria-label="{% trans 'Transcript segments' %}">

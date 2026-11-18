@@ -51,6 +51,12 @@ arguments fail closed (`False`). The injected `environment` and
 `os.environ` are each snapshotted once, so a caller mutating the mapping
 mid-call cannot turn the runtime check into its non-live no-op.
 
+The selected release profile (`CLINIC_RELEASE_PROFILE`, default `core-live`
+in live mode) must also include the key in its provider bundle. An activated
+provider outside that bundle remains unavailable. Activation version 2 binds
+the profile and rechecks its signed external records at every live boundary;
+removing the profile variable cannot downgrade a broader active profile.
+
 **BLOCKED-ON-EG.** A genuine `is_live(...) is True` cannot be produced
 today: the approved managed secret backend (task 43 / EG) does not exist
 yet, so the unpatched live policy rejects every current environment and

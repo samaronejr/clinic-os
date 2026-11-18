@@ -87,7 +87,7 @@ from config.settings.database import (
     resolve_app_database_config,
 )
 
-from ops.release import readiness
+from ops.release import profile_records, profiles, readiness
 
 DATA_MODES: Final = frozenset({SYNTHETIC_DATA_MODE, LIVE_DATA_MODE})
 LIVE_SETTINGS_MODULES: Final = frozenset(
@@ -96,7 +96,7 @@ LIVE_SETTINGS_MODULES: Final = frozenset(
 ACTIVATION_STATE_ENV: Final = "CLINIC_LIVE_ACTIVATION_STATE"
 ACTIVATION_APPROVAL_ENV: Final = "CLINIC_LIVE_ACTIVATION_APPROVAL"
 LIVE_REHEARSAL_ENV: Final = "CLINIC_LIVE_ACTIVATION_REHEARSAL"
-RECORD_VERSION: Final = 1
+RECORD_VERSION: Final = 2
 RECORD_FIELDS: Final = frozenset(
     {
         "version",
@@ -111,6 +111,7 @@ RECORD_FIELDS: Final = frozenset(
         "evidence_root",
         "evidence_manifest_sha256",
         "storage",
+        "profile",
     }
 )
 STORAGE_FIELDS: Final = frozenset(
@@ -143,6 +144,7 @@ SYNTHETIC_ONLY_ENV_VARS: Final = (
     "INTEROP_RNDS_HOMOLOGATION",
     "COMMS_REVOKED_REMINDER_TEMPLATES",
     "CELERY_TASK_ALWAYS_EAGER",
+    "CLINIC_SYNTHETIC_FAULTS",
 )
 FALSE_TOKENS: Final = frozenset({"0", "false", "no", "off"})
 
@@ -852,6 +854,8 @@ def _binding_findings(
         findings.append("activation record environment is not 'live'")
     if record.get("system") != readiness.SYSTEM_IDENTIFIER:
         findings.append("activation record system does not match")
+    if record.get("profile") != _profile_name(environment):
+        findings.append("activation record release profile does not match")
     approval = record.get("approval_reference")
     if not isinstance(approval, str) or not approval.strip():
         findings.append("activation record lacks an approval reference")
@@ -958,11 +962,7 @@ def _live_findings(environment: Mapping[str, str]) -> list[str]:
         else:
             findings.extend(activation_record_findings(record, environment, _now()))
     if not findings:
-        report = readiness.evaluate_evidence(
-            Path(environment[readiness.EVIDENCE_ROOT_ENV]),
-            LIVE_DATA_MODE,
-            environment[readiness.RELEASE_ID_ENV],
-        )
+        report = _release_readiness(environment)
         if not report["ready"]:
             findings.append(
                 "release evidence is not ready for live "
@@ -970,6 +970,31 @@ def _live_findings(environment: Mapping[str, str]) -> list[str]:
                 f"{len(report['errors'])} errors)"
             )
     return findings
+
+
+def _profile_name(environment: Mapping[str, str]) -> str | None:
+    """Rehearsals may exercise the legacy checker but never authorize startup."""
+    return environment.get(profiles.PROFILE_ENV) or (
+        None
+        if _env_flag_set(environment, LIVE_REHEARSAL_ENV)
+        else profiles.DEFAULT_LIVE_PROFILE
+    )
+
+
+def _release_readiness(environment: Mapping[str, str]) -> dict[str, Any]:
+    """Keep profile checks mandatory for every non-rehearsal live activation."""
+    root = Path(environment.get(readiness.EVIDENCE_ROOT_ENV, ""))
+    release_id = environment.get(readiness.RELEASE_ID_ENV, "")
+    profile_name = _profile_name(environment)
+    if profile_name is None:
+        return readiness.evaluate_evidence(root, LIVE_DATA_MODE, release_id)
+    return readiness.evaluate_release(
+        root,
+        LIVE_DATA_MODE,
+        release_id,
+        profile_name=profile_name,
+        environment=environment,
+    )
 
 
 def require_live_activation(environment: Mapping[str, str]) -> str:
@@ -1395,7 +1420,6 @@ def _live_preflight(environment: Mapping[str, str]) -> Report:
             f"{ACTIVATION_APPROVAL_ENV} is required to authorize live activation"
         )
     root = Path(environment.get(readiness.EVIDENCE_ROOT_ENV, ""))
-    release_id = environment.get(readiness.RELEASE_ID_ENV, "").strip()
     if not root.is_dir():
         return 2, {
             "operation": "preflight",
@@ -1408,7 +1432,7 @@ def _live_preflight(environment: Mapping[str, str]) -> Report:
                 "directory for live preflight"
             ),
         }
-    report = readiness.evaluate_evidence(root, LIVE_DATA_MODE, release_id)
+    report = _release_readiness(environment)
     state = environment.get(ACTIVATION_STATE_ENV, "")
     if state and Path(state).is_absolute():
         record, error = _read_record(Path(state))
@@ -1477,13 +1501,15 @@ def _activate_report(environment: Mapping[str, str]) -> Report:
     root = Path(environment.get(readiness.EVIDENCE_ROOT_ENV, ""))
     release_id = environment.get(readiness.RELEASE_ID_ENV, "").strip()
     if root.is_dir() and release_id:
-        report = readiness.evaluate_evidence(root, LIVE_DATA_MODE, release_id)
+        report = _release_readiness(environment)
         if not report["ready"]:
             findings.append(
                 "release evidence is not ready for live "
                 f"({len(report['missing'])} unsatisfied capabilities, "
                 f"{len(report['errors'])} errors)"
             )
+        if report["ready"] and _profile_name(environment) is not None:
+            findings.extend(profile_records.owner_findings(environment))
     state_path = Path(environment.get(ACTIVATION_STATE_ENV, "activation.json"))
     existing: dict[str, Any] | None = None
     if state_path.exists():
@@ -1498,6 +1524,11 @@ def _activate_report(environment: Mapping[str, str]) -> Report:
             "operation": "activate",
             "activated": False,
             "findings": findings,
+            "missing_records": (
+                report.get("missing_records", [])
+                if root.is_dir() and release_id
+                else []
+            ),
             "disclaimer": DISCLAIMER,
         }
     if existing is not None and existing.get("status") == "active":
@@ -1571,6 +1602,7 @@ def _write_activation(
         "release_id": release_id,
         "environment": LIVE_DATA_MODE,
         "system": readiness.SYSTEM_IDENTIFIER,
+        "profile": _profile_name(environment),
         "approval_reference": approval,
         "activated_at": _now().isoformat(),
         "disabled_at": None,

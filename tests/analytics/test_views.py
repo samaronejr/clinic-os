@@ -12,7 +12,12 @@ import pytest
 from apps.analytics.catalog import METRICS
 from apps.analytics.contracts import AnalyticsAccessDeniedError, Query
 from apps.analytics.models import ReadModelRefresh, SavedReport
-from apps.analytics.services import load_report, query_metric, save_report
+from apps.analytics.services import (
+    load_report,
+    query_metric,
+    refresh_metric,
+    save_report,
+)
 from apps.audit.models import AuditEvent
 from django.test import Client
 from django.urls import reverse
@@ -22,9 +27,13 @@ from billing.journal_support import finance_scope, finance_setup, invoice_terms
 from identity.lifecycle_test_support import verified_client
 from identity.permission_support import owner_context, permission_actor
 from patient_service_support import runtime_role
+from renewal.report_descriptor import REPORT_DAY_DESCRIPTOR, governed_report
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from uuid import UUID
+
+    from apps.analytics.contracts import Result
 
     from billing.journal_support import FinanceSetup
 
@@ -261,3 +270,30 @@ def test_native_null_and_partial_do_not_present_invented_values(
     assert f'data-report-state="{state}"'.encode() in response.content
     assert response.context["result"].rows[0]["value"] is None
     (tmp_path / f"{state}.html").write_bytes(response.content)
+
+
+@pytest.mark.parametrize("mutation", ["none", "window", "metric"])
+def test_the_rendered_descriptor_exposes_a_wrong_metric_or_window(
+    finance_setup: FinanceSetup,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    # The resilience reports case trusts governed_report; a refresh that ran
+    # another metric or window must render a descriptor that check rejects.
+    def mutated(*, clinic_id: UUID, query: Query, command_id: UUID) -> Result:
+        if mutation == "window":
+            day = timedelta(days=1)
+            query = replace(query, start=query.start + day, end=query.end + day)
+        elif mutation == "metric":
+            query = replace(query, metric_id="waiting_time")
+        return refresh_metric(clinic_id=clinic_id, query=query, command_id=command_id)
+
+    monkeypatch.setattr("apps.analytics.views.refresh_metric", mutated)
+    client = verified_client(finance_setup.graph)
+    url = reverse("analytics:reports", args=(finance_setup.clinic_id,))
+    with runtime_role():
+        response = client.post(url, FIELDS | {"action": "refresh"})
+    assert response.status_code == 200
+    report = governed_report(response.content.decode())
+    descriptor = {key: report[key] for key in REPORT_DAY_DESCRIPTOR}
+    assert (descriptor == REPORT_DAY_DESCRIPTOR) is (mutation == "none")

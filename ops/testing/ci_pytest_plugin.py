@@ -40,7 +40,12 @@ import pytest
 from psycopg import sql
 
 from ops.testing.ci_pytest_collection import serial_collection_scope
-from ops.testing.ci_pytest_partition import SHARDS, partition, public_nodeid
+from ops.testing.ci_pytest_partition import (
+    SHARDS,
+    load_durations,
+    partition,
+    public_nodeid,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -282,7 +287,7 @@ class CiPhase:
         self.worker = worker
         self.shard = shard
         self.guard = ServerStateGuard(record, worker) if guard else None
-        self.reports: dict[str, list[dict[str, str]]] = {}
+        self.reports: dict[str, list[dict[str, str | float]]] = {}
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(
@@ -311,7 +316,9 @@ class CiPhase:
                 "serial": sorted(classified),
             }
             if self.shard is None
-            else partition(reference, classified)[self.shard]
+            else partition(reference, classified, durations=load_durations())[
+                self.shard
+            ]
         )
         live = [item.nodeid for item in items]
         _write_json(
@@ -339,11 +346,19 @@ class CiPhase:
             items[:] = selected
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
-        """Record every report the reporting process sees (xdist controller)."""
+        """Record every report the reporting process sees (xdist controller).
+
+        The duration (seconds) is what the committed duration table sums per
+        file to weight the shards (ops.testing.ci_pytest_durations).
+        """
         if self.worker != "main":
             return
         self.reports.setdefault(report.nodeid, []).append(
-            {"when": report.when, "outcome": report.outcome}
+            {
+                "when": report.when,
+                "outcome": report.outcome,
+                "duration": report.duration,
+            }
         )
 
     @pytest.hookimpl(wrapper=True)

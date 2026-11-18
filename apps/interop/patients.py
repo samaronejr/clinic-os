@@ -17,14 +17,14 @@ from uuid import UUID
 
 from django.db import transaction
 
-from apps.audit.services import record_phase1_event
 from apps.core.idempotency import create_fingerprint
 from apps.identity.current_context import current_actor_username
 from apps.intake.demographics import (
-    _append_identifier,
-    _apply_demographics,
     _DemographicsMutation,
+    _write_demographics,
+    _write_identifier,
 )
+from apps.intake.duplicate_detection import _write_duplicate_candidates
 from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.intake.patient_name_index import name_indexes
 from apps.interop.access import Code, ImportConflictError
@@ -43,6 +43,7 @@ class ImportedPatient:
     patient_id: UUID
     enrollment_id: UUID
     identifier_count: int
+    audit_events: tuple[tuple[str, UUID], ...]
 
 
 def import_key(job_id: UUID, row: int) -> UUID:
@@ -54,7 +55,7 @@ def import_key(job_id: UUID, row: int) -> UUID:
 def register(
     *, clinic: Clinic, actor_id: UUID, job_id: UUID, row: PatientRow
 ) -> ImportedPatient:
-    """Create the registry identity, first demographics version and identifiers."""
+    """Prepare identity rows and ordered audits for the caller's transaction."""
     registry_name = row.legal_name or row.social_name or ""
     fingerprint = create_fingerprint(
         "patient",
@@ -84,20 +85,23 @@ def register(
             idempotency_key=key,
             create_fingerprint=fingerprint,
         )
-        record_phase1_event(
-            "intake.patient.created",
-            clinic_id=clinic.pk,
-            affected_record_id=patient.pk,
-        )
+        audits = [("intake.patient.created", patient.pk)]
         # Identifiers first: the first duplicate hint intake records for this
         # identity then carries the exact-identifier signal, not only a prefix.
         for kind, value in row.identifiers:
-            _append_identifier(
+            identifier = _write_identifier(
                 clinic=clinic,
                 patient_id=patient.pk,
                 kind=kind,
                 normalized=value,
                 issuer=None,
+            )
+            audits.append(("intake.identifier.saved", identifier.identifier_id))
+            audits.extend(
+                ("intake.duplicate.detected", candidate_id)
+                for candidate_id in _write_duplicate_candidates(
+                    clinic_id=clinic.pk, patient_id=patient.pk
+                )
             )
         changes: dict[str, object] = {
             "legal_name": row.legal_name or "",
@@ -106,7 +110,7 @@ def register(
         }
         if row.sex_at_birth is not None:
             changes["sex_at_birth"] = row.sex_at_birth
-        _apply_demographics(
+        demographics = _write_demographics(
             _DemographicsMutation(
                 clinic=clinic,
                 enrollment=enrollment,
@@ -119,8 +123,16 @@ def register(
                 source="staff_recorded",
             )
         )
+        audits.append(("intake.demographics.saved", demographics.pk))
+        audits.extend(
+            ("intake.duplicate.detected", candidate_id)
+            for candidate_id in _write_duplicate_candidates(
+                clinic_id=clinic.pk, patient_id=patient.pk
+            )
+        )
     return ImportedPatient(
         patient_id=patient.pk,
         enrollment_id=enrollment.pk,
         identifier_count=len(row.identifiers),
+        audit_events=tuple(audits),
     )

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load i18n static clinic_locale tz order_labels %}
+{% load i18n static clinic_locale tz order_labels ai_availability %}
 {% block title %}{% trans "Orders and results" %} · Clinic Ops{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/clinic-os-orders.css' %}">
@@ -27,6 +27,7 @@
 </aside>
 <section aria-labelledby="review-heading">
   <h2 id="review-heading">{% trans "Matched results awaiting accountable review" %}</h2>
+  {% ai_enabled "extraction" as extraction_enabled %}
   {% for row, correction_form in result_forms %}
   <article class="panel" aria-labelledby="review-{{ row.match.id }}" data-result-state="{% if row.patient_released %}released{% elif row.acknowledged %}acknowledged{% else %}matched{% endif %}">
     <h3 id="review-{{ row.match.id }}">{{ row.match.order.enrollment.patient.full_name }}</h3>
@@ -37,10 +38,12 @@
       {% csrf_token %}<input type="hidden" name="version_id" value="{{ row.match.version.id }}">
       <button class="button--secondary" type="submit">{% trans "Download original source" %}</button>
     </form>
+    {% if extraction_enabled %}
     <form method="post" action="{% url 'ai:extraction' clinic.id %}">
       {% csrf_token %}<input type="hidden" name="action" value="start"><input type="hidden" name="result_version_id" value="{{ row.match.version.id }}">
       <button class="button--secondary" type="submit">{% trans "Review extraction candidates" %}</button>
     </form>
+    {% endif %}
     {% if not row.acknowledged %}
     <form method="post" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
       {% csrf_token %}<input type="hidden" name="action" value="acknowledge"><input type="hidden" name="version_id" value="{{ row.match.version.id }}">

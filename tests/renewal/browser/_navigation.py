@@ -82,12 +82,18 @@ is safe once the context has settled (above).
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+import weakref
+from contextlib import ExitStack, contextmanager, suppress
 from typing import TYPE_CHECKING, Final, Literal
 
 from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._page_wait import (
+    EvaluateTimeoutError,
+    click_when_hittable,
+    evaluate_js,
+)
 
 if TYPE_CHECKING:
     import re
@@ -102,24 +108,120 @@ if TYPE_CHECKING:
 SETTLE_WORKER_JS: Final = """async () => {
   if (!("serviceWorker" in navigator)) return "unsupported";
   const container = navigator.serviceWorker;
-  const registration = document.documentElement.hasAttribute("data-service-worker")
+  const registered = document.documentElement.hasAttribute("data-service-worker");
+  window.__clinicSettleWait = registered ? "ready" : "getRegistration";
+  const registration = registered
     ? await container.ready : await container.getRegistration();
   if (!registration) return "unregistered";
+  let updated = false;
   for (;;) {
     const active = registration.active;
     const pending = registration.installing || registration.waiting ||
       (active && active.state !== "activated" ? active : null);
     if (pending) {
+      const which = registration.installing === pending ? "installing"
+        : registration.waiting === pending ? "waiting" : "active";
+      // A redundant worker never changes state again: fail, named, at once.
+      const ended = which + " worker ended redundant";
+      if (pending.state === "redundant") return {failed: ended, message: ""};
+      window.__clinicSettleWait = "statechange of " + which + " " + pending.state;
       await new Promise((resolve) =>
         pending.addEventListener("statechange", resolve, {once: true}));
+      if (pending.state === "redundant") return {failed: ended, message: ""};
     } else if (!active) {
-      await new Promise((resolve) =>
+      // No worker at all: an earlier install ended redundant. Nothing fires
+      // updatefound until an update check, so request one. Its install shows
+      // as updatefound (then statechange, above); an update that installs
+      // nothing, rejects, or ends redundant again fails now, named.
+      if (updated) {
+        return {failed: "install ended redundant after update()", message: ""};
+      }
+      updated = true;
+      window.__clinicSettleWait = "update() (no active worker)";
+      const found = new Promise((resolve) =>
         registration.addEventListener("updatefound", resolve, {once: true}));
+      try {
+        await Promise.race([found, registration.update()]);
+      } catch (error) {
+        return {failed: "update() rejected",
+          message: String((error && error.message) || error)};
+      }
+      if (!registration.installing && !registration.waiting && !registration.active) {
+        return {failed: "update() installed no worker", message: ""};
+      }
     } else {
+      delete window.__clinicSettleWait;
       return active.state;
     }
   }
 }"""
+SETTLE_WAIT_JS: Final = "() => String(window.__clinicSettleWait || 'nothing')"
+# Bounds the one read that names a stuck settle; never a wait for the page.
+SETTLE_PROBE_MS: Final = 2_000
+# Also unmarks the current document: a marked document's settle awaits
+# ``ready``, which no worker resolves once its registration is gone, so the
+# next test's first navigation would block on it. Unmarked, that settle reads
+# ``getRegistration`` (none, "unregistered"), the navigation proceeds, and the
+# new document registers and settles a fresh worker.
+RESET_WORKERS_JS: Final = """async () => {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  document.documentElement.removeAttribute("data-service-worker");
+  delete window.__clinicSettleWait;
+  return registrations.length;
+}"""
+# Installed before a tracked page's first document (``track_realtime``).
+# Tracks the htmx requests of realtime-refreshed regions (an ``rt:`` event in
+# ``hx-trigger``) by request identity, not by element. A request joins at
+# ``htmx:beforeSend``, dispatched on the still-attached region with the
+# request's ``detail.xhr``. It leaves at that XMLHttpRequest's own ``loadend``,
+# which fires after load, error, abort and timeout alike. ``htmx:afterRequest``
+# cannot drain it: after an outerHTML swap, htmx 2.0.10 dispatches it on the
+# replaced, detached region (never reaching ``document``) and again on the
+# first surviving ancestor, whose ``detail.elt`` is that ancestor, not the
+# region. ``quiet()`` cancels every later trigger at ``htmx:confirm`` (before
+# ``hx-sync`` could abort the request in flight) and resolves once none is in
+# flight: a navigation started then cuts off no refresh, so Firefox and WebKit
+# log no htmx abort or send error.
+REALTIME_TRACKER_JS: Final = """(() => {
+  const realtime = (element) => element instanceof Element &&
+    /(^|[\\s,])rt:/.test(element.getAttribute("hx-trigger") || "");
+  const inflight = new Set();
+  let frozen = false;
+  let waiters = [];
+  const drained = () => {
+    if (inflight.size !== 0) return;
+    waiters.forEach((resolve) => resolve(true));
+    waiters = [];
+  };
+  document.addEventListener("htmx:confirm", (event) => {
+    if (frozen && realtime(event.detail.elt)) event.preventDefault();
+  }, true);
+  document.addEventListener("htmx:beforeSend", (event) => {
+    const request = event.detail.xhr;
+    if (!realtime(event.detail.elt) || !request || inflight.has(request)) return;
+    inflight.add(request);
+    request.addEventListener("loadend", () => {
+      inflight.delete(request);
+      drained();
+    }, {once: true});
+  }, true);
+  window.__clinicRealtime = {
+    quiet() {
+      frozen = true;
+      return inflight.size === 0
+        ? true : new Promise((resolve) => waiters.push(resolve));
+    },
+    resume() { frozen = false; },
+  };
+})();"""
+QUIET_REALTIME_JS: Final = (
+    "() => window.__clinicRealtime ? window.__clinicRealtime.quiet() : true"
+)
+RESUME_REALTIME_JS: Final = (
+    "() => { if (window.__clinicRealtime) window.__clinicRealtime.resume(); }"
+)
+_REALTIME_PAGES: Final[weakref.WeakSet[Page]] = weakref.WeakSet()
 
 type LoadState = Literal["commit", "domcontentloaded", "load", "networkidle"]
 type UrlMatch = str | re.Pattern[str] | Callable[[str], bool]
@@ -140,7 +242,82 @@ def settle_service_worker(page: Page, *, timeout: float | None = None) -> str:
         return "not applicable"
     if options.get("serviceWorkers") == "block":
         return "not applicable"
-    return str(evaluate_js(page, SETTLE_WORKER_JS, timeout=timeout))
+    try:
+        settled = evaluate_js(page, SETTLE_WORKER_JS, timeout=timeout)
+    except EvaluateTimeoutError as error:
+        waiting = _settle_wait(page)
+        _reset_workers(page)
+        raise SettleTimeoutError(waiting) from error
+    if isinstance(settled, dict):
+        _reset_workers(page)
+        raise SettleFailedError(str(settled["failed"]), str(settled["message"]))
+    return str(settled)
+
+
+class SettleFailedError(PlaywrightTimeoutError):
+    """No worker installed even after ``registration.update()``; never settled.
+
+    A worker that failed to install breaks the service-worker contract
+    (static/AGENTS.md), so it is a failure, raised as soon as it is known.
+    """
+
+    def __init__(self, state: str, message: str) -> None:
+        detail = f": {message}" if message else ""
+        super().__init__(f"service worker failed to install: {state}{detail}")
+        self.state = state
+
+
+def _reset_workers(page: Page) -> None:
+    """Unregister ``page``'s workers after a settle failure, in one bounded probe.
+
+    The session shares one page; a registration left without a worker would
+    fail every later test's first navigation. Unregistered, the next document
+    registers and installs a fresh worker, which settles or fails on its own.
+    """
+    with suppress(EvaluateTimeoutError):
+        evaluate_js(page, RESET_WORKERS_JS, timeout=SETTLE_PROBE_MS)
+
+
+class SettleTimeoutError(EvaluateTimeoutError):
+    """The worker did not settle by the deadline; names what it waited on."""
+
+    def __init__(self, waiting: str) -> None:
+        PlaywrightTimeoutError.__init__(
+            self, f"service worker did not settle: waiting on {waiting}"
+        )
+        self.waiting = waiting
+
+
+def _settle_wait(page: Page) -> str:
+    """The branch the stuck settle waits in, or that the page did not answer."""
+    try:
+        return str(evaluate_js(page, SETTLE_WAIT_JS, timeout=SETTLE_PROBE_MS))
+    except EvaluateTimeoutError:
+        return "an answer from the page itself (it did not respond)"
+
+
+def track_realtime(page: Page) -> Page:
+    """Quiet ``page``'s realtime htmx refreshes around every helper navigation.
+
+    Call before the page's first navigation. A suite that fails on console
+    errors needs it on pages whose realtime regions can refresh mid-navigation.
+    """
+    page.add_init_script(REALTIME_TRACKER_JS)
+    _REALTIME_PAGES.add(page)
+    return page
+
+
+def _before_navigation(page: Page, timeout: float | None) -> None:
+    if page in _REALTIME_PAGES:
+        evaluate_js(page, QUIET_REALTIME_JS, timeout=timeout)
+    settle_service_worker(page, timeout=timeout)
+
+
+def _after_navigation(page: Page, timeout: float | None) -> None:
+    settle_service_worker(page, timeout=timeout)
+    if page in _REALTIME_PAGES:
+        # A new document starts unfrozen; a surviving one refreshes again.
+        evaluate_js(page, RESUME_REALTIME_JS, timeout=timeout)
 
 
 @contextmanager
@@ -150,18 +327,26 @@ def expect_document(
     url: UrlMatch | None = None,
     wait_until: LoadState | None = None,
     timeout: float | None = None,
+    new_document: bool = False,
 ) -> Iterator[EventInfo[Response]]:
     """``page.expect_navigation`` entered only after the worker settled.
 
     ``timeout`` bounds each of the two waits; ``None`` uses the page's
-    default timeout.
+    default timeout. ``new_document`` also awaits the page ``load`` of the
+    document that replaces this one: a same-document step that the page
+    answers with ``location.reload()`` (htmx's Back on a history-cache miss)
+    reports its navigation first, and settling then would evaluate in the
+    document the reload is destroying ("Execution context was destroyed").
     """
-    settle_service_worker(page, timeout=timeout)
-    with page.expect_navigation(
-        url=url, wait_until=wait_until, timeout=timeout
-    ) as navigation:
-        yield navigation
-    settle_service_worker(page, timeout=timeout)
+    _before_navigation(page, timeout)
+    with ExitStack() as stack:
+        if new_document:
+            stack.enter_context(page.expect_event("load", timeout=timeout))
+        with page.expect_navigation(
+            url=url, wait_until=wait_until, timeout=timeout
+        ) as navigation:
+            yield navigation
+    _after_navigation(page, timeout)
 
 
 def goto_settled(
@@ -172,9 +357,9 @@ def goto_settled(
     timeout: float | None = None,
 ) -> Response | None:
     """``page.goto`` between two worker settles (see the module docstring)."""
-    settle_service_worker(page, timeout=timeout)
+    _before_navigation(page, timeout)
     response = page.goto(url, wait_until=wait_until, timeout=timeout)
-    settle_service_worker(page, timeout=timeout)
+    _after_navigation(page, timeout)
     return response
 
 
@@ -245,25 +430,25 @@ def reload_settled(
     timeout: float | None = None,
 ) -> Response | None:
     """``page.reload`` between two worker settles."""
-    settle_service_worker(page, timeout=timeout)
+    _before_navigation(page, timeout)
     response = page.reload(wait_until=wait_until, timeout=timeout)
-    settle_service_worker(page, timeout=timeout)
+    _after_navigation(page, timeout)
     return response
 
 
 def go_back_settled(page: Page, *, timeout: float | None = None) -> Response | None:
     """``page.go_back`` between two worker settles."""
-    settle_service_worker(page, timeout=timeout)
+    _before_navigation(page, timeout)
     response = page.go_back(timeout=timeout)
-    settle_service_worker(page, timeout=timeout)
+    _after_navigation(page, timeout)
     return response
 
 
 def go_forward_settled(page: Page, *, timeout: float | None = None) -> Response | None:
     """``page.go_forward`` between two worker settles."""
-    settle_service_worker(page, timeout=timeout)
+    _before_navigation(page, timeout)
     response = page.go_forward(timeout=timeout)
-    settle_service_worker(page, timeout=timeout)
+    _after_navigation(page, timeout)
     return response
 
 

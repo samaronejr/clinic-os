@@ -16,7 +16,13 @@ from uuid import UUID
 
 from django.conf import settings
 
-from apps.comms.adapters import PermanentSendError, SendResult, TransientSendError
+from apps.comms.adapters import (
+    AmbiguousSendError,
+    PermanentSendError,
+    SendResult,
+    TransientSendError,
+)
+from apps.core.fault_injection import injected_fault
 from apps.teleconsult.capabilities import room_capability
 from apps.teleconsult.models import TeleconsultCredential, TeleconsultRoom
 from apps.teleconsult.video_providers import (
@@ -87,6 +93,12 @@ class SyntheticRoomAdapter:
             raise PermanentSendError
         # Explicit fault injection only on the already-enabled synthetic path.
         if getattr(settings, "TELECONSULT_SYNTHETIC_FAIL", False):
+            raise TransientSendError
+        # Degraded-mode drills: an unknown outcome is held for reconciliation.
+        drill = injected_fault("video")
+        if drill == "ambiguous":
+            raise AmbiguousSendError
+        if drill is not None:
             raise TransientSendError
         provider = SyntheticVideoProvider()
         if isinstance(prepared, PreparedRevoke):

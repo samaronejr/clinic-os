@@ -7,7 +7,9 @@ the organization in every subscription state, including `offboarded`. This
 version is frozen: its relation set lives in
 `apps/interop/migrations/_export_v4_sql.py` (the export v3 set plus todo 68's
 RNDS submission log) and a new relation needs a new export version. Exports
-built after migration `identity.0051_enterprise_governance` are v4; export v3
+built after migration `identity.0051_enterprise_governance` and before
+`identity.0052_delegate_access_log` are v4 ([export v5](export-v5.md) adds todo
+73's delegate-access log); export v3
 (`export-v3.md`), v2 (`export-v2.md`) and v1 (`export-v1.md`) are frozen and
 unchanged.
 

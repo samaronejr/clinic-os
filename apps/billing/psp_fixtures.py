@@ -12,10 +12,12 @@ from apps.billing.psp_contracts import (
     MAX_MINOR,
     PaymentAuthenticationError,
     PaymentEvent,
+    PaymentLookupError,
     PaymentStatus,
     StatementLine,
 )
 from apps.billing.psp_policy import validate_request
+from apps.core.fault_injection import injected_fault
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -49,12 +51,21 @@ class RecordedPaymentProvider:
 
     def lookup(self, *, request: PaymentRequest) -> PaymentStatus | None:
         """Read immutable recorded facts under the original provider key."""
+        # Degraded-mode drill: an unreachable provider leaves the status unknown.
+        if injected_fault("payment") == "down":
+            raise PaymentLookupError
         return self._records.get(request.idempotency_key)
 
     def create_charge(self, *, request: PaymentRequest) -> PaymentStatus:
         """Return an explicitly non-payable dynamic code or invalid-domain link."""
         validate_request(request)
+        drill = injected_fault("payment")
+        if drill in {"down", "slow"}:
+            # A dropped or late answer leaves the remote effect unknown.
+            raise TimeoutError
         reference = f"fixture-{request.idempotency_key.hex}"
+        if drill == "ambiguous":
+            return PaymentStatus(reference, "unknown", request.amount_minor, "BRL", 1)
         code = (
             f"SYNTHETIC-NOT-PAYABLE|{reference}|{request.amount_minor}|BRL"
             if request.method == "pix"

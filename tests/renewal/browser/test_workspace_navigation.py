@@ -7,6 +7,7 @@ navigation, response or dialog state, never a timer.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from apps.intake.patient_name_index import PURPOSE, normalized_name_bytes
 from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from django_otp.oath import TOTP
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
@@ -27,9 +29,16 @@ from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
     goto_settled,
+    track_realtime,
     wait_for_signed_in,
 )
-from renewal.browser._page_wait import await_autofocus, evaluate_all_js, evaluate_js
+from renewal.browser._page_wait import (
+    WaitTimeoutError,
+    await_autofocus,
+    evaluate_all_js,
+    evaluate_js,
+    wait_for_js,
+)
 from renewal.browser._protected import encrypt, kek
 from renewal.browser._totp_devices import reset_totp_device, seed_totp_device
 from renewal.browser.engines import full_page_screenshot
@@ -41,7 +50,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from playwright.sync_api import Browser, Error, Locator, Page, Response
+    from playwright.sync_api import Browser, Error, Locator, Page, Response, Route
 
 __all__ = ("availability_staff",)
 
@@ -718,3 +727,158 @@ def test_palette_page_works_without_javascript(
         _capture(page, renewal_artifact_root, "no-js-banner-375")
     finally:
         context.close()
+
+
+# The realtime quiet of ``_navigation.track_realtime``, executed for real: the
+# vendored htmx and the installed tracker on a routed probe page. Each path has
+# its own hint-driven region (trigger ``rt:probe-<n>``, URL ``refresh/<n>``):
+# htmx 2.0.10 queues a trigger instead of sending it while the same element
+# still holds a request, so a shared region would let one path's lock or queue
+# stall the next (RESULT.md, Round 6).
+TRACKER_PROBE: Final = "/__realtime-tracker-probe/"
+TRACKER_PATHS: Final = ("outerHTML swap", "plain load", "error", "abort", "timeout")
+TRACKER_REGION: Final = (
+    '<div id="probe-region-{n}" hx-get="/__realtime-tracker-probe/refresh/{n}"'
+    ' hx-trigger="rt:probe-{n} from:body" hx-swap="outerHTML">{text}</div>'
+)
+TRACKER_PAGE: Final = (
+    '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
+    '<script src="/static/vendor/htmx/htmx.min.js"></script></head><body>'
+    + "".join(
+        TRACKER_REGION.format(n=n, text="initial") for n in range(len(TRACKER_PATHS))
+    )
+    + "</body></html>"
+)
+# The loadend listener is registered from a window-capture beforeSend, before
+# the tracker's document-capture one, so the recorded order is the request's
+# end, then the drain. The in-flight check runs in a document-bubble
+# beforeSend (after the tracker added the request) and resumes at once, so the
+# check itself never leaves the page frozen. The request is kept as
+# ``window.__probeXhr`` for the timeout path (``TRACKER_TIMEOUT_JS``).
+TRACKER_OBSERVER_JS: Final = """() => {
+  const probe = {seq: 0, pending: false, loadend: 0, drained: 0, state: "idle"};
+  window.__probe = probe;
+  window.addEventListener("htmx:beforeSend", (event) => {
+    window.__probeXhr = event.detail.xhr;
+    event.detail.xhr.addEventListener("loadend", () => {
+      probe.loadend = ++probe.seq;
+    }, {once: true});
+  }, true);
+  document.addEventListener("htmx:beforeSend", () => {
+    const answer = window.__clinicRealtime.quiet();
+    window.__clinicRealtime.resume();
+    probe.pending = answer !== true;
+    probe.state = probe.pending ? "pending" : "idle at send";
+    if (probe.pending) answer.then(() => {
+      probe.drained = ++probe.seq;
+      probe.state = "drained";
+    });
+  });
+}"""
+TRACKER_RESET_JS: Final = """() => {
+  Object.assign(window.__probe,
+    {pending: false, loadend: 0, drained: 0, state: "idle"});
+}"""
+# The timeout path ends the captured request as an XHR timeout does: a
+# ``timeout`` event, then ``loadend``. htmx's own ``ontimeout`` handler runs
+# (afterRequest, htmx:timeout, lock release) and so does the tracker's own
+# ``loadend`` listener on that request. No engine timer is used: WebKit never
+# fired ``xhr.timeout`` while a Playwright route held the request (#34 job
+# 134483305260). The still-open request is then aborted with htmx's handlers
+# detached, so its real end adds no second htmx error.
+TRACKER_TIMEOUT_JS: Final = """() => {
+  const request = window.__probeXhr;
+  request.dispatchEvent(new ProgressEvent("timeout"));
+  request.dispatchEvent(new ProgressEvent("loadend"));
+  request.onload = request.onerror = request.onabort = request.ontimeout = null;
+  request.abort();
+}"""
+TRACKER_HINT_JS: Final = (
+    "(n) => document.body.dispatchEvent(new CustomEvent('rt:probe-' + n))"
+)
+# What a stall leaves behind: the probe and the region's htmx request lock.
+TRACKER_STALL_JS: Final = """(n) => {
+  const region = document.getElementById('probe-region-' + n);
+  const data = region ? region['htmx-internal-data'] || {} : null;
+  return {
+    probe: Object.assign({}, window.__probe),
+    region: region ? 'present' : 'missing',
+    locked: data ? Boolean(data.xhr) : null,
+    queued: data && data.queuedRequests ? data.queuedRequests.length : 0,
+  };
+}"""
+
+
+def _probe_wait(page: Page, n: int, path: str, condition: str) -> None:
+    """Wait on the probe state; a stall names the path and what holds it."""
+    try:
+        wait_for_js(page, condition)
+    except WaitTimeoutError:
+        stall = evaluate_js(page, TRACKER_STALL_JS, n)
+        pytest.fail(f"tracker path {path!r} stalled on {condition}: {stall}")
+
+
+def test_realtime_quiet_drains_after_every_request_end(
+    renewal_page: Page, renewal_base_url: str
+) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
+    held: list[Route] = []  # abort and timeout stay open; the page ends them
+
+    def refresh(route: Route) -> None:
+        n = int(route.request.url.rstrip("/").rsplit("/", 1)[1])
+        path = TRACKER_PATHS[n]
+        if path == "outerHTML swap":
+            body = TRACKER_REGION.format(n=n, text="swapped")
+            route.fulfill(status=200, content_type="text/html", body=body)
+        elif path == "plain load":
+            route.fulfill(status=204)
+        elif path == "error":
+            route.abort("failed")
+        else:
+            held.append(route)
+
+    # Routing needs the app worker out of the way (engines.py, WebKit).
+    with browser.new_context(service_workers="block") as context:
+        page = context.new_page()
+        page.route(
+            f"{renewal_base_url}{TRACKER_PROBE}",
+            lambda route: route.fulfill(
+                status=200, content_type="text/html", body=TRACKER_PAGE
+            ),
+        )
+        page.route(f"{renewal_base_url}{TRACKER_PROBE}refresh/*", refresh)
+        track_realtime(page)
+        goto_settled(page, f"{renewal_base_url}{TRACKER_PROBE}")
+        wait_for_js(page, "() => Boolean(window.htmx && window.__clinicRealtime)")
+        evaluate_js(page, TRACKER_OBSERVER_JS)
+        # Nothing in flight: the quiet answers at once (then the page resumes).
+        assert evaluate_js(page, "() => window.__clinicRealtime.quiet()") is True
+        evaluate_js(page, "() => window.__clinicRealtime.resume()")
+
+        observed = {}
+        for n, path in enumerate(TRACKER_PATHS):
+            evaluate_js(page, TRACKER_RESET_JS)
+            evaluate_js(page, TRACKER_HINT_JS, n)
+            _probe_wait(page, n, path, "() => window.__probe.state !== 'idle'")
+            if path == "abort":
+                evaluate_js(
+                    page, "(n) => htmx.trigger('#probe-region-' + n, 'htmx:abort')", n
+                )
+            elif path == "timeout":
+                evaluate_js(page, TRACKER_TIMEOUT_JS)
+            _probe_wait(page, n, path, "() => window.__probe.state === 'drained'")
+            probe = evaluate_js(page, "() => window.__probe")
+            observed[path] = (
+                probe["pending"],
+                0 < probe["loadend"] < probe["drained"],
+            )
+            # The page already ended any held request; release its route too,
+            # so nothing from this path is pending when the next one starts.
+            while held:
+                with contextlib.suppress(PlaywrightError):
+                    held.pop().abort()
+        # In flight while open, drained on every end, and only after loadend.
+        assert observed == dict.fromkeys(TRACKER_PATHS, (True, True))
+        # The outerHTML swap replaced its region with a new one of the same id.
+        expect(page.locator("#probe-region-0")).to_have_text("swapped")

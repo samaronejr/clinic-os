@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clinic-perf-report/1",
+  "title": "Clinic Ops local performance report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile",
+    "dataset",
+    "commit",
+    "generated_at",
+    "evidence_level",
+    "claim_scope",
+    "scenarios",
+    "fairness",
+    "not_measured",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "clinic-perf-report/1"
+    },
+    "profile": {
+      "type": "string",
+      "enum": [
+        "P-small",
+        "P-100",
+        "P-1000",
+        "P-large-tenant"
+      ]
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "organizations",
+        "clinics",
+        "patients",
+        "seed"
+      ],
+      "properties": {
+        "organizations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "clinics": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "patients": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "focus_tenant_patients": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": "integer"
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "dirty"
+      ],
+      "properties": {
+        "sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "evidence_level": {
+      "const": "L1"
+    },
+    "claim_scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "object"
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/scenario"
+      }
+    },
+    "fairness": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fairness"
+      }
+    },
+    "search_benchmark": {
+      "type": "object"
+    },
+    "not_measured": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "reason"
+        ],
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "failed",
+        "informational"
+      ],
+      "properties": {
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "informational": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "unit",
+        "samples",
+        "errors",
+        "p50",
+        "p95",
+        "p99",
+        "max",
+        "target",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "measured",
+            "component",
+            "modeled"
+          ]
+        },
+        "unit": {
+          "const": "ms"
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p50": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p95": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p99": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "metric",
+                "limit_ms",
+                "source"
+              ],
+              "properties": {
+                "metric": {
+                  "const": "p95"
+                },
+                "limit_ms": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "informational"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "samples": {
+                "const": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "fail"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fairness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "baseline_p95_ms",
+        "loaded_p95_ms",
+        "ratio",
+        "tolerance",
+        "status",
+        "trials"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "baseline_p95_ms": {
+          "type": "number"
+        },
+        "loaded_p95_ms": {
+          "type": "number"
+        },
+        "ratio": {
+          "type": "number"
+        },
+        "tolerance": {
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "trials": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "load": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -28,6 +28,7 @@ from ops.testing.ci_pytest_partition import (
     PHASES,
     PYTHONS,
     SHARDS,
+    load_durations,
     partition,
     population_failures,
     public_nodeid,
@@ -45,8 +46,12 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Never
 
+    from ops.testing.ci_pytest_partition import DurationTable
+
 REPOSITORY: Final = Path(__file__).resolve().parents[2]
 TARGETS: Final = REPOSITORY / "ops/testing/coverage-targets.txt"
+# Schema 3 binds every shard manifest and combined proof to the duration table.
+MANIFEST_SCHEMA: Final = 3
 COVERAGE_MINIMUM: Final = 90
 FULL_PERCENT: Final = 100
 PERCENT_TOLERANCE: Final = 1e-8
@@ -151,7 +156,11 @@ def publish(
     exits: dict[str, int],
     failures: list[str],
 ) -> None:
-    """Retain immutable, hash-bound evidence outside the disposable work root."""
+    """Retain immutable, hash-bound evidence outside the disposable work root.
+
+    The manifest records the committed duration table's hash, which the
+    per-version gate requires of every shard.
+    """
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
     hashes: JsonObject = {}
     for name in FILES:
@@ -184,8 +193,9 @@ def publish(
         hashes[name] = _digest(destination / name)
     revision, tree = source_identity(REPOSITORY)
     manifest: JsonObject = {
-        "schema_version": 2,
+        "schema_version": MANIFEST_SCHEMA,
         "algorithm": ALGORITHM,
+        "durations_sha256": load_durations().sha256,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
         "shard": shard,
@@ -201,16 +211,31 @@ def publish(
     _write(destination / "manifest.json", manifest)
 
 
-def _reports(path: Path) -> dict[str, list[dict[str, str]]]:
+def _seconds(value: JsonValue) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        _fail("test report duration must be finite nonnegative seconds")
+    return float(value)
+
+
+def _parse_reports(
+    path: Path,
+) -> tuple[dict[str, list[dict[str, str]]], dict[str, float]]:
     raw, _ = load_json(path)
     reports: dict[str, list[dict[str, str]]] = {}
+    seconds: dict[str, float] = {}
     for nodeid, entries in raw.items():
         if not isinstance(entries, list):
             _fail(f"{path.name}: malformed reports")
         parsed: list[dict[str, str]] = []
+        spent = 0.0
         for value in entries:
             entry = _object(value, "test report")
-            if set(entry) != {"when", "outcome"}:
+            if set(entry) != {"when", "outcome", "duration"}:
                 _fail("test report fields differ")
             when = _string(entry["when"], "report phase")
             outcome = _string(entry["outcome"], "report outcome")
@@ -219,9 +244,20 @@ def _reports(path: Path) -> dict[str, list[dict[str, str]]]:
                 "skipped",
             }:
                 _fail("test report is failed or malformed")
+            spent += _seconds(entry["duration"])
             parsed.append({"when": when, "outcome": outcome})
         reports[nodeid] = parsed
-    return reports
+        seconds[nodeid] = spent
+    return reports, seconds
+
+
+def _reports(path: Path) -> dict[str, list[dict[str, str]]]:
+    return _parse_reports(path)[0]
+
+
+def report_durations(path: Path) -> dict[str, float]:
+    """Return each node ID's recorded seconds: setup, call and teardown."""
+    return _parse_reports(path)[1]
 
 
 def _reading(value: JsonValue) -> Counters:
@@ -292,11 +328,14 @@ def _receipt(path: Path) -> JsonObject:
     return receipt
 
 
-def _load_shard(root: Path, version: str, number: int) -> ShardEvidence:
+def _load_shard(
+    root: Path, version: str, number: int, durations: DurationTable
+) -> ShardEvidence:
     manifest, _ = load_json(root / "manifest.json")
     expected: JsonObject = {
-        "schema_version": 2,
+        "schema_version": MANIFEST_SCHEMA,
         "algorithm": ALGORITHM,
+        "durations_sha256": durations.sha256,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": version,
         "shard": number,
@@ -330,7 +369,7 @@ def _load_shard(root: Path, version: str, number: int) -> ShardEvidence:
         if not matches:
             _fail("serial classification matches no test")
         serial.update(matches)
-    expected_population = partition(reference, serial)[number]
+    expected_population = partition(reference, serial, durations=durations)[number]
     collections, _ = load_json(root / "execution-collections.json")
     live = validate_execution_collections(collections, reference, expected_population)
     reports = {phase: _reports(root / f"{phase}-reports.json") for phase in PHASES}
@@ -390,8 +429,14 @@ def _census(shards: tuple[ShardEvidence, ...]) -> JsonObject:
 def load_version(
     artifacts: Path,
     version: str,
+    durations: DurationTable | None = None,
 ) -> tuple[tuple[ShardEvidence, ...], JsonObject]:
-    """Prove the exact reference population and every detector across all shards."""
+    """Prove the exact reference population and every detector across all shards.
+
+    Every shard must have been partitioned with ``durations`` (by default the
+    committed table): a manifest that records another table's hash fails.
+    """
+    table = load_durations() if durations is None else durations
     expected = {f"renewal-python-py{version}-shard-{number}" for number in SHARDS}
     found = {
         path.name for path in artifacts.glob(f"renewal-python-py{version}-shard-*")
@@ -403,7 +448,10 @@ def load_version(
         )
     shards = tuple(
         _load_shard(
-            artifacts / f"renewal-python-py{version}-shard-{number}", version, number
+            artifacts / f"renewal-python-py{version}-shard-{number}",
+            version,
+            number,
+            table,
         )
         for number in SHARDS
     )
@@ -416,13 +464,14 @@ def load_version(
             first.serial,
         ):
             _fail("shards disagree on source identity or reference population")
-    selections = partition(first.reference, set(first.serial))
+    selections = partition(first.reference, set(first.serial), durations=table)
     executed = [nodeid for shard in shards for nodeid in shard.executed]
     live = {nodeid for shard in shards for nodeid in shard.live}
     validate_execution_union(executed, live)
     proof: JsonObject = {
-        "schema_version": 2,
+        "schema_version": MANIFEST_SCHEMA,
         "algorithm": ALGORITHM,
+        "durations_sha256": table.sha256,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": version,
         "revision_sha": first.revision,

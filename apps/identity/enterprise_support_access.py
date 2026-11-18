@@ -34,10 +34,47 @@ class MaskedProvider(TypedDict):
 
 
 @dataclass(frozen=True, slots=True)
+class QueueHealth:
+    """Outbox operations of one channel and status: a count and the oldest row."""
+
+    channel: str
+    status: str
+    count: int
+    oldest_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class TaskHealth:
+    """Work tasks in one state: a count and the earliest due time."""
+
+    state: str
+    count: int
+    earliest_due_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StaffCount:
+    """Distinct active members holding one role in the approved clinic."""
+
+    role: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
 class SupportSnapshot:
-    """A read-only diagnostic result has no clinical data or mutation capability."""
+    """A read-only diagnostic result has no clinical data or mutation capability.
+
+    Every field is a closed-vocabulary label, a count or a timestamp from the
+    ``enterprise_support_overview`` resolver: no identifier, name, payload,
+    error text or clinical row.
+    """
 
     providers: tuple[MaskedProvider, ...]
+    queues: tuple[QueueHealth, ...] = ()
+    tasks: tuple[TaskHealth, ...] = ()
+    staff: tuple[StaffCount, ...] = ()
+    units: int = 0
+    expires_at: datetime | None = None
     masked: bool = True
     clinical_write: bool = False
 
@@ -94,7 +131,7 @@ def support_diagnostics(
             row = cursor.fetchone()
             if row is None or clock.utc_now() >= row[2]:
                 raise GovernanceDeniedError
-            organization_id, support_user_id, _expires_at = row
+            organization_id, support_user_id, expires_at = row
             cursor.execute(
                 "SELECT set_config('app.current_tenant',%s,true),"
                 "set_config('app.current_support_grant',%s,true),"
@@ -116,6 +153,14 @@ def support_diagnostics(
                 .select_related("current_version")
                 .order_by("key", "id")
             )
+            # Aggregates only, re-verified against the same session and grant.
+            cursor.execute(
+                "SELECT signal,channel,state,item_count,oldest_at FROM "
+                "clinic_app.enterprise_support_overview(%s,%s,%s) "
+                "ORDER BY signal,channel,state",
+                [grant_id, clinic_id, session_hash(session_key)],
+            )
+            overview = cursor.fetchall()
             # Attribute this fixed audit append to the authenticated named user.
             # No staff service executes while that audit-only GUC is populated.
             cursor.execute(
@@ -128,7 +173,30 @@ def support_diagnostics(
                 affected_record_id=grant_id,
             )
             cursor.execute("SELECT set_config('app.current_user_id','',true)")
-            return SupportSnapshot(providers)
+            return SupportSnapshot(
+                providers,
+                queues=tuple(
+                    QueueHealth(channel, state, count, oldest)
+                    for signal, channel, state, count, oldest in overview
+                    if signal == "outbox"
+                ),
+                tasks=tuple(
+                    TaskHealth(state, count, oldest)
+                    for signal, _channel, state, count, oldest in overview
+                    if signal == "task"
+                ),
+                staff=tuple(
+                    StaffCount(state, count)
+                    for signal, _channel, state, count, _oldest in overview
+                    if signal == "staff"
+                ),
+                units=sum(
+                    count
+                    for signal, _channel, _state, count, _oldest in overview
+                    if signal == "units"
+                ),
+                expires_at=expires_at,
+            )
     finally:
         clear_connection_tenant_gucs()
 

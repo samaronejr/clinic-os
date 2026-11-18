@@ -21,7 +21,12 @@ from apps.intake.models import (
 from apps.intake.patient_search import search_patients_exact
 from apps.intake.services import search_patient_identifiers, update_demographics
 from apps.interop import services
-from apps.interop.models import HiddenEnrollment, ImportedRecord, ImportFile
+from apps.interop.models import (
+    HiddenEnrollment,
+    ImportBatch,
+    ImportedRecord,
+    ImportFile,
+)
 from django.db import connection
 from django.utils import timezone
 
@@ -205,7 +210,10 @@ def test_rollback_hides_batch_and_retains_used_patients(
 ) -> None:
     world = import_world(rbac_graph)
     report, receipt = committed(world, patients_csv(6), monkeypatch)
-    assert len(receipt.batch_ids) == 1
+    assert len(receipt.batch_ids) == 6
+    with operating(world):
+        batches = list(ImportBatch.objects.filter(job_id=report.job.job_id))
+        assert [batch.last_row - batch.first_row + 1 for batch in batches] == [1] * 6
     assert _visible_enrollments(world, report.job.job_id) == 6
     with operating(world):
         reconciliation = services.reconciliation_report(
