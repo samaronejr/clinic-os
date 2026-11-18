@@ -11,7 +11,7 @@ PostgreSQL aborted one of them with ``deadlock_detected``.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 from uuid import uuid4
 
 import psycopg
@@ -37,7 +37,14 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _directory_receptionist(graph: RbacGraph) -> tuple[str, UUID, str]:
+class _Directory(NamedTuple):
+    resource: str
+    account: UUID
+    token: str
+    session_key: str
+
+
+def _directory_user(graph: RbacGraph, *, bundle: str = "receptionist") -> _Directory:
     """A directory user whose group grants a directory-managed membership."""
     setup = enterprise_setup(graph)
     with runtime_role(), scim_context(bearer=setup.token) as scope:
@@ -59,11 +66,16 @@ def _directory_receptionist(graph: RbacGraph) -> tuple[str, UUID, str]:
             clinic_id=graph.clinic_a,
             group_id=group.pk,
             unit_id=graph.clinic_a,
-            bundle="receptionist",
+            bundle=bundle,
             session_key=setup.session_key,
         )
     assert user.user_id is not None
-    return str(user.pk), user.user_id, setup.token
+    return _Directory(str(user.pk), user.user_id, setup.token, setup.session_key)
+
+
+def _directory_receptionist(graph: RbacGraph) -> tuple[str, UUID, str]:
+    directory = _directory_user(graph)
+    return directory.resource, directory.account, directory.token
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
