@@ -85,6 +85,15 @@ def test_selection_and_read_actions_keep_the_selector_in_post(
     listing = _get(client, f"{path}?conversation_id={conversation.pk}")
     assert listing.status_code == 200
     assert "thread-region" not in Document(listing.content).identifiers()
+    # Nor is an ignored selector-like query reflected anywhere: the list's
+    # refresh URL is rebuilt from the validated filters (SC-7).
+    for query in ("conversation_id", "conversation"):
+        echoed = _get(client, f"{path}?state=open&{query}={conversation.pk}")
+        html = echoed.content.decode()
+        assert str(conversation.pk) not in html
+        assert query + "=" not in html
+        refresh = Document(echoed.content).attributes_for("conversation-list")
+        assert refresh["hx-get"] == f"{path}?state=open"
 
 
 def test_selected_mutation_redirects_without_a_selector_or_repeat(

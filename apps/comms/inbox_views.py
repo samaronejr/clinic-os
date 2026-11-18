@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
+from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 from django.conf import settings
@@ -170,21 +171,30 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             messages.error(request, _refusal(error.code))
             return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
     state = request.GET.get("state", "open")
+    mine = request.GET.get("mine") == "1"
+    clinician_only = request.GET.get("clinician") == "1"
     try:
         rows = list_conversations(
             clinic_id=clinic_id,
             state=state,
-            mine=request.GET.get("mine") == "1",
-            clinician_only=request.GET.get("clinician") == "1",
+            mine=mine,
+            clinician_only=clinician_only,
         )
     except CurrentActorError as error:
         raise Http404 from error
+    # The list refresh URL is rebuilt from the validated filters only, so no
+    # other query parameter (a selector-like one included) is reissued (SC-7).
+    filters = {"state": state, **({"mine": "1"} if mine else {})}
+    if clinician_only:
+        filters["clinician"] = "1"
+    refresh_url = f"{reverse('comms:inbox', args=(clinic_id,))}?{urlencode(filters)}"
     return render(
         request,
         "comms/inbox.html",
         {
             "clinic_id": clinic_id,
             "state": state,
+            "refresh_url": refresh_url,
             "rows": rows,
             "clinician": is_clinician(clinic_id),
             "choices": choices,

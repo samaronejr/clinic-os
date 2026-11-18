@@ -27,7 +27,7 @@
     <a class="button button--quiet" href="?state={{ state }}&amp;mine=1">{% trans "Mine" context "inbox filter" %}</a>
     {% if clinician %}<a class="button button--quiet" href="?state={{ state }}&amp;clinician=1">{% trans "Clinical questions" %}</a>{% endif %}
   </nav>
-  <div id="conversation-list" class="table-scroll" role="region" aria-labelledby="messages-caption" tabindex="0" hx-get="{{ request.get_full_path }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#conversation-list &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
+  <div id="conversation-list" class="table-scroll" role="region" aria-labelledby="messages-caption" tabindex="0" hx-get="{{ refresh_url }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#conversation-list &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
     <table class="table">
       <caption id="messages-caption">{% trans "Conversations · up to the 100 most recent" %}</caption>
       <thead><tr><th scope="col">{% trans "Contact" %}</th><th scope="col">{% trans "Channel" %}</th><th scope="col">{% trans "Purpose" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Assignee" context "inbox" %}</th><th scope="col"><span class="visually-hidden">{% trans "Action" %}</span></th></tr></thead>
