@@ -32,10 +32,10 @@ from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import APIResponse, Page, Response, Route
+    from playwright.sync_api import Page, Request, Response, Route
 
 
 def fixture_command(
@@ -927,44 +927,63 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     }""")
     control = panel.get_attribute("data-control-url")
     assert control is not None
-    held: dict[str, tuple[Route, APIResponse]] = {}
+    held: dict[str, Route] = {}
 
     def hold(route: Route) -> None:
+        # Only record the route: the test forwards it to the server, and
+        # releases its response to the page, at the moments it chooses.
         action = (route.request.post_data_json or {}).get("action")
         if action in {"stop", "status"} and action not in held:
-            # The server applies the command now; the page sees it only later.
-            held[action] = (route, route.fetch())
+            held[action] = route
         else:
             route.continue_()
 
+    def control_request(action: str) -> Callable[[Request], bool]:
+        return lambda request: (
+            request.url.endswith(control)
+            and (request.post_data_json or {}).get("action") == action
+        )
+
     page.route(f"**{control}", hold)
-    with page.expect_request(
-        lambda request: (
-            request.url.endswith(control)
-            and (request.post_data_json or {}).get("action") == "stop"
-        )
-    ):
-        page.locator('[data-capture-action="stop"]').click()
-    with page.expect_request(
-        lambda request: (
-            request.url.endswith(control)
-            and (request.post_data_json or {}).get("action") == "status"
-        )
-    ):
+    # 1. A poll leaves while no local action is in flight, and is held.
+    with page.expect_request(control_request("status")):
         page.clock.run_for(5000)
+    # 2. The clinician stops; the stop is held too.
+    with page.expect_request(control_request("stop")):
+        page.locator('[data-capture-action="stop"]').click()
+    # The route handlers ran before this round trip's reply was processed.
+    page.evaluate("() => 0")
     assert set(held) == {"stop", "status"}
-    stop_route, stop_response = held["stop"]
-    stop_route.fulfill(response=stop_response)
+    # 3. The server applies the stop first, so the held poll reads "stopped".
+    stop_response = held["stop"].fetch()
+    status_response = held["status"].fetch()
+    # Resolves once the poll's response is parsed and every continuation
+    # queued behind it (post, control, watchAuthority) has run: a message
+    # task follows all of their microtasks. No timer, no new connection.
+    page.evaluate(
+        """control => {
+      window.__scribeStatusSettled = new Promise(resolve => {
+        const json = Response.prototype.json;
+        Response.prototype.json = function () {
+          const parsed = json.call(this);
+          if (this.url.endsWith(control)) {
+            Response.prototype.json = json;
+            parsed.finally(() => {
+              const channel = new MessageChannel();
+              channel.port1.onmessage = () => resolve(true);
+              channel.port2.postMessage(null);
+            });
+          }
+          return parsed;
+        };
+      });
+    }""",
+        control,
+    )
+    # 4. Stop reaches the page first and finishes; then the stale poll lands.
+    held["stop"].fulfill(response=stop_response)
     expect(panel).to_have_attribute("data-phase", "done")
-    status_route, status_response = held["status"]
-    with page.expect_response(
-        lambda response: (
-            response.url.endswith(control)
-            and (response.request.post_data_json or {}).get("action") == "status"
-        )
-    ):
-        status_route.fulfill(response=status_response)
-    # A completed fetch is a task barrier: the status continuation has run.
-    page.evaluate("() => fetch('data:text/plain,barrier').then(r => r.text())")
+    held["status"].fulfill(response=status_response)
+    assert page.evaluate("() => window.__scribeStatusSettled") is True
     assert "recovery" not in page.evaluate("() => window.__scribePhases")
     expect(panel).to_have_attribute("data-phase", "done")
