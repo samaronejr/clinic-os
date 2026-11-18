@@ -278,6 +278,14 @@ def revoke_session(*, session_record_id: UUID) -> None:
     except CurrentActorError as error:
         raise SessionInventoryDeniedError from error
     with transaction.atomic():
+        # The user's session key before any of their session rows, as every
+        # bulk revocation takes it (identity lock order, review S6 T2).
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.pg_advisory_xact_lock("
+                "pg_catalog.hashtextextended(%s, 0))",
+                [f"clinic-lock-v1:sessions:{user_id}"],
+            )
         record = (
             SessionRecord.objects.select_for_update()
             .filter(pk=session_record_id, user_id=user_id)
@@ -304,9 +312,20 @@ def touch_session(*, session_key: str | None, http_status: int) -> None:
     """Update successful request metadata, never a refusal's session state."""
     if session_key is None or http_status >= HTTPStatus.BAD_REQUEST:
         return
-    SessionRecord.objects.filter(
+    live = SessionRecord.objects.filter(
         session_key_hash=session_hash(session_key),
         user_id=current_actor_id(),
         revoked_at__isnull=True,
         expires_at__gt=Now(),
-    ).update(last_seen=Now())
+    )
+    # Never wait: this runs last in the request transaction, after all of its
+    # locks, so a held row (a revoker's, or anyone's) skips the best-effort
+    # touch instead of joining a cycle. The UPDATE reaches only the row locked
+    # here, still live, so a revoked session is never touched or extended.
+    locked = list(
+        live.select_for_update(no_key=True, skip_locked=True).values_list(
+            "pk", flat=True
+        )
+    )
+    if locked:
+        live.filter(pk__in=locked).update(last_seen=Now())
