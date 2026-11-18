@@ -18,7 +18,7 @@ from apps.identity.current_context import CurrentActorError, current_actor_id
 from apps.identity.models import SessionRecord, User, UserClinicRole
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from datetime import datetime
 
     from django.http import HttpRequest
@@ -142,13 +142,47 @@ def session_cookie_is_revoked(*, session_key: str) -> bool:
         return row is not None and row[0] is True
 
 
-def supersede_session_hash(*, session_key: str) -> None:
-    """Record a framework rotation separately from an explicit revocation."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT clinic_app.identity_session_rotate_hash(%s)",
-            [session_hash(session_key)],
+def rotate_session(
+    *,
+    user_id: UUID,
+    old_key: str | None,
+    new_key: str,
+    expires_at: datetime,
+    meta: Mapping[str, str],
+) -> UUID:
+    """Move a live session to its rotated key in one locked step, or refuse.
+
+    The old key must still be live and the current user's: a revocation that
+    committed after this request was admitted refuses the rotation instead of
+    letting it register a new live key. No old key binds a first session.
+    ``meta`` is the request's WSGI environ; only its coarse network and
+    browser family are recorded.
+    """
+    network = coarse_network(meta.get("REMOTE_ADDR", ""))
+    family = user_agent_family(meta.get("HTTP_USER_AGENT", ""))
+    if old_key is None:
+        return register_session(
+            user_id=user_id,
+            session_key=new_key,
+            expires_at=expires_at,
+            network=network,
+            family=family,
         )
+    with _authenticated_user(user_id), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.identity_session_rotate(%s, %s, %s, %s, %s)",
+            [
+                session_hash(old_key),
+                session_hash(new_key),
+                network,
+                family,
+                expires_at,
+            ],
+        )
+        row = cursor.fetchone()
+    if row is None or row[0] is None:
+        raise SessionInventoryDeniedError
+    return UUID(str(row[0]))
 
 
 def revoke_session_hash(*, session_key: str) -> bool:
@@ -189,14 +223,12 @@ def record_verified_session(
     if new_key is None or not isinstance(user, User) or not user.is_active:
         raise SessionInventoryDeniedError
     with _authenticated_user(user.pk), connection.cursor() as cursor:
-        if old_key is not None:
-            supersede_session_hash(session_key=old_key)
-        register_session(
+        rotate_session(
             user_id=user.pk,
-            session_key=new_key,
+            old_key=old_key,
+            new_key=new_key,
             expires_at=request.session.get_expiry_date(),
-            network=coarse_network(request.META.get("REMOTE_ADDR", "")),
-            family=user_agent_family(request.META.get("HTTP_USER_AGENT", "")),
+            meta=request.META,
         )
         cursor.execute(
             "SELECT clinic_app.identity_session_verify(%s, %s)",
@@ -246,6 +278,14 @@ def revoke_session(*, session_record_id: UUID) -> None:
     except CurrentActorError as error:
         raise SessionInventoryDeniedError from error
     with transaction.atomic():
+        # The user's session key before any of their session rows, as every
+        # bulk revocation takes it (identity lock order, review S6 T2).
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.pg_advisory_xact_lock("
+                "pg_catalog.hashtextextended(%s, 0))",
+                [f"clinic-lock-v1:sessions:{user_id}"],
+            )
         record = (
             SessionRecord.objects.select_for_update()
             .filter(pk=session_record_id, user_id=user_id)
@@ -272,9 +312,20 @@ def touch_session(*, session_key: str | None, http_status: int) -> None:
     """Update successful request metadata, never a refusal's session state."""
     if session_key is None or http_status >= HTTPStatus.BAD_REQUEST:
         return
-    SessionRecord.objects.filter(
+    live = SessionRecord.objects.filter(
         session_key_hash=session_hash(session_key),
         user_id=current_actor_id(),
         revoked_at__isnull=True,
         expires_at__gt=Now(),
-    ).update(last_seen=Now())
+    )
+    # Never wait: this runs last in the request transaction, after all of its
+    # locks, so a held row (a revoker's, or anyone's) skips the best-effort
+    # touch instead of joining a cycle. The UPDATE reaches only the row locked
+    # here, still live, so a revoked session is never touched or extended.
+    locked = list(
+        live.select_for_update(no_key=True, skip_locked=True).values_list(
+            "pk", flat=True
+        )
+    )
+    if locked:
+        live.filter(pk__in=locked).update(last_seen=Now())

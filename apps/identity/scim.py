@@ -190,8 +190,11 @@ def update_resource(
     """Keep CAS revisions, subjects and account bindings on retained resources."""
     with transaction.atomic():
         target = _connection(clinic_id=clinic_id)
+        # NO KEY UPDATE: a concurrent group change inserts memberships and role
+        # bindings referencing this resource (FOR KEY SHARE) while holding the
+        # connection row this request's sync waits for (review S5, H2).
         resource = (
-            ScimResource.objects.select_for_update()
+            ScimResource.objects.select_for_update(no_key=True)
             .filter(
                 pk=resource_id,
                 clinic_id=clinic_id,

@@ -83,7 +83,7 @@ is safe once the context has settled (above).
 from __future__ import annotations
 
 import weakref
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, suppress
 from typing import TYPE_CHECKING, Final, Literal
 
 from playwright.sync_api import Error as PlaywrightError
@@ -113,6 +113,7 @@ SETTLE_WORKER_JS: Final = """async () => {
   const registration = registered
     ? await container.ready : await container.getRegistration();
   if (!registration) return "unregistered";
+  let updated = false;
   for (;;) {
     const active = registration.active;
     const pending = registration.installing || registration.waiting ||
@@ -120,13 +121,34 @@ SETTLE_WORKER_JS: Final = """async () => {
     if (pending) {
       const which = registration.installing === pending ? "installing"
         : registration.waiting === pending ? "waiting" : "active";
+      // A redundant worker never changes state again: fail, named, at once.
+      const ended = which + " worker ended redundant";
+      if (pending.state === "redundant") return {failed: ended, message: ""};
       window.__clinicSettleWait = "statechange of " + which + " " + pending.state;
       await new Promise((resolve) =>
         pending.addEventListener("statechange", resolve, {once: true}));
+      if (pending.state === "redundant") return {failed: ended, message: ""};
     } else if (!active) {
-      window.__clinicSettleWait = "updatefound (no active worker)";
-      await new Promise((resolve) =>
+      // No worker at all: an earlier install ended redundant. Nothing fires
+      // updatefound until an update check, so request one. Its install shows
+      // as updatefound (then statechange, above); an update that installs
+      // nothing, rejects, or ends redundant again fails now, named.
+      if (updated) {
+        return {failed: "install ended redundant after update()", message: ""};
+      }
+      updated = true;
+      window.__clinicSettleWait = "update() (no active worker)";
+      const found = new Promise((resolve) =>
         registration.addEventListener("updatefound", resolve, {once: true}));
+      try {
+        await Promise.race([found, registration.update()]);
+      } catch (error) {
+        return {failed: "update() rejected",
+          message: String((error && error.message) || error)};
+      }
+      if (!registration.installing && !registration.waiting && !registration.active) {
+        return {failed: "update() installed no worker", message: ""};
+      }
     } else {
       delete window.__clinicSettleWait;
       return active.state;
@@ -136,6 +158,18 @@ SETTLE_WORKER_JS: Final = """async () => {
 SETTLE_WAIT_JS: Final = "() => String(window.__clinicSettleWait || 'nothing')"
 # Bounds the one read that names a stuck settle; never a wait for the page.
 SETTLE_PROBE_MS: Final = 2_000
+# Also unmarks the current document: a marked document's settle awaits
+# ``ready``, which no worker resolves once its registration is gone, so the
+# next test's first navigation would block on it. Unmarked, that settle reads
+# ``getRegistration`` (none, "unregistered"), the navigation proceeds, and the
+# new document registers and settles a fresh worker.
+RESET_WORKERS_JS: Final = """async () => {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  document.documentElement.removeAttribute("data-service-worker");
+  delete window.__clinicSettleWait;
+  return registrations.length;
+}"""
 # Installed before a tracked page's first document (``track_realtime``).
 # Tracks the htmx requests of realtime-refreshed regions (an ``rt:`` event in
 # ``hx-trigger``) by request identity, not by element. A request joins at
@@ -209,9 +243,39 @@ def settle_service_worker(page: Page, *, timeout: float | None = None) -> str:
     if options.get("serviceWorkers") == "block":
         return "not applicable"
     try:
-        return str(evaluate_js(page, SETTLE_WORKER_JS, timeout=timeout))
+        settled = evaluate_js(page, SETTLE_WORKER_JS, timeout=timeout)
     except EvaluateTimeoutError as error:
-        raise SettleTimeoutError(_settle_wait(page)) from error
+        waiting = _settle_wait(page)
+        _reset_workers(page)
+        raise SettleTimeoutError(waiting) from error
+    if isinstance(settled, dict):
+        _reset_workers(page)
+        raise SettleFailedError(str(settled["failed"]), str(settled["message"]))
+    return str(settled)
+
+
+class SettleFailedError(PlaywrightTimeoutError):
+    """No worker installed even after ``registration.update()``; never settled.
+
+    A worker that failed to install breaks the service-worker contract
+    (static/AGENTS.md), so it is a failure, raised as soon as it is known.
+    """
+
+    def __init__(self, state: str, message: str) -> None:
+        detail = f": {message}" if message else ""
+        super().__init__(f"service worker failed to install: {state}{detail}")
+        self.state = state
+
+
+def _reset_workers(page: Page) -> None:
+    """Unregister ``page``'s workers after a settle failure, in one bounded probe.
+
+    The session shares one page; a registration left without a worker would
+    fail every later test's first navigation. Unregistered, the next document
+    registers and installs a fresh worker, which settles or fails on its own.
+    """
+    with suppress(EvaluateTimeoutError):
+        evaluate_js(page, RESET_WORKERS_JS, timeout=SETTLE_PROBE_MS)
 
 
 class SettleTimeoutError(EvaluateTimeoutError):

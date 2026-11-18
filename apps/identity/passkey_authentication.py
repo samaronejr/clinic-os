@@ -67,8 +67,10 @@ def verify_assertion(
         )
     except CurrentActorError as error:
         raise PasskeyDeniedError from error
+    # NO KEY UPDATE: a session row referencing this passkey takes FOR KEY SHARE
+    # on it, and must not wait behind this lock (identity 0058 lock order).
     passkey = (
-        Passkey.objects.select_for_update()
+        Passkey.objects.select_for_update(no_key=True)
         .defer("nickname")
         .filter(
             credential_id=credential.raw_id,

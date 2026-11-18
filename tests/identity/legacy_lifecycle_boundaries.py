@@ -186,10 +186,17 @@ def _cookie(subject: LegacyWorld, valid: bool) -> bool:
     )
 
 
-def _supersede(subject: LegacyWorld, valid: bool) -> bool:
-    session_inventory.supersede_session_hash(
-        session_key=_key(subject) if valid else uuid4().hex
-    )
+def _rotate(subject: LegacyWorld, valid: bool) -> bool:
+    try:
+        session_inventory.rotate_session(
+            user_id=subject.actor.pk,
+            old_key=_key(subject) if valid else uuid4().hex,
+            new_key=uuid4().hex,
+            expires_at=timezone.now() + timedelta(hours=1),
+            meta={"REMOTE_ADDR": "127.0.0.1", "HTTP_USER_AGENT": ""},
+        )
+    except session_inventory.SessionInventoryDeniedError:
+        return False
     record = _record(subject)
     return record.superseded_at is not None and record.revoked_at is not None
 
@@ -302,10 +309,10 @@ BOUNDARIES = (
         _cookie,
     ),
     Boundary(
-        "apps.identity.session_inventory.supersede_session_hash",
+        "apps.identity.session_inventory.rotate_session",
         "lifecycle",
         LEGACY,
-        _supersede,
+        _rotate,
     ),
     Boundary(
         "apps.identity.lifecycle_authority.require_staff_management",

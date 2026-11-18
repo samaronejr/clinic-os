@@ -802,14 +802,16 @@ TRACKER_PAGE: Final = (
 # the tracker's document-capture one, so the recorded order is the request's
 # end, then the drain. The in-flight check runs in a document-bubble
 # beforeSend (after the tracker added the request) and resumes at once, so the
-# check itself never leaves the page frozen.
+# check itself never leaves the page frozen. The request is kept as
+# ``window.__probeXhr`` for the timeout path (``TRACKER_TIMEOUT_JS``).
 TRACKER_OBSERVER_JS: Final = """() => {
   const probe = {seq: 0, pending: false, loadend: 0, drained: 0, state: "idle"};
   window.__probe = probe;
   window.addEventListener("htmx:beforeSend", (event) => {
+    window.__probeXhr = event.detail.xhr;
     event.detail.xhr.addEventListener("loadend", () => {
       probe.loadend = ++probe.seq;
-    });
+    }, {once: true});
   }, true);
   document.addEventListener("htmx:beforeSend", () => {
     const answer = window.__clinicRealtime.quiet();
@@ -822,10 +824,23 @@ TRACKER_OBSERVER_JS: Final = """() => {
     });
   });
 }"""
-TRACKER_RESET_JS: Final = """(timeout) => {
+TRACKER_RESET_JS: Final = """() => {
   Object.assign(window.__probe,
     {pending: false, loadend: 0, drained: 0, state: "idle"});
-  htmx.config.timeout = timeout;
+}"""
+# The timeout path ends the captured request as an XHR timeout does: a
+# ``timeout`` event, then ``loadend``. htmx's own ``ontimeout`` handler runs
+# (afterRequest, htmx:timeout, lock release) and so does the tracker's own
+# ``loadend`` listener on that request. No engine timer is used: WebKit never
+# fired ``xhr.timeout`` while a Playwright route held the request (#34 job
+# 134483305260). The still-open request is then aborted with htmx's handlers
+# detached, so its real end adds no second htmx error.
+TRACKER_TIMEOUT_JS: Final = """() => {
+  const request = window.__probeXhr;
+  request.dispatchEvent(new ProgressEvent("timeout"));
+  request.dispatchEvent(new ProgressEvent("loadend"));
+  request.onload = request.onerror = request.onabort = request.ontimeout = null;
+  request.abort();
 }"""
 TRACKER_HINT_JS: Final = (
     "(n) => document.body.dispatchEvent(new CustomEvent('rt:probe-' + n))"
@@ -892,13 +907,15 @@ def test_realtime_quiet_drains_after_every_request_end(
 
         observed = {}
         for n, path in enumerate(TRACKER_PATHS):
-            evaluate_js(page, TRACKER_RESET_JS, 1 if path == "timeout" else 0)
+            evaluate_js(page, TRACKER_RESET_JS)
             evaluate_js(page, TRACKER_HINT_JS, n)
             _probe_wait(page, n, path, "() => window.__probe.state !== 'idle'")
             if path == "abort":
                 evaluate_js(
                     page, "(n) => htmx.trigger('#probe-region-' + n, 'htmx:abort')", n
                 )
+            elif path == "timeout":
+                evaluate_js(page, TRACKER_TIMEOUT_JS)
             _probe_wait(page, n, path, "() => window.__probe.state === 'drained'")
             probe = evaluate_js(page, "() => window.__probe")
             observed[path] = (

@@ -4775,13 +4775,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.session_inventory.supersede_session_hash",
+      "symbol": "apps.identity.session_inventory.rotate_session",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.session_inventory.supersede_session_hash"
+        "apps.identity.session_inventory.rotate_session"
       ]
     },
     {
@@ -11039,9 +11039,9 @@
     "apps.identity.session_inventory.require_verified_session",
     "apps.identity.session_inventory.revoke_session",
     "apps.identity.session_inventory.revoke_session_hash",
+    "apps.identity.session_inventory.rotate_session",
     "apps.identity.session_inventory.session_cookie_is_revoked",
     "apps.identity.session_inventory.session_is_active",
-    "apps.identity.session_inventory.supersede_session_hash",
     "apps.identity.signup.submit_signup#observed",
     "apps.identity.staff_directory.staff_directory",
     "apps.identity.staff_views.invitation_revoke_view",
@@ -17142,6 +17142,35 @@
       ],
       "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
     },
+    "clinic_app.identity_lock_authenticators": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_lock_order_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.enterprise_sync_directory",
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke",
+          "clinic_app.identity_recovery_consume",
+          "clinic_app.identity_retire_authenticators"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
+        "auth.test_session_lock_order.test_password_change_and_offboarding_cannot_deadlock"
+      ],
+      "reason": "Installed lock-order boundary: locks a user's live passkey and recovery-batch rows before the session key. Offboarding lock-order and callable ACL controls are bound."
+    },
     "clinic_app.identity_revoke_changed_sessions": {
       "discovery": {
         "migrations": [
@@ -17287,7 +17316,9 @@
           "apps/identity/migrations/_lifecycle_sessions_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.identity_session_rotate"
+        ],
         "signatures": [
           {
             "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
@@ -17337,6 +17368,28 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_rotate": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_atomic_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "old_hash bytea, new_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
+            "returns": "uuid",
             "security_definer": true,
             "set_returning": false
           }
