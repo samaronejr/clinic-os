@@ -121,9 +121,13 @@ SETTLE_WORKER_JS: Final = """async () => {
     if (pending) {
       const which = registration.installing === pending ? "installing"
         : registration.waiting === pending ? "waiting" : "active";
+      // A redundant worker never changes state again: fail, named, at once.
+      const ended = which + " worker ended redundant";
+      if (pending.state === "redundant") return {failed: ended, message: ""};
       window.__clinicSettleWait = "statechange of " + which + " " + pending.state;
       await new Promise((resolve) =>
         pending.addEventListener("statechange", resolve, {once: true}));
+      if (pending.state === "redundant") return {failed: ended, message: ""};
     } else if (!active) {
       // No worker at all: an earlier install ended redundant. Nothing fires
       // updatefound until an update check, so request one. Its install shows
@@ -154,9 +158,16 @@ SETTLE_WORKER_JS: Final = """async () => {
 SETTLE_WAIT_JS: Final = "() => String(window.__clinicSettleWait || 'nothing')"
 # Bounds the one read that names a stuck settle; never a wait for the page.
 SETTLE_PROBE_MS: Final = 2_000
+# Also unmarks the current document: a marked document's settle awaits
+# ``ready``, which no worker resolves once its registration is gone, so the
+# next test's first navigation would block on it. Unmarked, that settle reads
+# ``getRegistration`` (none, "unregistered"), the navigation proceeds, and the
+# new document registers and settles a fresh worker.
 RESET_WORKERS_JS: Final = """async () => {
   const registrations = await navigator.serviceWorker.getRegistrations();
   await Promise.all(registrations.map((registration) => registration.unregister()));
+  document.documentElement.removeAttribute("data-service-worker");
+  delete window.__clinicSettleWait;
   return registrations.length;
 }"""
 # Installed before a tracked page's first document (``track_realtime``).

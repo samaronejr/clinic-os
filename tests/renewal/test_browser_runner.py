@@ -33,7 +33,11 @@ from playwright.sync_api import (
 
 from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
-from renewal.browser._navigation import SETTLE_WORKER_JS, settle_service_worker
+from renewal.browser._navigation import (
+    RESET_WORKERS_JS,
+    SETTLE_WORKER_JS,
+    settle_service_worker,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1169,6 +1173,30 @@ def test_settle_requests_an_update_before_waiting_on_a_workerless_registration()
     source = inspect.getsource(settle_service_worker)
     assert "raise SettleFailedError(" in source
     assert source.count("_reset_workers(page)") == 2
+
+
+def test_settle_fails_a_redundant_worker_without_awaiting_it_again() -> None:
+    branch = _js_branch(SETTLE_WORKER_JS, "    if (pending) {")
+    wait = branch.index('pending.addEventListener("statechange"')
+    redundant = 'if (pending.state === "redundant") return {failed: '
+    # A worker already redundant fails before any subscription, and one that
+    # turns redundant while awaited fails right after its statechange.
+    assert branch.count(redundant) == 2
+    assert branch.index(redundant) < wait < branch.rindex(redundant)
+
+
+def test_worker_reset_unblocks_the_marked_document() -> None:
+    marker = re.search(
+        r'document\.documentElement\.hasAttribute\("([\w-]+)"\)', SETTLE_WORKER_JS
+    )
+    assert marker is not None
+    # Without the marker the next settle reads getRegistration (now none)
+    # instead of awaiting a ready that no worker will ever resolve.
+    assert (
+        f'document.documentElement.removeAttribute("{marker.group(1)}");'
+        in RESET_WORKERS_JS
+    )
+    assert "delete window.__clinicSettleWait;" in RESET_WORKERS_JS
 
 
 def test_native_evaluation_forms_wait_for_loaded_stylesheets() -> None:
