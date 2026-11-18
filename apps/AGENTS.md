@@ -1,7 +1,7 @@
 # apps/ - Django domain apps
 
 ## OVERVIEW
-14 domain apps (~62k LOC incl. SQL-in-Python migrations). Every rule is enforced twice: Python services AND PostgreSQL (FORCE RLS, SECURITY DEFINER resolvers, triggers). Score 17 (subtree top).
+26 domain apps (~62k LOC incl. SQL-in-Python migrations). Every rule is enforced twice: Python services AND PostgreSQL (FORCE RLS, SECURITY DEFINER resolvers, triggers). Score 17 (subtree top).
 
 ## APP MAP
 | App | Role | Ext import sites | Guide |
