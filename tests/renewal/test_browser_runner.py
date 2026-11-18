@@ -18,6 +18,15 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from apps.identity.models import UserPreference
+from apps.identity.preferences import (
+    DEFAULT_PREFERENCES,
+    UiPreferences,
+    default_ui_preferences,
+)
+from config.display import DENSITIES, THEMES
+from config.settings import base as base_settings
+from django.test import override_settings
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
@@ -2730,3 +2739,145 @@ def test_flagship_report_requires_its_file_and_the_sentinel_scan(
     browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
     with pytest.raises(runner.RenewalRunnerError, match="sentinel scan"):
         runner._flagship_report(browser_root, "journey-results", None)
+
+
+DISPLAY_DEFAULT = {
+    "CLINIC_RENEWAL_DENSITY": "comfortable",
+    "CLINIC_RENEWAL_THEME": "light",
+}
+
+
+def test_display_options_parse_and_default_to_todays_display() -> None:
+    options = runner._options(
+        ["--suite", "primitives", "--theme", "dark", "--density", "compact"],
+        runner._BROWSER_OPTIONS,
+    )
+    assert (options["--theme"], options["--density"]) == ("dark", "compact")
+    assert runner.DisplayRequest().environment() == DISPLAY_DEFAULT
+    assert runner.DisplayRequest("dark", "compact").environment() == {
+        "CLINIC_RENEWAL_DENSITY": "compact",
+        "CLINIC_RENEWAL_THEME": "dark",
+    }
+    assert runner.DisplayRequest(density="compact").environment() == {
+        **DISPLAY_DEFAULT,
+        "CLINIC_RENEWAL_DENSITY": "compact",
+    }
+
+
+def test_display_vocabulary_is_the_stored_preference_vocabulary() -> None:
+    # The runner may only request what a UserPreference row can hold.
+    assert tuple(UserPreference.Theme.values) == THEMES
+    assert tuple(UserPreference.Density.values) == DENSITIES
+    assert (THEMES[0], DENSITIES[0]) == (
+        DEFAULT_PREFERENCES.theme,
+        DEFAULT_PREFERENCES.density,
+    )
+
+
+@pytest.mark.parametrize(
+    ("theme", "density"),
+    [("sepia", None), (None, "cozy"), ("", None), ("Dark", None), (None, "")],
+)
+def test_display_refuses_an_unknown_value(
+    theme: str | None, density: str | None
+) -> None:
+    with pytest.raises(runner.RenewalRunnerError, match="unsupported renewal display"):
+        runner.DisplayRequest(theme, density).environment()
+
+
+@pytest.mark.parametrize("arguments", [["--theme", "sepia"], ["--density", "cozy"]])
+def test_main_refuses_an_unknown_display_before_any_provisioning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arguments: list[str]
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        message = "a refused display must never provision, capture or run"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(runner, "_docker", _explode)
+    monkeypatch.setattr(runner, "_capture_source", _explode)
+    monkeypatch.setattr(runner, "_run_browser_suite", _explode)
+    artifacts = tmp_path / "artifacts"
+    command = ["browser", "--suite", "smoke", *arguments]
+    assert runner.main([*command, "--artifact-root", str(artifacts)]) == 2
+    assert not (artifacts / "report.json").exists()
+
+
+def test_main_hands_the_display_request_to_the_suite_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    seen: list[object] = []
+
+    def fake_suite(*args: object) -> JsonObject:
+        seen.append(args[6])
+        return {"suite": str(args[1])}
+
+    monkeypatch.setattr(runner, "_run_browser_suite", fake_suite)
+    artifacts = _private(tmp_path / "artifacts")
+    command = ["browser", "--suite", "primitives", "--theme", "dark"]
+    assert runner.main([*command, "--artifact-root", str(artifacts)]) == 0
+    assert seen == [runner.DisplayRequest("dark", None)]
+
+
+@pytest.mark.parametrize(
+    ("request_", "requested", "signed_in"),
+    [
+        (
+            runner.DisplayRequest(),
+            {"density": None, "theme": None},
+            {"density": "comfortable", "theme": "light"},
+        ),
+        (
+            runner.DisplayRequest(density="compact"),
+            {"density": "compact", "theme": None},
+            {"density": "compact", "theme": "light"},
+        ),
+        (
+            runner.DisplayRequest("dark", "compact"),
+            {"density": "compact", "theme": "dark"},
+            {"density": "compact", "theme": "dark"},
+        ),
+    ],
+)
+def test_display_receipt_records_requested_and_effective(
+    request_: runner.DisplayRequest,
+    requested: dict[str, str | None],
+    signed_in: dict[str, str],
+) -> None:
+    # The effective display is resolved from the served app's own environment,
+    # as config.settings.renewal resolves it; public pages always stay light.
+    served = {**runner._server_environment("postgresql://x"), **request_.environment()}
+    receipt = runner._display_receipt(request_, served)
+    assert receipt == {
+        "effective": {
+            "public": {"density": "comfortable", "theme": "light"},
+            "signed_in": signed_in,
+        },
+        "requested": requested,
+        "signed_in_scope": "users without a stored display preference",
+    }
+    assert json.loads(json.dumps(receipt)) == receipt
+
+
+def test_only_the_renewal_runtime_moves_the_server_display_default() -> None:
+    # Base (hence production and test) settings are fixed literals; the
+    # renewal serving settings are the only reader of the runner's variables.
+    assert (
+        base_settings.CLINIC_DISPLAY_DEFAULT_THEME,
+        base_settings.CLINIC_DISPLAY_DEFAULT_DENSITY,
+    ) == ("light", "comfortable")
+    readers = [
+        path.relative_to(REPOSITORY).as_posix()
+        for path in sorted((REPOSITORY / "config" / "settings").glob("*.py"))
+        if "resolve_display(" in path.read_text(encoding="utf-8")
+    ]
+    assert readers == ["config/settings/renewal.py"]
+    assert default_ui_preferences() == DEFAULT_PREFERENCES
+    with override_settings(
+        CLINIC_DISPLAY_DEFAULT_THEME="dark", CLINIC_DISPLAY_DEFAULT_DENSITY="compact"
+    ):
+        assert default_ui_preferences() == UiPreferences(
+            theme="dark", density="compact"
+        )
