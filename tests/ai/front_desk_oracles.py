@@ -58,4 +58,10 @@ ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.ai_front_desk_guard()": (
         "ai.test_front_desk_guards.test_front_desk_sql_rechecks_inactive_and_foreign_actor",
     ),
+    # Reads app.current_user_id only to require it empty on the patient-session
+    # path; the case refuses an active and an inactive staff actor there.
+    "clinic_app.ai_front_desk_authorize(uuid,bytea,text)": (
+        "ai.test_front_desk_rollout."
+        "test_staff_session_cannot_ride_the_patient_authorize_path",
+    ),
 }

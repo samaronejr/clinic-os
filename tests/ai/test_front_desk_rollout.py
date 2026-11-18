@@ -11,12 +11,13 @@ import pytest
 from apps.ai import front_desk
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.evaluation import services
-from apps.ai.models import FrontDeskThread
+from apps.ai.models import FrontDeskThread, FrontDeskTurn
 from apps.ai.owner import set_global_switch, transition_model
 from apps.ai.policy import check_configuration
 from apps.comms import inbox_inbound
 from apps.comms.inbox_inbound import inbound_context
 from apps.core.secrets import secret_store
+from apps.identity.models import User
 from apps.intake.models import PatientAccessGrant, PatientSession
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
@@ -42,6 +43,8 @@ from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from pytest_django.fixtures import SettingsWrapper
 
     from rbac_fixtures import RbacGraph
@@ -557,3 +560,52 @@ def test_native_old_snapshot_cannot_reply_after_a_committed_kill(
             refused = True
     assert refused
     assert len(agent_replies(desk.graph)) == before
+
+
+def _session_authorize(
+    desk: Desk, context: front_desk.Context, kek: str, *, actor: UUID | None
+) -> str:
+    """Call the bridge on the patient-session path, optionally under a staff actor."""
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant',%s,true),"
+            "set_config('app.current_user_id',%s,true),"
+            "set_config('app.current_principal','',true),"
+            "set_config('app.current_patient_session',%s,true)",
+            [
+                str(desk.graph.organization_a),
+                "" if actor is None else str(actor),
+                str(context.session_id),
+            ],
+        )
+        return native_authorize(context, kek)
+
+
+def test_staff_session_cannot_ride_the_patient_authorize_path(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desk = desk_world(rbac_graph, settings, monkeypatch)
+    context = pending_acceptance(desk, monkeypatch)
+    assert context.session_id is not None
+    kek = secret_store().get_secret(KEK_SECRET_NAME)
+    # Control: the verified patient session itself is admitted.
+    assert _session_authorize(desk, context, kek, actor=None) == "monitored_autonomy"
+    with owner_context(rbac_graph.organization_a):
+        stamped = FrontDeskTurn.objects.get(pk=context.turn_id).source_xid
+    assert stamped
+    # The bridge reads app.current_user_id only to require it empty: the same
+    # session under any staff actor, active or inactive, is refused unchanged.
+    staff = desk.manager
+    try:
+        for active in (True, False):
+            with owner_context(rbac_graph.organization_a):
+                User.objects.filter(pk=staff).update(is_active=active)
+            assert _session_authorize(desk, context, kek, actor=staff) == ""
+            with owner_context(rbac_graph.organization_a):
+                turn = FrontDeskTurn.objects.get(pk=context.turn_id)
+            assert turn.source_xid == stamped
+    finally:
+        with owner_context(rbac_graph.organization_a):
+            User.objects.filter(pk=staff).update(is_active=True)
