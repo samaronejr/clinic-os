@@ -32,6 +32,7 @@ from apps.scheduling.agenda_board_presenter import (
     signature,
 )
 from apps.scheduling.models import Appointment
+from django.template.loader import render_to_string
 
 DAY: Final = date(2035, 6, 2)
 
@@ -167,15 +168,42 @@ def test_month_weeks_start_on_monday_and_link_each_day_of_the_month() -> None:
 
 def test_list_days_group_rows_with_one_fresh_command_each() -> None:
     practitioner = uuid4()
+    room, equipment = uuid4(), uuid4()
     items = (
-        _item(practitioner, "09:00", "09:30"),
+        _item(practitioner, "09:00", "09:30", resources=(room, equipment)),
         _item(practitioner, "10:00", "10:30"),
         _item(practitioner, "09:00", "09:30", day=date(2035, 6, 3)),
     )
     rows = action_rows(_board((), items, view="list"))
-    grouped = list_days(rows)
+    grouped = list_days(
+        rows,
+        {practitioner: "Dra. Sintetica", room: "Sala <A>", equipment: "Ultrassom"},
+    )
     assert [day.day for day in grouped] == [DAY, date(2035, 6, 3)]
     assert len({row.command_id for row in rows}) == len(items)
+    first, second = grouped[0].rows
+    assert first.command_id == rows[0].command_id
+    assert first.practitioner_label == "Dra. Sintetica"
+    assert first.resource_labels == ("Sala <A>", "Ultrassom")
+    assert not second.resource_labels
+    markup = render_to_string(
+        "scheduling/partials/agenda_board_list.html",
+        {"list_days": grouped, "move_url": "/move/", "board": {"view": "list"}},
+    )
+    assert ">Dra. Sintetica</td>" in markup
+    assert "Sala &lt;A&gt;, Ultrassom</td>" in markup
+
+
+def test_grid_native_commands_are_only_for_confirmable_holds() -> None:
+    practitioner = uuid4()
+    scheduled = _item(practitioner, "09:00", "09:30")
+    held = replace(
+        _item(practitioner, "09:30", "10:00"),
+        status="held",
+        actions=("confirm", "cancel"),
+    )
+    [row] = action_rows(_board((), (scheduled, held)))
+    assert row.item == held
 
 
 def test_the_signature_changes_with_a_revision_but_not_with_layout() -> None:
