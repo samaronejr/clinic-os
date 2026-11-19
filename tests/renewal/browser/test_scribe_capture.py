@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -10,7 +11,7 @@ import subprocess
 import sys
 from base64 import b64encode
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -32,10 +33,10 @@ from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import Page, Request, Response, Route
+    from playwright.sync_api import Page, Response, Route
 
 
 def fixture_command(
@@ -927,36 +928,39 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     }""")
     control = panel.get_attribute("data-control-url")
     assert control is not None
-    held: dict[str, Route] = {}
+    # Each handler resolves its own future the moment it has stored its held
+    # request; the test awaits that signal, bounded, before acting on it.
+    loop = page._loop
+    held: dict[str, asyncio.Future[Route]] = {
+        "stop": loop.create_future(),
+        "status": loop.create_future(),
+    }
 
     def hold(route: Route) -> None:
         # Only record the route: the test forwards it to the server, and
         # releases its response to the page, at the moments it chooses.
-        action = (route.request.post_data_json or {}).get("action")
-        if action in {"stop", "status"} and action not in held:
-            held[action] = route
+        action = str((route.request.post_data_json or {}).get("action", ""))
+        future = held.get(action)
+        if future is not None and not future.done():
+            future.set_result(route)
         else:
             route.continue_()
 
-    def control_request(action: str) -> Callable[[Request], bool]:
-        return lambda request: (
-            request.url.endswith(control)
-            and (request.post_data_json or {}).get("action") == action
-        )
+    def held_route(action: str) -> Route:
+        # _sync keeps Playwright's dispatcher running while it waits, so the
+        # handler can resolve the future; wait_for bounds the wait.
+        return cast("Route", page._sync(asyncio.wait_for(held[action], 15)))
 
     page.route(f"**{control}", hold)
     # 1. A poll leaves while no local action is in flight, and is held.
-    with page.expect_request(control_request("status")):
-        page.clock.run_for(5000)
+    page.clock.run_for(5000)
+    status_route = held_route("status")
     # 2. The clinician stops; the stop is held too.
-    with page.expect_request(control_request("stop")):
-        page.locator('[data-capture-action="stop"]').click()
-    # The route handlers ran before this round trip's reply was processed.
-    page.evaluate("() => 0")
-    assert set(held) == {"stop", "status"}
+    page.locator('[data-capture-action="stop"]').click()
+    stop_route = held_route("stop")
     # 3. The server applies the stop first, so the held poll reads "stopped".
-    stop_response = held["stop"].fetch()
-    status_response = held["status"].fetch()
+    stop_response = stop_route.fetch()
+    status_response = status_route.fetch()
     # Resolves once the poll's response is parsed and every continuation
     # queued behind it (post, control, watchAuthority) has run: a message
     # task follows all of their microtasks. No timer, no new connection.
@@ -981,9 +985,9 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
         control,
     )
     # 4. Stop reaches the page first and finishes; then the stale poll lands.
-    held["stop"].fulfill(response=stop_response)
+    stop_route.fulfill(response=stop_response)
     expect(panel).to_have_attribute("data-phase", "done")
-    held["status"].fulfill(response=status_response)
+    status_route.fulfill(response=status_response)
     assert page.evaluate("() => window.__scribeStatusSettled") is True
     assert "recovery" not in page.evaluate("() => window.__scribePhases")
     expect(panel).to_have_attribute("data-phase", "done")
