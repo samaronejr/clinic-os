@@ -624,16 +624,37 @@ def test_a_clinician_starts_a_care_thread_that_reception_cannot_open(
         expect(clinician.locator(".lede")).to_contain_text(
             pgettext("conversation purpose", "Care")
         )
-        thread_url = clinician.url
+        # The thread renders from the POST at the plain inbox URL (SC-7), so its
+        # id comes from the page, never from a URL.
+        care_thread = clinician.locator(
+            "[data-conversation][data-purpose=care]"
+        ).get_attribute("data-conversation")
+        assert care_thread
         _capture(clinician, root, "care-thread", 1280)
     finally:
         context.close()
-    # Reception holds no care role: the list omits it and the thread is a 404.
-    goto_settled(page, _inbox(staff, base))
+    # Reception holds no care role: the list omits it, and selecting the thread
+    # the only way one is selected (a CSRF POST body) is the one 404.
+    inbox = _inbox(staff, base)
+    goto_settled(page, inbox)
     expect(page.locator("tr[data-conversation]")).to_have_count(0)
-    response = goto_settled(page, thread_url)
-    assert response is not None
+    csrf = next(
+        cookie.get("value", "")
+        for cookie in page.context.cookies()
+        if cookie.get("name") == "csrftoken"
+    )
+    response = page.request.post(
+        inbox,
+        form={
+            "csrfmiddlewaretoken": csrf,
+            "action": "show",
+            "conversation_id": care_thread,
+        },
+        headers={"Referer": inbox},
+        max_redirects=0,
+    )
     assert response.status == NOT_FOUND
+    assert name not in response.text()
 
 
 def test_quick_replies_fill_the_composer_and_send_nothing(
