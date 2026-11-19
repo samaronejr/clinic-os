@@ -309,8 +309,6 @@ server-state tests/scheduling/test_world_hints.py::test_view_return_rule_require
 server-state tests/scheduling/test_worlds.py::test_equal_world_clones_share_catalog_closure
 server-state tests/scheduling/test_worlds.py::test_stale_scheduling_template_is_refused
 server-state tests/scheduling/test_worlds.py::test_worker_thread_uses_its_world_database
-# Keep the warm autosave query budget in the single-process budget run.
-worker-environment tests/ehr/test_autosave.py::test_warm_unscheduled_autosave_query_budget
 # Runs every threat-model proof test in a child pytest on the unsuffixed
 # test database, which only the single-process serial phase provides.
 worker-environment tests/infra/test_threat_model_coverage.py::test_every_mitigation_has_a_passing_mapped_test
