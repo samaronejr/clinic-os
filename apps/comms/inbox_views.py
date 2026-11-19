@@ -21,6 +21,7 @@ from apps.comms import suggestions
 from apps.comms.inbox_queries import (
     CHANNEL_LABELS,
     PURPOSE_LABELS,
+    STATES,
     PatientChoice,
     care_team_patients,
     conversation_view,
@@ -126,6 +127,32 @@ def _open_options(clinic_id: UUID) -> dict[str, object]:
     }
 
 
+def _list_filters(request: HttpRequest) -> tuple[str, bool, bool]:
+    """Return the list filters, closed to known values (SC-7).
+
+    An unknown state falls back to the default, so only a member of STATES
+    reaches the query, the page context or any URL built from it.
+    """
+    state = request.GET.get("state", "open")
+    return (
+        state if state in STATES else "open",
+        request.GET.get("mine") == "1",
+        request.GET.get("clinician") == "1",
+    )
+
+
+def _refresh_url(
+    clinic_id: UUID, state: str, *, mine: bool, clinician_only: bool
+) -> str:
+    """Build the list's refresh URL from the validated filters only (SC-7)."""
+    filters = {"state": state}
+    if mine:
+        filters["mine"] = "1"
+    if clinician_only:
+        filters["clinician"] = "1"
+    return f"{reverse('comms:inbox', args=(clinic_id,))}?{urlencode(filters)}"
+
+
 @require_http_methods(["GET", "POST"])
 def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     """List the threads this actor may handle; unknown clinics look identical."""
@@ -170,9 +197,7 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         except (InboxRefusedError, InboxConflictError) as error:
             messages.error(request, _refusal(error.code))
             return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
-    state = request.GET.get("state", "open")
-    mine = request.GET.get("mine") == "1"
-    clinician_only = request.GET.get("clinician") == "1"
+    state, mine, clinician_only = _list_filters(request)
     try:
         rows = list_conversations(
             clinic_id=clinic_id,
@@ -182,12 +207,9 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         )
     except CurrentActorError as error:
         raise Http404 from error
-    # The list refresh URL is rebuilt from the validated filters only, so no
-    # other query parameter (a selector-like one included) is reissued (SC-7).
-    filters = {"state": state, **({"mine": "1"} if mine else {})}
-    if clinician_only:
-        filters["clinician"] = "1"
-    refresh_url = f"{reverse('comms:inbox', args=(clinic_id,))}?{urlencode(filters)}"
+    refresh_url = _refresh_url(
+        clinic_id, state, mine=mine, clinician_only=clinician_only
+    )
     return render(
         request,
         "comms/inbox.html",

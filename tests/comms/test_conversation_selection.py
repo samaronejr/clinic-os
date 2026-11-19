@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import html as html_module
+import re
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -26,6 +29,16 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+SELECTOR_QUERIES = ("conversation_id", "conversation")
+URL_ATTRIBUTES = re.compile(
+    r'\s(?:href|action|src|hx-get|hx-post|hx-push-url|hx-replace-url)="([^"]*)"'
+)
+
+
+def _generated_urls(html: str) -> list[str]:
+    """Every URL-valued attribute of the page, unescaped as a browser parses it."""
+    return [html_module.unescape(url) for url in URL_ATTRIBUTES.findall(html)]
 
 
 @pytest.fixture
@@ -85,15 +98,32 @@ def test_selection_and_read_actions_keep_the_selector_in_post(
     listing = _get(client, f"{path}?conversation_id={conversation.pk}")
     assert listing.status_code == 200
     assert "thread-region" not in Document(listing.content).identifiers()
-    # Nor is an ignored selector-like query reflected anywhere: the list's
-    # refresh URL is rebuilt from the validated filters (SC-7).
-    for query in ("conversation_id", "conversation"):
-        echoed = _get(client, f"{path}?state=open&{query}={conversation.pk}")
+    # Nor does an ignored selector-like query reach any generated URL. The
+    # selector is not a listed row, so it may appear nowhere at all; the
+    # listed row keeps its id only in the POST opener's hidden field (SC-7).
+    ignored = str(uuid4())
+    hostile_states = (
+        ignored,
+        f"open&conversation_id={ignored}",
+        f"pending&conversation={ignored}",
+    )
+    requests = [
+        *(f"{path}?state=open&{query}={ignored}" for query in SELECTOR_QUERIES),
+        *(f"{path}?{urlencode({'state': state})}" for state in hostile_states),
+    ]
+    for request_path in requests:
+        echoed = _get(client, request_path)
         html = echoed.content.decode()
-        assert str(conversation.pk) not in html
-        assert query + "=" not in html
+        assert echoed.status_code == 200
+        assert ignored not in html
+        urls = _generated_urls(html)
+        assert urls
+        for url in urls:
+            assert str(conversation.pk) not in url
+            assert not set(parse_qs(urlsplit(url).query)) & set(SELECTOR_QUERIES)
         refresh = Document(echoed.content).attributes_for("conversation-list")
         assert refresh["hx-get"] == f"{path}?state=open"
+        assert f'name="conversation_id" value="{conversation.pk}"' in html
 
 
 def test_selected_mutation_redirects_without_a_selector_or_repeat(
