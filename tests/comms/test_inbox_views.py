@@ -388,9 +388,16 @@ def test_a_clinician_starts_a_care_thread_from_the_care_team(
                 "purpose": "care",
             },
         )
-    assert started.status_code == FOUND
+    # The started care thread renders from the POST itself (SC-7): no
+    # redirect, no Location, and the page is that thread, selected in its body.
+    assert started.status_code == OK
+    assert "Location" not in started
     conversation, thread = _thread(graph)
     assert (conversation.purpose, conversation.enrollment_id) == ("care", enrollment)
+    shown = started.content.decode()
+    assert gettext("Conversation opened.") in shown
+    assert f'name="conversation_id" value="{conversation.pk}"' in shown
+    assert name in shown
     # Reception cannot open the care thread the clinician started.
     reception, _ = receptionist_client(graph)
     with runtime_role():
