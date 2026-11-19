@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from apps.comms import inbox_services as services
+from apps.comms.inbox_views import REOPEN_SESSION_KEY
 from apps.comms.models import Conversation, Message, QuickReply
 from apps.identity.models import CareTeamMembership
 from apps.intake.contacts import save_contact_destination, verify_contact
@@ -401,10 +402,22 @@ def test_a_clinician_starts_a_care_thread_from_the_care_team(
     # Reception cannot open the care thread the clinician started.
     reception, _ = receptionist_client(graph)
     with runtime_role():
-        assert (
-            reception.post(thread.url, thread.body({"action": "show"})).status_code
-            == NOT_FOUND
-        )
+        shown_denial = reception.post(thread.url, thread.body({"action": "show"}))
+    assert shown_denial.status_code == NOT_FOUND
+    # A return target stored for a thread this actor cannot see is consumed as
+    # housekeeping: the GET is reception's ordinary list, exactly as for an
+    # unknown id, with nothing of the care thread in it, and the key is gone.
+    plain = _get(reception, thread.url)
+    session = reception.session
+    session[REOPEN_SESSION_KEY] = str(conversation.pk)
+    session.save()
+    listed = _get(reception, thread.url)
+    assert 'id="conversation-list"' in listed
+    assert 'id="thread-region"' not in listed
+    assert name not in listed
+    assert str(conversation.pk) not in listed
+    assert listed.count("<tr") == plain.count("<tr")
+    assert REOPEN_SESSION_KEY not in reception.session
     assert name in _show(client, thread)
 
 

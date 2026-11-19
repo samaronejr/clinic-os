@@ -22,6 +22,7 @@ from apps.comms.inbox_queries import (
     CHANNEL_LABELS,
     PURPOSE_LABELS,
     STATES,
+    ConversationView,
     PatientChoice,
     care_team_patients,
     conversation_view,
@@ -82,6 +83,9 @@ REFUSALS: Final = {
     "link_not_applicable": _("This conversation cannot be linked to a patient."),
     "invalid_state": _("That conversation state is not valid."),
 }
+# One-shot, server-side return target after a thread action (SC-7): holds only
+# the conversation id, never reaches a URL, Location, cookie or browser storage.
+REOPEN_SESSION_KEY: Final = "comms.inbox.reopen"
 DEFAULT_REFUSAL: Final = _("The action could not be completed.")
 OPEN_CHANNELS: Final = ("whatsapp", "email", "sms", "portal")
 
@@ -125,6 +129,33 @@ def _open_options(clinic_id: UUID) -> dict[str, object]:
             (purpose, str(PURPOSE_LABELS[purpose])) for purpose in purposes
         ),
     }
+
+
+def _reopened(request: HttpRequest, clinic_id: UUID) -> HttpResponse | None:
+    """Render the thread a just-completed action returns to, once (SC-7).
+
+    The key is popped on the first plain GET, so a second GET or a reload
+    shows the list and no action repeats. The list's own refresh never takes
+    it. Popping is housekeeping, never a refusal: the id is checked again
+    through conversation_view for this clinic, and a malformed, unknown or
+    no-longer-visible id renders the list exactly as a missing key does, so
+    unknown and foreign ids look identical and nothing sticks.
+    """
+    if request.method != "GET" or request.headers.get("HX-Target") == (
+        "conversation-list"
+    ):
+        return None
+    stored = request.session.pop(REOPEN_SESSION_KEY, None)
+    conversation_id = None if stored is None else parse_uuid(str(stored))
+    if conversation_id is None:
+        return None
+    try:
+        view = conversation_view(
+            clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
+        )
+    except CurrentActorError:
+        return None
+    return _page(request, clinic_id, view)
 
 
 def _list_filters(request: HttpRequest) -> tuple[str, bool, bool]:
@@ -186,7 +217,15 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                     else gettext("The conversation already exists."),
                 )
                 # The opened thread renders from this POST; no id reaches a URL.
-                return _page(request, clinic_id, opened.conversation_id)
+                return _page(
+                    request,
+                    clinic_id,
+                    conversation_view(
+                        clinic_id=clinic_id,
+                        conversation_id=opened.conversation_id,
+                        now=timezone.now(),
+                    ),
+                )
             if action == "find_patient":
                 choices, notice = _find(request, clinic_id)
                 searched = True
@@ -206,7 +245,14 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             clinician_only=clinician_only,
         )
     except CurrentActorError as error:
+        # Decided before the reopen key is read: a refusal leaves the session
+        # untouched (the workspace refusal guard), and a refused actor's key
+        # simply stays where it can never be consumed.
         raise Http404 from error
+    # Only paths that end in a 200 consume the key: the thread or this list.
+    reopened = _reopened(request, clinic_id)
+    if reopened is not None:
+        return reopened
     refresh_url = _refresh_url(
         clinic_id, state, mine=mine, clinician_only=clinician_only
     )
@@ -369,15 +415,10 @@ def _handle(
 def _page(
     request: HttpRequest,
     clinic_id: UUID,
-    conversation_id: UUID,
+    view: ConversationView,
     extra: dict[str, object] | None = None,
 ) -> HttpResponse:
-    try:
-        view = conversation_view(
-            clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
-        )
-    except CurrentActorError as error:
-        raise Http404 from error
+    """Render a thread whose access check the caller has already passed."""
     conversation = view.conversation
     clinician = is_clinician(clinic_id)
     return render(
@@ -420,34 +461,36 @@ def _conversation_post(
     """Show or act on the thread selected in the POST body (SC-7).
 
     The thread id never appears in a URL, a redirect or the history cache:
-    the page and its refreshes post back to the inbox with a hidden id.
+    the page and its refreshes post back to the inbox with a hidden id. An
+    action, applied or refused, redirects to the id-free inbox, and the next
+    GET returns to the thread once through REOPEN_SESSION_KEY.
     """
     action = request.POST.get("action", "")
+    visible = False
     try:
-        conversation_view(
+        view = conversation_view(
             clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
         )
+        # Written only after the access check: a denial never touches the session.
+        visible = True
         if action == "show":
-            return _page(request, clinic_id, conversation_id)
+            return _page(request, clinic_id, view)
         if action == "find_patient":
             choices, notice = _find(request, clinic_id)
             return _page(
                 request,
                 clinic_id,
-                conversation_id,
+                view,
                 {"choices": choices, "choice_notice": notice, "searched": True},
             )
         if action == "quick_reply":
-            shown = conversation_view(
-                clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
-            )
             return _page(
                 request,
                 clinic_id,
-                conversation_id,
+                view,
                 {
                     "prefill": _quick_reply_text(
-                        request, clinic_id, shown.conversation.purpose
+                        request, clinic_id, view.conversation.purpose
                     )
                 },
             )
@@ -460,4 +503,6 @@ def _conversation_post(
         messages.error(request, str(DEFAULT_REFUSAL))
     else:
         messages.success(request, confirmation)
+    if visible:
+        request.session[REOPEN_SESSION_KEY] = str(conversation_id)
     return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))

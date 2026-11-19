@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import os
@@ -11,7 +10,7 @@ import subprocess
 import sys
 from base64 import b64encode
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -32,13 +31,124 @@ from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
-HELD_STATUS_MARK = "held-status"
+# Runs the whole stop/poll race inside the page, with no driver round trip
+# inside the product's 5 s fetch deadline: the first status poll is held
+# unsent, Stop is clicked from the page, its request goes through, and the
+# poll is released the moment the panel reaches "done". window.__scribeRace
+# .outcome resolves after the poll's handling, or rejects with the step that
+# failed. Its deadline can only reject; success never waits on it.
+RACE_STOP_AGAINST_HELD_POLL_JS: Final = """control => {
+  const panel = document.querySelector('[data-scribe-capture]');
+  const realFetch = window.fetch;
+  const phases = [];
+  const record = {
+    phaseAtStatus: null, statusState: null, step: 'waiting for a status poll',
+  };
+  let settled = false;
+  let resolveOutcome;
+  let rejectOutcome;
+  const outcome = new Promise((resolve, reject) => {
+    resolveOutcome = resolve;
+    rejectOutcome = reject;
+  });
+  outcome.catch(() => {});
+  const fail = reason => {
+    if (settled) return;
+    settled = true;
+    rejectOutcome(new Error(reason + ' (step: ' + record.step + '; phases: ' +
+      (phases.join(' > ') || 'none') + ')'));
+  };
+  const succeed = () => {
+    if (settled) return;
+    settled = true;
+    resolveOutcome({...record, phases: [...phases], finalPhase: panel.dataset.phase});
+  };
+  setTimeout(() => fail('no outcome within 20 s'), 20000);
+  let releaseStatus = null;
+  new MutationObserver(() => {
+    phases.push(panel.dataset.phase);
+    if (!releaseStatus) return;
+    if (panel.dataset.phase === 'done') {
+      const release = releaseStatus;
+      releaseStatus = null;
+      release();
+    } else if (panel.dataset.phase === 'recovery') {
+      fail('capture entered recovery before the poll was released');
+    }
+  }).observe(panel, {attributes: true, attributeFilter: ['data-phase']});
+  // A message task runs after every microtask queued before it.
+  const afterContinuations = () => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      succeed();
+    };
+    channel.port2.postMessage(null);
+  };
+  let statusTaken = false;
+  let stopTaken = false;
+  window.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : input.url;
+    let action = null;
+    if (url.endsWith(control) && init && typeof init.body === 'string') {
+      try { action = JSON.parse(init.body).action; } catch (error) { action = null; }
+    }
+    if (action === 'status' && !statusTaken) {
+      statusTaken = true;
+      record.phaseAtStatus = panel.dataset.phase;
+      if (record.phaseAtStatus !== 'recording') {
+        fail('the held poll left in phase ' + record.phaseAtStatus);
+      }
+      const released = new Promise(resolve => { releaseStatus = resolve; });
+      record.step = 'stopping with the poll held';
+      Promise.resolve().then(() => {
+        panel.querySelector('[data-capture-action="stop"]').click();
+      });
+      return released
+        .then(() => {
+          record.step = 'delivering the held poll';
+          return realFetch.call(window, input, init);
+        })
+        .then(async response => {
+          try {
+            record.statusState = (await response.clone().json()).state;
+          } catch (error) {
+            fail("the held poll's body could not be read: " + error);
+            throw error;
+          }
+          record.step = 'handling the held poll';
+          const json = response.json.bind(response);
+          response.json = () => {
+            const parsed = json();
+            parsed.then(afterContinuations, error => {
+              fail('the product could not parse the held poll: ' + error);
+            });
+            return parsed;
+          };
+          return response;
+        }, error => {
+          fail('the held poll was not delivered: ' + error);
+          throw error;
+        });
+    }
+    if (action === 'stop' && !stopTaken) {
+      stopTaken = true;
+      record.step = 'applying the stop';
+      return realFetch.call(window, input, init).catch(error => {
+        fail('the stop request failed: ' + error);
+        throw error;
+      });
+    }
+    return realFetch.call(window, input, init);
+  };
+  window.__scribeRace = {outcome};
+}"""
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import Page, Response, Route
+    from playwright.sync_api import Page, Response
 
 
 def fixture_command(
@@ -908,9 +1018,14 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
 ) -> None:
     # race-rootcause, Round 11: a 5 s status poll that returned after this
     # client's own stop committed read "stopped" as an external stop and
-    # forced recovery. Both responses are held, then released stop-first.
+    # forced recovery. The poll is held as it leaves, Stop is applied and
+    # delivered first, then the stale poll lands.
+    #
+    # No page clock: advancing it moves performance.now(), which the capture
+    # reads to size audio slices (Round 16). The product's own 5 s poll fires
+    # on its schedule, and the race runs inside the page (M6-1): no driver
+    # round trip sits inside the product's 5 s fetch deadline.
     page = outage_page
-    page.clock.install()
     fake_microphone(page)
     # A day no other scribe test seeds: the availability exclusion constraint
     # refuses a second active window for the same practitioner.
@@ -924,86 +1039,14 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     expect(panel).to_have_attribute(
         "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
     )
-    page.evaluate("""() => {
-      window.__scribePhases = [];
-      const panel = document.querySelector('[data-scribe-capture]');
-      new MutationObserver(() => window.__scribePhases.push(panel.dataset.phase))
-        .observe(panel, {attributes: true, attributeFilter: ['data-phase']});
-    }""")
     control = panel.get_attribute("data-control-url")
     assert control is not None
-    # Each handler resolves its own future the moment it has stored its held
-    # request; the test awaits that signal, bounded, before acting on it.
-    loop = page._loop
-    held: dict[str, asyncio.Future[Route]] = {
-        "stop": loop.create_future(),
-        "status": loop.create_future(),
-    }
-
-    def hold(route: Route) -> None:
-        # Only record the route: the test forwards it to the server, and
-        # releases its response to the page, at the moments it chooses.
-        action = str((route.request.post_data_json or {}).get("action", ""))
-        future = held.get(action)
-        if future is not None and not future.done():
-            future.set_result(route)
-        else:
-            route.continue_()
-
-    def held_route(action: str) -> Route:
-        # _sync keeps Playwright's dispatcher running while it waits, so the
-        # handler can resolve the future; wait_for bounds the wait.
-        return cast("Route", page._sync(asyncio.wait_for(held[action], 15)))
-
-    page.route(f"**{control}", hold)
-    # 1. A poll leaves while no local action is in flight, and is held.
-    page.clock.run_for(5000)
-    status_route = held_route("status")
-    # 2. The clinician stops; the stop is held too.
-    page.locator('[data-capture-action="stop"]').click()
-    stop_route = held_route("stop")
-    # 3. The server applies the stop first, so the held poll reads "stopped".
-    stop_response = stop_route.fetch()
-    status_response = status_route.fetch()
-    # 4. Stop reaches the page first and finishes.
-    stop_route.fulfill(response=stop_response)
-    expect(panel).to_have_attribute("data-phase", "done")
-    # Only the held status reply carries this token, so no other response
-    # (Stop's included) can resolve the completion signal. It resolves once
-    # that reply is parsed and every continuation queued behind it (post,
-    # control, watchAuthority) has run: a message task follows all of their
-    # microtasks. No timer, no new connection.
-    page.evaluate(
-        """token => {
-      window.__scribeStatusHandled = false;
-      window.__scribeStatusSettled = new Promise(resolve => {
-        const json = Response.prototype.json;
-        Response.prototype.json = function () {
-          const parsed = json.call(this);
-          if (this.headers.get('x-clinic-test-held') === token) {
-            Response.prototype.json = json;
-            parsed.finally(() => {
-              const channel = new MessageChannel();
-              channel.port1.onmessage = () => {
-                window.__scribeStatusHandled = true;
-                resolve(true);
-              };
-              channel.port2.postMessage(null);
-            });
-          }
-          return parsed;
-        };
-      });
-    }""",
-        HELD_STATUS_MARK,
-    )
-    # The signal is still pending while the status reply is held.
-    assert page.evaluate("() => window.__scribeStatusHandled") is False
-    # 5. The stale poll lands after the stop has finished.
-    status_route.fulfill(
-        response=status_response,
-        headers={**status_response.headers, "x-clinic-test-held": HELD_STATUS_MARK},
-    )
-    assert page.evaluate("() => window.__scribeStatusSettled") is True
-    assert "recovery" not in page.evaluate("() => window.__scribePhases")
+    # One page promise carries the whole race; any failed step rejects it with
+    # its reason, which fails the test.
+    page.evaluate(RACE_STOP_AGAINST_HELD_POLL_JS, control)
+    outcome = page.evaluate("() => window.__scribeRace.outcome")
+    assert outcome["phaseAtStatus"] == "recording"
+    assert outcome["statusState"] == "stopped"
+    assert "recovery" not in outcome["phases"]
+    assert outcome["finalPhase"] == "done"
     expect(panel).to_have_attribute("data-phase", "done")
