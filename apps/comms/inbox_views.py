@@ -22,6 +22,7 @@ from apps.comms.inbox_queries import (
     CHANNEL_LABELS,
     PURPOSE_LABELS,
     STATES,
+    ConversationView,
     PatientChoice,
     care_team_patients,
     conversation_view,
@@ -135,20 +136,26 @@ def _reopened(request: HttpRequest, clinic_id: UUID) -> HttpResponse | None:
 
     The key is popped on the first plain GET, so a second GET or a reload
     shows the list and no action repeats. The list's own refresh never takes
-    it. The id is checked again through conversation_view for this clinic: an
-    unknown, malformed or no-longer-visible id is the one 404.
+    it. Popping is housekeeping, never a refusal: the id is checked again
+    through conversation_view for this clinic, and a malformed, unknown or
+    no-longer-visible id renders the list exactly as a missing key does, so
+    unknown and foreign ids look identical and nothing sticks.
     """
     if request.method != "GET" or request.headers.get("HX-Target") == (
         "conversation-list"
     ):
         return None
     stored = request.session.pop(REOPEN_SESSION_KEY, None)
-    if stored is None:
-        return None
-    conversation_id = parse_uuid(str(stored))
+    conversation_id = None if stored is None else parse_uuid(str(stored))
     if conversation_id is None:
-        raise Http404
-    return _page(request, clinic_id, conversation_id)
+        return None
+    try:
+        view = conversation_view(
+            clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
+        )
+    except CurrentActorError:
+        return None
+    return _page(request, clinic_id, view)
 
 
 def _list_filters(request: HttpRequest) -> tuple[str, bool, bool]:
@@ -210,7 +217,15 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                     else gettext("The conversation already exists."),
                 )
                 # The opened thread renders from this POST; no id reaches a URL.
-                return _page(request, clinic_id, opened.conversation_id)
+                return _page(
+                    request,
+                    clinic_id,
+                    conversation_view(
+                        clinic_id=clinic_id,
+                        conversation_id=opened.conversation_id,
+                        now=timezone.now(),
+                    ),
+                )
             if action == "find_patient":
                 choices, notice = _find(request, clinic_id)
                 searched = True
@@ -396,15 +411,10 @@ def _handle(
 def _page(
     request: HttpRequest,
     clinic_id: UUID,
-    conversation_id: UUID,
+    view: ConversationView,
     extra: dict[str, object] | None = None,
 ) -> HttpResponse:
-    try:
-        view = conversation_view(
-            clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
-        )
-    except CurrentActorError as error:
-        raise Http404 from error
+    """Render a thread whose access check the caller has already passed."""
     conversation = view.conversation
     clinician = is_clinician(clinic_id)
     return render(
@@ -454,32 +464,29 @@ def _conversation_post(
     action = request.POST.get("action", "")
     visible = False
     try:
-        conversation_view(
+        view = conversation_view(
             clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
         )
         # Written only after the access check: a denial never touches the session.
         visible = True
         if action == "show":
-            return _page(request, clinic_id, conversation_id)
+            return _page(request, clinic_id, view)
         if action == "find_patient":
             choices, notice = _find(request, clinic_id)
             return _page(
                 request,
                 clinic_id,
-                conversation_id,
+                view,
                 {"choices": choices, "choice_notice": notice, "searched": True},
             )
         if action == "quick_reply":
-            shown = conversation_view(
-                clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
-            )
             return _page(
                 request,
                 clinic_id,
-                conversation_id,
+                view,
                 {
                     "prefill": _quick_reply_text(
-                        request, clinic_id, shown.conversation.purpose
+                        request, clinic_id, view.conversation.purpose
                     )
                 },
             )

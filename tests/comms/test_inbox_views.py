@@ -404,18 +404,20 @@ def test_a_clinician_starts_a_care_thread_from_the_care_team(
     with runtime_role():
         shown_denial = reception.post(thread.url, thread.body({"action": "show"}))
     assert shown_denial.status_code == NOT_FOUND
-    # A return target stored for a thread this actor cannot see is the same 404,
-    # leaks nothing and is cleared; the next GET is the list.
+    # A return target stored for a thread this actor cannot see is consumed as
+    # housekeeping: the GET is reception's ordinary list, exactly as for an
+    # unknown id, with nothing of the care thread in it, and the key is gone.
+    plain = _get(reception, thread.url)
     session = reception.session
     session[REOPEN_SESSION_KEY] = str(conversation.pk)
     session.save()
-    with runtime_role():
-        denied = reception.get(thread.url)
-    assert denied.status_code == NOT_FOUND
-    assert denied.content == shown_denial.content
-    assert name not in denied.content.decode()
+    listed = _get(reception, thread.url)
+    assert 'id="conversation-list"' in listed
+    assert 'id="thread-region"' not in listed
+    assert name not in listed
+    assert str(conversation.pk) not in listed
+    assert listed.count("<tr") == plain.count("<tr")
     assert REOPEN_SESSION_KEY not in reception.session
-    assert 'id="conversation-list"' in _get(reception, thread.url)
     assert name in _show(client, thread)
 
 

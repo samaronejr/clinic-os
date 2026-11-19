@@ -266,23 +266,29 @@ def test_a_refused_action_also_returns_to_its_thread(
         assert Conversation.objects.get().assignee_id is None
 
 
-def test_a_stored_unknown_or_malformed_reopen_is_the_one_denial(
+def test_a_stored_unknown_or_malformed_reopen_shows_the_list(
     rbac_graph: RbacGraph, thread: tuple[Client, Conversation]
 ) -> None:
+    # Consuming a bad return target is housekeeping, not a refusal: the GET is
+    # the same list as with no key (no 404, no lockout), and the key is gone.
     client, conversation = thread
     path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
-    baseline = _post(client, path, {"action": "show", "conversation_id": str(uuid4())})
-    assert baseline.status_code == 404
-    for stored in (str(uuid4()), "malformed"):
+    plain = Document(_get(client, path).content).identifiers()
+    assert "conversation-list" in plain
+    assert "thread-region" not in plain
+    unknown = str(uuid4())
+    for stored in (unknown, "malformed"):
         session = client.session
         session[REOPEN_SESSION_KEY] = stored
         session.save()
-        denied = _get(client, path)
-        assert denied.status_code == 404
-        assert denied.content == baseline.content
-        assert str(conversation.pk) not in denied.content.decode()
+        listed = _get(client, path)
+        assert listed.status_code == 200
+        assert Document(listed.content).identifiers() == plain
+        assert unknown not in listed.content.decode()
         assert REOPEN_SESSION_KEY not in client.session
-        assert "conversation-list" in Document(_get(client, path).content).identifiers()
+    assert f'name="conversation_id" value="{conversation.pk}"' in (
+        _get(client, path).content.decode()
+    )
 
 
 def test_every_inbox_refusal_exit_is_the_one_denial(
@@ -294,11 +300,6 @@ def test_every_inbox_refusal_exit_is_the_one_denial(
     client, conversation = thread
     path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
     selector = str(conversation.pk)
-
-    def stored(value: str) -> None:
-        session = client.session
-        session[REOPEN_SESSION_KEY] = value
-        session.save()
 
     with owner_context(rbac_graph.organization_a):
         before = (
@@ -325,17 +326,10 @@ def test_every_inbox_refusal_exit_is_the_one_denial(
             },
         ),
     }
-    # _reopened: a malformed stored return target.
-    stored("malformed")
-    denials["malformed reopen"] = _get(client, path)
-    # _page (through _reopened): a stored id for no visible thread.
-    stored(str(uuid4()))
-    denials["unknown reopen"] = _get(client, path)
     for name, response in denials.items():
         assert response.status_code == 404, name
         assert response.content == baseline.content, name
         assert selector not in response.content.decode(), name
-    assert REOPEN_SESSION_KEY not in client.session
     # inbox: the list itself, for a role the inbox refuses (list_conversations).
     allied, _user = _client_for(rbac_graph, "allied_professional")
     allied_baseline = _post(
