@@ -32,6 +32,8 @@ from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
+HELD_STATUS_MARK = "held-status"
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
@@ -961,20 +963,29 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     # 3. The server applies the stop first, so the held poll reads "stopped".
     stop_response = stop_route.fetch()
     status_response = status_route.fetch()
-    # Resolves once the poll's response is parsed and every continuation
-    # queued behind it (post, control, watchAuthority) has run: a message
-    # task follows all of their microtasks. No timer, no new connection.
+    # 4. Stop reaches the page first and finishes.
+    stop_route.fulfill(response=stop_response)
+    expect(panel).to_have_attribute("data-phase", "done")
+    # Only the held status reply carries this token, so no other response
+    # (Stop's included) can resolve the completion signal. It resolves once
+    # that reply is parsed and every continuation queued behind it (post,
+    # control, watchAuthority) has run: a message task follows all of their
+    # microtasks. No timer, no new connection.
     page.evaluate(
-        """control => {
+        """token => {
+      window.__scribeStatusHandled = false;
       window.__scribeStatusSettled = new Promise(resolve => {
         const json = Response.prototype.json;
         Response.prototype.json = function () {
           const parsed = json.call(this);
-          if (this.url.endsWith(control)) {
+          if (this.headers.get('x-clinic-test-held') === token) {
             Response.prototype.json = json;
             parsed.finally(() => {
               const channel = new MessageChannel();
-              channel.port1.onmessage = () => resolve(true);
+              channel.port1.onmessage = () => {
+                window.__scribeStatusHandled = true;
+                resolve(true);
+              };
               channel.port2.postMessage(null);
             });
           }
@@ -982,12 +993,15 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
         };
       });
     }""",
-        control,
+        HELD_STATUS_MARK,
     )
-    # 4. Stop reaches the page first and finishes; then the stale poll lands.
-    stop_route.fulfill(response=stop_response)
-    expect(panel).to_have_attribute("data-phase", "done")
-    status_route.fulfill(response=status_response)
+    # The signal is still pending while the status reply is held.
+    assert page.evaluate("() => window.__scribeStatusHandled") is False
+    # 5. The stale poll lands after the stop has finished.
+    status_route.fulfill(
+        response=status_response,
+        headers={**status_response.headers, "x-clinic-test-held": HELD_STATUS_MARK},
+    )
     assert page.evaluate("() => window.__scribeStatusSettled") is True
     assert "recovery" not in page.evaluate("() => window.__scribePhases")
     expect(panel).to_have_attribute("data-phase", "done")
