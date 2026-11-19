@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import os
@@ -11,7 +10,7 @@ import subprocess
 import sys
 from base64 import b64encode
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -32,13 +31,78 @@ from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
-HELD_STATUS_MARK = "held-status"
+# Holds the first status poll unsent and the first stop's reply undelivered,
+# each released by the test; every signal is a promise the test awaits.
+HOLD_STATUS_AND_STOP_JS: Final = """control => {
+  const realFetch = window.fetch;
+  const panel = document.querySelector('[data-scribe-capture]');
+  const deferred = () => {
+    const box = {settled: false};
+    box.promise = new Promise(resolve => { box.resolve = resolve; });
+    return box;
+  };
+  const arrived = {status: deferred(), stop: deferred()};
+  const release = {status: deferred(), stop: deferred()};
+  const stopApplied = deferred();
+  const statusHandled = deferred();
+  const record = {phaseAtStatus: null, statusState: null, statusOutcome: null};
+  // A message task runs after every microtask queued before it.
+  const afterContinuations = () => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => statusHandled.resolve(true);
+    channel.port2.postMessage(null);
+  };
+  window.__scribeHold = {
+    record,
+    arrived: action => arrived[action].promise,
+    stopApplied: () => stopApplied.promise,
+    release: action => { release[action].resolve(); },
+    statusHandled: () => statusHandled.promise,
+  };
+  window.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : input.url;
+    let action = null;
+    if (url.endsWith(control) && init && typeof init.body === 'string') {
+      try { action = JSON.parse(init.body).action; } catch (error) { action = null; }
+    }
+    if (action === 'stop' && !arrived.stop.settled) {
+      arrived.stop.settled = true;
+      arrived.stop.resolve(true);
+      const sent = realFetch.call(window, input, init);
+      sent.then(() => stopApplied.resolve(true), () => stopApplied.resolve(false));
+      return release.stop.promise.then(() => sent);
+    }
+    if (action === 'status' && !arrived.status.settled) {
+      arrived.status.settled = true;
+      record.phaseAtStatus = panel.dataset.phase;
+      arrived.status.resolve(true);
+      return release.status.promise
+        .then(() => realFetch.call(window, input, init))
+        .then(async response => {
+          record.statusOutcome = 'delivered';
+          record.statusState = (await response.clone().json()).state;
+          const json = response.json.bind(response);
+          response.json = () => {
+            const parsed = json();
+            parsed.finally(afterContinuations);
+            return parsed;
+          };
+          return response;
+        }, error => {
+          record.statusOutcome = 'aborted';
+          afterContinuations();
+          throw error;
+        });
+    }
+    return realFetch.call(window, input, init);
+  };
+}"""
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import Page, Response, Route
+    from playwright.sync_api import Page, Response
 
 
 def fixture_command(
@@ -908,9 +972,15 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
 ) -> None:
     # race-rootcause, Round 11: a 5 s status poll that returned after this
     # client's own stop committed read "stopped" as an external stop and
-    # forced recovery. Both responses are held, then released stop-first.
+    # forced recovery. The poll is held as it leaves, Stop is applied and
+    # delivered first, then the stale poll lands.
+    #
+    # No page clock: advancing it moves performance.now(), which the capture
+    # reads to size audio slices, so a jump fails a slice (Round 16). The
+    # product's own 5 s poll fires on its schedule. The holds live in the page
+    # (a fetch wrapper installed through evaluate, public API only, no new
+    # connection), and every wait is an awaited promise.
     page = outage_page
-    page.clock.install()
     fake_microphone(page)
     # A day no other scribe test seeds: the availability exclusion constraint
     # refuses a second active window for the same practitioner.
@@ -932,78 +1002,25 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     }""")
     control = panel.get_attribute("data-control-url")
     assert control is not None
-    # Each handler resolves its own future the moment it has stored its held
-    # request; the test awaits that signal, bounded, before acting on it.
-    loop = page._loop
-    held: dict[str, asyncio.Future[Route]] = {
-        "stop": loop.create_future(),
-        "status": loop.create_future(),
-    }
-
-    def hold(route: Route) -> None:
-        # Only record the route: the test forwards it to the server, and
-        # releases its response to the page, at the moments it chooses.
-        action = str((route.request.post_data_json or {}).get("action", ""))
-        future = held.get(action)
-        if future is not None and not future.done():
-            future.set_result(route)
-        else:
-            route.continue_()
-
-    def held_route(action: str) -> Route:
-        # _sync keeps Playwright's dispatcher running while it waits, so the
-        # handler can resolve the future; wait_for bounds the wait.
-        return cast("Route", page._sync(asyncio.wait_for(held[action], 15)))
-
-    page.route(f"**{control}", hold)
-    # 1. A poll leaves while no local action is in flight, and is held.
-    page.clock.run_for(5000)
-    status_route = held_route("status")
-    # 2. The clinician stops; the stop is held too.
+    page.evaluate(HOLD_STATUS_AND_STOP_JS, control)
+    # 1. A poll leaves while no local action is in flight, and is held unsent.
+    assert page.evaluate("() => window.__scribeHold.arrived('status')") is True
+    assert page.evaluate("() => window.__scribeHold.record.phaseAtStatus") == (
+        "recording"
+    )
+    # 2. The clinician stops: the stop reaches the server, its reply is held.
     page.locator('[data-capture-action="stop"]').click()
-    stop_route = held_route("stop")
-    # 3. The server applies the stop first, so the held poll reads "stopped".
-    stop_response = stop_route.fetch()
-    status_response = status_route.fetch()
-    # 4. Stop reaches the page first and finishes.
-    stop_route.fulfill(response=stop_response)
+    assert page.evaluate("() => window.__scribeHold.arrived('stop')") is True
+    assert page.evaluate("() => window.__scribeHold.stopApplied()") is True
+    # 3. Stop's reply reaches the page first and the stop finishes.
+    page.evaluate("() => window.__scribeHold.release('stop')")
     expect(panel).to_have_attribute("data-phase", "done")
-    # Only the held status reply carries this token, so no other response
-    # (Stop's included) can resolve the completion signal. It resolves once
-    # that reply is parsed and every continuation queued behind it (post,
-    # control, watchAuthority) has run: a message task follows all of their
-    # microtasks. No timer, no new connection.
-    page.evaluate(
-        """token => {
-      window.__scribeStatusHandled = false;
-      window.__scribeStatusSettled = new Promise(resolve => {
-        const json = Response.prototype.json;
-        Response.prototype.json = function () {
-          const parsed = json.call(this);
-          if (this.headers.get('x-clinic-test-held') === token) {
-            Response.prototype.json = json;
-            parsed.finally(() => {
-              const channel = new MessageChannel();
-              channel.port1.onmessage = () => {
-                window.__scribeStatusHandled = true;
-                resolve(true);
-              };
-              channel.port2.postMessage(null);
-            });
-          }
-          return parsed;
-        };
-      });
-    }""",
-        HELD_STATUS_MARK,
-    )
-    # The signal is still pending while the status reply is held.
-    assert page.evaluate("() => window.__scribeStatusHandled") is False
-    # 5. The stale poll lands after the stop has finished.
-    status_route.fulfill(
-        response=status_response,
-        headers={**status_response.headers, "x-clinic-test-held": HELD_STATUS_MARK},
-    )
-    assert page.evaluate("() => window.__scribeStatusSettled") is True
+    # 4. Only now is the held poll sent, so the server answers "stopped"; the
+    # signal resolves after every continuation queued behind its parse.
+    page.evaluate("() => window.__scribeHold.release('status')")
+    assert page.evaluate("() => window.__scribeHold.statusHandled()") is True
+    record = page.evaluate("() => window.__scribeHold.record")
+    assert record["statusOutcome"] == "delivered"
+    assert record["statusState"] == "stopped"
     assert "recovery" not in page.evaluate("() => window.__scribePhases")
     expect(panel).to_have_attribute("data-phase", "done")
