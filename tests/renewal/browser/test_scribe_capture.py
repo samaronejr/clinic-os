@@ -912,7 +912,9 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     page = outage_page
     page.clock.install()
     fake_microphone(page)
-    open_capture(page, renewal_base_url, availability_staff, "2036-04-23")
+    # A day no other scribe test seeds: the availability exclusion constraint
+    # refuses a second active window for the same practitioner.
+    open_capture(page, renewal_base_url, availability_staff, "2036-05-12")
     page.locator('[data-capture-action="start"]').click()
     panel = page.locator("[data-scribe-capture]")
     if not supported(page):
