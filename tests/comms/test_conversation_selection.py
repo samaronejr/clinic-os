@@ -283,3 +283,73 @@ def test_a_stored_unknown_or_malformed_reopen_is_the_one_denial(
         assert str(conversation.pk) not in denied.content.decode()
         assert REOPEN_SESSION_KEY not in client.session
         assert "conversation-list" in Document(_get(client, path).content).identifiers()
+
+
+def test_every_inbox_refusal_exit_is_the_one_denial(
+    rbac_graph: RbacGraph, thread: tuple[Client, Conversation]
+) -> None:
+    # Each refusal exit in apps/comms/inbox_views.py, driven through the real
+    # view: the same 404 body as that actor's baseline denial, no selector in
+    # it, and no write. (The refusal-exit census requires each one reached.)
+    client, conversation = thread
+    path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
+    selector = str(conversation.pk)
+
+    def stored(value: str) -> None:
+        session = client.session
+        session[REOPEN_SESSION_KEY] = value
+        session.save()
+
+    with owner_context(rbac_graph.organization_a):
+        before = (
+            writes(),
+            InternalNote.objects.count(),
+            Message.objects.count(),
+            Conversation.objects.count(),
+        )
+    # _conversation_post: an unknown body-selected thread (the baseline).
+    baseline = _post(client, path, {"action": "show", "conversation_id": str(uuid4())})
+    assert baseline.status_code == 404
+    denials = {
+        # inbox: a thread action without a conversation_id.
+        "missing selector": _post(client, path, {"action": "assign"}),
+        # inbox: opening a conversation for an unknown enrollment.
+        "unknown enrollment": _post(
+            client,
+            path,
+            {
+                "action": "open",
+                "enrollment_id": str(uuid4()),
+                "channel": "whatsapp",
+                "purpose": "transactional",
+            },
+        ),
+    }
+    # _reopened: a malformed stored return target.
+    stored("malformed")
+    denials["malformed reopen"] = _get(client, path)
+    # _page (through _reopened): a stored id for no visible thread.
+    stored(str(uuid4()))
+    denials["unknown reopen"] = _get(client, path)
+    for name, response in denials.items():
+        assert response.status_code == 404, name
+        assert response.content == baseline.content, name
+        assert selector not in response.content.decode(), name
+    assert REOPEN_SESSION_KEY not in client.session
+    # inbox: the list itself, for a role the inbox refuses (list_conversations).
+    allied, _user = _client_for(rbac_graph, "allied_professional")
+    allied_baseline = _post(
+        allied, path, {"action": "show", "conversation_id": str(uuid4())}
+    )
+    refused_list = _get(allied, path)
+    assert allied_baseline.status_code == refused_list.status_code == 404
+    assert refused_list.content == allied_baseline.content
+    assert selector not in refused_list.content.decode()
+    with owner_context(rbac_graph.organization_a):
+        after = (
+            writes(),
+            InternalNote.objects.count(),
+            Message.objects.count(),
+            Conversation.objects.count(),
+        )
+    assert after == before
