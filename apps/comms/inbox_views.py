@@ -236,9 +236,6 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         except (InboxRefusedError, InboxConflictError) as error:
             messages.error(request, _refusal(error.code))
             return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
-    reopened = _reopened(request, clinic_id)
-    if reopened is not None:
-        return reopened
     state, mine, clinician_only = _list_filters(request)
     try:
         rows = list_conversations(
@@ -248,7 +245,14 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             clinician_only=clinician_only,
         )
     except CurrentActorError as error:
+        # Decided before the reopen key is read: a refusal leaves the session
+        # untouched (the workspace refusal guard), and a refused actor's key
+        # simply stays where it can never be consumed.
         raise Http404 from error
+    # Only paths that end in a 200 consume the key: the thread or this list.
+    reopened = _reopened(request, clinic_id)
+    if reopened is not None:
+        return reopened
     refresh_url = _refresh_url(
         clinic_id, state, mine=mine, clinician_only=clinician_only
     )

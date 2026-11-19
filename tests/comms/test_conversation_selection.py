@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from apps.comms.inbox_views import ACTIONS, REOPEN_SESSION_KEY
 from apps.comms.models import Conversation, InternalNote, Message
+from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext
 
@@ -82,6 +83,12 @@ def _assert_selected(
     assert {"private", "no-store"} <= {
         part.strip() for part in response["Cache-Control"].split(",")
     }
+
+
+def _assert_session_untouched(response: _MonkeyPatchedWSGIResponse, name: str) -> None:
+    """A refusal neither modifies the session nor sets the session cookie."""
+    assert response.wsgi_request.session.modified is False, name
+    assert settings.SESSION_COOKIE_NAME not in response.cookies, name
 
 
 def test_selection_and_read_actions_keep_the_selector_in_post(
@@ -296,7 +303,8 @@ def test_every_inbox_refusal_exit_is_the_one_denial(
 ) -> None:
     # Each refusal exit in apps/comms/inbox_views.py, driven through the real
     # view: the same 404 body as that actor's baseline denial, no selector in
-    # it, and no write. (The refusal-exit census requires each one reached.)
+    # it, the session untouched (not modified, no session cookie) and no
+    # write. (The refusal-exit census requires each one reached.)
     client, conversation = thread
     path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
     selector = str(conversation.pk)
@@ -326,10 +334,11 @@ def test_every_inbox_refusal_exit_is_the_one_denial(
             },
         ),
     }
-    for name, response in denials.items():
+    for name, response in {"unknown thread": baseline, **denials}.items():
         assert response.status_code == 404, name
         assert response.content == baseline.content, name
         assert selector not in response.content.decode(), name
+        _assert_session_untouched(response, name)
     # inbox: the list itself, for a role the inbox refuses (list_conversations).
     allied, _user = _client_for(rbac_graph, "allied_professional")
     allied_baseline = _post(
@@ -339,6 +348,20 @@ def test_every_inbox_refusal_exit_is_the_one_denial(
     assert allied_baseline.status_code == refused_list.status_code == 404
     assert refused_list.content == allied_baseline.content
     assert selector not in refused_list.content.decode()
+    _assert_session_untouched(allied_baseline, "allied baseline")
+    _assert_session_untouched(refused_list, "refused list")
+    # A refused role holding a return target: the list refusal is decided
+    # before the key is read, so the 404 is the same, the session is untouched
+    # and the key stays (it can never be consumed by this role).
+    session = allied.session
+    session[REOPEN_SESSION_KEY] = selector
+    session.save()
+    for attempt in ("first", "second"):
+        keyed = _get(allied, path)
+        assert keyed.status_code == 404, attempt
+        assert keyed.content == allied_baseline.content, attempt
+        _assert_session_untouched(keyed, f"refused list with a key, {attempt}")
+        assert allied.session[REOPEN_SESSION_KEY] == selector, attempt
     with owner_context(rbac_graph.organization_a):
         after = (
             writes(),
