@@ -11,6 +11,7 @@ from uuid import UUID
 
 from django.core.exceptions import PermissionDenied
 from django.db import connection, transaction
+from django.db.models import Subquery
 from django.db.models.functions import Now
 
 from apps.audit.services import record_phase1_event
@@ -318,14 +319,8 @@ def touch_session(*, session_key: str | None, http_status: int) -> None:
         revoked_at__isnull=True,
         expires_at__gt=Now(),
     )
-    # Never wait: this runs last in the request transaction, after all of its
-    # locks, so a held row (a revoker's, or anyone's) skips the best-effort
-    # touch instead of joining a cycle. The UPDATE reaches only the row locked
-    # here, still live, so a revoked session is never touched or extended.
-    locked = list(
-        live.select_for_update(no_key=True, skip_locked=True).values_list(
-            "pk", flat=True
-        )
-    )
-    if locked:
-        live.filter(pk__in=locked).update(last_seen=Now())
+    # Take only the row that can be locked immediately, in the same statement
+    # as the UPDATE. The hash is unique; a busy or no-longer-live row produces
+    # no id, so touching at the end of a request cannot wait on a revoker's row.
+    locked = live.select_for_update(no_key=True, skip_locked=True).values("pk")
+    live.filter(pk=Subquery(locked)).update(last_seen=Now())
