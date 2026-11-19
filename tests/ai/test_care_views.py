@@ -237,8 +237,9 @@ def test_page_rechecks_authority_when_the_workspace_gate_admits(
     monkeypatch.setattr(
         workspace_access,
         "granted_permissions",
-        lambda clinic_id: (
-            granted_permissions(clinic_id) | {"automation.propose_clinical"}
+        lambda clinic_id, *, candidates: (
+            granted_permissions(clinic_id, candidates=candidates)
+            | {"automation.propose_clinical"}
         ),
     )
     before = len(_items(world))
