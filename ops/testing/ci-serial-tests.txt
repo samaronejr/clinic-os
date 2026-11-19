@@ -102,6 +102,7 @@ server-state tests/scheduling/test_agenda_board.py::test_a_physician_sees_only_t
 server-state tests/scheduling/test_agenda_board.py::test_arrival_and_cancellation_post_body_selectors_from_the_list
 server-state tests/scheduling/test_agenda_board.py::test_every_view_renders_the_authorized_board_once_without_url_selectors
 server-state tests/scheduling/test_agenda_board.py::test_filters_are_kept_server_side_and_a_hidden_booking_still_occupies
+server-state tests/scheduling/test_agenda_board.py::test_full_agenda_board_query_budget
 server-state tests/scheduling/test_agenda_board.py::test_other_unit_capacity_is_busy_without_any_patient_detail
 server-state tests/scheduling/test_agenda_board.py::test_owner_reads_the_board_without_booking_or_lifecycle_hooks
 server-state tests/scheduling/test_agenda_board.py::test_saved_views_reopen_their_filters_and_archive
@@ -308,6 +309,8 @@ server-state tests/scheduling/test_world_hints.py::test_view_return_rule_require
 server-state tests/scheduling/test_worlds.py::test_equal_world_clones_share_catalog_closure
 server-state tests/scheduling/test_worlds.py::test_stale_scheduling_template_is_refused
 server-state tests/scheduling/test_worlds.py::test_worker_thread_uses_its_world_database
+# Keep the warm autosave query budget in the single-process budget run.
+worker-environment tests/ehr/test_autosave.py::test_warm_unscheduled_autosave_query_budget
 # Runs every threat-model proof test in a child pytest on the unsuffixed
 # test database, which only the single-process serial phase provides.
 worker-environment tests/infra/test_threat_model_coverage.py::test_every_mitigation_has_a_passing_mapped_test
