@@ -938,7 +938,7 @@ def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
     assert (result.status, result.revision) == (AutosaveStatus.SAVED, 3)
     # Includes authority reads, savepoints, crypto, audit writes, inbox hint
     # scope lookup, commit and GUC cleanup; setup and role switching are out.
-    assert len(captured) == 90
+    assert len(captured) == 86
     assert (
         sum(
             'FROM "ehr_drafteditstate"' in q["sql"] and "FOR UPDATE" in q["sql"]

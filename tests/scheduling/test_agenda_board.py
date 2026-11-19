@@ -197,7 +197,7 @@ def test_every_view_renders_the_authorized_board_once_without_url_selectors(
     assert after[len(before) :].count(AGENDA_VIEWED_EVENT) == len(pages)
 
 
-@pytest.mark.parametrize(("view", "budget"), [("day", 64), ("week", 64), ("list", 63)])
+@pytest.mark.parametrize(("view", "budget"), [("day", 56), ("week", 56), ("list", 55)])
 def test_full_agenda_board_query_budget(
     rbac_graph: RbacGraph, view: str, budget: int
 ) -> None:
@@ -213,8 +213,8 @@ def test_full_agenda_board_query_budget(
     assert page.status_code == 200
     assert f'value="{booked.pk}"'.encode() in page.content
     assert not page.wsgi_request.session.modified
-    # Includes tenant transactions, shell, read audit, and the one name
-    # decrypt. Day and week also read occupancy; list does not.
+    # Includes the tenant transactions and two cleanup batches, shell, read
+    # audit and the name decrypt. Day and week also read occupancy.
     assert len(captured) == budget
     assert sum("clinic_app.protected_decrypt(" in q["sql"] for q in captured) == 1
     # Route authorization, clinic discovery, then fresh selected-clinic grants.
