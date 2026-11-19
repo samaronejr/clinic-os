@@ -126,8 +126,13 @@ def _settle_live_region(page: Page) -> None:
     wait_for_js(page, SETTLED_JS)
 
 
-def _open_thread(page: Page, *, contact: str | None = None) -> None:
-    """Open a thread from the list; the contact picks the row by its masked number.
+def _open_thread(
+    page: Page, *, contact: str | None = None, conversation: str | None = None
+) -> None:
+    """Open a thread from the list through its POST "Open" button.
+
+    The contact picks the row by its masked number, the conversation by its
+    data-conversation attribute (DOM only, never a URL: SC-7).
 
     The list and the thread each swap their live region in once more after load. A
     press that lands on the old node and is released on its replacement activates
@@ -136,11 +141,14 @@ def _open_thread(page: Page, *, contact: str | None = None) -> None:
     before returning, ready for the caller's next click into its region.
     """
     _settle_live_region(page)
-    rows = page.locator("tr[data-conversation]")
+    if conversation:
+        rows = page.locator(f'tr[data-conversation="{conversation}"]')
+    else:
+        rows = page.locator("tr[data-conversation]")
     row = rows.filter(has_text=contact).first if contact else rows.first
-    link = row.get_by_role("link", name=pgettext("inbox action", "Open"))
-    expect(link).to_be_visible()
-    click_to_navigate(link)
+    opener = row.get_by_role("button", name=pgettext("inbox action", "Open"))
+    expect(opener).to_be_visible()
+    click_to_navigate(opener)
     expect(page.locator("[data-conversation][data-purpose]")).to_be_visible()
     _settle_live_region(page)
 
@@ -344,7 +352,8 @@ def test_expired_window_offers_no_free_text(
     conversation = seed_expired_thread(staff, provider)
     _sign_in_receptionist(renewal_page, base, staff)
     page = renewal_page
-    goto_settled(page, f"{_inbox(staff, base)}{conversation}/")
+    goto_settled(page, _inbox(staff, base))
+    _open_thread(page, conversation=str(conversation))
     expect(page.locator('[data-window="closed"]')).to_be_visible()
     expect(page.locator("#reply-body")).to_have_count(0)
     expect(
