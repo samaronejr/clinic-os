@@ -197,7 +197,7 @@ def test_every_view_renders_the_authorized_board_once_without_url_selectors(
     assert after[len(before) :].count(AGENDA_VIEWED_EVENT) == len(pages)
 
 
-@pytest.mark.parametrize(("view", "budget"), [("day", 62), ("week", 62), ("list", 61)])
+@pytest.mark.parametrize(("view", "budget"), [("day", 64), ("week", 64), ("list", 63)])
 def test_full_agenda_board_query_budget(
     rbac_graph: RbacGraph, view: str, budget: int
 ) -> None:
@@ -217,7 +217,8 @@ def test_full_agenda_board_query_budget(
     # decrypt. Day and week also read occupancy; list does not.
     assert len(captured) == budget
     assert sum("clinic_app.protected_decrypt(" in q["sql"] for q in captured) == 1
-    assert sum("clinic_app.has_permission(candidate" in q["sql"] for q in captured) == 1
+    # Route authorization, clinic discovery, then fresh selected-clinic grants.
+    assert sum("clinic_app.has_permission(candidate" in q["sql"] for q in captured) == 3
     assert sum("FOR NO KEY UPDATE SKIP LOCKED" in q["sql"] for q in captured) == 1
 
 

@@ -2785,7 +2785,8 @@
     {
       "symbol": "apps.core.workspace.resolve_workspace",
       "signals": [
-        "authentication"
+        "authentication",
+        "permission"
       ],
       "kind": "direct",
       "probes": [

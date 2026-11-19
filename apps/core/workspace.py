@@ -59,13 +59,12 @@ _PLACES: Final = {
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceClinic:
-    """A clinic's live shell decision, local to this resolution."""
+    """One clinic whose delivered places the current user may open."""
 
     id: UUID
     name: str
     timezone: str
     roles: frozenset[str]
-    granted: frozenset[str]
     landing_url: str
 
 
@@ -167,8 +166,9 @@ def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
     clinics: list[WorkspaceClinic] = []
     for clinic_id, (name, zone, assigned) in grouped.items():
         roles = frozenset(assigned)
-        granted = granted_permissions(clinic_id)
-        landing = _landing(clinic_id, roles=roles, granted=granted)
+        landing = _landing(
+            clinic_id, roles=roles, granted=granted_permissions(clinic_id)
+        )
         if landing is not None:
             clinics.append(
                 WorkspaceClinic(
@@ -176,7 +176,6 @@ def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
                     name=name,
                     timezone=zone,
                     roles=roles,
-                    granted=granted,
                     landing_url=landing,
                 )
             )
@@ -265,13 +264,13 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
     if clinic is None:
         return Workspace(user.get_username(), None, others, ())
     view_name = request.resolver_match.view_name
-    # The landing and menu share one shell decision. Routes and patient reads
-    # still make their own live authorization decisions.
+    # A timed grant can change since clinic discovery, even in one request.
+    granted = granted_permissions(clinic.id)
     navigation = build_navigation(
         clinic_id=clinic.id,
         timezone=clinic.timezone,
         roles=clinic.roles,
-        granted=clinic.granted,
+        granted=granted,
         view_name=view_name,
     )
     return Workspace(
@@ -290,7 +289,7 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 clinic_id=clinic.id,
                 timezone=clinic.timezone,
                 roles=clinic.roles,
-                granted=clinic.granted,
+                granted=granted,
                 view_name=view_name,
             )
             if not getattr(request, DENIED_ATTRIBUTE, False)
