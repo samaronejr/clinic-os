@@ -249,7 +249,7 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         "comms:inbox",
         ("demographics.read",),
         route_roles=MESSAGES_ROUTE,
-        views=frozenset({"comms:inbox", "comms:conversation"}),
+        views=frozenset({"comms:inbox"}),
         entries=(
             # Task 54: conversations the front-desk assistant handed to a person.
             Destination(

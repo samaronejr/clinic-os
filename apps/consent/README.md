@@ -80,12 +80,12 @@ care.
   and each action rechecks its own. Clinic narrowing (`RoleGrant` remove),
   an inactive actor or another clinic refuse identically; the SQL guard
   raises 42501.
-- Retained selected default, pending future PR owner signoff: owner and
-  org_admin may read consent receipts, refusals, future-use and disclosure
+- Owner-approved deviation from the RP matrix (owner decision of 2026-11-18,
+  recorded in the orchestration ledger): owner and org_admin may read consent receipts, refusals, future-use and disclosure
   status through `configuration.organization`. Their shared bundle preserves
   existing owner receipt access. A clinic may narrow this permission with a
   `RoleGrant` remove. This consent governance default does not grant clinical
-  note access and is not recorded as explicit owner approval.
+  note access.
 - FORCE RLS and binding triggers independently check permissions and
   patient provenance. Runtime UPDATE/DELETE privileges are absent; triggers reject
   maintenance-role edits/deletes too. All record classes have indefinite

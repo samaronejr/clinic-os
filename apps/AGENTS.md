@@ -1,7 +1,7 @@
 # apps/ - Django domain apps
 
 ## OVERVIEW
-14 domain apps (~62k LOC incl. SQL-in-Python migrations). Every rule is enforced twice: Python services AND PostgreSQL (FORCE RLS, SECURITY DEFINER resolvers, triggers). Score 17 (subtree top).
+26 domain apps (~62k LOC incl. SQL-in-Python migrations). Every rule is enforced twice: Python services AND PostgreSQL (FORCE RLS, SECURITY DEFINER resolvers, triggers). Score 17 (subtree top).
 
 ## APP MAP
 | App | Role | Ext import sites | Guide |
@@ -28,6 +28,8 @@
 | analytics | versioned clinic metrics, journal-only money projections, requester-bound snapshots and a reviewed synthetic analyst | new | analytics/README.md |
 | subscriptions | Clinic Ops packaging, membership seats, lifecycle and source-derived usage, separate from clinic journals | new | subscriptions/README.md |
 | website | public product site and pt-BR help center: GET-only, no models or services, claims registered in `docs/web/claims.yaml`, guides bound to real screens | new | website/README.md |
+| providers | provider capability lifecycle registry: the database of record for every external capability, replacing hardcoded `real_enabled=False`; live paths ask `services.is_live` | 27 | providers/README.md |
+| realtime | optional, synthetic-verified refetch hints (SSE tickets, topics, scopes), never records; `REALTIME_ENABLED` defaults off, with 30-second polling as the fallback | 9 | realtime/README.md |
 
 ## REQUEST AUTHORITY FLOW
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.

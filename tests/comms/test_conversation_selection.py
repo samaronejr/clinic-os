@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import html as html_module
+import re
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -26,6 +29,16 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+SELECTOR_QUERIES = ("conversation_id", "conversation")
+URL_ATTRIBUTES = re.compile(
+    r'\s(?:href|action|src|hx-get|hx-post|hx-push-url|hx-replace-url)="([^"]*)"'
+)
+
+
+def _generated_urls(html: str) -> list[str]:
+    """Every URL-valued attribute of the page, unescaped as a browser parses it."""
+    return [html_module.unescape(url) for url in URL_ATTRIBUTES.findall(html)]
 
 
 @pytest.fixture
@@ -85,6 +98,32 @@ def test_selection_and_read_actions_keep_the_selector_in_post(
     listing = _get(client, f"{path}?conversation_id={conversation.pk}")
     assert listing.status_code == 200
     assert "thread-region" not in Document(listing.content).identifiers()
+    # Nor does an ignored selector-like query reach any generated URL. The
+    # selector is not a listed row, so it may appear nowhere at all; the
+    # listed row keeps its id only in the POST opener's hidden field (SC-7).
+    ignored = str(uuid4())
+    hostile_states = (
+        ignored,
+        f"open&conversation_id={ignored}",
+        f"pending&conversation={ignored}",
+    )
+    requests = [
+        *(f"{path}?state=open&{query}={ignored}" for query in SELECTOR_QUERIES),
+        *(f"{path}?{urlencode({'state': state})}" for state in hostile_states),
+    ]
+    for request_path in requests:
+        echoed = _get(client, request_path)
+        html = echoed.content.decode()
+        assert echoed.status_code == 200
+        assert ignored not in html
+        urls = _generated_urls(html)
+        assert urls
+        for url in urls:
+            assert str(conversation.pk) not in url
+            assert not set(parse_qs(urlsplit(url).query)) & set(SELECTOR_QUERIES)
+        refresh = Document(echoed.content).attributes_for("conversation-list")
+        assert refresh["hx-get"] == f"{path}?state=open"
+        assert f'name="conversation_id" value="{conversation.pk}"' in html
 
 
 def test_selected_mutation_redirects_without_a_selector_or_repeat(
@@ -153,3 +192,29 @@ def test_missing_malformed_unknown_and_csrf_denials_do_not_write(
         assert (writes(), InternalNote.objects.count(), Message.objects.count()) == (
             before
         )
+
+
+def test_threads_open_by_post_and_no_url_carries_a_thread_id(
+    thread: tuple[Client, Conversation],
+) -> None:
+    # SC-7: the old /messages/<id>/ GET route is gone, and the inbox list opens
+    # each thread through a CSRF-protected POST carrying the id in its body.
+    client, conversation = thread
+    inbox = reverse("comms:inbox", args=(conversation.clinic_id,))
+    assert _get(client, f"{inbox}{conversation.pk}/").status_code == 404
+    page = _get(client, inbox)
+    html = page.content.decode()
+    assert page.status_code == 200
+    assert f"/{conversation.pk}" not in html
+    opener = html.index(f'name="conversation_id" value="{conversation.pk}"')
+    form = html[html.rindex("<form", 0, opener) : opener]
+    assert f'method="post" action="{inbox}"' in form
+    assert 'name="csrfmiddlewaretoken"' in form
+    assert 'name="action" value="show"' in form
+    _assert_selected(
+        _post(
+            client, inbox, {"action": "show", "conversation_id": str(conversation.pk)}
+        ),
+        inbox,
+        conversation,
+    )

@@ -90,10 +90,7 @@ def test_urgent_queue_page_decides_by_post_body_and_never_shows_the_text(
     inbox = reverse("comms:inbox", args=(graph.clinic_a,))
     assert f'method="post" action="{inbox}"' in html
     assert f'name="conversation_id" value="{world.conversation}"' in html
-    assert (
-        reverse("comms:conversation", args=(graph.clinic_a, world.conversation))
-        not in html
-    )
+    assert f"/messages/{world.conversation}/" not in html
     opened = _post(
         nurse, inbox, {"action": "show", "conversation_id": str(world.conversation)}
     )

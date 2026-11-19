@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -10,7 +11,7 @@ import subprocess
 import sys
 from base64 import b64encode
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -31,11 +32,13 @@ from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
+HELD_STATUS_MARK = "held-status"
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
 
-    from playwright.sync_api import Page, Response
+    from playwright.sync_api import Page, Response, Route
 
 
 def fixture_command(
@@ -896,3 +899,109 @@ def test_transcript_pending_incomplete_final_and_manual_care(
     click_to_navigate(page.locator('a[href$="/encounter/"]'))
     expect(page.locator("#soap-form")).to_be_visible()
     save_manual_note(page)
+
+
+def test_a_status_poll_never_interrupts_the_clients_own_stop(
+    outage_page: Page,
+    renewal_base_url: str,
+    availability_staff: dict[str, str],
+) -> None:
+    # race-rootcause, Round 11: a 5 s status poll that returned after this
+    # client's own stop committed read "stopped" as an external stop and
+    # forced recovery. Both responses are held, then released stop-first.
+    page = outage_page
+    page.clock.install()
+    fake_microphone(page)
+    open_capture(page, renewal_base_url, availability_staff, "2036-04-23")
+    page.locator('[data-capture-action="start"]').click()
+    panel = page.locator("[data-scribe-capture]")
+    if not supported(page):
+        expect(panel).to_have_attribute("data-state", "disabled")
+        save_manual_note(page)
+        return
+    expect(panel).to_have_attribute(
+        "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
+    )
+    page.evaluate("""() => {
+      window.__scribePhases = [];
+      const panel = document.querySelector('[data-scribe-capture]');
+      new MutationObserver(() => window.__scribePhases.push(panel.dataset.phase))
+        .observe(panel, {attributes: true, attributeFilter: ['data-phase']});
+    }""")
+    control = panel.get_attribute("data-control-url")
+    assert control is not None
+    # Each handler resolves its own future the moment it has stored its held
+    # request; the test awaits that signal, bounded, before acting on it.
+    loop = page._loop
+    held: dict[str, asyncio.Future[Route]] = {
+        "stop": loop.create_future(),
+        "status": loop.create_future(),
+    }
+
+    def hold(route: Route) -> None:
+        # Only record the route: the test forwards it to the server, and
+        # releases its response to the page, at the moments it chooses.
+        action = str((route.request.post_data_json or {}).get("action", ""))
+        future = held.get(action)
+        if future is not None and not future.done():
+            future.set_result(route)
+        else:
+            route.continue_()
+
+    def held_route(action: str) -> Route:
+        # _sync keeps Playwright's dispatcher running while it waits, so the
+        # handler can resolve the future; wait_for bounds the wait.
+        return cast("Route", page._sync(asyncio.wait_for(held[action], 15)))
+
+    page.route(f"**{control}", hold)
+    # 1. A poll leaves while no local action is in flight, and is held.
+    page.clock.run_for(5000)
+    status_route = held_route("status")
+    # 2. The clinician stops; the stop is held too.
+    page.locator('[data-capture-action="stop"]').click()
+    stop_route = held_route("stop")
+    # 3. The server applies the stop first, so the held poll reads "stopped".
+    stop_response = stop_route.fetch()
+    status_response = status_route.fetch()
+    # 4. Stop reaches the page first and finishes.
+    stop_route.fulfill(response=stop_response)
+    expect(panel).to_have_attribute("data-phase", "done")
+    # Only the held status reply carries this token, so no other response
+    # (Stop's included) can resolve the completion signal. It resolves once
+    # that reply is parsed and every continuation queued behind it (post,
+    # control, watchAuthority) has run: a message task follows all of their
+    # microtasks. No timer, no new connection.
+    page.evaluate(
+        """token => {
+      window.__scribeStatusHandled = false;
+      window.__scribeStatusSettled = new Promise(resolve => {
+        const json = Response.prototype.json;
+        Response.prototype.json = function () {
+          const parsed = json.call(this);
+          if (this.headers.get('x-clinic-test-held') === token) {
+            Response.prototype.json = json;
+            parsed.finally(() => {
+              const channel = new MessageChannel();
+              channel.port1.onmessage = () => {
+                window.__scribeStatusHandled = true;
+                resolve(true);
+              };
+              channel.port2.postMessage(null);
+            });
+          }
+          return parsed;
+        };
+      });
+    }""",
+        HELD_STATUS_MARK,
+    )
+    # The signal is still pending while the status reply is held.
+    assert page.evaluate("() => window.__scribeStatusHandled") is False
+    # 5. The stale poll lands after the stop has finished.
+    status_route.fulfill(
+        response=status_response,
+        headers={**status_response.headers, "x-clinic-test-held": HELD_STATUS_MARK},
+    )
+    assert page.evaluate("() => window.__scribeStatusSettled") is True
+    assert "recovery" not in page.evaluate("() => window.__scribePhases")
+    expect(panel).to_have_attribute("data-phase", "done")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
+from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 from django.conf import settings
@@ -20,6 +21,7 @@ from apps.comms import suggestions
 from apps.comms.inbox_queries import (
     CHANNEL_LABELS,
     PURPOSE_LABELS,
+    STATES,
     PatientChoice,
     care_team_patients,
     conversation_view,
@@ -88,12 +90,6 @@ def _refusal(code: str) -> str:
     return str(REFUSALS.get(code, DEFAULT_REFUSAL))
 
 
-def _back(clinic_id: UUID, conversation_id: UUID) -> HttpResponse:
-    return HttpResponseRedirect(
-        reverse("comms:conversation", args=(clinic_id, conversation_id))
-    )
-
-
 def _find(
     request: HttpRequest, clinic_id: UUID
 ) -> tuple[tuple[PatientChoice, ...], str]:
@@ -131,6 +127,32 @@ def _open_options(clinic_id: UUID) -> dict[str, object]:
     }
 
 
+def _list_filters(request: HttpRequest) -> tuple[str, bool, bool]:
+    """Return the list filters, closed to known values (SC-7).
+
+    An unknown state falls back to the default, so only a member of STATES
+    reaches the query, the page context or any URL built from it.
+    """
+    state = request.GET.get("state", "open")
+    return (
+        state if state in STATES else "open",
+        request.GET.get("mine") == "1",
+        request.GET.get("clinician") == "1",
+    )
+
+
+def _refresh_url(
+    clinic_id: UUID, state: str, *, mine: bool, clinician_only: bool
+) -> str:
+    """Build the list's refresh URL from the validated filters only (SC-7)."""
+    filters = {"state": state}
+    if mine:
+        filters["mine"] = "1"
+    if clinician_only:
+        filters["clinician"] = "1"
+    return f"{reverse('comms:inbox', args=(clinic_id,))}?{urlencode(filters)}"
+
+
 @require_http_methods(["GET", "POST"])
 def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     """List the threads this actor may handle; unknown clinics look identical."""
@@ -147,9 +169,7 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             conversation_id = parse_uuid(request.POST.get("conversation_id"))
             if conversation_id is None:
                 raise Http404
-            return _conversation_post(
-                request, clinic_id, conversation_id, post_selection=True
-            )
+            return _conversation_post(request, clinic_id, conversation_id)
         try:
             if action == "open":
                 opened = services.open_conversation(
@@ -165,7 +185,8 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                     if opened.created
                     else gettext("The conversation already exists."),
                 )
-                return _back(clinic_id, opened.conversation_id)
+                # The opened thread renders from this POST; no id reaches a URL.
+                return _page(request, clinic_id, opened.conversation_id)
             if action == "find_patient":
                 choices, notice = _find(request, clinic_id)
                 searched = True
@@ -176,22 +197,26 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         except (InboxRefusedError, InboxConflictError) as error:
             messages.error(request, _refusal(error.code))
             return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
-    state = request.GET.get("state", "open")
+    state, mine, clinician_only = _list_filters(request)
     try:
         rows = list_conversations(
             clinic_id=clinic_id,
             state=state,
-            mine=request.GET.get("mine") == "1",
-            clinician_only=request.GET.get("clinician") == "1",
+            mine=mine,
+            clinician_only=clinician_only,
         )
     except CurrentActorError as error:
         raise Http404 from error
+    refresh_url = _refresh_url(
+        clinic_id, state, mine=mine, clinician_only=clinician_only
+    )
     return render(
         request,
         "comms/inbox.html",
         {
             "clinic_id": clinic_id,
             "state": state,
+            "refresh_url": refresh_url,
             "rows": rows,
             "clinician": is_clinician(clinic_id),
             "choices": choices,
@@ -346,8 +371,6 @@ def _page(
     clinic_id: UUID,
     conversation_id: UUID,
     extra: dict[str, object] | None = None,
-    *,
-    post_selection: bool = False,
 ) -> HttpResponse:
     try:
         view = conversation_view(
@@ -363,7 +386,6 @@ def _page(
         {
             "clinic_id": clinic_id,
             "view": view,
-            "post_selection": post_selection,
             "command_id": uuid4(),
             "clinician": clinician,
             "can_link": conversation.enrollment_id is None
@@ -392,32 +414,21 @@ def _quick_reply_text(request: HttpRequest, clinic_id: UUID, purpose: str) -> st
     return "" if reply is None else str(reply.body)
 
 
-@require_http_methods(["GET", "POST"])
-def conversation(
+def _conversation_post(
     request: HttpRequest, clinic_id: UUID, conversation_id: UUID
 ) -> HttpResponse:
-    """Show one thread; POST applies one named action then redirects."""
-    if request.method == "GET":
-        return _page(request, clinic_id, conversation_id)
-    return _conversation_post(request, clinic_id, conversation_id)
+    """Show or act on the thread selected in the POST body (SC-7).
 
-
-def _conversation_post(
-    request: HttpRequest,
-    clinic_id: UUID,
-    conversation_id: UUID,
-    *,
-    post_selection: bool = False,
-) -> HttpResponse:
-    """Keep body-selected threads and their refreshes out of navigation URLs."""
+    The thread id never appears in a URL, a redirect or the history cache:
+    the page and its refreshes post back to the inbox with a hidden id.
+    """
     action = request.POST.get("action", "")
     try:
-        if post_selection:
-            conversation_view(
-                clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
-            )
-            if action == "show":
-                return _page(request, clinic_id, conversation_id, post_selection=True)
+        conversation_view(
+            clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
+        )
+        if action == "show":
+            return _page(request, clinic_id, conversation_id)
         if action == "find_patient":
             choices, notice = _find(request, clinic_id)
             return _page(
@@ -425,7 +436,6 @@ def _conversation_post(
                 clinic_id,
                 conversation_id,
                 {"choices": choices, "choice_notice": notice, "searched": True},
-                post_selection=post_selection,
             )
         if action == "quick_reply":
             shown = conversation_view(
@@ -440,7 +450,6 @@ def _conversation_post(
                         request, clinic_id, shown.conversation.purpose
                     )
                 },
-                post_selection=post_selection,
             )
         confirmation = _handle(request, clinic_id, conversation_id, action)
     except CurrentActorError as error:
@@ -451,6 +460,4 @@ def _conversation_post(
         messages.error(request, str(DEFAULT_REFUSAL))
     else:
         messages.success(request, confirmation)
-    if post_selection:
-        return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
-    return _back(clinic_id, conversation_id)
+    return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))

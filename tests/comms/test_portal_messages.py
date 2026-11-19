@@ -728,7 +728,10 @@ def test_messages_page_opens_and_replies_with_selectors_only_in_post_bodies(
     assert sum(1 for row in _rows(graph) if row[2] == "in") == 1
     staff_client, _ = receptionist_client(graph)
     with runtime_role():
-        staff_page = staff_client.get(f"/clinics/{graph.clinic_a}/messages/{thread}/")
+        staff_page = staff_client.post(
+            f"/clinics/{graph.clinic_a}/messages/",
+            {"action": "show", "conversation_id": str(thread)},
+        )
     assert staff_page.status_code == OK
     assert SENTINEL in staff_page.content.decode()
 

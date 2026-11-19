@@ -325,9 +325,15 @@
     function watchAuthority() {
       clearInterval(polling);
       polling = setInterval(async function () {
-        if (!session || phase === "done" || phase === "recovery") return;
+        // A local stop, pause or start owns the outcome while it is in flight:
+        // the server already reflects it, so a poll must not read it as an
+        // external stop (race-rootcause, Round 11).
+        if (!session || busy || phase === "stopping" || phase === "done" ||
+          phase === "recovery") return;
         try {
           let result = await control("status");
+          if (busy || phase === "stopping" || phase === "done" ||
+            phase === "recovery") return;
           if (result.code === "consent_revoked") {
             await revoke();
           } else if (result.code || result.epoch !== epoch ||

@@ -241,13 +241,17 @@ def test_start_a_conversation_from_a_found_patient(world: InboxWorld) -> None:
                 "purpose": "transactional",
             },
         )
-    assert started.status_code == FOUND
+    # The opened thread renders from the POST itself (SC-7): no id in a redirect.
+    assert started.status_code == OK
+    assert "Location" not in started
     conversation, _ = _thread(graph)
     assert (conversation.purpose, conversation.enrollment_id) == (
         "transactional",
         enrollment,
     )
-    assert started["Location"].endswith(f"{conversation.pk}/")
+    assert (
+        f'name="conversation_id" value="{conversation.pk}"' in started.content.decode()
+    )
     # The same start again returns the live thread instead of a second one.
     with runtime_role():
         again = client.post(
@@ -259,7 +263,7 @@ def test_start_a_conversation_from_a_found_patient(world: InboxWorld) -> None:
                 "purpose": "transactional",
             },
         )
-    assert again.status_code == FOUND
+    assert again.status_code == OK
     with owner_context(graph.organization_a):
         assert Conversation.objects.count() == 1
 
