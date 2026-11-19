@@ -9,9 +9,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import pytest
-from apps.comms.inbox_views import ACTIONS
+from apps.comms.inbox_views import ACTIONS, REOPEN_SESSION_KEY
 from apps.comms.models import Conversation, InternalNote, Message
 from django.urls import reverse
+from django.utils.translation import gettext
 
 from accessible_document import Document
 from comms.support import inbox_account, manager_of
@@ -143,8 +144,26 @@ def test_selected_mutation_redirects_without_a_selector_or_repeat(
     )
     assert saved.status_code == 302
     assert saved["Location"] == path
-    assert _get(client, path).status_code == 200
-    assert _get(client, path).status_code == 200
+    selector = str(conversation.pk)
+    assert all(selector not in morsel.value for morsel in saved.cookies.values())
+    # Only the server-side session holds the return target, once.
+    assert client.session[REOPEN_SESSION_KEY] == selector
+    with runtime_role(), fixed_otp_time():
+        refresh = client.get(
+            path, headers={"HX-Request": "true", "HX-Target": "conversation-list"}
+        )
+    assert refresh.status_code == 200
+    assert client.session[REOPEN_SESSION_KEY] == selector
+    reopened = _get(client, path)
+    assert reopened.status_code == 200
+    assert "thread-region" in Document(reopened.content).identifiers()
+    assert f'name="conversation_id" value="{selector}"' in reopened.content.decode()
+    assert REOPEN_SESSION_KEY not in client.session
+    listed = _get(client, path)
+    assert listed.status_code == 200
+    identifiers = Document(listed.content).identifiers()
+    assert "thread-region" not in identifiers
+    assert "conversation-list" in identifiers
     with owner_context(graph.organization_a):
         assert InternalNote.objects.filter(conversation=conversation).count() == 1
 
@@ -218,3 +237,49 @@ def test_threads_open_by_post_and_no_url_carries_a_thread_id(
         inbox,
         conversation,
     )
+
+
+def test_a_refused_action_also_returns_to_its_thread(
+    rbac_graph: RbacGraph, thread: tuple[Client, Conversation]
+) -> None:
+    # The refusal is read where the user acted, as before the POST selection.
+    client, conversation = thread
+    path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
+    refused = _post(
+        client,
+        path,
+        {
+            "conversation_id": str(conversation.pk),
+            "action": "assign",
+            "assignee": "me",
+            "expected_revision": "999",
+        },
+    )
+    assert refused.status_code == 302
+    assert refused["Location"] == path
+    page = _get(client, path)
+    assert "thread-region" in Document(page.content).identifiers()
+    assert gettext("The conversation changed. Refresh and try again.") in (
+        page.content.decode()
+    )
+    with owner_context(rbac_graph.organization_a):
+        assert Conversation.objects.get().assignee_id is None
+
+
+def test_a_stored_unknown_or_malformed_reopen_is_the_one_denial(
+    rbac_graph: RbacGraph, thread: tuple[Client, Conversation]
+) -> None:
+    client, conversation = thread
+    path = reverse("comms:inbox", args=(rbac_graph.clinic_a,))
+    baseline = _post(client, path, {"action": "show", "conversation_id": str(uuid4())})
+    assert baseline.status_code == 404
+    for stored in (str(uuid4()), "malformed"):
+        session = client.session
+        session[REOPEN_SESSION_KEY] = stored
+        session.save()
+        denied = _get(client, path)
+        assert denied.status_code == 404
+        assert denied.content == baseline.content
+        assert str(conversation.pk) not in denied.content.decode()
+        assert REOPEN_SESSION_KEY not in client.session
+        assert "conversation-list" in Document(_get(client, path).content).identifiers()

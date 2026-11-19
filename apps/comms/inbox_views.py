@@ -82,6 +82,9 @@ REFUSALS: Final = {
     "link_not_applicable": _("This conversation cannot be linked to a patient."),
     "invalid_state": _("That conversation state is not valid."),
 }
+# One-shot, server-side return target after a thread action (SC-7): holds only
+# the conversation id, never reaches a URL, Location, cookie or browser storage.
+REOPEN_SESSION_KEY: Final = "comms.inbox.reopen"
 DEFAULT_REFUSAL: Final = _("The action could not be completed.")
 OPEN_CHANNELS: Final = ("whatsapp", "email", "sms", "portal")
 
@@ -125,6 +128,27 @@ def _open_options(clinic_id: UUID) -> dict[str, object]:
             (purpose, str(PURPOSE_LABELS[purpose])) for purpose in purposes
         ),
     }
+
+
+def _reopened(request: HttpRequest, clinic_id: UUID) -> HttpResponse | None:
+    """Render the thread a just-completed action returns to, once (SC-7).
+
+    The key is popped on the first plain GET, so a second GET or a reload
+    shows the list and no action repeats. The list's own refresh never takes
+    it. The id is checked again through conversation_view for this clinic: an
+    unknown, malformed or no-longer-visible id is the one 404.
+    """
+    if request.method != "GET" or request.headers.get("HX-Target") == (
+        "conversation-list"
+    ):
+        return None
+    stored = request.session.pop(REOPEN_SESSION_KEY, None)
+    if stored is None:
+        return None
+    conversation_id = parse_uuid(str(stored))
+    if conversation_id is None:
+        raise Http404
+    return _page(request, clinic_id, conversation_id)
 
 
 def _list_filters(request: HttpRequest) -> tuple[str, bool, bool]:
@@ -197,6 +221,9 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         except (InboxRefusedError, InboxConflictError) as error:
             messages.error(request, _refusal(error.code))
             return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))
+    reopened = _reopened(request, clinic_id)
+    if reopened is not None:
+        return reopened
     state, mine, clinician_only = _list_filters(request)
     try:
         rows = list_conversations(
@@ -420,13 +447,18 @@ def _conversation_post(
     """Show or act on the thread selected in the POST body (SC-7).
 
     The thread id never appears in a URL, a redirect or the history cache:
-    the page and its refreshes post back to the inbox with a hidden id.
+    the page and its refreshes post back to the inbox with a hidden id. An
+    action, applied or refused, redirects to the id-free inbox, and the next
+    GET returns to the thread once through REOPEN_SESSION_KEY.
     """
     action = request.POST.get("action", "")
+    visible = False
     try:
         conversation_view(
             clinic_id=clinic_id, conversation_id=conversation_id, now=timezone.now()
         )
+        # Written only after the access check: a denial never touches the session.
+        visible = True
         if action == "show":
             return _page(request, clinic_id, conversation_id)
         if action == "find_patient":
@@ -460,4 +492,6 @@ def _conversation_post(
         messages.error(request, str(DEFAULT_REFUSAL))
     else:
         messages.success(request, confirmation)
+    if visible:
+        request.session[REOPEN_SESSION_KEY] = str(conversation_id)
     return HttpResponseRedirect(reverse("comms:inbox", args=(clinic_id,)))

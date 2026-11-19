@@ -29,7 +29,6 @@ from renewal.browser._navigation import (
     click_to_navigate,
     go_back_settled,
     goto_settled,
-    reload_settled,
 )
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
@@ -153,6 +152,20 @@ def _open_thread(
     _settle_live_region(page)
 
 
+def _reload_thread(page: Page) -> None:
+    """Show the open thread again, as the browser's reload used to.
+
+    A thread is selected in a POST body (SC-7), so reloading the inbox URL
+    shows the list; this reopens the same thread by its data-conversation.
+    """
+    conversation = page.locator("[data-conversation][data-purpose]").get_attribute(
+        "data-conversation"
+    )
+    assert conversation
+    goto_settled(page, page.url.split("?", 1)[0])
+    _open_thread(page, conversation=conversation)
+
+
 def _reply(page: Page, text: str) -> None:
     page.locator("#reply-body").fill(text)
     click_to_navigate(
@@ -212,7 +225,7 @@ def test_inbound_to_assignment_to_reply_to_delivery(
         _capture(page, root, "queued", width)
         operation, _ = latest_operation(staff)
         assert run_worker(staff, operation, "sent", directory) == ["succeeded"]
-        reload_settled(page)
+        _reload_thread(page)
         expect(page.locator(".thread__item--out")).to_have_attribute(
             "data-state", "sent"
         )
@@ -226,7 +239,7 @@ def test_inbound_to_assignment_to_reply_to_delivery(
         assert provider.deliver(
             renewal_page, base, status_body(reference, "delivered")
         ).json() == {"accepted": 0, "duplicates": 1, "ignored": 0}
-        reload_settled(page)
+        _reload_thread(page)
         expect(page.locator(".thread__item--out")).to_have_attribute(
             "data-state", "delivered"
         )
@@ -260,7 +273,7 @@ def test_provider_down_shows_not_sent_and_recovery_never_duplicates(
     outcomes = run_worker(staff, first_operation, "fail", directory)
     assert outcomes[-1] == "failed"
     assert "succeeded" not in outcomes
-    reload_settled(page)
+    _reload_thread(page)
     _settle_live_region(page)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "failed")
     expect(page.locator(".thread__item--out")).to_contain_text(
@@ -277,7 +290,7 @@ def test_provider_down_shows_not_sent_and_recovery_never_duplicates(
     assert second_operation != first_operation
     assert reference is None
     assert run_worker(staff, second_operation, "sent", directory) == ["succeeded"]
-    reload_settled(page)
+    _reload_thread(page)
     # One message in the thread, two operations as evidence, one provider reference.
     expect(page.locator(".thread__item--out")).to_have_count(1)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "sent")
@@ -745,7 +758,7 @@ def _start_portal_thread(
     _reply(page, PORTAL_TEXT)
     operation, _ = latest_operation(staff)
     assert run_worker(staff, operation, "sent", directory) == ["succeeded"]
-    reload_settled(page)
+    _reload_thread(page)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "sent")
 
 
