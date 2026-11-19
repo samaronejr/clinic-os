@@ -62,7 +62,10 @@ def workspace_denial(request: HttpRequest) -> HttpResponse | None:
     patient_page = match.view_name in PATIENT_BOUND_VIEWS
     if not places and not patient_page:
         return None
-    granted = granted_permissions(clinic_id)
+    granted = granted_permissions(
+        clinic_id,
+        candidates={permission for place in places for permission in place.permission},
+    )
     denied = any(not granted.intersection(place.permission) for place in places)
     if patient_page and not patient_context_allowed(clinic_id=clinic_id):
         denied = not _billing_surface_admitted(request, clinic_id)

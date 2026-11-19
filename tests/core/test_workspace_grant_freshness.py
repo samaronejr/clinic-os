@@ -8,9 +8,10 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-from apps.core import patient_context, workspace
+from apps.core import patient_context, workspace, workspace_access
 from apps.ehr.models import Encounter
 from apps.identity.models import Clinic, User, UserClinicRole
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.signed_cookies import SessionStore
 from django.test import RequestFactory
 from django.urls import resolve, reverse
@@ -99,3 +100,27 @@ def test_banner_uses_later_grants_on_a_clinic_switch(
     assert request.session[workspace.ACTIVE_CLINIC_SESSION_KEY] == str(old.pk)
     workspace.finish_clinic_selection(request, accepted=True)
     assert request.session[workspace.ACTIVE_CLINIC_SESSION_KEY] == str(clinic.pk)
+
+
+@pytest.mark.parametrize("granted", [frozenset({"appointment.read"}), frozenset()])
+def test_agenda_route_decides_only_its_own_permissions(
+    monkeypatch: pytest.MonkeyPatch, granted: frozenset[str]
+) -> None:
+    clinic_id = uuid4()
+    url = reverse("scheduling:agenda-board", args=(clinic_id, "day", "2035-06-02"))
+    request = RequestFactory().get(url)
+    request.resolver_match = resolve(url)
+    request.user = AnonymousUser()
+    grants = Mock(return_value=granted)
+    monkeypatch.setattr(workspace_access, "granted_permissions", grants)
+
+    result = workspace_access.workspace_denial(request)
+
+    grants.assert_called_once_with(
+        clinic_id, candidates={"appointment.read", "appointment.read_own"}
+    )
+    if granted:
+        assert result is None
+    else:
+        assert result is not None
+        assert result.status_code == 404
