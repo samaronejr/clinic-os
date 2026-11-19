@@ -492,6 +492,13 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
             "asserts the session cookie between the press and the URL wait"
         ),
     },
+    BROWSER_SUITES / "test_scribe_capture.py": {
+        "RACE_STOP_AGAINST_HELD_POLL_JS": (
+            "clicks the capture's Stop inside the page, so no driver round trip"
+            " sits in the 5 s fetch deadline (M6-1); scribe-capture.js"
+            " preventDefaults that click and the form submit; no document"
+        ),
+    },
     BROWSER_SUITES / "test_agenda_slice.py": {
         "press": (
             "records the keyboard-only move script; its one Enter submits the"

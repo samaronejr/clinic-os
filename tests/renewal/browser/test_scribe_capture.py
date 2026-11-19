@@ -31,71 +31,117 @@ from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_patient_access import SETTLED_JS
 
-# Holds the first status poll unsent and the first stop's reply undelivered,
-# each released by the test; every signal is a promise the test awaits.
-HOLD_STATUS_AND_STOP_JS: Final = """control => {
-  const realFetch = window.fetch;
+# Runs the whole stop/poll race inside the page, with no driver round trip
+# inside the product's 5 s fetch deadline: the first status poll is held
+# unsent, Stop is clicked from the page, its request goes through, and the
+# poll is released the moment the panel reaches "done". window.__scribeRace
+# .outcome resolves after the poll's handling, or rejects with the step that
+# failed. Its deadline can only reject; success never waits on it.
+RACE_STOP_AGAINST_HELD_POLL_JS: Final = """control => {
   const panel = document.querySelector('[data-scribe-capture]');
-  const deferred = () => {
-    const box = {settled: false};
-    box.promise = new Promise(resolve => { box.resolve = resolve; });
-    return box;
+  const realFetch = window.fetch;
+  const phases = [];
+  const record = {
+    phaseAtStatus: null, statusState: null, step: 'waiting for a status poll',
   };
-  const arrived = {status: deferred(), stop: deferred()};
-  const release = {status: deferred(), stop: deferred()};
-  const stopApplied = deferred();
-  const statusHandled = deferred();
-  const record = {phaseAtStatus: null, statusState: null, statusOutcome: null};
+  let settled = false;
+  let resolveOutcome;
+  let rejectOutcome;
+  const outcome = new Promise((resolve, reject) => {
+    resolveOutcome = resolve;
+    rejectOutcome = reject;
+  });
+  outcome.catch(() => {});
+  const fail = reason => {
+    if (settled) return;
+    settled = true;
+    rejectOutcome(new Error(reason + ' (step: ' + record.step + '; phases: ' +
+      (phases.join(' > ') || 'none') + ')'));
+  };
+  const succeed = () => {
+    if (settled) return;
+    settled = true;
+    resolveOutcome({...record, phases: [...phases], finalPhase: panel.dataset.phase});
+  };
+  setTimeout(() => fail('no outcome within 20 s'), 20000);
+  let releaseStatus = null;
+  new MutationObserver(() => {
+    phases.push(panel.dataset.phase);
+    if (!releaseStatus) return;
+    if (panel.dataset.phase === 'done') {
+      const release = releaseStatus;
+      releaseStatus = null;
+      release();
+    } else if (panel.dataset.phase === 'recovery') {
+      fail('capture entered recovery before the poll was released');
+    }
+  }).observe(panel, {attributes: true, attributeFilter: ['data-phase']});
   // A message task runs after every microtask queued before it.
   const afterContinuations = () => {
     const channel = new MessageChannel();
-    channel.port1.onmessage = () => statusHandled.resolve(true);
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      succeed();
+    };
     channel.port2.postMessage(null);
   };
-  window.__scribeHold = {
-    record,
-    arrived: action => arrived[action].promise,
-    stopApplied: () => stopApplied.promise,
-    release: action => { release[action].resolve(); },
-    statusHandled: () => statusHandled.promise,
-  };
+  let statusTaken = false;
+  let stopTaken = false;
   window.fetch = function (input, init) {
     const url = typeof input === 'string' ? input : input.url;
     let action = null;
     if (url.endsWith(control) && init && typeof init.body === 'string') {
       try { action = JSON.parse(init.body).action; } catch (error) { action = null; }
     }
-    if (action === 'stop' && !arrived.stop.settled) {
-      arrived.stop.settled = true;
-      arrived.stop.resolve(true);
-      const sent = realFetch.call(window, input, init);
-      sent.then(() => stopApplied.resolve(true), () => stopApplied.resolve(false));
-      return release.stop.promise.then(() => sent);
-    }
-    if (action === 'status' && !arrived.status.settled) {
-      arrived.status.settled = true;
+    if (action === 'status' && !statusTaken) {
+      statusTaken = true;
       record.phaseAtStatus = panel.dataset.phase;
-      arrived.status.resolve(true);
-      return release.status.promise
-        .then(() => realFetch.call(window, input, init))
+      if (record.phaseAtStatus !== 'recording') {
+        fail('the held poll left in phase ' + record.phaseAtStatus);
+      }
+      const released = new Promise(resolve => { releaseStatus = resolve; });
+      record.step = 'stopping with the poll held';
+      Promise.resolve().then(() => {
+        panel.querySelector('[data-capture-action="stop"]').click();
+      });
+      return released
+        .then(() => {
+          record.step = 'delivering the held poll';
+          return realFetch.call(window, input, init);
+        })
         .then(async response => {
-          record.statusOutcome = 'delivered';
-          record.statusState = (await response.clone().json()).state;
+          try {
+            record.statusState = (await response.clone().json()).state;
+          } catch (error) {
+            fail("the held poll's body could not be read: " + error);
+            throw error;
+          }
+          record.step = 'handling the held poll';
           const json = response.json.bind(response);
           response.json = () => {
             const parsed = json();
-            parsed.finally(afterContinuations);
+            parsed.then(afterContinuations, error => {
+              fail('the product could not parse the held poll: ' + error);
+            });
             return parsed;
           };
           return response;
         }, error => {
-          record.statusOutcome = 'aborted';
-          afterContinuations();
+          fail('the held poll was not delivered: ' + error);
           throw error;
         });
     }
+    if (action === 'stop' && !stopTaken) {
+      stopTaken = true;
+      record.step = 'applying the stop';
+      return realFetch.call(window, input, init).catch(error => {
+        fail('the stop request failed: ' + error);
+        throw error;
+      });
+    }
     return realFetch.call(window, input, init);
   };
+  window.__scribeRace = {outcome};
 }"""
 
 if TYPE_CHECKING:
@@ -976,10 +1022,9 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     # delivered first, then the stale poll lands.
     #
     # No page clock: advancing it moves performance.now(), which the capture
-    # reads to size audio slices, so a jump fails a slice (Round 16). The
-    # product's own 5 s poll fires on its schedule. The holds live in the page
-    # (a fetch wrapper installed through evaluate, public API only, no new
-    # connection), and every wait is an awaited promise.
+    # reads to size audio slices (Round 16). The product's own 5 s poll fires
+    # on its schedule, and the race runs inside the page (M6-1): no driver
+    # round trip sits inside the product's 5 s fetch deadline.
     page = outage_page
     fake_microphone(page)
     # A day no other scribe test seeds: the availability exclusion constraint
@@ -994,33 +1039,14 @@ def test_a_status_poll_never_interrupts_the_clients_own_stop(
     expect(panel).to_have_attribute(
         "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
     )
-    page.evaluate("""() => {
-      window.__scribePhases = [];
-      const panel = document.querySelector('[data-scribe-capture]');
-      new MutationObserver(() => window.__scribePhases.push(panel.dataset.phase))
-        .observe(panel, {attributes: true, attributeFilter: ['data-phase']});
-    }""")
     control = panel.get_attribute("data-control-url")
     assert control is not None
-    page.evaluate(HOLD_STATUS_AND_STOP_JS, control)
-    # 1. A poll leaves while no local action is in flight, and is held unsent.
-    assert page.evaluate("() => window.__scribeHold.arrived('status')") is True
-    assert page.evaluate("() => window.__scribeHold.record.phaseAtStatus") == (
-        "recording"
-    )
-    # 2. The clinician stops: the stop reaches the server, its reply is held.
-    page.locator('[data-capture-action="stop"]').click()
-    assert page.evaluate("() => window.__scribeHold.arrived('stop')") is True
-    assert page.evaluate("() => window.__scribeHold.stopApplied()") is True
-    # 3. Stop's reply reaches the page first and the stop finishes.
-    page.evaluate("() => window.__scribeHold.release('stop')")
-    expect(panel).to_have_attribute("data-phase", "done")
-    # 4. Only now is the held poll sent, so the server answers "stopped"; the
-    # signal resolves after every continuation queued behind its parse.
-    page.evaluate("() => window.__scribeHold.release('status')")
-    assert page.evaluate("() => window.__scribeHold.statusHandled()") is True
-    record = page.evaluate("() => window.__scribeHold.record")
-    assert record["statusOutcome"] == "delivered"
-    assert record["statusState"] == "stopped"
-    assert "recovery" not in page.evaluate("() => window.__scribePhases")
+    # One page promise carries the whole race; any failed step rejects it with
+    # its reason, which fails the test.
+    page.evaluate(RACE_STOP_AGAINST_HELD_POLL_JS, control)
+    outcome = page.evaluate("() => window.__scribeRace.outcome")
+    assert outcome["phaseAtStatus"] == "recording"
+    assert outcome["statusState"] == "stopped"
+    assert "recovery" not in outcome["phases"]
+    assert outcome["finalPhase"] == "done"
     expect(panel).to_have_attribute("data-phase", "done")
