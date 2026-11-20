@@ -774,6 +774,33 @@ def test_empty_bucket_refusals_skip_database_and_emit_every_metric(
 
 
 @GATED
+def test_negative_preflight_does_not_rewrite_a_fresh_bucket_expiry(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+) -> None:
+    client = fairness._client()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{uuid4()}:ai-batch"
+    now = frozen_clock["t"]
+    args = (now, fairness.MAX_QUOTA_PER_MINUTE / 60.0, "expiry-proof")
+    client.hset(key, mapping={"tokens": 0, "touched": now})
+    # Start close to expiry: denial must retain state, not let it reset full.
+    client.pexpire(key, 5000)
+    assert client.eval(fairness._CREDIT_POSSIBLE_LUA, 1, key, *args) == 0
+    ttl = client.pttl(key)
+    assert isinstance(ttl, int)
+    assert 5000 < ttl <= 121000
+
+    # Seed ample headroom so the write-count assertion has no sleep or race
+    # against the one-second refresh window.
+    client.pexpire(key, 180000)
+    before = client.info("commandstats")["cmdstat_pexpire"]["calls"]
+    for _ in range(64):
+        assert client.eval(fairness._CREDIT_POSSIBLE_LUA, 1, key, *args) == 0
+    assert client.info("commandstats")["cmdstat_pexpire"]["calls"] == before
+    assert client.hgetall(key) == {b"tokens": b"0", b"touched": str(int(now)).encode()}
+
+
+@GATED
 def test_negative_preflight_never_refuses_when_actual_quota_admits(
     metered_broker: str,
     frozen_clock: dict[str, float],
