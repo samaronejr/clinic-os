@@ -30,28 +30,31 @@ _PDF_DECIMAL = """IF source_type='application/pdf' THEN
      RAISE EXCEPTION 'extraction manual unit required' USING ERRCODE='23514'; END IF;
    ELSIF"""
 
-_review = _edit(
+# Keep each intermediate single-assignment for the finite RunSQL decoder.
+_REVIEW_FIELDS = _edit(
     _REVIEW,
     " v clinic_app.orders_resultversion; p jsonb; expected jsonb; parsed text;",
     " v clinic_app.orders_resultversion; p jsonb; expected jsonb; supplied jsonb;\n"
     " parsed text; source_type text; filed_unit text;",
 )
-_review = _edit(_review, " p:=convert_from", _SOURCE_TYPE + "p:=convert_from")
-_review = _edit(
-    _review,
+_REVIEW_SOURCE = _edit(
+    _REVIEW_FIELDS, " p:=convert_from", _SOURCE_TYPE + "p:=convert_from"
+)
+_REVIEW_UNIT_DEFAULT = _edit(
+    _REVIEW_SOURCE,
     " IF p->>'kind'='decimal' THEN",
     " filed_unit:=p->>'unit';\n IF p->>'kind'='decimal' THEN",
 )
-_review = _edit(
-    _review,
+_REVIEW_PDF_DECIMAL = _edit(
+    _REVIEW_UNIT_DEFAULT,
     " OR p->>'unit'<>ALL",
     " THEN\n"
     "   RAISE EXCEPTION 'extraction value unresolved' USING ERRCODE='23514'; END IF;\n"
     f"   {_PDF_DECIMAL} p->>'unit'<>ALL",
 )
-_review = _edit(_review, "'unit',p->>'unit'", "'unit',filed_unit")
-_review = _edit(
-    _review,
+_REVIEW_PAYLOAD = _edit(_REVIEW_PDF_DECIMAL, "'unit',p->>'unit'", "'unit',filed_unit")
+_REVIEW_MANUAL_UNIT = _edit(
+    _REVIEW_PAYLOAD,
     " IF convert_from(clinic_app.tenant_decrypt(\n"
     "  kek,'orders.observation.source',source),'UTF8')::jsonb\n"
     "  IS DISTINCT FROM expected THEN",
@@ -64,5 +67,5 @@ _review = _edit(
  IF supplied IS DISTINCT FROM expected THEN""",
 )
 
-SQL = _resolver((_review,))
+SQL = _resolver((_REVIEW_MANUAL_UNIT,))
 REVERSE_SQL = _resolver((_REVIEW,))
