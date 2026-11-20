@@ -47,6 +47,7 @@ from ai.test_extraction import (
     close_unit_runs,
     pdf_fixture,
     pdf_with_stream,
+    review_boundary_pdf,
     scan_fixture,
 )
 from ai.test_extraction_runtime import extracted_job
@@ -295,6 +296,35 @@ def test_pixel_identical_collision_never_certifies_the_unit(
     with as_actor(rbac_graph, rbac_graph.physician):
         assert job.candidates.get(position=0).payload["unit"] == "g/dL"
         assert_unit_refused(job, position=0)
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("edge", [False, True], ids=["adjacent-rows", "page-edge"])
+def test_visible_units_at_review_boundaries_remain_confirmable(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, rotation: int, edge: bool
+) -> None:
+    control = review_boundary_pdf(rotation=rotation, edge=edge, shifted=False)
+    shifted = review_boundary_pdf(rotation=rotation, edge=edge, shifted=True)
+    assert render_page(data=control, content_type="application/pdf", page=1) == (
+        render_page(data=shifted, content_type="application/pdf", page=1)
+    )
+    job = extracted_job(rbac_graph, monkeypatch, data=shifted)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        observations = ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        )
+        assert not observations.exists()
+        rows = list(job.candidates.order_by("position"))
+        assert len(rows) == (1 if edge else 2)
+        assert [(row.status, row.payload["unit"]) for row in rows] == [
+            ("candidate", "g/dL")
+        ] * len(rows)
+        for row in rows:
+            filed = review_extraction(
+                clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
+            )
+            assert filed is not None
+            assert observations.get(pk=filed).source["unit"] == "g/dL"
 
 
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:

@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 
 from apps.ai.extraction_contracts import (
     MAX_CANDIDATES,
@@ -29,7 +29,6 @@ from apps.ai.extraction_raster import (
     GlyphOrigins,
     Page,
     Reference,
-    ReferenceInk,
     TextLine,
     matching_ink,
 )
@@ -212,6 +211,7 @@ class _Lines(HTMLParser):
         self.rotations = rotations
         self.pages: list[Page] = []
         self.box: Box | None = None
+        self.first_word: Box | None = None
         self.words: list[str] = []
         self.in_word = False
         self.word: list[str] = []
@@ -230,7 +230,10 @@ class _Lines(HTMLParser):
         elif tag == "line":
             self.words = []
             self.box = _text_box(values)
+            self.first_word = None
         elif tag == "word":
+            if self.first_word is None:
+                self.first_word = _text_box(values)
             self.in_word = True
             self.word = []
 
@@ -242,7 +245,7 @@ class _Lines(HTMLParser):
         if tag == "word" and self.in_word:
             self.words.append("".join(self.word))
             self.in_word = False
-        elif tag == "line" and self.box:
+        elif tag == "line" and self.box and self.first_word:
             page = self.pages[-1]
             width, height = page.display_size
             if not page.valid:
@@ -260,7 +263,10 @@ class _Lines(HTMLParser):
             region = Region(rotated.page, rotated.display_bbox(-page.rotation % 360))
             self.lines.append(
                 TextLine(
-                    region, page.unrotate(self.box), _unit_line(" ".join(self.words))
+                    region,
+                    page.unrotate(self.box),
+                    page.unrotate(self.first_word),
+                    _unit_line(" ".join(self.words)),
                 )
             )
             self.box = None
@@ -333,17 +339,15 @@ def _png_frames(data: bytes, *, count: int) -> Iterator[bytes]:
         raise ExtractionInputError
 
 
-def _reference_layers(
+def _reference_frames(
     reference: Reference, *, size: tuple[int, int]
 ) -> Iterator[Image.Image]:
-    if reference.pages == 1:
-        return
     # Without an output root Poppler streams one PNG per page to stdout.
     data = _poppler(
         [
             "/usr/bin/pdftoppm",
             "-f",
-            "2",
+            "1",
             "-l",
             str(reference.pages),
             "-scale-to",
@@ -353,11 +357,11 @@ def _reference_layers(
         ],
         reference.pdf,
     )
-    for frame in _png_frames(data, count=reference.pages - 1):
-        with Image.open(BytesIO(frame)) as layer:
-            if layer.size != size or layer.mode != "RGB":
+    for index, frame in enumerate(_png_frames(data, count=reference.pages)):
+        with Image.open(BytesIO(frame)) as image:
+            if image.size != size or image.mode != "RGB":
                 raise ExtractionInputError
-            yield layer.convert("L")
+            yield ImageChops.invert(image.convert("L")) if index else image.copy()
 
 
 def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region, str]:
@@ -386,31 +390,21 @@ def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region
             # A page with unavailable or oversized position evidence is unresolved.
             continue
         glyphs.feed(positions.decode("utf-8", errors="replace"))
+        reference = page.reference(lines=lines, points=glyphs.points)
+        if reference is None:
+            continue
         with Image.open(BytesIO(_render_pdf_page(data, page=number))) as source:
-            reference = page.reference(
-                lines=lines, points=glyphs.points, display_size=source.size
-            )
-            if reference is None:
-                continue
-            # The source's text metrics can lie. Verify the painted anchor,
-            # so a truncated source box cannot hide a mismatched suffix.
-            projected = _pdf_layout(reference.pdf, (page.rotation,)).lines
             try:
-                layers = tuple(_reference_layers(reference, size=source.size))
-            except (ExtractionInputError, OSError):
-                continue
-            with Image.open(
-                BytesIO(_render_pdf_page(reference.pdf, page=1))
-            ) as expected:
-                regions.update(
-                    matching_ink(
+                if source.mode == "RGB":
+                    proven = matching_ink(
                         source=source,
-                        reference=ReferenceInk(expected, layers),
-                        lines=lines,
-                        projected=projected,
+                        frames=_reference_frames(reference, size=source.size),
+                        claims=reference.claims,
                         rotation=page.rotation,
                     )
-                )
+                    regions.update(proven)
+            except (ExtractionInputError, OSError):
+                continue
     return regions
 
 

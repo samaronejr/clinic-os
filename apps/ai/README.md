@@ -656,14 +656,17 @@ Collection and confirmation read the source bytes under current authority.
 The page and unrotated box must identify one visible source line. Its field,
 value, unit token, interval and transcription must match exactly; neither the
 model's `raw_text` nor the PDF text layer alone can establish a unit. For the
-bounded synthetic PDF format, independently draw each claimed glyph in standard
-black Helvetica at the local renderer's glyph origin, then recheck the complete
-anchor against the same raster used for review. Extra spacing does not require
-extra ink; only tightly adjacent fragments of a known unit can form one token.
-Check each unit glyph's ink separately at the review resolution: a foreground
-stroke cannot share a pixel with another glyph. Antialias fringes alone do not
-count as a collision, but exact RGB comparison still rejects hidden, altered,
-or occluded strokes. Unresolved paint retains the manual result entry path.
+bounded synthetic PDF format, render the source composite once per page at the
+review resolution. Use layout hints to paint canonical black Helvetica masks
+for each unit glyph and the rest of its line, independently of the model
+reply. Neither the highlight box nor padding is part of the paint check.
+Check every nonwhite sample and the intervening scanline pixels against the
+canonical RGB paint. No ink from a separate line, nonunit glyph, or unexpected
+visible drawing may supply or alter a stroke. Unexpected changed pixels
+directly attached to the ink also refuse. Adjacent unit glyphs may share
+faint antialias samples, but not foreground; the shared samples still have
+to match exactly. Only successive visible fragments of a known unit form
+one token. Unresolved paint retains the manual result entry path.
 
 The source-only synthetic adapter reads explicit PDF text lines
 `field: value unit [reference interval]`. This bounded offline fixture format

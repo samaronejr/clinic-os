@@ -5,9 +5,10 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import replace
-from hashlib import sha256
+from hashlib import sha256, shake_256
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from apps.ai.extraction_contracts import (
@@ -29,8 +30,13 @@ from apps.ai.extraction_documents import (
 )
 from PIL import Image
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 REGION = Region(1, (1000, 2000, 8000, 3000))
 SOURCE = {REGION: "glucose: 123,40 mg/dL [70,0 - 99,0]"}
+PIXEL_TRIALS = 48
+HORIZONTAL_TRIALS = 12
 
 
 def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
@@ -98,6 +104,110 @@ def close_unit_runs(*, rotation: int, advance: int) -> bytes:
             "BT /F1 12 Tf 134.73 740 Td (/) Tj ET "
             f"BT /F1 12 Tf {(13473 + advance) / 100:.2f} 740 Td (dL) Tj ET"
         ),
+    )
+
+
+def review_boundary_pdf(*, rotation: int, edge: bool, shifted: bool) -> bytes:
+    """Recreate the two 0.0002-point review witnesses without altering paint."""
+    if edge:
+        x = "603.6451" if shifted else "603.6449"
+        stream = (
+            "BT /F1 12 Tf 498.909 740 Td (glucose: 123,40 g/d) Tj ET "
+            f"BT /F1 12 Tf {x} 740 Td (L) Tj ET"
+        )
+    else:
+        y = "725.1325" if shifted else "725.1323"
+        stream = (
+            "BT /F1 12 Tf 40 740 Td (glucose: 123,40 g/dL) Tj ET "
+            f"BT /F1 12 Tf 40 {y} Td (hemoglobin: 12,50 g/dL) Tj ET"
+        )
+    return pdf_with_stream(stream=stream, rotation=rotation)
+
+
+def _jittered_row(
+    *,
+    prefix: str,
+    origin: tuple[float, float],
+    advances: tuple[float, ...],
+    offsets: Iterator[float],
+    horizontal: bool,
+) -> str:
+    # The last value digit is an independent neighbour of the four unit glyphs.
+    x, y = origin
+    return f"BT /F1 12 Tf {x} {y} Td ({prefix}) Tj ET " + " ".join(
+        "BT /F1 12 Tf "
+        f"{x + advance + next(offsets):.6f} "
+        f"{y + (0 if horizontal else next(offsets)):.6f} Td ({char}) Tj ET"
+        for char, advance in zip("0g/dL", advances, strict=True)
+    )
+
+
+def _jittered_unit_pdf(*, rotation: int, scenario: str, trial: int) -> bytes:
+    # A seeded pseudorandom byte stream keeps the geometry reproducible.
+    horizontal = trial >= PIXEL_TRIALS
+    spread = 0.27 if PIXEL_TRIALS // 2 <= trial < PIXEL_TRIALS else 0.0008
+    draws = shake_256(f"138241:{trial}".encode()).digest(44)
+    offsets = (
+        spread * (int.from_bytes(draws[i : i + 2], "big") / 32767.5 - 1)
+        for i in range(0, len(draws), 2)
+    )
+    stream = _jittered_row(
+        prefix="glucose: 123,4",
+        origin=(498.909 if scenario == "edge" else 40, 740),
+        advances=(
+            78.048,
+            88.056,
+            94.728,
+            94.738 if scenario == "collision" else 98.064,
+            101.410 if scenario == "collision" else 104.736,
+        ),
+        offsets=offsets,
+        horizontal=horizontal,
+    )
+    if scenario == "adjacent":
+        stream += " " + _jittered_row(
+            prefix="hemoglobin: 12,5",
+            origin=(40 + next(offsets), 725.1324 + next(offsets)),
+            advances=(92.052, 102.060, 108.732, 112.068, 118.740),
+            offsets=offsets,
+            horizontal=horizontal,
+        )
+    return pdf_with_stream(stream=stream, rotation=rotation)
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("scenario", ["adjacent", "edge", "separated", "collision"])
+def test_equal_review_pixels_imply_equal_unit_eligibility(
+    rotation: int, scenario: str
+) -> None:
+    by_raster: dict[bytes, set[tuple[tuple[str, str, str], ...]]] = {}
+    total = PIXEL_TRIALS + HORIZONTAL_TRIALS
+    for trial in range(total):
+        data = _jittered_unit_pdf(rotation=rotation, scenario=scenario, trial=trial)
+        raster = render_page(data=data, content_type="application/pdf", page=1)
+        rows = parse_proposals(
+            synthetic_document_extraction(
+                document_input(data=data, content_type="application/pdf")
+            ),
+            rotations=(rotation,),
+            regions=source_regions(
+                data=data, content_type="application/pdf", rotations=(rotation,)
+            ),
+        )
+        decision = tuple(sorted((row.field, row.status, row.reason) for row in rows))
+        by_raster.setdefault(raster, set()).add(decision)
+    # Lossless review PNGs are used as byte keys, not approximate image hashes.
+    assert total - len(by_raster) >= total // 3
+    assert all(len(decisions) == 1 for decisions in by_raster.values())
+    expected = (
+        ("ambiguous", "unit_unresolved")
+        if scenario == "collision"
+        else ("candidate", "")
+    )
+    assert any(
+        all((status, reason) == expected for _field, status, reason in decision)
+        for decisions in by_raster.values()
+        for decision in decisions
     )
 
 
@@ -351,6 +461,30 @@ def test_render_equivalent_unit_runs_have_the_same_decision(rotation: int) -> No
         ("ambiguous", "unit_unresolved"),
         ("candidate", ""),
     }
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_competing_drawing_cannot_attach_to_unit_ink(rotation: int) -> None:
+    text = "BT /F1 12 Tf 40 740 Td (glucose: 123,40 g/dL) Tj ET "
+    # The same 0.4 pt stroke crosses the foot of L or is visibly separate.
+    clean = pdf_with_stream(rotation=rotation, stream=text)
+    review = render_page(data=clean, content_type="application/pdf", page=1)
+    for x, expected in [
+        ("149.6", ("ambiguous", "unit_unresolved")),
+        ("160", ("candidate", "")),
+    ]:
+        data = pdf_with_stream(rotation=rotation, stream=f"{text}{x} 740.1 3.8 .4 re f")
+        assert render_page(data=data, content_type="application/pdf", page=1) != review
+        (row,) = parse_proposals(
+            synthetic_document_extraction(
+                document_input(data=data, content_type="application/pdf")
+            ),
+            rotations=(rotation,),
+            regions=source_regions(
+                data=data, content_type="application/pdf", rotations=(rotation,)
+            ),
+        )
+        assert (row.status, row.reason) == expected
 
 
 @pytest.mark.parametrize(
