@@ -355,9 +355,12 @@ treatment or messages a patient.
   most); each item is exactly `{kind, start_days, end_days}`, with days counted
   from the plan's approval. Proposable kinds are `return_window` and
   `staff_coordination` (administrative) and `order`, `questionnaire`,
-  `monitoring_task` (clinical). A referral destination or a patient
-  instruction is clinician-written free text, and a medication, dose or
-  procedure has no field at all: such an item is kept only as a refusal
+  `monitoring_task` (clinical). A kind and its exact window must also match
+  the independently reviewed facts for this complete synthetic plan text;
+  unknown text has no supported items. Collection checks the request against
+  the current finalized plan section before storing any proposal. A referral
+  destination or a patient instruction is clinician-written free text, and a
+  medication, dose or procedure has no field at all: such an item is kept only as a refusal
   (`kind_forbidden`, stored kind `unsupported` for invented kinds) without any
   model text, which stays in the encrypted gateway output until retention.
 - **`CareProposal` (`ai_careproposal`).** One row per model item: closed kind,

@@ -228,10 +228,10 @@ def _requested(
 
 
 def _store(
-    *, invocation: AIInvocation, plan: CarePlan, output: str
+    *, invocation: AIInvocation, request: CareRequest, plan: CarePlan, output: str
 ) -> tuple[CareProposal, ...]:
     """Persist every model item as a pending proposal or a closed refusal."""
-    accepted, refused = validate_reply(output)
+    accepted, refused = validate_reply(output, request)
     anchor = plan.created_at
     rows: list[tuple[int, dict[str, object]]] = [
         (
@@ -302,11 +302,16 @@ def collect_care_coordination(*, clinic_id: UUID, invocation_id: UUID) -> CareBu
         return CareBundle("generating", invocation.pk, plan.pk)
     if invocation.status != "succeeded":
         return CareBundle("unavailable", invocation.pk, plan.pk)
-    if plan.revision != request.plan_revision or not plan_is_current(plan):
+    if (
+        plan.revision != request.plan_revision
+        or plan.source_version_id != request.source_version_id
+        or not plan_is_current(plan)
+        or _plan_text(clinic_id=clinic_id, plan=plan) != request.text
+    ):
         return CareBundle("stale", invocation.pk, plan.pk)
     try:
         output = read_artifact(clinic_id=clinic_id, artifact_id=invocation.output.pk)
-        items = _store(invocation=invocation, plan=plan, output=output)
+        items = _store(invocation=invocation, request=request, plan=plan, output=output)
     except (GatewayAccessDeniedError, GatewayInputError):
         return CareBundle("unavailable", invocation.pk, plan.pk)
     return CareBundle("ready", invocation.pk, plan.pk, items)
