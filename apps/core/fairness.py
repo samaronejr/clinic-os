@@ -75,17 +75,6 @@ _RESOLVER_BUSY = 2
 _RESOLVER_WAIT_MILLISECONDS = 500
 _RESOLVER_CHANNEL = f"{_BUCKET_KEY_PREFIX}:resolved"
 
-# Keep the two-minute idle lifetime, with up to one second of extra retention
-# so hot buckets don't write expiry state on every decision. Use Redis's TTL,
-# not the injectable bucket clock; an absent TTL also needs renewal.
-_KEEP_BUCKET_LUA = """
-local function keep_bucket(key)
-  if redis.call('PTTL', key) < 120000 then
-    redis.call('PEXPIRE', key, 121000)
-  end
-end
-"""
-
 # This is a negative preflight and an advisory in-flight decision slot,
 # never an admission or a quota cache.
 # For nonnegative elapsed time, no legal rate can refill faster than MAX/60.
@@ -96,9 +85,7 @@ end
 # Redis time drives the slot independently of the injectable bucket clock.
 # Completion publications contain only a bucket key, never authority.
 # Register before rechecking credit; missed signals use the lease backstop.
-_CREDIT_POSSIBLE_LUA = (
-    _KEEP_BUCKET_LUA
-    + """
+_CREDIT_POSSIBLE_LUA = """
 local state = redis.call('HMGET', KEYS[1],
                          'tokens', 'touched', 'resolving', 'resolve_until')
 local tokens = tonumber(state[1])
@@ -106,7 +93,12 @@ local touched = tonumber(state[2])
 local now = tonumber(ARGV[1])
 if tokens and touched and now >= touched and
    tokens + (now - touched) * tonumber(ARGV[2]) < 1 then
-  keep_bucket(KEYS[1])
+  -- Redis 7.2+ uses one command-time snapshot for PTTL and PEXPIRE in
+  -- this script. Skip only an identical deadline, never round it.
+  if (redis.REDIS_VERSION_NUM or 0) < 0x070200 or
+     redis.call('PTTL', KEYS[1]) ~= 120000 then
+    redis.call('PEXPIRE', KEYS[1], 120000)
+  end
   return 0
 end
 local clock = redis.call('TIME')
@@ -118,10 +110,9 @@ if state[3] and state[3] ~= ARGV[3] and
 end
 redis.call('HSET', KEYS[1], 'resolving', ARGV[3],
            'resolve_until', server_now + 1)
-keep_bucket(KEYS[1])
+redis.call('PEXPIRE', KEYS[1], 120000)
 return 1
 """
-)
 
 _RELEASE_RESOLVER_LUA = f"""
 local state = redis.call('HMGET', KEYS[1], 'resolving', 'notify')
@@ -136,9 +127,7 @@ return 0
 
 # Atomic token bucket: refill at the per-minute rate, spend one token,
 # expire idle buckets after roughly two full refills.
-_BUCKET_LUA = (
-    _KEEP_BUCKET_LUA
-    + f"""
+_BUCKET_LUA = f"""
 local state = redis.call('HMGET', KEYS[1],
                          'tokens', 'touched', 'resolving', 'notify')
 local tokens = tonumber(state[1] or ARGV[1])
@@ -153,7 +142,7 @@ if tokens >= 1 then
   allowed = 1
 end
 redis.call('HSET', KEYS[1], 'tokens', tokens, 'touched', now)
-keep_bucket(KEYS[1])
+redis.call('PEXPIRE', KEYS[1], math.ceil(2000 * capacity / rate))
 if state[3] == ARGV[4] then
   redis.call('HDEL', KEYS[1], 'resolving', 'resolve_until', 'notify')
   if state[4] then
@@ -162,7 +151,6 @@ if state[3] == ARGV[4] then
 end
 return allowed
 """
-)
 
 
 class FairnessInputError(ValueError):
