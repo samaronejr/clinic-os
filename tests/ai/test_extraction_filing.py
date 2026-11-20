@@ -19,6 +19,10 @@ from apps.ai.extraction import (
     start_extraction,
 )
 from apps.ai.extraction_contracts import ExtractionInputError, filing_payload
+from apps.ai.extraction_documents import (
+    recorded_document_extraction,
+    synthetic_document_extraction,
+)
 from apps.core.integration import execute_operation
 from apps.core.secrets import secret_store
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
@@ -38,7 +42,7 @@ from psycopg import sql
 
 from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
-from ai.test_extraction import pdf_fixture
+from ai.test_extraction import pdf_fixture, scan_fixture
 from ai.test_extraction_runtime import extracted_job
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context
@@ -149,6 +153,83 @@ def review_clock(superuser_database_url: str, reference: datetime) -> Iterator[N
             yield
         finally:
             owner.execute(definition[0])
+
+
+@pytest.mark.parametrize(
+    "replace_text", [False, True], ids=["suffix", "forged-raw-text"]
+)
+def test_reviewed_scan_cannot_file_contradictory_unit(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, replace_text: bool
+) -> None:
+    def extract(content: str) -> str:
+        reply = json.loads(recorded_document_extraction(content))
+        row = reply["candidates"][0]
+        assert row["unit"] == "mg/dL"
+        row["unit"] = "g/dL"
+        if replace_text:
+            row["raw_text"] = row["raw_text"].replace("mg/dL", "g/dL")
+        return json.dumps(reply)
+
+    monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", extract)
+    job = extracted_job(
+        rbac_graph, monkeypatch, data=scan_fixture(), content_type="image/png"
+    )
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert job.candidates.get(position=1).status == "candidate"
+        assert_unit_refused(job, position=0)
+
+
+def test_field_name_is_not_a_unit_for_a_unitless_pdf_line(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def extract(content: str) -> str:
+        reply = json.loads(synthetic_document_extraction(content))
+        row = reply["candidates"][-1]
+        assert row["raw_text"] == "glucose: 123,40"
+        row["unit"] = "g"
+        return json.dumps(reply)
+
+    monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", extract)
+    job = extracted_job(
+        rbac_graph, monkeypatch, data=pdf_fixture(instruction="glucose: 123,40")
+    )
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert_unit_refused(job, position=5)
+
+
+def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:
+    row = job.candidates.get(position=position)
+    assert row.status == "ambiguous"
+    assert row.payload["reason"] == "unit_unresolved"
+    with pytest.raises(ExtractionInputError):
+        review_extraction(
+            clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
+        )
+    assert authorize_native(
+        invocation_id=job.invocation_id,
+        clinic_id=job.clinic_id,
+        purpose=Purpose.EXTRACTION,
+    )
+    with (
+        pytest.raises(DatabaseError) as denied,
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "SELECT * FROM clinic_app.ai_review_extraction(%s,%s,'confirmed',%s,%s)",
+            [
+                row.pk,
+                job.result_version_id,
+                b"",
+                secret_store().get_secret("tenant-kek"),
+            ],
+        )
+    cause = denied.value.__cause__
+    assert isinstance(cause, psycopg.errors.CheckViolation)
+    assert cause.diag.message_primary == "extraction filing denied"
+    assert not ResultObservation.objects.filter(
+        version_id=job.result_version_id
+    ).exists()
 
 
 def test_attachment_requires_scan_and_independent_exact_byte_identity_match(

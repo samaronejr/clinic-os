@@ -29,7 +29,7 @@ from apps.ai.extraction import (
     authorized_job,
     candidate_data,
     collect_extraction,
-    extraction_source,
+    job_source,
     review_extraction,
     start_extraction,
 )
@@ -155,23 +155,19 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
 def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, object]:
     if zoom not in ZOOMS:
         raise ExtractionInputError
-    source = extraction_source(
-        clinic_id=job.clinic_id,
-        result_version_id=job.result_version_id,
-        attachment_id=job.attachment_id,
-        include_bytes=True,
-    )
+    source = job_source(job=job, include_bytes=True)
     raster = render_page(data=source.data, content_type=source.content_type, page=page)
     with Image.open(BytesIO(raster)) as image:
         width, height = image.size
     rows: list[dict[str, object]] = []
+    regions = source.regions(rotations=tuple(job.rotations))
     for record in job.candidates.select_related("job").order_by("position"):
         if (
             record.status in ("candidate", "ambiguous")
             and record.expires_at <= timezone.now()
         ):
             continue
-        candidate = candidate_data(record)
+        candidate = candidate_data(record, regions=regions)
         box = candidate.region.display_bbox(job.rotations[candidate.region.page - 1])
         left, top, right, bottom = box
         rows.append(

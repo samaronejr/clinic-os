@@ -46,6 +46,7 @@ def extracted_job(
     monkeypatch: pytest.MonkeyPatch,
     *,
     data: bytes | None = None,
+    content_type: str = "application/pdf",
     world: World | None = None,
 ) -> ExtractionJob:
     gateway = seed(rbac_graph, monkeypatch)
@@ -74,6 +75,7 @@ def extracted_job(
             submission=replace(
                 submission(world),
                 data=pdf_fixture(rotation=90) if data is None else data,
+                content_type=content_type,
             ),
         )
         job = start_extraction(

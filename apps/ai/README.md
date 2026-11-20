@@ -649,6 +649,10 @@ unknown or missing decimal units and unreadable regions stay ambiguous. Dates
 require DD/MM/YYYY and have no physical unit. No separator, unit, range,
 abnormality, identity factor or clinical interpretation is inferred.
 Only a candidate can become confirmed; ambiguous drafts may only be rejected.
+Collection and confirmation read the source bytes under current authority.
+The page and unrotated box must identify one local source line. Its field,
+value, unit token, interval and transcription must match exactly; the model's
+`raw_text` is never the authority for a unit.
 
 The source-only synthetic adapter reads explicit PDF text lines
 `field: value unit [reference interval]`. This bounded offline fixture format

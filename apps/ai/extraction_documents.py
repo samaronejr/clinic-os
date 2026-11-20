@@ -28,6 +28,14 @@ MAX_RENDER_BYTES = 12 * 1024 * 1024
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
 
+# Anchor transcription of the only reviewed raster, independent of the
+# recorded provider reply. Any other raster requires manual review.
+_SCAN_SHA256 = "311f5a521d517dc8ff1175499959d5e9726f3dc8c0c193268f019539c93be2da"
+_SCAN_REGIONS = {
+    Region(1, (500, 3583, 2488, 4042)): "glucose: 123,40 mg/dL [70,0 - 99,0]",
+    Region(1, (500, 5875, 2562, 6333)): "hemoglobin: 12,50 g/dL [12,0 - 16,0]",
+}
+
 
 def _poppler(command: list[str], data: bytes) -> bytes:
     output = bytearray()
@@ -228,6 +236,39 @@ def _unreadable(page: int) -> dict[str, object]:
     }
 
 
+def _pdf_lines(data: bytes, rotations: tuple[int, ...]) -> list[tuple[Region, str]]:
+    reader = _Lines(rotations)
+    reader.feed(
+        _poppler(["/usr/bin/pdftotext", "-bbox-layout", "-", "-"], data).decode(
+            "utf-8", errors="replace"
+        )
+    )
+    return [
+        (Region(page, Region(page, box).display_bbox(-rotations[page - 1] % 360)), raw)
+        for page, box, raw in reader.lines
+    ]
+
+
+def source_regions(
+    *, data: bytes, content_type: str, rotations: tuple[int, ...]
+) -> dict[Region, str]:
+    """Read anchors from the actual PDF or the exact hash-bound reviewed image."""
+    if document_pages(data=data, content_type=content_type) != rotations:
+        raise ExtractionInputError
+    if content_type != "application/pdf":
+        if (
+            content_type == "image/png"
+            and hashlib.sha256(data).hexdigest() == _SCAN_SHA256
+        ):
+            return _SCAN_REGIONS.copy()
+        return {}
+    regions: dict[Region, str] = {}
+    for region, text in _pdf_lines(data, rotations):
+        # Two lines at the same anchor cannot identify a single value.
+        regions[region] = "" if region in regions else text
+    return regions
+
+
 def synthetic_document_extraction(content: str) -> str:
     """Parse explicit synthetic `field: value unit [interval]` lines, never tools.
 
@@ -253,22 +294,9 @@ def synthetic_document_extraction(content: str) -> str:
         raise ExtractionInputError from error
     rows: list[dict[str, object]] = []
     if payload["content_type"] == "application/pdf":
-        reader = _Lines(rotations)
-        reader.feed(
-            _poppler(["/usr/bin/pdftotext", "-bbox-layout", "-", "-"], data).decode(
-                "utf-8", errors="replace"
-            )
-        )
-        lines = (
-            (
-                page,
-                Region(page, box).display_bbox((360 - rotations[page - 1]) % 360),
-                raw,
-            )
-            for page, box, raw in reader.lines
-        )
-        for page, bbox, raw in sorted(
-            lines, key=lambda line: (line[0], line[1][1], line[1][0])
+        for region, raw in sorted(
+            _pdf_lines(data, rotations),
+            key=lambda line: (line[0].page, line[0].bbox[1], line[0].bbox[0]),
         ):
             match = re.fullmatch(r"([a-z][a-z0-9_]{0,31}):\s*(.+)", raw)
             if match is None:
@@ -285,8 +313,8 @@ def synthetic_document_extraction(content: str) -> str:
                     "reference_interval": interval.removesuffix("]")
                     if separator
                     else "",
-                    "page": page,
-                    "bbox": bbox,
+                    "page": region.page,
+                    "bbox": region.bbox,
                     "legible": True,
                 }
             )

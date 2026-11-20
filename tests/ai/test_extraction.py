@@ -23,9 +23,13 @@ from apps.ai.extraction_documents import (
     document_pages,
     recorded_document_extraction,
     render_page,
+    source_regions,
     synthetic_document_extraction,
 )
 from PIL import Image
+
+REGION = Region(1, (1000, 2000, 8000, 3000))
+SOURCE = {REGION: "glucose: 123,40 mg/dL [70,0 - 99,0]"}
 
 
 def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
@@ -64,6 +68,16 @@ def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
         data
         + f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
     )
+
+
+def scan_fixture() -> bytes:
+    """The exact reviewed synthetic scan used by the recorded adapter."""
+    fixture = json.loads(
+        (
+            Path(__file__).parents[2] / "apps/ai/fixtures/document_extraction_v1.json"
+        ).read_text()
+    )
+    return base64.b64decode(fixture["data_base64"], validate=True)
 
 
 def proposal(**overrides: object) -> str:
@@ -126,7 +140,7 @@ def test_units_are_not_inferred_or_case_normalized(raw: str) -> None:
 
 
 def test_candidates_remain_drafts_and_keep_raw_and_parsed_values() -> None:
-    candidate = parse_proposals(proposal(), rotations=(0,))[0]
+    candidate = parse_proposals(proposal(), rotations=(0,), regions=SOURCE)[0]
     assert candidate.status == "candidate"
     assert candidate.raw_text == "glucose: 123,40 mg/dL [70,0 - 99,0]"
     assert candidate.value == "123,40"
@@ -147,11 +161,45 @@ def test_candidates_remain_drafts_and_keep_raw_and_parsed_values() -> None:
 def test_ambiguous_values_cannot_be_filed(
     overrides: dict[str, object], reason: str
 ) -> None:
-    candidate = parse_proposals(proposal(**overrides), rotations=(0,))[0]
+    candidate = parse_proposals(proposal(**overrides), rotations=(0,), regions=SOURCE)[
+        0
+    ]
     assert candidate.status == "ambiguous"
     assert candidate.reason == reason
     with pytest.raises(ExtractionInputError):
         filing_payload(candidate, confirmer="synthetic-clinician")
+
+
+@pytest.mark.parametrize(
+    ("source", "unit"),
+    [
+        ("glucose: 123,40", "g"),
+        ("glucose: 123,40 mg/dL [g/dL]", "g/dL"),
+        ("glucose: 123,40 MG/DL", "mg/dL"),
+        ("glucose: 123,40 mcg/L", "\u00b5g/L"),
+        ("glucose: 123,40 \u03bcg/L", "\u00b5g/L"),
+        ("glucose: 123,40 m\u200bg/dL", "mg/dL"),
+        ("glucose: 123,40\u00a0mg/dL", "mg/dL"),
+    ],
+)
+def test_only_the_explicit_unit_for_this_value_is_confirmable(
+    source: str, unit: str
+) -> None:
+    candidate = parse_proposals(
+        proposal(raw_text=source, unit=unit, reference_interval=""),
+        rotations=(0,),
+        regions={REGION: source},
+    )[0]
+    assert (candidate.status, candidate.reason) == ("ambiguous", "unit_unresolved")
+    with pytest.raises(ExtractionInputError):
+        filing_payload(candidate, confirmer="synthetic-clinician")
+
+
+def test_text_at_another_region_does_not_support_a_proposal() -> None:
+    candidate = parse_proposals(
+        proposal(bbox=[0, 0, 10000, 10000]), rotations=(0,), regions=SOURCE
+    )[0]
+    assert candidate.status == "ambiguous"
 
 
 @pytest.mark.parametrize(
@@ -171,12 +219,14 @@ def test_untrusted_proposals_cannot_forge_geometry_or_commands(
     overrides: dict[str, object],
 ) -> None:
     with pytest.raises(ExtractionInputError):
-        parse_proposals(proposal(**overrides), rotations=(0,))
+        parse_proposals(proposal(**overrides), rotations=(0,), regions=SOURCE)
 
 
 def test_duplicate_json_keys_are_rejected() -> None:
     with pytest.raises(ExtractionInputError):
-        parse_proposals('{"candidates":[],"candidates":[]}', rotations=(0,))
+        parse_proposals(
+            '{"candidates":[],"candidates":[]}', rotations=(0,), regions=SOURCE
+        )
 
 
 @pytest.mark.parametrize(
@@ -191,12 +241,12 @@ def test_duplicate_json_keys_are_rejected() -> None:
 def test_rotated_regions_match_the_displayed_page(
     rotation: int, expected: tuple[int, int, int, int]
 ) -> None:
-    candidate = parse_proposals(proposal(), rotations=(rotation,))[0]
+    candidate = parse_proposals(proposal(), rotations=(rotation,), regions=SOURCE)[0]
     assert candidate.region.display_bbox(rotation) == expected
 
 
 def test_confirmation_payload_preserves_imported_provenance() -> None:
-    candidate = parse_proposals(proposal(), rotations=(0,))[0]
+    candidate = parse_proposals(proposal(), rotations=(0,), regions=SOURCE)[0]
     payload = filing_payload(candidate, confirmer="synthetic-clinician")
     assert payload["value"] == "123,40"
     assert payload["parsed_value"] == "123.40"
@@ -216,7 +266,13 @@ def test_fixture_pdf_yields_five_anchored_values(rotation: int) -> None:
     assert rotations == (rotation,)
     envelope = document_input(data=data, content_type="application/pdf")
     content = synthetic_document_extraction(envelope)
-    candidates = parse_proposals(content, rotations=rotations)
+    candidates = parse_proposals(
+        content,
+        rotations=rotations,
+        regions=source_regions(
+            data=data, content_type="application/pdf", rotations=rotations
+        ),
+    )
     assert len(candidates) == 5
     assert all(row.status == "candidate" for row in candidates)
     assert candidates[0].parsed_value == "123.40"
@@ -236,6 +292,9 @@ def test_pdf_instructions_are_data_and_never_become_tools() -> None:
             document_input(data=data, content_type="application/pdf")
         ),
         rotations=(0,),
+        regions=source_regions(
+            data=data, content_type="application/pdf", rotations=(0,)
+        ),
     )
     assert len(candidates) == 5
     assert {row.field for row in candidates} == {
@@ -257,6 +316,7 @@ def test_unreadable_image_has_an_unresolved_region_not_fabricated_values() -> No
             document_input(data=data, content_type="image/png")
         ),
         rotations=(0,),
+        regions=source_regions(data=data, content_type="image/png", rotations=(0,)),
     )
     assert len(candidates) == 1
     assert candidates[0].reason == "unreadable"
@@ -280,7 +340,13 @@ def test_recorded_scan_yields_only_its_exact_source_bound_regions() -> None:
     )
     data = base64.b64decode(fixture["data_base64"], validate=True)
     content = document_input(data=data, content_type=fixture["content_type"])
-    candidates = parse_proposals(recorded_document_extraction(content), rotations=(0,))
+    candidates = parse_proposals(
+        recorded_document_extraction(content),
+        rotations=(0,),
+        regions=source_regions(
+            data=data, content_type=fixture["content_type"], rotations=(0,)
+        ),
+    )
     assert [row.parsed_value for row in candidates] == ["123.40", "12.50"]
     assert candidates[0].region.bbox == tuple(fixture["candidates"][0]["bbox"])
     changed = BytesIO()

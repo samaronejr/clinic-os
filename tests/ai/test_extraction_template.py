@@ -14,6 +14,7 @@ from apps.ai.extraction_contracts import parse_proposals
 from apps.ai.extraction_documents import (
     document_input,
     render_page,
+    source_regions,
     synthetic_document_extraction,
 )
 from django.template import Context, Engine
@@ -39,7 +40,13 @@ def render_fixture(*, status: str = "candidate", raw_text: str | None = None) ->
         proposed["raw_text"] = raw_text
     if status == "ambiguous":
         proposed["unit"] = ""
-    source = parse_proposals(json.dumps({"candidates": [proposed]}), rotations=(0,))[0]
+    source = parse_proposals(
+        json.dumps({"candidates": [proposed]}),
+        rotations=(0,),
+        regions=source_regions(
+            data=document, content_type="application/pdf", rotations=(0,)
+        ),
+    )[0]
     engine = Engine(
         dirs=[str(ROOT / "templates")],
         loaders=[

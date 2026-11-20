@@ -6,11 +6,18 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import date
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 MAX_CANDIDATES: Final = 128
 BBOX_LENGTH: Final = 4
 COORDINATE_SCALE: Final = 10000
+_SOURCE_LINE: Final = re.compile(
+    r"(?P<field>[a-z][a-z0-9_]{0,31}):[ \t]*(?P<value>[^\s\[\]]+)"
+    r"(?:[ \t]+(?P<unit>[^\s\[\]]+))?(?:[ \t]+\[(?P<interval>[^\[\]\r\n]+)\])?"
+)
 UNITS: Final = frozenset(
     {
         "mg/dL",
@@ -145,9 +152,9 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def parse_proposals(
-    content: str, *, rotations: tuple[int, ...]
+    content: str, *, rotations: tuple[int, ...], regions: Mapping[Region, str]
 ) -> tuple[ExtractionCandidate, ...]:
-    """Bound model proposals, then parse locally; model-supplied parses are refused."""
+    """Parse locally against independently transcribed, exact source regions."""
     if not rotations or any(r not in (0, 90, 180, 270) for r in rotations):
         raise ExtractionInputError
     try:
@@ -161,10 +168,15 @@ def parse_proposals(
         or not 1 <= len(payload["candidates"]) <= MAX_CANDIDATES
     ):
         raise ExtractionInputError
-    return tuple(_candidate(row, pages=len(rotations)) for row in payload["candidates"])
+    return tuple(
+        _candidate(row, pages=len(rotations), regions=regions)
+        for row in payload["candidates"]
+    )
 
 
-def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
+def _candidate(
+    row: object, *, pages: int, regions: Mapping[Region, str]
+) -> ExtractionCandidate:
     if (
         not isinstance(row, dict)
         or set(row)
@@ -199,6 +211,7 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
     ):
         raise ExtractionInputError
     region = Region(row["page"], tuple(row["bbox"]))
+    source = _SOURCE_LINE.fullmatch(regions.get(region, ""))
     reason = ""
     parsed: str | None = None
     if not row["legible"]:
@@ -207,18 +220,22 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
         reason = "unstructured"
     elif row["kind"] == "date":
         parsed = parse_date(row["value"]) if not row["unit"] else None
-    elif parse_unit(row["unit"]) is None:
+    elif (
+        parse_unit(row["unit"]) is None
+        or source is None
+        or source["unit"] != row["unit"]
+    ):
         reason = "unit_unresolved"
     else:
         parsed = parse_decimal(row["value"])
     if not reason and (
         parsed is None
-        or row["value"] not in row["raw_text"]
-        or (row["unit"] and row["unit"] not in row["raw_text"])
-        or (
-            row["reference_interval"]
-            and row["reference_interval"] not in row["raw_text"]
-        )
+        or source is None
+        or source[0] != row["raw_text"]
+        or source["field"] != row["field"]
+        or source["value"] != row["value"]
+        or (source["unit"] or "") != row["unit"]
+        or (source["interval"] or "") != row["reference_interval"]
     ):
         reason = "value_unresolved"
     return ExtractionCandidate(
