@@ -11,7 +11,6 @@ import re
 import selectors
 import subprocess
 import time
-from functools import cache
 from html.parser import HTMLParser
 from io import BytesIO
 from math import isfinite
@@ -24,30 +23,25 @@ from apps.ai.extraction_contracts import (
     COORDINATE_SCALE,
     MAX_CANDIDATES,
     ExtractionInputError,
+    PdfValueEvidence,
     Region,
-    parse_unit,
-)
-from apps.ai.extraction_raster import (
-    REVIEW_LONG_EDGE,
-    Box,
-    glyph_atlas,
-    matches_proposal,
+    value_transcription,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from apps.ai.extraction_contracts import SourceEvidence
-    from apps.ai.extraction_raster import GlyphAtlas
 
+PDF_CONTENT_TYPE = "application/pdf"
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 32
 MAX_PIXELS = 25_000_000
 MAX_INPUT_BYTES = 1_048_576
 MAX_RENDER_BYTES = 12 * 1024 * 1024
+REVIEW_LONG_EDGE = 1400
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
 _FIELD = re.compile(r"[a-z][a-z0-9_]{0,31}")
+type _Box = tuple[float, float, float, float]
 
 # Anchor transcription of the only reviewed raster, independent of the
 # recorded provider reply. Any other raster requires manual review.
@@ -128,7 +122,7 @@ def document_pages(*, data: bytes, content_type: str) -> tuple[int, ...]:
     if content_type in ("image/jpeg", "image/png"):
         _image(data)
         return (0,)
-    if content_type != "application/pdf" or not data.startswith(b"%PDF-"):
+    if content_type != PDF_CONTENT_TYPE or not data.startswith(b"%PDF-"):
         raise ExtractionInputError
     info = _poppler(
         ["/usr/bin/pdfinfo", "-f", "1", "-l", str(MAX_PAGES), "-box", "-"], data
@@ -173,7 +167,7 @@ def render_page(*, data: bytes, content_type: str, page: int) -> bytes:
     rotations = document_pages(data=data, content_type=content_type)
     if type(page) is not int or not 1 <= page <= len(rotations):
         raise ExtractionInputError
-    if content_type == "application/pdf":
+    if content_type == PDF_CONTENT_TYPE:
         return _render_pdf_page(data, page=page)
     image = _image(data)
     image.thumbnail((REVIEW_LONG_EDGE, REVIEW_LONG_EDGE))
@@ -201,13 +195,13 @@ def _render_pdf_page(data: bytes, *, page: int) -> bytes:
 
 
 class _Lines(HTMLParser):
-    """Read draft suggestions only; the review verifier never uses this reader."""
+    """Read bounded text layout for PDF value drafts."""
 
     def __init__(self, rotations: tuple[int, ...]) -> None:
         super().__init__(convert_charrefs=True)
         self.rotations = rotations
         self.sizes: list[tuple[float, float]] = []
-        self.box: Box | None = None
+        self.box: _Box | None = None
         self.words: list[str] = []
         self.in_word = False
         self.word: list[str] = []
@@ -263,7 +257,7 @@ def _normalize_axis(start: float, end: float, size: float) -> tuple[int, int] | 
     return left, right
 
 
-def _text_box(attrs: dict[str, str | None]) -> Box:
+def _text_box(attrs: dict[str, str | None]) -> _Box:
     return (
         float(attrs.get("xmin") or "0"),
         float(attrs.get("ymin") or "0"),
@@ -278,25 +272,22 @@ def _draft(region: Region, text: str) -> dict[str, object] | None:
     if not colon or _FIELD.fullmatch(field) is None:
         return None
     tokens, bracket, interval = remainder.strip().partition(" [")
-    words = tokens.split(" ")
-    if not words[0]:
+    value, _, tail = tokens.partition(" ")
+    if not value:
         return None
-    value, unit = words[0], " ".join(words[1:])
-    for index in range(1, len(words)):
-        joined = "".join(words[index:])
-        if parse_unit(joined) is not None:
-            # Layout may split a value digit, label or unit. This only proposes
-            # an interpretation; the pixels must establish every claimed glyph.
-            value, unit = "".join(words[:index]), joined
-            break
-    raw = f"{field}: {value}" + (f" {unit}" if unit else "")
+    next_word = tail.split(" ", 1)[0]
+    if next_word.isdecimal():
+        # A numeric continuation may be part of the value. Do not guess by
+        # truncating it or by joining digits across a layout boundary.
+        value += f" {next_word}"
+    interval = interval.removesuffix("]") if bracket else ""
     return {
         "field": field,
         "kind": "date" if field == "date" else "decimal",
-        "raw_text": raw + (f" [{interval}" if bracket else ""),
+        "raw_text": value_transcription(field, value, interval),
         "value": value,
-        "unit": unit,
-        "reference_interval": interval.removesuffix("]") if bracket else "",
+        "unit": "",
+        "reference_interval": interval,
         "page": region.page,
         "bbox": region.bbox,
         "legible": True,
@@ -328,59 +319,30 @@ def _pdf_layout(data: bytes, rotations: tuple[int, ...]) -> _Lines:
     return reader
 
 
-def _pdf_image(data: bytes, number: int) -> Image.Image:
-    with Image.open(BytesIO(_render_pdf_page(data, page=number))) as image:
-        if image.mode != "RGB":
-            raise ExtractionInputError
-        return image.copy()
-
-
-@cache
-def _stencils() -> GlyphAtlas:
-    return glyph_atlas(lambda pdf: _pdf_image(pdf, 1))
-
-
-def _pdf_evidence(
-    data: bytes, rotations: tuple[int, ...]
-) -> Callable[[Region, str], bool]:
-    pages: dict[int, Image.Image | None] = {}
-
-    def verifies(region: Region, text: str) -> bool:
-        try:
-            if region.page not in pages:
-                pages[region.page] = None
-                pages[region.page] = _pdf_image(data, region.page)
-            image = pages[region.page]
-            display = Region(
-                region.page, region.display_bbox(rotations[region.page - 1])
-            )
-            return image is not None and matches_proposal(
-                image, region=display, text=text, atlas=_stencils()
-            )
-        except (ExtractionInputError, OSError):
-            return False
-
-    return verifies
-
-
 def source_regions(
     *, data: bytes, content_type: str, rotations: tuple[int, ...]
 ) -> SourceEvidence:
-    """Load PDF review-pixel evidence or the exact hash-bound reviewed image."""
+    """Load anchored PDF value drafts or the exact hash-bound image transcription."""
     if document_pages(data=data, content_type=content_type) != rotations:
         raise ExtractionInputError
-    if content_type != "application/pdf":
-        if (
-            content_type == "image/png"
-            and hashlib.sha256(data).hexdigest() == _SCAN_SHA256
-        ):
-            return _SCAN_REGIONS.copy()
-        return {}
-    return _pdf_evidence(data, rotations)
+    if content_type == PDF_CONTENT_TYPE:
+        lines: dict[Region, str] = {}
+        seen = set()
+        for region, text in _pdf_layout(data, rotations).lines:
+            draft = _draft(region, text)
+            if region in seen:
+                lines.pop(region, None)
+            elif draft is not None:
+                lines[region] = cast("str", draft["raw_text"])
+            seen.add(region)
+        return PdfValueEvidence(lines)
+    if content_type == "image/png" and hashlib.sha256(data).hexdigest() == _SCAN_SHA256:
+        return _SCAN_REGIONS.copy()
+    return {}
 
 
 def synthetic_document_extraction(content: str) -> str:
-    """Parse explicit synthetic `field: value unit [interval]` lines, never tools.
+    """Draft explicit synthetic PDF values and intervals, never units or tools.
 
     This is not OCR or general medical understanding. Raster-only pages receive
     an unreadable region. Real OCR/model providers remain BLOCKED-ON-EG.
@@ -403,7 +365,7 @@ def synthetic_document_extraction(content: str) -> str:
     except (ValueError, TypeError, KeyError, binascii.Error) as error:
         raise ExtractionInputError from error
     rows: list[dict[str, object]] = []
-    if payload["content_type"] == "application/pdf":
+    if payload["content_type"] == PDF_CONTENT_TYPE:
         for region, text in sorted(
             _pdf_layout(data, rotations).lines,
             key=lambda line: (line[0].page, line[0].bbox[1], line[0].bbox[0]),

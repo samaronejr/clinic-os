@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from django.db import DatabaseError, connection, transaction
@@ -20,6 +20,7 @@ from apps.ai.effects import check_invocation
 from apps.ai.extraction_contracts import (
     ExtractionCandidate,
     ExtractionInputError,
+    PdfValueEvidence,
     filing_payload,
     parse_proposals,
 )
@@ -257,6 +258,15 @@ def candidate_data(
         json.dumps({"candidates": [proposal]}), rotations=rotations, regions=regions
     )[0]
     if candidate.payload() != payload:
+        if isinstance(regions, PdfValueEvidence):
+            # Legacy PDF rows remain immutable; do not display their old unit
+            # or treat the old candidate as eligible for the new command.
+            return replace(
+                candidate,
+                status="ambiguous",
+                parsed_value="",
+                reason="value_unresolved",
+            )
         raise ExtractionInputError
     return candidate
 
@@ -268,6 +278,7 @@ def review_extraction(
     candidate_id: UUID,
     decision: str,
     result_version_id: UUID | None = None,
+    manual_unit: str | None = None,
 ) -> UUID | None:
     """Recheck identity, authority, expiry, and one effect in the resolver."""
     row = (
@@ -283,7 +294,11 @@ def review_extraction(
         clinic_id=clinic_id,
         patient_enrollment_id=job.patient_enrollment_id,
     )
-    if decision not in ("confirmed", "rejected") or row.expires_at <= timezone.now():
+    if (
+        decision not in ("confirmed", "rejected")
+        or row.expires_at <= timezone.now()
+        or (decision == "rejected" and manual_unit is not None)
+    ):
         raise ExtractionInputError
     target = result_version_id or job.result_version_id
     source = b""
@@ -300,7 +315,9 @@ def review_extraction(
         ):
             raise GatewayAccessDeniedError
         candidate = candidate_data(row)
-        payload = filing_payload(candidate, confirmer=str(actor))
+        payload = filing_payload(
+            candidate, confirmer=str(actor), manual_unit=manual_unit
+        )
         payload["extraction_candidate"] = str(row.pk)
         source = protect(
             purpose="orders.observation.source",

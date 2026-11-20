@@ -19,11 +19,7 @@ from apps.ai.extraction import (
     start_extraction,
 )
 from apps.ai.extraction_contracts import ExtractionInputError, filing_payload
-from apps.ai.extraction_documents import (
-    recorded_document_extraction,
-    render_page,
-    synthetic_document_extraction,
-)
+from apps.ai.extraction_documents import recorded_document_extraction
 from apps.core.integration import execute_operation
 from apps.core.secrets import secret_store
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
@@ -44,14 +40,7 @@ from psycopg import sql
 from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
 from ai.test_extraction import (
-    LIMIT_BOX,
-    TOKEN_BOX,
-    close_unit_runs,
-    glucose_proposal,
-    layout_transition_pdf,
     pdf_fixture,
-    pdf_with_stream,
-    review_boundary_pdf,
     scan_fixture,
 )
 from ai.test_extraction_runtime import extracted_job
@@ -101,7 +90,9 @@ def raw_confirmation(
         clinic_id=row.clinic_id if clinic_id is None else clinic_id,
         purpose=Purpose.EXTRACTION,
     )
-    payload = filing_payload(candidate_data(row), confirmer=str(row.job.user_id))
+    payload = filing_payload(
+        candidate_data(row), confirmer=str(row.job.user_id), manual_unit="mg/dL"
+    )
     payload["extraction_candidate"] = str(row.pk)
     source = protect(
         purpose="orders.observation.source",
@@ -188,198 +179,6 @@ def test_reviewed_scan_cannot_file_contradictory_unit(
     with as_actor(rbac_graph, rbac_graph.physician):
         assert job.candidates.get(position=1).status == "candidate"
         assert_unit_refused(job, position=0)
-
-
-def test_field_name_is_not_a_unit_for_a_unitless_pdf_line(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def extract(content: str) -> str:
-        reply = json.loads(synthetic_document_extraction(content))
-        row = reply["candidates"][-1]
-        assert row["raw_text"] == "glucose: 123,40"
-        row["unit"] = "g"
-        return json.dumps(reply)
-
-    monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", extract)
-    job = extracted_job(
-        rbac_graph, monkeypatch, data=pdf_fixture(instruction="glucose: 123,40")
-    )
-    with as_actor(rbac_graph, rbac_graph.physician):
-        assert_unit_refused(job, position=5)
-
-
-@pytest.mark.parametrize("visible", [False, True], ids=["hidden-unit", "visible-unit"])
-def test_pdf_unit_must_be_visible_before_it_can_be_filed(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, visible: bool
-) -> None:
-    start = "BT /F1 12 Tf 40 740 Td "
-    value = "glucose: 123,40"
-    text = f"({value} g/dL) Tj" if visible else f"({value}) Tj 3 Tr ( g/dL) Tj"
-    data = pdf_with_stream(stream=f"{start}{text} ET")
-    unitless = pdf_with_stream(stream=f"{start}({value}) Tj ET")
-    rendered = render_page(data=data, content_type="application/pdf", page=1)
-    control = render_page(data=unitless, content_type="application/pdf", page=1)
-    assert (rendered != control) is visible
-
-    job = extracted_job(rbac_graph, monkeypatch, data=data)
-    with as_actor(rbac_graph, rbac_graph.physician):
-        row = job.candidates.get(position=0)
-        assert row.payload["unit"] == "g/dL"  # The actual adapter sees the text layer.
-        assert not ResultObservation.objects.filter(
-            version_id=job.result_version_id
-        ).exists()
-        if visible:
-            observation_id = review_extraction(
-                clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
-            )
-            assert observation_id is not None
-            observation = ResultObservation.objects.get(pk=observation_id)
-            assert observation.version_id == job.result_version_id
-            assert observation.source["unit"] == "g/dL"
-        else:
-            assert_unit_refused(job, position=0)
-
-
-@pytest.mark.parametrize(
-    ("draw", "visible"),
-    [
-        ("(glucose: 123,40  g/dL) Tj ET", True),
-        ("[(glucose: 123,40 g) -20 (/dL)] TJ ET", True),
-        (
-            "(glucose: 123,40 g) Tj ET BT /F1 12 Tf 136.1 740 Td (/) Tj "
-            "ET BT /F1 12 Tf 140.7 740 Td (dL) Tj ET",
-            True,
-        ),
-        ("(glucose: 123,40 g) Tj 3 Tr (/dL) Tj ET", False),
-    ],
-    ids=["leading-spaces", "tj-adjustment", "split-glyph-runs", "hidden-neighbour"],
-)
-def test_pdf_unit_spacing_preserves_only_the_visible_sequence(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, draw: str, visible: bool
-) -> None:
-    start = "BT /F1 12 Tf 40 740 Td "
-    data = pdf_with_stream(stream=start + draw)
-    partial = pdf_with_stream(stream=start + "(glucose: 123,40 g) Tj ET")
-    assert (
-        render_page(data=data, content_type="application/pdf", page=1)
-        != render_page(data=partial, content_type="application/pdf", page=1)
-    ) is visible
-    job = extracted_job(rbac_graph, monkeypatch, data=data)
-    with as_actor(rbac_graph, rbac_graph.physician):
-        row = job.candidates.get(position=0)
-        assert not ResultObservation.objects.filter(
-            version_id=job.result_version_id
-        ).exists()
-        if not visible:
-            assert row.payload["unit"] == "g/dL"
-            assert_unit_refused(job, position=0)
-            return
-        assert row.status == "candidate"
-        observation_id = review_extraction(
-            clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
-        )
-        assert observation_id is not None
-        observation = ResultObservation.objects.get(pk=observation_id)
-        assert observation.version_id == job.result_version_id
-        assert (observation.source["value"], observation.source["unit"]) == (
-            "123,40",
-            "g/dL",
-        )
-
-
-@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
-def test_pixel_identical_collision_never_certifies_the_unit(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, rotation: int
-) -> None:
-    coincident = close_unit_runs(rotation=rotation, advance=0)
-    near = close_unit_runs(rotation=rotation, advance=1)
-    assert render_page(data=coincident, content_type="application/pdf", page=1) == (
-        render_page(data=near, content_type="application/pdf", page=1)
-    )
-    job = extracted_job(rbac_graph, monkeypatch, data=near)
-    with as_actor(rbac_graph, rbac_graph.physician):
-        assert job.candidates.get(position=0).payload["unit"] == "g/dL"
-        assert_unit_refused(job, position=0)
-
-
-@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
-@pytest.mark.parametrize("edge", [False, True], ids=["adjacent-rows", "page-edge"])
-def test_visible_units_at_review_boundaries_remain_confirmable(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, rotation: int, edge: bool
-) -> None:
-    control = review_boundary_pdf(rotation=rotation, edge=edge, shifted=False)
-    shifted = review_boundary_pdf(rotation=rotation, edge=edge, shifted=True)
-    assert render_page(data=control, content_type="application/pdf", page=1) == (
-        render_page(data=shifted, content_type="application/pdf", page=1)
-    )
-    job = extracted_job(rbac_graph, monkeypatch, data=shifted)
-    with as_actor(rbac_graph, rbac_graph.physician):
-        observations = ResultObservation.objects.filter(
-            version_id=job.result_version_id
-        )
-        assert not observations.exists()
-        rows = list(job.candidates.order_by("position"))
-        assert len(rows) == (1 if edge else 2)
-        assert [(row.status, row.payload["unit"]) for row in rows] == [
-            ("candidate", "g/dL")
-        ] * len(rows)
-        for row in rows:
-            filed = review_extraction(
-                clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
-            )
-            assert filed is not None
-            assert observations.get(pk=filed).source["unit"] == "g/dL"
-
-
-@pytest.mark.parametrize(
-    ("transition", "rotation"),
-    [
-        ("value", 0),
-        ("value", 90),
-        ("value", 180),
-        ("value", 270),
-        ("page", 0),
-        ("page", 90),
-    ],
-)
-def test_pixel_equivalent_layout_changes_keep_clinician_filing(
-    rbac_graph: RbacGraph,
-    monkeypatch: pytest.MonkeyPatch,
-    transition: str,
-    rotation: int,
-) -> None:
-    control, shifted = (
-        layout_transition_pdf(
-            rotation=rotation,
-            transition=transition,
-            offset=offset,
-            combined=transition == "page",
-        )
-        for offset in (-1, 1)
-    )
-    assert render_page(data=control, content_type="application/pdf", page=1) == (
-        render_page(data=shifted, content_type="application/pdf", page=1)
-    )
-    box = TOKEN_BOX if transition == "value" else LIMIT_BOX
-    if transition == "value":
-        monkeypatch.setattr(
-            "apps.ai.adapters.synthetic_document_extraction",
-            lambda _content: glucose_proposal(box),
-        )
-    job = extracted_job(rbac_graph, monkeypatch, data=shifted)
-    with as_actor(rbac_graph, rbac_graph.physician):
-        observations = ResultObservation.objects.filter(
-            version_id=job.result_version_id
-        )
-        assert not observations.exists()
-        row = job.candidates.get()
-        assert (row.status, row.payload["region"]["bbox"]) == ("candidate", list(box))
-        observation = review_extraction(
-            clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
-        )
-        assert observation is not None
-        source = observations.get(pk=observation).source
-        assert (source["value"], source["unit"]) == ("123,40", "g/dL")
 
 
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:
@@ -528,10 +327,14 @@ def test_attachment_requires_scan_and_independent_exact_byte_identity_match(
             candidate_id=row.pk,
             decision="confirmed",
             result_version_id=source_job.result_version_id,
+            manual_unit="mg/dL",
         )
         assert identifier is not None
         observation = ResultObservation.objects.get(pk=identifier)
-        assert observation.version_id == source_job.result_version_id
+        assert (observation.version_id, observation.source["unit"]) == (
+            source_job.result_version_id,
+            "mg/dL",
+        )
         assert (
             observation.source["provenance"],
             observation.source["confirmer"],

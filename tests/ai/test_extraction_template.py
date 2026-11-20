@@ -13,6 +13,7 @@ from uuid import UUID
 from apps.ai.extraction_contracts import parse_proposals
 from apps.ai.extraction_documents import (
     document_input,
+    recorded_document_extraction,
     render_page,
     source_regions,
     synthetic_document_extraction,
@@ -20,7 +21,7 @@ from apps.ai.extraction_documents import (
 from django.template import Context, Engine
 from PIL import Image
 
-from ai.test_extraction import pdf_fixture
+from ai.test_extraction import pdf_fixture, scan_fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 CLINIC = UUID("10000000-0000-0000-0000-000000000045")
@@ -30,21 +31,30 @@ VERSION = UUID("40000000-0000-0000-0000-000000000045")
 
 
 def render_fixture(*, status: str = "candidate", raw_text: str | None = None) -> str:
-    document = pdf_fixture()
-    proposed = json.loads(
-        synthetic_document_extraction(
-            document_input(data=document, content_type="application/pdf")
+    if raw_text is None:
+        document, content_type, extract = (
+            pdf_fixture(),
+            "application/pdf",
+            synthetic_document_extraction,
         )
+    else:
+        document, content_type, extract = (
+            scan_fixture(),
+            "image/png",
+            recorded_document_extraction,
+        )
+    proposed = json.loads(
+        extract(document_input(data=document, content_type=content_type))
     )["candidates"][0]
-    if raw_text:
+    if raw_text is not None:
         proposed["raw_text"] = raw_text
     if status == "ambiguous":
-        proposed["unit"] = ""
+        proposed["legible"] = False
     source = parse_proposals(
         json.dumps({"candidates": [proposed]}),
         rotations=(0,),
         regions=source_regions(
-            data=document, content_type="application/pdf", rotations=(0,)
+            data=document, content_type=content_type, rotations=(0,)
         ),
     )[0]
     engine = Engine(
@@ -70,7 +80,7 @@ def render_fixture(*, status: str = "candidate", raw_text: str | None = None) ->
             "static": "django.templatetags.static",
         },
     )
-    raster = render_page(data=document, content_type="application/pdf", page=1)
+    raster = render_page(data=document, content_type=content_type, page=1)
     with Image.open(BytesIO(raster)) as image:
         width, height = image.size
     left, top, right, bottom = source.region.bbox
@@ -101,6 +111,7 @@ def render_fixture(*, status: str = "candidate", raw_text: str | None = None) ->
                 + base64.b64encode(raster).decode(),
                 "image_width": width,
                 "image_height": height,
+                "max_unit_length": 64,
             }
         )
     )
@@ -125,6 +136,10 @@ def test_native_review_posts_selectors_and_binds_each_region() -> None:
     inputs = [attrs for tag, attrs in surface.elements if tag == "input"]
     assert any(attrs.get("name") == "candidate_id" for attrs in inputs)
     assert any(attrs.get("name") == "csrfmiddlewaretoken" for attrs in inputs)
+    (unit_input,) = [attrs for attrs in inputs if attrs.get("name") == "manual_unit"]
+    assert unit_input.get("value", "") == ""
+    assert ("label", {"for": unit_input["id"]}) in surface.elements
+    assert "required" in unit_input
     assert all(
         str(CANDIDATE) not in (attrs.get("href") or "")
         for _tag, attrs in surface.elements
@@ -157,6 +172,9 @@ def test_ambiguous_and_terminal_candidates_have_no_confirmation_action() -> None
             if tag == "button" and attrs.get("value") == "confirmed"
         ]
         assert not confirmation or "disabled" in confirmation[0]
+        assert not any(
+            attrs.get("name") == "manual_unit" for _, attrs in surface.elements
+        )
 
 
 def test_source_markup_is_escaped_and_never_put_into_data_attributes() -> None:

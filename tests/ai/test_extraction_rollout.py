@@ -47,6 +47,7 @@ def test_retained_extraction_cannot_file_after_rollout_invalidation(
                     clinic_id=job.clinic_id,
                     candidate_id=row.pk,
                     decision="confirmed",
+                    manual_unit="mg/dL",
                 )
             assert identifier is not None
             assert ResultObservation.objects.filter(pk=identifier).exists()
@@ -69,6 +70,7 @@ def test_retained_extraction_cannot_file_after_rollout_invalidation(
                 clinic_id=clinic_id,
                 candidate_id=row.pk,
                 decision="confirmed",
+                manual_unit="mg/dL",
             )
         )
         with pytest.raises(refused), transaction.atomic():

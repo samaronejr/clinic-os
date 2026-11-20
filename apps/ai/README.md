@@ -639,46 +639,44 @@ kill switches and after-commit outbox. No provider is called in a request.
 
 `ExtractionJob` retains the exact source SHA-256, patient enrollment, page
 rotations, requester and governed invocation. The DTO
-`extraction_contracts.ExtractionCandidate` retains field, raw text, exact source
-value, separately parsed exact string, explicit unit and reference interval,
+`extraction_contracts.ExtractionCandidate` retains field, transcription, exact
+source value, separately parsed exact string, unit field and reference interval,
 one-based page and bounding box. Coordinates are unrotated top-left normalized
 integers from 0 to 10000; highlights rotate with the rendered page. Candidate
 content is encrypted in `ExtractionCandidateRecord`; no content enters audit,
 outbox, task arguments or metering. Drafts expire with the seven-day synthetic
 gateway output; retention owns eventual purge. Confirmed provenance is retained.
 
-Decimal parsing requires pt-BR decimal comma. Dot-only separators, invalid dates,
-unknown or missing decimal units and unreadable regions stay ambiguous. Dates
-require DD/MM/YYYY and have no physical unit. No separator, unit, range,
-abnormality, identity factor or clinical interpretation is inferred.
-Only a candidate can become confirmed; ambiguous drafts may only be rejected.
-Collection and confirmation read the source bytes under current authority.
-The cited box selects one visible line on its review page. Verification uses
-only the proposed transcription and its structured fields, the normalized
-box projected onto the page, and the same RGB pixels shown in review.
-It does not consult PDF words, runs, glyph positions, or font metrics.
-Render each cited page once per check. In the bounded synthetic format,
-match the whole line against independently rendered black Helvetica
-glyphs at the fixture's review scale. Visible glyph advances establish
-field and value boundaries; a space visibly splitting a value is not
-removed. All ink in the checked band must be accounted for, including ink
-attached to a glyph or continuing past the proposed line. Adjacent glyphs
-within the same token may share faint antialias samples only if their
-composite matches exactly. Missing, clipped, competing, or otherwise
-unmatched ink leaves an ambiguous draft and the manual entry path.
+For **every PDF source**, including scanned PDFs and attachments, the candidate's
+unit is always empty. A clinician checks the number against the displayed source
+and types the unit exactly as printed into an empty field before confirming a
+lab value. Neither the proposal unit nor its transcribed suffix is copied into
+the review candidate. An AI unit or observation payload submitted to the form
+is refused; only the separate `manual_unit` input is accepted for PDF decimals.
+The filing resolver independently checks the stored document type, empty draft
+unit and explicit clinician-entry marker in the encrypted observation. Older
+pending PDF rows that do not meet the new contract cannot be confirmed; start a
+fresh extraction or use manual result entry. Dates remain unitless.
 
-The source-only synthetic adapter uses PDF text layout to suggest
-`field: value unit [reference interval]` drafts, not as review evidence.
-It clamps visible draft boxes before rounding and normalizing them.
-Provider boxes must still be valid normalized integers. This is not general
-OCR or medical understanding. Raster-only pages receive an `Ilegível` region.
-The `recorded_fixture` model `extraction-fixture-v1` replays the exact synthetic
-PNG and reviewed regions in
+Decimal parsing requires pt-BR decimal syntax; dot-only separators and split
+numbers are not repaired. Dates require DD/MM/YYYY. For a PDF, collection and
+confirmation match the proposed value, field and interval against local PDF
+text layout at the cited box under current source authority. Text layout is
+not proof of visible content; the clinician must verify the value on the rendered
+page. Draft boxes are clipped before rounding. Provider boxes must still be
+valid normalized integers. Raster-only pages receive an `Ilegível` region.
+Ambiguous or unreadable values may only be rejected. No separator, unit, range,
+abnormality, identity factor or clinical interpretation is inferred.
+
+Image/OCR unit handling is unchanged: the `recorded_fixture` model
+`extraction-fixture-v1` replays the exact synthetic PNG and reviewed regions in
 `fixtures/document_extraction_v1.json`; another digest is refused.
+An image decimal's unit must match the reviewed transcription at its exact
+region; missing, unknown or contradictory units remain ambiguous.
 General OCR, sandbox, paid, live and real-provider legs remain **BLOCKED-ON-EG**.
 
-PDF tools are Poppler's `/usr/bin/pdfinfo`, `pdftotext` (draft only), and
-`pdftoppm`.
+PDF tools are Poppler's `/usr/bin/pdfinfo`, `pdftotext` (value drafts and anchors),
+and `pdftoppm` (review preview).
 Each local process has a ten-second deadline, bounded pipe output, no shell,
 no network client, and discarded stderr. Plaintext travels only in memory.
 Documents are limited to 32 pages and 10 MiB; the existing gateway's 1 MiB
@@ -716,6 +714,8 @@ forge the bridge. The existing order observation ingestion rules remain intact
 for every row without that exact uncommitted resolver marker.
 It is non-atomic at the migration level and irreversible; rollback = restore.
 Recovery includes both new relations and their encryption keys.
+Migration `0020_manual_pdf_units` replaces only the filing resolver, without
+changing its signature, privileges or the clinical authority checks.
 
 `tests/ai/test_extraction.py` and `test_extraction_state.py` are database-free.
 `test_extraction_runtime.py`, exact posture, migration upgrade, catalog census
