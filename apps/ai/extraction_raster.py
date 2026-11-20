@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from itertools import pairwise
 from math import ceil, floor, isfinite
 from typing import TYPE_CHECKING
 
+from PIL import Image as RasterImage
 from PIL import ImageChops
 
-from apps.ai.extraction_contracts import MAX_RAW_TEXT
+from apps.ai.extraction_contracts import MAX_RAW_TEXT, source_unit_span
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -22,10 +24,14 @@ if TYPE_CHECKING:
 type Box = tuple[float, float, float, float]
 type Crop = tuple[int, int, int, int]
 type Point = tuple[float, float]
-MIN_EM_PIXELS = 12
+type Paint = tuple[int, str]
+MIN_STROKE_HEIGHT = 8
+GAP_HEIGHT_DIVISOR = 3  # At most one third of the tallest unit glyph.
 INK_MARGIN = 3
 HELVETICA_HEIGHT = 0.925
-ORIGIN_ROUNDING = 0.001  # Cairo serializes coordinates in points.
+# Treat low-coverage antialias fringes as background for ownership only.
+# The equality check below still compares every original RGB sample.
+INK_CORE = (0,) * 128 + (255,) * 128
 
 
 class GlyphOrigins(HTMLParser):
@@ -74,6 +80,22 @@ class TextLine:
     text: str
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class Reference:
+    """A canonical page followed by separate nonunit and unit-glyph ink layers."""
+
+    pdf: bytes
+    pages: int
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ReferenceInk:
+    """Canonical RGB paint and isolated gray ink layers."""
+
+    page: Image
+    layers: tuple[Image, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class Page:
     """The page geometry shared by projection and the review renderer."""
@@ -114,58 +136,89 @@ class Page:
             case _:
                 return box
 
-    def _paint(self, line: TextLine, *, origins: list[Point], long_edge: int) -> str:
-        left, top, right, bottom = line.box
+    def _paint(
+        self, line: TextLine, *, origins: list[Point], raster_size: tuple[int, int]
+    ) -> list[Paint]:
+        _, top, _, bottom = line.box
         size = (bottom - top) / HELVETICA_HEIGHT
-        if (
-            size / max(self.width, self.height) * long_edge < MIN_EM_PIXELS
-            or len(line.text) > MAX_RAW_TEXT
-            or not line.text.isprintable()
-        ):
-            return ""
+        if size <= 0 or len(line.text) > MAX_RAW_TEXT or not line.text.isprintable():
+            return []
         try:
             text = line.text.replace(" ", "").encode("cp1252")
         except UnicodeEncodeError:
-            return ""
+            return []
+        left, upper, right, lower = _crop(line.region, rotation=0, size=raster_size)
+        width, height = raster_size
         points = sorted(
             (x, y)
             for x, y in origins
-            if left - ORIGIN_ROUNDING <= x < right and top <= y <= bottom
+            if left <= floor(x / self.width * width) < right
+            and upper <= floor(y / self.height * height) < lower
         )
-        if len(text) != len(points) or len(points) != len(set(points)):
-            return ""
-        paint = " ".join(
-            f"1 0 0 1 {x:.6f} {self.height - y:.6f} Tm <{char:02x}> Tj"
-            for char, (x, y) in zip(text, points, strict=True)
-        )
-        return f"BT /F1 {size:.6f} Tf {paint} ET"
+        if len(text) != len(points):
+            return []
+        span = source_unit_span(line.text)
+        start = end = 0
+        if span is not None:
+            start = len(line.text[: span[0]].replace(" ", ""))
+            end = start + span[1] - span[0]
+        return [
+            (
+                index - start + 1 if start <= index < end else 0,
+                f"BT /F1 {size:.6f} Tf 1 0 0 1 {x:.6f} {self.height - y:.6f} Tm "
+                f"<{char:02x}> Tj ET",
+            )
+            for index, (char, (x, y)) in enumerate(zip(text, points, strict=True))
+        ]
 
     def reference(
-        self, *, lines: Iterable[TextLine], points: list[Point], long_edge: int
-    ) -> bytes:
-        """Build a PDF with only local black Helvetica paint and no source objects."""
-        origins = [self.unrotate((x, y, x, y))[:2] for x, y in points]
-        stream = "\n".join(
-            filter(
-                None,
-                (
-                    self._paint(line, origins=origins, long_edge=long_edge)
-                    for line in lines
-                ),
+        self,
+        *,
+        lines: Iterable[TextLine],
+        points: list[Point],
+        display_size: tuple[int, int],
+    ) -> Reference | None:
+        """Paint each unit glyph separately as well as in the full reference."""
+        origins = [
+            self.unrotate((x, y, x, y))[:2]
+            for x, y in points
+            if isfinite(x) and isfinite(y)
+        ]
+        raster_size = display_size[::-1] if self.rotation in (90, 270) else display_size
+        paint = [
+            glyph
+            for line in lines
+            for glyph in self._paint(line, origins=origins, raster_size=raster_size)
+        ]
+        if not paint:
+            return None
+        last = max(layer for layer, _ink in paint)
+        streams = ["\n".join(ink for _layer, ink in paint)]
+        if last:
+            streams.extend(
+                "\n".join(ink for slot, ink in paint if slot == layer)
+                for layer in range(last + 1)
             )
-        )
-        if not stream:
-            return b""
-        objects = (
+        return Reference(self._pdf(streams), len(streams))
+
+    def _pdf(self, streams: list[str]) -> bytes:
+        kids = " ".join(f"{i} 0 R" for i in range(4, 4 + 2 * len(streams), 2))
+        objects = [
             "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            f"<< /Type /Page /Parent 2 0 R /Rotate {self.rotation} "
-            f"/MediaBox [0 0 {self.width:.6f} {self.height:.6f}] "
-            "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            f"<< /Type /Pages /Kids [{kids}] /Count {len(streams)} >>",
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
             "/Encoding /WinAnsiEncoding >>",
-            f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
-        )
+        ]
+        for index, stream in enumerate(streams):
+            objects.extend(
+                (
+                    f"<< /Type /Page /Parent 2 0 R /Rotate {self.rotation} "
+                    f"/MediaBox [0 0 {self.width:.6f} {self.height:.6f}] "
+                    "/Resources << /Font << /F1 3 0 R >> >> "
+                    f"/Contents {5 + 2 * index} 0 R >>",
+                    f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+                )
+            )
         pdf = bytearray(b"%PDF-1.4\n")
         xref = ["0000000000 65535 f \n"]
         for index, obj in enumerate(objects, start=1):
@@ -173,8 +226,8 @@ class Page:
             pdf.extend(f"{index} 0 obj\n{obj}\nendobj\n".encode("ascii"))
         pdf.extend(
             (
-                f"xref\n0 6\n{''.join(xref)}trailer\n"
-                f"<< /Size 6 /Root 1 0 R >>\nstartxref\n{len(pdf)}\n%%EOF\n"
+                f"xref\n0 {len(xref)}\n{''.join(xref)}trailer\n"
+                f"<< /Size {len(xref)} /Root 1 0 R >>\nstartxref\n{len(pdf)}\n%%EOF\n"
             ).encode("ascii")
         )
         return bytes(pdf)
@@ -195,30 +248,81 @@ def _overlap(a: Crop, b: Crop) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
+def _unit_boxes(*, layers: Iterable[Image], box: Crop) -> list[Crop]:
+    width, height = box[2] - box[0], box[3] - box[1]
+    seen = RasterImage.new("L", (width, height))
+    cores = RasterImage.new("L", (width, height))
+    boxes: list[Crop] = []
+    for layer in layers:
+        ink = ImageChops.invert(layer.crop(box))
+        core = ink.point(INK_CORE)
+        # Adjacent glyphs can share an antialias fringe without touching any
+        # foreground stroke. No other ink may enter a glyph's foreground.
+        if (
+            ImageChops.darker(cores, ink).getbbox() is not None
+            or ImageChops.darker(seen, core).getbbox() is not None
+        ):
+            return []
+        bounds = core.getbbox()
+        if bounds is not None:
+            boxes.append(bounds)
+        seen = ImageChops.lighter(seen, ink)
+        cores = ImageChops.lighter(cores, core)
+    return boxes
+
+
+def _legible_unit(
+    text: str, *, box: Crop, layers: tuple[Image, ...], rotation: int
+) -> bool:
+    span = source_unit_span(text)
+    if span is None:
+        return True
+    # Layer zero is the rest of the line, so a unit cannot borrow its ink.
+    boxes = _unit_boxes(layers=layers, box=box)
+    if len(boxes) != 1 + span[1] - span[0]:
+        return False
+    axis = 1 if rotation in (90, 270) else 0
+    unit = boxes[1:] if rotation in (0, 90) else boxes[:0:-1]
+    height = max(bounds[3 - axis] - bounds[1 - axis] for bounds in unit)
+    return height >= MIN_STROKE_HEIGHT and all(
+        left[axis] < right[axis]
+        and right[axis] - left[axis + 2] <= height // GAP_HEIGHT_DIVISOR
+        for left, right in pairwise(unit)
+    )
+
+
 def matching_ink(
     *,
     source: Image,
-    reference: Image,
+    reference: ReferenceInk,
     lines: list[TextLine],
     projected: list[TextLine],
     rotation: int,
 ) -> dict[Region, str]:
     """Keep exact, unclipped crops on which independent paint reproduces the source."""
-    if source.size != reference.size or source.mode != "RGB" or reference.mode != "RGB":
+    if (
+        source.size != reference.page.size
+        or source.mode != "RGB"
+        or reference.page.mode != "RGB"
+    ):
         return {}
     boxes = [
         (line, _crop(line.region, rotation=rotation, size=source.size))
         for line in projected
     ]
-    claims = Counter(line.region.bbox for line in lines)
-    originals = {line.region.bbox: line for line in lines}
+    claimed = [
+        (_crop(line.region, rotation=rotation, size=source.size), line)
+        for line in lines
+    ]
+    claims = Counter(box for box, _line in claimed)
+    originals = dict(claimed)
     proven: dict[Region, str] = {}
     for index, (line, box) in enumerate(boxes):
         # Do not let a neighbouring reference line supply pixels for this one.
-        original = originals.get(line.region.bbox)
+        original = originals.get(box)
         if (
             original is None
-            or claims[line.region.bbox] != 1
+            or claims[box] != 1
             or original.text != line.text
             or not 0 <= box[0] < box[2] <= source.width
             or not 0 <= box[1] < box[3] <= source.height
@@ -227,10 +331,13 @@ def matching_ink(
             )
         ):
             continue
-        expected = reference.crop(box)
+        expected = reference.page.crop(box)
         if (
             ImageChops.invert(expected).getbbox() is not None
             and expected.tobytes() == source.crop(box).tobytes()
+            and _legible_unit(
+                original.text, box=box, layers=reference.layers, rotation=rotation
+            )
         ):
             proven[original.region] = original.text
     return proven

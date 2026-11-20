@@ -660,8 +660,10 @@ bounded synthetic PDF format, independently draw each claimed glyph in standard
 black Helvetica at the local renderer's glyph origin, then recheck the complete
 anchor against the same raster used for review. Extra spacing does not require
 extra ink; only tightly adjacent fragments of a known unit can form one token.
-Mismatched, overlapping, hidden or unsupported paint stays unresolved, with
-manual result entry still available.
+Check each unit glyph's ink separately at the review resolution: a foreground
+stroke cannot share a pixel with another glyph. Antialias fringes alone do not
+count as a collision, but exact RGB comparison still rejects hidden, altered,
+or occluded strokes. Unresolved paint retains the manual result entry path.
 
 The source-only synthetic adapter reads explicit PDF text lines
 `field: value unit [reference interval]`. This bounded offline fixture format

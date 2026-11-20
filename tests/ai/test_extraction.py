@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import replace
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
@@ -86,6 +87,18 @@ def scan_fixture() -> bytes:
         ).read_text()
     )
     return base64.b64decode(fixture["data_base64"], validate=True)
+
+
+def close_unit_runs(*, rotation: int, advance: int) -> bytes:
+    """Place dL an integral number of hundredths of a point past the slash."""
+    return pdf_with_stream(
+        rotation=rotation,
+        stream=(
+            "BT /F1 12 Tf 40 740 Td (glucose: 123,40 g) Tj ET "
+            "BT /F1 12 Tf 134.73 740 Td (/) Tj ET "
+            f"BT /F1 12 Tf {(13473 + advance) / 100:.2f} 740 Td (dL) Tj ET"
+        ),
+    )
 
 
 def proposal(**overrides: object) -> str:
@@ -311,6 +324,32 @@ def test_pdf_instructions_are_data_and_never_become_tools() -> None:
         "sodium",
         "potassium",
         "date",
+    }
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_render_equivalent_unit_runs_have_the_same_decision(rotation: int) -> None:
+    # Exercise offsets around the collision and around an ordinary slash advance.
+    pixels: dict[bytes, list[tuple[str, str]]] = {}
+    for advance in (*range(5), *range(331, 336)):
+        data = close_unit_runs(rotation=rotation, advance=advance)
+        (row,) = parse_proposals(
+            synthetic_document_extraction(
+                document_input(data=data, content_type="application/pdf")
+            ),
+            rotations=(rotation,),
+            regions=source_regions(
+                data=data, content_type="application/pdf", rotations=(rotation,)
+            ),
+        )
+        assert row.unit == "g/dL"
+        raster = render_page(data=data, content_type="application/pdf", page=1)
+        pixels.setdefault(sha256(raster).digest(), []).append((row.status, row.reason))
+    assert any(len(decisions) > 1 for decisions in pixels.values())
+    assert all(len(set(decisions)) == 1 for decisions in pixels.values())
+    assert {state for decisions in pixels.values() for state in decisions} == {
+        ("ambiguous", "unit_unresolved"),
+        ("candidate", ""),
     }
 
 

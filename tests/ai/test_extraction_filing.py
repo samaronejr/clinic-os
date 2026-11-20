@@ -43,7 +43,12 @@ from psycopg import sql
 
 from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
-from ai.test_extraction import pdf_fixture, pdf_with_stream, scan_fixture
+from ai.test_extraction import (
+    close_unit_runs,
+    pdf_fixture,
+    pdf_with_stream,
+    scan_fixture,
+)
 from ai.test_extraction_runtime import extracted_job
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context
@@ -275,6 +280,21 @@ def test_pdf_unit_spacing_preserves_only_the_visible_sequence(
             "123,40",
             "g/dL",
         )
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_pixel_identical_collision_never_certifies_the_unit(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, rotation: int
+) -> None:
+    coincident = close_unit_runs(rotation=rotation, advance=0)
+    near = close_unit_runs(rotation=rotation, advance=1)
+    assert render_page(data=coincident, content_type="application/pdf", page=1) == (
+        render_page(data=near, content_type="application/pdf", page=1)
+    )
+    job = extracted_job(rbac_graph, monkeypatch, data=near)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert job.candidates.get(position=0).payload["unit"] == "g/dL"
+        assert_unit_refused(job, position=0)
 
 
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:

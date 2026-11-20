@@ -84,6 +84,14 @@ def parse_unit(raw: str) -> str | None:
     return raw if raw in UNITS else None
 
 
+def source_unit_span(text: str) -> tuple[int, int] | None:
+    """Locate the exact unit in a bounded source line, not in its label or interval."""
+    line = _SOURCE_LINE.fullmatch(text)
+    if line is None or parse_unit(line["unit"] or "") is None:
+        return None
+    return line.span("unit")
+
+
 @dataclass(frozen=True, slots=True)
 class Region:
     """One-based page and unrotated top-left normalized integer bounding box."""

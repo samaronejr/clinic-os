@@ -13,9 +13,8 @@ import subprocess
 import time
 from html.parser import HTMLParser
 from io import BytesIO
-from itertools import pairwise
 from pathlib import Path
-from typing import IO, cast
+from typing import IO, TYPE_CHECKING, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -25,7 +24,18 @@ from apps.ai.extraction_contracts import (
     Region,
     parse_unit,
 )
-from apps.ai.extraction_raster import Box, GlyphOrigins, Page, TextLine, matching_ink
+from apps.ai.extraction_raster import (
+    Box,
+    GlyphOrigins,
+    Page,
+    Reference,
+    ReferenceInk,
+    TextLine,
+    matching_ink,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 32
@@ -35,9 +45,9 @@ MAX_RENDER_BYTES = 12 * 1024 * 1024
 REVIEW_LONG_EDGE = 1400
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
-# Shorter than a normal space in the supported PDF font. Only adjacent unit
-# fragments can be joined; independent words elsewhere on the line cannot.
-UNIT_FRAGMENT_GAP_RATIO = 0.25
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_CHUNK_HEADER = 8
+PNG_CHUNK_OVERHEAD = 12
 _UNIT_LINE = re.compile(
     r"(?P<prefix>[a-z][a-z0-9_]{0,31}: *[^ \[\]]+) "
     r"(?P<unit>[^ \[\]]+(?: [^ \[\]]+)*)(?P<interval> \[.*\])?"
@@ -202,8 +212,8 @@ class _Lines(HTMLParser):
         self.rotations = rotations
         self.pages: list[Page] = []
         self.box: Box | None = None
-        self.words: list[tuple[str, Box]] = []
-        self.word_box: Box | None = None
+        self.words: list[str] = []
+        self.in_word = False
         self.word: list[str] = []
         self.lines: list[TextLine] = []
 
@@ -221,17 +231,17 @@ class _Lines(HTMLParser):
             self.words = []
             self.box = _text_box(values)
         elif tag == "word":
-            self.word_box = _text_box(values)
+            self.in_word = True
             self.word = []
 
     def handle_data(self, data: str) -> None:
-        if self.word_box is not None:
+        if self.in_word:
             self.word.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "word" and self.word_box is not None:
-            self.words.append(("".join(self.word), self.word_box))
-            self.word_box = None
+        if tag == "word" and self.in_word:
+            self.words.append("".join(self.word))
+            self.in_word = False
         elif tag == "line" and self.box:
             page = self.pages[-1]
             width, height = page.display_size
@@ -249,7 +259,9 @@ class _Lines(HTMLParser):
             )
             region = Region(rotated.page, rotated.display_bbox(-page.rotation % 360))
             self.lines.append(
-                TextLine(region, page.unrotate(self.box), _unit_line(self.words, page))
+                TextLine(
+                    region, page.unrotate(self.box), _unit_line(" ".join(self.words))
+                )
             )
             self.box = None
 
@@ -263,28 +275,14 @@ def _text_box(attrs: dict[str, str | None]) -> Box:
     )
 
 
-def _unit_line(words: list[tuple[str, Box]], page: Page) -> str:
-    text = " ".join(word for word, _box in words)
+def _unit_line(text: str) -> str:
     match = _UNIT_LINE.fullmatch(text)
     if match is None:
         return text
-    fragments = match["unit"]
-    if " " not in fragments:
-        return text
-    parts = fragments.split(" ")
-    unit = parse_unit("".join(parts))
+    unit = parse_unit(match["unit"].replace(" ", ""))
     if unit is None:
         return text
-    start = len(match["prefix"].split(" "))
-    spans = words[start : start + len(parts)]
-    if [word for word, _box in spans] != parts:
-        return text
-    boxes = [page.unrotate(box) for _word, box in spans]
-    if any(
-        not 0 <= right[0] - left[2] < (left[3] - left[1]) * UNIT_FRAGMENT_GAP_RATIO
-        for left, right in pairwise(boxes)
-    ):
-        return text
+    # This is only a hypothesis until the positioned visible ink passes.
     return f"{match['prefix']} {unit}{match['interval'] or ''}"
 
 
@@ -305,11 +303,61 @@ def _unreadable(page: int) -> dict[str, object]:
 def _pdf_layout(data: bytes, rotations: tuple[int, ...]) -> _Lines:
     reader = _Lines(rotations)
     reader.feed(
-        _poppler(["/usr/bin/pdftotext", "-bbox-layout", "-", "-"], data).decode(
-            "utf-8", errors="replace"
-        )
+        _poppler(
+            ["/usr/bin/pdftotext", "-l", str(len(rotations)), "-bbox-layout", "-", "-"],
+            data,
+        ).decode("utf-8", errors="replace")
     )
     return reader
+
+
+def _png_frames(data: bytes, *, count: int) -> Iterator[bytes]:
+    offset = 0
+    for _ in range(count):
+        start = offset
+        if not data.startswith(PNG_SIGNATURE, offset):
+            raise ExtractionInputError
+        offset += len(PNG_SIGNATURE)
+        while offset + PNG_CHUNK_OVERHEAD <= len(data):
+            size = int.from_bytes(data[offset : offset + 4], "big")
+            kind = data[offset + 4 : offset + PNG_CHUNK_HEADER]
+            offset += size + PNG_CHUNK_OVERHEAD
+            if offset > len(data):
+                raise ExtractionInputError
+            if kind == b"IEND" and not size:
+                yield data[start:offset]
+                break
+        else:
+            raise ExtractionInputError
+    if offset != len(data):
+        raise ExtractionInputError
+
+
+def _reference_layers(
+    reference: Reference, *, size: tuple[int, int]
+) -> Iterator[Image.Image]:
+    if reference.pages == 1:
+        return
+    # Without an output root Poppler streams one PNG per page to stdout.
+    data = _poppler(
+        [
+            "/usr/bin/pdftoppm",
+            "-f",
+            "2",
+            "-l",
+            str(reference.pages),
+            "-scale-to",
+            str(REVIEW_LONG_EDGE),
+            "-png",
+            "-",
+        ],
+        reference.pdf,
+    )
+    for frame in _png_frames(data, count=reference.pages - 1):
+        with Image.open(BytesIO(frame)) as layer:
+            if layer.size != size or layer.mode != "RGB":
+                raise ExtractionInputError
+            yield layer.convert("L")
 
 
 def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region, str]:
@@ -338,27 +386,31 @@ def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region
             # A page with unavailable or oversized position evidence is unresolved.
             continue
         glyphs.feed(positions.decode("utf-8", errors="replace"))
-        reference = page.reference(
-            lines=lines, points=glyphs.points, long_edge=REVIEW_LONG_EDGE
-        )
-        if not reference:
-            continue
-        # The source's text metrics can lie. Verify the *painted* reference's
-        # own anchors, so a truncated box cannot hide a mismatched suffix.
-        projected = _pdf_layout(reference, (page.rotation,)).lines
-        with (
-            Image.open(BytesIO(_render_pdf_page(data, page=number))) as source,
-            Image.open(BytesIO(_render_pdf_page(reference, page=1))) as expected,
-        ):
-            regions.update(
-                matching_ink(
-                    source=source,
-                    reference=expected,
-                    lines=lines,
-                    projected=projected,
-                    rotation=page.rotation,
-                )
+        with Image.open(BytesIO(_render_pdf_page(data, page=number))) as source:
+            reference = page.reference(
+                lines=lines, points=glyphs.points, display_size=source.size
             )
+            if reference is None:
+                continue
+            # The source's text metrics can lie. Verify the painted anchor,
+            # so a truncated source box cannot hide a mismatched suffix.
+            projected = _pdf_layout(reference.pdf, (page.rotation,)).lines
+            try:
+                layers = tuple(_reference_layers(reference, size=source.size))
+            except (ExtractionInputError, OSError):
+                continue
+            with Image.open(
+                BytesIO(_render_pdf_page(reference.pdf, page=1))
+            ) as expected:
+                regions.update(
+                    matching_ink(
+                        source=source,
+                        reference=ReferenceInk(expected, layers),
+                        lines=lines,
+                        projected=projected,
+                        rotation=page.rotation,
+                    )
+                )
     return regions
 
 
