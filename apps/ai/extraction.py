@@ -42,10 +42,9 @@ from apps.orders.storage import source_bytes
 from apps.tenancy.envelope import protect
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from uuid import UUID
 
-    from apps.ai.extraction_contracts import Region
+    from apps.ai.extraction_contracts import SourceEvidence
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -58,8 +57,8 @@ class ExtractionSource:
     content_type: str
     data: bytes = field(default=b"", repr=False)
 
-    def regions(self, *, rotations: tuple[int, ...]) -> dict[Region, str]:
-        """Transcribe this authorized source locally, never the model reply."""
+    def regions(self, *, rotations: tuple[int, ...]) -> SourceEvidence:
+        """Load local review evidence from this authorized source."""
         return source_regions(
             data=self.data, content_type=self.content_type, rotations=rotations
         )
@@ -236,7 +235,7 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
 
 
 def candidate_data(
-    row: ExtractionCandidateRecord, *, regions: Mapping[Region, str] | None = None
+    row: ExtractionCandidateRecord, *, regions: SourceEvidence | None = None
 ) -> ExtractionCandidate:
     """Reparse the encrypted draft instead of trusting its stored parsed value."""
     payload = row.payload

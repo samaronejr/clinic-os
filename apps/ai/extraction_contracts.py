@@ -9,7 +9,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 MAX_CANDIDATES: Final = 128
 MAX_RAW_TEXT: Final = 1024
@@ -160,10 +160,13 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+type SourceEvidence = Mapping[Region, str] | Callable[[Region, str], bool]
+
+
 def parse_proposals(
-    content: str, *, rotations: tuple[int, ...], regions: Mapping[Region, str]
+    content: str, *, rotations: tuple[int, ...], regions: SourceEvidence
 ) -> tuple[ExtractionCandidate, ...]:
-    """Parse locally against independently transcribed, exact source regions."""
+    """Check a proposed line against independent evidence at its cited region."""
     if not rotations or any(r not in (0, 90, 180, 270) for r in rotations):
         raise ExtractionInputError
     try:
@@ -184,7 +187,7 @@ def parse_proposals(
 
 
 def _candidate(
-    row: object, *, pages: int, regions: Mapping[Region, str]
+    row: object, *, pages: int, regions: SourceEvidence
 ) -> ExtractionCandidate:
     if (
         not isinstance(row, dict)
@@ -220,7 +223,10 @@ def _candidate(
     ):
         raise ExtractionInputError
     region = Region(row["page"], tuple(row["bbox"]))
-    source = _SOURCE_LINE.fullmatch(regions.get(region, ""))
+    raster = regions if callable(regions) else None
+    source = _SOURCE_LINE.fullmatch(
+        row["raw_text"] if callable(regions) else regions.get(region, "")
+    )
     reason = ""
     parsed: str | None = None
     if not row["legible"]:
@@ -247,6 +253,8 @@ def _candidate(
         or (source["interval"] or "") != row["reference_interval"]
     ):
         reason = "value_unresolved"
+    if not reason and raster is not None and not raster(region, row["raw_text"]):
+        reason = "unit_unresolved" if row["kind"] == "decimal" else "value_unresolved"
     return ExtractionCandidate(
         field=row["field"],
         kind=row["kind"],

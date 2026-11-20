@@ -8,7 +8,7 @@ from dataclasses import replace
 from hashlib import sha256, shake_256
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from apps.ai.extraction_contracts import (
@@ -33,10 +33,15 @@ from PIL import Image
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from apps.ai.extraction_contracts import ExtractionCandidate
+
 REGION = Region(1, (1000, 2000, 8000, 3000))
 SOURCE = {REGION: "glucose: 123,40 mg/dL [70,0 - 99,0]"}
 PIXEL_TRIALS = 48
 HORIZONTAL_TRIALS = 12
+TOKEN_TRIALS: Final = 32
+TOKEN_BOX: Final = (654, 548, 2494, 688)
+LIMIT_BOX: Final = (8180, 548, 10000, 688)
 
 
 def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
@@ -225,6 +230,179 @@ def proposal(**overrides: object) -> str:
         **overrides,
     }
     return json.dumps({"candidates": [row]})
+
+
+def layout_transition_pdf(
+    *, rotation: int, transition: str, offset: int, combined: bool = False
+) -> bytes:
+    """Paint the exact layout-transition witnesses and their nearby variants."""
+    if transition == "page":
+        text = (
+            "(glucose: 123,40 g/dL) Tj"
+            if combined
+            else "(glucose: 123,4) Tj (0 g/dL) Tj"
+        )
+        stream = f"BT /F1 12 Tf {(5006226 + offset) / 10000:.4f} 740 Td {text} ET"
+    else:
+        prefix, suffix, origin = (
+            ("gluc", "ose: 123,40 g/dL", 632080)
+            if transition == "field"
+            else ("glucose: 123,4", "0 g/dL", 1192480)
+        )
+        start = f"BT /F1 12 Tf 40 740 Td ({prefix}) Tj "
+        if combined:
+            move = f"1 0 0 1 {(origin + offset) / 10000:.4f} 740 Tm"
+        else:
+            move = f"ET BT /F1 12 Tf {(origin + offset) / 10000:.4f} 740 Td"
+        stream = f"{start}{move} ({suffix}) Tj ET"
+    return pdf_with_stream(rotation=rotation, stream=stream)
+
+
+def glucose_proposal(bbox: tuple[int, int, int, int]) -> str:
+    """Hold the model's factual proposal constant while changing the source."""
+    return proposal(
+        bbox=bbox, raw_text="glucose: 123,40 g/dL", unit="g/dL", reference_interval=""
+    )
+
+
+def _parse_pdf(
+    data: bytes, *, rotation: int, content: str
+) -> tuple[ExtractionCandidate, ...]:
+    return parse_proposals(
+        content,
+        rotations=(rotation,),
+        regions=source_regions(
+            data=data, content_type="application/pdf", rotations=(rotation,)
+        ),
+    )
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("transition", ["value", "field"])
+def test_tokenisation_cannot_change_a_fixed_proposals_eligibility(
+    rotation: int, transition: str
+) -> None:
+    before, after = (
+        layout_transition_pdf(rotation=rotation, transition=transition, offset=shift)
+        for shift in (-1, 1)
+    )
+    assert render_page(data=before, content_type="application/pdf", page=1) == (
+        render_page(data=after, content_type="application/pdf", page=1)
+    )
+    content = glucose_proposal(TOKEN_BOX)
+    for data in (before, after):
+        (row,) = _parse_pdf(data, rotation=rotation, content=content)
+        assert row.region.bbox == TOKEN_BOX
+        filed = filing_payload(row, confirmer="synthetic-clinician")
+        assert (filed["value"], filed["unit"]) == ("123,40", "g/dL")
+        emitted = synthetic_document_extraction(
+            document_input(data=data, content_type="application/pdf")
+        )
+        (local,) = _parse_pdf(data, rotation=rotation, content=emitted)
+        assert (local.status, local.value, local.unit) == (
+            "candidate",
+            "123,40",
+            "g/dL",
+        )
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_page_limit_boxes_do_not_flip_confirmation_or_raise(rotation: int) -> None:
+    before, after = (
+        layout_transition_pdf(
+            rotation=rotation, transition="page", offset=shift, combined=True
+        )
+        for shift in (-1, 1)
+    )
+    assert render_page(data=before, content_type="application/pdf", page=1) == (
+        render_page(data=after, content_type="application/pdf", page=1)
+    )
+    local_rows = []
+    fixed_rows = []
+    for data in (before, after):
+        emitted = synthetic_document_extraction(
+            document_input(data=data, content_type="application/pdf")
+        )
+        (local,) = _parse_pdf(data, rotation=rotation, content=emitted)
+        assert 0 <= local.region.bbox[0] < local.region.bbox[2] <= 10000
+        local_rows.append(local)
+        (fixed,) = _parse_pdf(
+            data, rotation=rotation, content=glucose_proposal(LIMIT_BOX)
+        )
+        fixed_rows.append(fixed)
+    assert local_rows[0] == local_rows[1]
+    assert fixed_rows[0] == fixed_rows[1]
+    if rotation in (0, 90):
+        assert local_rows[0].region.bbox == LIMIT_BOX
+        assert all(row.status == "candidate" for row in local_rows)
+        assert (
+            filing_payload(fixed_rows[1], confirmer="synthetic-clinician")["unit"]
+            == "g/dL"
+        )
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("transition", ["value", "field", "page"])
+def test_equal_pixels_proposal_and_box_imply_equal_decision(
+    rotation: int, transition: str
+) -> None:
+    groups: dict[tuple[bytes, str, tuple[int, ...]], set[tuple[str, ...]]] = {}
+    runs: dict[tuple[bytes, str, tuple[int, ...]], set[bool]] = {}
+    offsets: set[int] = set()
+    for trial in range(TOKEN_TRIALS):
+        draw = shake_256(f"298451:{trial}".encode()).digest(5)
+        shift = int.from_bytes(draw[:2], "big") % 101 - 50
+        combined = bool(draw[2] & 1)
+        offsets.add(shift)
+        data = layout_transition_pdf(
+            rotation=rotation, transition=transition, offset=shift, combined=combined
+        )
+        box = LIMIT_BOX if transition == "page" else TOKEN_BOX
+        if transition == "page":
+            box = (box[0] + draw[3] % 3 - 1, box[1], box[2], box[3])
+        content = glucose_proposal(box)
+        image = render_page(data=data, content_type="application/pdf", page=1)
+        decision: tuple[str, ...]
+        try:
+            (row,) = _parse_pdf(data, rotation=rotation, content=content)
+        except ExtractionInputError:
+            decision = ("invalid",)
+        else:
+            decision = (row.status, row.reason, row.value, row.parsed_value, row.unit)
+        key = image, content, box
+        groups.setdefault(key, set()).add(decision)
+        runs.setdefault(key, set()).add(combined)
+    assert min(offsets) < 0 < max(offsets)
+    assert TOKEN_TRIALS - len(groups) >= TOKEN_TRIALS // 2
+    assert any(len(variants) == 2 for variants in runs.values())
+    assert all(len(decisions) == 1 for decisions in groups.values())
+    assert all(
+        decision != ("invalid",)
+        for decisions in groups.values()
+        for decision in decisions
+    )
+    if transition != "page":
+        assert all(
+            next(iter(decisions))[0] == "candidate" for decisions in groups.values()
+        )
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_raster_does_not_join_visibly_split_values_or_certify_clipped_units(
+    rotation: int,
+) -> None:
+    for x, text, box in [
+        ("40", "glucose: 123,4 0 g/dL", (654, 548, 2528, 688)),
+        ("40", "gluc ose: 123,40 g/dL", (654, 548, 2528, 688)),
+        ("503", "glucose: 123,40 g/dL", (8219, 548, 10000, 688)),
+    ]:
+        data = pdf_with_stream(
+            rotation=rotation, stream=f"BT /F1 12 Tf {x} 740 Td ({text}) Tj ET"
+        )
+        (row,) = _parse_pdf(data, rotation=rotation, content=glucose_proposal(box))
+        assert (row.status, row.reason) == ("ambiguous", "unit_unresolved")
+        with pytest.raises(ExtractionInputError):
+            filing_payload(row, confirmer="synthetic-clinician")
 
 
 @pytest.mark.parametrize(

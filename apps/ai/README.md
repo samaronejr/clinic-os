@@ -653,32 +653,32 @@ require DD/MM/YYYY and have no physical unit. No separator, unit, range,
 abnormality, identity factor or clinical interpretation is inferred.
 Only a candidate can become confirmed; ambiguous drafts may only be rejected.
 Collection and confirmation read the source bytes under current authority.
-The page and unrotated box must identify one visible source line. Its field,
-value, unit token, interval and transcription must match exactly; neither the
-model's `raw_text` nor the PDF text layer alone can establish a unit. For the
-bounded synthetic PDF format, render the source composite once per page at the
-review resolution. Use layout hints to paint canonical black Helvetica masks
-for each unit glyph and the rest of its line, independently of the model
-reply. Neither the highlight box nor padding is part of the paint check.
-Check every nonwhite sample and the intervening scanline pixels against the
-canonical RGB paint. No ink from a separate line, nonunit glyph, or unexpected
-visible drawing may supply or alter a stroke. Unexpected changed pixels
-directly attached to the ink also refuse. Adjacent unit glyphs may share
-faint antialias samples, but not foreground; the shared samples still have
-to match exactly. Only successive visible fragments of a known unit form
-one token. Unresolved paint retains the manual result entry path.
+The cited box selects one visible line on its review page. Verification uses
+only the proposed transcription and its structured fields, the normalized
+box projected onto the page, and the same RGB pixels shown in review.
+It does not consult PDF words, runs, glyph positions, or font metrics.
+Render each cited page once per check. In the bounded synthetic format,
+match the whole line against independently rendered black Helvetica
+glyphs at the fixture's review scale. Visible glyph advances establish
+field and value boundaries; a space visibly splitting a value is not
+removed. All ink in the checked band must be accounted for, including ink
+attached to a glyph or continuing past the proposed line. Adjacent glyphs
+within the same token may share faint antialias samples only if their
+composite matches exactly. Missing, clipped, competing, or otherwise
+unmatched ink leaves an ambiguous draft and the manual entry path.
 
-The source-only synthetic adapter reads explicit PDF text lines
-`field: value unit [reference interval]`. This bounded offline fixture format
-is not general medical understanding. Raster-only pages receive an `Ilegível`
-region. `recorded_fixture` model `extraction-fixture-v1` additionally replays
-the exact synthetic PNG and reviewed regions in
+The source-only synthetic adapter uses PDF text layout to suggest
+`field: value unit [reference interval]` drafts, not as review evidence.
+It clamps visible draft boxes before rounding and normalizing them.
+Provider boxes must still be valid normalized integers. This is not general
+OCR or medical understanding. Raster-only pages receive an `Ilegível` region.
+The `recorded_fixture` model `extraction-fixture-v1` replays the exact synthetic
+PNG and reviewed regions in
 `fixtures/document_extraction_v1.json`; another digest is refused.
 General OCR, sandbox, paid, live and real-provider legs remain **BLOCKED-ON-EG**.
 
-PDF tools are Poppler's `/usr/bin/pdfinfo`, `pdftotext`, `pdftocairo` and
-`pdftoppm`. Cairo SVG only supplies positions to the verifier; it is not
-rendered or sent to the browser.
+PDF tools are Poppler's `/usr/bin/pdfinfo`, `pdftotext` (draft only), and
+`pdftoppm`.
 Each local process has a ten-second deadline, bounded pipe output, no shell,
 no network client, and discarded stderr. Plaintext travels only in memory.
 Documents are limited to 32 pages and 10 MiB; the existing gateway's 1 MiB

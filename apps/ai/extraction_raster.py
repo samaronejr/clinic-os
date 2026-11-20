@@ -1,374 +1,409 @@
-"""Verify the paint of the bounded synthetic PDF text format, not its text layer."""
+"""Exact review-pixel verification of proposals in the synthetic PDF format."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from html.parser import HTMLParser
-from itertools import pairwise
-from math import isfinite
 from typing import TYPE_CHECKING
 
 from PIL import Image as RasterImage
-from PIL import ImageChops, ImageFilter
+from PIL import ImageChops
 
 from apps.ai.extraction_contracts import (
-    MAX_RAW_TEXT,
+    COORDINATE_SCALE,
     ExtractionInputError,
     source_unit_span,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable
 
     from PIL.Image import Image
 
     from apps.ai.extraction_contracts import Region
 
 type Box = tuple[float, float, float, float]
-type Point = tuple[float, float]
-type Paint = tuple[int, str]
-MIN_STROKE_HEIGHT = 8
-GAP_HEIGHT_DIVISOR = 3  # At most one third of the tallest unit glyph.
-HELVETICA_HEIGHT = 0.925
-HELVETICA_DESCENT = 0.207
-# Classify ownership at the half-coverage boundary. Keep all nonwhite samples
-# in the support mask and check them against the original RGB composite.
-INK_CORE = (0,) * 128 + (255,) * 128
+type Pixel = tuple[int, int, int]
+
+REVIEW_LONG_EDGE = 1400
+_ROTATIONS = (0, 90, 180, 270)
+_PHASES = 4
+_CELL_WIDTH = 32
+_CELL_HEIGHT = 48
+_ATLAS_COLUMNS = 32
+_BASELINE = 42
+_START_MARKER = 13
+_GLYPH_START = 19
+_FONT_SIZE = 12
+_PAGE = (612, 792)
+_REVIEW_SCALE = REVIEW_LONG_EDGE / _PAGE[1]
+_FOREGROUND = 128
+
+# The box identifies the row, not a source-metadata word or glyph position.
+# Include visible continuation in the band rather than trusting a truncated box.
+_BEARING = 3
+_CONTINUATION = 7
+_MAX_BAND_HEIGHT = 32
+_MAX_GLYPHS = 256
+_MAX_PLACEMENTS = 32000
+# Consecutive independently positioned glyphs can straddle opposite hinting
+# phases. Try both raster baselines; their coverage must still match exactly.
+_BASELINE_DRIFT = 2
+_UNIT_GAP = 6
+_WORD_GAP = 18
+_WORD_SPACE_MIN = 4
+_INTRAWORD_DRIFT = 3
 
 
-class GlyphOrigins(HTMLParser):
-    """Read only nonempty glyph origins from local Cairo SVG; do not render SVG."""
-
-    def __init__(self) -> None:
-        """Keep coordinate hints and IDs, never source SVG paths or text."""
-        super().__init__(convert_charrefs=True)
-        self.points: list[Point] = []
-        self._in_defs = False
-        self._glyph = ""
-        self._nonempty: set[str] = set()
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Index outlined definitions and collect positions of their uses."""
-        values = dict(attrs)
-        if tag == "defs":
-            self._in_defs = True
-        elif self._in_defs:
-            if tag in ("g", "symbol"):
-                self._glyph = values.get("id") or ""
-            elif tag == "path" and values.get("d") and self._glyph.startswith("glyph"):
-                self._nonempty.add(f"#{self._glyph}")
-        elif (
-            tag == "use"
-            and (values.get("xlink:href") or values.get("href")) in self._nonempty
-        ):
-            x, y = values.get("x"), values.get("y")
-            if x is not None and y is not None:
-                self.points.append((float(x), float(y)))
-
-    def handle_endtag(self, tag: str) -> None:
-        """Close definition scopes without interpreting the graphics tree."""
-        if tag == "defs":
-            self._in_defs = False
-        elif self._in_defs and tag in ("g", "symbol"):
-            self._glyph = ""
-
-
-@dataclass(frozen=True, slots=True, repr=False)
-class TextLine:
-    """Text and placement hints, none of which is evidence of visible ink."""
-
-    region: Region
-    box: Box
-    first_word: Box
-    text: str
-
-    @property
-    def font_size(self) -> float:
-        """Use the stable label's height, not the union of displaced glyphs."""
-        return (self.first_word[3] - self.first_word[1]) / HELVETICA_HEIGHT
-
-    def origin_distance(self, point: Point) -> float:
-        """Associate renderer position hints with the nearest text hypothesis."""
-        x, y = point
-        left, _, right, _ = self.box
-        baseline = self.first_word[3] - self.font_size * HELVETICA_DESCENT
-        return abs(y - baseline) + max(left - x, 0, x - right)
-
-
-@dataclass(frozen=True, slots=True, repr=False)
-class InkClaim:
-    """An output anchor and its independent stencil count, not a crop."""
-
-    region: Region
-    text: str
-    unit_glyphs: int
-
-
-@dataclass(frozen=True, slots=True, repr=False)
-class Reference:
-    """Canonical composite followed by one stencil group per line."""
-
-    pdf: bytes
-    claims: tuple[InkClaim, ...]
-    pages: int
+def _reference_pdf(stream: str, rotation: int) -> bytes:
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+        "/Encoding /WinAnsiEncoding >>",
+        f"<< /Type /Page /Parent 2 0 R /Rotate {rotation} "
+        f"/MediaBox [0 0 {_PAGE[0]} {_PAGE[1]}] "
+        "/Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>",
+        f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+    ]
+    pdf = bytearray(b"%PDF-1.4\n")
+    xref = ["0000000000 65535 f \n"]
+    for index, obj in enumerate(objects, start=1):
+        xref.append(f"{len(pdf):010d} 00000 n \n")
+        pdf.extend(f"{index} 0 obj\n{obj}\nendobj\n".encode("ascii"))
+    pdf.extend(
+        (
+            f"xref\n0 6\n{''.join(xref)}trailer\n"
+            f"<< /Size 6 /Root 1 0 R >>\nstartxref\n{len(pdf)}\n%%EOF\n"
+        ).encode("ascii")
+    )
+    return bytes(pdf)
 
 
 @dataclass(frozen=True, slots=True)
-class Page:
-    """The page geometry shared by projection and the review renderer."""
+class _Glyph:
+    width: int
+    height: int
+    top: int  # Relative to the glyph's baseline.
+    origin: int  # Offset from the leftmost ink to the origin marker.
+    advance: int  # Raster distance between that marker and the next origin.
+    ink: tuple[Pixel, ...]
 
-    width: float
-    height: float
-    rotation: int
-
-    @property
-    def valid(self) -> bool:
-        """Refuse invalid renderer geometry before matching or projecting boxes."""
-        return all(isfinite(edge) and edge > 0 for edge in (self.width, self.height))
-
-    @property
-    def display_size(self) -> tuple[float, float]:
-        """Return the rotated width and height in points."""
-        return (
-            (self.height, self.width)
-            if self.rotation in (90, 270)
-            else (self.width, self.height)
-        )
-
-    def unrotate(self, box: Box) -> Box:
-        """Undo the page rotation without normalizing away sub-pixel positions."""
-        left, top, right, bottom = box
-        match self.rotation:
-            case 90:
-                return top, self.height - right, bottom, self.height - left
-            case 180:
-                return (
-                    self.width - right,
-                    self.height - bottom,
-                    self.width - left,
-                    self.height - top,
-                )
-            case 270:
-                return self.width - bottom, left, self.width - top, right
-            case _:
-                return box
-
-    def _paint(self, line: TextLine, origins: list[Point]) -> list[Paint]:
-        size = line.font_size
-        if (
-            not isfinite(size)
-            or size <= 0
-            or len(line.text) > MAX_RAW_TEXT
-            or not line.text.isprintable()
-        ):
-            return []
-        try:
-            text = line.text.replace(" ", "").encode("cp1252")
-        except UnicodeEncodeError:
-            return []
-        if len(text) != len(origins):
-            return []
-        span = source_unit_span(line.text)
-        start = end = 0
-        if span is not None:
-            start = len(line.text[: span[0]].replace(" ", ""))
-            end = start + span[1] - span[0]
-        return [
-            (
-                index - start + 1 if start <= index < end else 0,
-                f"BT /F1 {size:.6f} Tf 1 0 0 1 {x:.6f} {self.height - y:.6f} Tm "
-                f"<{char:02x}> Tj ET",
-            )
-            for index, (char, (x, y)) in enumerate(
-                zip(text, sorted(origins), strict=True)
-            )
-        ]
-
-    def reference(
-        self, *, lines: list[TextLine], points: list[Point]
-    ) -> Reference | None:
-        """Use layout hints to paint hypotheses, not to accept or reject ink."""
-        origins: list[list[Point]] = [[] for _ in lines]
-        for x, y in points:
-            if isfinite(x) and isfinite(y):
-                point = self.unrotate((x, y, x, y))[:2]
-                index = min(
-                    range(len(lines)), key=lambda i: lines[i].origin_distance(point)
-                )
-                origins[index].append(point)
-
-        composite: list[str] = []
-        stencils: list[str] = []
-        claims: list[InkClaim] = []
-        for line, positions in zip(lines, origins, strict=True):
-            paint = self._paint(line, positions)
-            if not paint:
-                continue
-            last = max(slot for slot, _command in paint)
-            claims.append(InkClaim(line.region, line.text, last))
-            composite.extend(command for _slot, command in paint)
-            stencils.extend(
-                "\n".join(command for slot, command in paint if slot == layer)
-                for layer in range(last + 1)
-            )
-        if not claims:
+    @classmethod
+    def from_cell(cls, cell: Image) -> _Glyph | None:
+        end = cell.crop((0, 0, _CELL_WIDTH, _START_MARKER)).getbbox()
+        start = cell.crop((0, _START_MARKER, _CELL_WIDTH, _GLYPH_START)).getbbox()
+        glyph = cell.crop((0, _GLYPH_START, _CELL_WIDTH, _CELL_HEIGHT))
+        box = glyph.getbbox()
+        if box is None or start is None or end is None:
             return None
-        streams = ["\n".join(composite), *stencils]
-        return Reference(self._pdf(streams), tuple(claims), len(streams))
+        left, top, right, bottom = box
+        width, height = right - left, bottom - top
+        return cls(
+            width,
+            height,
+            top + _GLYPH_START - _BASELINE,
+            start[0] - left,
+            end[0] - start[0],
+            tuple(
+                (index % width, index // width, darkness)
+                for index, darkness in enumerate(glyph.crop(box).tobytes())
+                if darkness
+            ),
+        )
 
-    def _pdf(self, streams: list[str]) -> bytes:
-        kids = " ".join(f"{i} 0 R" for i in range(4, 4 + 2 * len(streams), 2))
-        objects = [
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            f"<< /Type /Pages /Kids [{kids}] /Count {len(streams)} >>",
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
-            "/Encoding /WinAnsiEncoding >>",
-        ]
-        for index, stream in enumerate(streams):
-            objects.extend(
+
+type GlyphAtlas = dict[str, dict[_Glyph, int]]
+
+
+def _atlas_chars() -> tuple[tuple[int, str], ...]:
+    chars = []
+    for code in range(33, 256):
+        char = bytes((code,)).decode("cp1252", errors="ignore")
+        if char.isprintable():
+            chars.append((code, char))
+    return tuple(chars)
+
+
+def _atlas_pdf(
+    chars: tuple[tuple[int, str], ...], rotation: int
+) -> tuple[bytes, list[tuple[str, int, int]]]:
+    paint: list[str] = []
+    cells: list[tuple[str, int, int]] = []
+    for index, (code, char) in enumerate(chars):
+        for phase in range(_PHASES):
+            slot = index * _PHASES + phase
+            left = slot % _ATLAS_COLUMNS * _CELL_WIDTH
+            top = slot // _ATLAS_COLUMNS * _CELL_HEIGHT
+            # Splash samples one device axis at a quarter-pixel phase. Include
+            # every phase on an otherwise integer device grid, independent of
+            # the source PDF and its renderer coordinate rounding.
+            fraction = (phase + 0.5) / _PHASES
+            horizontal = rotation in (0, 180)
+            x = (left + 4 + (fraction if horizontal else 0)) / _REVIEW_SCALE
+            y = _PAGE[1] - (top + _BASELINE + (0 if horizontal else fraction)) / (
+                _REVIEW_SCALE
+            )
+            # Raised dots locate the origin and advance without affecting the
+            # glyph's ink mask or consulting font metrics in the source PDF.
+            origin = f"BT /F1 {_FONT_SIZE} Tf 0 Ts 1 0 0 1 {x:.8f} {y:.8f} Tm"
+            paint.extend(
                 (
-                    f"<< /Type /Page /Parent 2 0 R /Rotate {self.rotation} "
-                    f"/MediaBox [0 0 {self.width:.6f} {self.height:.6f}] "
-                    "/Resources << /Font << /F1 3 0 R >> >> "
-                    f"/Contents {5 + 2 * index} 0 R >>",
-                    f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+                    f"{origin} <{code:02x}> Tj 18.5 Ts (.) Tj ET",
+                    f"{origin} 14.5 Ts (.) Tj ET",
                 )
             )
-        pdf = bytearray(b"%PDF-1.4\n")
-        xref = ["0000000000 65535 f \n"]
-        for index, obj in enumerate(objects, start=1):
-            xref.append(f"{len(pdf):010d} 00000 n \n")
-            pdf.extend(f"{index} 0 obj\n{obj}\nendobj\n".encode("ascii"))
-        pdf.extend(
-            (
-                f"xref\n0 {len(xref)}\n{''.join(xref)}trailer\n"
-                f"<< /Size {len(xref)} /Root 1 0 R >>\nstartxref\n{len(pdf)}\n%%EOF\n"
-            ).encode("ascii")
+            cells.append((char, left, top))
+    return _reference_pdf("\n".join(paint), rotation), cells
+
+
+def glyph_atlas(render: Callable[[bytes], Image]) -> GlyphAtlas:
+    """Render a fixed black Helvetica atlas; never learn glyphs from source PDFs."""
+    chars = _atlas_chars()
+    atlas: GlyphAtlas = {}
+    for family, rotation in enumerate(_ROTATIONS):
+        pdf, cells = _atlas_pdf(chars, rotation)
+        raster = render(pdf)
+        if raster.mode != "RGB":
+            raise ExtractionInputError
+        upright = raster.rotate(rotation, expand=True)
+        ink = ImageChops.invert(upright.getchannel("R"))
+        for char, x, y in cells:
+            glyph = _Glyph.from_cell(
+                ink.crop((x, y, x + _CELL_WIDTH, y + _CELL_HEIGHT))
+            )
+            if glyph is not None:
+                choices = atlas.setdefault(char, {})
+                choices[glyph] = choices.get(glyph, 0) | (1 << family)
+    if not atlas:
+        raise ExtractionInputError
+    return atlas
+
+
+@dataclass(frozen=True, slots=True)
+class _TokenGlyph:
+    char: str
+    starts_word: bool
+    unit: bool
+
+
+def _characters(text: str) -> tuple[_TokenGlyph, ...]:
+    span = source_unit_span(text)
+    return tuple(
+        _TokenGlyph(
+            char, i > 0 and text[i - 1] == " ", bool(span and span[0] <= i < span[1])
         )
-        return bytes(pdf)
-
-
-def _successive(strokes: list[tuple[int, int, int]], *, rotation: int) -> bool:
-    if not strokes:
-        return False
-    if rotation in (180, 270):
-        strokes.reverse()
-    height = max(stroke[2] for stroke in strokes)
-    return height >= MIN_STROKE_HEIGHT and all(
-        left[0] < right[0] and right[0] - left[1] <= height // GAP_HEIGHT_DIVISOR
-        for left, right in pairwise(strokes)
+        for i, char in enumerate(text)
+        if char != " "
     )
 
 
-def _unit_stencils(
-    rest: Image, *, glyphs: Iterable[Image], composite: Image, rotation: int
-) -> tuple[Image, bool]:
-    """Keep the full non-background support and check ownership of each stroke."""
-    seen = rest
-    nonadjacent = rest
-    foreground = rest.point(INK_CORE)
-    legible = foreground.getbbox() is not None
-    axis = int(rotation in (90, 270))
-    strokes: list[tuple[int, int, int]] = []
-    for ink in glyphs:
-        core = ink.point(INK_CORE)
-        # Only adjacent unit glyphs may share faint antialias samples. A
-        # neighbouring mark cannot supply ink, even at the edge of a stroke.
+@dataclass(frozen=True, slots=True)
+class _Band:
+    ink: bytes  # Column-major darkness, for comparing progressively placed glyphs.
+    height: int
+    left: int
+    right: int
+
+    @property
+    def width(self) -> int:
+        return len(self.ink) // self.height
+
+    @classmethod
+    def from_box(cls, image: Image, *, region: Region, rotation: int) -> _Band | None:
+        width, height = image.size if rotation in (0, 180) else image.size[::-1]
+        bbox = region.display_bbox(-rotation % 360)
+        x0, y0, x1, y1 = (
+            (c * side + COORDINATE_SCALE // 2) // COORDINATE_SCALE
+            for c, side in zip(bbox, (width, height, width, height), strict=True)
+        )
+        if not 0 < y1 - y0 <= _MAX_BAND_HEIGHT or x1 <= x0:
+            return None
+        left, top = max(0, x0 - _CONTINUATION), max(0, y0 - _BEARING)
+        right = min(width, x1 + _CONTINUATION)
+        bottom = min(height, y1 + _BEARING)
+        # Map the small upright band back into the original display pixels.
+        # A transpose rotates exactly; no interpolation enters the proof.
+        match rotation:
+            case 90:
+                crop = (height - bottom, left, height - top, right)
+            case 180:
+                crop = (width - right, height - bottom, width - left, height - top)
+            case 270:
+                crop = (top, width - right, bottom, width - left)
+            case _:
+                crop = (left, top, right, bottom)
+        red, green, blue = image.crop(crop).rotate(rotation, expand=True).split()
         if (
-            core.getbbox() is None
-            or ImageChops.darker(nonadjacent, ink).getbbox() is not None
-            or ImageChops.darker(foreground, ink).getbbox() is not None
-            or ImageChops.darker(seen, core).getbbox() is not None
-            or ImageChops.darker(ImageChops.darker(seen, ink), composite).getbbox()
-            is not None
+            ImageChops.difference(red, green).getbbox()
+            or ImageChops.difference(green, blue).getbbox()
         ):
-            legible = False
+            return None
+        ink = ImageChops.invert(red).transpose(RasterImage.Transpose.TRANSPOSE)
+        return cls(ink.tobytes(), ink.width, x0 - left, x1 - left)
+
+
+@dataclass(frozen=True, slots=True)
+class _Placement:
+    left: int
+    right: int
+    baseline: int
+    next_origin: int
+    family: int
+
+
+class _Matcher:
+    def __init__(
+        self, *, band: _Band, text: tuple[_TokenGlyph, ...], atlas: GlyphAtlas
+    ) -> None:
+        self.band = band
+        self.text = text
+        self.atlas = atlas
+        self.placed = bytearray(len(band.ink))
+        self.owners = [-1] * len(band.ink)
+        self.attempts = 0
+
+    def _changes(
+        self, glyph: _Glyph, *, index: int, x: int, y: int
+    ) -> list[tuple[int, int]] | None:
+        changes = []
+        for dx, dy, darkness in glyph.ink:
+            pos = (x + dx) * self.band.height + y + dy
+            prior = self.placed[pos]
+            ink = darkness
+            if prior:
+                owner = self.owners[pos]
+                if (
+                    self.text[owner].unit != self.text[index].unit
+                    or index - owner != 1
+                    or self.text[index].starts_word
+                ):
+                    return None
+                # Exact opaque-black coverage composition, including edges.
+                ink = 255 - ((255 - prior) * (255 - ink) + 127) // 255
+                if ink >= _FOREGROUND:
+                    return None
+            if ink > self.band.ink[pos]:
+                return None
+            changes.append((pos, ink))
+        return changes
+
+    def _cursor(self, first: int) -> int:
+        height, ink = self.band.height, self.band.ink
+        for pos in range(first * height, len(ink), height):
+            if self.placed[pos : pos + height] != ink[pos : pos + height]:
+                return pos // height
+        return self.band.width
+
+    def _locations(
+        self, glyph: _Glyph, *, cursor: int, index: int, previous: _Placement | None
+    ) -> tuple[range, range]:
+        if previous is None:
+            return range(cursor, cursor + 1), range(self.band.height - glyph.height + 1)
+        token = self.text[index]
+        low = max(previous.left + 1, cursor - _BEARING)
+        high = cursor
+        expected = previous.next_origin - glyph.origin
+        if token.starts_word:
+            low = max(low, expected + _WORD_SPACE_MIN)
+            high = min(high, expected + _WORD_GAP)
+        elif token.unit:
+            high = min(high, previous.right + _UNIT_GAP)
         else:
-            projections = core.getprojection()
-            advance, cross = projections[axis], projections[1 - axis]
-            strokes.append(
-                (
-                    advance.index(1),
-                    len(advance) - advance[::-1].index(1),
-                    len(cross) - cross[::-1].index(1) - cross.index(1),
-                )
+            # The word boundary must be visible. A metadata-only split in a
+            # digit or label is allowed; a printed space in it is not.
+            low = max(low, expected - _INTRAWORD_DRIFT)
+            high = min(high, expected + _INTRAWORD_DRIFT)
+        top = previous.baseline + glyph.top
+        return (
+            range(low, high + 1),
+            range(
+                max(0, top - _BASELINE_DRIFT),
+                min(top + _BASELINE_DRIFT, self.band.height - glyph.height) + 1,
+            ),
+        )
+
+    def _visit(
+        self, index: int, placement: _Placement, changes: list[tuple[int, int]]
+    ) -> bool:
+        undo = []
+        for pos, ink in changes:
+            undo.append((pos, self.placed[pos]))
+            self.placed[pos] = ink
+            if self.owners[pos] < 0:
+                self.owners[pos] = index
+        if self._walk(index + 1, placement):
+            return True
+        for pos, ink in undo:
+            self.placed[pos] = ink
+            if not ink:
+                self.owners[pos] = -1
+        return False
+
+    def _try_glyph(
+        self, glyph: _Glyph, *, family: int, index: int, xs: range, ys: range
+    ) -> bool:
+        for x in xs:
+            if x + glyph.width > self.band.width:
+                continue
+            for y in ys:
+                self.attempts += 1
+                if self.attempts > _MAX_PLACEMENTS:
+                    return False
+                changes = self._changes(glyph, index=index, x=x, y=y)
+                if changes is not None and self._visit(
+                    index,
+                    _Placement(
+                        x,
+                        x + glyph.width,
+                        y - glyph.top,
+                        x + glyph.origin + glyph.advance,
+                        family,
+                    ),
+                    changes,
+                ):
+                    return True
+        return False
+
+    def _walk(self, index: int, previous: _Placement | None) -> bool:
+        cursor = self._cursor(previous.left if previous else 0)
+        end = cursor == self.band.width
+        if index == len(self.text):
+            return (
+                end
+                and previous is not None
+                and abs(previous.right - self.band.right) <= _BEARING
             )
-        nonadjacent, seen = seen, ImageChops.lighter(seen, ink)
-        foreground = ImageChops.lighter(foreground, core)
-    return seen, legible and _successive(strokes, rotation=rotation)
-
-
-def _line_changed(ink: Image, changed: Image, *, rotation: int) -> bool:
-    """Compare each scanline between its first and last actual ink samples."""
-    if rotation in (90, 270):
-        ink = ink.transpose(RasterImage.Transpose.TRANSPOSE)
-        changed = changed.transpose(RasterImage.Transpose.TRANSPOSE)
-    width = ink.width
-    stencil = ink.tobytes()
-    delta = changed.tobytes()
-    for start in range(0, len(stencil), width):
-        scan = stencil[start : start + width].strip(b"\0")
-        if scan:
-            left = stencil.index(scan[:1], start, start + width)
-            if delta[left : left + len(scan)].strip(b"\0"):
+        if end or (previous is None and abs(cursor - self.band.left) > _BEARING):
+            return False
+        family = previous.family if previous else (1 << len(_ROTATIONS)) - 1
+        for glyph, mask in self.atlas[self.text[index].char].items():
+            if not mask & family or self.attempts >= _MAX_PLACEMENTS:
+                continue
+            xs, ys = self._locations(
+                glyph, cursor=cursor, index=index, previous=previous
+            )
+            if self._try_glyph(glyph, family=mask & family, index=index, xs=xs, ys=ys):
                 return True
-    return False
+        return False
+
+    def matches(self) -> bool:
+        """Require every review sample in the band to be accounted for."""
+        return self._walk(0, None)
 
 
-def matching_ink(
+def matches_proposal(
+    image: Image,
     *,
-    source: Image,
-    frames: Iterator[Image],
-    claims: tuple[InkClaim, ...],
-    rotation: int,
-) -> dict[Region, str]:
-    """Prove pixel support and ownership without consulting the cited box."""
-    expected = next(frames)
-    red, green, blue = ImageChops.difference(source, expected).split()
-    changed = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-    # An opaque stroke can hide an intersecting drawing inside the stroke
-    # while leaving unexpected ink attached just outside its support.
-    contact = changed.filter(ImageFilter.MaxFilter(3)) if changed.getbbox() else None
-    foreground = ImageChops.invert(expected.getchannel("R")).point(INK_CORE)
-    seen = RasterImage.new("L", source.size)
-    overlaps = RasterImage.new("L", source.size)
-    eligible = []
-    for claim in claims:
-        rest = next(frames)
-        ink, legible = (
-            _unit_stencils(
-                rest,
-                glyphs=(next(frames) for _ in range(claim.unit_glyphs)),
-                composite=foreground,
-                rotation=rotation,
-            )
-            if claim.unit_glyphs
-            else (rest, True)
-        )
-        # The extent only limits work on the mask; extents may overlap or touch
-        # the page edge. They never count as paint or as conflicting geometry.
-        extent = ink.getbbox()
-        if extent is None:
-            continue
-        tile = ink.crop(extent)
-        prior = seen.crop(extent)
-        overlaps.paste(
-            ImageChops.lighter(overlaps.crop(extent), ImageChops.darker(prior, tile)),
-            extent,
-        )
-        seen.paste(ImageChops.lighter(prior, tile), extent)
-        if legible and (
-            contact is None
-            or (
-                ImageChops.darker(tile, contact.crop(extent)).getbbox() is None
-                and not _line_changed(tile, changed.crop(extent), rotation=rotation)
-            )
-        ):
-            eligible.append((claim, extent, tile))
-    if next(frames, None) is not None:
-        raise ExtractionInputError
-    return {
-        claim.region: claim.text
-        for claim, extent, ink in eligible
-        if ImageChops.darker(overlaps.crop(extent), ink).getbbox() is None
-    }
+    region: Region,
+    text: str,
+    atlas: GlyphAtlas,
+) -> bool:
+    """Match complete glyphs using display pixels, proposed text and a display box."""
+    glyphs = _characters(text)
+    if not 0 < len(glyphs) <= _MAX_GLYPHS or any(g.char not in atlas for g in glyphs):
+        return False
+    for rotation in _ROTATIONS:
+        band = _Band.from_box(image, region=region, rotation=rotation)
+        if band is not None and _Matcher(band=band, text=glyphs, atlas=atlas).matches():
+            return True
+    return False

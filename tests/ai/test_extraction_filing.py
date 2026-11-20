@@ -44,7 +44,11 @@ from psycopg import sql
 from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
 from ai.test_extraction import (
+    LIMIT_BOX,
+    TOKEN_BOX,
     close_unit_runs,
+    glucose_proposal,
+    layout_transition_pdf,
     pdf_fixture,
     pdf_with_stream,
     review_boundary_pdf,
@@ -325,6 +329,57 @@ def test_visible_units_at_review_boundaries_remain_confirmable(
             )
             assert filed is not None
             assert observations.get(pk=filed).source["unit"] == "g/dL"
+
+
+@pytest.mark.parametrize(
+    ("transition", "rotation"),
+    [
+        ("value", 0),
+        ("value", 90),
+        ("value", 180),
+        ("value", 270),
+        ("page", 0),
+        ("page", 90),
+    ],
+)
+def test_pixel_equivalent_layout_changes_keep_clinician_filing(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    transition: str,
+    rotation: int,
+) -> None:
+    control, shifted = (
+        layout_transition_pdf(
+            rotation=rotation,
+            transition=transition,
+            offset=offset,
+            combined=transition == "page",
+        )
+        for offset in (-1, 1)
+    )
+    assert render_page(data=control, content_type="application/pdf", page=1) == (
+        render_page(data=shifted, content_type="application/pdf", page=1)
+    )
+    box = TOKEN_BOX if transition == "value" else LIMIT_BOX
+    if transition == "value":
+        monkeypatch.setattr(
+            "apps.ai.adapters.synthetic_document_extraction",
+            lambda _content: glucose_proposal(box),
+        )
+    job = extracted_job(rbac_graph, monkeypatch, data=shifted)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        observations = ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        )
+        assert not observations.exists()
+        row = job.candidates.get()
+        assert (row.status, row.payload["region"]["bbox"]) == ("candidate", list(box))
+        observation = review_extraction(
+            clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
+        )
+        assert observation is not None
+        source = observations.get(pk=observation).source
+        assert (source["value"], source["unit"]) == ("123,40", "g/dL")
 
 
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:
