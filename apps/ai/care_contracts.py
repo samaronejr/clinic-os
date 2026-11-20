@@ -19,6 +19,8 @@ from apps.ai.contracts import GatewayInputError
 from apps.workflows.care.vocab import ACTION_KINDS, ADMIN_KINDS, MAX_WINDOW_DAYS
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from apps.ai.action_payload import JSON
 
 SCHEMA: Final = "care-coordination-v1"
@@ -40,6 +42,23 @@ type Refused = Literal[
     "kind_forbidden", "window_invalid", "malformed", "duplicate", "source_superseded"
 ]
 _FIXTURE: Final = Path(__file__).parent / "fixtures" / "care-coordination-v1.json"
+
+# Independently reviewed facts for the supported synthetic plan sections.
+# Never derive this allowlist from the provider's recording: those replies
+# deliberately contain unsupported items. Any other complete text has no facts.
+_RETURN: Final = "Retorno em 6 semanas. "
+_SCHEDULE: Final = _RETURN + "Recepção confirma o agendamento do retorno. "
+_SCHEDULE_WINDOWS: Final = {"return_window": (42, 49), "staff_coordination": (0, 7)}
+_PLAN_WINDOWS: Final = {
+    _RETURN + "Manter o acompanhamento combinado na consulta.": {
+        "return_window": (42, 49)
+    },
+    _SCHEDULE + "Reaplicar o PHQ-9 em 2 semanas.": {
+        **_SCHEDULE_WINDOWS,
+        "questionnaire": (14, 21),
+    },
+    _SCHEDULE + "Revisão anual em 3 anos.": _SCHEDULE_WINDOWS,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +170,11 @@ def _stored_kind(value: object) -> str:
 
 
 def _item(
-    position: int, raw: object, seen: set[tuple[str, int, int]]
+    position: int,
+    raw: object,
+    seen: set[tuple[str, int, int]],
+    *,
+    windows: Mapping[str, tuple[int, int]],
 ) -> CareItem | RefusedItem:
     if not isinstance(raw, dict) or set(raw) != {"kind", "start_days", "end_days"}:
         kind = raw.get("kind") if isinstance(raw, dict) else None
@@ -163,12 +186,13 @@ def _item(
         return RefusedItem(position, stored, reason)
     kind, start, end = raw["kind"], raw["start_days"], raw["end_days"]
     stored = _stored_kind(kind)
-    if stored not in PROPOSABLE_KINDS:
+    if stored not in PROPOSABLE_KINDS or stored not in windows:
         return RefusedItem(position, stored, "kind_forbidden")
     if (
         type(start) is not int
         or type(end) is not int
         or not 0 <= start < end <= MAX_WINDOW_DAYS
+        or (start, end) != windows[stored]
     ):
         return RefusedItem(position, stored, "window_invalid")
     if (stored, start, end) in seen:
@@ -179,6 +203,7 @@ def _item(
 
 def validate_reply(
     content: str,
+    request: CareRequest,
 ) -> tuple[tuple[CareItem, ...], tuple[RefusedItem, ...]]:
     """Deterministically split model items into proposals and refusals.
 
@@ -199,8 +224,9 @@ def validate_reply(
     accepted: list[CareItem] = []
     refused: list[RefusedItem] = []
     seen: set[tuple[str, int, int]] = set()
+    windows = _PLAN_WINDOWS.get(request.text, {})
     for position, raw in enumerate(data["items"]):
-        item = _item(position, raw, seen)
+        item = _item(position, raw, seen, windows=windows)
         if isinstance(item, CareItem):
             accepted.append(item)
         else:

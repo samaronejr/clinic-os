@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import timedelta
 from threading import Barrier
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ from uuid import UUID, uuid4
 import pytest
 from apps.ai.action_contracts import ActionInputError, Refusal
 from apps.ai.action_payload import parse_payload
+from apps.ai.care_contracts import SCHEMA, parse_request, synthetic_reply
 from apps.ai.care_coordination import (
     CareAccessDeniedError,
     CareConflictError,
@@ -33,6 +35,7 @@ from apps.workflows.care.models import CareAction
 from django.db import DatabaseError, connection, connections, transaction
 
 from ai.care_support import (
+    BUNDLE_PLAN,
     INVALID_PLAN,
     MEDICATION_PLAN,
     MEDICATION_SENTINEL,
@@ -254,6 +257,54 @@ def test_validator_rejects_a_medication_change_from_the_fake_model(
             clinic_id=world.graph.clinic_a, invocation_id=bundle.invocation_id
         )
     assert [row.state for row in staff_view.items] == ["pending"]
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        ("one-day", [("return_window", "refused", "window_invalid")]),
+        ("unrequested-order", [("order", "refused", "kind_forbidden")]),
+        (
+            "other-plan",
+            [
+                ("return_window", "pending", ""),
+                ("staff_coordination", "refused", "kind_forbidden"),
+                ("questionnaire", "refused", "kind_forbidden"),
+            ],
+        ),
+    ],
+)
+def test_six_week_plan_refuses_unsupported_model_items(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_secret_backend: Path,
+    variant: str,
+    expected: list[tuple[str, str, str]],
+) -> None:
+    world = care_world(
+        rbac_graph, monkeypatch, synthetic_secret_backend, text=MEDICATION_PLAN
+    )
+
+    def complete(content: str) -> str:
+        source = parse_request(content)
+        assert source.text == MEDICATION_PLAN
+        if variant == "other-plan":
+            return synthetic_reply(replace(source, text=BUNDLE_PLAN).encode())
+        row = {
+            "kind": "return_window" if variant == "one-day" else "order",
+            "start_days": 1,
+            "end_days": 2,
+        }
+        return json.dumps({"schema": SCHEMA, "items": [row]})
+
+    monkeypatch.setattr("apps.ai.adapters.synthetic_care_reply", complete)
+    before = actions_of(world)
+    bundle = request_and_collect(world)
+    assert bundle.invocation_id is not None
+    rows = items_of(world, bundle.invocation_id)
+    assert [(row.kind, row.state, row.reason_code) for row in rows] == expected
+    assert all(row.window_start is None for row in rows if row.state == "refused")
+    assert actions_of(world) == before
 
 
 def test_one_invalid_item_is_refused_while_the_others_are_approved(
