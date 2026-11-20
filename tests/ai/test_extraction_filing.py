@@ -230,6 +230,53 @@ def test_pdf_unit_must_be_visible_before_it_can_be_filed(
             assert_unit_refused(job, position=0)
 
 
+@pytest.mark.parametrize(
+    ("draw", "visible"),
+    [
+        ("(glucose: 123,40  g/dL) Tj ET", True),
+        ("[(glucose: 123,40 g) -20 (/dL)] TJ ET", True),
+        (
+            "(glucose: 123,40 g) Tj ET BT /F1 12 Tf 136.1 740 Td (/) Tj "
+            "ET BT /F1 12 Tf 140.7 740 Td (dL) Tj ET",
+            True,
+        ),
+        ("(glucose: 123,40 g) Tj 3 Tr (/dL) Tj ET", False),
+    ],
+    ids=["leading-spaces", "tj-adjustment", "split-glyph-runs", "hidden-neighbour"],
+)
+def test_pdf_unit_spacing_preserves_only_the_visible_sequence(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, draw: str, visible: bool
+) -> None:
+    start = "BT /F1 12 Tf 40 740 Td "
+    data = pdf_with_stream(stream=start + draw)
+    partial = pdf_with_stream(stream=start + "(glucose: 123,40 g) Tj ET")
+    assert (
+        render_page(data=data, content_type="application/pdf", page=1)
+        != render_page(data=partial, content_type="application/pdf", page=1)
+    ) is visible
+    job = extracted_job(rbac_graph, monkeypatch, data=data)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        row = job.candidates.get(position=0)
+        assert not ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        ).exists()
+        if not visible:
+            assert row.payload["unit"] == "g/dL"
+            assert_unit_refused(job, position=0)
+            return
+        assert row.status == "candidate"
+        observation_id = review_extraction(
+            clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
+        )
+        assert observation_id is not None
+        observation = ResultObservation.objects.get(pk=observation_id)
+        assert observation.version_id == job.result_version_id
+        assert (observation.source["value"], observation.source["unit"]) == (
+            "123,40",
+            "g/dL",
+        )
+
+
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:
     row = job.candidates.get(position=position)
     with pytest.raises(ExtractionInputError):

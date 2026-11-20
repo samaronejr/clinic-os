@@ -656,10 +656,12 @@ Collection and confirmation read the source bytes under current authority.
 The page and unrotated box must identify one visible source line. Its field,
 value, unit token, interval and transcription must match exactly; neither the
 model's `raw_text` nor the PDF text layer alone can establish a unit. For the
-bounded synthetic PDF format, draw the claimed line independently in standard
-black Helvetica, recheck its complete anchor, and compare its ink with the
-same raster used for review. Mismatched, overlapping, or unsupported paint
-stays unresolved, with manual result entry still available.
+bounded synthetic PDF format, independently draw each claimed glyph in standard
+black Helvetica at the local renderer's glyph origin, then recheck the complete
+anchor against the same raster used for review. Extra spacing does not require
+extra ink; only tightly adjacent fragments of a known unit can form one token.
+Mismatched, overlapping, hidden or unsupported paint stays unresolved, with
+manual result entry still available.
 
 The source-only synthetic adapter reads explicit PDF text lines
 `field: value unit [reference interval]`. This bounded offline fixture format
@@ -669,7 +671,9 @@ the exact synthetic PNG and reviewed regions in
 `fixtures/document_extraction_v1.json`; another digest is refused.
 General OCR, sandbox, paid, live and real-provider legs remain **BLOCKED-ON-EG**.
 
-PDF tools are the existing `/usr/bin/pdfinfo`, `pdftotext` and `pdftoppm`.
+PDF tools are Poppler's `/usr/bin/pdfinfo`, `pdftotext`, `pdftocairo` and
+`pdftoppm`. Cairo SVG only supplies positions to the verifier; it is not
+rendered or sent to the browser.
 Each local process has a ten-second deadline, bounded pipe output, no shell,
 no network client, and discarded stderr. Plaintext travels only in memory.
 Documents are limited to 32 pages and 10 MiB; the existing gateway's 1 MiB

@@ -13,13 +13,19 @@ import subprocess
 import time
 from html.parser import HTMLParser
 from io import BytesIO
+from itertools import pairwise
 from pathlib import Path
 from typing import IO, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from apps.ai.extraction_contracts import MAX_CANDIDATES, ExtractionInputError, Region
-from apps.ai.extraction_raster import Box, Page, TextLine, matching_ink
+from apps.ai.extraction_contracts import (
+    MAX_CANDIDATES,
+    ExtractionInputError,
+    Region,
+    parse_unit,
+)
+from apps.ai.extraction_raster import Box, GlyphOrigins, Page, TextLine, matching_ink
 
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 32
@@ -29,6 +35,13 @@ MAX_RENDER_BYTES = 12 * 1024 * 1024
 REVIEW_LONG_EDGE = 1400
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
+# Shorter than a normal space in the supported PDF font. Only adjacent unit
+# fragments can be joined; independent words elsewhere on the line cannot.
+UNIT_FRAGMENT_GAP_RATIO = 0.25
+_UNIT_LINE = re.compile(
+    r"(?P<prefix>[a-z][a-z0-9_]{0,31}: *[^ \[\]]+) "
+    r"(?P<unit>[^ \[\]]+(?: [^ \[\]]+)*)(?P<interval> \[.*\])?"
+)
 
 # Anchor transcription of the only reviewed raster, independent of the
 # recorded provider reply. Any other raster requires manual review.
@@ -189,8 +202,9 @@ class _Lines(HTMLParser):
         self.rotations = rotations
         self.pages: list[Page] = []
         self.box: Box | None = None
-        self.words: list[str] = []
-        self.in_word = False
+        self.words: list[tuple[str, Box]] = []
+        self.word_box: Box | None = None
+        self.word: list[str] = []
         self.lines: list[TextLine] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -205,22 +219,19 @@ class _Lines(HTMLParser):
             )
         elif tag == "line":
             self.words = []
-            self.box = (
-                float(values.get("xmin") or "0"),
-                float(values.get("ymin") or "0"),
-                float(values.get("xmax") or "0"),
-                float(values.get("ymax") or "0"),
-            )
+            self.box = _text_box(values)
         elif tag == "word":
-            self.in_word = True
+            self.word_box = _text_box(values)
+            self.word = []
 
     def handle_data(self, data: str) -> None:
-        if self.in_word:
-            self.words.append(data)
+        if self.word_box is not None:
+            self.word.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "word":
-            self.in_word = False
+        if tag == "word" and self.word_box is not None:
+            self.words.append(("".join(self.word), self.word_box))
+            self.word_box = None
         elif tag == "line" and self.box:
             page = self.pages[-1]
             width, height = page.display_size
@@ -238,9 +249,43 @@ class _Lines(HTMLParser):
             )
             region = Region(rotated.page, rotated.display_bbox(-page.rotation % 360))
             self.lines.append(
-                TextLine(region, page.unrotate(self.box), " ".join(self.words))
+                TextLine(region, page.unrotate(self.box), _unit_line(self.words, page))
             )
             self.box = None
+
+
+def _text_box(attrs: dict[str, str | None]) -> Box:
+    return (
+        float(attrs.get("xmin") or "0"),
+        float(attrs.get("ymin") or "0"),
+        float(attrs.get("xmax") or "0"),
+        float(attrs.get("ymax") or "0"),
+    )
+
+
+def _unit_line(words: list[tuple[str, Box]], page: Page) -> str:
+    text = " ".join(word for word, _box in words)
+    match = _UNIT_LINE.fullmatch(text)
+    if match is None:
+        return text
+    fragments = match["unit"]
+    if " " not in fragments:
+        return text
+    parts = fragments.split(" ")
+    unit = parse_unit("".join(parts))
+    if unit is None:
+        return text
+    start = len(match["prefix"].split(" "))
+    spans = words[start : start + len(parts)]
+    if [word for word, _box in spans] != parts:
+        return text
+    boxes = [page.unrotate(box) for _word, box in spans]
+    if any(
+        not 0 <= right[0] - left[2] < (left[3] - left[1]) * UNIT_FRAGMENT_GAP_RATIO
+        for left, right in pairwise(boxes)
+    ):
+        return text
+    return f"{match['prefix']} {unit}{match['interval'] or ''}"
 
 
 def _unreadable(page: int) -> dict[str, object]:
@@ -274,7 +319,28 @@ def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region
         lines = [line for line in layout.lines if line.region.page == number]
         if not page.valid or not 0 < len(lines) <= MAX_CANDIDATES:
             continue
-        reference = page.reference(lines=lines, long_edge=REVIEW_LONG_EDGE)
+        glyphs = GlyphOrigins()
+        try:
+            positions = _poppler(
+                [
+                    "/usr/bin/pdftocairo",
+                    "-svg",
+                    "-f",
+                    str(number),
+                    "-l",
+                    str(number),
+                    "-",
+                    "-",
+                ],
+                data,
+            )
+        except ExtractionInputError:
+            # A page with unavailable or oversized position evidence is unresolved.
+            continue
+        glyphs.feed(positions.decode("utf-8", errors="replace"))
+        reference = page.reference(
+            lines=lines, points=glyphs.points, long_edge=REVIEW_LONG_EDGE
+        )
         if not reference:
             continue
         # The source's text metrics can lie. Verify the *painted* reference's

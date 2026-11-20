@@ -50,13 +50,16 @@ def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
     return pdf_with_stream(stream=stream, rotation=rotation)
 
 
-def pdf_with_stream(*, stream: str, rotation: int = 0) -> bytes:
+def pdf_with_stream(
+    *, stream: str, rotation: int = 0, zero_opacity: bool = False
+) -> bytes:
     """Render the given synthetic drawing stream in the standard fixture page."""
+    graphics = " /ExtGState << /Clear << /ca 0 /CA 0 >> >>" if zero_opacity else ""
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        f"/Rotate {rotation} /Resources << /Font << /F1 4 0 R >> >> "
+        f"/Rotate {rotation} /Resources << /Font << /F1 4 0 R >>{graphics} >> "
         "/Contents 5 0 R >>",
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
@@ -319,17 +322,27 @@ def test_pdf_instructions_are_data_and_never_become_tools() -> None:
         "q 0 0 126 792 re W n {measurement} Q",
         "{text}/Span << /ActualText (glucose: 123,40 g/dL) >> BDC "
         "(glucose: 123,40) Tj EMC ET",
+        "q {value} /Clear gs (  g/dL) Tj ET Q",
+        "{value} ET {text}3 Tr (glucose: 123,40  g/dL) Tj ET",
     ],
-    ids=["white-on-white", "overpainted", "clipped", "replacement-text"],
+    ids=[
+        "white-on-white",
+        "overpainted",
+        "clipped",
+        "replacement-text",
+        "transparent",
+        "hidden-ocr",
+    ],
 )
 def test_pdf_unit_must_have_ink_even_when_the_text_is_exact(invisible: str) -> None:
     text = "BT /F1 12 Tf 40 740 Td "
     value = text + "(glucose: 123,40) Tj"
     measurement = text + "(glucose: 123,40 g/dL) Tj ET"
-    sibling = " 0 g BT /F1 12 Tf 40 710 Td (hemoglobin: 12,50 g/dL) Tj ET"
+    sibling = " 0 g BT 0 Tr /F1 12 Tf 40 710 Td (hemoglobin: 12,50 g/dL) Tj ET"
     data = pdf_with_stream(
         stream=invisible.format(text=text, value=value, measurement=measurement)
-        + sibling
+        + sibling,
+        zero_opacity="/Clear" in invisible,
     )
     control = pdf_with_stream(stream=f"{value} ET{sibling}")
     assert render_page(

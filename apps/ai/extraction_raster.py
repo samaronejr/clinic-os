@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from math import ceil, floor, isfinite
 from typing import TYPE_CHECKING
 
@@ -20,10 +21,48 @@ if TYPE_CHECKING:
 
 type Box = tuple[float, float, float, float]
 type Crop = tuple[int, int, int, int]
+type Point = tuple[float, float]
 MIN_EM_PIXELS = 12
 INK_MARGIN = 3
-HELVETICA_ASCENT = 0.718
 HELVETICA_HEIGHT = 0.925
+ORIGIN_ROUNDING = 0.001  # Cairo serializes coordinates in points.
+
+
+class GlyphOrigins(HTMLParser):
+    """Read only nonempty glyph origins from local Cairo SVG; do not render SVG."""
+
+    def __init__(self) -> None:
+        """Keep coordinate hints and IDs, never source SVG paths or text."""
+        super().__init__(convert_charrefs=True)
+        self.points: list[Point] = []
+        self._in_defs = False
+        self._glyph = ""
+        self._nonempty: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Index outlined definitions and collect positions of their uses."""
+        values = dict(attrs)
+        if tag == "defs":
+            self._in_defs = True
+        elif self._in_defs:
+            if tag in ("g", "symbol"):
+                self._glyph = values.get("id") or ""
+            elif tag == "path" and values.get("d") and self._glyph.startswith("glyph"):
+                self._nonempty.add(f"#{self._glyph}")
+        elif (
+            tag == "use"
+            and (values.get("xlink:href") or values.get("href")) in self._nonempty
+        ):
+            x, y = values.get("x"), values.get("y")
+            if x is not None and y is not None:
+                self.points.append((float(x), float(y)))
+
+    def handle_endtag(self, tag: str) -> None:
+        """Close definition scopes without interpreting the graphics tree."""
+        if tag == "defs":
+            self._in_defs = False
+        elif self._in_defs and tag in ("g", "symbol"):
+            self._glyph = ""
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -75,8 +114,8 @@ class Page:
             case _:
                 return box
 
-    def _paint(self, line: TextLine, *, long_edge: int) -> str:
-        left, top, _, bottom = line.box
+    def _paint(self, line: TextLine, *, origins: list[Point], long_edge: int) -> str:
+        left, top, right, bottom = line.box
         size = (bottom - top) / HELVETICA_HEIGHT
         if (
             size / max(self.width, self.height) * long_edge < MIN_EM_PIXELS
@@ -85,16 +124,35 @@ class Page:
         ):
             return ""
         try:
-            text = line.text.encode("cp1252").hex()
+            text = line.text.replace(" ", "").encode("cp1252")
         except UnicodeEncodeError:
             return ""
-        baseline = self.height - top - HELVETICA_ASCENT * size
-        return f"BT /F1 {size:.6f} Tf {left:.6f} {baseline:.6f} Td <{text}> Tj ET"
+        points = sorted(
+            (x, y)
+            for x, y in origins
+            if left - ORIGIN_ROUNDING <= x < right and top <= y <= bottom
+        )
+        if len(text) != len(points) or len(points) != len(set(points)):
+            return ""
+        paint = " ".join(
+            f"1 0 0 1 {x:.6f} {self.height - y:.6f} Tm <{char:02x}> Tj"
+            for char, (x, y) in zip(text, points, strict=True)
+        )
+        return f"BT /F1 {size:.6f} Tf {paint} ET"
 
-    def reference(self, *, lines: Iterable[TextLine], long_edge: int) -> bytes:
+    def reference(
+        self, *, lines: Iterable[TextLine], points: list[Point], long_edge: int
+    ) -> bytes:
         """Build a PDF with only local black Helvetica paint and no source objects."""
+        origins = [self.unrotate((x, y, x, y))[:2] for x, y in points]
         stream = "\n".join(
-            filter(None, (self._paint(line, long_edge=long_edge) for line in lines))
+            filter(
+                None,
+                (
+                    self._paint(line, origins=origins, long_edge=long_edge)
+                    for line in lines
+                ),
+            )
         )
         if not stream:
             return b""
@@ -174,5 +232,5 @@ def matching_ink(
             ImageChops.invert(expected).getbbox() is not None
             and expected.tobytes() == source.crop(box).tobytes()
         ):
-            proven[original.region] = line.text
+            proven[original.region] = original.text
     return proven
