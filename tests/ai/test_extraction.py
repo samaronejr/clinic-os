@@ -47,6 +47,11 @@ def pdf_fixture(*, rotation: int = 0, instruction: str = "") -> bytes:
         + " ".join(f"({line}) Tj 0 -30 Td" for line in lines if line)
         + " ET"
     )
+    return pdf_with_stream(stream=stream, rotation=rotation)
+
+
+def pdf_with_stream(*, stream: str, rotation: int = 0) -> bytes:
+    """Render the given synthetic drawing stream in the standard fixture page."""
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -304,6 +309,51 @@ def test_pdf_instructions_are_data_and_never_become_tools() -> None:
         "potassium",
         "date",
     }
+
+
+@pytest.mark.parametrize(
+    "invisible",
+    [
+        "{value} 1 g ( g/dL) Tj ET",
+        "{measurement} 1 g 126 728 150 28 re f",
+        "q 0 0 126 792 re W n {measurement} Q",
+        "{text}/Span << /ActualText (glucose: 123,40 g/dL) >> BDC "
+        "(glucose: 123,40) Tj EMC ET",
+    ],
+    ids=["white-on-white", "overpainted", "clipped", "replacement-text"],
+)
+def test_pdf_unit_must_have_ink_even_when_the_text_is_exact(invisible: str) -> None:
+    text = "BT /F1 12 Tf 40 740 Td "
+    value = text + "(glucose: 123,40) Tj"
+    measurement = text + "(glucose: 123,40 g/dL) Tj ET"
+    sibling = " 0 g BT /F1 12 Tf 40 710 Td (hemoglobin: 12,50 g/dL) Tj ET"
+    data = pdf_with_stream(
+        stream=invisible.format(text=text, value=value, measurement=measurement)
+        + sibling
+    )
+    control = pdf_with_stream(stream=f"{value} ET{sibling}")
+    assert render_page(
+        data=data, content_type="application/pdf", page=1
+    ) == render_page(data=control, content_type="application/pdf", page=1)
+    candidates = parse_proposals(
+        synthetic_document_extraction(
+            document_input(data=data, content_type="application/pdf")
+        ),
+        rotations=(0,),
+        regions=source_regions(
+            data=data, content_type="application/pdf", rotations=(0,)
+        ),
+    )
+    hidden, supported = candidates
+    assert (hidden.field, hidden.unit, hidden.reason) == (
+        "glucose",
+        "g/dL",
+        "unit_unresolved",
+    )
+    with pytest.raises(ExtractionInputError):
+        filing_payload(hidden, confirmer="synthetic-clinician")
+    assert supported.field == "hemoglobin"
+    assert filing_payload(supported, confirmer="synthetic-clinician")["unit"] == "g/dL"
 
 
 def test_unreadable_image_has_an_unresolved_region_not_fabricated_values() -> None:

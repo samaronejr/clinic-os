@@ -653,9 +653,13 @@ require DD/MM/YYYY and have no physical unit. No separator, unit, range,
 abnormality, identity factor or clinical interpretation is inferred.
 Only a candidate can become confirmed; ambiguous drafts may only be rejected.
 Collection and confirmation read the source bytes under current authority.
-The page and unrotated box must identify one local source line. Its field,
-value, unit token, interval and transcription must match exactly; the model's
-`raw_text` is never the authority for a unit.
+The page and unrotated box must identify one visible source line. Its field,
+value, unit token, interval and transcription must match exactly; neither the
+model's `raw_text` nor the PDF text layer alone can establish a unit. For the
+bounded synthetic PDF format, draw the claimed line independently in standard
+black Helvetica, recheck its complete anchor, and compare its ink with the
+same raster used for review. Mismatched, overlapping, or unsupported paint
+stays unresolved, with manual result entry still available.
 
 The source-only synthetic adapter reads explicit PDF text lines
 `field: value unit [reference interval]`. This bounded offline fixture format

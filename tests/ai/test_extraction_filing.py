@@ -21,6 +21,7 @@ from apps.ai.extraction import (
 from apps.ai.extraction_contracts import ExtractionInputError, filing_payload
 from apps.ai.extraction_documents import (
     recorded_document_extraction,
+    render_page,
     synthetic_document_extraction,
 )
 from apps.core.integration import execute_operation
@@ -42,7 +43,7 @@ from psycopg import sql
 
 from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET
-from ai.test_extraction import pdf_fixture, scan_fixture
+from ai.test_extraction import pdf_fixture, pdf_with_stream, scan_fixture
 from ai.test_extraction_runtime import extracted_job
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context
@@ -197,14 +198,46 @@ def test_field_name_is_not_a_unit_for_a_unitless_pdf_line(
         assert_unit_refused(job, position=5)
 
 
+@pytest.mark.parametrize("visible", [False, True], ids=["hidden-unit", "visible-unit"])
+def test_pdf_unit_must_be_visible_before_it_can_be_filed(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, visible: bool
+) -> None:
+    start = "BT /F1 12 Tf 40 740 Td "
+    value = "glucose: 123,40"
+    text = f"({value} g/dL) Tj" if visible else f"({value}) Tj 3 Tr ( g/dL) Tj"
+    data = pdf_with_stream(stream=f"{start}{text} ET")
+    unitless = pdf_with_stream(stream=f"{start}({value}) Tj ET")
+    rendered = render_page(data=data, content_type="application/pdf", page=1)
+    control = render_page(data=unitless, content_type="application/pdf", page=1)
+    assert (rendered != control) is visible
+
+    job = extracted_job(rbac_graph, monkeypatch, data=data)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        row = job.candidates.get(position=0)
+        assert row.payload["unit"] == "g/dL"  # The actual adapter sees the text layer.
+        assert not ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        ).exists()
+        if visible:
+            observation_id = review_extraction(
+                clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
+            )
+            assert observation_id is not None
+            observation = ResultObservation.objects.get(pk=observation_id)
+            assert observation.version_id == job.result_version_id
+            assert observation.source["unit"] == "g/dL"
+        else:
+            assert_unit_refused(job, position=0)
+
+
 def assert_unit_refused(job: ExtractionJob, *, position: int) -> None:
     row = job.candidates.get(position=position)
-    assert row.status == "ambiguous"
-    assert row.payload["reason"] == "unit_unresolved"
     with pytest.raises(ExtractionInputError):
         review_extraction(
             clinic_id=job.clinic_id, candidate_id=row.pk, decision="confirmed"
         )
+    assert row.status == "ambiguous"
+    assert row.payload["reason"] == "unit_unresolved"
     assert authorize_native(
         invocation_id=job.invocation_id,
         clinic_id=job.clinic_id,

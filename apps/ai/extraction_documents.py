@@ -18,13 +18,15 @@ from typing import IO, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from apps.ai.extraction_contracts import ExtractionInputError, Region
+from apps.ai.extraction_contracts import MAX_CANDIDATES, ExtractionInputError, Region
+from apps.ai.extraction_raster import Box, Page, TextLine, matching_ink
 
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 32
 MAX_PIXELS = 25_000_000
 MAX_INPUT_BYTES = 1_048_576
 MAX_RENDER_BYTES = 12 * 1024 * 1024
+REVIEW_LONG_EDGE = 1400
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
 
@@ -153,26 +155,30 @@ def render_page(*, data: bytes, content_type: str, page: int) -> bytes:
     if type(page) is not int or not 1 <= page <= len(rotations):
         raise ExtractionInputError
     if content_type == "application/pdf":
-        return _poppler(
-            [
-                "/usr/bin/pdftoppm",
-                "-f",
-                str(page),
-                "-l",
-                str(page),
-                "-singlefile",
-                "-scale-to",
-                "1400",
-                "-png",
-                "-",
-            ],
-            data,
-        )
+        return _render_pdf_page(data, page=page)
     image = _image(data)
-    image.thumbnail((1400, 1400))
+    image.thumbnail((REVIEW_LONG_EDGE, REVIEW_LONG_EDGE))
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG")
     return output.getvalue()
+
+
+def _render_pdf_page(data: bytes, *, page: int) -> bytes:
+    return _poppler(
+        [
+            "/usr/bin/pdftoppm",
+            "-f",
+            str(page),
+            "-l",
+            str(page),
+            "-singlefile",
+            "-scale-to",
+            str(REVIEW_LONG_EDGE),
+            "-png",
+            "-",
+        ],
+        data,
+    )
 
 
 class _Lines(HTMLParser):
@@ -181,31 +187,29 @@ class _Lines(HTMLParser):
     def __init__(self, rotations: tuple[int, ...]) -> None:
         super().__init__(convert_charrefs=True)
         self.rotations = rotations
-        self.page = 0
-        self.width = 0.0
-        self.height = 0.0
-        self.box: tuple[int, int, int, int] | None = None
+        self.pages: list[Page] = []
+        self.box: Box | None = None
         self.words: list[str] = []
         self.in_word = False
-        self.lines: list[tuple[int, tuple[int, int, int, int], str]] = []
+        self.lines: list[TextLine] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag == "page":
-            self.page += 1
-            self.width = float(values.get("width") or "0")
-            self.height = float(values.get("height") or "0")
-            if self.rotations[self.page - 1] in (90, 270):
-                self.width, self.height = self.height, self.width
+            self.pages.append(
+                Page(
+                    float(values.get("width") or "0"),
+                    float(values.get("height") or "0"),
+                    self.rotations[len(self.pages)],
+                )
+            )
         elif tag == "line":
-            if self.width <= 0 or self.height <= 0:
-                raise ExtractionInputError
             self.words = []
             self.box = (
-                round(float(values.get("xmin") or "0") / self.width * 10000),
-                round(float(values.get("ymin") or "0") / self.height * 10000),
-                round(float(values.get("xmax") or "0") / self.width * 10000),
-                round(float(values.get("ymax") or "0") / self.height * 10000),
+                float(values.get("xmin") or "0"),
+                float(values.get("ymin") or "0"),
+                float(values.get("xmax") or "0"),
+                float(values.get("ymax") or "0"),
             )
         elif tag == "word":
             self.in_word = True
@@ -218,7 +222,24 @@ class _Lines(HTMLParser):
         if tag == "word":
             self.in_word = False
         elif tag == "line" and self.box:
-            self.lines.append((self.page, self.box, " ".join(self.words)))
+            page = self.pages[-1]
+            width, height = page.display_size
+            if not page.valid:
+                raise ExtractionInputError
+            left, top, right, bottom = self.box
+            rotated = Region(
+                len(self.pages),
+                (
+                    round(left / width * 10000),
+                    round(top / height * 10000),
+                    round(right / width * 10000),
+                    round(bottom / height * 10000),
+                ),
+            )
+            region = Region(rotated.page, rotated.display_bbox(-page.rotation % 360))
+            self.lines.append(
+                TextLine(region, page.unrotate(self.box), " ".join(self.words))
+            )
             self.box = None
 
 
@@ -236,23 +257,49 @@ def _unreadable(page: int) -> dict[str, object]:
     }
 
 
-def _pdf_lines(data: bytes, rotations: tuple[int, ...]) -> list[tuple[Region, str]]:
+def _pdf_layout(data: bytes, rotations: tuple[int, ...]) -> _Lines:
     reader = _Lines(rotations)
     reader.feed(
         _poppler(["/usr/bin/pdftotext", "-bbox-layout", "-", "-"], data).decode(
             "utf-8", errors="replace"
         )
     )
-    return [
-        (Region(page, Region(page, box).display_bbox(-rotations[page - 1] % 360)), raw)
-        for page, box, raw in reader.lines
-    ]
+    return reader
+
+
+def _visible_pdf_regions(data: bytes, rotations: tuple[int, ...]) -> dict[Region, str]:
+    layout = _pdf_layout(data, rotations)
+    regions: dict[Region, str] = {}
+    for number, page in enumerate(layout.pages, start=1):
+        lines = [line for line in layout.lines if line.region.page == number]
+        if not page.valid or not 0 < len(lines) <= MAX_CANDIDATES:
+            continue
+        reference = page.reference(lines=lines, long_edge=REVIEW_LONG_EDGE)
+        if not reference:
+            continue
+        # The source's text metrics can lie. Verify the *painted* reference's
+        # own anchors, so a truncated box cannot hide a mismatched suffix.
+        projected = _pdf_layout(reference, (page.rotation,)).lines
+        with (
+            Image.open(BytesIO(_render_pdf_page(data, page=number))) as source,
+            Image.open(BytesIO(_render_pdf_page(reference, page=1))) as expected,
+        ):
+            regions.update(
+                matching_ink(
+                    source=source,
+                    reference=expected,
+                    lines=lines,
+                    projected=projected,
+                    rotation=page.rotation,
+                )
+            )
+    return regions
 
 
 def source_regions(
     *, data: bytes, content_type: str, rotations: tuple[int, ...]
 ) -> dict[Region, str]:
-    """Read anchors from the actual PDF or the exact hash-bound reviewed image."""
+    """Verify rendered PDF lines or use the exact hash-bound reviewed image."""
     if document_pages(data=data, content_type=content_type) != rotations:
         raise ExtractionInputError
     if content_type != "application/pdf":
@@ -262,11 +309,7 @@ def source_regions(
         ):
             return _SCAN_REGIONS.copy()
         return {}
-    regions: dict[Region, str] = {}
-    for region, text in _pdf_lines(data, rotations):
-        # Two lines at the same anchor cannot identify a single value.
-        regions[region] = "" if region in regions else text
-    return regions
+    return _visible_pdf_regions(data, rotations)
 
 
 def synthetic_document_extraction(content: str) -> str:
@@ -294,10 +337,15 @@ def synthetic_document_extraction(content: str) -> str:
         raise ExtractionInputError from error
     rows: list[dict[str, object]] = []
     if payload["content_type"] == "application/pdf":
-        for region, raw in sorted(
-            _pdf_lines(data, rotations),
-            key=lambda line: (line[0].page, line[0].bbox[1], line[0].bbox[0]),
+        for line in sorted(
+            _pdf_layout(data, rotations).lines,
+            key=lambda line: (
+                line.region.page,
+                line.region.bbox[1],
+                line.region.bbox[0],
+            ),
         ):
+            region, raw = line.region, line.text
             match = re.fullmatch(r"([a-z][a-z0-9_]{0,31}):\s*(.+)", raw)
             if match is None:
                 continue

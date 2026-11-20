@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 MAX_CANDIDATES: Final = 128
+MAX_RAW_TEXT: Final = 1024
 BBOX_LENGTH: Final = 4
 COORDINATE_SCALE: Final = 10000
 _SOURCE_LINE: Final = re.compile(
@@ -196,7 +197,7 @@ def _candidate(
             for key, limit in (
                 ("field", 32),
                 ("kind", 12),
-                ("raw_text", 1024),
+                ("raw_text", MAX_RAW_TEXT),
                 ("value", 128),
                 ("unit", 64),
                 ("reference_interval", 256),
