@@ -774,6 +774,39 @@ def test_empty_bucket_refusals_skip_database_and_emit_every_metric(
 
 
 @GATED
+def test_negative_preflight_does_not_rewrite_a_fresh_bucket_expiry(
+    metered_broker: str,
+    frozen_clock: dict[str, float],
+) -> None:
+    client = fairness._client()
+    key = f"{fairness._BUCKET_KEY_PREFIX}:{uuid4()}:ai-batch"
+    now = frozen_clock["t"]
+    args = (now, fairness.MAX_QUOTA_PER_MINUTE / 60.0, "expiry-proof")
+    client.hset(key, mapping={"tokens": 0, "touched": now})
+    seeded = client.hgetall(key)
+    # Use one Redis command-time snapshot to exercise an exactly equal
+    # deadline without relying on real-world arrivals in one millisecond.
+    check = (
+        "local function credit()\n"
+        + fairness._CREDIT_POSSIBLE_LUA
+        + """
+end
+redis.call('PEXPIRE', KEYS[1], 5000)
+assert(credit() == 0)
+local ttl = redis.call('PTTL', KEYS[1])
+for _ = 1, 64 do assert(credit() == 0) end
+return {redis.REDIS_VERSION_NUM or 0, ttl}
+"""
+    )
+    before = client.info("commandstats").get("cmdstat_pexpire", {}).get("calls", 0)
+    version, ttl = client.eval(check, 1, key, *args)
+    assert 119000 < ttl <= 120000
+    writes = client.info("commandstats")["cmdstat_pexpire"]["calls"] - before
+    assert writes == (2 if version >= 0x070200 else 66)
+    assert client.hgetall(key) == seeded
+
+
+@GATED
 def test_negative_preflight_never_refuses_when_actual_quota_admits(
     metered_broker: str,
     frozen_clock: dict[str, float],

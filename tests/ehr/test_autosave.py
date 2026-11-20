@@ -62,6 +62,7 @@ from apps.teleconsult.services import TeleconsultAccessDeniedError, create_sessi
 from apps.tenancy.db import tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.translation import gettext
 
@@ -912,6 +913,44 @@ def test_unscheduled_encounter_carries_the_draft_lifecycle(
     ):
         Encounter.objects.filter(pk=encounter.pk).update(unscheduled_reason="walk_in")
     assert_no_phi_in_audit(rbac_graph)
+
+
+def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
+    """Pin the timed tenant_context -> autosave path through transaction exit."""
+    _, template = seed(rbac_graph)
+    physician, enrolled = permission_actor(rbac_graph, "physician")
+    with as_actor(rbac_graph, physician):
+        encounter = open_walk_in(rbac_graph, enrolled)
+        version = create_draft(
+            clinic_id=rbac_graph.clinic_a,
+            encounter_id=encounter.pk,
+            template_id=template.pk,
+        )
+        first = save(rbac_graph, version.pk, 1)
+    assert (first.status, first.revision) == (AutosaveStatus.SAVED, 2)
+    before = len(audit_types(rbac_graph))
+    with (
+        runtime_role(),
+        CaptureQueriesContext(connection) as captured,
+        tenant_context(physician, rbac_graph.organization_a),
+    ):
+        result = save(rbac_graph, version.pk, 2, sections={**SECTIONS, "plan": "Novo"})
+    assert (result.status, result.revision) == (AutosaveStatus.SAVED, 3)
+    # Includes authority reads, savepoints, crypto, audit writes, inbox hint
+    # scope lookup, commit and GUC cleanup; setup and role switching are out.
+    assert len(captured) == 86
+    assert (
+        sum(
+            'FROM "ehr_drafteditstate"' in q["sql"] and "FOR UPDATE" in q["sql"]
+            for q in captured
+        )
+        == 1
+    )
+    assert audit_types(rbac_graph)[before:] == [
+        "ehr.record.viewed",
+        "ehr.record.viewed",
+        "ehr.document.saved",
+    ]
 
 
 # --------------------------------------------------------------------------

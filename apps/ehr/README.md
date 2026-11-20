@@ -82,7 +82,7 @@ episodes and unscheduled encounters.
   (`{clinic_id, version_id, expected_revision, editor_command_id,
   editor_session, sections, handover}` returns `{revision, saved_at, lock}`, or
   409 `{current_revision, diff}`). It is authorized exactly like an explicit
-  save and writes only through the unchanged `record_clinical_note` (H-2).
+  save and uses the same revision writer as `record_clinical_note` (H-2).
   `editor_command_id` is idempotent: a receipt binds it to the SHA-256 of the
   request, so a retry replays the acknowledgement and a reused key with other
   content is refused (`idempotency_mismatch`). A stale revision writes nothing
@@ -97,8 +97,8 @@ episodes and unscheduled encounters.
   still needs the current revision, so any other tab then gets the compare
   and cannot overwrite it.
 - `section_edit_epochs` counts one accepted edit per changed section. It is
-  advanced inside `record_clinical_note`, the single revision writer, so
-  explicit saves, autosaves and merges all count (todo 42 relies on this).
+  advanced inside the single revision writer, so explicit saves, autosaves and
+  merges all count (todo 42 relies on this).
 - `static/js/ehr-autosave.js` debounces 1.5 s, resends an unacknowledged
   command unchanged after a network failure ("Não salvo - tentando
   novamente"), shows "Salvo às HH:MM (revisão N)" only after the server's

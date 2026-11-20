@@ -230,15 +230,16 @@ def render_board(  # noqa: PLR0913 - one render needs its full response context
     today = clinic_local_today(board.timezone_key)
     partial = _is_htmx(request)
     rows = action_rows(board)
+    names = lane_labels(board)
     context: dict[str, object] = {
         "clinic_id": clinic_id,
         "board": board,
         "grid": board,
-        "names": lane_labels(board),
+        "names": names,
         "lane_kinds": {key: str(label) for key, label in LANE_KIND_LABELS.items()},
         "rows": grid_rows(board) if view in {"day", "week"} else [],
         "weeks": month_weeks(clinic_id, board, today) if view == "month" else [],
-        "list_days": list_days(rows) if view == "list" else [],
+        "list_days": list_days(rows, names) if view == "list" else [],
         "holds": [row for row in rows if "confirm" in row.item.actions],
         "month_total": sum(count.total for count in board.counts),
         "signature": signature(board),

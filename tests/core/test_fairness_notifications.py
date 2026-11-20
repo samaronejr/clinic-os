@@ -82,6 +82,49 @@ return allowed
 """
 
 
+def test_bucket_decisions_match_across_idle_expiry_with_clock_skew(
+    metered_broker: str,
+) -> None:
+    client = fairness._client()
+    prefix = f"{fairness._BUCKET_KEY_PREFIX}:{uuid4()}"
+    # Elapse Redis time by rebasing the actual expiry in one EVAL. The
+    # application timestamps are independent and can go backward.
+    replay = """
+local function advance(ms)
+  redis.call('PEXPIRE', KEYS[1], redis.call('PTTL', KEYS[1]) - ms)
+end
+local function decide(now, quota)
+  if credit(now, 100000 / 60, 'replay') == 0 then return 0 end
+  return bucket(quota, now, quota / 60, 'replay')
+end
+local first = decide(1000, 1)
+advance(1)
+local skewed = decide(999.998, 45000)
+advance(120500)
+local expired = decide(1120.498, 1)
+advance(30000)
+return {first, skewed, expired, decide(1150.498, 1)}
+"""
+
+    def decisions(key: str, credit: str, bucket: str) -> object:
+        script = (
+            "local function credit(...)\nlocal ARGV = {...}\n"
+            + credit
+            + "\nend\nlocal function bucket(...)\nlocal ARGV = {...}\n"
+            + bucket
+            + "\nend\n"
+            + replay
+        )
+        return client.eval(script, 1, key)
+
+    legacy = decisions(f"{prefix}:old", LEGACY_CREDIT, LEGACY_BUCKET)
+    assert legacy == [1, 0, 1, 0]
+    assert (
+        decisions(f"{prefix}:new", fairness._CREDIT_POSSIBLE_LUA, fairness._BUCKET_LUA)
+        == legacy
+    )
+
+
 def test_registered_completion_before_wait_fans_out_without_streams(
     metered_broker: str, frozen_clock: dict[str, float]
 ) -> None:

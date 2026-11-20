@@ -264,6 +264,7 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
     if clinic is None:
         return Workspace(user.get_username(), None, others, ())
     view_name = request.resolver_match.view_name
+    # A timed grant can change since clinic discovery, even in one request.
     granted = granted_permissions(clinic.id)
     navigation = build_navigation(
         clinic_id=clinic.id,
