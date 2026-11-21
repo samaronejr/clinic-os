@@ -1387,7 +1387,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
                         if suite in {"agenda", "reminders", "messages", "resilience"}
                         or suite in VIDEO_SUITES
-                        or suite == "document-verification"
+                        or suite in SIGNING_SUITES
                         else {}
                     ),
                     # Realtime workers store leases on the served stream's broker.
