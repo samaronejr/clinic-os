@@ -1870,6 +1870,73 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
         assert "CLINIC_UNRELATED_SECRET" not in environment
 
 
+@pytest.mark.parametrize("suite", sorted(runner.SIGNING_SUITES))
+@pytest.mark.parametrize("engine", runner.ENGINES)
+def test_signing_suites_export_the_app_worker_dsn(
+    suite: str, engine: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = runner.ProvisionedDatabase(
+        app_dsn="postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic",
+        app_password="",
+        container="unused",
+        database="clinic",
+        owner_dsn="postgresql://clinic_owner:synthetic@127.0.0.1:55432/clinic",
+        owner_password="",
+        port=55432,
+        postgres_password="",
+        super_dsn="",
+        super_password="",
+        volume="unused",
+    )
+    monkeypatch.delenv("CLINIC_RENEWAL_APP_DATABASE_URL", raising=False)
+    monkeypatch.setattr(runner, "_resolve_browser", lambda _engine: "/unused")
+    monkeypatch.setattr(runner, "_capture_source", lambda *_args: ({}, "digest"))
+    monkeypatch.setattr(
+        runner, "_provision_database", lambda *_args: contextlib.nullcontext(database)
+    )
+    monkeypatch.setattr(runner, "_migrate", lambda *_args: None)
+    monkeypatch.setattr(
+        runner,
+        "_seed",
+        lambda *_args: dict.fromkeys(
+            ("clinic_id", "organization_id", "username", "password"), "fixture"
+        ),
+    )
+    monkeypatch.setattr(runner, "_require_app_role", lambda _dsn: None)
+    monkeypatch.setattr(runner, "reserve_port", lambda: 48000)
+    monkeypatch.setattr(
+        runner, "realtime_broker", lambda *_args, **_kwargs: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(runner, "broker_tap", lambda *_args: contextlib.nullcontext())
+    monkeypatch.setattr(runner, "start_master", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner, "wait_until_ready", lambda *_args: None)
+    monkeypatch.setattr(
+        runner,
+        "browser_endpoint",
+        lambda *_args, **_kwargs: contextlib.nullcontext(48000),
+    )
+    monkeypatch.setattr(runner, "scan_suite_runtime", lambda **_kwargs: None)
+    monkeypatch.setattr(runner, "_flagship_report", lambda *_args: {})
+    monkeypatch.setenv("REALTIME_REDIS_URL", "redis://127.0.0.1:65431/1")
+    captured: dict[str, str] = {}
+
+    def fake_run(
+        _argv: list[str], environment: dict[str, str], *_args: object, **_kwargs: object
+    ) -> int:
+        captured.update(environment)
+        (tmp_path / "browser" / f"junit-{suite}.xml").write_text(
+            '<testsuite tests="1" failures="0" errors="0" skipped="0"/>',
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(runner, "_run_bounded", fake_run)
+    runner._run_browser_suite(REPOSITORY, suite, tmp_path, tmp_path, None, engine)
+
+    assert captured["CLINIC_BROWSER_ENGINE"] == engine
+    assert captured["CLINIC_RENEWAL_WORKER_DATABASE_URL"] == database.app_dsn
+
+
 def test_realtime_suites_lend_workers_the_served_broker_only() -> None:
     key = "CLINIC_RENEWAL_REALTIME_REDIS_URL"
     tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
