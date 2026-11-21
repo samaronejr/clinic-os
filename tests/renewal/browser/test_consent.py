@@ -24,7 +24,13 @@ from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
-from renewal.browser.test_encounter import FIELDS, press, press_in_view, seed
+from renewal.browser.test_encounter import (
+    FIELDS,
+    press,
+    press_in_view,
+    registered_physician,
+    seed,
+)
 from renewal.browser.test_patient_access import _redeem, _watch_errors
 from renewal.browser.test_retention import (
     csrf,
@@ -374,7 +380,7 @@ def test_recording_accepted_ai_refused_manual_soap_saved(
     """Record distinct patient choices and continue the encounter without AI."""
     browser = renewal_page.context.browser
     assert browser is not None
-    staff = availability_staff
+    staff = registered_physician(availability_staff)
     base = renewal_base_url
     clinic = staff["clinic_a"]
     staff_url = f"{base}/clinics/{clinic}/consent/"
