@@ -308,6 +308,9 @@ def recording_choice(page: Page, text: str) -> None:
     expect(page.locator("#consent-text")).to_have_text(text)
     page.locator("#id_accepted").check()
     press(page, "accept")
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
+        gettext("Consent recorded. Your receipt remains available below.")
+    )
     receipt = page.locator('[data-receipt][data-state="accepted"]')
     expect(receipt).to_have_count(1)
     expect(receipt.get_by_role("heading")).to_contain_text(label)
@@ -321,6 +324,9 @@ def ai_refusal(page: Page, text: str) -> None:
     expect(page.locator("#consent-text")).to_have_text(text)
     expect(page.locator("#id_accepted")).not_to_be_checked()
     press(page, "refuse")
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
+        gettext("Refusal recorded. Your care remains available.")
+    )
     refusals = page.get_by_role("region", name=gettext("Refusals"))
     expect(refusals.get_by_role("heading", level=3)).to_contain_text(label)
     expect(refusals.locator("article p")).to_contain_text(gettext("Refused"))
@@ -343,8 +349,12 @@ def record_encounter_refusal(page: Page, staff_url: str, encounter_url: str) -> 
         gettext("I informed the patient about AI assistance.")
     ).check()
     disclosure.get_by_label(gettext("The patient refused AI assistance.")).check()
-    press(page, "disclosure")
-    expect(page.get_by_role("status")).to_have_text(
+    response = click_to_navigate(
+        disclosure.get_by_role("button", name=gettext("Record disclosure"))
+    )
+    assert response is not None
+    assert response.ok, response.status
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
         gettext("AI-use disclosure recorded.")
     )
     goto_settled(page, encounter_url)
@@ -360,14 +370,22 @@ def save_manual_soap(page: Page) -> None:
         "Avaliação sintética",
         "Plano sintético sem assistência de IA",
     )
+    form = page.locator("#soap-form")
     for field, text in zip(FIELDS, note, strict=True):
-        page.locator(f"#id_{field}").fill(text)
+        form.locator(f"#id_{field}").fill(text)
     press(page, "save")
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saved")
-    expect(page.locator("[data-saved-revision]")).to_have_text("2")
-    reload_settled(page)
+    revision = page.locator("[data-saved-revision]")
+    expect(revision).to_have_text("2")
+    response = reload_settled(page)
+    assert response is not None
+    assert response.ok, response.status
+    expect(revision).to_have_text("2")
     for field, text in zip(FIELDS, note, strict=True):
-        expect(page.locator(f"#id_{field}")).to_have_value(text)
+        textarea = form.locator(f"#id_{field}")
+        # Verify the new document contains the value, not just form restoration.
+        expect(textarea).to_have_text(text)
+        expect(textarea).to_have_value(text)
     page.locator("#save-state").scroll_into_view_if_needed()
 
 
@@ -428,7 +446,15 @@ def test_recording_accepted_ai_refused_manual_soap_saved(
                 "button", name=gettext("Review source-linked AI suggestions")
             )
         )
-        expect(page.locator("[data-review-unavailable]")).to_be_visible()
+        unavailable = page.locator("[data-review-unavailable]")
+        expect(unavailable).to_be_visible()
+        expect(unavailable).to_have_text(
+            gettext(
+                "AI drafting is unavailable. It requires a final transcript, "
+                "separate current AI consent, informed disclosure and an enabled "
+                "organization policy. Manual notes remain available."
+            )
+        )
         expect(page.locator('button[value="generate"]:enabled')).to_have_count(0)
         capture(page, renewal_artifact_root, "scribe-unavailable", viewport["width"])
         click_to_navigate(
