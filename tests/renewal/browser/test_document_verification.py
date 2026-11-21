@@ -243,6 +243,7 @@ def drive_signature(
     expect(page.locator("[data-state]")).to_have_attribute("data-state", "prepared")
     operation = _operation_row(staff, document)
     assert (operation["state"], operation["operation_ref"]) == ("prepared", "")
+    # The parent holds fixture-owner credentials for seeding, not dispatch.
     result = subprocess.run(  # noqa: S603 - fixed entrypoint and fixture-owned UUID
         [
             sys.executable,
@@ -252,12 +253,15 @@ def drive_signature(
             operation["id"],
         ],
         env={
-            **os.environ,
             "APP_DATABASE_URL": worker_dsn(),
+            "CELERY_BROKER_URL": "memory://",
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
+            "CLINIC_SECRET_BACKEND": os.environ["CLINIC_SECRET_BACKEND"],
+            "CLINIC_SECRET_DIR": os.environ["CLINIC_SECRET_DIR"],
             "PRESCRIPTION_SYNTHETIC_SIGNING": "true",
             "CLINIC_SYNTHETIC_FAULTS": f"signing={fault}" if fault else "",
+            "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": os.pathsep.join((".", "tests")),
         },
         capture_output=True,
