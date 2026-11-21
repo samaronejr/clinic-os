@@ -1,4 +1,3 @@
 availability
-clinical-inbox
 patient
 scheduling
