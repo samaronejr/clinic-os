@@ -58,6 +58,7 @@ from apps.prescription.signing import (
     retry_dispatch,
     signature_status,
 )
+from apps.prescription.tasks import execute_signature
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
@@ -100,6 +101,21 @@ def _unavailable_provider(name: str) -> SyntheticSignatureProvider:
     raise SignatureProviderUnavailableError
 
 
+def run_signature_task(operation_id: UUID) -> None:
+    """Drive a committed operation through the real task in a non-broker test."""
+    with runtime_role():
+        execute_signature.apply(kwargs={"operation_id": str(operation_id)}, throw=True)
+
+
+def dispatch_prepared_document(graph: RbacGraph, document_id: UUID) -> None:
+    """Advance a document from the committed HTTP intent to provider acceptance."""
+    with owner_scope(graph.organization_a):
+        operation = SignatureOperation.objects.get(
+            document_id=document_id, state="prepared"
+        )
+    run_signature_task(operation.pk)
+
+
 @dataclass
 class SigningSetup:
     graph: RbacGraph
@@ -109,17 +125,20 @@ class SigningSetup:
     request: HttpRequest
     provider: SyntheticSignatureProvider
 
-    def request_signature(self) -> SignatureOperation:
+    def enqueue_signature(self) -> SignatureOperation:
         with (
             runtime_role(),
             tenant_context(self.graph.physician, self.graph.organization_a),
         ):
-            operation = request_signature(
+            return request_signature(
                 request=self.request,
                 clinic_id=self.graph.clinic_a,
                 document_id=self.document.pk,
             )
-        # Dispatch runs on commit; the returned row reflects post-commit state.
+
+    def request_signature(self) -> SignatureOperation:
+        operation = self.enqueue_signature()
+        run_signature_task(operation.pk)
         return self.refresh(operation)
 
     def initiate(self) -> SignatureOperation:
@@ -441,7 +460,7 @@ def test_delayed_signature_requires_current_authorization(
 def test_stale_retry_requires_renewed_authorization(
     setup: SigningSetup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Re-dispatch after the deadline cannot turn expired authority into issuance."""
+    """A late broker task must not submit to the signer on expired authority."""
     graph = setup.graph
     operation = setup.initiate()
     setup.prepare(operation.pk)
@@ -450,13 +469,19 @@ def test_stale_retry_requires_renewed_authorization(
     _advance_clocks(monkeypatch, timedelta(minutes=10))
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         retry_dispatch(clinic_id=graph.clinic_a, operation_id=operation.pk)
+    assert setup.refresh(operation).state == "prepared"
+
+    def unexpected_provider(name: str) -> SyntheticSignatureProvider:
+        pytest.fail("expired queued approval reached the provider boundary")
+
+    monkeypatch.setattr(signing, "signature_provider_for", unexpected_provider)
+    run_signature_task(operation.pk)
     operation = setup.refresh(operation)
-    assert operation.state == "signing"
-    headers, body = setup.callback(operation)
-    assert setup.receive(headers, body) == "applied"
-    operation = setup.refresh(operation)
-    assert operation.state == "failed"
-    assert operation.failure_reason == "authorization_expired"
+    assert (operation.state, operation.operation_id, operation.failure_reason) == (
+        "failed",
+        "",
+        "authorization_expired",
+    )
 
 
 def test_failed_physician_evidence_blocks_and_recovers(
@@ -813,6 +838,9 @@ def test_http_signing_flow_and_authenticated_callback(
             status_url = response.headers["Location"]
             page = client.get(status_url)
             assert page.status_code == 200
+            assert b'data-state="prepared"' in page.content
+            dispatch_prepared_document(rbac_graph, document.pk)
+            page = client.get(status_url)
             assert b'data-state="signing"' in page.content
         with (
             runtime_role(),
@@ -909,6 +937,7 @@ def test_http_failed_operation_recovers_through_rendered_controls(
             )
             assert response.status_code == 302
             status_url = response.headers["Location"]
+        dispatch_prepared_document(rbac_graph, document.pk)
         with (
             runtime_role(),
             tenant_context(rbac_graph.physician, rbac_graph.organization_a),
@@ -957,6 +986,9 @@ def test_http_failed_operation_recovers_through_rendered_controls(
             assert restarted.headers["Location"] != status_url
             fresh_page = client.get(restarted.headers["Location"])
             assert fresh_page.status_code == 200
+            assert b'data-state="prepared"' in fresh_page.content
+            dispatch_prepared_document(rbac_graph, document.pk)
+            fresh_page = client.get(restarted.headers["Location"])
             assert b'data-state="signing"' in fresh_page.content
         with (
             runtime_role(),

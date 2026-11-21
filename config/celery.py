@@ -11,8 +11,8 @@ isolated and fail-open, while ``ai-batch`` and ``bulk`` are metered by the
 per-organization token buckets in ``apps.core.fairness``. Routes match task
 name prefixes; autodiscovered tasks are named by module path, so the
 ``apps.<app>.tasks.*`` entries route each domain's future tasks, and the
-explicit ``comms.*`` names keep the existing outbox tasks on the unchanged
-``clinic-integrations`` queue.
+explicit outbox names keep those tasks on the unchanged ``clinic-integrations``
+queue.
 """
 
 import logging
@@ -46,6 +46,7 @@ app.conf.update(
     task_routes={
         # Existing comms outbox tasks keep their queue; never renamed.
         "comms.*": {"queue": "clinic-integrations"},
+        "prescription.dispatch_signature": {"queue": "clinic-integrations"},
         # Future domain tasks route by module path (autodiscovered name).
         "apps.ehr.tasks.*": {"queue": "clinical"},
         "apps.scheduling.tasks.*": {"queue": "clinical"},

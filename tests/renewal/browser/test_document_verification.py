@@ -22,7 +22,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, worker_dsn
-from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
@@ -236,12 +236,47 @@ def _complete_step_up(page: Page, staff: dict[str, str]) -> None:
     click_to_navigate(page.locator("button[type=submit]"))
 
 
-def _press_sign(page: Page, staff: dict[str, str]) -> None:
+def drive_signature(
+    page: Page, staff: dict[str, str], document: str, *, fault: str = ""
+) -> str:
+    """Wait for the supervised fixture worker, then refetch persisted status."""
+    expect(page.locator("[data-state]")).to_have_attribute("data-state", "prepared")
+    operation = _operation_row(staff, document)
+    assert (operation["state"], operation["operation_ref"]) == ("prepared", "")
+    result = subprocess.run(  # noqa: S603 - fixed entrypoint and fixture-owned UUID
+        [
+            sys.executable,
+            "-c",
+            "import django; django.setup(); "
+            "from renewal.signature_worker import main; main()",
+            operation["id"],
+        ],
+        env={
+            **os.environ,
+            "APP_DATABASE_URL": worker_dsn(),
+            "DJANGO_SETTINGS_MODULE": "config.settings.base",
+            "CLINIC_DATA_MODE": "synthetic",
+            "PRESCRIPTION_SYNTHETIC_SIGNING": "true",
+            "CLINIC_SYNTHETIC_FAULTS": f"signing={fault}" if fault else "",
+            "PYTHONPATH": os.pathsep.join((".", "tests")),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    reload_settled(page)
+    return result.stdout.strip()
+
+
+def _press_sign(page: Page, staff: dict[str, str], document: str) -> None:
     """Submit the sign action, completing step-up when the flow demands it."""
     click_to_navigate(page.locator('button[value="sign_document"]').first)
     if "/auth/step-up/" in page.url:
         _complete_step_up(page, staff)
         click_to_navigate(page.locator('button[value="sign_document"]').first)
+    assert drive_signature(page, staff, document) == "signing"
     expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
 
 
@@ -456,7 +491,7 @@ def issue_certificate_and_reject_stale(
     document_id = page.locator("[data-document]").get_attribute("data-document")
     assert document_id is not None
     document = _document_row(staff, document_id)
-    _press_sign(page, staff)
+    _press_sign(page, staff, document_id)
     _post_callback(page, base, document_id, staff)
     goto_settled(page, page.url)
     expect(page.locator("[data-result]")).to_have_attribute(
@@ -542,7 +577,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         _capture(page, root, "rendered")
         document = page.locator("[data-document]").first.get_attribute("data-document")
         assert document
-        _press_sign(page, staff)
+        _press_sign(page, staff, document)
         _post_callback(page, base, document, staff)
         goto_settled(page, draft_url)
         expect(page.locator("[data-document]").first).to_contain_text("Ensaio")
@@ -627,7 +662,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         newer = page.locator("[data-document]").last.get_attribute("data-document")
         assert newer is not None
         assert newer != document
-        _press_sign(page, staff)
+        _press_sign(page, staff, newer)
         _post_callback(page, base, newer, staff)
         goto_settled(page, draft_url)
         superseded = goto_settled(anon, verify_url)

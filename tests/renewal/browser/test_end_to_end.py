@@ -87,6 +87,7 @@ from renewal.browser.test_document_verification import (
     SYNTHETIC_SECRET,
     _document_row,
     _operation_row,
+    drive_signature,
 )
 from renewal.browser.test_document_verification import _worker as delivery_worker
 from renewal.browser.test_encounter import press, press_in_view
@@ -971,6 +972,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
         signature_recovers(case, physician, review_url, document)
     else:
         press_stepped(physician, case.staff, "sign_document")
+        assert drive_signature(physician, case.staff, document) == "signing"
     signing_url = physician.url
     expect(physician.locator("[data-state]")).to_have_attribute("data-state", "signing")
     provider_signs(physician, case, document)
@@ -1006,7 +1008,10 @@ def signature_recovers(
         answer_challenge(physician, case.staff)
         results = concurrent_sign(physician, review_url)
     assert [status for status, _ in results] == [302, 302], results
-    assert operations(case.staff, document) == [("signing", "")]
+    assert operations(case.staff, document) == [("prepared", "")]
+    status_url = f"{case.base}{results[0][1]}"
+    goto_settled(physician, status_url)
+    assert drive_signature(physician, case.staff, document) == "signing"
     headers, body = failed_callback(case.staff, document)
     response = physician.request.post(
         f"{case.base}{CALLBACK_PATH}",
@@ -1018,6 +1023,7 @@ def signature_recovers(
     expect(physician.locator("[data-state]")).to_have_attribute("data-state", "failed")
     capture(case, physician, "signature-provider-failed")
     press_stepped(physician, case.staff, "restart_signature")
+    assert drive_signature(physician, case.staff, document) == "signing"
     assert operations(case.staff, document) == [
         ("failed", "provider_reported"),
         ("signing", ""),

@@ -225,11 +225,12 @@ re-run the same command.
 Celery workloads are split across seven queues so one tenant's bulk or AI
 burst cannot delay another tenant's clinical work. Queue names are declared
 in `config/celery.py` and tasks route by module prefix; the existing
-`comms.*` outbox tasks stay on `clinic-integrations`.
+`comms.*` outbox tasks and `prescription.dispatch_signature` use
+`clinic-integrations`.
 
 | Queue | Workload |
 | --- | --- |
-| `clinic-integrations` | comms outbox operations and reminder dispatch (existing) |
+| `clinic-integrations` | comms outbox, reminder dispatch, and prescription signing |
 | `clinical` | chart-facing tasks; isolated and fail-open under a Redis outage |
 | `ai-interactive` | latency-sensitive AI work (for example scribe chunk processing) |
 | `ai-batch` | deferred AI work (drafting, extraction); per-tenant quota |

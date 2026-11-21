@@ -7,7 +7,7 @@ Every transition is a guarded state change on ``SignatureOperation``:
   subject. No provider call and no signature exist yet.
 - ``prepare_signature`` runs task-31's fresh step-up plus current physician
   evidence check and snapshots the validated evidence onto the operation.
-- ``dispatch_signature`` runs after commit on stored scope only: it calls
+- A Celery task runs ``dispatch_signature`` after commit on stored scope: it calls
   the provider outside any transaction, then binds the returned provider
   operation reference while moving to ``signing``.
 - ``receive_signature_callback`` authenticates the raw provider callback
@@ -381,24 +381,28 @@ def request_signature(
     clinic_id: UUID,
     document_id: UUID,
 ) -> SignatureOperation:
-    """Initiate, verify and prepare one operation; dispatch after commit.
+    """Initiate, verify and prepare one operation; enqueue only after commit.
 
-    The provider call itself never runs inside the tenant transaction:
-    the committed operation is dispatched through ``dispatch_signature``,
-    which re-enters stored scope like the shared integration boundary.
+    The prepared signature is the durable outbox record. The worker receives
+    only its local UUID, and resolves stored scope before calling the provider.
     """
     operation = initiate_signature(clinic_id=clinic_id, document_id=document_id)
     operation = _prepare_signature(
         request=request, clinic_id=clinic_id, operation_id=operation.pk
     )
-    transaction.on_commit(lambda: _dispatch_safely(operation.pk))
+    transaction.on_commit(lambda: _publish_dispatch(operation.pk))
     return operation
 
 
-def _dispatch_safely(operation_id: UUID) -> None:
-    """Dispatch one committed operation; failures stay recoverable."""
+def _publish_dispatch(operation_id: UUID) -> None:
+    """Publish committed intent; a failed publish leaves it prepared for retry."""
+    from ops.release.activation import require_live_runtime  # noqa: PLC0415
+
+    from apps.prescription.tasks import execute_signature  # noqa: PLC0415
+
     try:
-        dispatch_signature(operation_id)
+        require_live_runtime(os.environ)
+        execute_signature.apply_async(kwargs={"operation_id": str(operation_id)})
     except Exception:
         logger.exception("prescription signature dispatch failed")
 
@@ -531,6 +535,12 @@ def _dispatch_request(scope: _SignatureScope) -> SignatureRequest | None:
         )
         if operation is None or operation.state != SignatureOperation.State.PREPARED:
             return None
+        if (
+            operation.authorized_until is None
+            or utc_now() >= operation.authorized_until
+        ):
+            reason = "authorization_expired"
+            raise ClinicalConflictError(reason)
         require_issuance_class(category=operation.category)
         document = operation.document
         require_current_document(document)
@@ -626,7 +636,7 @@ def _dispatch_claimed(scope: _SignatureScope) -> DispatchResult:
     ) as error:
         return _fail_and_report(
             scope,
-            "stale_document_approval"
+            error.reason_code
             if isinstance(error, ClinicalConflictError)
             else "authorization_revoked",
         )
@@ -997,7 +1007,7 @@ def retry_dispatch(
     if operation.state != SignatureOperation.State.PREPARED:
         reason = "invalid_state"
         raise ClinicalConflictError(reason)
-    transaction.on_commit(lambda: _dispatch_safely(operation.pk))
+    transaction.on_commit(lambda: _publish_dispatch(operation.pk))
     _signature_event(operation.pk, clinic_id, "dispatch_retried")
     return operation
 

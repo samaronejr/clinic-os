@@ -119,6 +119,15 @@ entry. Drafts confer no signing authority, patient release, signature,
 RNDS/SNCR exchange or live readiness. Later issuance must separately require the
 approved category contract and fresh physician/signer verification.
 
+`SignatureOperation` in `prepared` is the signing outbox. A request or retry
+publishes only its local UUID after commit to `prescription.dispatch_signature`
+on `clinic-integrations`. The late-acknowledged task resolves stored scope,
+rechecks the approved document and calls the provider outside the transaction.
+The local operation UUID is the provider idempotency key across redelivery.
+The status page can show `prepared` until the worker has bound a provider
+reference; a failed publish or transient failure leaves the same operation
+available for an explicit retry. `signing` is acceptance, not issuance.
+
 ## Issuance command and recorded SNCR allocation
 
 `issue_prescription(*, clinic_id, document_id, command_id)` derives the current
