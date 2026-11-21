@@ -263,6 +263,8 @@ def test_route_table_maps_task_modules_to_queues() -> None:
         assert routes[pattern]["queue"] == queue
     routed = celery_app.amqp.router.route({}, "comms.execute_operation")
     assert routed["queue"].name == "clinic-integrations"
+    routed = celery_app.amqp.router.route({}, "prescription.dispatch_signature")
+    assert routed["queue"].name == "clinic-integrations"
     routed = celery_app.amqp.router.route({}, "apps.ai.tasks.draft")
     assert routed["queue"].name == "ai-batch"
     routed = celery_app.amqp.router.route({}, "apps.interop.tasks.commit_batch")

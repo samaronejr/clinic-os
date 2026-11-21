@@ -147,8 +147,10 @@ def signature_capability() -> SignatureCapability:
 class CallbackSignatureProvider(Protocol):
     """Existing callback contract retained for synthetic compatibility.
 
-    ``begin`` runs outside the tenant transaction and returns only an
-    operation reference. ``authenticate_callback`` verifies the raw
+    ``begin`` runs outside the tenant transaction. It must atomically create
+    or look up acceptance by the immutable ``SignatureRequest.operation_id``:
+    a replay returns the original reference without starting another signature.
+    ``authenticate_callback`` verifies the raw
     provider callback before any stored operation or tenant is resolved.
     ``verify_signature`` checks the synthetic envelope against expected
     bytes and signer. It is not qualified certificate verification.
@@ -157,7 +159,7 @@ class CallbackSignatureProvider(Protocol):
     provider: str
 
     def begin(self, request: SignatureRequest) -> SignatureAcceptance:
-        """Open the provider-side signing operation or raise a typed error."""
+        """Return the original or newly created provider acceptance."""
         ...
 
     def authenticate_callback(

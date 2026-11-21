@@ -27,7 +27,7 @@ def event_process(
     cwd: Path,
     environment: Mapping[str, str] | None,
     ready_line: str,
-) -> Iterator[None]:
+) -> Iterator[subprocess.Popen[str]]:
     """Subscribe to stdout before startup; bound readiness and process shutdown."""
     ready = Event()
     process = subprocess.Popen(  # noqa: S603 - fixed caller-owned argv, no shell
@@ -52,10 +52,9 @@ def event_process(
     try:
         assert ready.wait(timeout=90), "process did not publish its readiness event"
         assert process.poll() is None, "process exited before readiness"
-        yield
+        yield process
     finally:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGTERM)
+        process.terminate()
         try:
             process.wait(timeout=15)
         except subprocess.TimeoutExpired:
