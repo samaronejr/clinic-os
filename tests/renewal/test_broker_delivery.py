@@ -300,6 +300,7 @@ def test_revoked_contact_cancels_at_send_time(
         dispatch_due_reminders()
     with worker.start():
         assert delivery(broker, operation_id).outcome == "cancelled"
+    assert _status(setup, operation_id) == "cancelled"
     assert _event_count(setup, operation_id, "comms.operation.succeeded") == 0
 
 

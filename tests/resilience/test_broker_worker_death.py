@@ -18,11 +18,11 @@ from apps.prescription.models import (
 )
 from apps.prescription.signing import request_signature
 from apps.tenancy.db import tenant_context
+from django.db import connection
 
 from patient_service_support import runtime_role
 from renewal.broker_support import (
     QUEUE,
-    Delivery,
     broker,
     broker_url,
     delivery,
@@ -89,9 +89,12 @@ def test_messaging_redelivery_after_provider_acceptance(
                 None,
                 1,
             )
-        assert delivery(broker, operation_id) == Delivery(
-            task_id, redelivered=True, outcome="reconcile"
-        )
+        completed = delivery(broker, operation_id)
+    assert (completed.task_id, completed.redelivered) == (task_id, True)
+    assert ledger.read_text().splitlines() == [f"synthetic:sms:{operation_id}"], (
+        "messaging redelivery repeated the provider effect"
+    )
+    assert completed.outcome == "reconcile"
     # Without an authoritative lookup the safe final state retains ambiguity.
     # The second claim reconciles; it neither invokes send nor invents a receipt.
     operation = _operation(setup.organization_id, operation_id)
@@ -104,7 +107,6 @@ def test_messaging_redelivery_after_provider_acceptance(
         None,
         2,
     )
-    assert ledger.read_text().splitlines() == [f"synthetic:sms:{operation_id}"]
 
 
 def test_signing_redelivery_after_provider_acceptance(
@@ -125,24 +127,40 @@ def test_signing_redelivery_after_provider_acceptance(
         assert broker.llen(QUEUE) == 0
     assert broker.llen(QUEUE) == 1
     with worker.start(CLINIC_GATE_EFFECT_LEDGER=str(ledger)) as process:
-        accepted = f"synop-{operation.pk.hex}"
         with _accepted_before_sigkill(broker, process.pid) as task_id:
-            assert ledger.read_text().splitlines() == [accepted]
+            accepted_effects = ledger.read_text().splitlines()
+            assert len(accepted_effects) == 1
             held = setup.refresh(operation)
             assert (held.state, held.operation_id, held.signed_bytes) == (
                 "prepared",
                 "",
                 None,
             )
-        assert delivery(broker, operation.pk) == Delivery(
-            task_id, redelivered=True, outcome="signing"
-        )
-    assert ledger.read_text().splitlines() == [accepted]
-    # Redelivery really repeated begin; only the original provider effect exists.
-    assert ledger.with_suffix(".begins").read_text().splitlines() == [
-        accepted,
-        accepted,
-    ]
+            with runtime_role(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT activity.application_name "
+                    "FROM pg_catalog.pg_locks AS held "
+                    "JOIN pg_catalog.pg_stat_activity AS activity USING (pid) "
+                    "WHERE held.locktype = 'advisory' AND held.granted "
+                    "AND activity.datname = pg_catalog.current_database() "
+                    "AND activity.application_name "
+                    "IN ('f7-gate-default', 'f7-gate-locks')"
+                )
+                assert cursor.fetchall() == [("f7-gate-locks",)], (
+                    "signing advisory lock was not held on the locks alias"
+                )
+        completed_delivery = delivery(broker, operation.pk)
+    assert (completed_delivery.task_id, completed_delivery.redelivered) == (
+        task_id,
+        True,
+    )
+    assert ledger.read_text().splitlines() == accepted_effects, (
+        "signing redelivery repeated the provider effect"
+    )
+    accepted = f"synop-{operation.pk.hex}"
+    assert accepted_effects == [f"{operation.pk} {accepted}"]
+    assert ledger.with_suffix(".lookups").read_text().splitlines() == accepted_effects
+    assert completed_delivery.outcome == "signing"
     bound = setup.refresh(operation)
     assert (bound.state, bound.operation_id) == ("signing", accepted)
     callback = setup.callback(bound)

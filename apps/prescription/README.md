@@ -123,7 +123,14 @@ approved category contract and fresh physician/signer verification.
 publishes only its local UUID after commit to `prescription.dispatch_signature`
 on `clinic-integrations`. The late-acknowledged task resolves stored scope,
 rechecks the approved document and calls the provider outside the transaction.
-The local operation UUID is the provider idempotency key across redelivery.
+The session lock uses the direct `locks` alias, not the transaction pool.
+Like the shared integration outbox, redelivery must not repeat a provider
+effect whose local receipt might not have committed. Signing's `begin` is a
+create-or-lookup keyed by the immutable local operation UUID: if the provider
+already accepted it, the same call returns the durable reference without
+submitting new work. An adapter without this provider-side guarantee cannot
+use the signing dispatch contract; messaging without an authoritative lookup
+instead retains the in-progress operation for reconciliation.
 The status page can show `prepared` until the worker has bound a provider
 reference; a failed publish or transient failure leaves the same operation
 available for an explicit retry. `signing` is acceptance, not issuance.

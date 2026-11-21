@@ -11,11 +11,12 @@ from apps.comms.channel_adapters import SMSReminderAdapter
 from apps.core.integration import register_send_adapter
 from apps.prescription.signature_provider import (
     SYNTHETIC_PROVIDER,
+    SignatureAcceptance,
     SyntheticSignatureProvider,
     signature_provider_for,
 )
 from celery import current_task
-from django.db import connection
+from django.db import connection, connections
 from redis import Redis
 
 from resilience.death_worker import record_effect
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
     from apps.comms.adapters import SendResult
     from apps.prescription.signature_provider import (
         CallbackSignatureProvider,
-        SignatureAcceptance,
         SignatureRequest,
     )
 
@@ -63,19 +63,26 @@ class _SigningProvider(SyntheticSignatureProvider):
         self.ledger = ledger
 
     def begin(self, request: SignatureRequest) -> SignatureAcceptance:
-        acceptance = super().begin(request)
-        reference = acceptance.operation_ref
-        record_effect(self.ledger.with_suffix(".begins"), reference)
+        key = str(request.operation_id)
         prior = self.ledger.read_text().splitlines() if self.ledger.exists() else []
-        if reference not in prior:
-            record_effect(self.ledger, reference)
-            if not prior:
-                _hold_after_acceptance()
+        for entry in prior:
+            accepted_key, reference = entry.split(maxsplit=1)
+            if accepted_key == key:
+                record_effect(self.ledger.with_suffix(".lookups"), entry)
+                return SignatureAcceptance(operation_ref=reference)
+        acceptance = super().begin(request)
+        record_effect(self.ledger, f"{key} {acceptance.operation_ref}")
+        if not prior:
+            _hold_after_acceptance()
         return acceptance
 
 
 def install(ledger: Path) -> None:
     """Leave production prepare, claim, provider-key derivation and bind intact."""
+    # Both aliases use the test PG endpoint; label the sessions so the
+    # parent can identify which backend actually owns the signing lock.
+    for alias in ("default", "locks"):
+        connections.databases[alias]["OPTIONS"]["application_name"] = f"f7-gate-{alias}"
     register_send_adapter(_MessagingProvider(ledger))
 
     def provider_for(name: str) -> CallbackSignatureProvider:

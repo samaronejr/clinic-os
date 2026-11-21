@@ -487,12 +487,11 @@ def _stored_scope_context(scope: _SignatureScope) -> Iterator[None]:
 def _operation_lock(operation_id: UUID) -> Iterator[bool]:
     """Hold the operation's session advisory lock on a dedicated connection.
 
-    The lock lives on its own connection so it survives the claim
-    transaction's commit and is held for the whole dispatch boundary. A
-    duplicate dispatch that cannot take the lock reconciles without
-    mutating, so it can never double-submit a live provider operation.
+    The direct/session alias keeps the lock on this connection across
+    commits and releases it when the connection closes, even on worker loss.
+    A duplicate dispatch that cannot take the lock reconciles without mutating.
     """
-    lock_connection = connections.create_connection("default")
+    lock_connection = connections.create_connection("locks")
     try:
         with lock_connection.cursor() as cursor:
             cursor.execute(
