@@ -67,8 +67,10 @@ CONTROL_NAME_JS = """(node) => node.tagName.toLowerCase()
     ? '[value=' + node.value + ']' : '')"""
 
 
-def seed(staff: dict[str, str], day: str) -> dict[str, str]:
-    data = seed_patient(staff)
+def seed(
+    staff: dict[str, str], day: str, *, patient: dict[str, str] | None = None
+) -> dict[str, str]:
+    data = seed_patient(staff) if patient is None else patient.copy()
     data.update(appointment=str(uuid4()), specialty=str(uuid4()))
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
