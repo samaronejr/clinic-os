@@ -65,7 +65,7 @@ from django.test import override_settings
 from psycopg.errors import CheckViolation
 
 from auth.stepup_test_support import verified_request
-from patient_service_support import runtime_role
+from otp_test_support import runtime_role
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client
 
@@ -109,7 +109,7 @@ def run_signature_task(operation_id: UUID) -> None:
 
 def dispatch_prepared_document(graph: RbacGraph, document_id: UUID) -> None:
     """Advance a document from the committed HTTP intent to provider acceptance."""
-    with owner_scope(graph.organization_a):
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         operation = SignatureOperation.objects.get(
             document_id=document_id, state="prepared"
         )
