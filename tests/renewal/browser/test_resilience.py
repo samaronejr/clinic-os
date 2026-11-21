@@ -53,7 +53,7 @@ from renewal.browser.test_clinical_inbox import (
     _brief_command,
     _brief_post,
 )
-from renewal.browser.test_document_verification import _operation_row
+from renewal.browser.test_document_verification import _operation_row, drive_signature
 from renewal.browser.test_encounter import FIELDS, press, press_in_view, seed, stored
 from renewal.browser.test_messages import (
     ADMINISTRATIVE,
@@ -238,6 +238,8 @@ def test_the_note_is_saved_and_a_signer_outage_stays_retryable(
         press_in_view(page, "sign_document")
         state = "failed" if MODE == "ambiguous" else "prepared"
         failure = "invalid_provider_reference" if MODE == "ambiguous" else ""
+        outcome = "failed" if MODE == "ambiguous" else "retry"
+        assert drive_signature(page, staff, document, fault=MODE) == outcome
         expect(page.locator("[data-state]")).to_have_attribute("data-state", state)
         assert operations(staff, document) == [(state, failure)]
         assert _operation_row(staff, document)["operation_ref"] == ""
@@ -245,6 +247,7 @@ def test_the_note_is_saved_and_a_signer_outage_stays_retryable(
         if MODE != "ambiguous":
             expect(page.locator('button[value="retry_dispatch"]')).to_be_visible()
             press(page, "retry_dispatch")
+            assert drive_signature(page, staff, document, fault=MODE) == "retry"
             expect(page.locator("[data-state]")).to_have_attribute("data-state", state)
             assert operations(staff, document) == [(state, failure)]
         else:

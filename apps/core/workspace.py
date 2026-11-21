@@ -2,9 +2,11 @@
 
 The destinations come from the ``apps.core.navigation`` registry, filtered by
 the actor's permission bundle and each route's own guard; every module route
-keeps its own server-side gate. Clinic visibility is bounded by row-level
-security on the active tenant, so a clinic from another organization can
-never be resolved.
+keeps its own server-side gate. A clinic enters the shell only when the actor's
+effective grants open at least one delivered place there, for every role and
+whatever page is being rendered; its landing is such a place. Clinic visibility
+is bounded by row-level security on the active tenant, so a clinic from another
+organization can never be resolved.
 """
 
 from __future__ import annotations
@@ -22,10 +24,10 @@ from apps.core.navigation import (
     PaletteGroup,
     allows,
     build_navigation,
+    destination_url,
     granted_permissions,
 )
 from apps.core.patient_context import PatientBanner, resolve_patient_banner
-from apps.identity.current_context import MANAGER_ROLES
 from apps.identity.models import User, UserClinicRole
 
 if TYPE_CHECKING:
@@ -47,54 +49,52 @@ AUTH_FLOW_VIEWS: Final = frozenset(
         "identity:passkey-assert-finish",
     }
 )
-_STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)
-_SHELL_ROLES: Final = (
-    *_STAFF_ROLES,
-    UserClinicRole.Role.NURSE,
-    UserClinicRole.Role.ALLIED_PROFESSIONAL,
-    UserClinicRole.Role.SCHEDULER,
-    UserClinicRole.Role.CLINIC_MANAGER,
-    UserClinicRole.Role.FINANCE,
-)
-# Task 56 opens Finance to bundles with no clinical, task or reception landing;
-# their home is the workspace they may open, not a settings page they cannot.
-_FINANCE: Final = next(
-    destination for destination in DESTINATIONS if destination.key == "finance"
-)
+# Every registered place, sections first, in registry order.
+_PLACES: Final = {
+    place.key: place
+    for destination in DESTINATIONS
+    for place in (destination, *destination.entries)
+}
 
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceClinic:
-    """One clinic the current user holds at least one role in."""
+    """One clinic whose delivered places the current user may open."""
 
     id: UUID
     name: str
     timezone: str
     roles: frozenset[str]
-    command_context: bool = False
+    landing_url: str
 
-    @property
-    def has_command_palette(self) -> bool:
-        """Expose commands for the clinic's delivered, authorized workspaces."""
-        return bool(self.roles.intersection(_STAFF_ROLES) or self.command_context)
 
-    @property
-    def agenda_url(self) -> str:
-        """Return the first delivered workspace this clinic's roles can open."""
-        if not self.roles.intersection(_STAFF_ROLES):
-            granted = granted_permissions(self.id)
-            if "reception.queue" in granted:
-                return reverse("scheduling:reception", args=(self.id,))
-            if "tasks.view" in granted:
-                return reverse("workflows:tasks", args=(self.id,))
-            if "demographics.read" in granted and "appointment.book" not in granted:
-                return reverse("orders:results", args=(self.id,))
-            if granted.isdisjoint(
-                {"appointment.book", "configuration.organization"}
-            ) and allows(_FINANCE, roles=self.roles, granted=granted):
-                return reverse("billing:finance", args=(self.id,))
-            return reverse("scheduling:resource-settings", args=(self.id,))
-        return reverse("scheduling:agenda", args=(self.id,))
+def _landing(
+    clinic_id: UUID, *, roles: frozenset[str], granted: frozenset[str]
+) -> str | None:
+    """Return the first delivered place the roles and grants open, else ``None``.
+
+    The Agenda comes first, then the working queues: reception, tasks, results
+    for readers who do not book, Finance for bundles without booking or
+    organization configuration (task 56), then scheduling settings; failing
+    those, the first open place of the registry. Every candidate, the Agenda
+    included, passes the same check as the navigation link to it, so a
+    narrowed grant never lands on a route that refuses.
+    """
+    preferred = [_PLACES["agenda"], _PLACES["today"], _PLACES["tasks"]]
+    if "appointment.book" not in granted:
+        preferred.append(_PLACES["results"])
+    if granted.isdisjoint({"appointment.book", "configuration.organization"}):
+        preferred.append(_PLACES["finance"])
+    preferred.append(_PLACES["scheduling-settings"])
+    place = next(
+        (
+            place
+            for place in (*preferred, *_PLACES.values())
+            if allows(place, roles=roles, granted=granted)
+        ),
+        None,
+    )
+    return None if place is None else destination_url(place, clinic_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,10 +114,10 @@ class Workspace:
 
     @property
     def home_url(self) -> str:
-        """Return the brand link target: today's agenda or the workspace home."""
+        """Return the brand link target: the clinic landing or the workspace home."""
         if self.clinic is None:
             return reverse("workspace-home")
-        return self.clinic.agenda_url
+        return self.clinic.landing_url
 
 
 def is_auth_flow(request: HttpRequest) -> bool:
@@ -145,54 +145,41 @@ def _parse_uuid(raw_value: object) -> UUID | None:
         return None
 
 
-def _visible_clinics(
-    user_id: UUID, *, settings_scope: bool = False
-) -> tuple[WorkspaceClinic, ...]:
+def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
+    """Return the clinics with a landing, each resolved from its live grants.
+
+    The same set answers a fresh session, a remembered clinic and a direct
+    module URL, so no role waits for a page that widens its shell.
+    """
     grouped: dict[UUID, tuple[str, str, set[str]]] = {}
-    command_clinics: set[UUID] = set()
-    roles = (
-        (*_SHELL_ROLES, UserClinicRole.Role.ORG_ADMIN)
-        if settings_scope
-        else _SHELL_ROLES
-    )
     assignments = (
-        UserClinicRole.objects.filter(user_id=user_id, role__in=roles)
+        UserClinicRole.objects.filter(user_id=user_id)
         .select_related("clinic")
         .order_by("clinic__name", "clinic_id")
     )
     for assignment in assignments:
         clinic = assignment.clinic
-        if assignment.role not in _STAFF_ROLES:
-            granted = granted_permissions(clinic.pk)
-            command_context = bool({"tasks.view", "demographics.read"} & granted) or (
-                settings_scope
-                and bool(
-                    {
-                        "appointment.book",
-                        "configuration.clinic",
-                        "configuration.organization",
-                    }
-                    & granted
-                )
-            )
-            if not command_context and "reception.queue" not in granted:
-                continue
-            if command_context:
-                command_clinics.add(clinic.pk)
         # The database rejects blank zones; str() only narrows the field type.
         zone = str(clinic.timezone)
         entry = grouped.setdefault(clinic.pk, (clinic.name, zone, set()))
         entry[2].add(assignment.role)
-    return tuple(
-        WorkspaceClinic(
-            id=clinic_id,
-            name=name,
-            timezone=zone,
-            roles=frozenset(roles),
-            command_context=clinic_id in command_clinics,
+    clinics: list[WorkspaceClinic] = []
+    for clinic_id, (name, zone, assigned) in grouped.items():
+        roles = frozenset(assigned)
+        landing = _landing(
+            clinic_id, roles=roles, granted=granted_permissions(clinic_id)
         )
-        for clinic_id, (name, zone, roles) in grouped.items()
-    )
+        if landing is not None:
+            clinics.append(
+                WorkspaceClinic(
+                    id=clinic_id,
+                    name=name,
+                    timezone=zone,
+                    roles=roles,
+                    landing_url=landing,
+                )
+            )
+    return tuple(clinics)
 
 
 def _select_clinic(
@@ -271,33 +258,13 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
     user = request.user
     if not user.is_authenticated or not isinstance(user, User):
         return None
-    clinics = _visible_clinics(
-        user.pk,
-        settings_scope=(
-            request.resolver_match.view_name
-            in {
-                "scheduling:resource-settings",
-                "ai:settings",
-                "ai:agents",
-                "ai:agent-settings",
-                "ai:care-coordination",
-                "analytics:reports",
-                "billing:finance",
-                "billing:charges",
-                "billing:invoice",
-                # Task 65: the Settings places an organization admin may open.
-                "identity:emergency-reviews",
-                "identity:governance-grant-command",
-                "identity:governance",
-            }
-            or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
-        ),
-    )
+    clinics = _visible_clinics(user.pk)
     clinic = _select_clinic(request, clinics)
     others = tuple(entry for entry in clinics if entry is not clinic)
     if clinic is None:
         return Workspace(user.get_username(), None, others, ())
     view_name = request.resolver_match.view_name
+    # A timed grant can change since clinic discovery, even in one request.
     granted = granted_permissions(clinic.id)
     navigation = build_navigation(
         clinic_id=clinic.id,
@@ -346,27 +313,16 @@ def current_clinic(request: HttpRequest) -> WorkspaceClinic | None:
         or not isinstance(user, User)
     ):
         return None
-    return _select_clinic(
-        request,
-        _visible_clinics(
-            user.pk,
-            settings_scope=(
-                _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
-            ),
-        ),
-    )
+    return _select_clinic(request, _visible_clinics(user.pk))
 
 
 def clinic_of_actor(user_id: UUID, clinic_id: UUID) -> WorkspaceClinic | None:
-    """Return one clinic the actor holds a shell role in, else ``None``.
+    """Return one clinic the actor's grants open a place in, else ``None``.
 
-    Unknown, foreign-organization and unassigned clinics are indistinguishable.
+    Unknown, foreign-organization, unassigned and fully narrowed clinics are
+    indistinguishable.
     """
     return next(
-        (
-            clinic
-            for clinic in _visible_clinics(user_id, settings_scope=True)
-            if clinic.id == clinic_id
-        ),
+        (clinic for clinic in _visible_clinics(user_id) if clinic.id == clinic_id),
         None,
     )

@@ -311,6 +311,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         receive_signature_callback,
         request_signature,
     )
+    from apps.prescription.tasks import execute_signature
     from apps.prescription.verification import (
         release_document,
         revoke_document,
@@ -714,8 +715,19 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         )
 
     provider = SyntheticSignatureProvider()
+    # The fixture drives any remaining prepared intent after commit, without
+    # relying on a Redis consumer. The rehearsal may also publish in eager mode.
     with _owner_scope(ORGANIZATION_ID):
         operation.refresh_from_db()
+    if operation.state == "prepared":
+        with _runtime_role():
+            execute_signature.apply(
+                kwargs={"operation_id": str(operation.pk)}, throw=True
+            )
+        with _owner_scope(ORGANIZATION_ID):
+            operation.refresh_from_db()
+    if operation.state != "signing" or not operation.operation_id:
+        _fail("synthetic signing task did not bind a provider reference")
     sign_request = SignatureRequest(
         operation_id=operation.pk,
         issuer_id=operation.issuer_id,

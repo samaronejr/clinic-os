@@ -38,11 +38,13 @@ def clear_connection_tenant_gucs() -> None:
         return
 
     with transaction.atomic(durable=True), connection.cursor() as cursor:
-        cursor.execute("RESET app.current_user_id")
-        cursor.execute("RESET app.current_tenant")
-        cursor.execute("RESET app.current_patient_session")
-        cursor.execute("RESET app.current_principal")
+        # One fixed, parameterless protocol message. Keep RESET (including
+        # its configured defaults) and the explicit empty enterprise GUCs.
         cursor.execute(
+            "RESET app.current_user_id;"
+            "RESET app.current_tenant;"
+            "RESET app.current_patient_session;"
+            "RESET app.current_principal;"
             "SELECT set_config('app.current_scim_token','',false),"
             "set_config('app.current_sso_connection','',false),"
             "set_config('app.current_support_grant','',false),"

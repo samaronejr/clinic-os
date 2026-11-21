@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, assert_never
 
 from apps.ai.brief_contracts import SCHEMA, parse_request, validate_reply
 from apps.ai.care_contracts import SCHEMA as CARE_SCHEMA
+from apps.ai.care_contracts import parse_request as parse_care_request
 from apps.ai.care_contracts import validate_reply as validate_care_reply
 from apps.ai.contracts import (
     MAX_CONTENT_BYTES,
@@ -122,7 +123,7 @@ def _validate_structured_output(
     elif schema == SCHEMA:
         validate_reply(result.content, parse_request(request.content))
     elif schema == CARE_SCHEMA:
-        # The envelope must be exact; single items are judged at collection.
-        validate_care_reply(result.content)
+        # Per-item refusals are retained as such at collection, not executed.
+        validate_care_reply(result.content, parse_care_request(request.content))
     elif schema == REVENUE_SCHEMA:
         validate_revenue_reply(result.content, parse_revenue_input(request.content))

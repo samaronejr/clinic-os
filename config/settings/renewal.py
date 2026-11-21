@@ -13,6 +13,9 @@ from copy import deepcopy
 from urllib.parse import unquote, urlsplit
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
+
+from config.display import DisplayValueError, resolve_display
 
 from . import base
 from .database import agent_database_config
@@ -33,8 +36,6 @@ if (
     or unquote(_parsed.username or "") != CLINIC_PROCESS_ROLE
     or (_parsed.hostname or "") not in {"127.0.0.1", "localhost", "::1"}
 ):
-    from django.core.exceptions import ImproperlyConfigured
-
     message = "renewal serving DSN must use the clinic_app role on loopback"
     raise ImproperlyConfigured(message)
 
@@ -64,3 +65,12 @@ STORAGES = {
 }
 WHITENOISE_AUTOREFRESH = True
 WHITENOISE_USE_FINDERS = True
+
+# The runner's --theme/--density, as the display default of signed-in pages for
+# users without a stored preference; an unknown value refuses to serve.
+try:
+    CLINIC_DISPLAY_DEFAULT_THEME, CLINIC_DISPLAY_DEFAULT_DENSITY = resolve_display(
+        os.environ
+    )
+except DisplayValueError as error:
+    raise ImproperlyConfigured(str(error)) from error

@@ -537,6 +537,27 @@ def record_clinical_note(
     content: dict[str, str],
 ) -> ClinicalDocumentVersion:
     """Save explicitly; stale editors and failed transactions retain prior data."""
+    return _record_clinical_note(
+        clinic_id=clinic_id,
+        version_id=version_id,
+        expected_revision=expected_revision,
+        content=content,
+        locked_edit_state=None,
+    )
+
+
+def _record_clinical_note(
+    *,
+    clinic_id: UUID,
+    version_id: UUID,
+    expected_revision: int,
+    content: dict[str, str],
+    locked_edit_state: DraftEditState | None,
+) -> ClinicalDocumentVersion:
+    """Share the authorized revision writer with autosave, which locks edit state."""
+    if locked_edit_state is not None and locked_edit_state.version_id != version_id:
+        msg = "locked edit state belongs to a different draft"
+        raise ValueError(msg)
     author_scope(clinic_id=clinic_id, version_id=version_id)
     if set(content) != set(SOAP_FIELDS) or any(
         not isinstance(v, str) or len(v) > MAX_CONTENT for v in content.values()
@@ -577,7 +598,12 @@ def record_clinical_note(
         version.save(
             update_fields=("content", "content_sha256", "revision", "updated_at")
         )
-        advance_section_epochs(version, previous, content)
+        state = (
+            locked_edit_state
+            if locked_edit_state is not None
+            else draft_edit_state(version)
+        )
+        _advance_section_epochs(state, previous, content)
         record_phase1_event(
             "ehr.document.saved", clinic_id=clinic_id, affected_record_id=version.pk
         )
@@ -597,17 +623,16 @@ def draft_edit_state(version: ClinicalDocumentVersion) -> DraftEditState:
     )
 
 
-def advance_section_epochs(
-    version: ClinicalDocumentVersion,
+def _advance_section_epochs(
+    state: DraftEditState,
     previous: dict[str, str],
     content: dict[str, str],
 ) -> None:
     """Count one accepted edit for every section this write changed.
 
-    Called by the single revision writer, so explicit saves, autosaves and
-    merges all advance the epochs todo 42 compares against (N1).
+    The single revision writer supplies locked state for explicit saves,
+    autosaves and merges, so each advances the epochs todo 42 compares (N1).
     """
-    state = draft_edit_state(version)
     epochs = dict(state.section_edit_epochs)
     for field in SOAP_FIELDS:
         if previous.get(field, "") != content[field]:

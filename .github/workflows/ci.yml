@@ -299,7 +299,8 @@ jobs:
           install -d "$RUNNER_TEMP/worker-integration"
           CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
             --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
-            tests/renewal/test_broker_delivery.py tests/realtime/
+            tests/renewal/test_broker_delivery.py \
+            tests/resilience/test_broker_worker_death.py tests/realtime/
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

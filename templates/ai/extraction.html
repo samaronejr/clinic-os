@@ -43,7 +43,7 @@
         {% elif row.record.status == "rejected" %}
         <p>{% trans "Rejected" %}</p>
         {% else %}
-        {% if row.record.status == "ambiguous" %}<p class="feedback">{% trans "Ambiguous. No value will be filed." %}</p>{% endif %}
+        {% if row.candidate.status == "ambiguous" or row.record.status == "ambiguous" %}<p class="feedback">{% trans "Ambiguous. No value will be filed." %}</p>{% endif %}
         <form method="post">
           {% csrf_token %}<input type="hidden" name="job_id" value="{{ job.id }}"><input type="hidden" name="candidate_id" value="{{ row.record.id }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="zoom" value="{{ zoom }}">
           {% if job.result_version_id %}<input type="hidden" name="result_version_id" value="{{ job.result_version_id }}">
@@ -52,9 +52,13 @@
           <select id="target-{{ row.record.position }}" name="result_version_id"><option value="">{% trans "Choose a verified source" %}</option>{% for target in targets %}<option value="{{ target.version_id }}">{{ target.version.number }}</option>{% endfor %}</select>
           <p>{% trans "The same source bytes must pass result identity verification before filing." %}</p>
           {% endif %}
+            {% if row.candidate.manual_unit_required and row.candidate.status == "candidate" and row.record.status == "candidate" %}
+            <label for="unit-{{ row.record.position }}">{% trans "Unit exactly as printed" %}</label>
+            <input type="text" id="unit-{{ row.record.position }}" name="manual_unit" maxlength="{{ max_unit_length }}" autocomplete="off" required>
+            {% endif %}
           <div class="extraction-actions">
-            <button type="submit" name="action" value="confirmed"{% if row.record.status != "candidate" %} disabled{% endif %}>{% trans "Confirm source value" %}</button>
-            <button type="submit" name="action" value="rejected" class="button--secondary">{% trans "Reject candidate" %}</button>
+              <button type="submit" name="action" value="confirmed"{% if row.record.status != "candidate" or row.candidate.status != "candidate" %} disabled{% endif %}>{% trans "Confirm source value" %}</button>
+              <button type="submit" name="action" value="rejected" class="button--secondary" formnovalidate>{% trans "Reject candidate" %}</button>
           </div>
         </form>
         {% endif %}

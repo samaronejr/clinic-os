@@ -20,6 +20,7 @@ from apps.ai.extraction_documents import (
     document_input,
     document_pages,
     render_page,
+    source_regions,
 )
 from apps.ai.output_validation import call_provider
 from django.db import connection
@@ -39,13 +40,13 @@ if TYPE_CHECKING:
 )
 def test_malformed_proposals_cannot_create_a_candidate(content: str) -> None:
     with pytest.raises(ExtractionInputError):
-        parse_proposals(content, rotations=(0,))
+        parse_proposals(content, rotations=(0,), regions={})
 
 
 @pytest.mark.parametrize("rotations", [(), (45,), (0, 360)])
 def test_source_rotation_is_never_repaired(rotations: tuple[int, ...]) -> None:
     with pytest.raises(ExtractionInputError):
-        parse_proposals('{"candidates":[]}', rotations=rotations)
+        parse_proposals('{"candidates":[]}', rotations=rotations, regions={})
     with pytest.raises(ExtractionInputError):
         Region(1, (0, 0, 100, 100)).display_bbox(45)
 
@@ -105,17 +106,22 @@ def test_recorded_adapter_keeps_exact_scan_identity_and_local_parsing() -> None:
             Path(__file__).parents[2] / "apps/ai/fixtures/document_extraction_v1.json"
         ).read_text()
     )
+    data = base64.b64decode(fixture["data_base64"], validate=True)
     query = replace(
         request(),
         endpoint="https://recorded.synthetic.invalid/v1/inference",
         model_id="extraction-fixture-v1",
         content=document_input(
-            data=base64.b64decode(fixture["data_base64"], validate=True),
+            data=data,
             content_type="image/png",
         ),
     )
     result = call_provider(RecordedFixtureProvider(), request=query, method="extract")
-    candidates = parse_proposals(json.loads(result.content)["text"], rotations=(0,))
+    candidates = parse_proposals(
+        json.loads(result.content)["text"],
+        rotations=(0,),
+        regions=source_regions(data=data, content_type="image/png", rotations=(0,)),
+    )
     assert [row.parsed_value for row in candidates] == ["123.40", "12.50"]
     with pytest.raises(GatewayInputError):
         call_provider(

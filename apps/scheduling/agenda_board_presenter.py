@@ -95,11 +95,21 @@ class ActionRow:
 
 
 @dataclass(frozen=True, slots=True)
+class ListRow:
+    """An appointment with its already-resolved display labels."""
+
+    item: BoardAppointment
+    command_id: UUID
+    practitioner_label: str
+    resource_labels: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ListDay:
     """One clinic-local date of the list view with its appointments."""
 
     day: date
-    rows: tuple[ActionRow, ...]
+    rows: tuple[ListRow, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,15 +316,27 @@ def month_weeks(
 
 
 def action_rows(board: AgendaBoard) -> list[ActionRow]:
-    """Pair each appointment with a new command id (a replay key per render)."""
-    return [ActionRow(item, uuid4()) for item in board.appointments]
+    """Prepare list rows and holds, the only consumers of native command ids."""
+    return [
+        ActionRow(item, uuid4())
+        for item in board.appointments
+        if board.view == "list" or "confirm" in item.actions
+    ]
 
 
-def list_days(rows: list[ActionRow]) -> list[ListDay]:
-    """Group the list view's appointments by clinic-local date, in order."""
-    grouped: dict[str, list[ActionRow]] = {}
+def list_days(rows: list[ActionRow], names: Mapping[UUID, str]) -> list[ListDay]:
+    """Resolve labels by id once per row and group by clinic-local date."""
+    grouped: dict[str, list[ListRow]] = {}
     for row in rows:
-        grouped.setdefault(row.item.day, []).append(row)
+        item = row.item
+        grouped.setdefault(item.day, []).append(
+            ListRow(
+                item,
+                row.command_id,
+                names.get(item.practitioner_id, ""),
+                tuple(names.get(resource, "") for resource in item.resource_ids),
+            )
+        )
     return [
         ListDay(date.fromisoformat(day), tuple(rows)) for day, rows in grouped.items()
     ]
@@ -442,6 +464,7 @@ __all__ = (
     "BoardCell",
     "GridRow",
     "ListDay",
+    "ListRow",
     "MonthDay",
     "SavedBoardView",
     "action_rows",

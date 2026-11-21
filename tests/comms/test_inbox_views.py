@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from apps.comms import inbox_services as services
+from apps.comms.inbox_views import REOPEN_SESSION_KEY
 from apps.comms.models import Conversation, Message, QuickReply
 from apps.identity.models import CareTeamMembership
 from apps.intake.contacts import save_contact_destination, verify_contact
@@ -25,6 +27,7 @@ from patient_http_support import receptionist_client, verified_physician_client
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     from django.test import Client
@@ -52,10 +55,21 @@ def _inbox(graph: RbacGraph) -> str:
     return f"/clinics/{graph.clinic_a}/messages/"
 
 
-def _thread(graph: RbacGraph) -> tuple[Conversation, str]:
+@dataclass(frozen=True)
+class Thread:
+    """A thread selected by conversation_id in the inbox POST body (SC-7)."""
+
+    url: str
+    conversation_id: UUID
+
+    def body(self, data: Mapping[str, object]) -> dict[str, object]:
+        return {**data, "conversation_id": str(self.conversation_id)}
+
+
+def _thread(graph: RbacGraph) -> tuple[Conversation, Thread]:
     with owner_context(graph.organization_a):
         conversation = Conversation.objects.get()
-    return conversation, f"{_inbox(graph)}{conversation.pk}/"
+    return conversation, Thread(_inbox(graph), conversation.pk)
 
 
 def _get(client: Client, url: str) -> str:
@@ -70,6 +84,10 @@ def _post(client: Client, url: str, data: dict[str, object], *, status: int) -> 
         response = client.post(url, data)
     assert response.status_code == status
     return response.content.decode()
+
+
+def _show(client: Client, thread: Thread) -> str:
+    return _post(client, thread.url, thread.body({"action": "show"}), status=OK)
 
 
 def _patient(graph: RbacGraph, *, verified: bool) -> tuple[UUID, str]:
@@ -105,11 +123,10 @@ def test_both_pages_subscribe_to_the_messages_topic_and_refetch_their_region(
     _, thread = _thread(graph)
     topic = f'data-realtime-topic="clinic:{graph.clinic_a}:messages"'
     trigger = 'hx-trigger="rt:messages from:body, rt:poll from:body"'
-    for url, region in (
-        (_inbox(graph), "conversation-list"),
-        (thread, "thread-region"),
+    for html, region in (
+        (_get(client, _inbox(graph)), "conversation-list"),
+        (_show(client, thread), "thread-region"),
     ):
-        html = _get(client, url)
         assert topic in html
         assert f'id="{region}"' in html
         assert trigger in html
@@ -119,7 +136,7 @@ def test_both_pages_subscribe_to_the_messages_topic_and_refetch_their_region(
         assert f'hx-select="#{region} &gt; *" hx-swap="innerHTML"' in html
         assert "data-realtime-unavailable" in html
     # The composer sits outside the refreshed region, so typed text survives.
-    html = _get(client, thread)
+    html = _show(client, thread)
     assert html.index('name="body"') > html.index('hx-select="#thread-region &gt; *"')
     assert html.index("</div>", html.index('id="thread-region"')) < html.index(
         'name="body"'
@@ -131,7 +148,7 @@ def test_page_copy_comes_from_the_catalog(world: InboxWorld) -> None:
     world.receive(world.message_body(text="Qual o horário?"))
     client, _ = receptionist_client(graph)
     _, thread = _thread(graph)
-    html = _get(client, thread)
+    html = _show(client, thread)
     for msgid in ("Service window", "Internal notes", "Link to a patient"):
         assert gettext(msgid) in html
         assert gettext(msgid) != msgid
@@ -151,7 +168,12 @@ def test_reception_finds_a_patient_and_links_the_verified_number(
     world.receive(world.message_body(text="Qual o horário?"))
     conversation, thread = _thread(graph)
     client, _ = receptionist_client(graph)
-    found = _post(client, thread, {"action": "find_patient", "q": name}, status=OK)
+    found = _post(
+        client,
+        thread.url,
+        thread.body({"action": "find_patient", "q": name}),
+        status=OK,
+    )
     assert name in found
     assert f'name="enrollment_id" value="{enrollment}"' in found
     assert gettext("Check or verify the contact") in found
@@ -161,9 +183,9 @@ def test_reception_finds_a_patient_and_links_the_verified_number(
         "expected_revision": conversation.revision,
     }
     with runtime_role():
-        redirected = client.post(thread, link)
+        redirected = client.post(thread.url, thread.body(link))
     assert redirected.status_code == FOUND
-    page = _get(client, thread)
+    page = _show(client, thread)
     assert gettext("Patient linked through a verified contact.") in page
     assert _thread(graph)[0].enrollment_id == enrollment
 
@@ -176,18 +198,25 @@ def test_an_unverified_contact_is_refused_and_offers_verification(
     world.receive(world.message_body(text="Qual o horário?"))
     conversation, thread = _thread(graph)
     client, _ = receptionist_client(graph)
-    found = _post(client, thread, {"action": "find_patient", "q": name}, status=OK)
+    found = _post(
+        client,
+        thread.url,
+        thread.body({"action": "find_patient", "q": name}),
+        status=OK,
+    )
     assert gettext("Check or verify the contact") in found
     with runtime_role():
         client.post(
-            thread,
-            {
-                "action": "link",
-                "enrollment_id": str(enrollment),
-                "expected_revision": conversation.revision,
-            },
+            thread.url,
+            thread.body(
+                {
+                    "action": "link",
+                    "enrollment_id": str(enrollment),
+                    "expected_revision": conversation.revision,
+                }
+            ),
         )
-    page = _get(client, thread)
+    page = _show(client, thread)
     assert gettext("The patient's contact is not verified.") in page
     assert _thread(graph)[0].enrollment_id is None
 
@@ -197,10 +226,15 @@ def test_the_patient_lookup_names_its_failures(world: InboxWorld) -> None:
     world.receive(world.message_body(text="Qual o horário?"))
     _, thread = _thread(graph)
     client, _ = receptionist_client(graph)
-    short = _post(client, thread, {"action": "find_patient", "q": "x"}, status=OK)
+    short = _post(
+        client, thread.url, thread.body({"action": "find_patient", "q": "x"}), status=OK
+    )
     assert gettext("Type at least two letters of the patient's full name.") in short
     none = _post(
-        client, thread, {"action": "find_patient", "q": "Ninguem Sintetico"}, status=OK
+        client,
+        thread.url,
+        thread.body({"action": "find_patient", "q": "Ninguem Sintetico"}),
+        status=OK,
     )
     assert gettext("No patient found for that name.") in none
 
@@ -213,7 +247,15 @@ def test_a_role_without_registry_search_is_told_to_ask_reception(
     _, thread = _thread(graph)
     # A scheduler handles the inbox but holds no registry search.
     client, _ = _client_for(graph, "scheduler")
-    refused = _nav_post(client, thread, {"action": "find_patient", "q": "Sintetico"})
+    refused = _nav_post(
+        client,
+        thread.url,
+        {
+            "action": "find_patient",
+            "q": "Sintetico",
+            "conversation_id": str(thread.conversation_id),
+        },
+    )
     assert refused.status_code == OK
     assert (
         gettext(
@@ -241,13 +283,17 @@ def test_start_a_conversation_from_a_found_patient(world: InboxWorld) -> None:
                 "purpose": "transactional",
             },
         )
-    assert started.status_code == FOUND
+    # The opened thread renders from the POST itself (SC-7): no id in a redirect.
+    assert started.status_code == OK
+    assert "Location" not in started
     conversation, _ = _thread(graph)
     assert (conversation.purpose, conversation.enrollment_id) == (
         "transactional",
         enrollment,
     )
-    assert started["Location"].endswith(f"{conversation.pk}/")
+    assert (
+        f'name="conversation_id" value="{conversation.pk}"' in started.content.decode()
+    )
     # The same start again returns the live thread instead of a second one.
     with runtime_role():
         again = client.post(
@@ -259,7 +305,7 @@ def test_start_a_conversation_from_a_found_patient(world: InboxWorld) -> None:
                 "purpose": "transactional",
             },
         )
-    assert again.status_code == FOUND
+    assert again.status_code == OK
     with owner_context(graph.organization_a):
         assert Conversation.objects.count() == 1
 
@@ -343,14 +389,36 @@ def test_a_clinician_starts_a_care_thread_from_the_care_team(
                 "purpose": "care",
             },
         )
-    assert started.status_code == FOUND
+    # The started care thread renders from the POST itself (SC-7): no
+    # redirect, no Location, and the page is that thread, selected in its body.
+    assert started.status_code == OK
+    assert "Location" not in started
     conversation, thread = _thread(graph)
     assert (conversation.purpose, conversation.enrollment_id) == ("care", enrollment)
+    shown = started.content.decode()
+    assert gettext("Conversation opened.") in shown
+    assert f'name="conversation_id" value="{conversation.pk}"' in shown
+    assert name in shown
     # Reception cannot open the care thread the clinician started.
     reception, _ = receptionist_client(graph)
     with runtime_role():
-        assert reception.get(thread).status_code == NOT_FOUND
-    assert name in _get(client, thread)
+        shown_denial = reception.post(thread.url, thread.body({"action": "show"}))
+    assert shown_denial.status_code == NOT_FOUND
+    # A return target stored for a thread this actor cannot see is consumed as
+    # housekeeping: the GET is reception's ordinary list, exactly as for an
+    # unknown id, with nothing of the care thread in it, and the key is gone.
+    plain = _get(reception, thread.url)
+    session = reception.session
+    session[REOPEN_SESSION_KEY] = str(conversation.pk)
+    session.save()
+    listed = _get(reception, thread.url)
+    assert 'id="conversation-list"' in listed
+    assert 'id="thread-region"' not in listed
+    assert name not in listed
+    assert str(conversation.pk) not in listed
+    assert listed.count("<tr") == plain.count("<tr")
+    assert REOPEN_SESSION_KEY not in reception.session
+    assert name in _show(client, thread)
 
 
 def test_a_clinician_without_a_care_team_sees_no_patients(world: InboxWorld) -> None:
@@ -373,22 +441,22 @@ def test_quick_replies_fill_the_composer_and_send_nothing(world: InboxWorld) -> 
     world.receive(world.message_body(text="Qual o horário?"))
     _, thread = _thread(graph)
     client, _ = receptionist_client(graph)
-    page = _get(client, thread)
+    page = _show(client, thread)
     assert "data-quick-replies" in page
     assert "Horário" in page
     with owner_context(graph.organization_a):
         reply = QuickReply.objects.get()
     filled = _post(
         client,
-        thread,
-        {"action": "quick_reply", "quick_reply_id": str(reply.pk)},
+        thread.url,
+        thread.body({"action": "quick_reply", "quick_reply_id": str(reply.pk)}),
         status=OK,
     )
     assert ">Atendemos das 8h às 18h.</textarea>" in filled
     foreign = _post(
         client,
-        thread,
-        {"action": "quick_reply", "quick_reply_id": str(uuid4())},
+        thread.url,
+        thread.body({"action": "quick_reply", "quick_reply_id": str(uuid4())}),
         status=OK,
     )
     assert "Atendemos" not in foreign
@@ -422,4 +490,4 @@ def test_quick_replies_are_hidden_when_free_text_is_not_allowed(
         )
     _, thread = _thread(graph)
     client, _ = receptionist_client(graph)
-    assert "data-quick-replies" not in _get(client, thread)
+    assert "data-quick-replies" not in _show(client, thread)

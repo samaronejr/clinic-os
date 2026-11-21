@@ -11,6 +11,7 @@ from django.db import DatabaseError, transaction
 
 from apps.ai.contracts import (
     GatewayAccessDeniedError,
+    GatewayRefusedError,
     ProviderUnavailableError,
     Purpose,
 )
@@ -26,6 +27,8 @@ from apps.ai.evaluation.services import (
     register_protocol,
     request_change,
     start_run,
+    start_stage_run,
+    stop_rollout,
     store_results,
 )
 from apps.ai.models import EvaluationProtocol
@@ -63,7 +66,16 @@ class Command(OwnerDatabaseCommand):
     def add_arguments(self, parser: CommandParser) -> None:
         """Accept only scope, immutable version identifiers and report destinations."""
         commands = parser.add_subparsers(dest="verb", required=True)
-        for verb in ("register", "run", "finish", "report", "request-change", "decide"):
+        for verb in (
+            "register",
+            "run",
+            "stage-run",
+            "finish",
+            "report",
+            "request-change",
+            "decide",
+            "stop",
+        ):
             command = commands.add_parser(verb)
             for name in ("organization-id", "clinic-id", "operator-id"):
                 command.add_argument("--" + name, required=True)
@@ -76,10 +88,18 @@ class Command(OwnerDatabaseCommand):
                 )
             if verb == "register":
                 command.add_argument("--clinical-owner-ref", required=True)
-            elif verb == "run":
-                command.add_argument("--configuration-id", required=True)
+            elif verb in {"run", "stage-run"}:
+                command.add_argument(
+                    "--configuration-id" if verb == "run" else "--change-id",
+                    required=True,
+                )
                 for name in ("rater-one", "rater-two", "adjudicator"):
                     command.add_argument("--" + name, required=True)
+            elif verb == "stop":
+                command.add_argument("--change-id", required=True)
+                command.add_argument(
+                    "--state", choices=("invalidated", "killed"), required=True
+                )
             elif verb in {"finish", "report", "request-change"}:
                 command.add_argument("--run-id", required=True)
                 if verb == "report":
@@ -106,6 +126,7 @@ class Command(OwnerDatabaseCommand):
             LifecycleCommandError,
             EvaluationInputError,
             GatewayAccessDeniedError,
+            GatewayRefusedError,
             ProviderUnavailableError,
             DatabaseError,
             ValueError,
@@ -118,6 +139,8 @@ class Command(OwnerDatabaseCommand):
     ) -> str:
         clinic = context.clinic_id
         verb = options["verb"]
+        if verb in {"run", "stage-run"}:
+            return self._run(context, options)
         with _command_context(context):
             if verb == "register":
                 protocol = register_protocol(
@@ -128,7 +151,66 @@ class Command(OwnerDatabaseCommand):
                     clinical_owner_ref=required_text(options, "clinical_owner_ref"),
                 )
                 return str(protocol.pk)
-            if verb == "run":
+            if verb == "finish":
+                return finish_run(
+                    clinic_id=clinic, run_id=required_uuid(options, "run_id")
+                ).status
+            if verb == "request-change":
+                return str(
+                    request_change(
+                        clinic_id=clinic, run_id=required_uuid(options, "run_id")
+                    ).pk
+                )
+            if verb in {"decide", "stop"}:
+                return self._decision(context, options)
+            if verb == "report":
+                report = build_report(
+                    clinic_id=clinic, run_id=required_uuid(options, "run_id")
+                )
+                destination = options.get("html")
+                if isinstance(destination, str):
+                    with Path(destination).open("x", encoding="utf-8") as stream:
+                        stream.write(report_html(report))
+                return json.dumps(report, indent=2, sort_keys=True)
+            raise EvaluationInputError
+
+    def _decision(
+        self, context: LifecycleContext, options: dict[str, CommandOption]
+    ) -> str:
+        if options["verb"] == "stop":
+            state = required_text(options, "state")
+            if state not in {"invalidated", "killed"}:
+                raise EvaluationInputError
+            return stop_rollout(
+                clinic_id=context.clinic_id,
+                change_id=required_uuid(options, "change_id"),
+                state="invalidated" if state == "invalidated" else "killed",
+            ).status
+        decision = required_text(options, "decision")
+        if decision not in {"approved", "rejected"}:
+            raise EvaluationInputError
+        return decide_change(
+            clinic_id=context.clinic_id,
+            change_id=required_uuid(options, "change_id"),
+            decision="approved" if decision == "approved" else "rejected",
+            approval_ref=required_text(options, "approval_ref"),
+        ).status
+
+    def _run(self, context: LifecycleContext, options: dict[str, CommandOption]) -> str:
+        clinic = context.clinic_id
+        reviewers = ReviewerAssignment(
+            required_uuid(options, "rater_one"),
+            required_uuid(options, "rater_two"),
+            required_uuid(options, "adjudicator"),
+        )
+        with _command_context(context):
+            if options["verb"] == "stage-run":
+                run = start_stage_run(
+                    clinic_id=clinic,
+                    change_id=required_uuid(options, "change_id"),
+                    reviewers=reviewers,
+                )
+            else:
                 evaluation_staff(clinic_id=clinic, mode="clinical_owner")
                 latest = (
                     EvaluationProtocol.objects.filter(
@@ -145,43 +227,8 @@ class Command(OwnerDatabaseCommand):
                     clinic_id=clinic,
                     protocol_id=latest.pk,
                     configuration_id=required_uuid(options, "configuration_id"),
-                    reviewers=ReviewerAssignment(
-                        required_uuid(options, "rater_one"),
-                        required_uuid(options, "rater_two"),
-                        required_uuid(options, "adjudicator"),
-                    ),
+                    reviewers=reviewers,
                 )
-            elif verb == "finish":
-                return finish_run(
-                    clinic_id=clinic, run_id=required_uuid(options, "run_id")
-                ).status
-            elif verb == "request-change":
-                return str(
-                    request_change(
-                        clinic_id=clinic, run_id=required_uuid(options, "run_id")
-                    ).pk
-                )
-            elif verb == "decide":
-                decision = required_text(options, "decision")
-                if decision not in {"approved", "rejected"}:
-                    raise EvaluationInputError
-                return decide_change(
-                    clinic_id=clinic,
-                    change_id=required_uuid(options, "change_id"),
-                    decision="approved" if decision == "approved" else "rejected",
-                    approval_ref=required_text(options, "approval_ref"),
-                ).status
-            elif verb == "report":
-                report = build_report(
-                    clinic_id=clinic, run_id=required_uuid(options, "run_id")
-                )
-                destination = options.get("html")
-                if isinstance(destination, str):
-                    with Path(destination).open("x", encoding="utf-8") as stream:
-                        stream.write(report_html(report))
-                return json.dumps(report, indent=2, sort_keys=True)
-            else:
-                raise EvaluationInputError
         # The real shared provider boundary refuses calls inside a transaction.
         results = evaluate(
             capability=run.protocol.capability,

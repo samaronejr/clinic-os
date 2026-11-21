@@ -68,9 +68,17 @@ def command_continuation() -> str:
 
 
 def _require_clinic(request: HttpRequest) -> WorkspaceClinic:
+    """Keep an explicit body selector bound to the shell's current clinic."""
     clinic = current_clinic(request)
     if clinic is None:
         raise Http404
+    if "clinic_id" in request.POST:
+        try:
+            requested = UUID(request.POST["clinic_id"])
+        except ValueError as error:
+            raise Http404 from error
+        if requested != clinic.id:
+            raise Http404
     return clinic
 
 

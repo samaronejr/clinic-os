@@ -48,6 +48,10 @@ class EvaluationRun(TenantScopedModel):
     configuration = models.ForeignKey("ai.ModelConfiguration", on_delete=models.PROTECT)
     configuration_version = models.PositiveIntegerField()
     versions = models.JSONField()
+    stage = models.CharField(max_length=24, default="offline")
+    rollout_approval = models.ForeignKey(
+        "ai.ModelChangeRequest", null=True, on_delete=models.PROTECT, related_name="+"
+    )
     rater_one = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
@@ -110,7 +114,11 @@ class ModelChangeRequest(TenantScopedModel):
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True
     )
-    status = models.CharField(max_length=9, default="requested")
+    status = models.CharField(max_length=11, default="requested")
+    stage = models.CharField(max_length=24, default="shadow")
+    exposure = models.CharField(max_length=16, default="none")
+    switch_generation = models.PositiveIntegerField(default=0)
+    authority_sha256 = models.CharField(max_length=64, default="")
     approval_ref = models.CharField(max_length=128, blank=True)
     decided_at = models.DateTimeField(null=True)
     created_at = models.DateTimeField(auto_now_add=True)

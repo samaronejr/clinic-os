@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import psycopg
 from apps.identity import stepup
+from django.conf import settings
 from django.db import connections
 from psycopg import sql
 
@@ -25,12 +26,17 @@ from ai import (
     test_evaluation_cli,
     test_evaluation_native,
     test_evaluation_runtime,
+    test_extraction_rollout,
     test_gateway,
     test_posture,
+    test_revenue_rollout,
+    test_rollout,
 )
 from ai.agent_support import agent_world
 from ai.brief_support import seeded
 from ai.decision_support_helpers import enable, world_for
+from ai.revenue_support import revenue_world
+from billing.journal_support import finance_setup
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -80,6 +86,20 @@ def exercise_ai_authority(
     secret_root: Path,
 ) -> None:
     """Bind source candidates to executed scope, role, owner and transport checks."""
+    with patch.context() as local:
+        local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
+        finance = finance_setup._get_wrapped_function()(graph())
+        revenue = revenue_world(finance, local, secret_root)
+        proofs.run(
+            "AI executed authority:retained Finance source validation",
+            partial(
+                test_revenue_rollout.test_retained_revenue_reproposal_keeps_original_permission,
+                revenue,
+                local,
+                "advanced_stage",
+                native=False,
+            ),
+        )
     with patch.context() as local:
         proofs.run(
             "AI executed authority:metering and protected sinks",
@@ -199,11 +219,35 @@ def exercise_ai_authority(
         test_evaluation_runtime.test_two_independent_reviews_and_explicit_owner_change_are_required,
         test_evaluation_runtime.test_assignments_scope_and_raw_verdict_writes_cannot_be_forged,
         test_evaluation_cli.test_cli_owner_scope_restores_role_after_service_failure_and_denies_runtime_entry,
+        test_rollout.test_progression_requires_reviewed_preceding_stage_and_separate_autonomy,
+        test_rollout.test_native_skipped_stage_and_foreign_receipt_inserts_are_refused,
+        test_rollout.test_revoked_approval_membership_invalidates_the_stage_and_its_receipt,
+        test_rollout.test_kill_is_durable_across_reenable_and_requires_new_stage_evidence,
     ):
         proofs.run(
             f"Evaluation current authority:{evaluation_oracle.__name__}",
             partial(evaluation_oracle, graph()),
         )
+    proofs.run(
+        "Rollout current owner stop and stale receipt",
+        partial(
+            test_rollout.test_stage_receipt_cannot_be_foreign_or_stale,
+            graph(),
+            foreign=False,
+        ),
+    )
+    for native in (False, True):
+        with patch.context() as local:
+            proofs.run(
+                f"Retained invocation cannot borrow a new permission:{native}",
+                partial(
+                    test_extraction_rollout.test_retained_extraction_cannot_file_after_rollout_invalidation,
+                    graph(),
+                    local,
+                    "advanced_stage",
+                    native,
+                ),
+            )
     with patch.context() as local:
         test_evaluation_native.fixed_review_freshness._get_wrapped_function()(local)
         proofs.run(

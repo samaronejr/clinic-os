@@ -113,6 +113,7 @@ contract builds the committed revision, so it requires a clean Git tree.
 ```sh
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
 CLINIC_BROWSER_ENGINE=webkit uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite primitives --theme dark --density compact
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 ```
 
@@ -176,10 +177,11 @@ retained as evidence.
 
 ### Hosted RC gates
 
-The SHA-256-pinned `ops/testing/ci-required-browser-suites.txt` also requires
-`clinical-inbox`. Local `make ci-browser-contract` sends the three legacy
-image suites to `browser_runner.sh` and the inbox to `renewal_runner`.
-The final image-runner selector remains a separate input.
+The SHA-256-pinned `ops/testing/ci-required-browser-suites.txt` selects only the
+three legacy image suites for `browser_runner.sh`. Local `make ci-browser-contract`
+also runs `clinical-inbox` separately through `renewal_runner`; hosted CI runs it
+through the `renewal-browser` shard matrix. The final image-runner selector remains
+a separate input.
 
 `.github/workflows/ci.yml` adds, alongside the frozen three-suite
 `contracts` selector and the `test` matrix: `renewal-browser` (all
@@ -224,11 +226,12 @@ re-run the same command.
 Celery workloads are split across seven queues so one tenant's bulk or AI
 burst cannot delay another tenant's clinical work. Queue names are declared
 in `config/celery.py` and tasks route by module prefix; the existing
-`comms.*` outbox tasks stay on `clinic-integrations`.
+`comms.*` outbox tasks and `prescription.dispatch_signature` use
+`clinic-integrations`.
 
 | Queue | Workload |
 | --- | --- |
-| `clinic-integrations` | comms outbox operations and reminder dispatch (existing) |
+| `clinic-integrations` | comms outbox, reminder dispatch, and prescription signing |
 | `clinical` | chart-facing tasks; isolated and fail-open under a Redis outage |
 | `ai-interactive` | latency-sensitive AI work (for example scribe chunk processing) |
 | `ai-batch` | deferred AI work (drafting, extraction); per-tenant quota |
@@ -249,7 +252,8 @@ uv run celery -A config.celery worker -Q finance -c 2
 uv run celery -A config.celery worker -Q bulk -c 2
 ```
 
-Beat is unchanged and schedules only the existing `comms.*` tasks:
+Run beat for periodic work, including reminders and outbox recovery.
+`prescription.dispatch_signature` is published after commit, not by beat:
 
 ```sh
 uv run celery -A config.celery beat

@@ -212,6 +212,13 @@ hypotheses. Finalization requires a stopped recording and full coverage or
 explicit, unchecked-by-default acknowledgment of incompleteness. Late model
 results never change a final; correcting one creates a new final successor.
 
+Recognized versions and their segments require authenticated current source
+evidence for the request's original invocation in the writing transaction.
+Settlement supplies that evidence before projecting recognition events.
+Supersession, source drift, stage revocation and either kill switch prevent new
+AI recognition provenance from an old invocation. Clinician correction,
+speaker relabeling and the existing finalization rules remain independent.
+
 An ASR refusal/outage retains audio under its existing policy and leaves
 `transcription_pending`. There is no invented text or automatic replay of an
 unknown charged outcome. The queue action admits only not-yet-requested chunks.
@@ -259,6 +266,11 @@ unchanged. Otherwise, a changed epoch or C != B is a conflict, including a
 deletion or edit followed by revert. Only an untouched section can take M.
 Acceptance always calls the clinician's own `record_clinical_note` with CAS.
 An explicit edited replacement is a clinician decision, not an automatic merge.
+Before applying retained output, review rechecks the draft invocation's original
+rollout permission and fresh governed source identity. The native review guard
+requires authenticated evidence for that invocation and transaction as well.
+A new model permission cannot revive an older draft after drift, revocation or
+a kill switch; manual clinical documentation remains available.
 Refused commands roll back every effect, including read audits; the HTTP boundary
 does not mutate the session. Refresh preserves posted unsaved content and refuses
 to silently rebase it onto another editor's revision.

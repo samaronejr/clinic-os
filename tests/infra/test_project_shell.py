@@ -90,7 +90,7 @@ def test_sentry_stays_dormant_without_a_dsn() -> None:
     assert not sentry_sdk.is_initialized()
 
 
-def test_celery_app_registers_only_the_integration_task() -> None:
+def test_celery_app_registers_only_delivered_project_tasks() -> None:
     # Given: the celery application behind the integration job boundary
     # When: the delivered task modules are imported and tasks are inspected
     # Registration is deferred until each shared task module is imported.
@@ -98,6 +98,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     import apps.comms.tasks  # noqa: PLC0415
     import apps.ehr.tasks  # noqa: PLC0415
     import apps.interop.tasks  # noqa: PLC0415
+    import apps.prescription.tasks  # noqa: PLC0415
     import apps.retention.tasks  # noqa: PLC0415
     import apps.scheduling.tasks  # noqa: PLC0415
     import apps.scribe.tasks  # noqa: PLC0415
@@ -131,6 +132,12 @@ def test_celery_app_registers_only_the_integration_task() -> None:
         "comms.dispatch_due_reminders",
         "comms.execute_operation",
         "comms.recover_pending_operations",
+        "prescription.dispatch_signature",
     ]
     routed = celery_app.amqp.router.route({}, "apps.ai.tasks.execute")
     assert routed["queue"].name == "ai-batch"
+    assert celery_app.conf.task_routes["prescription.dispatch_signature"] == {
+        "queue": "clinic-integrations",
+    }
+    routed = celery_app.amqp.router.route({}, "prescription.dispatch_signature")
+    assert routed["queue"].name == "clinic-integrations"

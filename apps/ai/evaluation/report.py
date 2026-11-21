@@ -100,6 +100,7 @@ def build_report(*, clinic_id: UUID, run_id: UUID) -> dict[str, object]:
         "real_world_performance": False,
         "external_gates_satisfied": [],
         "evaluation_status": run.status,
+        "rollout_stage": run.stage,
         "capability": run.protocol.capability,
         "configuration_version": run.configuration_version,
         "versions": run.versions,

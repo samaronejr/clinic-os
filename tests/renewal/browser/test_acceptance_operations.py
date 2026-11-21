@@ -48,6 +48,7 @@ from renewal.browser.flagship_support import (
 from renewal.browser.test_acceptance_clinical import rerun
 from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_billing import expect_state, seed_patient
+from renewal.browser.test_document_verification import drive_signature
 from renewal.browser.test_encounter import press_in_view
 from renewal.browser.test_encounter import seed as seed_encounter
 from renewal.browser.test_patient_access import _redeem
@@ -165,6 +166,7 @@ def test_s12_changed_prescription_bytes_refuse_the_stale_review(
         assert prescribing.operations(staff, reviewed) == []
         # Control: the already-rendered changed bytes can sign from their own review.
         press_in_view(editor, "sign_document")
+        assert drive_signature(editor, staff, fresh) == "signing"
         expect(editor.locator("[data-state]")).to_have_attribute(
             "data-state", "signing"
         )

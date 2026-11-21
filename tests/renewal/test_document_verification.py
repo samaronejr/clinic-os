@@ -70,6 +70,7 @@ from patients.duplicate_history_support import retained_histories
 from prescription.policy_support import seed_class_policies
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client, setup_context
+from renewal.test_signatures import run_signature_task
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -119,6 +120,7 @@ class SignedSetup:
                 clinic_id=self.graph.clinic_a,
                 document_id=self.document.pk,
             )
+        run_signature_task(operation.pk)
         with owner_scope(self.graph.organization_a):
             operation.refresh_from_db()
         assert operation.state == "signing"
@@ -973,6 +975,7 @@ def test_callback_forgery_cannot_publish_status(signed: SignedSetup) -> None:
             clinic_id=graph.clinic_a,
             document_id=signed.document.pk,
         )
+    run_signature_task(operation.pk)
     with owner_scope(graph.organization_a):
         operation.refresh_from_db()
     payload = {

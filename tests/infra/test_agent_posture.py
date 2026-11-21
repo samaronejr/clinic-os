@@ -111,6 +111,9 @@ def test_agent_definer_execute_surface_is_exact() -> None:
             ("agent_proposal_scope", "requested uuid"),
             ("agent_source", "requested uuid, source_id uuid"),
             *AGENT_SIGNATURES,
+            # Task 80: validate_current re-checks the run's rollout stage on the
+            # agent connection (apps/ai/action_validation.py).
+            ("ai_rollout_agent_allowed", "subject uuid"),
             ("principal_has", "perm text, clinic uuid"),
             ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
         }

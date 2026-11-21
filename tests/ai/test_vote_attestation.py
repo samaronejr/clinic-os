@@ -19,15 +19,19 @@ from uuid import uuid4
 
 import pytest
 from apps.ai.attestations import step_up_evidence
+from apps.ai.contracts import Purpose
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionExecution, ActionProposal, Approval
+from apps.core.secrets import secret_store
 from apps.identity.session_inventory import register_session, session_hash
+from apps.tenancy.envelope import KEK_SECRET_NAME
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 from psycopg.errors import InsufficientPrivilege
 
 from ai.agent_support import AgentWorld, agent_world, propose
 from ai.agent_support import approve as approve_agent
+from ai.retained_rollout_support import authorize_native
 from ai.revenue_support import RevenueWorld, request_and_collect, revenue_world
 from ai.test_revenue_cycle import approve as approve_revenue
 from ai.test_revenue_cycle import proposal_for
@@ -91,6 +95,7 @@ class Subject:
     permission: str
     proposal: ActionProposal
     world: AgentWorld | RevenueWorld
+    invocation_id: UUID | None = None
 
 
 @pytest.fixture(params=["agent", "revenue"])
@@ -130,6 +135,7 @@ def subject(
             "tiss.manage",
             proposal,
             revenue,
+            proposal.run.invocation_id,
         )
     assert found.proposal.state == "validated"
     return found
@@ -147,6 +153,21 @@ def acting(subject: Subject, actor: UUID | None = None) -> Iterator[CursorWrappe
                 str(subject.approver if actor is None else actor),
             ],
         )
+        if subject.kind == "revenue":
+            assert subject.invocation_id is not None
+            if authorize_native(
+                invocation_id=subject.invocation_id,
+                clinic_id=subject.clinic_id,
+                purpose=Purpose.REVENUE_CYCLE,
+            ):
+                cursor.execute(
+                    "SELECT clinic_app.ai_authorize_retained_proposal(%s,%s,%s)",
+                    [
+                        subject.proposal.pk,
+                        subject.clinic_id,
+                        secret_store().get_secret(KEK_SECRET_NAME),
+                    ],
+                )
         yield cursor
 
 
@@ -178,9 +199,13 @@ def forged_values(subject: Subject, vote: UUID, current: str) -> list[UUID | str
 
 @contextmanager
 def unguarded(subject: Subject, table: str) -> Iterator[CursorWrapper]:
-    """Owner tampering past one agent guard; every other constraint still holds."""
+    """Owner corruption bypasses the vote guard with genuine source provenance."""
     disable, enable = GUARD_TOGGLES[table]
     with owner_context(subject.organization_id), connection.cursor() as cursor:
+        if subject.kind == "revenue":
+            # Keep source and rollout guards active: only the vote state is fake.
+            with acting(subject):
+                pass
         cursor.execute(disable)
         try:
             yield cursor

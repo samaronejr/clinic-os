@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -20,10 +20,11 @@ from apps.ai.evaluation.services import (
     register_protocol,
     request_change,
     start_run,
+    start_stage_run,
     store_results,
 )
 from apps.ai.models import EvaluationProtocol, ModelConfiguration
-from apps.ai.owner import ModelTerms, propose_model, transition_model
+from apps.ai.owner import ModelTerms, propose_model, set_global_switch, transition_model
 from apps.identity.models import User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.contrib.auth.hashers import make_password
@@ -35,7 +36,7 @@ from rbac_fixtures import RBAC_RAW_CREDENTIAL
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from apps.ai.models import EvaluationRun
+    from apps.ai.models import EvaluationRun, ModelChangeRequest
 
     from rbac_fixtures import RbacGraph
 
@@ -155,6 +156,7 @@ def review_world(
 
 
 def evaluation_world(graph: RbacGraph) -> EvaluationWorld:
+    set_global_switch(enabled=True, approved_regions=("br-synthetic",))
     return review_world(
         organization=graph.organization_a,
         clinic=graph.clinic_a,
@@ -201,4 +203,34 @@ def approve_configuration(
             decision="approved",
             approval_ref="synthetic-scripted-engineering-approval",
         )
+    live = promote_stage(world, change.pk)
+    if configuration.purpose in {"front_desk", "analyst"}:
+        promote_stage(world, live.pk)
     return world
+
+
+def promote_stage(world: EvaluationWorld, change_id: UUID) -> ModelChangeRequest:
+    """Rehearse the real isolated stage, independent ratings and owner decision."""
+    with as_reviewer(world, world.owner):
+        run = start_stage_run(
+            clinic_id=world.clinic, change_id=change_id, reviewers=world.reviewers
+        )
+    results = evaluate(
+        capability=world.protocol.capability,
+        corpus_version=world.protocol.corpus_version,
+        provider_key=world.configuration.provider,
+        model_id=world.configuration.model_id,
+        purpose=Purpose(world.configuration.purpose),
+    )
+    with as_reviewer(world, world.owner):
+        store_results(clinic_id=world.clinic, run_id=run.pk, results=results)
+    assert complete_reviews(replace(world, run=run)).status == "passed"
+    with as_reviewer(world, world.owner):
+        change = request_change(clinic_id=world.clinic, run_id=run.pk)
+    with as_reviewer(world, world.approver):
+        return decide_change(
+            clinic_id=world.clinic,
+            change_id=change.pk,
+            decision="approved",
+            approval_ref="synthetic-scripted-stage-approval",
+        )

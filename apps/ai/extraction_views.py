@@ -29,11 +29,11 @@ from apps.ai.extraction import (
     authorized_job,
     candidate_data,
     collect_extraction,
-    extraction_source,
+    job_source,
     review_extraction,
     start_extraction,
 )
-from apps.ai.extraction_contracts import ExtractionInputError
+from apps.ai.extraction_contracts import MAX_UNIT_LENGTH, ExtractionInputError
 from apps.ai.extraction_documents import render_page
 from apps.ai.models import AIInvocation, ExtractionCandidateRecord
 from apps.ehr.attachment_storage import AttachmentStorageError
@@ -94,6 +94,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     if request.method == "GET":
         require_permission("clinical.read", clinic_id=clinic_id)
         return render(request, "ai/extraction.html", context)
+    action = request.POST.get("action", "")
     if (
         request.FILES
         or set(request.POST)
@@ -106,11 +107,12 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             "attachment_id",
             "page",
             "zoom",
+            "manual_unit",
         }
         or any(len(request.POST.getlist(key)) != 1 for key in request.POST)
+        or ("manual_unit" in request.POST and action not in ("confirmed", "rejected"))
     ):
         return HttpResponse(status=400)
-    action = request.POST.get("action", "")
     target = request.POST.get("result_version_id", "")
     if action == "start":
         attachment = request.POST.get("attachment_id", "")
@@ -135,6 +137,9 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 candidate_id=candidate_id,
                 decision=action,
                 result_version_id=UUID(target) if target else None,
+                manual_unit=request.POST.get("manual_unit")
+                if action == "confirmed"
+                else None,
             )
             context["saved"] = True
         elif action != "refresh":
@@ -155,23 +160,19 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
 def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, object]:
     if zoom not in ZOOMS:
         raise ExtractionInputError
-    source = extraction_source(
-        clinic_id=job.clinic_id,
-        result_version_id=job.result_version_id,
-        attachment_id=job.attachment_id,
-        include_bytes=True,
-    )
+    source = job_source(job=job, include_bytes=True)
     raster = render_page(data=source.data, content_type=source.content_type, page=page)
     with Image.open(BytesIO(raster)) as image:
         width, height = image.size
     rows: list[dict[str, object]] = []
+    regions = source.regions(rotations=tuple(job.rotations))
     for record in job.candidates.select_related("job").order_by("position"):
         if (
             record.status in ("candidate", "ambiguous")
             and record.expires_at <= timezone.now()
         ):
             continue
-        candidate = candidate_data(record)
+        candidate = candidate_data(record, regions=regions)
         box = candidate.region.display_bbox(job.rotations[candidate.region.page - 1])
         left, top, right, bottom = box
         rows.append(
@@ -204,6 +205,7 @@ def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, 
         "image_width": width,
         "image_height": height,
         "targets": targets,
+        "max_unit_length": MAX_UNIT_LENGTH,
         "unavailable": not rows
         and (invocation is None or invocation.status == "failed"),
     }

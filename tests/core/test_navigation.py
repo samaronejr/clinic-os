@@ -15,17 +15,21 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.core import patient_context
-from apps.core.navigation import DESTINATIONS
+from apps.core.navigation import DESTINATIONS, granted_permissions
 from apps.core.patient_context import (
     ContextSwitch,
     SwitchConsequence,
     register_context_switch_guard,
     unregister_context_switch_guard,
 )
+from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY
 from apps.identity.models import RoleGrant, User, UserClinicRole
+from apps.identity.permissions import BUNDLES_V1, BUNDLES_V2
+from apps.tenancy.db import tenant_context
 from django.conf import settings
 from django.contrib.auth import SESSION_KEY
 from django.test import Client
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 
@@ -72,9 +76,9 @@ PRIVILEGED: Final = frozenset(
 # route guards the destinations lead to today). Roles whose routes are not
 # migrated to permissions yet keep their narrower workspace. RP configuration
 # actors can still discover scheduling Settings without patient administration.
-# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner). The
-# org admin also holds "org" authority, but is not a workspace shell role: with
-# no landing clinic its navigation is the Settings fallback and has no palette.
+# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner).
+# Task 79: every role resolves its clinic from its own grants, so finance and the
+# org admin get their delivered places from a fresh session too.
 EXPECTED: Final = {
     "owner": [
         "agenda",
@@ -131,9 +135,68 @@ EXPECTED: Final = {
         "reports",
         "settings",
     ],
-    "finance": [],
-    "org_admin": ["settings"],
+    # Task 63: Reports follows charge.read into both bundles.
+    "finance": ["finance", "reports"],
+    # Task 50: privacy.requests opens Patients > Data-subject requests.
+    "org_admin": ["patients", "finance", "automations", "reports", "settings"],
 }
+CLINIC_A_NAME: Final = "Todo 8 Clinic A"
+# Where /workspace/ sends a fresh session (no remembered clinic, no module URL):
+# the first delivered place the role's grants open in its clinic.
+LANDING: Final = {
+    "owner": "scheduling:agenda",
+    "clinic_admin": "scheduling:agenda",
+    "receptionist": "scheduling:agenda",
+    "physician": "scheduling:agenda",
+    "nurse": "scheduling:reception",
+    "allied_professional": "orders:results",
+    "scheduler": "scheduling:resource-settings",
+    "clinic_manager": "scheduling:resource-settings",
+    "finance": "billing:finance",
+    "org_admin": "scheduling:resource-settings",
+}
+# The empty-query palette of the bundles without a clinical landing, and one
+# typed command each reaches by name.
+PALETTE: Final = {
+    "finance": [
+        "billing:finance",
+        "billing:charges",
+        "analytics:reports",
+        "identity:preferences",
+    ],
+    "org_admin": [
+        "intake:data-requests",
+        "billing:finance",
+        "ai:agents",
+        "ai:care-coordination",
+        "analytics:reports",
+        "ai:settings",
+        "scheduling:resource-settings",
+        "identity:emergency-reviews",
+        "identity:governance",
+        "identity:preferences",
+    ],
+}
+TYPED_COMMAND: Final = {
+    "finance": ("Reports", "analytics:reports"),
+    "org_admin": ("Enterprise governance", "identity:governance"),
+}
+# The roles whose default landing is the Agenda, the bundle permission that
+# opens it, and the next place each lands on once that permission is narrowed.
+LEGACY_ROLES: Final = ("owner", "clinic_admin", "receptionist", "physician")
+AGENDA_GRANT: Final = {
+    "owner": "appointment.read",
+    "clinic_admin": "appointment.read",
+    "receptionist": "appointment.read",
+    "physician": "appointment.read_own",
+}
+NARROWED_LANDING: Final = {
+    "owner": "scheduling:resource-settings",
+    "clinic_admin": "scheduling:resource-settings",
+    "receptionist": "scheduling:reception",
+    "physician": "orders:results",
+}
+CLINIC_B_NAME: Final = "Todo 8 Clinic B"
 TOKEN_MIN_LENGTH: Final = 20
 UNDELIVERED: Final[frozenset[str]] = frozenset()
 
@@ -242,19 +305,9 @@ def test_each_role_sees_its_exact_destination_set(
     assert _modules(response) == EXPECTED[role]
     html = response.content.decode()
     assert not UNDELIVERED.intersection(_modules(response))
-    # The results workspace gives demographic readers contextual commands.
-    has_palette = role in {
-        "owner",
-        "clinic_admin",
-        "receptionist",
-        "physician",
-        "nurse",
-        "allied_professional",
-        "scheduler",
-        "clinic_manager",
-    }
-    assert ('data-command-open="command-palette"' in html) is has_palette
-    assert ('id="command-palette"' in html) is has_palette
+    # Every role with an open place gets the commands for it.
+    assert 'data-command-open="command-palette"' in html
+    assert 'id="command-palette"' in html
 
 
 @pytest.mark.parametrize("role", ["scheduler", "clinic_manager", "receptionist"])
@@ -380,6 +433,256 @@ def test_finance_resolves_the_shell_for_bundles_without_a_clinical_landing(
     html = response.content.decode()
     assert f'data-command-next="{finance}"' in html
     assert f'class="nav-brand" href="{home.format(clinic=rbac_graph.clinic_a)}"' in html
+
+
+@pytest.mark.parametrize("role", list(EXPECTED))
+def test_a_fresh_session_lands_every_role_on_authorized_work(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    assert ACTIVE_CLINIC_SESSION_KEY not in client.session
+    landing = reverse(LANDING[role], kwargs={"clinic_id": rbac_graph.clinic_a})
+
+    home = _get(client, "/workspace/")
+
+    assert home.status_code == FOUND
+    assert home["Location"] == landing
+    page = _get(client, landing)
+    assert page.status_code == OK
+    html = page.content.decode()
+    assert f'<strong class="nav-clinic">{CLINIC_A_NAME}</strong>' in html
+    assert f'class="nav-brand" href="{landing}"' in html
+    assert _modules(page) == EXPECTED[role]
+    assert 'data-command-open="command-palette"' in html
+
+
+@pytest.mark.parametrize("role", list(PALETTE))
+def test_a_fresh_session_offers_the_commands_its_grants_open(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    # The page shown after sign-in; the palette then posts no clinic selector.
+    signed_in = _get(client, "/auth/protected/")
+    assert 'id="command-palette"' in signed_in.content.decode()
+
+    rows = _api(client, {"q": ""}).json()
+
+    assert [row["action_url_name"] for row in rows] == PALETTE[role]
+    for row in rows:
+        opened = _get(client, str(row["href"]))
+        assert opened.status_code == OK, row["action_url_name"]
+    label, url_name = TYPED_COMMAND[role]
+    href = reverse(url_name, kwargs={"clinic_id": rbac_graph.clinic_a})
+    with runtime_role(), fixed_otp_time():
+        options = client.post(OPTIONS, {"q": gettext(label)}, headers=_csrf(client))
+    assert options.status_code == OK
+    # The typed command is the first row, so Enter on it opens the place.
+    first = re.search(r'data-href="([^"]+)"', options.content.decode())
+    assert first is not None
+    assert first.group(1) == href
+    page = _post(client, "/workspace/command/", {"q": gettext(label)})
+    assert page.status_code == OK
+    assert f'href="{href}"' in _main(page)
+
+
+def test_narrowed_finance_grants_move_then_remove_the_landing(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, user = _client_for(rbac_graph, "finance")
+    clinic = rbac_graph.clinic_a
+
+    def narrow(*permissions: str) -> None:
+        with owner_context(rbac_graph.organization_a):
+            for permission in permissions:
+                RoleGrant.objects.create(
+                    organization_id=rbac_graph.organization_a,
+                    clinic_id=clinic,
+                    role="finance",
+                    permission=permission,
+                    valid_from=timezone.now() - timedelta(minutes=1),
+                )
+        _reauthenticate(client, user.pk, "finance")
+
+    # Without the finance-workspace permissions only Charges stays open there.
+    narrow("charge.collect", "settlement.post")
+    charges = reverse("billing:charges", kwargs={"clinic_id": clinic})
+    home = _get(client, "/workspace/")
+    assert home.status_code == FOUND
+    assert home["Location"] == charges
+    page = _get(client, charges)
+    assert page.status_code == OK
+    assert _modules(page) == ["finance", "reports"]
+    assert [row["action_url_name"] for row in _api(client, {"q": ""}).json()] == [
+        "billing:charges",
+        "analytics:reports",
+        "identity:preferences",
+    ]
+
+    # Narrowing charge.read closes every place: the remembered clinic, its
+    # landing and its commands all go on the next request.
+    narrow("charge.read")
+    assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(clinic)
+    gone = _get(client, "/workspace/")
+    assert gone.status_code == OK
+    html = gone.content.decode()
+    assert gettext("No clinic assigned") in html
+    assert CLINIC_A_NAME not in html
+    assert _modules(gone) == []
+    assert 'id="command-palette"' not in html
+    assert ACTIVE_CLINIC_SESSION_KEY not in client.session
+    assert _get(client, "/workspace/command/").status_code == NOT_FOUND
+    assert _api(client, {"q": "", "clinic_id": str(clinic)}).content == b"[]"
+    assert _get(client, charges).status_code == FORBIDDEN
+
+
+@pytest.mark.parametrize(
+    ("role", "url_name"),
+    [("finance", "billing:finance"), ("org_admin", "identity:governance")],
+)
+def test_unknown_and_foreign_clinic_selectors_share_one_denial(
+    rbac_graph: RbacGraph, role: str, url_name: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    selectors = (rbac_graph.clinic_c, uuid4())
+
+    refused = [
+        _get(client, reverse(url_name, kwargs={"clinic_id": selector}))
+        for selector in selectors
+    ]
+    searched = [
+        _api(client, {"q": "", "clinic_id": str(selector)}) for selector in selectors
+    ]
+
+    assert {response.status_code for response in refused} == {FORBIDDEN}
+    assert len({_main(response) for response in refused}) == 1
+    assert all("Todo 8 Clinic C" not in r.content.decode() for r in refused)
+    assert all(response.content == b"[]" for response in searched)
+    # Refusals remember nothing: the fresh landing is still the own clinic's.
+    assert ACTIVE_CLINIC_SESSION_KEY not in client.session
+    home = _get(client, "/workspace/")
+    assert home["Location"] == reverse(
+        LANDING[role], kwargs={"clinic_id": rbac_graph.clinic_a}
+    )
+
+
+def _add_clinic_b(graph: RbacGraph, user_id: UUID, role: str) -> None:
+    """Give the actor the same role, with its full bundle, in clinic B."""
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            user_id=user_id,
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_b,
+            role=role,
+        )
+
+
+def _remove_in_clinic_a(graph: RbacGraph, role: str, permissions: set[str]) -> None:
+    """Narrow the role's bundle in clinic A only (released v1 or additive v2)."""
+    with owner_context(graph.organization_a):
+        for permission in sorted(permissions):
+            RoleGrant.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                role=role,
+                permission=permission,
+                bundle_version=1 if permission in BUNDLES_V1[role] else 2,
+                valid_from=timezone.now() - timedelta(minutes=1),
+            )
+
+
+def _granted_in_clinic_a(graph: RbacGraph, user_id: UUID) -> frozenset[str]:
+    with runtime_role(), tenant_context(user_id, graph.organization_a):
+        return granted_permissions(graph.clinic_a)
+
+
+def _assert_uniform_agenda_denial(client: Client, graph: RbacGraph) -> None:
+    """Clinic A's refused Agenda answers exactly like a foreign or unknown one."""
+    refused = [
+        _get(client, reverse("scheduling:agenda", kwargs={"clinic_id": selector}))
+        for selector in (graph.clinic_a, graph.clinic_c, uuid4())
+    ]
+    assert {response.status_code for response in refused} == {NOT_FOUND}
+    assert len({_main(response) for response in refused}) == 1
+    assert all("Todo 8 Clinic C" not in r.content.decode() for r in refused)
+
+
+@pytest.mark.parametrize("role", LEGACY_ROLES)
+def test_a_narrowed_agenda_grant_moves_agenda_roles_to_their_next_open_place(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    _add_clinic_b(rbac_graph, user.pk, role)
+    _remove_in_clinic_a(rbac_graph, role, {AGENDA_GRANT[role]})
+    _reauthenticate(client, user.pk, role)
+    landing = reverse(NARROWED_LANDING[role], kwargs={"clinic_id": rbac_graph.clinic_a})
+    agenda_b = reverse("scheduling:agenda", kwargs={"clinic_id": rbac_graph.clinic_b})
+
+    home = _get(client, "/workspace/")
+
+    # Clinic A still opens other places: it stays listed, landing on one of them.
+    assert home.status_code == FOUND
+    assert home["Location"] == landing
+    page = _get(client, landing)
+    assert page.status_code == OK
+    html = page.content.decode()
+    assert f'class="nav-brand" href="{landing}"' in html
+    assert "agenda" not in _modules(page)
+    assert 'id="command-palette"' in html
+    assert f'<a class="nav-link" href="{agenda_b}">{CLINIC_B_NAME}</a>' in html
+    rows = _api(client, {"q": ""}).json()
+    assert rows
+    assert "scheduling:agenda" not in {row["action_url_name"] for row in rows}
+    # From clinic B, the switcher leads to clinic A's open place, not its Agenda.
+    other = _get(client, agenda_b)
+    assert other.status_code == OK
+    switch = f'<a class="nav-link" href="{landing}">{CLINIC_A_NAME}</a>'
+    assert switch in other.content.decode()
+    _assert_uniform_agenda_denial(client, rbac_graph)
+
+
+@pytest.mark.parametrize("other_clinic", [False, True])
+@pytest.mark.parametrize("role", LEGACY_ROLES)
+def test_agenda_roles_without_grants_lose_the_clinic_landing_and_commands(
+    rbac_graph: RbacGraph, role: str, other_clinic: bool
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    if other_clinic:
+        _add_clinic_b(rbac_graph, user.pk, role)
+        _reauthenticate(client, user.pk, role)
+    agenda_a = reverse("scheduling:agenda", kwargs={"clinic_id": rbac_graph.clinic_a})
+    assert _get(client, agenda_a).status_code == OK
+    _remove_in_clinic_a(rbac_graph, role, set(BUNDLES_V2[role]))
+    _reauthenticate(client, user.pk, role)
+    assert _granted_in_clinic_a(rbac_graph, user.pk) == frozenset()
+    assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(rbac_graph.clinic_a)
+
+    home = _get(client, "/workspace/")
+
+    if other_clinic:
+        # Only clinic B is listed and selected; clinic A is gone from the shell.
+        agenda_b = reverse(
+            "scheduling:agenda", kwargs={"clinic_id": rbac_graph.clinic_b}
+        )
+        assert home.status_code == FOUND
+        assert home["Location"] == agenda_b
+        html = _get(client, agenda_b).content.decode()
+        assert f'<strong class="nav-clinic">{CLINIC_B_NAME}</strong>' in html
+        assert CLINIC_A_NAME not in html
+        assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(rbac_graph.clinic_b)
+    else:
+        assert home.status_code == OK
+        html = home.content.decode()
+        assert gettext("No clinic assigned") in html
+        assert CLINIC_A_NAME not in html
+        assert _modules(home) == []
+        assert 'id="command-palette"' not in html
+        assert ACTIVE_CLINIC_SESSION_KEY not in client.session
+        assert _get(client, "/workspace/command/").status_code == NOT_FOUND
+        assert _api(client, {"q": ""}).content == b"[]"
+    assert _api(client, {"q": "", "clinic_id": str(rbac_graph.clinic_a)}).content == (
+        b"[]"
+    )
+    _assert_uniform_agenda_denial(client, rbac_graph)
 
 
 def test_section_row_lists_open_places_and_marks_the_current_one(
@@ -542,7 +845,9 @@ def test_patient_matches_are_exact_full_names_only(rbac_graph: RbacGraph) -> Non
     assert word == []
 
 
-@pytest.mark.parametrize("role", ["finance", "physician", "nurse", "owner"])
+@pytest.mark.parametrize(
+    "role", ["finance", "org_admin", "physician", "nurse", "owner"]
+)
 def test_roles_without_registry_authority_never_see_patients(
     rbac_graph: RbacGraph, role: str
 ) -> None:
@@ -599,6 +904,85 @@ def test_search_requires_csrf_and_bounded_text(rbac_graph: RbacGraph) -> None:
 def _patient_token(client: Client, graph: RbacGraph) -> str:
     rows = _api(client, {"q": PATIENT, "clinic_id": str(graph.clinic_a)}).json()
     return str(next(row["token"] for row in rows if row["kind"] == "patient"))
+
+
+@pytest.mark.parametrize("role", ["finance", "receptionist"])
+@pytest.mark.parametrize("htmx", [False, True])
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [("/workspace/command/", OK), (OPTIONS, OK), (CLOSE, FOUND)],
+)
+def test_command_clinic_selectors_preserve_the_session_on_refusal(
+    rbac_graph: RbacGraph, role: str, htmx: bool, path: str, status: int
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    assert _get(client, "/workspace/").status_code == FOUND
+    key = f"{patient_context.SESSION_PREFIX}{rbac_graph.clinic_a}"
+    if role == "receptionist":
+        seed_patients(rbac_graph, user.pk, rbac_graph.clinic_a, (PATIENT,))
+        assert (
+            _post(
+                client, RUN, {"token": _patient_token(client, rbac_graph)}
+            ).status_code
+            == FOUND
+        )
+        assert key in client.session
+    snapshot = dict(client.session)
+    headers = {**_csrf(client), **({"HX-Request": "true"} if htmx else {})}
+    bodies = []
+    for selector in (
+        "",
+        "invalid",
+        str(uuid4()),
+        rbac_graph.clinic_b,
+        rbac_graph.clinic_c,
+    ):
+        with runtime_role(), fixed_otp_time():
+            response = client.post(
+                path, {"clinic_id": str(selector), "q": PATIENT}, headers=headers
+            )
+        assert response.status_code == NOT_FOUND
+        assert response.wsgi_request.session.modified is False
+        unchanged = dict(client.session) == snapshot
+        assert unchanged
+        assert not response.cookies
+        bodies.append(_main(response))
+    assert len(set(bodies)) == 1
+    with runtime_role(), fixed_otp_time():
+        accepted = client.post(
+            path,
+            {"clinic_id": str(rbac_graph.clinic_a).upper(), "q": PATIENT},
+            headers=headers,
+        )
+    assert accepted.status_code == status
+    if path == CLOSE:
+        assert key not in client.session
+
+
+@pytest.mark.parametrize("htmx", [False, True])
+def test_finance_refusal_does_not_render_the_pinned_patient(
+    rbac_graph: RbacGraph, htmx: bool
+) -> None:
+    client, user = _client_for(rbac_graph, "receptionist")
+    seed_patients(rbac_graph, user.pk, rbac_graph.clinic_a, (PATIENT,))
+    assert _get(client, "/workspace/").status_code == FOUND
+    pinned = _post(client, RUN, {"token": _patient_token(client, rbac_graph)})
+    assert pinned.status_code == FOUND
+    finance = reverse("billing:finance", kwargs={"clinic_id": rbac_graph.clinic_a})
+    assert PATIENT in _get(client, finance).content.decode()
+    snapshot = dict(client.session)
+    with runtime_role(), fixed_otp_time():
+        response = client.post(
+            finance,
+            {"action": "invalid"},
+            headers={**_csrf(client), **({"HX-Request": "true"} if htmx else {})},
+        )
+    assert response.status_code == FORBIDDEN
+    assert PATIENT not in response.content.decode()
+    assert response.wsgi_request.session.modified is False
+    unchanged = dict(client.session) == snapshot
+    assert unchanged
+    assert not response.cookies
 
 
 def test_choosing_a_patient_pins_the_banner_without_leaking_identity(

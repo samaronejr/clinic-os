@@ -43,6 +43,7 @@ from renewal.browser.test_document_verification import (
     _document_row,
     _operation_row,
     _signed_callback,
+    drive_signature,
 )
 from renewal.browser.test_encounter import press, press_in_view, seed
 
@@ -452,6 +453,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         # Sign: explicit progress, nothing issued yet.
         press_in_view(page, "sign_document")
         signing_url = page.url
+        assert drive_signature(page, staff, document) == "signing"
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
         assert page.locator("[data-progress-state]").evaluate_all(
             "nodes => nodes.map(node => node.dataset.progressState)"
@@ -592,9 +594,10 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         results = concurrent_sign(page, review_url)
         assert [status for status, _ in results] == [302, 302]
         assert len({location for _, location in results}) == 1
-        assert operations(staff, document) == [("signing", "")]
+        assert operations(staff, document) == [("prepared", "")]
         signing_url = f"{base}{results[0][1]}"
         goto_settled(page, signing_url)
+        assert drive_signature(page, staff, document) == "signing"
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
         capture(page, root, "double-submit-single-operation", 1280)
 
@@ -614,6 +617,7 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         press(page, "restart_signature")
         retry_url = page.url
         assert retry_url != signing_url
+        assert drive_signature(page, staff, document) == "signing"
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
         expect(page.locator("[data-attempt-state]").first).to_have_attribute(
             "data-attempt-state", "failed"

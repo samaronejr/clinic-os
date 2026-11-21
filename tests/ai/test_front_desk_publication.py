@@ -20,6 +20,7 @@ from apps.scheduling.models import Appointment
 from apps.tenancy.envelope import KEK_SECRET_NAME
 from django.db import DatabaseError, connection, connections
 
+from ai.evaluation_support import approve_configuration
 from ai.test_front_desk import (
     TOOLS,
     _agent_policy,
@@ -298,6 +299,11 @@ def test_merged_runner_unknown_and_wrong_clinic_turns_have_identical_denial(
         other, settings, phone_number_id=f"1{uuid4().int % 10**14:014d}"
     )
     _agent_policy(other, rbac_graph.clinic_admin, TOOLS)
+    approve_configuration(
+        desk.gateway.configuration,
+        organization=other.organization_a,
+        clinic=other.clinic_a,
+    )
     with monkeypatch.context() as patch:
         patch.setattr(front_desk, "_run", lambda *args: None)
         foreign.receive(foreign.message_body(text="Oi"))

@@ -30,6 +30,8 @@ from apps.audit.verification import AuditChainVerificationError
 from apps.intake.models import Patient
 from django.db import connection
 
+from ops.testing.migration_upgrade_ai_verify import verify_ai
+
 failures: list[str] = []
 
 
@@ -160,6 +162,8 @@ else:
         chain.row_count >= markers["audit_events"],
         "audit chain lost rows after upgrade",
     )
+
+failures.extend(verify_ai(markers))
 
 if failures:
     for name in failures:

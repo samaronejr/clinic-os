@@ -18,6 +18,15 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from apps.identity.models import UserPreference
+from apps.identity.preferences import (
+    DEFAULT_PREFERENCES,
+    UiPreferences,
+    default_ui_preferences,
+)
+from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
+from config.settings import base as base_settings
+from django.test import override_settings
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
@@ -481,6 +490,13 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         ),
         "test_owner_login_establishes_a_session_and_enters_the_totp_flow": (
             "asserts the session cookie between the press and the URL wait"
+        ),
+    },
+    BROWSER_SUITES / "test_scribe_capture.py": {
+        "RACE_STOP_AGAINST_HELD_POLL_JS": (
+            "clicks the capture's Stop inside the page, so no driver round trip"
+            " sits in the 5 s fetch deadline (M6-1); scribe-capture.js"
+            " preventDefaults that click and the form submit; no document"
         ),
     },
     BROWSER_SUITES / "test_agenda_slice.py": {
@@ -1590,7 +1606,10 @@ def test_every_firefox_the_suites_start_turns_coop_processing_off(
     with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
         pass
 
-    off = {"browser.tabs.remote.useCrossOriginOpenerPolicy": False}
+    off = {
+        "browser.tabs.remote.useCrossOriginOpenerPolicy": False,
+        "browser.formfill.enable": False,
+    }
     assert off == engines.FIREFOX_USER_PREFS
     scaled = {**off, "layout.css.devPixelsPerPx": "2.0"}
     assert [o.get("firefox_user_prefs") for o in launched["firefox"]] == [
@@ -1781,6 +1800,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         yield database
 
     captured: list[dict[str, str]] = []
+    bounded: list[tuple[list[str], int]] = []
 
     def fake_run(
         argv: list[str],
@@ -1790,8 +1810,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         timeout: int,
         cwd: Path | None = None,
     ) -> int:
-        assert timeout == 3600
-        assert "--workers=8" in argv
+        bounded.append((argv, timeout))
         captured.append(environment)
         return 0
 
@@ -1801,6 +1820,13 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     monkeypatch.setattr(runner, "_run_bounded", fake_run)
     results = runner._gate_coverage(REPOSITORY, tmp_path, "covpin")
     assert results == [{"command": "coverage", "exit": 0}]
+    # One bounded child runs the whole canonical command (collection and the
+    # parallel and serial phases live in ci_pytest) under one 90-minute deadline.
+    assert runner.COVERAGE_TIMEOUT_SECONDS == 5400
+    assert len(bounded) == 1
+    argv, timeout = bounded[0]
+    assert timeout == runner.COVERAGE_TIMEOUT_SECONDS
+    assert argv[1:4] == ["-m", "ops.testing.ci_pytest", "--workers=8"]
     assert len(captured) == 1
     environment = captured[0]
     assert environment["DJANGO_SETTINGS_MODULE"] == "config.settings.test"
@@ -1842,6 +1868,73 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
     for environment in environments:
         assert {name: environment[name] for name in owned} == owned
         assert "CLINIC_UNRELATED_SECRET" not in environment
+
+
+@pytest.mark.parametrize("suite", sorted(runner.SIGNING_SUITES))
+@pytest.mark.parametrize("engine", runner.ENGINES)
+def test_signing_suites_export_the_app_worker_dsn(
+    suite: str, engine: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = runner.ProvisionedDatabase(
+        app_dsn="postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic",
+        app_password="",
+        container="unused",
+        database="clinic",
+        owner_dsn="postgresql://clinic_owner:synthetic@127.0.0.1:55432/clinic",
+        owner_password="",
+        port=55432,
+        postgres_password="",
+        super_dsn="",
+        super_password="",
+        volume="unused",
+    )
+    monkeypatch.delenv("CLINIC_RENEWAL_APP_DATABASE_URL", raising=False)
+    monkeypatch.setattr(runner, "_resolve_browser", lambda _engine: "/unused")
+    monkeypatch.setattr(runner, "_capture_source", lambda *_args: ({}, "digest"))
+    monkeypatch.setattr(
+        runner, "_provision_database", lambda *_args: contextlib.nullcontext(database)
+    )
+    monkeypatch.setattr(runner, "_migrate", lambda *_args: None)
+    monkeypatch.setattr(
+        runner,
+        "_seed",
+        lambda *_args: dict.fromkeys(
+            ("clinic_id", "organization_id", "username", "password"), "fixture"
+        ),
+    )
+    monkeypatch.setattr(runner, "_require_app_role", lambda _dsn: None)
+    monkeypatch.setattr(runner, "reserve_port", lambda: 48000)
+    monkeypatch.setattr(
+        runner, "realtime_broker", lambda *_args, **_kwargs: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(runner, "broker_tap", lambda *_args: contextlib.nullcontext())
+    monkeypatch.setattr(runner, "start_master", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner, "wait_until_ready", lambda *_args: None)
+    monkeypatch.setattr(
+        runner,
+        "browser_endpoint",
+        lambda *_args, **_kwargs: contextlib.nullcontext(48000),
+    )
+    monkeypatch.setattr(runner, "scan_suite_runtime", lambda **_kwargs: None)
+    monkeypatch.setattr(runner, "_flagship_report", lambda *_args: {})
+    monkeypatch.setenv("REALTIME_REDIS_URL", "redis://127.0.0.1:65431/1")
+    captured: dict[str, str] = {}
+
+    def fake_run(
+        _argv: list[str], environment: dict[str, str], *_args: object, **_kwargs: object
+    ) -> int:
+        captured.update(environment)
+        (tmp_path / "browser" / f"junit-{suite}.xml").write_text(
+            '<testsuite tests="1" failures="0" errors="0" skipped="0"/>',
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(runner, "_run_bounded", fake_run)
+    runner._run_browser_suite(REPOSITORY, suite, tmp_path, tmp_path, None, engine)
+
+    assert captured["CLINIC_BROWSER_ENGINE"] == engine
+    assert captured["CLINIC_RENEWAL_WORKER_DATABASE_URL"] == database.app_dsn
 
 
 def test_realtime_suites_lend_workers_the_served_broker_only() -> None:
@@ -1898,7 +1991,8 @@ def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
         log,
         timeout=2,
     )
-    assert code != 0
+    # The deadline still fails closed: the group is killed and the run reads 124.
+    assert code == 124
     assert time.monotonic() - started < 30
     assert log.read_text(errors="replace") == ""
 
@@ -2730,3 +2824,201 @@ def test_flagship_report_requires_its_file_and_the_sentinel_scan(
     browser_root = _flagship_root(tmp_path, FLAGSHIP_DOCUMENT)
     with pytest.raises(runner.RenewalRunnerError, match="sentinel scan"):
         runner._flagship_report(browser_root, "journey-results", None)
+
+
+DISPLAY_DEFAULT = {
+    "CLINIC_RENEWAL_DENSITY": "comfortable",
+    "CLINIC_RENEWAL_THEME": "light",
+}
+
+
+def test_display_options_parse_and_default_to_todays_display() -> None:
+    options = runner._options(
+        ["--suite", "primitives", "--theme", "dark", "--density", "compact"],
+        runner._BROWSER_OPTIONS,
+    )
+    assert (options["--theme"], options["--density"]) == ("dark", "compact")
+    assert runner.DisplayRequest().environment() == DISPLAY_DEFAULT
+    assert runner.DisplayRequest("dark", "compact").environment() == {
+        "CLINIC_RENEWAL_DENSITY": "compact",
+        "CLINIC_RENEWAL_THEME": "dark",
+    }
+    assert runner.DisplayRequest(density="compact").environment() == {
+        **DISPLAY_DEFAULT,
+        "CLINIC_RENEWAL_DENSITY": "compact",
+    }
+
+
+def test_display_vocabulary_is_the_stored_preference_vocabulary() -> None:
+    # The runner may only request what a UserPreference row can hold.
+    assert tuple(UserPreference.Theme.values) == THEMES
+    assert tuple(UserPreference.Density.values) == DENSITIES
+    assert (THEMES[0], DENSITIES[0]) == (
+        DEFAULT_PREFERENCES.theme,
+        DEFAULT_PREFERENCES.density,
+    )
+
+
+@pytest.mark.parametrize(
+    ("theme", "density"),
+    [("sepia", None), (None, "cozy"), ("", None), ("Dark", None), (None, "")],
+)
+def test_display_refuses_an_unknown_value(
+    theme: str | None, density: str | None
+) -> None:
+    with pytest.raises(runner.RenewalRunnerError, match="unsupported renewal display"):
+        runner.DisplayRequest(theme, density).environment()
+
+
+@pytest.mark.parametrize(
+    ("theme", "density", "variable", "allowed"),
+    [
+        ("sepia-PAYLOAD-7f3a", None, "CLINIC_RENEWAL_THEME", "light, dark"),
+        (None, "cozy-PAYLOAD-7f3a", "CLINIC_RENEWAL_DENSITY", "comfortable, compact"),
+    ],
+)
+def test_display_refusals_never_echo_the_rejected_value(  # noqa: PLR0913 - one case per axis
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    theme: str | None,
+    density: str | None,
+    variable: str,
+    allowed: str,
+) -> None:
+    # ops/AGENTS.md: one stable non-identifying message, never a config value.
+    expected = f"unsupported renewal display: {variable} must be one of {allowed}"
+    rejected = theme if theme is not None else density
+    assert rejected is not None
+    with pytest.raises(DisplayValueError) as resolved:
+        resolve_display({variable: rejected})
+    with pytest.raises(runner.RenewalRunnerError) as refused:
+        runner.DisplayRequest(theme, density).environment()
+    assert str(resolved.value) == str(refused.value) == expected
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    option = "--theme" if theme is not None else "--density"
+    command = ["browser", "--suite", "smoke", option, rejected]
+    assert runner.main([*command, "--artifact-root", str(tmp_path / "a")]) == 2
+    printed = capsys.readouterr()
+    assert expected in printed.err
+    assert "PAYLOAD" not in printed.out + printed.err
+
+
+@pytest.mark.parametrize("arguments", [["--theme", "sepia"], ["--density", "cozy"]])
+def test_main_refuses_an_unknown_display_before_any_provisioning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arguments: list[str]
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        message = "a refused display must never provision, capture or run"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(runner, "_docker", _explode)
+    monkeypatch.setattr(runner, "_capture_source", _explode)
+    monkeypatch.setattr(runner, "_run_browser_suite", _explode)
+    artifacts = tmp_path / "artifacts"
+    command = ["browser", "--suite", "smoke", *arguments]
+    assert runner.main([*command, "--artifact-root", str(artifacts)]) == 2
+    assert not (artifacts / "report.json").exists()
+
+
+def test_main_hands_the_display_request_to_the_suite_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    seen: list[object] = []
+
+    def fake_suite(*args: object) -> JsonObject:
+        seen.append(args[6])
+        return {"suite": str(args[1])}
+
+    monkeypatch.setattr(runner, "_run_browser_suite", fake_suite)
+    artifacts = _private(tmp_path / "artifacts")
+    command = ["browser", "--suite", "primitives", "--theme", "dark"]
+    assert runner.main([*command, "--artifact-root", str(artifacts)]) == 0
+    assert seen == [runner.DisplayRequest("dark", None)]
+
+
+@pytest.mark.parametrize(
+    ("request_", "requested", "signed_in"),
+    [
+        (
+            runner.DisplayRequest(),
+            {"density": None, "theme": None},
+            {"density": "comfortable", "theme": "light"},
+        ),
+        (
+            runner.DisplayRequest(density="compact"),
+            {"density": "compact", "theme": None},
+            {"density": "compact", "theme": "light"},
+        ),
+        (
+            runner.DisplayRequest("dark", "compact"),
+            {"density": "compact", "theme": "dark"},
+            {"density": "compact", "theme": "dark"},
+        ),
+    ],
+)
+def test_display_receipt_records_requested_and_effective(
+    request_: runner.DisplayRequest,
+    requested: dict[str, str | None],
+    signed_in: dict[str, str],
+) -> None:
+    # The effective display is resolved from the served app's own environment,
+    # as config.settings.renewal resolves it; public pages always stay light.
+    served = {**runner._server_environment("postgresql://x"), **request_.environment()}
+    receipt = runner._display_receipt(request_, served)
+    assert receipt == {
+        "effective": {
+            "public": {"density": "comfortable", "theme": "light"},
+            "signed_in": signed_in,
+        },
+        "requested": requested,
+        "signed_in_scope": "users without a stored display preference",
+    }
+    assert json.loads(json.dumps(receipt)) == receipt
+
+
+def test_only_the_renewal_runtime_moves_the_server_display_default() -> None:
+    # Base (hence production and test) settings are fixed literals; the
+    # renewal serving settings are the only reader of the runner's variables.
+    assert (
+        base_settings.CLINIC_DISPLAY_DEFAULT_THEME,
+        base_settings.CLINIC_DISPLAY_DEFAULT_DENSITY,
+    ) == ("light", "comfortable")
+    readers = [
+        path.relative_to(REPOSITORY).as_posix()
+        for path in sorted((REPOSITORY / "config" / "settings").glob("*.py"))
+        if "resolve_display(" in path.read_text(encoding="utf-8")
+    ]
+    assert readers == ["config/settings/renewal.py"]
+    assert default_ui_preferences() == DEFAULT_PREFERENCES
+    with override_settings(
+        CLINIC_DISPLAY_DEFAULT_THEME="dark", CLINIC_DISPLAY_DEFAULT_DENSITY="compact"
+    ):
+        assert default_ui_preferences() == UiPreferences(
+            theme="dark", density="compact"
+        )
+
+
+def test_firefox_launches_without_form_history() -> None:
+    # Rounds 10 and 12: Firefox's form-history dropdown (browser chrome) took a
+    # submit click below a field refilled with an earlier case's value.
+    assert engines.FIREFOX_USER_PREFS["browser.formfill.enable"] is False
+    tree = ast.parse(Path(engines.__file__).read_text(encoding="utf-8"))
+    launches = [
+        keyword.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == "firefox_user_prefs"
+    ]
+    assert launches
+    for prefs in launches:
+        assert isinstance(prefs, ast.Dict)
+        spread = [v for k, v in zip(prefs.keys, prefs.values, strict=True) if k is None]
+        assert any(
+            isinstance(value, ast.Name) and value.id == "FIREFOX_USER_PREFS"
+            for value in spread
+        )

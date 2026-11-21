@@ -1018,6 +1018,16 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
             "change_rejected",
         )
     },
+    **{
+        f"ai.rollout.{state}": ("tenant", "clinic-os-web", "ai.rollout", state)
+        for state in (
+            "shadow",
+            "reviewed_live",
+            "monitored_autonomy",
+            "invalidated",
+            "killed",
+        )
+    },
     "ai.model.approved": (
         "system",
         "clinic-os-ops",

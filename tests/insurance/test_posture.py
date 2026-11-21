@@ -1,13 +1,28 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
+from apps.identity.models import UserClinicRole
+from apps.insurance import services
+from apps.insurance.errors import InsuranceDeniedError
 from django.db import connection
 from psycopg import sql
 
 from billing.journal_support import finance_scope
+from identity.permission_support import owner_context, permission_context
 from infra.insurance_catalog import TABLES
+from infra.populated_probe import (
+    Runtime,
+    Witness,
+    Writes,
+    assert_read,
+    assert_writes,
+    runtime_connection,
+)
+from insurance.cycle_support import reconcile_cycle
 
 if TYPE_CHECKING:
     from insurance.cycle_support import Cycle
@@ -79,6 +94,7 @@ def test_every_insurance_table_has_exact_force_rls_and_least_privileges() -> Non
 def test_cross_organization_context_cannot_read_any_insurance_relation(
     cycle: Cycle,
 ) -> None:
+    reconcile_cycle(cycle)
     with finance_scope(cycle.finance), connection.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('app.current_tenant',%s,true)",
@@ -91,6 +107,64 @@ def test_cross_organization_context_cannot_read_any_insurance_relation(
                 )
             )
             assert cursor.fetchone() == (0,)
+
+
+def test_payment_match_is_inaccessible_to_another_tenant(
+    cycle: Cycle, app_database_url: str
+) -> None:
+    match = reconcile_cycle(cycle)
+    graph = cycle.finance.graph
+    with finance_scope(cycle.finance), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT to_jsonb(p)::text FROM clinic_app.insurance_paymentmatch p "
+            "WHERE p.id=%s AND p.organization_id=%s",
+            [match.pk, graph.organization_a],
+        )
+        source = cursor.fetchone()
+    assert source is not None
+    with owner_context(graph.organization_b):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_b,
+            clinic_id=graph.clinic_c,
+            user_id=graph.clinic_admin,
+            role=UserClinicRole.Role.FINANCE,
+        )
+    with runtime_connection(
+        app_database_url, Runtime(graph.clinic_admin, graph.organization_b)
+    ) as db:
+        row = Witness("id", match.pk)
+        assert_read(db, "insurance_paymentmatch", row, "0")
+        assert_writes(
+            db,
+            "insurance_paymentmatch",
+            row,
+            Writes("id", insert="42501: insurance access denied"),
+            payload=source[0],
+        )
+
+
+def test_resubmission_of_foreign_and_missing_guides_is_denied_alike(
+    cycle: Cycle,
+) -> None:
+    graph = cycle.finance.graph
+    with owner_context(graph.organization_b):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_b,
+            clinic_id=graph.clinic_c,
+            user_id=graph.clinic_admin,
+            role=UserClinicRole.Role.FINANCE,
+        )
+    denials: list[tuple[object, ...]] = []
+    with permission_context(
+        replace(graph, organization_a=graph.organization_b), graph.clinic_admin
+    ):
+        for guide_id in (cycle.guide.pk, uuid4()):
+            with pytest.raises(InsuranceDeniedError) as denied:
+                services.resubmit_guide(
+                    clinic_id=graph.clinic_c, guide_id=guide_id, command_id=uuid4()
+                )
+            denials.append(denied.value.args)
+    assert denials[0] == denials[1]
 
 
 def test_membership_scope_foreign_keys_are_validated_and_immediate() -> None:

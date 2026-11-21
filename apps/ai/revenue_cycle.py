@@ -39,6 +39,7 @@ from apps.ai.revenue_sources import (
     RevenueContext,
     recheck_context,
     require_finance,
+    retained_output,
     retrieve_context,
 )
 from apps.ai.services import invoke
@@ -169,25 +170,8 @@ def _render(item: dict[str, JSON], context: RevenueContext) -> str:
 def _ready(
     *, clinic_id: UUID, output_id: UUID
 ) -> tuple[AIArtifact, RevenueContext, tuple[dict[str, JSON], ...]]:
-    require_finance(clinic_id=clinic_id)
-    output = (
-        AIArtifact.objects.select_related("invocation")
-        .filter(
-            pk=output_id,
-            clinic_id=clinic_id,
-            user_id=current_actor_id(),
-            purpose=Purpose.REVENUE_CYCLE.value,
-            kind="output",
-            expires_at__gt=database_time(),
-            purged_at__isnull=True,
-        )
-        .first()
-    )
-    if (
-        output is None
-        or output.invocation is None
-        or output.invocation.status != "succeeded"
-    ):
+    output = retained_output(clinic_id=clinic_id, output_id=output_id)
+    if output.invocation is None or output.invocation.status != "succeeded":
         raise GatewayAccessDeniedError
     source = input_for(
         clinic_id=clinic_id,

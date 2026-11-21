@@ -6,11 +6,20 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import date
-from typing import Final
+from typing import TYPE_CHECKING, Final, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 MAX_CANDIDATES: Final = 128
+MAX_RAW_TEXT: Final = 1024
+MAX_UNIT_LENGTH: Final = 64
 BBOX_LENGTH: Final = 4
 COORDINATE_SCALE: Final = 10000
+_SOURCE_LINE: Final = re.compile(
+    r"(?P<field>[a-z][a-z0-9_]{0,31}):[ \t]*(?P<value>[^\s\[\]]+)"
+    r"(?:[ \t]+(?P<unit>[^\s\[\]]+))?(?:[ \t]+\[(?P<interval>[^\[\]\r\n]+)\])?"
+)
 UNITS: Final = frozenset(
     {
         "mg/dL",
@@ -127,10 +136,13 @@ class ExtractionCandidate:
     region: Region
     status: str = "candidate"
     reason: str = ""
+    manual_unit_required: bool = False
 
     def payload(self) -> dict[str, object]:
         """Serialize only into the purpose-bound encrypted candidate envelope."""
         payload = asdict(self)
+        # Derived from the source, not stored output.
+        del payload["manual_unit_required"]
         payload["region"] = {"page": self.region.page, "bbox": list(self.region.bbox)}
         return payload
 
@@ -144,10 +156,20 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class PdfValueEvidence:
+    """Local PDF text anchors supply value drafts, never units."""
+
+    lines: Mapping[Region, str]
+
+
+type SourceEvidence = Mapping[Region, str] | PdfValueEvidence
+
+
 def parse_proposals(
-    content: str, *, rotations: tuple[int, ...]
+    content: str, *, rotations: tuple[int, ...], regions: SourceEvidence
 ) -> tuple[ExtractionCandidate, ...]:
-    """Bound model proposals, then parse locally; model-supplied parses are refused."""
+    """Check a proposed line against independent evidence at its cited region."""
     if not rotations or any(r not in (0, 90, 180, 270) for r in rotations):
         raise ExtractionInputError
     try:
@@ -161,10 +183,15 @@ def parse_proposals(
         or not 1 <= len(payload["candidates"]) <= MAX_CANDIDATES
     ):
         raise ExtractionInputError
-    return tuple(_candidate(row, pages=len(rotations)) for row in payload["candidates"])
+    return tuple(
+        _candidate(row, pages=len(rotations), regions=regions)
+        for row in payload["candidates"]
+    )
 
 
-def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
+def _candidate(
+    row: object, *, pages: int, regions: SourceEvidence
+) -> ExtractionCandidate:
     if (
         not isinstance(row, dict)
         or set(row)
@@ -184,9 +211,9 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
             for key, limit in (
                 ("field", 32),
                 ("kind", 12),
-                ("raw_text", 1024),
+                ("raw_text", MAX_RAW_TEXT),
                 ("value", 128),
-                ("unit", 64),
+                ("unit", MAX_UNIT_LENGTH),
                 ("reference_interval", 256),
             )
         )
@@ -199,6 +226,9 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
     ):
         raise ExtractionInputError
     region = Region(row["page"], tuple(row["bbox"]))
+    if isinstance(regions, PdfValueEvidence):
+        return _pdf_candidate(row, region=region, source=regions.lines.get(region, ""))
+    source = _SOURCE_LINE.fullmatch(regions.get(region, ""))
     reason = ""
     parsed: str | None = None
     if not row["legible"]:
@@ -207,18 +237,22 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
         reason = "unstructured"
     elif row["kind"] == "date":
         parsed = parse_date(row["value"]) if not row["unit"] else None
-    elif parse_unit(row["unit"]) is None:
+    elif (
+        parse_unit(row["unit"]) is None
+        or source is None
+        or source["unit"] != row["unit"]
+    ):
         reason = "unit_unresolved"
     else:
         parsed = parse_decimal(row["value"])
     if not reason and (
         parsed is None
-        or row["value"] not in row["raw_text"]
-        or (row["unit"] and row["unit"] not in row["raw_text"])
-        or (
-            row["reference_interval"]
-            and row["reference_interval"] not in row["raw_text"]
-        )
+        or source is None
+        or source[0] != row["raw_text"]
+        or source["field"] != row["field"]
+        or source["value"] != row["value"]
+        or (source["unit"] or "") != row["unit"]
+        or (source["interval"] or "") != row["reference_interval"]
     ):
         reason = "value_unresolved"
     return ExtractionCandidate(
@@ -235,17 +269,68 @@ def _candidate(row: object, *, pages: int) -> ExtractionCandidate:
     )
 
 
+def _pdf_candidate(
+    row: dict[str, object], *, region: Region, source: str
+) -> ExtractionCandidate:
+    field = cast("str", row["field"])
+    kind = cast("str", row["kind"])
+    value = cast("str", row["value"])
+    interval = cast("str", row["reference_interval"])
+    text = value_transcription(field, value, interval)
+    parsed = None
+    reason = ""
+    if not row["legible"]:
+        reason = "unreadable"
+    elif kind == "text":
+        reason = "unstructured"
+    else:
+        parsed = parse_decimal(value) if kind == "decimal" else parse_date(value)
+        if parsed is None or text != source:
+            reason = "value_unresolved"
+    return ExtractionCandidate(
+        field=field,
+        kind=kind,
+        raw_text="" if reason else text,
+        value=value,
+        parsed_value="" if reason else (parsed or ""),
+        unit="",
+        reference_interval=interval,
+        region=region,
+        status="ambiguous" if reason else "candidate",
+        reason=reason,
+        manual_unit_required=kind == "decimal",
+    )
+
+
+def value_transcription(field: str, value: str, interval: str) -> str:
+    """Build a PDF value transcript without copying an AI-proposed unit."""
+    return f"{field}: {value}" + (f" [{interval}]" if interval else "")
+
+
 def filing_payload(
-    candidate: ExtractionCandidate, *, confirmer: str
+    candidate: ExtractionCandidate, *, confirmer: str, manual_unit: str | None = None
 ) -> dict[str, object]:
     """Only an explicit confirmation may turn an unambiguous draft into a fact."""
     if candidate.status != "candidate" or not candidate.parsed_value or not confirmer:
         raise ExtractionInputError
-    return {
+    unit = candidate.unit
+    if candidate.manual_unit_required:
+        if (
+            unit
+            or type(manual_unit) is not str
+            or not 0 < len(manual_unit) <= MAX_UNIT_LENGTH
+            or manual_unit.strip() != manual_unit
+            or not manual_unit.isprintable()
+        ):
+            raise ExtractionInputError
+        unit = manual_unit
+    elif manual_unit is not None:
+        raise ExtractionInputError
+    payload: dict[str, object] = {
         "code": candidate.field,
         "value": candidate.value,
         "parsed_value": candidate.parsed_value,
-        "unit": candidate.unit,
+        "unit": unit,
         "reference_interval": candidate.reference_interval,
         "abnormal_flag": "",
         "provenance": "imported",
@@ -254,3 +339,6 @@ def filing_payload(
         "bbox": list(candidate.region.bbox),
         "raw_text": candidate.raw_text,
     }
+    if candidate.manual_unit_required:
+        payload["unit_entry"] = "clinician"
+    return payload

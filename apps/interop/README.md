@@ -5,8 +5,8 @@ clinic: upload, profile, map, validate, dry run, sign-off, batched commit,
 reconciliation and rollback. Its public entrypoints are in `services.py`. It
 adds no browser surface yet; every command is a keyword-only, clinic-scoped
 service checked again by PostgreSQL (FORCE RLS, one guard trigger, resolver
-functions). `exchange_clinical_record` (RNDS, todo 68) still raises
-`NotImplementedError("Phase >=1")`.
+functions). `exchange_clinical_record` (RNDS, todo 68) submits laboratory results to the
+RNDS homologation environment behind EG-7 (see below).
 
 Competitor-specific layouts are out of scope: no mapping is invented for a
 named product until owner-supplied EG-15 sample exports exist. EG-15 stays

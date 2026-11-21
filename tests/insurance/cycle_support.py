@@ -13,13 +13,20 @@ from apps.intake.models import PatientClinicEnrollment
 from apps.scheduling.models import Appointment
 from apps.scheduling.services import complete, start
 
-from billing.journal_support import FinanceSetup, finance_scope, invoice_terms
+from billing.journal_support import (
+    FinanceSetup,
+    collected,
+    finance_scope,
+    invoice_terms,
+)
 from ehr.test_autosave import registration as register_physician
 from identity.permission_support import owner_context, permission_context
 from insurance.fixture_xml import return_xml
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from apps.insurance.models import PaymentMatch
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +37,20 @@ class Cycle:
     glosa: Glosa
     original_return: bytes
     appeal_id: UUID
+
+
+def reconcile_cycle(cycle: Cycle) -> PaymentMatch:
+    """Reconcile real settled fixture cash, retaining a populated PaymentMatch."""
+    setup = cycle.finance
+    with finance_scope(setup):
+        settlement = collected(setup, 8345, kind="insurer")
+        return services.reconcile_payment(
+            clinic_id=setup.clinic_id,
+            guide_id=cycle.guide.pk,
+            settlement_id=settlement.pk,
+            amount_minor=8345,
+            command_id=uuid4(),
+        )
 
 
 def build_cycle(

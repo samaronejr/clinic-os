@@ -249,7 +249,7 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         "comms:inbox",
         ("demographics.read",),
         route_roles=MESSAGES_ROUTE,
-        views=frozenset({"comms:inbox", "comms:conversation"}),
+        views=frozenset({"comms:inbox"}),
         entries=(
             # Task 54: conversations the front-desk assistant handed to a person.
             Destination(
@@ -514,18 +514,20 @@ def _all_permissions() -> frozenset[str]:
 REGISTRY_PERMISSIONS: Final = _all_permissions()
 
 
-def granted_permissions(clinic_id: UUID) -> frozenset[str]:
-    """Return the registry permissions the current actor holds in the clinic.
+def granted_permissions(
+    clinic_id: UUID, *, candidates: Iterable[str] = REGISTRY_PERMISSIONS
+) -> frozenset[str]:
+    """Return the requested permissions the current actor holds in the clinic.
 
-    One statement evaluates every registry permission through the todo 6
-    resolver, so a revoked role or a clinic-narrowed grant hides its
-    destinations on the next render. No GUC identity means nothing granted.
+    The shell requests the full registry; a route asks only about its own
+    places. Each call makes an independent live decision through the todo 6
+    resolver. No GUC identity means nothing granted.
     """
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT candidate FROM pg_catalog.unnest(%s::text[]) AS candidate "
             "WHERE clinic_app.has_permission(candidate, %s, NULL)",
-            [sorted(REGISTRY_PERMISSIONS), clinic_id],
+            [sorted(candidates), clinic_id],
         )
         return frozenset(str(row[0]) for row in cursor.fetchall())
 
