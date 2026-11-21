@@ -332,9 +332,11 @@ def record_encounter_refusal(page: Page, staff_url: str, encounter_url: str) -> 
     assert encounter_id is not None
     goto_settled(page, staff_url)
     disclosure = page.get_by_role("region", name=gettext("Record an AI-use disclosure"))
-    disclosure.get_by_label(gettext("Encounter"), exact=True).fill(encounter_id)
-    page.get_by_label(gettext("I informed the patient about AI assistance.")).check()
-    page.get_by_label(gettext("The patient refused AI assistance.")).check()
+    disclosure.locator("#id_disclosure-encounter_id").fill(encounter_id)
+    disclosure.get_by_label(
+        gettext("I informed the patient about AI assistance.")
+    ).check()
+    disclosure.get_by_label(gettext("The patient refused AI assistance.")).check()
     press(page, "disclosure")
     expect(page.get_by_role("status")).to_have_text(
         gettext("AI-use disclosure recorded.")
