@@ -251,7 +251,8 @@ uv run celery -A config.celery worker -Q finance -c 2
 uv run celery -A config.celery worker -Q bulk -c 2
 ```
 
-Beat is unchanged and schedules only the existing `comms.*` tasks:
+Run beat for periodic work, including reminders and outbox recovery.
+`prescription.dispatch_signature` is published after commit, not by beat:
 
 ```sh
 uv run celery -A config.celery beat
