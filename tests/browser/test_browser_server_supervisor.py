@@ -13,12 +13,13 @@ import sys
 import time
 from pathlib import Path
 from threading import Thread
-from typing import Any, Final, cast
+from typing import Any, Final, Never, cast
 
 import pytest
 from ops.testing import browser_server_controller as controller
 from ops.testing import browser_server_stages as stage
 from ops.testing import browser_server_supervisor as supervisor
+from ops.testing import renewal_runner
 from ops.testing.browser_secret_channel import FRAME_COUNT, SecretChannel
 from ops.testing.browser_server_flow import run_session
 from ops.testing.browser_server_journal import (
@@ -171,21 +172,128 @@ def _rescue_worker(worker: int) -> None:
     assert not waiter.is_alive()
 
 
-def test_supervisor_uses_no_build_optional_wait_api() -> None:
-    tree = ast.parse(inspect.getsource(supervisor))
-    forbidden = {
-        "pidfd_open",
-        "waitid",
-        "P_PID",
-        "P_PIDFD",
-        "P_PGID",
-        "WEXITED",
-        "WNOWAIT",
-        "O_CLOEXEC",
+_POSIX_OS_APIS: Final = frozenset(
+    {
+        "WNOHANG",
+        "X_OK",
+        "access",
+        "close",
+        "environ",
+        "execv",
+        "fork",
+        "killpg",
+        "pipe",
+        "read",
+        "set_inheritable",
+        "sysconf",
+        "waitpid",
+        "waitstatus_to_exitcode",
     }
-    assert not forbidden.intersection(
-        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-    )
+)
+
+
+def _assert_posix_os_apis(source: str) -> None:
+    nodes = list(ast.walk(ast.parse(source)))
+    aliases = {
+        name.asname or name.name
+        for node in nodes
+        if isinstance(node, ast.Import)
+        for name in node.names
+        if name.name == "os"
+    }
+    references = {
+        name.name
+        for node in nodes
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "os"
+        for name in node.names
+    }
+    attributes = [
+        node
+        for node in nodes
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in aliases
+    ]
+    references.update(node.attr for node in attributes)
+    direct = {id(node.value) for node in attributes}
+    assert not any(
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id in aliases
+        and id(node) not in direct
+        for node in nodes
+    ), "use direct os attributes so the POSIX allowlist can check them"
+    unknown = references - _POSIX_OS_APIS
+    assert not unknown, f"os APIs outside POSIX allowlist: {sorted(unknown)}"
+
+
+def test_browser_launch_and_teardown_use_only_allowed_os_apis() -> None:
+    for module in (supervisor, controller, renewal_runner):
+        _assert_posix_os_apis(inspect.getsource(module))
+
+
+@pytest.mark.parametrize(
+    ("injected", "name"),
+    [
+        ("\nimport os\nos.pipe2(0)\n", "pipe2"),
+        ("\nimport os as posix\nposix.pipe2(0)\n", "pipe2"),
+        ("\nfrom os import waitid as wait\nwait(0, 0, 0)\n", "waitid"),
+    ],
+)
+def test_posix_allowlist_rejects_injected_optional_apis(
+    injected: str, name: str
+) -> None:
+    with pytest.raises(AssertionError, match=name):
+        _assert_posix_os_apis(inspect.getsource(supervisor) + injected)
+
+
+def test_renewal_proves_port_release_after_select_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with controller.reserve_listener() as listener:
+        address = listener.getsockname()
+        master = _spawn(
+            "import signal; signal.pause()",
+            tmp_path / "failed-select.log",
+            pass_fds=(listener.fileno(),),
+        )
+    failure = ValueError("injected select failure")
+
+    def failed_select(*args: object) -> Never:
+        raise failure
+
+    checked: list[int] = []
+    plain_bind = supervisor._ordinary_bind_error
+
+    def prove(port: int) -> OSError | None:
+        checked.append(port)
+        return plain_bind(port)
+
+    monkeypatch.setattr(select, "select", failed_select)
+    monkeypatch.setattr(supervisor, "_ordinary_bind_error", prove)
+    with pytest.raises(
+        supervisor.SupervisorError, match="could not observe Gunicorn liveness pipe EOF"
+    ) as raised:
+        renewal_runner._terminate_master(master, port=int(address[1]))
+    assert raised.value.__cause__ is failure
+    assert master.process.returncode in {-signal.SIGTERM, -signal.SIGKILL}
+    assert checked == [address[1]]
+    with socket.socket() as probe:
+        probe.bind(address)
+
+
+def test_occupied_port_does_not_mask_primary_teardown_failure() -> None:
+    failure = supervisor.SupervisorError("injected teardown failure")
+    with (
+        controller.reserve_listener() as held,
+        pytest.raises(
+            supervisor.SupervisorError, match="injected teardown failure"
+        ) as raised,
+        supervisor.prove_port_release(int(held.getsockname()[1])),
+    ):
+        raise failure
+    assert raised.value is failure
+    assert "Gunicorn listener port was not released" in raised.value.__notes__[0]
 
 
 @pytest.fixture(params=[False, True], ids=["native", "without-optional-apis"])

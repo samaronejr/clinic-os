@@ -21,9 +21,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
 
 import rfc8785
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 START_MASTER: Final = "start-master"
 STOP_MASTER: Final = "stop-master"
@@ -300,6 +303,23 @@ def _ordinary_bind_error(port: int) -> OSError | None:
     except OSError as error:
         return error
     return None
+
+
+@contextlib.contextmanager
+def prove_port_release(port: int | None) -> Iterator[None]:
+    """Prove release even on failed teardown, preserving the primary error."""
+    try:
+        yield
+    except BaseException as pending:
+        if port is not None:
+            try:
+                require_released_port(port)
+            except (SupervisorError, OSError) as error:
+                pending.add_note(f"port release proof failed: {error}")
+        raise
+    else:
+        if port is not None:
+            require_released_port(port)
 
 
 class SupervisedMaster:

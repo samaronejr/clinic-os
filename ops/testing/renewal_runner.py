@@ -51,7 +51,7 @@ from ops.testing.browser_server_controller import reserve_listener, wait_until_r
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
     SupervisorError,
-    require_released_port,
+    prove_port_release,
     start_master,
     supervised_argv,
 )
@@ -1554,19 +1554,18 @@ def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> N
     abandon cleanup, but a cancellation observed during teardown is never
     swallowed: it is re-raised even when the retry succeeds.
     """
-    interrupted: RenewalInterruptError | None = None
-    for _attempt in range(2):
-        try:
-            master.terminate()
-        except RenewalInterruptError as error:
-            if interrupted is None:
-                interrupted = error
-        else:
-            break
-    if interrupted is not None:
-        raise interrupted
-    if port is not None:
-        require_released_port(port)
+    with prove_port_release(port):
+        interrupted: RenewalInterruptError | None = None
+        for _attempt in range(2):
+            try:
+                master.terminate()
+            except RenewalInterruptError as error:
+                if interrupted is None:
+                    interrupted = error
+            else:
+                break
+        if interrupted is not None:
+            raise interrupted
 
 
 def _gate_migration(
