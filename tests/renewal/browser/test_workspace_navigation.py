@@ -58,6 +58,7 @@ PATIENT_BASE: Final = "Helena Navegação Sintética"
 FOREIGN_BASE: Final = "Otávio Vizinho Sintético"
 CLINIC_B: Final = "Clínica Sintética Navegação B"
 WIDTHS: Final = (1280, 375, 320)
+ROLE_WIDTHS: Final = (1280, 768, 375, 320)
 MIN_TARGET_PX: Final = 44
 PINNED_FROM_PX: Final = 768
 OK: Final = 200
@@ -68,22 +69,10 @@ AXE_URL: Final = "/static/vendor/axe/axe.min.js"
 PRIVILEGED: Final = frozenset(
     {"physician", "clinic_admin", "owner", "clinic_manager", "org_admin"}
 )
-COMMAND_TRIGGER_ROLES: Final = frozenset(
-    {
-        "owner",
-        "clinic_admin",
-        "receptionist",
-        "physician",
-        "nurse",
-        "allied_professional",
-        "scheduler",
-        "clinic_manager",
-    }
-)
 # Plan annex IA x RP bundles v1 x the route guards the destinations lead to.
-# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner). The
-# org admin also holds "org" authority, but is not a workspace shell role: with
-# no landing clinic its navigation is the Settings fallback and has no palette.
+# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner).
+# Task 79: every role resolves its clinic from its own grants, so finance and the
+# org admin get their delivered places and the palette right after sign-in.
 EXPECTED: Final = {
     "owner": [
         "agenda",
@@ -140,8 +129,16 @@ EXPECTED: Final = {
         "reports",
         "settings",
     ],
-    "finance": [],
-    "org_admin": ["settings"],
+    # Task 63: Reports follows charge.read into both bundles.
+    "finance": ["finance", "reports"],
+    # Task 50: privacy.requests opens Patients > Data-subject requests.
+    "org_admin": ["patients", "finance", "automations", "reports", "settings"],
+}
+# One command each bundle without a clinical landing reaches by name from the
+# page shown right after sign-in (tests/core/test_navigation.py TYPED_COMMAND).
+TYPED_COMMAND: Final = {
+    "finance": ("Reports", "/reports/clinics/{clinic}/"),
+    "org_admin": ("Enterprise governance", "/clinics/{clinic}/settings/governance/"),
 }
 AXE_RUN_JS: Final = """async (include) => {
   const result = await axe.run(include ? {include} : document, {
@@ -405,6 +402,7 @@ def test_every_role_sees_exactly_its_destinations(
 ) -> None:
     observed: dict[str, list[str]] = {}
     axe_results: dict[str, object] = {}
+    captures: list[str] = []
     for role, expected in EXPECTED.items():
         context = nav_browser.new_context(
             locale="pt-BR", viewport={"width": 1280, "height": 900}
@@ -414,12 +412,8 @@ def test_every_role_sees_exactly_its_destinations(
             _sign_in(page, renewal_base_url, nav_staff, role)
             observed[role] = _modules(page)
             assert observed[role] == expected, role
-            expect(page.locator(".nav-command")).to_have_count(
-                1 if role in COMMAND_TRIGGER_ROLES else 0
-            )
-            expect(page.locator("#command-palette")).to_have_count(
-                1 if role in COMMAND_TRIGGER_ROLES else 0
-            )
+            expect(page.locator(".nav-command")).to_have_count(1)
+            expect(page.locator("#command-palette")).to_have_count(1)
             for key in ("today", "inbox", "messages", "automations", "reports"):
                 expect(page.locator(f'[data-module="{key}"]')).to_have_count(
                     int(key in expected)
@@ -427,14 +421,69 @@ def test_every_role_sees_exactly_its_destinations(
             violations = _axe(page, renewal_base_url)
             axe_results[role] = violations
             assert violations == [], (role, violations)
-            _capture(page, renewal_artifact_root, f"role-{role}-1280")
+            for width in ROLE_WIDTHS:
+                page.set_viewport_size({"width": width, "height": 900})
+                assert _no_overflow(page), (role, width)
+                captures.append(
+                    _capture(page, renewal_artifact_root, f"role-{role}-{width}")
+                )
         finally:
             context.close()
     _write(
         renewal_artifact_root,
         "role-matrix.json",
-        {"expected": EXPECTED, "observed": observed, "axe": axe_results},
+        {
+            "expected": EXPECTED,
+            "observed": observed,
+            "axe": axe_results,
+            "captures": captures,
+        },
     )
+
+
+@pytest.mark.parametrize("role", list(TYPED_COMMAND))
+def test_fresh_sessions_without_a_clinical_landing_reach_work_by_keyboard(
+    nav_browser: Browser,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    nav_staff: dict[str, str],
+    role: str,
+) -> None:
+    label, path = TYPED_COMMAND[role]
+    target = path.format(clinic=nav_staff["clinic_a"])
+    context = nav_browser.new_context(
+        locale="pt-BR", viewport={"width": 1280, "height": 800}
+    )
+    page = context.new_page()
+    try:
+        # No module URL is opened: the page shown after sign-in is the start.
+        _sign_in(page, renewal_base_url, nav_staff, role)
+        page.locator("h1").click()
+        page.keyboard.press("Control+k")
+        palette = page.locator("#command-palette")
+        expect(palette).to_have_attribute("open", "")
+        expect(page.locator("#command-palette-input")).to_be_focused()
+        query = gettext(label)
+        with page.expect_response(_is_options(query)) as found:
+            page.keyboard.type(query)
+        assert found.value.status == OK
+        options = page.locator("#command-palette-input-listbox [role=option]")
+        expect(options.first).to_have_attribute("data-href", target)
+        assert _targets(page)["small"] == []
+        assert _axe(page, renewal_base_url) == []
+        palette_capture = _capture(page, renewal_artifact_root, f"palette-{role}-1280")
+        page.keyboard.press("ArrowDown")
+        with expect_document(page):
+            page.keyboard.press("Enter")
+        assert page.url == f"{renewal_base_url}{target}"
+        landing_capture = _capture(page, renewal_artifact_root, f"keyboard-{role}-1280")
+        _write(
+            renewal_artifact_root,
+            f"keyboard-{role}.json",
+            {"destination": target, "captures": [palette_capture, landing_capture]},
+        )
+    finally:
+        context.close()
 
 
 def test_physician_reaches_the_agenda_by_keyboard(

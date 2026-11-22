@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.audit.models import AuditEvent
+from apps.audit.services import verify_chain
 from apps.ehr import autosave as autosave_module
 from apps.ehr import services
 from apps.ehr.autosave import (
@@ -60,8 +61,10 @@ from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.prescription.services import authorize_encounter
 from apps.teleconsult.services import TeleconsultAccessDeniedError, create_session
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import EnvelopeFormatError
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.translation import gettext
 
@@ -120,6 +123,39 @@ def draft_world(graph: RbacGraph) -> ClinicalDocumentVersion:
     appointment, template = seed(graph)
     with as_actor(graph, graph.physician):
         return draft(graph, appointment, template)
+
+
+def unscheduled_draft_world(
+    graph: RbacGraph, *, physician: UUID | None = None
+) -> tuple[UUID, ClinicalDocumentVersion]:
+    _, template = seed(graph)
+    if physician is None:
+        physician, enrolled = permission_actor(graph, "physician")
+    else:
+        registration(graph, physician, graph.clinic_a)
+        enrolled = enrollment(graph, graph.clinic_a)
+    with as_actor(graph, physician):
+        encounter = open_walk_in(graph, enrolled)
+        assert encounter.appointment_id is None
+        version = create_draft(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            template_id=template.pk,
+        )
+    return physician, version
+
+
+@pytest.fixture(params=("scheduled", "unscheduled"))
+def editor_draft(
+    rbac_graph: RbacGraph, request: pytest.FixtureRequest
+) -> ClinicalDocumentVersion:
+    """The authenticated test physician owns the draft in either encounter shape."""
+    if request.param == "scheduled":
+        return draft_world(rbac_graph)
+    _, draft_version = unscheduled_draft_world(
+        rbac_graph, physician=rbac_graph.physician
+    )
+    return draft_version
 
 
 def save(  # noqa: PLR0913 - test shorthand for the command's keyword contract
@@ -262,9 +298,11 @@ def care_team(graph: RbacGraph, user: UUID, enrolled: UUID) -> None:
 
 
 def test_autosave_acknowledges_revisions_and_counts_section_epochs(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     now = clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
         first = save(rbac_graph, version.pk, 1)
@@ -323,8 +361,10 @@ def test_every_accepted_write_advances_section_epochs(rbac_graph: RbacGraph) -> 
         ) == {"subjective": 1, "objective": 1, "assessment": 1, "plan": 3}
 
 
-def test_replay_writes_once_and_a_reused_key_is_refused(rbac_graph: RbacGraph) -> None:
-    version = draft_world(rbac_graph)
+def test_replay_writes_once_and_a_reused_key_is_refused(
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
+) -> None:
+    version = editor_draft
     command = uuid4()
     with as_actor(rbac_graph, rbac_graph.physician):
         first = save(rbac_graph, version.pk, 1, command=command)
@@ -349,9 +389,9 @@ def test_replay_writes_once_and_a_reused_key_is_refused(rbac_graph: RbacGraph) -
 
 
 def test_concurrent_replay_of_one_command_increments_once(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     command = uuid4()
     barrier = Barrier(2, timeout=15)
 
@@ -371,8 +411,10 @@ def test_concurrent_replay_of_one_command_increments_once(
     assert count(rbac_graph, DraftSaveReceipt) == 1
 
 
-def test_two_tabs_racing_one_revision_save_exactly_once(rbac_graph: RbacGraph) -> None:
-    version = draft_world(rbac_graph)
+def test_two_tabs_racing_one_revision_save_exactly_once(
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
+) -> None:
+    version = editor_draft
     barrier = Barrier(2, timeout=15)
     texts = {TAB_A: "Aba A", TAB_B: "Aba B"}
 
@@ -401,9 +443,11 @@ def test_two_tabs_racing_one_revision_save_exactly_once(rbac_graph: RbacGraph) -
 
 
 def test_stale_revision_compares_and_never_overwrites(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     theirs = {**SECTIONS, "assessment": "Linha comum\nLinha da aba A"}
     mine = {**SECTIONS, "assessment": "Linha comum\nLinha da aba B"}
     clock(timedelta(0))
@@ -459,9 +503,11 @@ def test_section_diff_marks_saved_only_and_editor_only_lines() -> None:
 
 
 def test_lock_refuses_other_tabs_until_it_expires(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
         save(rbac_graph, version.pk, 1)
@@ -486,35 +532,78 @@ def test_lock_refuses_other_tabs_until_it_expires(
 
 
 def test_handover_moves_the_lock_after_the_holder_saves(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version_id = editor_draft.pk
     clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
-        save(rbac_graph, version.pk, 1)
-        asked = save(rbac_graph, version.pk, 1, session=TAB_B, handover=True)
+        save(rbac_graph, version_id, 1)
+        asked = save(rbac_graph, version_id, 1, session=TAB_B, handover=True)
         assert asked.status == AutosaveStatus.HANDOVER_REQUESTED
-        holder = save(rbac_graph, version.pk, 2, sections={**SECTIONS, "plan": "Final"})
-        assert (holder.status, holder.revision, holder.handed_over) == (
-            AutosaveStatus.SAVED,
-            3,
-            True,
-        )
-        assert save(rbac_graph, version.pk, 3).status == AutosaveStatus.LOCKED_BY_OTHER
-        # The requester's stale text is compared, never written over.
-        stale = save(rbac_graph, version.pk, 1, session=TAB_B)
-        assert stale.status == AutosaveStatus.CONFLICT
-        assert stored(rbac_graph, version.pk)[1]["plan"] == "Final"
-    assert audit_types(rbac_graph).count("ehr.draft.handed_over") == 1
+    events = AuditEvent.objects.filter(organization_id=rbac_graph.organization_a)
     with owner_context(rbac_graph.organization_a):
-        state = DraftEditState.objects.get(version_id=version.pk)
+        before = events.latest("seq").seq
+
+    command = uuid4()
+    changed = {**SECTIONS, "plan": "Final"}
+    with as_actor(rbac_graph, rbac_graph.physician):
+        holder = save(rbac_graph, version_id, 2, command=command, sections=changed)
+    assert (holder.status, holder.revision, holder.handed_over) == (
+        AutosaveStatus.SAVED,
+        3,
+        True,
+    )
+    assert stored(rbac_graph, version_id) == (3, changed)
+    with owner_context(rbac_graph.organization_a):
+        receipt = DraftSaveReceipt.objects.get(
+            version_id=version_id, command_id=command
+        )
+        assert (receipt.base_revision, receipt.revision, receipt.saved_at) == (
+            2,
+            3,
+            holder.saved_at,
+        )
+        state = DraftEditState.objects.get(version_id=version_id)
         assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+        chain = verify_chain(rbac_graph.organization_a)
+        assert chain.last_seq == events.latest("seq").seq
+        appended = events.filter(seq__gt=before).order_by("seq")
+        assert list(appended.values_list("event_type", flat=True)) == [
+            "ehr.record.viewed",
+            "ehr.record.viewed",
+            "ehr.document.saved",
+            "ehr.draft.handed_over",
+        ]
+        assert set(appended.values_list("affected_record_id", flat=True)) == {
+            str(version_id)
+        }
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert save(rbac_graph, version_id, 3).status == AutosaveStatus.LOCKED_BY_OTHER
+    with owner_context(rbac_graph.organization_a):
+        state.refresh_from_db(fields=("lock_holder", "handover_requested_by"))
+        assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        # The requester's stale text is compared, never written over.
+        stale = save(rbac_graph, version_id, 1, session=TAB_B)
+        assert stale.status == AutosaveStatus.CONFLICT
+    assert stored(rbac_graph, version_id) == (3, changed)
+    with owner_context(rbac_graph.organization_a):
+        state.refresh_from_db(fields=("lock_holder", "handover_requested_by"))
+        assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+        assert events.filter(event_type="ehr.draft.handed_over").count() == 1
 
 
+@pytest.mark.parametrize("unscheduled", [False, True], ids=["scheduled", "unscheduled"])
 def test_autosave_refuses_every_non_author_and_writes_nothing(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, unscheduled: bool
 ) -> None:
-    version = draft_world(rbac_graph)
+    physician, version = (
+        unscheduled_draft_world(rbac_graph)
+        if unscheduled
+        else (rbac_graph.physician, draft_world(rbac_graph))
+    )
     audit_before = len(audit_types(rbac_graph))
     for role in ROLES:
         actor, _ = permission_actor(rbac_graph, role)
@@ -524,7 +613,7 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
         ):
             save(rbac_graph, version.pk, 1)
     # Foreign clinic scope, unknown draft and no membership share the denial.
-    with as_actor(rbac_graph, rbac_graph.physician):
+    with as_actor(rbac_graph, physician):
         with pytest.raises(ClinicalAccessDeniedError):
             autosave_draft(
                 clinic_id=rbac_graph.clinic_b,
@@ -544,9 +633,9 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
         pytest.raises((ClinicalAccessDeniedError, CurrentActorError)),
     ):
         save(rbac_graph, version.pk, 1)
-    User.objects.filter(pk=rbac_graph.physician).update(is_active=False)
+    User.objects.filter(pk=physician).update(is_active=False)
     with (
-        permission_context(rbac_graph, rbac_graph.physician),
+        permission_context(rbac_graph, physician),
         pytest.raises((ClinicalAccessDeniedError, CurrentActorError)),
     ):
         save(rbac_graph, version.pk, 1)
@@ -914,6 +1003,137 @@ def test_unscheduled_encounter_carries_the_draft_lifecycle(
     assert_no_phi_in_audit(rbac_graph)
 
 
+def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
+    """Pin the timed tenant_context -> autosave path through transaction exit."""
+    physician, version = unscheduled_draft_world(rbac_graph)
+    with as_actor(rbac_graph, physician):
+        first = save(rbac_graph, version.pk, 1)
+    assert (first.status, first.revision) == (AutosaveStatus.SAVED, 2)
+    with owner_context(rbac_graph.organization_a):
+        events = AuditEvent.objects.filter(organization_id=rbac_graph.organization_a)
+        before = events.latest("seq").seq
+    with (
+        runtime_role(),
+        CaptureQueriesContext(connection) as captured,
+        tenant_context(physician, rbac_graph.organization_a),
+    ):
+        result = save(rbac_graph, version.pk, 2, sections={**SECTIONS, "plan": "Novo"})
+    assert (result.status, result.revision) == (AutosaveStatus.SAVED, 3)
+    _assert_audit_lock_work([q["sql"] for q in captured])
+    # Includes authority reads, savepoints, crypto, audit writes, inbox hint
+    # scope lookup, commit and GUC cleanup; setup and role switching are out.
+    assert len(captured) == 74
+    # The writer still takes the fresh RLS locking read, without fetching SOAP.
+    assert tuple(
+        '"ehr_clinicaldocumentversion"."content"' in q["sql"]
+        for q in captured
+        if 'FROM "ehr_clinicaldocumentversion"' in q["sql"] and "FOR UPDATE" in q["sql"]
+    ) == (True, False)
+    assert (
+        sum(
+            'FROM "ehr_drafteditstate"' in q["sql"] and "FOR UPDATE" in q["sql"]
+            for q in captured
+        )
+        == 1
+    )
+    with owner_context(rbac_graph.organization_a):
+        appended = list(events.filter(seq__gt=before).order_by("seq"))
+        assert [event.event_type for event in appended] == [
+            "ehr.record.viewed",
+            "ehr.record.viewed",
+            "ehr.document.saved",
+        ]
+        assert {
+            (event.actor_user_id, event.affected_record_id) for event in appended
+        } == {(physician, str(version.pk))}
+        assert [event.payload for event in appended] == [
+            {"clinic_id": str(rbac_graph.clinic_a), "object_verb": verb}
+            for verb in ("viewed", "viewed", "saved")
+        ]
+        assert verify_chain(rbac_graph.organization_a).last_seq == appended[-1].seq
+
+
+def _assert_audit_lock_work(statements: list[str]) -> None:
+    # The first successful append acquires the organization xact lock.
+    # Releasing a savepoint does not release it; only the outer commit does.
+    view, writer_view, saved = (
+        i
+        for i, sql in enumerate(statements)
+        if "SELECT clinic_app.audit_append(" in sql
+    )
+    phases = (
+        statements[:view],
+        statements[view:writer_view],
+        statements[writer_view:saved],
+        statements[saved:],
+    )
+    assert [
+        sum(
+            'FROM "identity_userclinicrole"' in sql
+            and 'AS "assigned"' in sql
+            and 'AS "authored"' in sql
+            for sql in phase
+        )
+        for phase in phases
+    ] == [1, 1, 1, 2]
+    # One full audited read before the lock, then only the required locking
+    # read's reveal before the second append. Reloading SOAP in that audit
+    # turns the latter count into two, even if other work was also removed.
+    assert [
+        sum("clinic_app.protected_decrypt(" in sql for sql in phase)
+        for phase in phases[:2]
+    ] == [1, 1]
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "app.current_principal",
+        "app.current_scim_token",
+        "app.current_support_grant",
+        "app.current_sso_connection",
+    ],
+)
+def test_unscheduled_autosave_refuses_nonstaff_context(
+    rbac_graph: RbacGraph, setting: str
+) -> None:
+    physician, version = unscheduled_draft_world(rbac_graph)
+    before = audit_types(rbac_graph)
+    # Seed an otherwise-authorized staff identity, then add a nonstaff
+    # credential context. No staff authority can be borrowed through it.
+    with permission_context(rbac_graph, physician), connection.cursor() as cursor:
+        cursor.execute("SELECT set_config(%s, %s, true)", [setting, str(uuid4())])
+        with pytest.raises((ClinicalAccessDeniedError, CurrentActorError)):
+            save(rbac_graph, version.pk, 1)
+    assert audit_types(rbac_graph) == before
+    assert stored(rbac_graph, version.pk)[0] == 1
+    assert count(rbac_graph, DraftSaveReceipt, version_id=version.pk) == 0
+
+
+def test_unscheduled_autosave_leaves_corrupt_soap_unmodified(
+    rbac_graph: RbacGraph,
+) -> None:
+    physician, version = unscheduled_draft_world(rbac_graph)
+    # Inject a malformed envelope into the synthetic draft as fixture setup.
+    # This is still a valid revision transition; no guard is disabled.
+    with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE clinic_app.ehr_clinicaldocumentversion "
+            "SET content = %s, content_sha256 = %s, revision = 2 WHERE id = %s",
+            [b"short", "a" * 64, version.pk],
+        )
+        assert cursor.rowcount == 1
+    before = audit_types(rbac_graph)
+    with as_actor(rbac_graph, physician), pytest.raises(EnvelopeFormatError):
+        save(rbac_graph, version.pk, 2)
+    with owner_context(rbac_graph.organization_a):
+        revision = ClinicalDocumentVersion.objects.values_list("revision", flat=True)
+        assert revision.get(pk=version.pk) == 2
+    assert audit_types(rbac_graph) == before
+    assert count(rbac_graph, DraftEditState, version_id=version.pk) == 0
+    assert count(rbac_graph, DraftSaveReceipt, version_id=version.pk) == 0
+
+
 # --------------------------------------------------------------------------
 # Episodes: clinical.write, the patient/clinic/assignee relations, both layers.
 # --------------------------------------------------------------------------
@@ -1168,9 +1388,9 @@ def test_ui_api_autosave_contract_and_identical_refusals(
 
 
 def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     request = verified_request(rbac_graph.physician)
     with as_actor(rbac_graph, rbac_graph.physician):
         save(rbac_graph, version.pk, 1)
@@ -1181,6 +1401,7 @@ def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
             request=request,
         )
     before = stored(rbac_graph, version.pk)
+    audit_before = audit_types(rbac_graph)
     with physician_client(rbac_graph) as client:
         refused = client.post(
             AUTOSAVE_URL,
@@ -1203,6 +1424,7 @@ def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
     )
     assert stored(rbac_graph, version.pk) == before
     assert count(rbac_graph, DraftSaveReceipt) == 1
+    assert audit_types(rbac_graph) == audit_before
 
 
 def test_explicit_stale_save_shows_the_compare_and_merges_explicitly(

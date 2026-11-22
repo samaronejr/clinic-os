@@ -93,7 +93,12 @@ local touched = tonumber(state[2])
 local now = tonumber(ARGV[1])
 if tokens and touched and now >= touched and
    tokens + (now - touched) * tonumber(ARGV[2]) < 1 then
-  redis.call('PEXPIRE', KEYS[1], 120000)
+  -- Redis 7.2+ uses one command-time snapshot for PTTL and PEXPIRE in
+  -- this script. Skip only an identical deadline, never round it.
+  if (redis.REDIS_VERSION_NUM or 0) < 0x070200 or
+     redis.call('PTTL', KEYS[1]) ~= 120000 then
+    redis.call('PEXPIRE', KEYS[1], 120000)
+  end
   return 0
 end
 local clock = redis.call('TIME')

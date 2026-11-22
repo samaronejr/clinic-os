@@ -17,6 +17,7 @@ from apps.identity.enterprise_access import (
 )
 from apps.identity.models import BreakGlassGrant, GovernanceNotice
 from apps.workflows.models import Task
+from django.db import connection
 from django.test import override_settings
 from django.utils import timezone
 
@@ -26,6 +27,14 @@ from identity.permission_support import (
     owner_context,
     permission_actor,
     permission_context,
+)
+from infra.populated_probe import (
+    Runtime,
+    Witness,
+    Writes,
+    assert_read,
+    assert_writes,
+    runtime_connection,
 )
 
 if TYPE_CHECKING:
@@ -136,6 +145,46 @@ def test_break_glass_commits_manager_and_patient_notices_review_and_safe_audit(
             "request_id",
         }
         assert "SINTETICO-SENTINELA" not in str(payload)
+
+
+@override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)
+def test_populated_governance_notices_are_inaccessible_to_another_tenant(
+    rbac_graph: RbacGraph, app_database_url: str
+) -> None:
+    graph = rbac_graph
+    enterprise_setup(graph)
+    clinician, _own = permission_actor(graph, "physician")
+    _other, enrollment = permission_actor(graph, "physician")
+    key = session_key(verified_actor_client(clinician))
+    with permission_context(graph, clinician), connection.cursor() as cursor:
+        grant = grant_break_glass(
+            clinic_id=graph.clinic_a,
+            scope=EmergencyScope(enrollment),
+            reason="Synthetic emergency",
+            expires_at=timezone.now() + timedelta(hours=1),
+            session_key=key,
+        )
+        cursor.execute(
+            "SELECT id,audience,to_jsonb(n)::text "
+            "FROM clinic_app.identity_governancenotice n"
+            " WHERE break_glass_id=%s AND organization_id=%s",
+            [grant.pk, graph.organization_a],
+        )
+        notices = cursor.fetchall()
+    assert {audience for _, audience, _ in notices} == {"manager", "patient"}
+    with runtime_connection(
+        app_database_url, Runtime(graph.shared_user, graph.organization_b)
+    ) as db:
+        for row_id, _audience, payload in notices:
+            row = Witness("id", row_id)
+            assert_read(db, "identity_governancenotice", row, "0")
+            assert_writes(
+                db,
+                "identity_governancenotice",
+                row,
+                Writes("id", insert="42501: governance access denied"),
+                payload=payload,
+            )
 
 
 @override_settings(CLINIC_ENTERPRISE_SYNTHETIC=True)

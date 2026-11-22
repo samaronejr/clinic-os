@@ -84,7 +84,9 @@ Sources, retrieval dates and digests are in
 
 - **Intended use:** read permitted PDFs and images and propose field values
   with page and region anchors for a clinician or operator to confirm before
-  anything enters the chart. Tier A1.
+  anything enters the chart. PDF lab units are never suggested for confirmation:
+  the clinician must enter the unit by hand before filing a PDF-sourced value.
+  Image/OCR units still require source-bound review. Tier A1.
 - **CFM 2.454/2026 risk level proposal:** medium. A wrong value, unit or
   decimal could affect care if confirmed carelessly; confirmation per field is
   the control.
@@ -92,8 +94,9 @@ Sources, retrieval dates and digests are in
   as processing for a clinical purpose, or as data entry assistance outside
   RDC 657/2022?
 - **Limitations:** poor scans, handwriting and unusual layouts reduce
-  accuracy; units are never guessed; a document attached to the wrong patient
-  is not detected by extraction alone.
+  accuracy. PDF text layout is not proof that the proposed value is visible;
+  the clinician checks the rendered source. Units are never guessed. A document
+  attached to the wrong patient is not detected by extraction alone.
 - **Disable path:** capability kill switch and entitlement off; provider
   revoked. Manual entry remains available.
 

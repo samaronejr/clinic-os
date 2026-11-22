@@ -653,15 +653,18 @@ def test_the_page_renders_one_input_per_placeholder_and_sends_the_template(
     conversation = _only_conversation(graph)
     template = _approved_template(graph, category="utility", purpose="transactional")
     client, _ = receptionist_client(graph)
-    url = f"/clinics/{graph.clinic_a}/messages/{conversation.pk}/"
+    url = f"/clinics/{graph.clinic_a}/messages/"
+    selected = {"conversation_id": str(conversation.pk)}
     with runtime_role():
-        form = _template_form(client.get(url).content.decode(), template)
+        shown = client.post(url, {"action": "show", **selected})
+        form = _template_form(shown.content.decode(), template)
     assert re.findall(r'name="(p\d+)"', form) == ["p1", "p2"]
     with runtime_role():
         sent = client.post(
             url,
             {
                 "action": "send",
+                **selected,
                 "command_id": str(uuid4()),
                 "template_version_id": str(template),
                 "p1": "Ana",
@@ -685,12 +688,13 @@ def test_a_template_post_with_the_wrong_parameter_count_is_refused(
     conversation = _only_conversation(graph)
     template = _approved_template(graph, category="utility", purpose="transactional")
     client, _ = receptionist_client(graph)
-    url = f"/clinics/{graph.clinic_a}/messages/{conversation.pk}/"
+    url = f"/clinics/{graph.clinic_a}/messages/"
     with runtime_role():
         refused = client.post(
             url,
             {
                 "action": "send",
+                "conversation_id": str(conversation.pk),
                 "command_id": str(uuid4()),
                 "template_version_id": str(template),
                 "p1": "Ana",
@@ -925,11 +929,16 @@ def test_a_post_to_an_unknown_conversation_is_a_plain_404_and_changes_nothing(
     world.receive(world.message_body(text="Qual o horário?"))
     before = _only_conversation(graph)
     client, _ = receptionist_client(graph)
-    url = f"/clinics/{graph.clinic_a}/messages/{uuid4()}/"
+    url = f"/clinics/{graph.clinic_a}/messages/"
     with runtime_role():
         refused = client.post(
             url,
-            {"action": "assign", "assignee": "me", "expected_revision": "1"},
+            {
+                "action": "assign",
+                "conversation_id": str(uuid4()),
+                "assignee": "me",
+                "expected_revision": "1",
+            },
         )
     assert refused.status_code == HTTPStatus.NOT_FOUND
     with owner_context(graph.organization_a):

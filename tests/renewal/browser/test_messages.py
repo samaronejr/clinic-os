@@ -29,7 +29,6 @@ from renewal.browser._navigation import (
     click_to_navigate,
     go_back_settled,
     goto_settled,
-    reload_settled,
 )
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
@@ -71,6 +70,7 @@ from renewal.browser.test_portal import (
 )
 from renewal.browser.test_retention import sign_in_manager
 from renewal.browser.test_staff_intake import REGISTER, SEARCH_FORM
+from renewal.front_desk_fixture import seed_environment
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -125,8 +125,13 @@ def _settle_live_region(page: Page) -> None:
     wait_for_js(page, SETTLED_JS)
 
 
-def _open_thread(page: Page, *, contact: str | None = None) -> None:
-    """Open a thread from the list; the contact picks the row by its masked number.
+def _open_thread(
+    page: Page, *, contact: str | None = None, conversation: str | None = None
+) -> None:
+    """Open a thread from the list through its POST "Open" button.
+
+    The contact picks the row by its masked number, the conversation by its
+    data-conversation attribute (DOM only, never a URL: SC-7).
 
     The list and the thread each swap their live region in once more after load. A
     press that lands on the old node and is released on its replacement activates
@@ -135,13 +140,30 @@ def _open_thread(page: Page, *, contact: str | None = None) -> None:
     before returning, ready for the caller's next click into its region.
     """
     _settle_live_region(page)
-    rows = page.locator("tr[data-conversation]")
+    if conversation:
+        rows = page.locator(f'tr[data-conversation="{conversation}"]')
+    else:
+        rows = page.locator("tr[data-conversation]")
     row = rows.filter(has_text=contact).first if contact else rows.first
-    link = row.get_by_role("link", name=pgettext("inbox action", "Open"))
-    expect(link).to_be_visible()
-    click_to_navigate(link)
+    opener = row.get_by_role("button", name=pgettext("inbox action", "Open"))
+    expect(opener).to_be_visible()
+    click_to_navigate(opener)
     expect(page.locator("[data-conversation][data-purpose]")).to_be_visible()
     _settle_live_region(page)
+
+
+def _reload_thread(page: Page) -> None:
+    """Show the open thread again, as the browser's reload used to.
+
+    A thread is selected in a POST body (SC-7), so reloading the inbox URL
+    shows the list; this reopens the same thread by its data-conversation.
+    """
+    conversation = page.locator("[data-conversation][data-purpose]").get_attribute(
+        "data-conversation"
+    )
+    assert conversation
+    goto_settled(page, page.url.split("?", 1)[0])
+    _open_thread(page, conversation=conversation)
 
 
 def _reply(page: Page, text: str) -> None:
@@ -203,7 +225,7 @@ def test_inbound_to_assignment_to_reply_to_delivery(
         _capture(page, root, "queued", width)
         operation, _ = latest_operation(staff)
         assert run_worker(staff, operation, "sent", directory) == ["succeeded"]
-        reload_settled(page)
+        _reload_thread(page)
         expect(page.locator(".thread__item--out")).to_have_attribute(
             "data-state", "sent"
         )
@@ -217,7 +239,7 @@ def test_inbound_to_assignment_to_reply_to_delivery(
         assert provider.deliver(
             renewal_page, base, status_body(reference, "delivered")
         ).json() == {"accepted": 0, "duplicates": 1, "ignored": 0}
-        reload_settled(page)
+        _reload_thread(page)
         expect(page.locator(".thread__item--out")).to_have_attribute(
             "data-state", "delivered"
         )
@@ -251,7 +273,7 @@ def test_provider_down_shows_not_sent_and_recovery_never_duplicates(
     outcomes = run_worker(staff, first_operation, "fail", directory)
     assert outcomes[-1] == "failed"
     assert "succeeded" not in outcomes
-    reload_settled(page)
+    _reload_thread(page)
     _settle_live_region(page)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "failed")
     expect(page.locator(".thread__item--out")).to_contain_text(
@@ -268,7 +290,7 @@ def test_provider_down_shows_not_sent_and_recovery_never_duplicates(
     assert second_operation != first_operation
     assert reference is None
     assert run_worker(staff, second_operation, "sent", directory) == ["succeeded"]
-    reload_settled(page)
+    _reload_thread(page)
     # One message in the thread, two operations as evidence, one provider reference.
     expect(page.locator(".thread__item--out")).to_have_count(1)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "sent")
@@ -343,7 +365,8 @@ def test_expired_window_offers_no_free_text(
     conversation = seed_expired_thread(staff, provider)
     _sign_in_receptionist(renewal_page, base, staff)
     page = renewal_page
-    goto_settled(page, f"{_inbox(staff, base)}{conversation}/")
+    goto_settled(page, _inbox(staff, base))
+    _open_thread(page, conversation=str(conversation))
     expect(page.locator('[data-window="closed"]')).to_be_visible()
     expect(page.locator("#reply-body")).to_have_count(0)
     expect(
@@ -601,16 +624,37 @@ def test_a_clinician_starts_a_care_thread_that_reception_cannot_open(
         expect(clinician.locator(".lede")).to_contain_text(
             pgettext("conversation purpose", "Care")
         )
-        thread_url = clinician.url
+        # The thread renders from the POST at the plain inbox URL (SC-7), so its
+        # id comes from the page, never from a URL.
+        care_thread = clinician.locator(
+            "[data-conversation][data-purpose=care]"
+        ).get_attribute("data-conversation")
+        assert care_thread
         _capture(clinician, root, "care-thread", 1280)
     finally:
         context.close()
-    # Reception holds no care role: the list omits it and the thread is a 404.
-    goto_settled(page, _inbox(staff, base))
+    # Reception holds no care role: the list omits it, and selecting the thread
+    # the only way one is selected (a CSRF POST body) is the one 404.
+    inbox = _inbox(staff, base)
+    goto_settled(page, inbox)
     expect(page.locator("tr[data-conversation]")).to_have_count(0)
-    response = goto_settled(page, thread_url)
-    assert response is not None
+    csrf = next(
+        cookie.get("value", "")
+        for cookie in page.context.cookies()
+        if cookie.get("name") == "csrftoken"
+    )
+    response = page.request.post(
+        inbox,
+        form={
+            "csrfmiddlewaretoken": csrf,
+            "action": "show",
+            "conversation_id": care_thread,
+        },
+        headers={"Referer": inbox},
+        max_redirects=0,
+    )
     assert response.status == NOT_FOUND
+    assert name not in response.text()
 
 
 def test_quick_replies_fill_the_composer_and_send_nothing(
@@ -735,7 +779,7 @@ def _start_portal_thread(
     _reply(page, PORTAL_TEXT)
     operation, _ = latest_operation(staff)
     assert run_worker(staff, operation, "sent", directory) == ["succeeded"]
-    reload_settled(page)
+    _reload_thread(page)
     expect(page.locator(".thread__item--out")).to_have_attribute("data-state", "sent")
 
 
@@ -824,13 +868,7 @@ def test_a_patient_reads_and_replies_in_a_portal_thread_the_clinic_opened(
 
 
 def _enable_portal_assistant(staff: dict[str, str], actor: str) -> None:
-    environment = {
-        **os.environ,
-        "APP_DATABASE_URL": staff["dsn"],
-        "DJANGO_SETTINGS_MODULE": "config.settings.base",
-        "CLINIC_DATA_MODE": "synthetic",
-        "PYTHONPATH": ".:tests",
-    }
+    environment = seed_environment(staff["dsn"])
     result = subprocess.run(  # noqa: S603 - fixed fixture and UUID-only arguments.
         [
             sys.executable,

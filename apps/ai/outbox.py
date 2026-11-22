@@ -27,7 +27,7 @@ from apps.ai.contracts import (
 from apps.ai.decision_contracts import parse_decision_request
 from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.output_validation import call_provider, parse_method
-from apps.ai.policy import check_configuration, enabled_policy
+from apps.ai.policy import check_configuration, check_rollout_binding, enabled_policy
 from apps.ai.prompt_registry import load_prompt
 from apps.ai.revenue_sources import parse_context as parse_revenue_context
 from apps.comms.adapters import OperationScope, PermanentSendError, SendResult
@@ -103,6 +103,9 @@ def eligible(scope: OperationScope) -> bool:
             clinic_id=scope.clinic_id, meter="ai_tokens_in", quantity=0
         ).available
         check_configuration(invocation.configuration, scope.clinic_id)
+        check_rollout_binding(
+            clinic_id=scope.clinic_id, approval_id=invocation.rollout_approval_id
+        )
         source = input_for(
             clinic_id=scope.clinic_id,
             inputs_ref=invocation.inputs_ref_id,

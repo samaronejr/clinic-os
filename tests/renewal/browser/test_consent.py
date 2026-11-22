@@ -10,15 +10,27 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._navigation import expect_document, goto_settled, reload_settled
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+)
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot, zoom_200
-from renewal.browser.test_availability import availability_staff
-from renewal.browser.test_encounter import press, press_in_view
+from renewal.browser.test_availability import _sign_in_physician, availability_staff
+from renewal.browser.test_encounter import (
+    FIELDS,
+    press,
+    press_in_view,
+    registered_physician,
+    seed,
+)
 from renewal.browser.test_patient_access import _redeem, _watch_errors
 from renewal.browser.test_retention import (
     csrf,
@@ -30,7 +42,7 @@ from renewal.browser.test_retention import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, ViewportSize
 
 __all__ = ("availability_staff",)
 TEXT = (
@@ -108,8 +120,11 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
-def publish(page: Page, url: str, text: str) -> None:
+def publish(
+    page: Page, url: str, text: str, *, purpose: str = "teleconsultation"
+) -> None:
     goto_settled(page, url)
+    page.locator(".consent-publish select[name=purpose]").select_option(purpose)
     page.locator("#id_text").fill(text)
     press(page, "publish")
     expect(page.locator('[role="status"]')).to_be_visible()
@@ -120,7 +135,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
         press(patient, "accept")
     assert missing.value.status == 400
     capture(patient, root, "explicit-choice-required", width)
-    press(patient, "read")
+    open_purpose_text(patient, gettext("Teleconsultation"))
     patient.locator("#id_accepted").focus()
     patient.keyboard.press("Space")
     expect(patient.locator("#id_accepted")).to_be_checked()
@@ -239,7 +254,7 @@ def console_report(
 
 
 def replay_denied(page: Page, token: str, root: Path, width: int) -> None:
-    press(page, "read")
+    open_purpose_text(page, gettext("Teleconsultation"))
     page.locator("#id_offer").evaluate("(e, token) => { e.value = token; }", token)
     page.locator("#id_accepted").check()
     with page.expect_response(lambda r: r.request.method == "POST") as response:
@@ -276,6 +291,178 @@ def assert_purpose_refusals(patient: Page, token: str) -> None:
         )
         == 400
     )
+
+
+def open_purpose_text(page: Page, label: str) -> None:
+    choice = page.locator(".consent-text-option").filter(
+        has=page.locator("p").filter(has_text=label)
+    )
+    button = choice.get_by_role("button", name=gettext("Read the current text"))
+    click_to_navigate(button)
+
+
+def recording_choice(page: Page, text: str) -> None:
+    label = gettext("Consultation recording")
+    open_purpose_text(page, label)
+    expect(page.locator("#id_purpose")).to_have_value("consultation_recording")
+    expect(page.locator("#consent-text")).to_have_text(text)
+    page.locator("#id_accepted").check()
+    press(page, "accept")
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
+        gettext("Consent recorded. Your receipt remains available below.")
+    )
+    receipt = page.locator('[data-receipt][data-state="accepted"]')
+    expect(receipt).to_have_count(1)
+    expect(receipt.get_by_role("heading")).to_contain_text(label)
+    receipt.scroll_into_view_if_needed()
+
+
+def ai_refusal(page: Page, text: str) -> None:
+    label = gettext("AI assistance")
+    open_purpose_text(page, label)
+    expect(page.locator("#id_purpose")).to_have_value("ai_assistance")
+    expect(page.locator("#consent-text")).to_have_text(text)
+    expect(page.locator("#id_accepted")).not_to_be_checked()
+    press(page, "refuse")
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
+        gettext("Refusal recorded. Your care remains available.")
+    )
+    refusals = page.get_by_role("region", name=gettext("Refusals"))
+    expect(refusals.get_by_role("heading", level=3)).to_contain_text(label)
+    expect(refusals.locator("article p")).to_contain_text(gettext("Refused"))
+    expect(page.locator("[data-receipt]")).to_have_count(1)
+    expect(page.locator('[data-receipt][data-state="accepted"]')).to_contain_text(
+        gettext("Consultation recording")
+    )
+    refusals.scroll_into_view_if_needed()
+
+
+def record_encounter_refusal(page: Page, staff_url: str, encounter_url: str) -> None:
+    encounter = page.locator('[data-encounter-state="open"]')
+    expect(encounter).to_be_visible()
+    encounter_id = encounter.get_attribute("data-encounter")
+    assert encounter_id is not None
+    goto_settled(page, staff_url)
+    disclosure = page.get_by_role("region", name=gettext("Record an AI-use disclosure"))
+    disclosure.locator("#id_disclosure-encounter_id").fill(encounter_id)
+    disclosure.get_by_label(
+        gettext("I informed the patient about AI assistance.")
+    ).check()
+    disclosure.get_by_label(gettext("The patient refused AI assistance.")).check()
+    response = click_to_navigate(
+        disclosure.get_by_role("button", name=gettext("Record disclosure"))
+    )
+    assert response is not None
+    assert response.ok, response.status
+    expect(page.get_by_role("main").get_by_role("status")).to_have_text(
+        gettext("AI-use disclosure recorded.")
+    )
+    goto_settled(page, encounter_url)
+    expect(page.locator("[data-encounter]")).to_have_attribute(
+        "data-encounter", encounter_id
+    )
+
+
+def save_manual_soap(page: Page) -> None:
+    note = (
+        "Relato sintético registrado manualmente",
+        "Observação sintética",
+        "Avaliação sintética",
+        "Plano sintético sem assistência de IA",
+    )
+    form = page.locator("#soap-form")
+    for field, text in zip(FIELDS, note, strict=True):
+        form.locator(f"#id_{field}").fill(text)
+    press(page, "save")
+    expect(page.locator("#save-state")).to_have_attribute("data-state", "saved")
+    revision = page.locator("[data-saved-revision]")
+    expect(revision).to_have_text("2")
+    response = reload_settled(page)
+    assert response is not None
+    assert response.ok, response.status
+    expect(revision).to_have_text("2")
+    for field, text in zip(FIELDS, note, strict=True):
+        textarea = form.locator(f"#id_{field}")
+        # Verify the new document contains the value, not just form restoration.
+        expect(textarea).to_have_text(text)
+        expect(textarea).to_have_value(text)
+    page.locator("#save-state").scroll_into_view_if_needed()
+
+
+def test_recording_accepted_ai_refused_manual_soap_saved(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    """Record distinct patient choices and continue the encounter without AI."""
+    browser = renewal_page.context.browser
+    assert browser is not None
+    staff = registered_physician(availability_staff)
+    base = renewal_base_url
+    clinic = staff["clinic_a"]
+    staff_url = f"{base}/clinics/{clinic}/consent/"
+    encounter_url = f"{base}/ehr/clinics/{clinic}/encounter/"
+    day = "2035-06-08"
+    data = seed(staff, day, patient=seed_patient(staff))
+    recording_text = "Aviso sintético: autorização para gravar o áudio da consulta."
+    ai_text = "Aviso sintético: o uso de IA para auxiliar no atendimento é opcional."
+    viewport: ViewportSize = {"width": 1280, "height": 900}
+    with browser.new_context(locale="pt-BR", java_script_enabled=False) as setup:
+        admin = setup.new_page()
+        sign_in_manager(admin, base, staff, seed_manager(staff))
+        publish(admin, staff_url, recording_text, purpose="consultation_recording")
+        publish(admin, staff_url, ai_text, purpose="ai_assistance")
+
+    # Keep both roles in one video, but end the patient session before staff login.
+    with browser.new_context(
+        locale="pt-BR", viewport=viewport, java_script_enabled=False
+    ) as context:
+        page = context.new_page()
+        _redeem(page, base, clinic, data["code"])
+        goto_settled(page, f"{base}/patient/consent/")
+        expect(page.locator("#consent-title")).to_have_text(
+            gettext("Your consent choices")
+        )
+        recording_choice(page, recording_text)
+        capture(page, renewal_artifact_root, "recording-accepted", viewport["width"])
+        ai_refusal(page, ai_text)
+        capture(page, renewal_artifact_root, "ai-refused", viewport["width"])
+        goto_settled(page, f"{base}/patient/")
+        click_to_navigate(page.get_by_role("button", name=gettext("Sign out")))
+        expect(page.get_by_role("heading", level=1)).to_have_text(
+            gettext("You are signed out")
+        )
+
+        _sign_in_physician(page, base, staff)
+        goto_settled(page, f"{base}/scheduling/clinics/{clinic}/agenda/day/{day}/1/")
+        press(page, "open")
+        record_encounter_refusal(page, staff_url, encounter_url)
+        expect(page.locator('[data-capture-action="start"]')).to_have_count(0)
+        page.locator("#template-id").select_option(data["specialty"])
+        press(page, "template")
+        click_to_navigate(
+            page.get_by_role(
+                "button", name=gettext("Review source-linked AI suggestions")
+            )
+        )
+        unavailable = page.locator("[data-review-unavailable]")
+        expect(unavailable).to_be_visible()
+        expect(unavailable).to_have_text(
+            gettext(
+                "AI drafting is unavailable. It requires a final transcript, "
+                "separate current AI consent, informed disclosure and an enabled "
+                "organization policy. Manual notes remain available."
+            )
+        )
+        expect(page.locator('button[value="generate"]:enabled')).to_have_count(0)
+        capture(page, renewal_artifact_root, "scribe-unavailable", viewport["width"])
+        click_to_navigate(
+            page.get_by_role("link", name=gettext("Continue the note manually"))
+        )
+
+        save_manual_soap(page)
+        capture(page, renewal_artifact_root, "manual-note-saved", viewport["width"])
 
 
 @pytest.mark.parametrize("width", [1280, 768, 375])
@@ -315,7 +502,7 @@ def test_accept_revoke_receipt_and_replay_denials(
         _redeem(patient, base, staff["clinic_a"], data["code"])
         patient.get_by_role("link", name="Seus consentimentos").click()
         capture(patient, root, "default-empty-receipts", width)
-        press(patient, "read")
+        open_purpose_text(patient, gettext("Teleconsultation"))
         expect(patient.locator("#id_accepted")).not_to_be_checked()
         assert patient.locator("#consent-text").text_content() == TEXT
         capture(patient, root, "read-unchecked", width)
@@ -332,7 +519,7 @@ def test_accept_revoke_receipt_and_replay_denials(
         )
         # A token cannot be used for a different purpose.
         assert_purpose_refusals(patient, token)
-        press(patient, "read")
+        open_purpose_text(patient, gettext("Teleconsultation"))
         token = patient.locator("#id_offer").input_value()
         with browser.new_context(
             java_script_enabled=False, viewport={"width": width, "height": 900}

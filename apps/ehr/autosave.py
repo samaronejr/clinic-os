@@ -3,7 +3,7 @@
 Every autosave is one idempotent command. It is authorized exactly like an
 explicit save: the version must be the current actor's own draft on an
 encounter they are assigned to (``view_version`` plus ``_encounter_actor``).
-The write goes through the unchanged ``record_clinical_note`` (H-2), whose
+It uses the same revision writer as ``record_clinical_note`` (H-2), whose
 compare-and-set on ``expected_revision`` is the only way a revision moves.
 
 - ``editor_command_id`` is the idempotency key. Its receipt binds the key to
@@ -42,10 +42,11 @@ from apps.ehr.services import (
     MAX_CONTENT,
     SOAP_FIELDS,
     ClinicalConflictError,
+    _author_scope,
+    _record_clinical_note,
     author_scope,
     decided,
     draft_edit_state,
-    record_clinical_note,
     view_version,
 )
 
@@ -176,8 +177,7 @@ def _hold(state: DraftEditState, session: UUID, now: datetime) -> None:
 
 
 def _save_state(state: DraftEditState) -> None:
-    # Epochs belong to record_clinical_note (advance_section_epochs): the lock
-    # bookkeeping never writes them, so it cannot roll a count back.
+    # Epochs belong to the shared note writer, not to lock bookkeeping.
     state.save(
         update_fields=(
             "lock_holder",
@@ -246,11 +246,12 @@ def _write(  # noqa: PLR0913 - one locked save and its bookkeeping
         if state.lock_holder == session and state.handover_requested_by != session
         else None
     )
-    saved = record_clinical_note(
+    saved = _record_clinical_note(
         clinic_id=clinic_id,
         version_id=version.pk,
         expected_revision=expected_revision,
         content=content,
+        locked_draft=(version, state),
     )
     if handover_to is not None:
         # This session's text is saved first; the lock then moves.
@@ -369,7 +370,10 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
     content = _validated(
         expected_revision, editor_command_id, editor_session_id, sections
     )
-    author_scope(clinic_id=clinic_id, version_id=version_id)
+    decide = partial(
+        _author_scope, clinic_id=clinic_id, version_id=version_id, for_autosave=True
+    )
+    decide()
     command = _Command(
         clinic_id=clinic_id,
         version_id=version_id,
@@ -390,7 +394,7 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         # author_scope (RLS then hides the draft or its receipt, or refuses a
         # later statement) rolls the read audit back with whatever failed and
         # is decided again outside the boundary.
-        with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
+        with decided(decide):
             result = _decide_locked(command)
     except _DraftUnavailableError:
         # decided found authority intact: only a draft that is no longer

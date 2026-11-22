@@ -23,10 +23,8 @@
   {% if messages %}{% for message in messages %}
   <p class="feedback{% if message.tags == 'error' %} feedback--error" role="alert"{% else %} feedback--success" role="status"{% endif %} tabindex="-1">{{ message }}</p>
   {% endfor %}{% endif %}
-  {% if post_selection %}
   <form id="thread-selection" method="post" hidden>{% csrf_token %}{% include "comms/_conversation_selection.html" %}<input type="hidden" name="action" value="show"></form>
-  {% endif %}
-  <div id="thread-region" {% if post_selection %}hx-post="{{ request.path }}" hx-include="#thread-selection"{% else %}hx-get="{{ request.path }}"{% endif %} hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#thread-region &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
+  <div id="thread-region" hx-post="{{ request.path }}" hx-include="#thread-selection" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#thread-region &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
   {% if c.needs_clinician %}
   <section class="feedback feedback--error" role="status" aria-labelledby="clinical-flag">
     <h2 id="clinical-flag">{% trans "Question forwarded to the clinical team" %}</h2>

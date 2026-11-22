@@ -18,7 +18,10 @@ side by side on the reference clinic's organization.
 # Injects SINTETICO-SENTINELA-* values into protected fields (runner scan).
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
+
+import pytest
 
 import renewal.browser.test_agenda_grid as grid
 import renewal.browser.test_agenda_slice as agenda_slice
@@ -34,14 +37,12 @@ from renewal.browser.test_agenda_grid import (
     grid_report,
     grid_root,
     grid_state,
-    grid_world,
 )
 from renewal.browser.test_agenda_slice import (
     scene,
     signed_in_state,
     slice_report,
     slice_root,
-    slice_world,
 )
 from renewal.browser.test_reception import (
     reception_page,
@@ -75,6 +76,22 @@ __all__ = (
 
 # Order matters: the waitlist and reception proofs own clinic A until the agenda
 # grid and slice worlds seed their rooms and days later in this session.
+
+
+@pytest.fixture(scope="session")
+def grid_world(agenda_staff: dict[str, str]) -> grid.GridWorld:
+    """Reserve a calendar for all J3 grid scenes, away from reception and slice."""
+    world = grid.GridWorld(agenda_staff)
+    world.next_day = date(2038, 9, 6)
+    return world
+
+
+@pytest.fixture(scope="session")
+def slice_world(agenda_staff: dict[str, str]) -> agenda_slice.SliceWorld:
+    """Keep J3's slice off the fixed self-booking and waitlist dates."""
+    world = agenda_slice.SliceWorld(agenda_staff)
+    world.next_day = date(2037, 9, 7)
+    return world
 
 
 def test_j3_adapters_and_provider_legs(

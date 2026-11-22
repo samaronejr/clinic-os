@@ -22,10 +22,13 @@ Clinic OS is a Django 5.2 application backed by PostgreSQL 16. Django owns the
 HTTP and session layer; PostgreSQL owns the authoritative tenant boundary and
 the append-only audit ledger. The project exposes both WSGI and ASGI entry
 points, but all current tenant middleware is synchronous. Redis backs the
-Celery broker for the comms reminder worker: `apps/comms/tasks.py` ships
+Celery broker for integration workers. On `clinic-integrations`, `apps/comms/tasks.py` ships
 `comms.execute_operation` (one stored outbox operation through the trusted
 worker boundary) and `comms.dispatch_due_reminders` (claims due outbox rows),
-which `config/celery.py` schedules through beat every 60 seconds. DRF remains
+which `config/celery.py` schedules through beat every 60 seconds.
+`apps/prescription/tasks.py` ships `prescription.dispatch_signature` on the
+same queue. It dispatches a stored signing operation published after the
+tenant transaction commits, not on a beat schedule. DRF remains
 a dependency/configuration foundation only: there is no shipped domain API.
 
 The URL set includes the shell, `workspace/`, `sw.js`, `/healthz`, `/readyz`,

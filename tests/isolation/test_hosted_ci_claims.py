@@ -8,7 +8,12 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 import pytest
-from ops.testing import ci_postgres_controller, ci_postgres_runtime
+from ops.testing import (
+    ci_postgres_controller,
+    ci_postgres_runtime,
+    renewal_acceptance,
+    renewal_runner,
+)
 from ops.testing.ci_postgres_runtime import (
     CiDatabaseLease,
     ci_database_lease,
@@ -24,16 +29,16 @@ if TYPE_CHECKING:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_ci_browser_suite_file_includes_the_required_renewal_suite() -> None:
-    # Given: the tracked CI selector with the Wave B clinical inbox extension.
-    path = PROJECT_ROOT / "ops/testing/ci-required-browser-suites.txt"
-    assert path.is_file()
-
-    # When / Then: bytes are sorted, LF-terminated, and exclude Todo 20 runtime HTTPS.
-    assert path.read_bytes() == b"availability\nclinical-inbox\npatient\nscheduling\n"
-    assert (
-        PROJECT_ROOT / "ops/testing/final-required-browser-suites.txt"
-    ).read_bytes() == (b"availability\npatient\nruntime-https\nscheduling\n")
+def test_clinical_inbox_is_registered_and_sharded_on_each_engine() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    entries, failures = renewal_acceptance._shard_entries(workflow)
+    assert not failures
+    assert renewal_runner.SUITES["clinical-inbox"] == (
+        "tests/renewal/browser/test_clinical_inbox.py",
+    )
+    assert [
+        entry for entry in entries if entry.partition("@")[0] == "clinical-inbox"
+    ] == ["clinical-inbox", "clinical-inbox@firefox", "clinical-inbox@webkit"]
 
 
 def test_ci_browser_contract_dispatches_image_and_renewal_suites(
@@ -52,6 +57,7 @@ def test_ci_browser_contract_dispatches_image_and_renewal_suites(
     result = subprocess.run(
         (
             "/usr/bin/make",
+            "--silent",
             "--no-print-directory",
             "ci-browser-contract",
             "POSTGRES_CONTAINER=synthetic",

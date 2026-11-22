@@ -5,15 +5,24 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from functools import partial
-from typing import Final
+from functools import lru_cache, partial
+from os import getpid, register_at_fork
+from typing import TYPE_CHECKING, Final
+from weakref import WeakSet
 
 from django.conf import settings
 from django.db import connection, transaction
-from redis import Redis
+from redis import ConnectionPool, Redis
+from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
+from redis.retry import Retry
 
 from apps.realtime.topics import TOPIC_PATTERN
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from redis.connection import ConnectionInterface
 
 EVENT_KINDS: Final = frozenset(
     {
@@ -67,6 +76,42 @@ def redis_client() -> Redis:
     )
 
 
+_publisher_connections: WeakSet[ConnectionInterface] = WeakSet()
+
+
+class _PublisherConnectionPool(ConnectionPool):
+    def make_connection(self) -> ConnectionInterface:
+        """Track connections even while checked out or after cache eviction."""
+        conn = super().make_connection()
+        _publisher_connections.add(conn)
+        return conn
+
+
+@lru_cache(maxsize=1)
+def _publisher_pool(url: str, _pid: int) -> ConnectionPool:
+    # Keep hot sockets local to the process and the active broker URL. Do not
+    # replay a PUBLISH whose acknowledgement was lost.
+    return _PublisherConnectionPool.from_url(
+        url,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+    )
+
+
+def _discard_inherited_publisher_sockets() -> None:
+    for conn in tuple(_publisher_connections):
+        # Redis-py skips shutdown on a connection PID mismatch. Disconnect
+        # individual connections before clearing the pool, without pool locks.
+        disconnect: Callable[[], None] = conn.disconnect
+        disconnect()
+    _publisher_connections.clear()
+    _publisher_pool.cache_clear()
+
+
+register_at_fork(after_in_child=_discard_inherited_publisher_sockets)
+
+
 def publish(*, topic: str, kind: str, version: int) -> None:
     """Publish a refetch hint after commit; never interrupt committed domain work.
 
@@ -78,7 +123,9 @@ def publish(*, topic: str, kind: str, version: int) -> None:
         message = "realtime publication requires a committed transaction"
         raise RuntimeError(message)
     try:
-        with redis_client() as client:
+        pool = _publisher_pool(settings.REALTIME_REDIS_URL, getpid())
+        # An explicitly supplied pool stays open when this client exits.
+        with Redis(connection_pool=pool) as client:
             client.publish("rt:" + topic_hash(topic), payload)
     except RedisError:
         logger.warning("realtime publication unavailable; polling required")

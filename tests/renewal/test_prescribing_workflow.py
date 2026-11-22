@@ -48,7 +48,11 @@ from otp_test_support import (
 )
 from renewal.test_document_artifacts import ITEM, seed, seed_rendered
 from renewal.test_encounters import physician_client
-from renewal.test_signatures import owner_scope, physician_anonymous_post
+from renewal.test_signatures import (
+    dispatch_prepared_document,
+    owner_scope,
+    physician_anonymous_post,
+)
 from scheduling.appointment_service_support import (
     AppointmentSetup,
     arrived_synthetic_appointment,
@@ -149,6 +153,7 @@ def _signed_callback(
     graph: RbacGraph, document: PrescriptionDocument, *, status: str = "signed"
 ) -> tuple[str, bytes]:
     """Build the provider's authenticated callback for the stored operation."""
+    dispatch_prepared_document(graph, document.pk)
     provider = SyntheticSignatureProvider()
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         operation = SignatureOperation.objects.get(document=document, state="signing")
@@ -179,6 +184,19 @@ def _synthetic_signing() -> Iterator[None]:
         PHYSICIAN_SYNTHETIC_REGISTRY=True, PRESCRIPTION_SYNTHETIC_SIGNING=True
     ):
         yield
+
+
+def _advance_signing_page(
+    client: Client, graph: RbacGraph, document_id: UUID, url: str
+) -> _Attributes:
+    status, pending = _page(client, url)
+    assert status == 200
+    assert pending.first("data-state") == "prepared"
+    dispatch_prepared_document(graph, document_id)
+    status, signing = _page(client, url)
+    assert status == 200
+    assert signing.first("data-state") == "signing"
+    return signing
 
 
 @pytest.mark.usefixtures("_synthetic_signing")
@@ -333,9 +351,9 @@ def test_stale_step_up_routes_through_identity_with_context_and_back_to_review(
                 review_url, {"action": "sign_document", "document_id": document.pk}
             )
             assert started.status_code == 302
-            status, signing_page = _page(client, started.headers["Location"])
-            assert status == 200
-            assert signing_page.first("data-state") == "signing"
+            signing_page = _advance_signing_page(
+                client, rbac_graph, document.pk, started.headers["Location"]
+            )
             assert signing_page.first("data-step") == "sign"
             assert signing_page.values["data-attempt-state"] == ["failed", "signing"]
     with owner_scope(rbac_graph.organization_a):
@@ -414,8 +432,9 @@ def test_provider_failure_is_terminal_and_restart_keeps_the_history(
         restarted = client.post(status_url, {"action": "restart_signature"})
         assert restarted.status_code == 302
         assert restarted.headers["Location"] != status_url
-        status, fresh = _page(client, restarted.headers["Location"])
-        assert fresh.first("data-state") == "signing"
+        fresh = _advance_signing_page(
+            client, rbac_graph, document.pk, restarted.headers["Location"]
+        )
         assert fresh.values["data-attempt-state"] == ["failed", "signing"]
         # The terminal attempt is still readable, unchanged, from its own page.
         status, still_failed = _page(client, status_url)

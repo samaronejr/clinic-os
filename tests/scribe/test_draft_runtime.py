@@ -18,9 +18,11 @@ from apps.scribe.draft_contracts import (
     DraftConflictError,
     ReviewInput,
 )
+from apps.scribe.gateway import ScribeSyntheticProvider
 from apps.scribe.models import (
     AIDraft,
     ChunkTranscription,
+    DraftActionProposal,
     DraftSectionSuggestion,
     ReviewDecision,
 )
@@ -46,7 +48,6 @@ from scribe.test_transcript_runtime import accepted, permit_asr
 
 if TYPE_CHECKING:
     from apps.ai.contracts import ProviderRequest, ProviderResult
-    from apps.scribe.gateway import ScribeSyntheticProvider
 
     from rbac_fixtures import RbacGraph
 
@@ -122,6 +123,31 @@ def test_generation_and_three_clinician_decisions_never_finalize_automatically(
                 json.loads(reveal(purpose="scribe.draft.base", envelope=ciphertext))
                 == queued.base_content
             )
+
+
+def test_source_backed_action_suggestion_is_retained_for_review(
+    draft_world: DraftWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = ScribeSyntheticProvider.complete
+
+    def suggest(
+        self: ScribeSyntheticProvider, *, request: ProviderRequest
+    ) -> ProviderResult:
+        output = original(self, request=request)
+        data = json.loads(output.content)
+        source = data["suggestions"][0]
+        data["proposals"] = [
+            {"kind": "task", "text": source["text"], "citations": source["citations"]}
+        ]
+        return replace(output, content=json.dumps(data))
+
+    monkeypatch.setattr(ScribeSyntheticProvider, "complete", suggest)
+    draft = generate(draft_world)
+    graph = draft_world.graph
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        proposal = DraftActionProposal.objects.get(draft_id=draft.pk)
+        assert proposal.kind == "task"
+        assert proposal.citations
 
 
 def test_late_result_keeps_manual_edits_and_requires_explicit_replacement(
@@ -355,8 +381,6 @@ def test_decoded_provider_result_is_rejected_before_any_projection(
     encoding: str,
     attack: str,
 ) -> None:
-    from apps.scribe.gateway import ScribeSyntheticProvider  # noqa: PLC0415
-
     scope, graph = draft_world, draft_world.graph
     original = ScribeSyntheticProvider.complete
 

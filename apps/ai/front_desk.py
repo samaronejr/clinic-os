@@ -20,6 +20,7 @@ simulated, and a real provider send stays BLOCKED-ON-EG.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -34,6 +35,8 @@ from django.utils import formats, timezone, translation
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 
+from apps.ai.contracts import GatewayRefusedError, Purpose
+from apps.ai.evaluation.versions import source_versions
 from apps.ai.front_desk_kb import ArticleAnswer, best_answer, fold
 from apps.ai.models import GatewaySwitch
 from apps.audit.events import build_phase1_audit_event
@@ -189,6 +192,7 @@ class Context:
     tools: tuple[str, ...]
     budget_left: int
     offer_received: bool
+    rollout_stage: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +257,60 @@ def _globally_enabled() -> bool:
     return GatewaySwitch.objects.filter(pk=1, enabled=True).exists()
 
 
+def _source_receipt(subject: UUID, kind: str) -> bytes:
+    """Authenticate source evidence with the existing application encryption key."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_current_xact_id()::text")
+        xid = cursor.fetchone()[0]
+    return protect(
+        purpose="ai.front_desk.sources",
+        plaintext=json.dumps(
+            {
+                "subject": str(subject),
+                "kind": kind,
+                "transaction": xid,
+                "sources": source_versions(Purpose.FRONT_DESK),
+            },
+            separators=(",", ":"),
+        ).encode(),
+    )
+
+
+def _authorize(turn_id: UUID, *, completed: bool = False) -> str:
+    """Bind fresh source bytes to this turn and the current database transaction."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_front_desk_authorize(%s,%s,%s)",
+            [
+                turn_id,
+                _source_receipt(turn_id, "completed_turn" if completed else "turn"),
+                secret_store().get_secret(KEK_SECRET_NAME),
+            ],
+        )
+        row = cursor.fetchone()
+    return str(row[0]) if row and row[0] else ""
+
+
+def _require_effect(turn_id: UUID, *, completed: bool = False) -> None:
+    """Automatic patient-facing work requires explicit administrative expansion."""
+    if _authorize(turn_id, completed=completed) != "monitored_autonomy":
+        raise GatewayRefusedError(reason="configuration_unavailable")
+
+
+def _enqueue(message_id: UUID) -> UUID | None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_front_desk_enqueue(%s,%s,%s)",
+            [
+                message_id,
+                _source_receipt(message_id, "message"),
+                secret_store().get_secret(KEK_SECRET_NAME),
+            ],
+        )
+        row = cursor.fetchone()
+    return row[0] if row and isinstance(row[0], UUID) else None
+
+
 def enqueue_turn(message_id: UUID, channel: str) -> None:
     """Inbound hook: in the authenticated inbound transaction, queue one turn.
 
@@ -266,11 +324,13 @@ def enqueue_turn(message_id: UUID, channel: str) -> None:
         or not _globally_enabled()
     ):
         return
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT clinic_app.ai_front_desk_enqueue(%s)", [message_id])
+    _enqueue(message_id)
 
 
 def _context(turn_id: UUID, kek: str) -> Context | None:
+    stage = _authorize(turn_id)
+    if not stage:
+        return None
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM clinic_app.ai_front_desk_turn(%s,%s)", [turn_id, kek]
@@ -294,6 +354,7 @@ def _context(turn_id: UUID, kek: str) -> Context | None:
         tools=tuple(row[16]),
         budget_left=int(row[17]),
         offer_received=row[18] is True,
+        rollout_stage=stage,
     )
 
 
@@ -316,6 +377,7 @@ def _state(  # noqa: PLR0913 - one bookkeeping change and its terms
     start: datetime | None = None,
     reason: str = "",
 ) -> None:
+    _require_effect(turn_id)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ai_front_desk_state(%s,%s,%s,%s,%s,%s)",
@@ -324,6 +386,7 @@ def _state(  # noqa: PLR0913 - one bookkeeping change and its terms
 
 
 def _verify(turn_id: UUID, birth: str | None, kek: str) -> tuple[bool, bool]:
+    _require_effect(turn_id)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM clinic_app.ai_front_desk_verify(%s,%s,%s)",
@@ -437,6 +500,7 @@ def _appointment_step(ctx: Context, decision: Decision) -> Decision:
     patient/tenant context is nested, and scheduling sees no machine or staff
     authority.
     """
+    _require_effect(ctx.turn_id)
     if ctx.session_id is not None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -512,6 +576,7 @@ def _appointment_step(ctx: Context, decision: Decision) -> Decision:
 
 
 def _under_session(ctx: Context, decision: Decision) -> Decision:
+    _require_effect(ctx.turn_id)
     zone = ZoneInfo(require_patient_booking_scope().timezone)
     if decision.intent == "accept":
         return _book(ctx, zone)
@@ -570,6 +635,7 @@ def _new_booking(ctx: Context, zone: ZoneInfo) -> Decision:
 
 def _book(ctx: Context, zone: ZoneInfo) -> Decision:
     """Book exactly the offered slot, rechecked against real availability."""
+    _require_effect(ctx.turn_id)
     if ctx.offered_start is None or not ctx.offer_received:
         return Decision("accept", "refused", _(TAKEN))
     local = ctx.offered_start.astimezone(zone)
@@ -603,6 +669,7 @@ def _book(ctx: Context, zone: ZoneInfo) -> Decision:
 
 
 def _finish(ctx: Context, decision: Decision, kek: str) -> None:
+    _require_effect(ctx.turn_id)
     reply = decision.reply
     if ctx.first_turn:
         reply = f"{_(DISCLOSURE)}\n{reply}"
@@ -626,6 +693,7 @@ def _finish(ctx: Context, decision: Decision, kek: str) -> None:
 
 
 def _audit_turn(turn_id: UUID) -> None:
+    _require_effect(turn_id, completed=True)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM clinic_app.ai_front_desk_audit_scope(%s)", [turn_id]
@@ -649,10 +717,27 @@ def _audit_turn(turn_id: UUID) -> None:
         )
 
 
+def _propose(ctx: Context) -> None:
+    """Retain a closed proposal without a challenge, patient read, reply or handoff."""
+    intent = classify(
+        ctx.text,
+        challenge_pending=ctx.challenge_pending,
+        offer_pending=ctx.offered_start is not None,
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_front_desk_propose(%s,%s,%s)",
+            [ctx.turn_id, intent, _TOOL_FOR.get(intent, "")],
+        )
+
+
 def _run(account_id: UUID, proof: str, turn_id: UUID, kek: str) -> None:
     with inbound_context(account_id=account_id, proof=proof):
         ctx = _context(turn_id, kek)
         if ctx is None:
+            return
+        if ctx.rollout_stage != "monitored_autonomy":
+            _propose(ctx)
             return
         decision = _decide(ctx, kek)
         tool = _TOOL_FOR.get(decision.intent)
@@ -701,16 +786,17 @@ def run_portal_turn(*, clinic_id: UUID, message_id: UUID) -> None:
     scope = portal_message_scope()
     if scope is None or scope.clinic_id != clinic_id:
         return
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT clinic_app.ai_front_desk_enqueue(%s)", [message_id])
-        row = cursor.fetchone()
-    if row is None or not isinstance(row[0], UUID):
+    turn = _enqueue(message_id)
+    if turn is None:
         return
     kek = secret_store().get_secret(KEK_SECRET_NAME)
-    ctx = _context(row[0], kek)
+    ctx = _context(turn, kek)
     if ctx is None:
         return
     with translation.override(LANGUAGE):
+        if ctx.rollout_stage != "monitored_autonomy":
+            _propose(ctx)
+            return
         decision = _decide(ctx, kek)
         tool = _TOOL_FOR.get(decision.intent)
         if not decision.outcome:

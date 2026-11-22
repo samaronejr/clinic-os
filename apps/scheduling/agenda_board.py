@@ -560,10 +560,14 @@ def view_agenda_board(
         if view == "month":
             counts = _counts(shown, _days(first_day, last_day), timezone_key)
         else:
+            # The board shows only the patient's name. Loading their birth
+            # date would also call protected_decrypt for every non-null date.
             ordered = tuple(
-                shown.select_related("patient").order_by(
-                    "start_at", "practitioner_id", "pk"
-                )[: MAX_BOARD_APPOINTMENTS + 1]
+                shown.select_related("patient")
+                .defer("patient__birth_date")
+                .order_by("start_at", "practitioner_id", "pk")[
+                    : MAX_BOARD_APPOINTMENTS + 1
+                ]
             )
             truncated = len(ordered) > MAX_BOARD_APPOINTMENTS
             lane_resources = {lane.lane_id for lane in resources}

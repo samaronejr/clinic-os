@@ -1,1 +1,0 @@
-"""Scheduling-owned presentation tags."""

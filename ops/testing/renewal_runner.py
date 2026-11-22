@@ -36,12 +36,22 @@ from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 import psycopg
+from config.display import (
+    DEFAULT_DENSITY,
+    DEFAULT_THEME,
+    DENSITY_VARIABLE,
+    THEME_VARIABLE,
+    DisplayValueError,
+    resolve_display,
+)
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from ops.testing.browser_server_controller import reserve_port, wait_until_ready
+from ops.testing.browser_server_controller import reserve_listener, wait_until_ready
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
+    SupervisorError,
+    require_released_port,
     start_master,
     supervised_argv,
 )
@@ -72,7 +82,7 @@ from ops.testing.sentinel_runtime import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
 SUITES: Final = {
     "onboarding": (
@@ -436,7 +446,10 @@ PROVISION_TIMEOUT_SECONDS: Final = 300
 PYTEST_TIMEOUT_SECONDS: Final = 900
 COMMAND_TIMEOUT_SECONDS: Final = 60
 STATIC_GATE_TIMEOUT_SECONDS: Final = 900
-COVERAGE_TIMEOUT_SECONDS: Final = 3600
+# One deadline for the whole canonical coverage command (ops.testing.ci_pytest:
+# collection, then the parallel and serial phases). It measured 41:13 on a
+# quiet host and was cut at 60:00 with no failed test.
+COVERAGE_TIMEOUT_SECONDS: Final = 5400
 # Same worker count as the hosted job and ``make ci``.
 CI_PYTEST_WORKERS: Final = 8
 DEPENDENCY_TIMEOUT_SECONDS: Final = 900
@@ -445,7 +458,15 @@ BUILD_TIMEOUT_SECONDS: Final = 3600
 MAX_LOG_TAIL_BYTES: Final = 4000
 KEK_SECRET_FILE: Final = "tenant-kek.secret"  # noqa: S105 - a file name
 _BROWSER_OPTIONS: Final = frozenset(
-    {"--artifact-root", "--engine", "--record", "--run-root", "--suite"}
+    {
+        "--artifact-root",
+        "--density",
+        "--engine",
+        "--record",
+        "--run-root",
+        "--suite",
+        "--theme",
+    }
 )
 _CI_OPTIONS: Final = frozenset({"--artifact-root", "--run-root"})
 
@@ -565,6 +586,49 @@ def _resolve_engine(option: str | None) -> str:
     if engine not in ENGINES:
         _fail(f"renewal browser engine is not supported: {engine}")
     return engine
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayRequest:
+    """The run's ``--theme``/``--density``; ``None`` keeps today's light/comfortable.
+
+    Width stays per suite: every suite fixes its own widths, so there is no
+    ``--widths``.
+    """
+
+    theme: str | None = None
+    density: str | None = None
+
+    def environment(self) -> dict[str, str]:
+        """Return the served app's display variables; refuse an unknown value."""
+        chosen = {
+            THEME_VARIABLE: DEFAULT_THEME if self.theme is None else self.theme,
+            DENSITY_VARIABLE: DEFAULT_DENSITY if self.density is None else self.density,
+        }
+        try:
+            resolve_display(chosen)
+        except DisplayValueError as error:
+            _fail(str(error))
+        return chosen
+
+
+def _display_receipt(
+    request: DisplayRequest, server_environment: Mapping[str, str]
+) -> JsonObject:
+    """Record the requested display and the one the served app resolves.
+
+    Signed-in pages render the server default for users without a stored
+    preference; public pages render no display attributes (light, DESIGN.md).
+    """
+    theme, density = resolve_display(server_environment)
+    return {
+        "effective": {
+            "public": {"density": DEFAULT_DENSITY, "theme": DEFAULT_THEME},
+            "signed_in": {"density": density, "theme": theme},
+        },
+        "requested": {"density": request.density, "theme": request.theme},
+        "signed_in_scope": "users without a stored display preference",
+    }
 
 
 def _managed_executable(engine: str) -> str:
@@ -1206,8 +1270,11 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
     run_root: Path,
     record: Path | None,
     engine: str = DEFAULT_ENGINE,
+    display: DisplayRequest | None = None,
 ) -> JsonObject:
     """Execute one registered suite against the real supervised runtime."""
+    request = DisplayRequest() if display is None else display
+    display_environment = request.environment()
     browser = _resolve_browser(engine)
     override = os.environ.get("CLINIC_RENEWAL_APP_DATABASE_URL", "")
     override_dsn = _validate_serving_dsn(override) if override else None
@@ -1242,10 +1309,10 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
-        port = reserve_port()
         spawned: list[SupervisedMaster] = []
         server_environment = {
             **_server_environment(app_dsn),
+            **display_environment,
             **secret_environment,
             **_synthetic_adapters(suite),
             **(
@@ -1273,15 +1340,18 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
         )
         try:
-            start_master(
-                supervised_argv(
-                    Path(sys.executable), port, artifact_root / "access.log"
-                ),
-                server_environment,
-                server_log,
-                owner=spawned,
-            )
-            wait_until_ready(port, server_log)
+            with reserve_listener() as listener:
+                port, listener_fd = int(listener.getsockname()[1]), listener.fileno()
+                master = start_master(
+                    supervised_argv(
+                        Path(sys.executable), listener_fd, artifact_root / "access.log"
+                    ),
+                    server_environment,
+                    server_log,
+                    owner=spawned,
+                    pass_fds=(listener_fd,),
+                )
+            wait_until_ready(port, server_log, master.process)
             port_for_browser = extra_processes.enter_context(
                 browser_endpoint(
                     repository,
@@ -1321,7 +1391,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
                         if suite in {"agenda", "reminders", "messages", "resilience"}
                         or suite in VIDEO_SUITES
-                        or suite == "document-verification"
+                        or suite in SIGNING_SUITES
                         else {}
                     ),
                     # Realtime workers store leases on the served stream's broker.
@@ -1367,7 +1437,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 )
         finally:
             if spawned:
-                _terminate_master(spawned[0])
+                _terminate_master(spawned[0], port=port)
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
@@ -1380,6 +1450,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         "artifact_root": str(artifact_root),
         "base_url": base_url,
         "browser": browser,
+        "display": _display_receipt(request, server_environment),
         "engine": engine,
         "pytest_exit": pytest_code,
         "revision_sha": manifest.get("base_revision_sha"),
@@ -1476,7 +1547,7 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
     return results
 
 
-def _terminate_master(master: SupervisedMaster) -> None:
+def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
     """Terminate the supervised group; propagate any observed interruption.
 
     The bounded TERM/KILL/reap is retried once so a second signal cannot
@@ -1494,6 +1565,8 @@ def _terminate_master(master: SupervisedMaster) -> None:
             break
     if interrupted is not None:
         raise interrupted
+    if port is not None:
+        require_released_port(port)
 
 
 def _gate_migration(
@@ -1858,6 +1931,8 @@ def _browser(arguments: list[str]) -> int:
     if suite not in SUITES:
         _fail(f"renewal browser suite is not registered: {suite or '(missing)'}")
     engine = _resolve_engine(options.get("--engine"))
+    display = DisplayRequest(options.get("--theme"), options.get("--density"))
+    display.environment()  # refuse an unknown value before any provisioning
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
@@ -1869,6 +1944,7 @@ def _browser(arguments: list[str]) -> int:
         run_root,
         Path(record) if record else None,
         engine,
+        display,
     )
     write_no_replace(
         artifact_root / "report.json",
@@ -1909,7 +1985,7 @@ def main(argv: list[str] | None = None) -> int:
     except RenewalInterruptError as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 130
-    except (IsolationError, OSError, ValueError) as error:
+    except (IsolationError, OSError, SupervisorError, ValueError) as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 2
     finally:

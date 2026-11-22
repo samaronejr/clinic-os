@@ -80,6 +80,7 @@ class GatewaySwitch(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1)
     enabled = models.BooleanField(default=False)
     approved_regions = models.JSONField(default=list)
+    generation = models.PositiveIntegerField(default=0)
 
     class Meta:
         """Only the singleton control row is meaningful."""

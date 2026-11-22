@@ -113,7 +113,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         # Exact source-bound, resolver-confirmed extraction posture: tests/ai.
         "ai_extractionjob",
         "ai_extractioncandidate",
-        # Blinded reviewer policies/ACLs: tests/ai/test_evaluation_authority.py.
+        # Blinded reviewer policies/ACLs and existing-ledger rollout scope:
+        # tests/ai/test_evaluation_authority.py and test_rollout_posture.py.
         "ai_evaluationprotocol",
         "ai_evaluationrun",
         "ai_evaluationrating",

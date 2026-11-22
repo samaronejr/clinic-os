@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
+from uuid import UUID
 
 from config.settings.contracts import SYNTHETIC_DATA_MODE
 from django.conf import settings
@@ -23,9 +24,6 @@ from apps.ai.contracts import (
 from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AICircuit, GatewaySwitch, ModelConfiguration
 from apps.providers.services import current_version
-
-if TYPE_CHECKING:
-    from uuid import UUID
 
 type JsonValue = (
     str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
@@ -155,6 +153,10 @@ def check_configuration(configuration: ModelConfiguration, clinic_id: UUID) -> N
     evaluated_sources = source_versions(Purpose(configuration.purpose))
     with connection.cursor() as cursor:
         cursor.execute(
+            "SELECT pg_advisory_xact_lock_shared("
+            "hashtextextended('ai-global-rollout-v1',0))"
+        )
+        cursor.execute(
             "SELECT clinic_app.ai_eval_activation_allowed(%s,%s)",
             [configuration.pk, clinic_id],
         )
@@ -182,6 +184,32 @@ def check_configuration(configuration: ModelConfiguration, clinic_id: UUID) -> N
     ):
         raise GatewayRefusedError(reason="configuration_unavailable")
     provider_for(configuration.provider)
+
+
+def rollout_approval(
+    *, clinic_id: UUID, configuration_id: UUID, autonomy: bool = False
+) -> UUID:
+    """Select a current clinic permission, separately from global model routing."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_rollout_admission(%s,%s,%s)",
+            [configuration_id, clinic_id, autonomy],
+        )
+        row = cursor.fetchone()
+    if row is None or not isinstance(row[0], UUID):
+        raise GatewayRefusedError(reason="configuration_unavailable")
+    return row[0]
+
+
+def check_rollout_binding(*, clinic_id: UUID, approval_id: UUID | None) -> None:
+    """Refuse to give queued or retained output a later permission."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_rollout_bound(%s,%s,false)",
+            [approval_id, clinic_id],
+        )
+        if cursor.fetchone() != (True,):
+            raise GatewayRefusedError(reason="configuration_unavailable")
 
 
 def select_configuration(*, clinic_id: UUID, purpose: Purpose) -> ModelConfiguration:

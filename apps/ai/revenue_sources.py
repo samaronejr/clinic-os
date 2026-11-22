@@ -7,14 +7,17 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from apps.ai.action_contracts import ActionInputError
+from apps.ai.action_contracts import ActionInputError, ActionRefusedError, Refusal
 from apps.ai.action_payload import JSON, closed, digest_text, identifier
-from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError
+from apps.ai.action_validation import database_time
+from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError, Purpose
+from apps.ai.effects import check_invocation
+from apps.ai.models import AIArtifact
 from apps.ai.revenue_contracts import MAX_ROWS, RevenueFacts, decode, parse_model_input
 from apps.billing.errors import BillingAccessDeniedError
 from apps.billing.models import InvoiceTerms, JournalEntry, SettlementAllocation
 from apps.billing.security import book_write
-from apps.identity.current_context import CurrentActorError
+from apps.identity.current_context import CurrentActorError, current_actor_id
 from apps.insurance.access import authority, clinic_write, scoped
 from apps.insurance.errors import InsuranceDeniedError
 from apps.insurance.guides import stored_facts
@@ -35,6 +38,42 @@ def require_finance(*, clinic_id: UUID) -> UUID:
         return authority(clinic_id=clinic_id, permission="tiss.manage")
     except InsuranceDeniedError:
         raise GatewayAccessDeniedError from None
+
+
+def retained_output(*, clinic_id: UUID, output_id: UUID) -> AIArtifact:
+    """Resolve the requester's exact current output before admitting any proposal."""
+    require_finance(clinic_id=clinic_id)
+    output = (
+        AIArtifact.objects.select_related("invocation")
+        .filter(
+            pk=output_id,
+            clinic_id=clinic_id,
+            user_id=current_actor_id(),
+            purpose=Purpose.REVENUE_CYCLE.value,
+            kind="output",
+            expires_at__gt=database_time(),
+            purged_at__isnull=True,
+        )
+        .first()
+    )
+    if output is None or output.invocation_id is None:
+        raise GatewayAccessDeniedError
+    check_invocation(clinic_id=clinic_id, invocation_id=output.invocation_id)
+    return output
+
+
+def proposal_invocation(
+    *, clinic_id: UUID, data: dict[str, JSON], capability: str
+) -> UUID | None:
+    """Recheck retained provenance even when a proposal key already exists."""
+    if capability != "revenue_cycle":
+        return None
+    subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
+    if subject["kind"] != "ai_artifact":
+        raise ActionRefusedError(Refusal.SOURCE)
+    return retained_output(
+        clinic_id=clinic_id, output_id=identifier(subject["id"])
+    ).invocation_id
 
 
 def _digest(value: object) -> str:

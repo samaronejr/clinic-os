@@ -13,20 +13,43 @@ import subprocess
 import time
 from html.parser import HTMLParser
 from io import BytesIO
+from math import isfinite
 from pathlib import Path
-from typing import IO, cast
+from typing import IO, TYPE_CHECKING, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from apps.ai.extraction_contracts import ExtractionInputError, Region
+from apps.ai.extraction_contracts import (
+    COORDINATE_SCALE,
+    MAX_CANDIDATES,
+    ExtractionInputError,
+    PdfValueEvidence,
+    Region,
+    value_transcription,
+)
 
+if TYPE_CHECKING:
+    from apps.ai.extraction_contracts import SourceEvidence
+
+PDF_CONTENT_TYPE = "application/pdf"
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 32
 MAX_PIXELS = 25_000_000
 MAX_INPUT_BYTES = 1_048_576
 MAX_RENDER_BYTES = 12 * 1024 * 1024
+REVIEW_LONG_EDGE = 1400
 PROCESS_TIMEOUT = 10
 PIPE_CHUNK = 65536
+_FIELD = re.compile(r"[a-z][a-z0-9_]{0,31}")
+type _Box = tuple[float, float, float, float]
+
+# Anchor transcription of the only reviewed raster, independent of the
+# recorded provider reply. Any other raster requires manual review.
+_SCAN_SHA256 = "311f5a521d517dc8ff1175499959d5e9726f3dc8c0c193268f019539c93be2da"
+_SCAN_REGIONS = {
+    Region(1, (500, 3583, 2488, 4042)): "glucose: 123,40 mg/dL [70,0 - 99,0]",
+    Region(1, (500, 5875, 2562, 6333)): "hemoglobin: 12,50 g/dL [12,0 - 16,0]",
+}
 
 
 def _poppler(command: list[str], data: bytes) -> bytes:
@@ -99,7 +122,7 @@ def document_pages(*, data: bytes, content_type: str) -> tuple[int, ...]:
     if content_type in ("image/jpeg", "image/png"):
         _image(data)
         return (0,)
-    if content_type != "application/pdf" or not data.startswith(b"%PDF-"):
+    if content_type != PDF_CONTENT_TYPE or not data.startswith(b"%PDF-"):
         raise ExtractionInputError
     info = _poppler(
         ["/usr/bin/pdfinfo", "-f", "1", "-l", str(MAX_PAGES), "-box", "-"], data
@@ -144,74 +167,131 @@ def render_page(*, data: bytes, content_type: str, page: int) -> bytes:
     rotations = document_pages(data=data, content_type=content_type)
     if type(page) is not int or not 1 <= page <= len(rotations):
         raise ExtractionInputError
-    if content_type == "application/pdf":
-        return _poppler(
-            [
-                "/usr/bin/pdftoppm",
-                "-f",
-                str(page),
-                "-l",
-                str(page),
-                "-singlefile",
-                "-scale-to",
-                "1400",
-                "-png",
-                "-",
-            ],
-            data,
-        )
+    if content_type == PDF_CONTENT_TYPE:
+        return _render_pdf_page(data, page=page)
     image = _image(data)
-    image.thumbnail((1400, 1400))
+    image.thumbnail((REVIEW_LONG_EDGE, REVIEW_LONG_EDGE))
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG")
     return output.getvalue()
 
 
+def _render_pdf_page(data: bytes, *, page: int) -> bytes:
+    return _poppler(
+        [
+            "/usr/bin/pdftoppm",
+            "-f",
+            str(page),
+            "-l",
+            str(page),
+            "-singlefile",
+            "-scale-to",
+            str(REVIEW_LONG_EDGE),
+            "-png",
+            "-",
+        ],
+        data,
+    )
+
+
 class _Lines(HTMLParser):
-    """Read Poppler's inert XHTML word boxes without an XML entity resolver."""
+    """Read bounded text layout for PDF value drafts."""
 
     def __init__(self, rotations: tuple[int, ...]) -> None:
         super().__init__(convert_charrefs=True)
         self.rotations = rotations
-        self.page = 0
-        self.width = 0.0
-        self.height = 0.0
-        self.box: tuple[int, int, int, int] | None = None
+        self.sizes: list[tuple[float, float]] = []
+        self.box: _Box | None = None
         self.words: list[str] = []
         self.in_word = False
-        self.lines: list[tuple[int, tuple[int, int, int, int], str]] = []
+        self.word: list[str] = []
+        self.lines: list[tuple[Region, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag == "page":
-            self.page += 1
-            self.width = float(values.get("width") or "0")
-            self.height = float(values.get("height") or "0")
-            if self.rotations[self.page - 1] in (90, 270):
-                self.width, self.height = self.height, self.width
-        elif tag == "line":
-            if self.width <= 0 or self.height <= 0:
-                raise ExtractionInputError
-            self.words = []
-            self.box = (
-                round(float(values.get("xmin") or "0") / self.width * 10000),
-                round(float(values.get("ymin") or "0") / self.height * 10000),
-                round(float(values.get("xmax") or "0") / self.width * 10000),
-                round(float(values.get("ymax") or "0") / self.height * 10000),
+            width = float(values.get("width") or "0")
+            height = float(values.get("height") or "0")
+            self.sizes.append(
+                (height, width)
+                if self.rotations[len(self.sizes)] in (90, 270)
+                else (width, height)
             )
+        elif tag == "line":
+            self.words = []
+            self.box = _text_box(values)
         elif tag == "word":
             self.in_word = True
+            self.word = []
 
     def handle_data(self, data: str) -> None:
         if self.in_word:
-            self.words.append(data)
+            self.word.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "word":
+        if tag == "word" and self.in_word:
+            self.words.append("".join(self.word))
             self.in_word = False
-        elif tag == "line" and self.box:
-            self.lines.append((self.page, self.box, " ".join(self.words)))
+        elif tag == "line" and self.box is not None:
+            number = len(self.sizes)
+            width, height = self.sizes[-1]
+            left, top, right, bottom = self.box
+            columns = _normalize_axis(left, right, width)
+            rows = _normalize_axis(top, bottom, height)
+            if columns is not None and rows is not None:
+                rotated = Region(number, (columns[0], rows[0], columns[1], rows[1]))
+                bbox = rotated.display_bbox(-self.rotations[number - 1] % 360)
+                self.lines.append((Region(number, bbox), " ".join(self.words)))
             self.box = None
+
+
+def _normalize_axis(start: float, end: float, size: float) -> tuple[int, int] | None:
+    """Clip draft geometry before rounding; keep any positive visible extent."""
+    if not all(map(isfinite, (start, end, size))) or size <= 0:
+        raise ExtractionInputError
+    first, last = max(0.0, start), min(size, end)
+    if first >= last:
+        return None
+    left = min(COORDINATE_SCALE - 1, round(first / size * COORDINATE_SCALE))
+    right = max(left + 1, round(last / size * COORDINATE_SCALE))
+    return left, right
+
+
+def _text_box(attrs: dict[str, str | None]) -> _Box:
+    return (
+        float(attrs.get("xmin") or "0"),
+        float(attrs.get("ymin") or "0"),
+        float(attrs.get("xmax") or "0"),
+        float(attrs.get("ymax") or "0"),
+    )
+
+
+def _draft(region: Region, text: str) -> dict[str, object] | None:
+    label, colon, remainder = text.partition(":")
+    field = label.replace(" ", "")
+    if not colon or _FIELD.fullmatch(field) is None:
+        return None
+    tokens, bracket, interval = remainder.strip().partition(" [")
+    value, _, tail = tokens.partition(" ")
+    if not value:
+        return None
+    next_word = tail.split(" ", 1)[0]
+    if next_word.isdecimal():
+        # A numeric continuation may be part of the value. Do not guess by
+        # truncating it or by joining digits across a layout boundary.
+        value += f" {next_word}"
+    interval = interval.removesuffix("]") if bracket else ""
+    return {
+        "field": field,
+        "kind": "date" if field == "date" else "decimal",
+        "raw_text": value_transcription(field, value, interval),
+        "value": value,
+        "unit": "",
+        "reference_interval": interval,
+        "page": region.page,
+        "bbox": region.bbox,
+        "legible": True,
+    }
 
 
 def _unreadable(page: int) -> dict[str, object]:
@@ -228,8 +308,41 @@ def _unreadable(page: int) -> dict[str, object]:
     }
 
 
+def _pdf_layout(data: bytes, rotations: tuple[int, ...]) -> _Lines:
+    reader = _Lines(rotations)
+    reader.feed(
+        _poppler(
+            ["/usr/bin/pdftotext", "-l", str(len(rotations)), "-bbox-layout", "-", "-"],
+            data,
+        ).decode("utf-8", errors="replace")
+    )
+    return reader
+
+
+def source_regions(
+    *, data: bytes, content_type: str, rotations: tuple[int, ...]
+) -> SourceEvidence:
+    """Load anchored PDF value drafts or the exact hash-bound image transcription."""
+    if document_pages(data=data, content_type=content_type) != rotations:
+        raise ExtractionInputError
+    if content_type == PDF_CONTENT_TYPE:
+        lines: dict[Region, str] = {}
+        seen = set()
+        for region, text in _pdf_layout(data, rotations).lines:
+            draft = _draft(region, text)
+            if region in seen:
+                lines.pop(region, None)
+            elif draft is not None:
+                lines[region] = cast("str", draft["raw_text"])
+            seen.add(region)
+        return PdfValueEvidence(lines)
+    if content_type == "image/png" and hashlib.sha256(data).hexdigest() == _SCAN_SHA256:
+        return _SCAN_REGIONS.copy()
+    return {}
+
+
 def synthetic_document_extraction(content: str) -> str:
-    """Parse explicit synthetic `field: value unit [interval]` lines, never tools.
+    """Draft explicit synthetic PDF values and intervals, never units or tools.
 
     This is not OCR or general medical understanding. Raster-only pages receive
     an unreadable region. Real OCR/model providers remain BLOCKED-ON-EG.
@@ -252,44 +365,16 @@ def synthetic_document_extraction(content: str) -> str:
     except (ValueError, TypeError, KeyError, binascii.Error) as error:
         raise ExtractionInputError from error
     rows: list[dict[str, object]] = []
-    if payload["content_type"] == "application/pdf":
-        reader = _Lines(rotations)
-        reader.feed(
-            _poppler(["/usr/bin/pdftotext", "-bbox-layout", "-", "-"], data).decode(
-                "utf-8", errors="replace"
-            )
-        )
-        lines = (
-            (
-                page,
-                Region(page, box).display_bbox((360 - rotations[page - 1]) % 360),
-                raw,
-            )
-            for page, box, raw in reader.lines
-        )
-        for page, bbox, raw in sorted(
-            lines, key=lambda line: (line[0], line[1][1], line[1][0])
+    if payload["content_type"] == PDF_CONTENT_TYPE:
+        for region, text in sorted(
+            _pdf_layout(data, rotations).lines,
+            key=lambda line: (line[0].page, line[0].bbox[1], line[0].bbox[0]),
         ):
-            match = re.fullmatch(r"([a-z][a-z0-9_]{0,31}):\s*(.+)", raw)
-            if match is None:
-                continue
-            value_unit, separator, interval = match[2].partition(" [")
-            value, _, unit = value_unit.partition(" ")
-            rows.append(
-                {
-                    "field": match[1],
-                    "kind": "date" if match[1] == "date" else "decimal",
-                    "raw_text": raw,
-                    "value": value,
-                    "unit": unit,
-                    "reference_interval": interval.removesuffix("]")
-                    if separator
-                    else "",
-                    "page": page,
-                    "bbox": bbox,
-                    "legible": True,
-                }
-            )
+            draft = _draft(region, text)
+            if draft is not None:
+                rows.append(draft)
+                if len(rows) > MAX_CANDIDATES:
+                    raise ExtractionInputError
     for page in range(1, len(rotations) + 1):
         if not any(row["page"] == page for row in rows):
             rows.append(_unreadable(page))

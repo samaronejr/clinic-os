@@ -15,11 +15,12 @@ from apps.ai.action_contracts import (
 )
 from apps.ai.action_payload import JSON, ActionPayload, closed, identifier, integer
 from apps.ai.action_validation import validate_current
+from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
-from apps.ai.policy import check_configuration, select_configuration
+from apps.ai.policy import check_configuration, rollout_approval, select_configuration
 from apps.ai.prompt_registry import load_prompt
-from apps.ai.revenue_sources import require_finance
+from apps.ai.revenue_sources import proposal_invocation, require_finance
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id, require_permission
 
@@ -92,6 +93,9 @@ def propose_action(
     ).first()
     if policy is None:
         raise ActionAccessDeniedError
+    source_invocation_id = proposal_invocation(
+        clinic_id=clinic_id, data=data, capability=policy.capability
+    )
     previous = ActionProposal.objects.filter(
         clinic_id=clinic_id,
         idempotency_key=identifier(data["idempotency_key"]),
@@ -109,6 +113,11 @@ def propose_action(
         clinic_id=clinic_id, purpose=Purpose(policy.capability)
     )
     check_configuration(configuration, clinic_id)
+    source_invocation_id = (
+        check_care_sources(data=data, clinic_id=clinic_id)
+        if policy.capability == "care_coordination"
+        else source_invocation_id
+    )
     _prompt, prompt_hash = load_prompt(Purpose(policy.capability))
     contract: dict[str, JSON] = {
         "trigger": context.trigger,
@@ -149,6 +158,12 @@ def propose_action(
         user_id=actor,
         principal_id=policy.principal_id,
         configuration=configuration,
+        invocation_id=source_invocation_id,
+        rollout_approval_id=rollout_approval(
+            clinic_id=clinic_id,
+            configuration_id=configuration.pk,
+            autonomy=policy.autonomy_ceiling in ("A2", "A3"),
+        ),
         prompt_sha256=prompt_hash,
         trigger=context.trigger,
         contract=contract,

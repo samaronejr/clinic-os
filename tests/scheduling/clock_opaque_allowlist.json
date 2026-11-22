@@ -2536,5 +2536,32 @@
     "returns": "boolean",
     "volatility": "i",
     "reason": "Required ordering of supplied instants."
+  },
+  "pg_catalog.bool_or(boolean)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached ai_rollout_agent_allowed's and ai_effect_allowed's boolean run-admission aggregate; admits the exact aggregate implementation as opaque risk."
+  },
+  "pg_catalog.pg_current_xact_id()": {
+    "extension": "",
+    "implementation": "pg_current_xact_id",
+    "language": "internal",
+    "library": "",
+    "returns": "xid8",
+    "volatility": "s",
+    "reason": "Reached the AI front-desk, retained-effect and retained-proposal guards' same-transaction source binding; retain the exact transaction-id implementation as opaque risk."
+  },
+  "pg_catalog.pg_input_is_valid(text, text)": {
+    "extension": "",
+    "implementation": "pg_input_is_valid",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "s",
+    "reason": "Reached protected_tenant's tenant-GUC uuid shape check through the AI rollout guards; retain the exact input-validation implementation as opaque risk."
   }
 }

@@ -113,7 +113,7 @@ def test_j5_one_result_from_receipt_to_resolution(  # noqa: PLR0913, PLR0915 - o
         job = extraction.collect(page, staff)
         candidates = page.locator(".extraction-candidate")
         expect(candidates).to_have_count(5)
-        extraction.post(page, page.locator('button[value="confirmed"]:enabled').first)
+        extraction.confirm_value(page, candidates.first, unit="mg/dL")
         expect(
             page.get_by_text(_("Imported and confirmed"), exact=False)
         ).to_have_count(1)

@@ -37,6 +37,7 @@ from ai.evaluation_support import (
     complete_reviews,
     evaluation_world,
     no_errors,
+    promote_stage,
     review_world,
 )
 from identity.permission_support import owner_context
@@ -77,6 +78,7 @@ def test_each_clinic_requires_its_own_approval_and_supersession_is_tenant_local(
             decision="approved",
             approval_ref="synthetic-first-clinic-approval",
         )
+    promote_stage(one, change.pk)
     configuration = transition_model(
         configuration_id=one.configuration.pk, state="active"
     )
@@ -94,6 +96,8 @@ def test_each_clinic_requires_its_own_approval_and_supersession_is_tenant_local(
             decision="approved",
             approval_ref="synthetic-second-clinic-approval",
         )
+    promote_stage(two, change.pk)
+    with as_reviewer(two, two.approver):
         check_configuration(configuration, two.clinic)
     with as_reviewer(one, one.owner):
         register_protocol(
@@ -152,6 +156,7 @@ def test_two_independent_reviews_and_explicit_owner_change_are_required(
         )
     with as_reviewer(world, world.owner):
         report = build_report(clinic_id=world.clinic, run_id=world.run.pk)
+    promote_stage(world, pending.pk)
     assert (
         transition_model(configuration_id=world.configuration.pk, state="active").state
         == "active"
@@ -411,6 +416,7 @@ def test_current_source_drift_refuses_approval_activation_and_admission(
             decision="approved",
             approval_ref="synthetic-before-source-change",
         )
+    promote_stage(world, approved.pk)
     configuration = transition_model(
         configuration_id=world.configuration.pk, state="active"
     )
@@ -437,7 +443,7 @@ def test_current_source_drift_refuses_approval_activation_and_admission(
         monkeypatch.setattr(Path, "read_bytes", changed_reader)
     after = candidate_versions(configuration)
     assert before["model"] == after["model"]
-    assert before["schema"] == after["schema"]
+    assert (before["schema"] != after["schema"]) is (source_path is not None)
     assert (
         before["retrieval" if source_path else "prompt"]
         != after["retrieval" if source_path else "prompt"]

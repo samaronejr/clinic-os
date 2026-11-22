@@ -42,7 +42,8 @@ from apps.scheduling.services import (
     create_availability,
 )
 from apps.tenancy.db import tenant_context
-from django.db import connections, transaction
+from django.db import connection, connections, transaction
+from django.test.utils import CaptureQueriesContext
 from django.utils.translation import gettext
 
 from auth.stepup_test_support import create_role_actor
@@ -194,6 +195,31 @@ def test_every_view_renders_the_authorized_board_once_without_url_selectors(
     assert b"Synthetic Booking Persona" in pages["list"].content
     after = audit_event_types(rbac_graph, receptionist.pk)
     assert after[len(before) :].count(AGENDA_VIEWED_EVENT) == len(pages)
+
+
+@pytest.mark.parametrize(("view", "budget"), [("day", 56), ("week", 56), ("list", 55)])
+def test_full_agenda_board_query_budget(
+    rbac_graph: RbacGraph, view: str, budget: int
+) -> None:
+    """Pin the whole signed-in GET, not just the board service's queries."""
+    client, _, setup, booked = _world(rbac_graph)
+    url = _board(setup.clinic_id, view)
+    with runtime_role():
+        # Remember the clinic first, so a framework session write is not
+        # counted. Keep the live session inventory touch inside the budget.
+        assert client.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as captured:
+            page = client.get(url)
+    assert page.status_code == 200
+    assert f'value="{booked.pk}"'.encode() in page.content
+    assert not page.wsgi_request.session.modified
+    # Includes the tenant transactions and two cleanup batches, shell, read
+    # audit and the name decrypt. Day and week also read occupancy.
+    assert len(captured) == budget
+    assert sum("clinic_app.protected_decrypt(" in q["sql"] for q in captured) == 1
+    # Route authorization, clinic discovery, then fresh selected-clinic grants.
+    assert sum("clinic_app.has_permission(candidate" in q["sql"] for q in captured) == 3
+    assert sum("FOR NO KEY UPDATE SKIP LOCKED" in q["sql"] for q in captured) == 1
 
 
 def test_owner_reads_the_board_without_booking_or_lifecycle_hooks(

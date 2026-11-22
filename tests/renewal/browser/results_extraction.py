@@ -121,6 +121,17 @@ def collect(page: Page, staff: dict[str, str]) -> str:
     return job_id
 
 
+def confirm_value(page: Page, candidate: Locator, *, unit: str | None) -> None:
+    """Enter the PDF unit in the native form; dates do not have a unit field."""
+    unit_input = candidate.locator('input[name="manual_unit"]')
+    if unit is None:
+        expect(unit_input).to_have_count(0)
+    else:
+        expect(unit_input).to_have_value("")
+        unit_input.fill(unit)
+    post(page, candidate.locator('button[value="confirmed"]'))
+
+
 def presentation(page: Page, base: str, root: Path, *, javascript: bool) -> None:
     for width in (1280, 375, 320):
         page.set_viewport_size({"width": width, "height": 900})
@@ -190,8 +201,14 @@ def test_document_extraction_five_values_unreadable_and_injection(
         job = collect(page, staff)
         expect(page.locator(".extraction-candidate")).to_have_count(5)
         presentation(page, renewal_base_url, root, javascript=javascript)
-        for confirmed in range(1, 6):
-            post(page, page.locator('button[value="confirmed"]:enabled').first)
+        for confirmed, unit in enumerate(
+            ("mg/dL", "g/dL", "mmol/L", "mmol/L", None), start=1
+        ):
+            confirm_value(
+                page,
+                page.locator(".extraction-candidate").nth(confirmed - 1),
+                unit=unit,
+            )
             expect(
                 page.get_by_text(_("Imported and confirmed"), exact=False)
             ).to_have_count(confirmed)

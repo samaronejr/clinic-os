@@ -26,6 +26,7 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from ai.retained_rollout_support import authorize_native
 from ai.support import DEFAULT_BUDGET, model, seed
 from ai.test_extraction import pdf_fixture
 from auth.stepup_test_support import verified_request
@@ -45,6 +46,7 @@ def extracted_job(
     monkeypatch: pytest.MonkeyPatch,
     *,
     data: bytes | None = None,
+    content_type: str = "application/pdf",
     world: World | None = None,
 ) -> ExtractionJob:
     gateway = seed(rbac_graph, monkeypatch)
@@ -73,6 +75,7 @@ def extracted_job(
             submission=replace(
                 submission(world),
                 data=pdf_fixture(rotation=90) if data is None else data,
+                content_type=content_type,
             ),
         )
         job = start_extraction(
@@ -123,9 +126,14 @@ def test_five_confirmations_import_exact_values_without_acknowledgment(
                 candidate_id=rows[0].pk,
                 decision="confirmed",
             )
-        for row in rows:
+        for row, manual_unit in zip(
+            rows, ("mg/dL", "g/dL", "mmol/L", "mmol/L", None), strict=True
+        ):
             identifier = review_extraction(
-                clinic_id=rbac_graph.clinic_a, candidate_id=row.pk, decision="confirmed"
+                clinic_id=rbac_graph.clinic_a,
+                candidate_id=row.pk,
+                decision="confirmed",
+                manual_unit=manual_unit,
             )
             assert identifier is not None
             assert (
@@ -133,6 +141,7 @@ def test_five_confirmations_import_exact_values_without_acknowledgment(
                     clinic_id=rbac_graph.clinic_a,
                     candidate_id=row.pk,
                     decision="confirmed",
+                    manual_unit=manual_unit,
                 )
                 == identifier
             )
@@ -144,6 +153,13 @@ def test_five_confirmations_import_exact_values_without_acknowledgment(
         assert len(observations) == 5
         assert observations[0].source["value"] == "123,40"
         assert observations[0].source["parsed_value"] == "123.40"
+        assert [row.source["unit"] for row in observations] == [
+            "mg/dL",
+            "g/dL",
+            "mmol/L",
+            "mmol/L",
+            "",
+        ]
         assert all(row.source["provenance"] == "imported" for row in observations)
         assert all(
             row.source["confirmer"] == str(rbac_graph.physician) for row in observations
@@ -163,6 +179,7 @@ def test_extraction_sql_rechecks_inactive_and_foreign_actor(
             clinic_id=job.clinic_id,
             candidate_id=rows[0].pk,
             decision="confirmed",
+            manual_unit="mg/dL",
         )
     assert observation is not None
     query = (
@@ -192,8 +209,14 @@ def test_extraction_sql_rechecks_inactive_and_foreign_actor(
                 "set_config('app.current_tenant',%s,true)",
                 [str(rbac_graph.physician), str(tenant)],
             )
-            cursor.execute(query, arguments)
             allowed = active and tenant == rbac_graph.organization_a
+            if allowed:
+                assert authorize_native(
+                    invocation_id=job.invocation_id,
+                    clinic_id=job.clinic_id,
+                    purpose=Purpose.EXTRACTION,
+                )
+            cursor.execute(query, arguments)
             assert cursor.fetchone() == (allowed, allowed, allowed)
             if allowed:
                 continue
@@ -240,6 +263,7 @@ def test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands(
                 "action": "rejected",
                 "job_id": str(job.pk),
                 "candidate_id": str(candidate.pk),
+                "manual_unit": "",
             },
             200,
         ),

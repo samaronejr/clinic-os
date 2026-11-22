@@ -4,6 +4,7 @@ from ai import (
     test_front_desk,
     test_front_desk_guards,
     test_front_desk_portal,
+    test_front_desk_rollout,
     test_front_desk_views,
 )
 
@@ -27,18 +28,27 @@ CASES = {
         test_front_desk_portal.test_portal_uses_reviewed_knowledge_and_hands_symptoms_to_a_person,
         test_front_desk_portal.test_portal_without_booking_scope_cannot_gain_it_through_the_agent,
         test_front_desk_portal.test_disabled_portal_agent_keeps_the_human_message_path,
+        test_front_desk_rollout.test_forbidden_exposure_keeps_inbound_messages_without_ai_effects,
+        test_front_desk_rollout.test_native_effect_bridges_refuse_forbidden_exposure,
+        test_front_desk_rollout.test_native_channel_booking_authority_stops_with_rollout,
+        test_front_desk_rollout.test_reenable_does_not_revive_a_front_desk_turn,
+        test_front_desk_rollout.test_a_new_permission_does_not_rescue_an_old_queued_turn,
     )
 }
 SQL_PROTOCOL_ORACLES = {
     name: list(CASES)
     for name in (
         "clinic_app.ai_front_desk_articles",
+        "clinic_app.ai_front_desk_allowed",
+        "clinic_app.ai_front_desk_authorize",
         "clinic_app.ai_front_desk_audit",
         "clinic_app.ai_front_desk_audit_scope",
         "clinic_app.ai_front_desk_enqueue",
+        "clinic_app.ai_front_desk_current",
         "clinic_app.ai_front_desk_finish",
         "clinic_app.ai_front_desk_guard",
         "clinic_app.ai_front_desk_pending",
+        "clinic_app.ai_front_desk_propose",
         "clinic_app.ai_front_desk_state",
         "clinic_app.ai_front_desk_turn",
         "clinic_app.ai_front_desk_verify",
@@ -47,5 +57,11 @@ SQL_PROTOCOL_ORACLES = {
 ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.ai_front_desk_guard()": (
         "ai.test_front_desk_guards.test_front_desk_sql_rechecks_inactive_and_foreign_actor",
+    ),
+    # Reads app.current_user_id only to require it empty on the patient-session
+    # path; the case refuses an active and an inactive staff actor there.
+    "clinic_app.ai_front_desk_authorize(uuid,bytea,text)": (
+        "ai.test_front_desk_rollout."
+        "test_staff_session_cannot_ride_the_patient_authorize_path",
     ),
 }

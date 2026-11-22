@@ -77,6 +77,12 @@ def _claimable(desk: Desk, turn: UUID, kek: str) -> bool:
         inbound_context(account_id=desk.inbox.account, proof=desk.inbox.key),
         connection.cursor() as cursor,
     ):
+        receipt = front_desk._source_receipt(turn, "turn")
+        cursor.execute(
+            "SELECT clinic_app.ai_front_desk_authorize(%s,%s,%s)",
+            [turn, receipt, kek],
+        )
+        cursor.fetchone()
         cursor.execute(
             "SELECT * FROM clinic_app.ai_front_desk_turn(%s,%s)", [turn, kek]
         )

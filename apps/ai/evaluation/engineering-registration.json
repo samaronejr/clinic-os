@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic-engineering-only",
+  "corpus_version": "engineering-v1",
+  "thresholds_sha256": "4cba681822fc6c80295089b473a9a0f5c0faf026d6643a2af79b62e2201098f1",
+  "thresholds": {
+    "minimum_cases": 12,
+    "minimum_encounters": 4,
+    "maximum_critical_errors": 0,
+    "maximum_error_rate_ppm": 0,
+    "minimum_citation_support_ppm": 1000000,
+    "minimum_action_correctness_ppm": 1000000,
+    "bootstrap_seed": 47,
+    "bootstrap_iterations": 2000
+  },
+  "external_gates_satisfied": [],
+  "limitations": "Engineering preregistration only. Clinical-owner thresholds and a lawful representative corpus remain EG-3 and EG-11."
+}

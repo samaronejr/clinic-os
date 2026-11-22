@@ -792,9 +792,16 @@ def test_staff_page_refusals_equal_the_unknown_clinic_refusal_and_change_nothing
             assert client.session.session_key == key, name
             assert _row_counts(superuser_database_url) == before, name
             expected = dict(session)
-            if actor not in {foreign, finance}:
+            if actor != foreign:
+                # Task 79: a permitted page selects the clinic the actor's grants
+                # open there, finance included; the refusals above never do.
                 expected["active_clinic_id"] = str(w.clinic)
             assert dict(client.session.items()) == expected, name
+            if actor == finance:
+                # Finance holds a role only in w.clinic: clinic B of the same
+                # organization grants it nothing, so no other clinic is listed.
+                assert b"nav-switch" not in selected.content, name
+                assert b"Todo 8 Clinic B" not in selected.content, name
     # Control: the same surface does write and answer 200 when permitted.
     with staff_client(admin) as client:
         before = _row_counts(superuser_database_url)

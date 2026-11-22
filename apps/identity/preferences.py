@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from django.conf import settings
 from django.db.models import CharField, Func, UUIDField, Value
 from django.db.models.functions import Cast, NullIf
 
@@ -42,8 +43,20 @@ DEFAULT_PREFERENCES: Final = UiPreferences(
 )
 
 
+def default_ui_preferences() -> UiPreferences:
+    """Return the server's display for a user without a stored row.
+
+    Light and comfortable everywhere except the renewal runtime, whose runner
+    may choose another theme or density for a whole run (config/display.py).
+    """
+    return UiPreferences(
+        theme=settings.CLINIC_DISPLAY_DEFAULT_THEME,
+        density=settings.CLINIC_DISPLAY_DEFAULT_DENSITY,
+    )
+
+
 def load_ui_preferences() -> UiPreferences:
-    """Return the current user's preferences, or the defaults without a row."""
+    """Return the current user's preferences, or the server default without a row."""
     current_user = Cast(
         NullIf(
             Func(
@@ -62,7 +75,7 @@ def load_ui_preferences() -> UiPreferences:
         .first()
     )
     if row is None:
-        return DEFAULT_PREFERENCES
+        return default_ui_preferences()
     return UiPreferences(theme=row[0], density=row[1])
 
 

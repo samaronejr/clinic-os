@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from django.db import DatabaseError, connection, transaction
@@ -16,13 +16,15 @@ from apps.ai.contracts import (
     GatewayRefusedError,
     Purpose,
 )
+from apps.ai.effects import check_invocation
 from apps.ai.extraction_contracts import (
     ExtractionCandidate,
     ExtractionInputError,
+    PdfValueEvidence,
     filing_payload,
     parse_proposals,
 )
-from apps.ai.extraction_documents import document_input, document_pages
+from apps.ai.extraction_documents import document_input, document_pages, source_regions
 from apps.ai.models import (
     AIArtifact,
     AIInvocation,
@@ -43,6 +45,8 @@ from apps.tenancy.envelope import protect
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.extraction_contracts import SourceEvidence
+
 
 @dataclass(frozen=True, slots=True, repr=False)
 class ExtractionSource:
@@ -53,6 +57,12 @@ class ExtractionSource:
     sha256: str
     content_type: str
     data: bytes = field(default=b"", repr=False)
+
+    def regions(self, *, rotations: tuple[int, ...]) -> SourceEvidence:
+        """Load local review evidence from this authorized source."""
+        return source_regions(
+            data=self.data, content_type=self.content_type, rotations=rotations
+        )
 
 
 def extraction_source(
@@ -164,14 +174,24 @@ def authorized_job(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     job = ExtractionJob.objects.filter(pk=job_id, clinic_id=clinic_id).first()
     if job is None:
         raise GatewayAccessDeniedError
-    source = extraction_source(
-        clinic_id=clinic_id,
-        result_version_id=job.result_version_id,
-        attachment_id=job.attachment_id,
-    )
+    try:
+        check_invocation(clinic_id=clinic_id, invocation_id=job.invocation_id)
+    except GatewayRefusedError:
+        raise GatewayAccessDeniedError from None
+    source = job_source(job=job, include_bytes=False)
     if source.sha256 != job.sha256 or source.enrollment_id != job.patient_enrollment_id:
         raise GatewayAccessDeniedError
     return job
+
+
+def job_source(*, job: ExtractionJob, include_bytes: bool) -> ExtractionSource:
+    """Resolve the job's exact immutable source under current read authority."""
+    return extraction_source(
+        clinic_id=job.clinic_id,
+        result_version_id=job.result_version_id,
+        attachment_id=job.attachment_id,
+        include_bytes=include_bytes,
+    )
 
 
 @transaction.atomic
@@ -196,7 +216,9 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     if artifact is None:
         raise GatewayAccessDeniedError
     output = json.loads(read_artifact(clinic_id=clinic_id, artifact_id=artifact.pk))
-    candidates = parse_proposals(output["text"], rotations=tuple(job.rotations))
+    rotations = tuple(job.rotations)
+    regions = job_source(job=job, include_bytes=True).regions(rotations=rotations)
+    candidates = parse_proposals(output["text"], rotations=rotations, regions=regions)
     for position, candidate in enumerate(candidates):
         row = ExtractionCandidateRecord.objects.create(
             organization_id=job.organization_id,
@@ -213,7 +235,9 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     return job
 
 
-def candidate_data(row: ExtractionCandidateRecord) -> ExtractionCandidate:
+def candidate_data(
+    row: ExtractionCandidateRecord, *, regions: SourceEvidence | None = None
+) -> ExtractionCandidate:
     """Reparse the encrypted draft instead of trusting its stored parsed value."""
     payload = row.payload
     proposal = {
@@ -225,10 +249,24 @@ def candidate_data(row: ExtractionCandidateRecord) -> ExtractionCandidate:
         bbox=payload["region"]["bbox"],
         legible=payload["reason"] != "unreadable",
     )
+    rotations = tuple(row.job.rotations)
+    if regions is None:
+        regions = job_source(job=row.job, include_bytes=True).regions(
+            rotations=rotations
+        )
     candidate = parse_proposals(
-        json.dumps({"candidates": [proposal]}), rotations=tuple(row.job.rotations)
+        json.dumps({"candidates": [proposal]}), rotations=rotations, regions=regions
     )[0]
     if candidate.payload() != payload:
+        if isinstance(regions, PdfValueEvidence):
+            # Legacy PDF rows remain immutable; do not display their old unit
+            # or treat the old candidate as eligible for the new command.
+            return replace(
+                candidate,
+                status="ambiguous",
+                parsed_value="",
+                reason="value_unresolved",
+            )
         raise ExtractionInputError
     return candidate
 
@@ -240,6 +278,7 @@ def review_extraction(
     candidate_id: UUID,
     decision: str,
     result_version_id: UUID | None = None,
+    manual_unit: str | None = None,
 ) -> UUID | None:
     """Recheck identity, authority, expiry, and one effect in the resolver."""
     row = (
@@ -255,7 +294,11 @@ def review_extraction(
         clinic_id=clinic_id,
         patient_enrollment_id=job.patient_enrollment_id,
     )
-    if decision not in ("confirmed", "rejected") or row.expires_at <= timezone.now():
+    if (
+        decision not in ("confirmed", "rejected")
+        or row.expires_at <= timezone.now()
+        or (decision == "rejected" and manual_unit is not None)
+    ):
         raise ExtractionInputError
     target = result_version_id or job.result_version_id
     source = b""
@@ -272,12 +315,15 @@ def review_extraction(
         ):
             raise GatewayAccessDeniedError
         candidate = candidate_data(row)
-        payload = filing_payload(candidate, confirmer=str(actor))
+        payload = filing_payload(
+            candidate, confirmer=str(actor), manual_unit=manual_unit
+        )
         payload["extraction_candidate"] = str(row.pk)
         source = protect(
             purpose="orders.observation.source",
             plaintext=json.dumps(payload, separators=(",", ":")).encode(),
         )
+    check_invocation(clinic_id=clinic_id, invocation_id=job.invocation_id)
     try:
         with connection.cursor() as cursor:
             cursor.execute(

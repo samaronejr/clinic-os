@@ -1,9 +1,12 @@
 """Bind evaluation SQL discovery to executed real-role and workflow tests."""
 
 from ai import (
+    test_agent_execution,
     test_evaluation_authority,
     test_evaluation_native,
     test_evaluation_runtime,
+    test_rollout,
+    test_rollout_posture,
 )
 
 CASES = {
@@ -16,10 +19,22 @@ CASES = {
         test_evaluation_runtime.test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator,
         test_evaluation_runtime.test_assignments_scope_and_raw_verdict_writes_cannot_be_forged,
         test_evaluation_native.test_adjudicator_only_receives_votes_after_both_independent_reviews,
+        test_rollout.test_offline_approval_cannot_skip_shadow,
+        test_rollout.test_progression_requires_reviewed_preceding_stage_and_separate_autonomy,
+        test_rollout.test_native_skipped_stage_and_foreign_receipt_inserts_are_refused,
+        test_rollout.test_revoked_approval_membership_invalidates_the_stage_and_its_receipt,
+        test_rollout.test_kill_is_durable_across_reenable_and_requires_new_stage_evidence,
+        test_agent_execution.test_revoked_approver_blocks_after_approval,
+        test_rollout_posture.test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader,
+        test_rollout.test_native_evaluation_run_forgery_is_refused_by_its_row_guard,
     )
 }
+# ai.0019's evaluation-run guard is reached only by raw run forgery; the
+# shared cases go through the services, which refuse first.
+_ROW_GUARD_CASE = "test_native_evaluation_run_forgery_is_refused_by_its_row_guard"
+_SHARED_CASES = [name for name in CASES if name != _ROW_GUARD_CASE]
 SQL_PROTOCOL_ORACLES = {
-    name: list(CASES)
+    name: list(_SHARED_CASES)
     for name in (
         "clinic_app.ai_eval_activation_allowed",
         "clinic_app.ai_eval_finalize",
@@ -29,8 +44,19 @@ SQL_PROTOCOL_ORACLES = {
         "clinic_app.ai_eval_run_visible",
         "clinic_app.ai_eval_staff",
         "clinic_app.ai_eval_verdict",
+        "clinic_app.ai_rollout_authority",
+        "clinic_app.ai_rollout_status",
+        "clinic_app.ai_rollout_status_for",
+        "clinic_app.ai_rollout_bound",
+        "clinic_app.ai_rollout_admission",
+        "clinic_app.ai_rollout_agent_allowed",
+        "clinic_app.ai_rollout_guard",
     )
 }
+SQL_PROTOCOL_ORACLES["clinic_app.ai_evaluation_rollout_guard"] = [
+    *_SHARED_CASES,
+    _ROW_GUARD_CASE,
+]
 ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
     (
         "clinic_app.ai_eval_rating_visible(uuid,text,uuid)",
