@@ -2044,6 +2044,101 @@ def test_renewal_reports_primary_and_later_diagnostics_through_outer_cleanup(
     assert "server log tail: synthetic server output" in stderr
 
 
+def test_renewal_tap_starts_after_master_handoff(
+    stub_renewal_launcher: Callable[[], JsonObject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_start: Callable[..., SupervisedMaster] = getattr(runner, "start_" + "master")
+    phases: list[str] = []
+
+    def spawn(*args: object, **kwargs: object) -> SupervisedMaster:
+        phases.append("owned")
+        return real_start(*args, **kwargs)
+
+    @contextlib.contextmanager
+    def tap(_url: str | None) -> Iterator[None]:
+        assert phases == ["owned"]
+        yield
+
+    monkeypatch.setattr(runner, "start_master", spawn)
+    monkeypatch.setattr(runner, "broker_tap", tap)
+    stub_renewal_launcher()
+
+
+def test_bounded_wait_timeout_cannot_be_replaced_by_signal_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    timeout = subprocess.TimeoutExpired(["synthetic"], 1)
+    child = Mock(pid=58419)
+    child.wait.side_effect = [timeout, -9]
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=child))
+    monkeypatch.setattr(
+        os, "killpg", Mock(side_effect=OSError("injected kill failure"))
+    )
+    with pytest.raises(
+        runner.RenewalRunnerError, match="exceeded its deadline"
+    ) as caught:
+        runner._run_bounded(["synthetic"], {}, tmp_path / "child.log", timeout=1)
+    assert caught.value.__cause__ is timeout
+    assert "injected kill failure" in "\n".join(timeout.__notes__)
+    assert child.wait.call_count == 2
+
+
+def test_browser_failure_receipt_error_cannot_replace_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = SupervisorError("original teardown refusal")
+    primary.add_note("server log tail: original")
+    monkeypatch.setattr(runner, "_run_browser_suite", Mock(side_effect=primary))
+    monkeypatch.setattr(
+        runner,
+        "write_no_replace",
+        Mock(side_effect=FileExistsError("late receipt collision")),
+    )
+    with pytest.raises(SupervisorError) as caught:
+        runner._gate_browser(REPOSITORY, tmp_path, tmp_path)
+    assert caught.value is primary
+    assert "late receipt collision" in "\n".join(primary.__notes__)
+    assert "server log tail: original" in primary.__notes__
+
+
+def test_renewal_cli_redacts_timeout_arguments_and_diagnostic_notes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    password = secrets.token_hex(16)
+
+    def docker_timeout(*args: object, **_kwargs: object) -> None:
+        timeout = subprocess.TimeoutExpired(cast("list[str]", args[0]), 1)
+        timeout.add_note(f"PGPASSWORD={password}")
+        timeout.add_note(f"postgresql://username:{password}@127.0.0.1/db")
+        raise timeout
+
+    def browser(_args: list[str]) -> int:
+        runner._docker("exec", "-e", f"PGPASSWORD={password}")
+        return 0
+
+    monkeypatch.setattr(subprocess, "run", docker_timeout)
+    monkeypatch.setattr(runner, "_browser", browser)
+    assert runner.main(["browser"]) == 2
+    assert password not in capsys.readouterr().err
+
+
+def test_bounded_child_publishes_only_redacted_output(tmp_path: Path) -> None:
+    password = secrets.token_hex(16)
+    log = tmp_path / "child.log"
+    code = runner._run_bounded(
+        [
+            sys.executable,
+            "-c",
+            "import os; print('useful line'); print(os.environ['PGPASSWORD'])",
+        ],
+        {"PGPASSWORD": password},
+        log,
+        timeout=10,
+    )
+    assert code == 0
+    assert log.read_text() == "useful line\n[REDACTED]\n"
+
+
 def test_realtime_suites_lend_workers_the_served_broker_only() -> None:
     key = "CLINIC_RENEWAL_REALTIME_REDIS_URL"
     tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
@@ -2109,7 +2204,9 @@ def test_provisioned_database_uses_unique_names_and_cleans_only_its_own(
 ) -> None:
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         if arguments[:2] == ("container", "inspect"):
             return "abc123\n"
@@ -2144,7 +2241,9 @@ def test_provisioned_database_uses_unique_names_and_cleans_only_its_own(
 def test_coverage_database_bounds_memory_and_retains_durability_defaults() -> None:
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         return ""
 
@@ -2190,7 +2289,9 @@ def test_coverage_database_bounds_memory_and_retains_durability_defaults() -> No
 def test_provision_cleans_up_when_readiness_fails(tmp_path: Path) -> None:
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         if arguments[0] == "exec":
             message = "database never became ready"
@@ -2210,7 +2311,9 @@ def test_provision_teardown_reports_docker_failures() -> None:
     """Removal failures at the Docker boundary must surface, not vanish."""
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         if arguments[:2] in {("container", "rm"), ("volume", "rm")}:
             message = "repro: Docker removal failed"
@@ -2229,7 +2332,9 @@ def test_provision_teardown_reports_docker_failures() -> None:
 def test_provision_teardown_failure_surfaces_over_body_error() -> None:
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         if arguments[:2] == ("volume", "rm"):
             message = "repro: volume removal timed out"
@@ -2251,7 +2356,9 @@ def test_provision_teardown_completes_through_a_second_interrupt() -> None:
     """A SIGTERM inside teardown still attempts every remaining removal."""
     calls: list[tuple[str, ...]] = []
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         calls.append(arguments)
         if arguments[:2] == ("container", "rm"):
             os.kill(os.getpid(), signal.SIGTERM)
@@ -2273,7 +2380,9 @@ def test_provision_teardown_completes_through_a_second_interrupt() -> None:
 def test_provision_teardown_tolerates_absent_resources() -> None:
     """A resource the daemon reports as absent is already removed."""
 
-    def fake_docker(*arguments: str, timeout: int = 60) -> str:
+    def fake_docker(
+        *arguments: str, timeout: int = 60, environment: dict[str, str] | None = None
+    ) -> str:
         if arguments[:2] == ("container", "rm"):
             message = "renewal docker command failed: No such container"
             raise runner.RenewalRunnerError(message)

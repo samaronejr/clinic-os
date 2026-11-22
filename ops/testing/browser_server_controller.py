@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import hmac
 import http.client
 import io
 import json
@@ -27,9 +28,20 @@ from ops.testing.browser_artifact_publisher import (
     publication_acknowledgement,
     require_acknowledged,
 )
+from ops.testing.browser_readiness import (
+    CHALLENGE_HEADER,
+    PROOF_HEADER,
+    READINESS_KEY,
+    WSGI_APPLICATION,
+    new_readiness_key,
+    readiness_proof,
+    valid_challenge,
+)
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_server_supervisor import (
+    SupervisorError,
     always_cleanup,
+    error_details,
     preserve_cleanup_error,
     preserving_context,
     start_master,
@@ -39,6 +51,7 @@ from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
 from ops.testing.browser_totp_code import TotpContext, confirmed_code
+from ops.testing.diagnostic_redaction import redact_diagnostic
 
 AVAILABLE_SUITES: Final = ["availability", "patient", "scheduling"]
 PHYSICIAN_SUITES: Final = frozenset({"availability", "scheduling"})
@@ -55,6 +68,7 @@ FIXTURE_DATABASE_VARIABLE: Final = "CLINIC_BROWSER_FIXTURE_DATABASE_URL"
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
 HOST: Final = "127.0.0.1"
+TCP_INODE_COLUMN: Final = 9
 PROTECTED_DATABASE_PORT: Final = 5432
 REQUIRED_ENVIRONMENT: Final = (
     "CLINIC_BROWSER_BASE_URL",
@@ -106,9 +120,14 @@ def with_server_log(server_log: Path) -> Iterator[None]:
             contextlib.suppress(FileNotFoundError),
             server_log.open("rb") as stream,
         ):
-            stream.seek(max(0, stream.seek(0, io.SEEK_END) - 2000))
-            tail = stream.read(2000).decode("utf-8", errors="replace")
-            BaseException.add_note(error, f"server log tail: {tail}")
+            offset = max(0, stream.seek(0, io.SEEK_END) - 8192)
+            stream.seek(offset)
+            if offset:
+                stream.readline(8192)
+            report = redact_diagnostic(
+                stream.read(8192).decode("utf-8", errors="replace")
+            )
+            BaseException.add_note(error, f"server log tail: {report[-2000:]}")
         raise
 
 
@@ -122,6 +141,7 @@ def wait_until_ready(
     port: int,
     server: subprocess.Popen[bytes],
     listener_identity: Path,
+    key: str,
 ) -> None:
     """Poll the readiness endpoint until the supervised app serves traffic."""
     deadline = time.monotonic() + READY_TIMEOUT_SECONDS
@@ -131,15 +151,26 @@ def wait_until_ready(
         connection = http.client.HTTPConnection(HOST, port, timeout=2)
         with always_cleanup(connection.close, "readiness connection close failed"):
             try:
-                connection.request("GET", "/readyz")
-                status = connection.getresponse().status
+                challenge = new_readiness_key()
+                connection.request(
+                    "GET", "/readyz", headers={CHALLENGE_HEADER: challenge}
+                )
+                response = connection.getresponse()
+                status = response.status
             except (OSError, http.client.HTTPException) as error:
                 last = type(error).__name__
             else:
                 if status == HTTPStatus.OK:
                     _require_running(server)
-                    if not _owns_listener(server.pid, listener_identity):
+                    if not _owns_listener(server.pid, listener_identity, port):
                         _readiness_failure("server does not own the reserved listener")
+                    proof = response.getheader(PROOF_HEADER, "")
+                    if not valid_challenge(proof) or not hmac.compare_digest(
+                        proof, readiness_proof(key, challenge)
+                    ):
+                        _readiness_failure(
+                            "response did not authenticate the supervised server"
+                        )
                     return
                 last = f"status {status}"
         time.sleep(READY_POLL_SECONDS)
@@ -152,8 +183,19 @@ def listener_identity(listener: socket.socket) -> Path:
     return Path(f"/proc/self/fd/{listener.fileno()}").readlink()
 
 
-def _owns_listener(pid: int, identity: Path) -> bool:
+def _owns_listener(pid: int, identity: Path, port: int) -> bool:
     try:
+        address = f"0100007F:{port:04X}"
+        with Path(f"/proc/{pid}/net/tcp").open(encoding="ascii") as tcp:
+            next(tcp, None)
+            if not any(
+                fields[1] == address
+                and fields[3] == "0A"
+                and Path(f"socket:[{fields[TCP_INODE_COLUMN]}]") == identity
+                for line in tcp
+                if len(fields := line.split()) > TCP_INODE_COLUMN
+            ):
+                return False
         for descriptor in Path(f"/proc/{pid}/fd").iterdir():
             with contextlib.suppress(FileNotFoundError):
                 if descriptor.readlink() == identity:
@@ -191,7 +233,7 @@ def start_server(
             "%(m)s %(s)s %(D)s",
             "--error-logfile",
             "-",
-            "config.wsgi:application",
+            WSGI_APPLICATION,
         ],
         environment,
         server_log,
@@ -273,13 +315,14 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment = dict(os.environ)
     environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
+    key = new_readiness_key()
+    environment[READINESS_KEY] = key
     server_log = evidence_root / "server.log"
     spawned: list[SupervisedMaster] = []
-    server: SupervisedMaster | None = None
 
     def cleanup() -> None:
-        if server is not None:
-            teardown_master(server, port)
+        if spawned:
+            teardown_master(spawned[0], port)
 
     with (
         with_server_log(server_log),
@@ -289,7 +332,7 @@ def run_suite(suite_id: str, required: list[str]) -> int:
             port = int(listener.getsockname()[1])
             identity = listener_identity(listener)
             server = start_server(listener, environment, server_log, owner=spawned)
-        wait_until_ready(port, server.process, identity)
+        wait_until_ready(port, server.process, identity, key)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
@@ -329,7 +372,11 @@ def parse_suite_arguments(arguments: list[str]) -> tuple[str, list[str]]:
 def main() -> int:
     """Dispatch the single supported suite operation after shell validation."""
     suite_id, required = parse_suite_arguments(sys.argv[1:])
-    return run_suite(suite_id, required)
+    try:
+        return run_suite(suite_id, required)
+    except (BrowserServerError, SupervisorError, OSError, ValueError) as error:
+        sys.stderr.write(f"browser controller: {error_details(error)}\n")
+        return 2
 
 
 if __name__ == "__main__":

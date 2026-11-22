@@ -25,9 +25,13 @@ from typing import TYPE_CHECKING, Final, Never
 
 import rfc8785
 
+from ops.testing.browser_readiness import WSGI_APPLICATION
+from ops.testing.diagnostic_redaction import redact_diagnostic
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from contextlib import AbstractContextManager
+    from threading import Thread
 
 START_MASTER: Final = "start-master"
 STOP_MASTER: Final = "stop-master"
@@ -48,6 +52,7 @@ TCP_TIME_WAIT: Final = "06"
 TFD_TIMER_ABSTIME: Final = 1
 PR_SET_CHILD_SUBREAPER: Final = 36
 PROTECTED_DATABASE_PORT: Final = 5432
+LAUNCH_SIGNALS: Final = frozenset({signal.SIGINT, signal.SIGTERM})
 MAX_PORT: Final = 65535
 
 
@@ -163,7 +168,7 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
         "%(m)s %(s)s %(D)s",
         "--error-logfile",
         "-",
-        "config.wsgi:application",
+        WSGI_APPLICATION,
     ]
 
 
@@ -353,20 +358,33 @@ def error_details(error: BaseException, *, omit: BaseException | None = None) ->
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         message = "<exception message unavailable>"
-        with contextlib.suppress(BaseException):
-            message = str(current)
+        if isinstance(current, subprocess.TimeoutExpired):
+            message = "subprocess timed out"
+        elif isinstance(current, subprocess.CalledProcessError):
+            message = f"subprocess failed (exit {current.returncode})"
+        else:
+            with contextlib.suppress(BaseException):
+                message = redact_diagnostic(str(current))
         heading = f"{type(current).__name__}: {message}" if details else message
         details.append(heading)
-        details.extend(getattr(current, "__notes__", ()))
-        current = current.__cause__
+        notes = getattr(current, "__notes__", None)
+        if isinstance(notes, (list, tuple)):
+            details.extend(
+                redact_diagnostic(note) for note in notes if isinstance(note, str)
+            )
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
     return "\n".join(details)
 
 
 def add_cleanup_note(primary: BaseException, step: str, error: BaseException) -> None:
     """Retain a secondary failure and its diagnostics on the primary error."""
-    BaseException.add_note(
-        primary, f"{step}: {type(error).__name__}: {error_details(error, omit=primary)}"
-    )
+    with contextlib.suppress(BaseException):
+        BaseException.add_note(
+            primary,
+            f"{step}: {type(error).__name__}: {error_details(error, omit=primary)}",
+        )
 
 
 @contextlib.contextmanager
@@ -413,7 +431,15 @@ def prove_port_release(port: int | None) -> Iterator[None]:
 
 def teardown_master(master: SupervisedMaster, port: int | None) -> None:
     """Run the same bounded teardown and ordinary bind for every spawned server."""
-    with prove_port_release(port):
+    if port is not None and getattr(master, "release_checked", False) is True:
+        return
+    with (
+        always_cleanup(
+            lambda: setattr(master, "release_checked", port is not None),
+            "release proof bookkeeping failed",
+        ),
+        prove_port_release(port),
+    ):
         try:
             master.terminate()
         except BaseException as error:
@@ -433,6 +459,7 @@ class SupervisedMaster:
         # Popen completes setsid() before returning, even if exec exits fast.
         self.pgid = process.pid
         self._read_fd: int | None = read_fd
+        self.release_checked = False
 
     @property
     def pid(self) -> int:
@@ -451,16 +478,33 @@ class SupervisedMaster:
         read_fd = self._read_fd
         if read_fd is None:
             return
-        previous_mask = signal.pthread_sigmask(
-            signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM}
-        )
-        with (
-            _restore_signal_mask(previous_mask),
-            always_cleanup(lambda: os.close(read_fd), "liveness reader close failed"),
-        ):
-            # Clear ownership before unmasking a pending cancellation.
-            self._read_fd = None
-            _terminate_group(self.process, read_fd)
+        previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, LAUNCH_SIGNALS)
+        with _restore_signal_mask(previous_mask):
+            try:
+                _terminate_group(self.process, read_fd)
+            except BaseException as error:
+                # A partial teardown must retain the reader until its retry can
+                # make an actual termination attempt.
+                with preserve_cleanup_error(
+                    error, "Gunicorn group teardown retry failed"
+                ):
+                    _terminate_group(self.process, read_fd)
+                with preserve_cleanup_error(error, "liveness reader close failed"):
+                    self._close_reader(read_fd)
+                raise
+            else:
+                self._close_reader(read_fd)
+
+    def _close_reader(self, read_fd: int) -> None:
+        self._read_fd = None
+        os.close(read_fd)
+
+
+def start_signal_blocked_thread(thread: Thread) -> None:
+    """Start a helper with a mask that keeps cancellation on the owner."""
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, LAUNCH_SIGNALS)
+    with _restore_signal_mask(previous_mask):
+        thread.start()
 
 
 @contextlib.contextmanager
@@ -500,7 +544,7 @@ def start_master(
     port = int(listener.getsockname()[1]) if listener is not None else None
     previous_mask = signal.pthread_sigmask(
         signal.SIG_BLOCK,
-        {signal.SIGINT, signal.SIGTERM},
+        LAUNCH_SIGNALS,
     )
     read_fd: int | None = None
     mask_restored = False

@@ -37,6 +37,10 @@ from contextlib import contextmanager
 from http.cookiejar import CookieJar
 from typing import TYPE_CHECKING, Final, Never
 
+from ops.testing.browser_server_supervisor import (
+    always_cleanup,
+    start_signal_blocked_thread,
+)
 from ops.testing.isolation_common import IsolationError, canonical_bytes
 from ops.testing.sentinel_scan import (
     SENTINEL_PREFIX,
@@ -95,14 +99,16 @@ def broker_tap(redis_url: str | None) -> Iterator[list[bytes] | None]:
                 frames.append(message["channel"] + b" " + message["data"])
 
     worker = threading.Thread(target=listen, name="sentinel-broker-tap", daemon=True)
-    worker.start()
-    try:
-        yield frames
-    finally:
-        stop.set()
-        worker.join()
-        pubsub.close()
-        client.close()
+    with (
+        always_cleanup(client.close, "broker client close failed"),
+        always_cleanup(pubsub.close, "broker subscription close failed"),
+    ):
+        start_signal_blocked_thread(worker)
+        with (
+            always_cleanup(worker.join, "broker tap join failed"),
+            always_cleanup(stop.set, "broker tap stop failed"),
+        ):
+            yield frames
 
 
 def inject_probes(

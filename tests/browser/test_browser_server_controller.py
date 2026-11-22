@@ -85,7 +85,7 @@ def test_readiness_rejects_a_dead_master_before_probing(
         ) as raised,
         controller.with_server_log(server_log),
     ):
-        controller.wait_until_ready(58419, process, server_log)
+        controller.wait_until_ready(58419, process, server_log, "synthetic")
 
     assert raised.value.__notes__ == ["server log tail: synthetic boot error"]
     probe.assert_not_called()
@@ -142,7 +142,7 @@ def test_controller_rejects_http_ok_without_the_owned_listener(
     with pytest.raises(controller.BrowserServerError, match="does not own"):
         controller.run_suite("patient", ["patient"])
 
-    probe.request.assert_called_once_with("GET", "/readyz")
+    assert probe.request.call_args.args == ("GET", "/readyz")
     assert not (tmp_path / "manifest.json").exists()
 
 
@@ -193,3 +193,40 @@ def test_controller_failed_handoff_reaps_and_proves_release(
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
+
+
+def test_foreign_readiness_cannot_use_a_stale_inherited_fd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, controller_environment: None
+) -> None:
+    process = Mock(spec=subprocess.Popen, pid=os.getpid())
+    process.poll.return_value = None
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=process))
+    monkeypatch.setattr(supervisor, "_terminate_group", Mock())
+    monkeypatch.setattr(controller, "_owns_listener", lambda *_: True)
+    probe = Mock()
+    probe.getresponse.return_value.status = 200
+    probe.getresponse.return_value.getheader.return_value = "a" * 64
+    monkeypatch.setattr(http.client, "HTTPConnection", Mock(return_value=probe))
+    with pytest.raises(controller.BrowserServerError, match="did not authenticate"):
+        controller.run_suite("patient", ["patient"])
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_controller_cancels_after_published_spawn_before_assignment(
+    monkeypatch: pytest.MonkeyPatch, controller_environment: None
+) -> None:
+    primary = KeyboardInterrupt("cancel at caller handoff")
+    master = Mock()
+    proof = Mock(wraps=supervisor.require_released_port)
+    monkeypatch.setattr(supervisor, "require_released_port", proof)
+
+    def interrupted(*_args: object, owner: list[supervisor.SupervisedMaster]) -> None:
+        owner.append(master)
+        raise primary
+
+    monkeypatch.setattr(controller, "start_server", interrupted)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        controller.run_suite("patient", ["patient"])
+    assert caught.value is primary
+    master.terminate.assert_called_once()
+    proof.assert_called_once()

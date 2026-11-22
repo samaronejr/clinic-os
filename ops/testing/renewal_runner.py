@@ -31,7 +31,7 @@ import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Final, Never, cast
+from typing import TYPE_CHECKING, BinaryIO, Final, Never, cast
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
@@ -47,6 +47,7 @@ from config.display import (
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
+from ops.testing.browser_readiness import READINESS_KEY, new_readiness_key
 from ops.testing.browser_server_controller import (
     BrowserServerError,
     listener_identity,
@@ -71,6 +72,7 @@ from ops.testing.current_source_snapshot import (
     capture_current_source,
     verify_current_source_record,
 )
+from ops.testing.diagnostic_redaction import redact_diagnostic
 from ops.testing.isolation_common import (
     MODE_DIRECTORY,
     MODE_PRIVATE,
@@ -736,6 +738,7 @@ def _docker(
     *arguments: str,
     timeout: int = COMMAND_TIMEOUT_SECONDS,
     stdin: bytes | None = None,
+    environment: dict[str, str] | None = None,
 ) -> str:
     executable = shutil.which("docker")
     if executable is None:
@@ -746,13 +749,17 @@ def _docker(
             check=False,
             capture_output=True,
             input=stdin,
+            env=None if environment is None else {**os.environ, **environment},
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
         message = "renewal docker command timed out"
         raise RenewalRunnerError(message) from error
     if completed.returncode != 0:
-        tail = completed.stderr.decode("utf-8", errors="replace")[-500:]
+        tail = redact_diagnostic(
+            completed.stderr.decode("utf-8", errors="replace"), environment
+        )
+        tail = tail[-500:]
         _fail(f"renewal docker command failed: {tail.strip()}")
     return completed.stdout.decode("utf-8", errors="replace")
 
@@ -831,11 +838,7 @@ def _provision_database(
             f"POSTGRES_DB={database}",
             "--env",
             "POSTGRES_USER=postgres",
-            *(
-                argument
-                for name, value in sorted(passwords.items())
-                for argument in ("--env", f"{name}={value}")
-            ),
+            *(argument for name in sorted(passwords) for argument in ("--env", name)),
             "--mount",
             f"type=volume,src={volume},dst=/var/lib/postgresql/data",
             "--mount",
@@ -844,6 +847,7 @@ def _provision_database(
             f"type=bind,src={init},dst=/docker-entrypoint-initdb.d,readonly",
             POSTGRES_IMAGE,
             *TEST_DATABASE_SETTINGS,
+            environment=passwords,
         )
         _await_database(container, docker=docker)
         yield ProvisionedDatabase(
@@ -960,28 +964,70 @@ def _run_bounded(
     cwd: Path | None = None,
 ) -> int:
     """Run one child in its own process group with a hard wall-clock bound."""
-    with log.open("wb") as stream:
-        process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
-            argv,
-            cwd=cwd,
-            env=environment,
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
+    try:
+        with _reported_child_log(log, environment) as stream:
+            return _wait_bounded_child(argv, environment, stream, timeout, cwd)
+    except subprocess.TimeoutExpired as error:
+        if not getattr(error, "__notes__", None):
             return 124
-        except BaseException as error:
-            with preserve_cleanup_error(error, "child process teardown failed"):
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
-            raise
+        message = "child process exceeded its deadline"
+        raise RenewalRunnerError(message) from error
+
+
+@contextmanager
+def _reported_child_log(log: Path, environment: dict[str, str]) -> Iterator[BinaryIO]:
+    """Publish only scrubbed output; raw subprocess output has no open pathname."""
+    with preserving_context(
+        runtime_directory(log.parent.resolve(), purpose="renewal-child-log"),
+        "child log staging cleanup failed",
+    ) as staging:
+        raw = staging / "output"
+        with preserving_context(raw.open("w+b"), "child log close failed") as stream:
+            raw.unlink()
+
+            def publish() -> None:
+                stream.seek(0)
+                with preserving_context(
+                    log.open("w", encoding="utf-8"), "reported child log close failed"
+                ) as output:
+                    for line in stream:
+                        output.write(
+                            redact_diagnostic(
+                                line.decode("utf-8", errors="replace"), environment
+                            )
+                        )
+
+            with always_cleanup(publish, "child log publication failed"):
+                yield stream
+
+
+def _wait_bounded_child(
+    argv: list[str],
+    environment: dict[str, str],
+    stream: BinaryIO,
+    timeout: int,
+    cwd: Path | None,
+) -> int:
+    """Wait, then attempt group kill and reap independently on failure."""
+    process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
+        argv,
+        cwd=cwd,
+        env=environment,
+        start_new_session=True,
+        stdout=stream,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        return process.wait(timeout=timeout)
+    except BaseException as error:
+        with (
+            preserve_cleanup_error(error, "child process group kill failed"),
+            contextlib.suppress(ProcessLookupError),
+        ):
+            os.killpg(process.pid, signal.SIGKILL)
+        with preserve_cleanup_error(error, "child process reap failed"):
+            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
+        raise
 
 
 def _migrate(repository: Path, owner_dsn: str, log: Path) -> None:
@@ -1278,7 +1324,7 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
     return tuple(sorted(path for path in paths if path and not _excluded(path)))
 
 
-def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
+def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full context
     repository: Path,
     suite: str,
     artifact_root: Path,
@@ -1327,7 +1373,8 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
-        master: SupervisedMaster | None = None
+        spawned: list[SupervisedMaster] = []
+        key = new_readiness_key()
         server_environment = {
             **_server_environment(app_dsn),
             **display_environment,
@@ -1353,20 +1400,10 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 "realtime broker cleanup failed",
             )
         )
-        frames = extra_processes.enter_context(
-            preserving_context(
-                broker_tap(
-                    server_environment["REALTIME_REDIS_URL"]
-                    if suite in REALTIME_SUITES
-                    else None
-                ),
-                "broker tap cleanup failed",
-            )
-        )
 
         def cleanup() -> None:
-            if master is not None:
-                _terminate_master(master, port=port)
+            if spawned:
+                _terminate_master(spawned[0], port=port)
 
         with always_cleanup(cleanup, "browser server teardown failed"):
             with reserve_listener() as listener:
@@ -1376,12 +1413,22 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     supervised_argv(
                         Path(sys.executable), listener_fd, artifact_root / "access.log"
                     ),
-                    server_environment,
+                    {**server_environment, READINESS_KEY: key},
                     server_log,
-                    owner=[],
+                    owner=spawned,
                     pass_fds=(listener,),
                 )
-            wait_until_ready(port, master.process, identity)
+            wait_until_ready(port, master.process, identity, key)
+            frames = extra_processes.enter_context(
+                preserving_context(
+                    broker_tap(
+                        server_environment["REALTIME_REDIS_URL"]
+                        if suite in REALTIME_SUITES
+                        else None
+                    ),
+                    "broker tap cleanup failed",
+                )
+            )
             port_for_browser = extra_processes.enter_context(
                 preserving_context(
                     browser_endpoint(
@@ -1622,7 +1669,7 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         "exec",
         "-i",
         "-e",
-        f"PGPASSWORD={database.postgres_password}",
+        "PGPASSWORD",
         database.container,
         "psql",
         "-h",
@@ -1635,19 +1682,20 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         "ON_ERROR_STOP=1",
         "-c",
         f"CREATE DATABASE {test_name} OWNER {OWNER_ROLE}",
+        environment={"PGPASSWORD": database.postgres_password},
     )
     bootstrap = (repository / "ops/db/bootstrap.sql").read_bytes()
     _docker(
         "exec",
         "-i",
         "-e",
-        f"PGPASSWORD={database.postgres_password}",
+        "PGPASSWORD",
         "-e",
-        f"CLINIC_OWNER_PASSWORD={database.owner_password}",
+        "CLINIC_OWNER_PASSWORD",
         "-e",
-        f"CLINIC_APP_PASSWORD={database.app_password}",
+        "CLINIC_APP_PASSWORD",
         "-e",
-        f"CLINIC_SUPER_PASSWORD={database.super_password}",
+        "CLINIC_SUPER_PASSWORD",
         database.container,
         "psql",
         "-h",
@@ -1665,6 +1713,12 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         "-f",
         "-",
         stdin=bootstrap,
+        environment={
+            "PGPASSWORD": database.postgres_password,
+            "CLINIC_OWNER_PASSWORD": database.owner_password,
+            "CLINIC_APP_PASSWORD": database.app_password,
+            "CLINIC_SUPER_PASSWORD": database.super_password,
+        },
     )
 
 
@@ -1864,13 +1918,23 @@ def _gate_browser(
             SupervisorError,
             ValueError,
         ) as error:
-            report = {"error": error_details(error)}
-            code = 2
-        write_no_replace(
-            suite_root / "report.json",
-            canonical_bytes(report),
-            mode=MODE_PRIVATE,
-        )
+            with preserve_cleanup_error(
+                error, "browser failure receipt could not be written"
+            ):
+                write_no_replace(
+                    suite_root / "report.json",
+                    canonical_bytes({"error": error_details(error)}),
+                    mode=MODE_PRIVATE,
+                )
+                results.append({"command": f"browser-{suite}", "exit": 2})
+                continue
+            raise
+        else:
+            write_no_replace(
+                suite_root / "report.json",
+                canonical_bytes(report),
+                mode=MODE_PRIVATE,
+            )
         results.append({"command": f"browser-{suite}", "exit": code})
     return results
 

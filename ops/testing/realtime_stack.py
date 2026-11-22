@@ -14,6 +14,12 @@ from typing import IO, TYPE_CHECKING, Final
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from ops.testing.browser_server_supervisor import (
+    always_cleanup,
+    preserving_context,
+    start_signal_blocked_thread,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -57,7 +63,7 @@ def _ready(
                 ready.set()
 
     thread = threading.Thread(target=read, daemon=True)
-    thread.start()
+    start_signal_blocked_thread(thread)
     if not ready.wait(READY_SECONDS):
         message = "realtime harness did not emit readiness"
         raise RealtimeHarnessError(message)
@@ -155,7 +161,14 @@ class RealtimeStack:
     @contextmanager
     def run(self) -> Iterator[RealtimeStack]:
         """Own sockets, thread, process and logs through all exception paths."""
-        with socket.socket() as listener, (self.root / "realtime.log").open("w") as log:
+        with (
+            preserving_context(
+                socket.socket(), "realtime listener close failed"
+            ) as listener,
+            preserving_context(
+                (self.root / "realtime.log").open("w"), "realtime log close failed"
+            ) as log,
+        ):
             listener.bind(("127.0.0.1", 0))
             listener.listen()
             rt_port = int(listener.getsockname()[1])
@@ -179,8 +192,16 @@ class RealtimeStack:
                 stderr=subprocess.STDOUT,
                 text=True,
             )
-            proxy = None
-            try:
+            upstream = self.process.stdout
+
+            def close_stdout() -> None:
+                if upstream is not None:
+                    upstream.close()
+
+            with (
+                always_cleanup(close_stdout, "realtime stdout close failed"),
+                always_cleanup(self.stop_realtime, "realtime stop failed"),
+            ):
                 thread = _ready(self.process, "Uvicorn running on", log)
                 listener.close()
                 proxy = ThreadingHTTPServer(
@@ -189,20 +210,25 @@ class RealtimeStack:
                 )
                 self.port = int(proxy.server_address[1])
                 proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
-                proxy_thread.start()
-                try:
-                    yield self
-                finally:
-                    proxy.shutdown()
-                    proxy_thread.join(timeout=10)
-                    self.stop_realtime()
-                    thread.join(timeout=10)
-            finally:
-                self.stop_realtime()
-                if self.process.stdout is not None:
-                    self.process.stdout.close()
-                if proxy is not None:
-                    proxy.server_close()
+                with always_cleanup(proxy.server_close, "realtime proxy close failed"):
+                    start_signal_blocked_thread(proxy_thread)
+                    with (
+                        always_cleanup(
+                            lambda: thread.join(timeout=10),
+                            "realtime log thread join failed",
+                        ),
+                        always_cleanup(
+                            self.stop_realtime, "realtime sidecar stop failed"
+                        ),
+                        always_cleanup(
+                            lambda: proxy_thread.join(timeout=10),
+                            "realtime proxy join failed",
+                        ),
+                        always_cleanup(
+                            proxy.shutdown, "realtime proxy shutdown failed"
+                        ),
+                    ):
+                        yield self
 
 
 @contextmanager

@@ -104,7 +104,7 @@ def test_supervised_argv_is_frozen_and_preloaded(tmp_path: Path) -> None:
     assert "--threads=1" in argv
     assert "--timeout=30" in argv
     assert "--preload" in argv
-    assert argv[-1] == "config.wsgi:application"
+    assert argv[-1] == "ops.testing.browser_readiness_wsgi:application"
     assert not any(item in {"sh", "-c"} for item in argv)
     with pytest.raises(supervisor.SupervisorError, match="executable absolute path"):
         supervisor.supervised_argv(tmp_path / "missing", 58419, tmp_path / "a.log")
@@ -190,6 +190,34 @@ _POSIX_OS_APIS: Final = frozenset(
         "waitstatus_to_exitcode",
     }
 )
+
+
+def test_malformed_cleanup_notes_preserve_primary_and_earlier_context() -> None:
+    primary = ValueError("original suite failure")
+
+    def fail_cleanup() -> None:
+        first = OSError("earlier close error")
+        later = KeyboardInterrupt("later cleanup interrupt")
+        later.__dict__["__notes__"] = 7
+        try:
+            raise first
+        finally:
+            raise later
+
+    def run() -> None:
+        try:
+            raise primary
+        except ValueError as error:
+            with supervisor.preserve_cleanup_error(error, "cleanup failed"):
+                fail_cleanup()
+            raise
+
+    with pytest.raises(ValueError, match="original suite failure") as caught:
+        run()
+    assert caught.value is primary
+    details = "\n".join(primary.__notes__)
+    assert "earlier close error" in details
+    assert "later cleanup interrupt" in details
 
 
 def _assert_posix_os_apis(source: str) -> None:
