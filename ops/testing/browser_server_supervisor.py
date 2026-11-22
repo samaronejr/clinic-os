@@ -127,7 +127,7 @@ def parse_response(raw: bytes, kind: str, sequence: int) -> tuple[int, int]:
     return pid, pgid
 
 
-def supervised_argv(interpreter: Path, port: int, access_log: Path) -> list[str]:
+def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> list[str]:
     """Return the frozen two-worker preloaded Gunicorn argv."""
     if not interpreter.is_absolute() or not os.access(interpreter, os.X_OK):
         _fail("supervised interpreter is not an executable absolute path")
@@ -136,7 +136,7 @@ def supervised_argv(interpreter: Path, port: int, access_log: Path) -> list[str]
         "-m",
         "gunicorn",
         "--bind",
-        f"127.0.0.1:{port}",
+        f"fd://{listener_fd}",
         f"--workers={WORKER_COUNT}",
         "--worker-class=sync",
         "--threads=1",
@@ -198,6 +198,7 @@ def start_master(
     log: Path,
     *,
     owner: list[SupervisedMaster],
+    pass_fds: tuple[int, ...] = (),
 ) -> SupervisedMaster:
     """Perform the journaled second phase: exec the master in a new group.
 
@@ -219,6 +220,7 @@ def start_master(
             process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
                 argv,
                 env=environment,
+                pass_fds=pass_fds,
                 start_new_session=True,
                 # The child must not inherit the blocked mask: restore it
                 # after fork, before exec, so the master stays killable.

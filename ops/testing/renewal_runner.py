@@ -47,7 +47,7 @@ from config.display import (
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from ops.testing.browser_server_controller import reserve_port, wait_until_ready
+from ops.testing.browser_server_controller import reserve_listener, wait_until_ready
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
     start_master,
@@ -1307,7 +1307,6 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
-        port = reserve_port()
         spawned: list[SupervisedMaster] = []
         server_environment = {
             **_server_environment(app_dsn),
@@ -1339,15 +1338,18 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
         )
         try:
-            start_master(
-                supervised_argv(
-                    Path(sys.executable), port, artifact_root / "access.log"
-                ),
-                server_environment,
-                server_log,
-                owner=spawned,
-            )
-            wait_until_ready(port, server_log)
+            with reserve_listener() as listener:
+                port, listener_fd = int(listener.getsockname()[1]), listener.fileno()
+                master = start_master(
+                    supervised_argv(
+                        Path(sys.executable), listener_fd, artifact_root / "access.log"
+                    ),
+                    server_environment,
+                    server_log,
+                    owner=spawned,
+                    pass_fds=(listener_fd,),
+                )
+            wait_until_ready(port, server_log, master.process)
             port_for_browser = extra_processes.enter_context(
                 browser_endpoint(
                     repository,

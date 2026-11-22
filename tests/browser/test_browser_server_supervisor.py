@@ -95,6 +95,7 @@ def test_supervised_argv_is_frozen_and_preloaded(tmp_path: Path) -> None:
 
     assert argv[0] == sys.executable
     assert argv[1:4] == ["-m", "gunicorn", "--bind"]
+    assert argv[4] == "fd://58419"
     assert "--workers=2" in argv
     assert "--worker-class=sync" in argv
     assert "--threads=1" in argv
