@@ -1903,12 +1903,13 @@ def test_signing_suites_export_the_app_worker_dsn(
         ),
     )
     monkeypatch.setattr(runner, "_require_app_role", lambda _dsn: None)
-    monkeypatch.setattr(runner, "reserve_port", lambda: 48000)
     monkeypatch.setattr(
         runner, "realtime_broker", lambda *_args, **_kwargs: contextlib.nullcontext()
     )
     monkeypatch.setattr(runner, "broker_tap", lambda *_args: contextlib.nullcontext())
-    monkeypatch.setattr(runner, "start_master", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner, "start_master", lambda *_args, **_kwargs: SimpleNamespace(process=None)
+    )
     monkeypatch.setattr(runner, "wait_until_ready", lambda *_args: None)
     monkeypatch.setattr(
         runner,

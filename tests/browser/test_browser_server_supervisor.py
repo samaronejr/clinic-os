@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import select
 import signal
+import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Final, cast
 
 import pytest
+from ops.testing import browser_server_controller as controller
 from ops.testing import browser_server_stages as stage
 from ops.testing import browser_server_supervisor as supervisor
 from ops.testing.browser_secret_channel import FRAME_COUNT, SecretChannel
@@ -21,6 +25,7 @@ from ops.testing.browser_server_journal import (
     resume,
 )
 from ops.testing.browser_totp_helpers import HelperSequence
+from ops.testing.final_e2e_supervisor import require_subreaper
 
 from browser.browser_server_fakes import RecordingEffects
 
@@ -95,6 +100,7 @@ def test_supervised_argv_is_frozen_and_preloaded(tmp_path: Path) -> None:
 
     assert argv[0] == sys.executable
     assert argv[1:4] == ["-m", "gunicorn", "--bind"]
+    assert argv[4] == "fd://58419"
     assert "--workers=2" in argv
     assert "--worker-class=sync" in argv
     assert "--threads=1" in argv
@@ -155,6 +161,147 @@ def test_terminate_is_idempotent_and_leaves_no_zombie(tmp_path: Path) -> None:
 
     assert master.process.poll() is not None
     assert not _alive(master.pid)
+
+
+def _rescue_worker(worker: int) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        worker_fd = os.pidfd_open(worker)
+        try:
+            assert select.select([worker_fd], [], [], 10)[0]
+            assert os.waitpid(worker, os.WNOHANG)[0] == worker
+        finally:
+            os.close(worker_fd)
+
+
+@pytest.mark.parametrize("entrypoint", ["controller", "renewal"])
+def test_dead_master_teardown_releases_the_inherited_listener(
+    entrypoint: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Adopt a leaked worker in the red case so test-side rescue can reap it.
+    require_subreaper()
+    monkeypatch.setattr(supervisor, "TERMINATION_GRACE_SECONDS", 1)
+    worker: int | None = None
+    processes: list[subprocess.Popen[bytes]] = []
+    ready, writer = socket.socketpair()
+    with ready, writer, controller.reserve_listener() as reserved:
+        ready.settimeout(10)
+        address = reserved.getsockname()
+        fds = (reserved.fileno(), writer.fileno())
+        argv = [
+            sys.executable,
+            "-c",
+            "import os, signal\n"
+            "if os.fork() == 0:\n"
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            f"    os.write({writer.fileno()}, str(os.getpid()).encode())\n"
+            "signal.pause()\n",
+        ]
+
+        def kill_master(server: subprocess.Popen[bytes]) -> None:
+            nonlocal worker
+            worker = int(ready.recv(32))
+            server.kill()
+            assert server.wait(timeout=10) == -signal.SIGKILL
+
+        try:
+            if entrypoint == "controller":
+                popen = subprocess.Popen
+
+                def spawn(
+                    _argv: list[str],
+                    **kwargs: Any,  # noqa: ANN401 - forward Popen options.
+                ) -> subprocess.Popen[bytes]:
+                    assert kwargs["pass_fds"] == (reserved.fileno(),)
+                    process = popen(argv, **{**kwargs, "pass_fds": fds})
+                    processes.append(process)
+                    return process
+
+                monkeypatch.setattr(subprocess, "Popen", spawn)
+                monkeypatch.setattr(controller, "reserve_listener", lambda: reserved)
+                for name in controller.REQUIRED_ENVIRONMENT:
+                    monkeypatch.setenv(name, "synthetic")
+                monkeypatch.setenv("CLINIC_BROWSER_EVIDENCE_ROOT", str(tmp_path))
+                monkeypatch.setattr(
+                    controller, "wait_until_ready", lambda *_: kill_master(processes[0])
+                )
+                monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
+                monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
+                assert controller.run_suite("patient", ["patient"]) == os.EX_OK
+            else:
+                with reserved:
+                    master = supervisor.start_master(
+                        argv,
+                        {},
+                        tmp_path / "server.log",
+                        owner=[],
+                        pass_fds=fds,
+                    )
+                    processes.append(master.process)
+                kill_master(master.process)
+                master.terminate()
+
+            assert reserved.fileno() == -1
+            with socket.socket() as probe:
+                probe.bind(address)
+            assert worker is not None
+            assert not _alive(worker)
+        finally:
+            for process in processes:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=10)
+            if worker is not None:
+                _rescue_worker(worker)
+
+
+@pytest.mark.parametrize("listening", [True, False], ids=["listener", "reservation"])
+def test_release_check_requires_an_ordinary_bind(listening: bool) -> None:
+    with socket.socket() as held:
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind((controller.HOST, 0))
+        address = held.getsockname()
+        if listening:
+            held.listen()
+        with pytest.raises(supervisor.SupervisorError, match="port was not released"):
+            supervisor.require_released_port(int(address[1]))
+    # The post-teardown caller can bind only after the reservation closes.
+    supervisor.require_released_port(int(address[1]))
+    with socket.socket() as probe:
+        probe.bind(address)
+
+
+def test_release_check_waits_for_tcp_expiry_but_refuses_at_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with controller.reserve_listener() as listener, socket.socket() as client:
+        address = listener.getsockname()
+        client.settimeout(10)
+        listener.settimeout(10)
+        client.connect(address)
+        accepted, _ = listener.accept()
+        with accepted:
+            accepted.settimeout(10)
+            # The server sends the first FIN and therefore owns TIME_WAIT.
+            accepted.shutdown(socket.SHUT_WR)
+            assert client.recv(1) == b""
+            client.shutdown(socket.SHUT_WR)
+            assert accepted.recv(1) == b""
+
+    now = 100.0
+    deadlines: list[float] = []
+
+    def advance_clock(until: float) -> None:
+        nonlocal now
+        deadlines.append(until)
+        now = until
+
+    monkeypatch.setattr(time, "monotonic", lambda: now)
+    monkeypatch.setattr(supervisor, "PORT_RELEASE_SECONDS", 1)
+    monkeypatch.setattr(supervisor, "_wait_for_tcp_expiry", advance_clock)
+    with pytest.raises(supervisor.SupervisorError, match="port was not released"):
+        supervisor.require_released_port(int(address[1]))
+
+    assert deadlines == [101.0]
 
 
 class _HandoffInterruptError(Exception):
