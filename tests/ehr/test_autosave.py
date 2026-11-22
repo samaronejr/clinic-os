@@ -581,10 +581,18 @@ def test_handover_moves_the_lock_after_the_holder_saves(
         }
     with as_actor(rbac_graph, rbac_graph.physician):
         assert save(rbac_graph, version_id, 3).status == AutosaveStatus.LOCKED_BY_OTHER
+    with owner_context(rbac_graph.organization_a):
+        state.refresh_from_db(fields=("lock_holder", "handover_requested_by"))
+        assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+    with as_actor(rbac_graph, rbac_graph.physician):
         # The requester's stale text is compared, never written over.
         stale = save(rbac_graph, version_id, 1, session=TAB_B)
         assert stale.status == AutosaveStatus.CONFLICT
     assert stored(rbac_graph, version_id) == (3, changed)
+    with owner_context(rbac_graph.organization_a):
+        state.refresh_from_db(fields=("lock_holder", "handover_requested_by"))
+        assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+        assert events.filter(event_type="ehr.draft.handed_over").count() == 1
 
 
 @pytest.mark.parametrize("unscheduled", [False, True], ids=["scheduled", "unscheduled"])
