@@ -31,6 +31,9 @@ if TYPE_CHECKING:
         SignatureRequest,
     )
 
+_HOLD_WAIT_SECONDS = 90
+_SOCKET_MARGIN_SECONDS = 1
+
 
 def _hold_after_acceptance() -> None:
     """Tell the parent exactly which prefork child to kill, then wait there."""
@@ -38,9 +41,12 @@ def _hold_after_acceptance() -> None:
     with connection.cursor() as cursor:
         cursor.execute("SELECT current_user")
         assert cursor.fetchone() == ("clinic_app",)
-    with Redis.from_url(os.environ["CELERY_BROKER_URL"]) as redis:
+    with Redis.from_url(
+        os.environ["CELERY_BROKER_URL"],
+        socket_timeout=_HOLD_WAIT_SECONDS + _SOCKET_MARGIN_SECONDS,
+    ) as redis:
         redis.rpush("accepted", json.dumps([os.getpid(), current_task.request.id]))
-        redis.blpop("never-release", timeout=90)
+        redis.blpop("never-release", timeout=_HOLD_WAIT_SECONDS)
     msg = "gate must SIGKILL the accepting worker before it resumes"
     raise AssertionError(msg)
 
