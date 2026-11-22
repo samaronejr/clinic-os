@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QUEUE = "clinic-integrations"
+_EVENT_WAIT_SECONDS = 60
+_SOCKET_MARGIN_SECONDS = 1
 
 
 @pytest.fixture(scope="session")
@@ -79,14 +81,18 @@ def broker(broker_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[Redis]:
     monkeypatch.setattr(celery_app, "_pool", None)
     monkeypatch.setattr(celery_app.amqp, "_producer_pool", None)
     assert celery_app.amqp.producer_pool.connections.connection.as_uri() == broker_url
-    with Redis.from_url(broker_url, decode_responses=True) as redis:
+    with Redis.from_url(
+        broker_url,
+        decode_responses=True,
+        socket_timeout=_EVENT_WAIT_SECONDS + _SOCKET_MARGIN_SECONDS,
+    ) as redis:
         redis.flushdb()
         yield redis
 
 
 def read_event(redis: Redis, key: str) -> list[object]:
     """Subscribe to a retained event; the deadline only bounds test failure."""
-    event = redis.blpop(key, timeout=60)
+    event = redis.blpop(key, timeout=_EVENT_WAIT_SECONDS)
     assert isinstance(event, (tuple, list)), f"worker did not signal {key}"
     received: object = json.loads(event[1])
     assert isinstance(received, list)
