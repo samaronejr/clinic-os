@@ -32,8 +32,8 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
         ) -> Mock:
             bind = argv[argv.index("--bind") + 1]
             if pass_fds:
-                (fd,) = pass_fds
-                assert bind == f"fd://{fd}"
+                fd = int(bind.removeprefix("fd://"))
+                assert fd in pass_fds
                 listener = server.enter_context(
                     socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
                 )
@@ -61,9 +61,7 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
 
         monkeypatch.setattr(subprocess, "Popen", spawn)
         monkeypatch.setattr(controller, "wait_until_ready", ready)
-        monkeypatch.setattr(
-            supervisor.SupervisedMaster, "terminate", lambda _: server.close()
-        )
+        monkeypatch.setattr(supervisor, "_terminate_group", lambda *_: server.close())
         monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
         monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
 

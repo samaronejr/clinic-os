@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ast
 import contextlib
 import errno
+import inspect
 import os
 import select
 import signal
@@ -45,15 +47,9 @@ def _alive(pid: int) -> bool:
 def _spawn(
     code: str, log: Path, *, pass_fds: tuple[int, ...] = ()
 ) -> supervisor.SupervisedMaster:
-    with log.open("wb") as stream:
-        process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
-            [sys.executable, "-c", code],
-            start_new_session=True,
-            pass_fds=pass_fds,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-    return supervisor.SupervisedMaster(process)
+    return supervisor.start_master(
+        [sys.executable, "-c", code], {}, log, owner=[], pass_fds=pass_fds
+    )
 
 
 def _full_run(tmp_path: Path, name: str) -> tuple[BarrierJournal, RecordingEffects]:
@@ -175,13 +171,41 @@ def _rescue_worker(worker: int) -> None:
     assert not waiter.is_alive()
 
 
+def test_supervisor_uses_no_build_optional_wait_api() -> None:
+    tree = ast.parse(inspect.getsource(supervisor))
+    forbidden = {
+        "pidfd_open",
+        "waitid",
+        "P_PID",
+        "P_PIDFD",
+        "P_PGID",
+        "WEXITED",
+        "WNOWAIT",
+        "O_CLOEXEC",
+    }
+    assert not forbidden.intersection(
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    )
+
+
+@pytest.fixture(params=[False, True], ids=["native", "without-optional-apis"])
+def wait_capabilities(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if request.param:
+        for name in ("pidfd_open", "waitid", "WNOWAIT", "O_CLOEXEC"):
+            monkeypatch.delattr(os, name, raising=False)
+
+
 @pytest.mark.parametrize("entrypoint", ["controller", "renewal"])
-def test_dead_master_teardown_without_pidfd_releases_the_inherited_listener(
-    entrypoint: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.usefixtures("wait_capabilities")
+def test_dead_master_teardown_reaps_term_resistant_worker_and_releases_listener(
+    entrypoint: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Adopt a leaked worker in the red case so test-side rescue can reap it.
     require_subreaper()
-    monkeypatch.delattr(os, "pidfd_open", raising=False)
     monkeypatch.setattr(supervisor, "TERMINATION_GRACE_SECONDS", 1)
     worker: int | None = None
     processes: list[subprocess.Popen[bytes]] = []
@@ -214,8 +238,10 @@ def test_dead_master_teardown_without_pidfd_releases_the_inherited_listener(
                     _argv: list[str],
                     **kwargs: Any,  # noqa: ANN401 - forward Popen options.
                 ) -> subprocess.Popen[bytes]:
-                    assert kwargs["pass_fds"] == (reserved.fileno(),)
-                    process = popen(argv, **{**kwargs, "pass_fds": fds})
+                    inherited = kwargs["pass_fds"]
+                    assert reserved.fileno() in inherited
+                    kwargs["pass_fds"] = (*inherited, writer.fileno())
+                    process = popen(argv, **kwargs)
                     processes.append(process)
                     return process
 
@@ -331,10 +357,10 @@ def test_start_master_reaps_the_spawn_when_the_handoff_is_interrupted(
     spawned: list[subprocess.Popen[bytes]] = []
     real_master = supervisor.SupervisedMaster
 
-    def interrupted_handoff(process: subprocess.Popen[bytes]) -> object:
+    def interrupted_handoff(process: subprocess.Popen[bytes], read_fd: int) -> object:
         spawned.append(process)
         os.kill(os.getpid(), signal.SIGTERM)
-        return real_master(process)
+        return real_master(process, read_fd)
 
     monkeypatch.setattr(supervisor, "SupervisedMaster", interrupted_handoff)
     previous = signal.signal(signal.SIGTERM, _raise_on_signal)
@@ -473,7 +499,7 @@ def test_start_master_without_cleanup_leaves_the_spawn_alive(
         return process
 
     monkeypatch.setattr(subprocess, "Popen", spawn_then_signal)
-    monkeypatch.setattr(supervisor, "_terminate_group", lambda process: None)
+    monkeypatch.setattr(supervisor, "_terminate_group", lambda process, read_fd: None)
     previous = signal.signal(signal.SIGTERM, _raise_on_signal)
     owner: list[supervisor.SupervisedMaster] = []
     try:

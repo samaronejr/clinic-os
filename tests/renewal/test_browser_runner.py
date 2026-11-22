@@ -28,7 +28,7 @@ from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
 from config.settings import base as base_settings
 from django.test import override_settings
 from ops.testing import renewal_runner as runner
-from ops.testing.browser_server_supervisor import SupervisedMaster
+from ops.testing.browser_server_supervisor import SupervisedMaster, start_master
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.isolation_common import IsolationError, JsonObject
 from playwright.sync_api import (
@@ -2227,14 +2227,10 @@ def test_teardown_interrupt_is_reaped_then_propagated(
     becoming a successful run.
     """
     log = tmp_path / "teardown.log"
-    with log.open("wb") as stream:
-        process = subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(120)"],
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-    master = SupervisedMaster(process)
+    master = start_master(
+        [sys.executable, "-c", "import time; time.sleep(120)"], {}, log, owner=[]
+    )
+    process = master.process
     original = SupervisedMaster.terminate
     calls = 0
 
