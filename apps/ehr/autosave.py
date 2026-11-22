@@ -250,7 +250,7 @@ def _write(  # noqa: PLR0913 - one locked save and its bookkeeping
         version_id=version.pk,
         expected_revision=expected_revision,
         content=content,
-        locked_edit_state=state,
+        locked_draft=(version, state),
     )
     if handover_to is not None:
         # This session's text is saved first; the lock then moves.

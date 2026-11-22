@@ -5,13 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from functools import partial
+from functools import lru_cache, partial
+from os import getpid
 from typing import Final
 
 from django.conf import settings
 from django.db import connection, transaction
-from redis import Redis
+from redis import ConnectionPool, Redis
+from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
+from redis.retry import Retry
 
 from apps.realtime.topics import TOPIC_PATTERN
 
@@ -67,6 +70,18 @@ def redis_client() -> Redis:
     )
 
 
+@lru_cache(maxsize=1)
+def _publisher_pool(url: str, _pid: int) -> ConnectionPool:
+    # Keep hot sockets local to the process and the active broker URL. Do not
+    # replay a PUBLISH whose acknowledgement was lost.
+    return ConnectionPool.from_url(
+        url,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+    )
+
+
 def publish(*, topic: str, kind: str, version: int) -> None:
     """Publish a refetch hint after commit; never interrupt committed domain work.
 
@@ -78,7 +93,9 @@ def publish(*, topic: str, kind: str, version: int) -> None:
         message = "realtime publication requires a committed transaction"
         raise RuntimeError(message)
     try:
-        with redis_client() as client:
+        pool = _publisher_pool(settings.REALTIME_REDIS_URL, getpid())
+        # An explicitly supplied pool stays open when this client exits.
+        with Redis(connection_pool=pool) as client:
             client.publish("rt:" + topic_hash(topic), payload)
     except RedisError:
         logger.warning("realtime publication unavailable; polling required")

@@ -7,11 +7,14 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.realtime import transport
 from apps.realtime.stream import _event
 from apps.realtime.transport import event_bytes, topic_hash
+from redis import Redis
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
+    from redis import ConnectionPool
 
 
 def test_event_schema_is_closed_and_topic_is_opaque(settings: SettingsWrapper) -> None:
@@ -59,3 +62,31 @@ def test_broker_boundary_rejects_extra_fields_and_forged_metadata(
     value = json.loads(event_bytes(topic, "agenda", 1))
     value.update(change)
     assert _event(json.dumps(value).encode(), frozenset({topic_hash(topic)})) is None
+
+
+def test_publisher_pool_is_scoped_to_broker_url_and_process(
+    monkeypatch: pytest.MonkeyPatch, settings: SettingsWrapper
+) -> None:
+    pools: list[ConnectionPool] = []
+
+    def publish(client: Redis, channel: str, message: bytes) -> int:
+        pools.append(client.connection_pool)
+        return 1
+
+    monkeypatch.setattr(Redis, "publish", publish)
+    monkeypatch.setattr(transport, "getpid", lambda: 10)
+    settings.REALTIME_REDIS_URL = "redis://127.0.0.1:1/0"
+    topic = f"clinic:{uuid4()}:inbox"
+    transport.publish(topic=topic, kind="inbox", version=1)
+    transport.publish(topic=topic, kind="inbox", version=2)
+    settings.REALTIME_REDIS_URL = "redis://127.0.0.1:1/1"
+    transport.publish(topic=topic, kind="inbox", version=3)
+    monkeypatch.setattr(transport, "getpid", lambda: 11)
+    transport.publish(topic=topic, kind="inbox", version=4)
+
+    first, repeat, other_url, child = pools
+    assert first is repeat
+    assert len({first, other_url, child}) == 3
+    assert [pool.connection_kwargs["db"] for pool in pools] == [0, 0, 1, 1]
+    with transport.redis_client() as client:
+        assert client.connection_pool not in pools

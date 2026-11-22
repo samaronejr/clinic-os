@@ -542,7 +542,7 @@ def record_clinical_note(
         version_id=version_id,
         expected_revision=expected_revision,
         content=content,
-        locked_edit_state=None,
+        locked_draft=None,
     )
 
 
@@ -552,11 +552,13 @@ def _record_clinical_note(
     version_id: UUID,
     expected_revision: int,
     content: dict[str, str],
-    locked_edit_state: DraftEditState | None,
+    locked_draft: tuple[ClinicalDocumentVersion, DraftEditState] | None,
 ) -> ClinicalDocumentVersion:
-    """Share the authorized revision writer with autosave, which locks edit state."""
-    if locked_edit_state is not None and locked_edit_state.version_id != version_id:
-        msg = "locked edit state belongs to a different draft"
+    """Share the authorized writer with autosave, which already holds both rows."""
+    if locked_draft is not None and (
+        locked_draft[0].pk != version_id or locked_draft[1].version_id != version_id
+    ):
+        msg = "locked rows belong to a different draft"
         raise ValueError(msg)
     author_scope(clinic_id=clinic_id, version_id=version_id)
     if set(content) != set(SOAP_FIELDS) or any(
@@ -575,15 +577,24 @@ def _record_clinical_note(
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path
         # is the contract's precondition_failed conflict, never a 500.
-        version = (
-            ClinicalDocumentVersion.objects.select_for_update()
-            .filter(pk=version_id)
-            .first()
+        locked = ClinicalDocumentVersion.objects.select_for_update().filter(
+            pk=version_id
         )
-        if version is None or version.state != "draft":
+        # Keep the fresh RLS/locking decision. Autosave already holds the
+        # version lock, so use its SOAP only for the same state and revision.
+        if locked_draft is not None:
+            locked = locked.only("state", "revision", "content_sha256")
+        checked = locked.first()
+        if checked is None or checked.state != "draft":
             msg = "precondition_failed"
             raise ClinicalConflictError(msg)
-        if version.revision != expected_revision:
+        version = checked if locked_draft is None else locked_draft[0]
+        if (
+            checked.revision != expected_revision
+            or version.state != checked.state
+            or version.revision != checked.revision
+            or version.content_sha256 != checked.content_sha256
+        ):
             msg = "stale_revision"
             raise ClinicalConflictError(msg)
         stored_sha256 = version.content_sha256
@@ -599,9 +610,7 @@ def _record_clinical_note(
             update_fields=("content", "content_sha256", "revision", "updated_at")
         )
         state = (
-            locked_edit_state
-            if locked_edit_state is not None
-            else draft_edit_state(version)
+            locked_draft[1] if locked_draft is not None else draft_edit_state(version)
         )
         _advance_section_epochs(state, previous, content)
         record_phase1_event(
