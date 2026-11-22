@@ -27,6 +27,7 @@ from unittest.mock import Mock
 import pytest
 from apps.core import telemetry
 from ops.perf import dataset, fairness_runs, report, scenarios
+from ops.perf.import_load import import_child
 from ops.perf.latency_model import (
     ModelParams,
     draft_generation_ms,
@@ -44,12 +45,15 @@ from ops.perf.report import ReportError, ScenarioResult
 from ops.perf.run import SLOW_MARKERS, main, run_profile
 from ops.perf.runtime import slow_queries
 from ops.perf.stats import StatsInputError, percentile, summarize
-from ops.perf.threads import WorkerResult
+from ops.perf.threads import WorkerResult, run_workers
 
 from core.test_fairness import fairness_broker, metered_broker
-from perf_rig_support import UnconfinedProcess
+from perf_rig_support import GatedImportLoad, UnconfinedProcess
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ops.perf.import_load import ImportContext
     from pytest_django.fixtures import SettingsWrapper
 
 __all__ = ["fairness_broker", "metered_broker"]
@@ -449,6 +453,52 @@ def test_injected_slow_query_is_recorded_as_a_failed_target(
     assert slowed["errors"] == 0
 
 
+def _coordinate_smoke_import(
+    monkeypatch: pytest.MonkeyPatch, *, withhold_measured_commit: bool
+) -> None:
+    active: GatedImportLoad | None = None
+
+    def make_load(
+        target: Callable[..., None], processes: int, context: ImportContext
+    ) -> GatedImportLoad:
+        nonlocal active
+        assert target is import_child
+        active = GatedImportLoad(context, processes=processes)
+        return active
+
+    def run_editors(
+        count: int, work: Callable[[int, WorkerResult], None]
+    ) -> WorkerResult:
+        if active is None or active.stop.is_set() or withhold_measured_commit:
+            return run_workers(count, work)
+        load = active
+
+        class MeasuredSamples(list[float]):
+            def append(self, value: float) -> None:
+                super().append(value)
+                if len(self) != 1:
+                    return
+                # The first real save has returned and its latency was already
+                # sampled. Observe progress before this editor's next save.
+                load.release.set()
+                assert load.progressed.wait(fairness_runs.WARM_TIMEOUT_SECONDS), (
+                    "import worker did not signal measured progress"
+                )
+                assert not load.failed.is_set(), "measured import worker failed"
+
+        def measured_editor(index: int, result: WorkerResult) -> None:
+            if index == 0:
+                result.samples_ms = MeasuredSamples()
+            work(index, result)
+            if index == 0:
+                assert len(result.samples_ms) > 1, "expected saves after the commit"
+
+        return run_workers(count, measured_editor)
+
+    monkeypatch.setattr(fairness_runs, "BackgroundLoad", make_load)
+    monkeypatch.setattr(scenarios, "run_workers", run_editors)
+
+
 @GATED
 @pytest.mark.django_db(transaction=True)
 def test_full_run_reports_every_scenario_and_fairness(
@@ -465,6 +515,9 @@ def test_full_run_reports_every_scenario_and_fairness(
     monkeypatch.setattr(
         multiprocessing.get_context("spawn"), "Process", UnconfinedProcess
     )
+    # Opt-in negative control on the same broker-bound node, with real warm-up.
+    withhold = os.environ.get("CPI_T84_WITHHOLD_MEASURED_COMMIT") == "1"
+    _coordinate_smoke_import(monkeypatch, withhold_measured_commit=withhold)
     realtime_url = metered_broker.rsplit("/", 1)[0] + "/1"
     monkeypatch.setenv("CELERY_BROKER_URL", metered_broker)
     monkeypatch.setenv("REALTIME_REDIS_URL", realtime_url)
@@ -499,7 +552,11 @@ def test_full_run_reports_every_scenario_and_fairness(
     assert imported["import_source_rows"] == 10_000
     assert imported["import_batch_rows"] == 1
     assert imported["import_rows_written_so_far"] > 0
-    assert imported["work_completed_during_saves"] > 0
+    if withhold:
+        assert imported["import_rows_written_so_far"] == 1
+    assert imported["work_completed_during_saves"] > 0, (
+        "no real import commit in the measured save window"
+    )
     flood = next(
         item
         for item in result["fairness"]
