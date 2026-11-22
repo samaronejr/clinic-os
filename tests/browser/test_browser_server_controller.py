@@ -11,6 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 from ops.testing import browser_server_controller as controller
+from ops.testing import browser_server_supervisor as supervisor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,7 +23,7 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
     for name in controller.REQUIRED_ENVIRONMENT:
         monkeypatch.setenv(name, "synthetic")
     monkeypatch.setenv("CLINIC_BROWSER_EVIDENCE_ROOT", str(tmp_path))
-    process = Mock(spec=subprocess.Popen)
+    process = Mock(spec=subprocess.Popen, pid=58419)
 
     with ExitStack() as server:
 
@@ -60,7 +61,9 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
 
         monkeypatch.setattr(subprocess, "Popen", spawn)
         monkeypatch.setattr(controller, "wait_until_ready", ready)
-        monkeypatch.setattr(controller, "stop_server", lambda _: server.close())
+        monkeypatch.setattr(
+            supervisor.SupervisedMaster, "terminate", lambda _: server.close()
+        )
         monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
         monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
 

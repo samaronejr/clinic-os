@@ -50,6 +50,8 @@ from playwright.sync_api import sync_playwright
 from ops.testing.browser_server_controller import reserve_listener, wait_until_ready
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
+    SupervisorError,
+    require_released_port,
     start_master,
     supervised_argv,
 )
@@ -1435,7 +1437,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 )
         finally:
             if spawned:
-                _terminate_master(spawned[0])
+                _terminate_master(spawned[0], port=port)
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
@@ -1545,7 +1547,7 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
     return results
 
 
-def _terminate_master(master: SupervisedMaster) -> None:
+def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
     """Terminate the supervised group; propagate any observed interruption.
 
     The bounded TERM/KILL/reap is retried once so a second signal cannot
@@ -1563,6 +1565,8 @@ def _terminate_master(master: SupervisedMaster) -> None:
             break
     if interrupted is not None:
         raise interrupted
+    if port is not None:
+        require_released_port(port)
 
 
 def _gate_migration(
@@ -1981,7 +1985,7 @@ def main(argv: list[str] | None = None) -> int:
     except RenewalInterruptError as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 130
-    except (IsolationError, OSError, ValueError) as error:
+    except (IsolationError, OSError, SupervisorError, ValueError) as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 2
     finally:

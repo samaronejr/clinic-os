@@ -10,12 +10,16 @@ no master, worker, or listener can outlive the session.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import json
+import math
 import os
+import select
 import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Final, Never
 
@@ -33,6 +37,7 @@ WORKER_COUNT: Final = 2
 REQUEST_TIMEOUT_SECONDS: Final = 30
 MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
+PR_SET_CHILD_SUBREAPER: Final = 36
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
 
@@ -153,18 +158,91 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
     ]
 
 
-def _terminate_group(process: subprocess.Popen[bytes]) -> None:
-    """Bounded TERM/wait/KILL/reap for one spawned process group."""
-    if process.poll() is not None:
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
+def _require_subreaper() -> None:
+    # Orphaned Gunicorn workers must be reparented here, not to PID 1.
+    if ctypes.CDLL(None).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        _fail("could not adopt orphaned Gunicorn workers")
+
+
+def _adopted_member(pgid: int) -> int | None:
+    # After the master exits, a surviving process tree in the group has
+    # at least one root reparented to this subreaper.
+    identity = [str(os.getpid()).encode(), str(pgid).encode()]
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            stat = (entry / "stat").read_bytes().rsplit(b")", 1)[1].split()
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        if stat[1:3] == identity:
+            return int(entry.name)
+    return None
+
+
+def _wait_for_exit(pid: int, deadline: float) -> bool:
     try:
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+        fd = os.pidfd_open(pid)
+    except ProcessLookupError:
+        return True
+    try:
+        poller = select.poll()
+        poller.register(fd, select.POLLIN)
+        return bool(
+            poller.poll(max(0, math.ceil((deadline - time.monotonic()) * 1000)))
+        )
+    finally:
+        os.close(fd)
+
+
+def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
+    while True:
+        if process.poll() is None:
+            pid = process.pid
+        else:
+            adopted = _adopted_member(process.pid)
+            if adopted is None:
+                try:
+                    os.killpg(process.pid, 0)
+                except ProcessLookupError:
+                    return True
+                # An adoption raced the process table scan. Never report an
+                # empty group without the kernel confirming it.
+                if time.monotonic() >= deadline:
+                    return False
+                continue
+            pid = adopted
+        if not _wait_for_exit(pid, deadline):
+            return False
+        if pid != process.pid:
+            with contextlib.suppress(ChildProcessError):
+                os.waitpid(pid, os.WNOHANG)
+
+
+def _terminate_group(process: subprocess.Popen[bytes]) -> None:
+    """Signal the owned session's process group even after its leader exits."""
+    for signum in (signal.SIGTERM, signal.SIGKILL):
+        # A live or unreaped owned child pins the group identity. Do not
+        # signal a numeric PGID after the entire owned group has been reaped.
+        if process.poll() is None or _adopted_member(process.pid) is not None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signum)
+        if _wait_for_group(process, time.monotonic() + TERMINATION_GRACE_SECONDS):
+            return
+    _fail("Gunicorn process group or listener still owned after teardown deadline")
+
+
+def require_released_port(port: int) -> None:
+    """Refuse success if the old port cannot be bound without a live listener."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            # Match Gunicorn's reuse setting so harmless TIME_WAIT is not a leak.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("127.0.0.1", port))
+            probe.listen()
+    except OSError as error:
+        message = "Gunicorn listener port was not released"
+        raise SupervisorError(message) from error
 
 
 class SupervisedMaster:
@@ -173,7 +251,9 @@ class SupervisedMaster:
     def __init__(self, process: subprocess.Popen[bytes]) -> None:
         """Retain the forked master and its process group."""
         self.process = process
-        self.pgid = os.getpgid(process.pid)
+        # Popen completes setsid() before returning, even if exec exits fast.
+        self.pgid = process.pid
+        self._terminated = False
 
     @property
     def pid(self) -> int:
@@ -189,7 +269,16 @@ class SupervisedMaster:
 
     def terminate(self) -> None:
         """Terminate the whole group with a bounded TERM then KILL and reap."""
-        _terminate_group(self.process)
+        if self._terminated:
+            return
+        previous_mask = signal.pthread_sigmask(
+            signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM}
+        )
+        try:
+            _terminate_group(self.process)
+            self._terminated = True
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
 def start_master(
@@ -210,7 +299,9 @@ def start_master(
     group is reaped before the exception propagates. Any other exception
     between the spawn and the completed handoff reaps the same way.
     """
+    _require_subreaper()
     process: subprocess.Popen[bytes] | None = None
+    master: SupervisedMaster | None = None
     previous_mask = signal.pthread_sigmask(
         signal.SIG_BLOCK,
         {signal.SIGINT, signal.SIGTERM},
@@ -238,13 +329,10 @@ def start_master(
         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
         return master  # noqa: TRY300 - the return boundary is where a deferred signal is delivered; it must stay inside the protected region.
     except BaseException:
-        # Still owned here: bounded TERM/KILL/reap, retried once so a second
-        # signal during cleanup cannot orphan the child before propagating.
-        if process is not None:
-            for _attempt in range(2):
-                with contextlib.suppress(Exception):
-                    _terminate_group(process)
-                    break
+        if master is not None:
+            master.terminate()
+        elif process is not None:
+            _terminate_group(process)
         raise
     finally:
         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)

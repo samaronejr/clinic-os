@@ -7,9 +7,7 @@ import hashlib
 import http.client
 import json
 import os
-import signal
 import socket
-import subprocess
 import sys
 import time
 from http import HTTPStatus
@@ -17,7 +15,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
 if TYPE_CHECKING:
+    import subprocess
     from collections.abc import Callable, Iterator
+
+    from ops.testing.browser_server_supervisor import SupervisedMaster
 
 from ops.testing.browser_artifact_publisher import (
     frame_suite_artifacts,
@@ -26,6 +27,7 @@ from ops.testing.browser_artifact_publisher import (
     require_acknowledged,
 )
 from ops.testing.browser_runner_contract import selected_suites
+from ops.testing.browser_server_supervisor import require_released_port, start_master
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
@@ -45,7 +47,6 @@ PHYSICIAN_ENVIRONMENT: Final = (
 FIXTURE_DATABASE_VARIABLE: Final = "CLINIC_BROWSER_FIXTURE_DATABASE_URL"
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
-TERMINATION_GRACE_SECONDS: Final = 10
 HOST: Final = "127.0.0.1"
 PROTECTED_DATABASE_PORT: Final = 5432
 REQUIRED_ENVIRONMENT: Final = (
@@ -122,51 +123,37 @@ def start_server(
     listener: socket.socket,
     environment: dict[str, str],
     server_log: Path,
-) -> subprocess.Popen[bytes]:
+    *,
+    owner: list[SupervisedMaster],
+) -> SupervisedMaster:
     """Fork and exec one supervised Gunicorn master in its own process group."""
     interpreter = Path(sys.executable)
     if not interpreter.is_absolute() or not os.access(interpreter, os.X_OK):
         _fail("supervised interpreter is not an executable absolute path")
     listener_fd = listener.fileno()
-    with server_log.open("wb") as stream:
-        return subprocess.Popen(  # noqa: S603 - resolved interpreter, closed argv.
-            [
-                str(interpreter),
-                "-m",
-                "gunicorn",
-                "--bind",
-                f"fd://{listener_fd}",
-                "--workers=2",
-                "--preload",
-                "--access-logfile",
-                environment["CLINIC_BROWSER_ACCESS_LOG"],
-                # ADR-014: method + status + duration only; no request line.
-                "--access-logformat",
-                "%(m)s %(s)s %(D)s",
-                "--error-logfile",
-                "-",
-                "config.wsgi:application",
-            ],
-            env=environment,
-            pass_fds=(listener_fd,),
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-
-
-def stop_server(process: subprocess.Popen[bytes]) -> None:
-    """Terminate the supervised process group and reap every descendant."""
-    if process.poll() is not None:
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+    return start_master(
+        [
+            str(interpreter),
+            "-m",
+            "gunicorn",
+            "--bind",
+            f"fd://{listener_fd}",
+            "--workers=2",
+            "--preload",
+            "--access-logfile",
+            environment["CLINIC_BROWSER_ACCESS_LOG"],
+            # ADR-014: method + status + duration only; no request line.
+            "--access-logformat",
+            "%(m)s %(s)s %(D)s",
+            "--error-logfile",
+            "-",
+            "config.wsgi:application",
+        ],
+        environment,
+        server_log,
+        owner=owner,
+        pass_fds=(listener_fd,),
+    )
 
 
 def publish(evidence_root: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
@@ -243,14 +230,17 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
-    with reserve_listener() as listener:
-        port = int(listener.getsockname()[1])
-        server = start_server(listener, environment, server_log)
+    spawned: list[SupervisedMaster] = []
     try:
-        wait_until_ready(port, server_log, server)
+        with reserve_listener() as listener:
+            port = int(listener.getsockname()[1])
+            server = start_server(listener, environment, server_log, owner=spawned)
+        wait_until_ready(port, server_log, server.process)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
-        stop_server(server)
+        if spawned:
+            spawned[0].terminate()
+            require_released_port(port)
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,
