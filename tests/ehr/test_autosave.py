@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.audit.models import AuditEvent
+from apps.audit.services import verify_chain
 from apps.ehr import autosave as autosave_module
 from apps.ehr import services
 from apps.ehr.autosave import (
@@ -60,6 +61,7 @@ from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.prescription.services import authorize_encounter
 from apps.teleconsult.services import TeleconsultAccessDeniedError, create_session
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import EnvelopeFormatError
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
 from django.test.utils import CaptureQueriesContext
@@ -121,6 +123,19 @@ def draft_world(graph: RbacGraph) -> ClinicalDocumentVersion:
     appointment, template = seed(graph)
     with as_actor(graph, graph.physician):
         return draft(graph, appointment, template)
+
+
+def unscheduled_draft_world(graph: RbacGraph) -> tuple[UUID, ClinicalDocumentVersion]:
+    _, template = seed(graph)
+    physician, enrolled = permission_actor(graph, "physician")
+    with as_actor(graph, physician):
+        encounter = open_walk_in(graph, enrolled)
+        version = create_draft(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            template_id=template.pk,
+        )
+    return physician, version
 
 
 def save(  # noqa: PLR0913 - test shorthand for the command's keyword contract
@@ -512,10 +527,15 @@ def test_handover_moves_the_lock_after_the_holder_saves(
         assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
 
 
+@pytest.mark.parametrize("unscheduled", [False, True], ids=["scheduled", "unscheduled"])
 def test_autosave_refuses_every_non_author_and_writes_nothing(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, unscheduled: bool
 ) -> None:
-    version = draft_world(rbac_graph)
+    physician, version = (
+        unscheduled_draft_world(rbac_graph)
+        if unscheduled
+        else (rbac_graph.physician, draft_world(rbac_graph))
+    )
     audit_before = len(audit_types(rbac_graph))
     for role in ROLES:
         actor, _ = permission_actor(rbac_graph, role)
@@ -525,7 +545,7 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
         ):
             save(rbac_graph, version.pk, 1)
     # Foreign clinic scope, unknown draft and no membership share the denial.
-    with as_actor(rbac_graph, rbac_graph.physician):
+    with as_actor(rbac_graph, physician):
         with pytest.raises(ClinicalAccessDeniedError):
             autosave_draft(
                 clinic_id=rbac_graph.clinic_b,
@@ -545,9 +565,9 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
         pytest.raises((ClinicalAccessDeniedError, CurrentActorError)),
     ):
         save(rbac_graph, version.pk, 1)
-    User.objects.filter(pk=rbac_graph.physician).update(is_active=False)
+    User.objects.filter(pk=physician).update(is_active=False)
     with (
-        permission_context(rbac_graph, rbac_graph.physician),
+        permission_context(rbac_graph, physician),
         pytest.raises((ClinicalAccessDeniedError, CurrentActorError)),
     ):
         save(rbac_graph, version.pk, 1)
@@ -917,18 +937,13 @@ def test_unscheduled_encounter_carries_the_draft_lifecycle(
 
 def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
     """Pin the timed tenant_context -> autosave path through transaction exit."""
-    _, template = seed(rbac_graph)
-    physician, enrolled = permission_actor(rbac_graph, "physician")
+    physician, version = unscheduled_draft_world(rbac_graph)
     with as_actor(rbac_graph, physician):
-        encounter = open_walk_in(rbac_graph, enrolled)
-        version = create_draft(
-            clinic_id=rbac_graph.clinic_a,
-            encounter_id=encounter.pk,
-            template_id=template.pk,
-        )
         first = save(rbac_graph, version.pk, 1)
     assert (first.status, first.revision) == (AutosaveStatus.SAVED, 2)
-    before = len(audit_types(rbac_graph))
+    with owner_context(rbac_graph.organization_a):
+        events = AuditEvent.objects.filter(organization_id=rbac_graph.organization_a)
+        before = events.latest("seq").seq
     with (
         runtime_role(),
         CaptureQueriesContext(connection) as captured,
@@ -936,9 +951,10 @@ def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
     ):
         result = save(rbac_graph, version.pk, 2, sections={**SECTIONS, "plan": "Novo"})
     assert (result.status, result.revision) == (AutosaveStatus.SAVED, 3)
+    _assert_audit_lock_work([q["sql"] for q in captured])
     # Includes authority reads, savepoints, crypto, audit writes, inbox hint
     # scope lookup, commit and GUC cleanup; setup and role switching are out.
-    assert len(captured) == 85
+    assert len(captured) == 74
     # The writer still takes the fresh RLS locking read, without fetching SOAP.
     assert tuple(
         '"ehr_clinicaldocumentversion"."content"' in q["sql"]
@@ -952,11 +968,102 @@ def test_warm_unscheduled_autosave_query_budget(rbac_graph: RbacGraph) -> None:
         )
         == 1
     )
-    assert audit_types(rbac_graph)[before:] == [
-        "ehr.record.viewed",
-        "ehr.record.viewed",
-        "ehr.document.saved",
-    ]
+    with owner_context(rbac_graph.organization_a):
+        appended = list(events.filter(seq__gt=before).order_by("seq"))
+        assert [event.event_type for event in appended] == [
+            "ehr.record.viewed",
+            "ehr.record.viewed",
+            "ehr.document.saved",
+        ]
+        assert {
+            (event.actor_user_id, event.affected_record_id) for event in appended
+        } == {(physician, str(version.pk))}
+        assert [event.payload for event in appended] == [
+            {"clinic_id": str(rbac_graph.clinic_a), "object_verb": verb}
+            for verb in ("viewed", "viewed", "saved")
+        ]
+        assert verify_chain(rbac_graph.organization_a).last_seq == appended[-1].seq
+
+
+def _assert_audit_lock_work(statements: list[str]) -> None:
+    # The first successful append acquires the organization xact lock.
+    # Releasing a savepoint does not release it; only the outer commit does.
+    view, writer_view, saved = (
+        i
+        for i, sql in enumerate(statements)
+        if "SELECT clinic_app.audit_append(" in sql
+    )
+    phases = (
+        statements[:view],
+        statements[view:writer_view],
+        statements[writer_view:saved],
+        statements[saved:],
+    )
+    assert [
+        sum(
+            'FROM "identity_userclinicrole"' in sql
+            and 'AS "assigned"' in sql
+            and 'AS "authored"' in sql
+            for sql in phase
+        )
+        for phase in phases
+    ] == [1, 1, 1, 2]
+    # One full audited read before the lock, then only the required locking
+    # read's reveal before the second append. Reloading SOAP in that audit
+    # turns the latter count into two, even if other work was also removed.
+    assert [
+        sum("clinic_app.protected_decrypt(" in sql for sql in phase)
+        for phase in phases[:2]
+    ] == [1, 1]
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "app.current_principal",
+        "app.current_scim_token",
+        "app.current_support_grant",
+        "app.current_sso_connection",
+    ],
+)
+def test_unscheduled_autosave_refuses_nonstaff_context(
+    rbac_graph: RbacGraph, setting: str
+) -> None:
+    physician, version = unscheduled_draft_world(rbac_graph)
+    before = audit_types(rbac_graph)
+    # Seed an otherwise-authorized staff identity, then add a nonstaff
+    # credential context. No staff authority can be borrowed through it.
+    with permission_context(rbac_graph, physician), connection.cursor() as cursor:
+        cursor.execute("SELECT set_config(%s, %s, true)", [setting, str(uuid4())])
+        with pytest.raises((ClinicalAccessDeniedError, CurrentActorError)):
+            save(rbac_graph, version.pk, 1)
+    assert audit_types(rbac_graph) == before
+    assert stored(rbac_graph, version.pk)[0] == 1
+    assert count(rbac_graph, DraftSaveReceipt, version_id=version.pk) == 0
+
+
+def test_unscheduled_autosave_leaves_corrupt_soap_unmodified(
+    rbac_graph: RbacGraph,
+) -> None:
+    physician, version = unscheduled_draft_world(rbac_graph)
+    # Inject a malformed envelope into the synthetic draft as fixture setup.
+    # This is still a valid revision transition; no guard is disabled.
+    with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE clinic_app.ehr_clinicaldocumentversion "
+            "SET content = %s, content_sha256 = %s, revision = 2 WHERE id = %s",
+            [b"short", "a" * 64, version.pk],
+        )
+        assert cursor.rowcount == 1
+    before = audit_types(rbac_graph)
+    with as_actor(rbac_graph, physician), pytest.raises(EnvelopeFormatError):
+        save(rbac_graph, version.pk, 2)
+    with owner_context(rbac_graph.organization_a):
+        revision = ClinicalDocumentVersion.objects.values_list("revision", flat=True)
+        assert revision.get(pk=version.pk) == 2
+    assert audit_types(rbac_graph) == before
+    assert count(rbac_graph, DraftEditState, version_id=version.pk) == 0
+    assert count(rbac_graph, DraftSaveReceipt, version_id=version.pk) == 0
 
 
 # --------------------------------------------------------------------------

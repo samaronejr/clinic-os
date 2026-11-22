@@ -111,6 +111,14 @@ BOUNDARIES = (
         ),
     ),
     Boundary(
+        "apps.ehr.services._view_version",
+        "resolver",
+        PHYSICIAN,
+        lambda w, ok: services._view_version(
+            clinic_id=w.clinic_for(ok), version_id=w.version.pk, include_content=False
+        ),
+    ),
+    Boundary(
         "apps.ehr.services.view_version",
         "resolver",
         PHYSICIAN,

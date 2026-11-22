@@ -3483,6 +3483,19 @@
       ]
     },
     {
+      "symbol": "apps.ehr.services._author_scope",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "Rechecks the scoped encounter's assignee and version author at every write fence. Unscheduled autosave combines live membership, ehr_assigned and the RLS-visible author without caching across fences. The autosave refusal matrix runs both encounter shapes; the late-revocation HTTP test requires the ordinary refusal and no surviving view or save audit."
+    },
+    {
       "symbol": "apps.ehr.services._denied",
       "signals": [
         "denial",
@@ -3507,10 +3520,33 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.assignee_scope",
+      "symbol": "apps.ehr.services._version_encounter",
       "signals": [
         "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "The exact-clinic version resolver followed by the FORCE RLS encounter lookup. Unknown and foreign versions share the silent denial."
+    },
+    {
+      "symbol": "apps.ehr.services._view_version",
+      "signals": [
+        "actor",
+        "denial",
         "resolver",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services._view_version"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.assignee_scope",
+      "signals": [
         "scope_name"
       ],
       "kind": "delegated",
@@ -3523,7 +3559,6 @@
     {
       "symbol": "apps.ehr.services.author_scope",
       "signals": [
-        "denial",
         "scope_name"
       ],
       "kind": "delegated",
@@ -3531,7 +3566,7 @@
         "apps.ehr.services._encounter_actor",
         "clinic_app.ehr_version_scope"
       ],
-      "reason": "Plan item 27 write-ordering gate shared by record_clinical_note, autosave_draft, section_edit_epochs and the explicit save/discard handlers (EHR workspace and teleconsult notes). With reads only, it takes the version's clinic scope and the encounter's assignee from assignee_scope (ehr_version_scope, _encounter_actor), then decides authorship, before any write, the read audit included. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused here. test_autosave_refuses_every_non_author_and_writes_nothing executes all 10 catalog roles, foreign and unknown scope, and no-membership and inactive actors. tests/ehr/test_refusal_matrix.py drives every save route and mode as a care reader and a receptionist and asserts no committed row."
+      "reason": "Plan item 27 write-ordering gate for section_edit_epochs and explicit save/discard handlers (EHR workspace and teleconsult notes), using the same scoped encounter, assignee and author decision as the writer. With reads only it refuses a care reader who may pass view_version. The write-ordering and refusal-matrix tests exercise these checks at their actual entry points."
     },
     {
       "symbol": "apps.ehr.services.create_draft",
@@ -3587,19 +3622,6 @@
         "apps.ehr.services.open_encounter"
       ],
       "reason": "Plan item 27: rechecks an encounter's assignment. Scheduled encounters go through open_encounter and unscheduled ones through _encounter_actor. Executed for the assignee and a refused colleague on an unscheduled encounter (test_unscheduled_encounter_carries_the_draft_lifecycle), and for the assignee by every encounter page test."
-    },
-    {
-      "symbol": "apps.ehr.services.view_version",
-      "signals": [
-        "actor",
-        "denial",
-        "resolver",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services.view_version"
-      ]
     },
     {
       "symbol": "apps.ehr.specialty_forms.specialty_forms",
@@ -10921,6 +10943,7 @@
     "apps.ehr.services._assigned",
     "apps.ehr.services._denied",
     "apps.ehr.services._encounter_actor",
+    "apps.ehr.services._view_version",
     "apps.ehr.services.create_draft",
     "apps.ehr.services.open_encounter",
     "apps.ehr.services.publish_template",
@@ -11649,7 +11672,7 @@
     },
     {
       "path": "apps/ehr/services.py",
-      "function": "view_version",
+      "function": "_view_version",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
