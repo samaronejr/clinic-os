@@ -74,11 +74,11 @@ def test_disabled_transport_reports_unavailability(settings: SettingsWrapper) ->
 def test_failed_publication_is_observable_without_echoing_exception(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    def unavailable() -> None:
+    def unavailable(url: str, pid: int) -> None:
         message = "SINTETICO-SENTINELA-PHI"
         raise RedisConnectionError(message)
 
-    monkeypatch.setattr(transport, "redis_client", unavailable)
+    monkeypatch.setattr(transport, "_publisher_pool", unavailable)
     transport.publish(topic=f"clinic:{uuid4()}:agenda", kind="agenda", version=1)
     assert len(caplog.records) == 1
     assert caplog.records[0].levelname == "WARNING"

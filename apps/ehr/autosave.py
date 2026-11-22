@@ -42,6 +42,7 @@ from apps.ehr.services import (
     MAX_CONTENT,
     SOAP_FIELDS,
     ClinicalConflictError,
+    _author_scope,
     _record_clinical_note,
     author_scope,
     decided,
@@ -250,7 +251,7 @@ def _write(  # noqa: PLR0913 - one locked save and its bookkeeping
         version_id=version.pk,
         expected_revision=expected_revision,
         content=content,
-        locked_edit_state=state,
+        locked_draft=(version, state),
     )
     if handover_to is not None:
         # This session's text is saved first; the lock then moves.
@@ -369,7 +370,10 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
     content = _validated(
         expected_revision, editor_command_id, editor_session_id, sections
     )
-    author_scope(clinic_id=clinic_id, version_id=version_id)
+    decide = partial(
+        _author_scope, clinic_id=clinic_id, version_id=version_id, for_autosave=True
+    )
+    decide()
     command = _Command(
         clinic_id=clinic_id,
         version_id=version_id,
@@ -390,7 +394,7 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         # author_scope (RLS then hides the draft or its receipt, or refuses a
         # later statement) rolls the read audit back with whatever failed and
         # is decided again outside the boundary.
-        with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
+        with decided(decide):
             result = _decide_locked(command)
     except _DraftUnavailableError:
         # decided found authority intact: only a draft that is no longer

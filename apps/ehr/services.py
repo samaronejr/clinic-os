@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, NoReturn
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Q
+from django.db.models import BooleanField, Exists, Q
+from django.db.models.expressions import RawSQL
 from django.utils import timezone
 
 from apps.audit.canonical import AuditEventInput
@@ -152,7 +153,12 @@ def _assigned(appointment: Appointment) -> UUID:
     return actor
 
 
-def _encounter_actor(clinic_id: UUID, encounter: Encounter) -> UUID:
+def _encounter_actor(
+    clinic_id: UUID,
+    encounter: Encounter,
+    *,
+    autosave_version_id: UUID | None = None,
+) -> UUID:
     """Return the encounter's assigned physician, the same rule as ``ehr_assigned``.
 
     A scheduled-bound encounter keeps the appointment predicate unchanged. An
@@ -162,12 +168,42 @@ def _encounter_actor(clinic_id: UUID, encounter: Encounter) -> UUID:
     if encounter.appointment_id is not None:
         return _assigned(_appointment(clinic_id, encounter.appointment_id))
     actor = current_actor_id()
-    if (
-        encounter.clinic_id != clinic_id
-        or not UserClinicRole.objects.filter(
-            clinic_id=clinic_id, user_id=actor
-        ).exists()
-    ):
+    if encounter.clinic_id != clinic_id:
+        raise ClinicalAccessDeniedError
+    memberships = UserClinicRole.objects.filter(clinic_id=clinic_id, user_id=actor)
+    if autosave_version_id is not None:
+        # One fresh snapshot of the same three decisions at each autosave
+        # fence. An absent membership is silent; keep assignment and authorship
+        # separate so the first failed check still names the same audit target.
+        decision = next(
+            iter(
+                memberships.annotate(
+                    assigned=RawSQL(
+                        "clinic_app.ehr_assigned(%s)",
+                        (encounter.pk,),
+                        output_field=BooleanField(),
+                    ),
+                    authored=Exists(
+                        ClinicalDocumentVersion.objects.filter(
+                            pk=autosave_version_id,
+                            author_id=actor,
+                        )
+                    ),
+                )
+                .order_by()
+                .values_list("assigned", "authored")[:1]
+            ),
+            None,
+        )
+        if decision is None:
+            raise ClinicalAccessDeniedError
+        assigned, authored = decision
+        if assigned is not True:
+            _denied(clinic_id, encounter.pk, "not_assigned")
+        if authored is not True:
+            _denied(clinic_id, autosave_version_id, "not_assigned")
+        return actor
+    if not memberships.exists():
         raise ClinicalAccessDeniedError
     # The database predicate every clinical policy uses decides: an active
     # physician of the clinic who opened this unscheduled encounter.
@@ -448,6 +484,14 @@ def create_draft(
 
 def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersion:
     """Read only versions admitted by both the clinical predicate and FORCE RLS."""
+    return _view_version(
+        clinic_id=clinic_id, version_id=version_id, include_content=True
+    )
+
+
+def _view_version(
+    *, clinic_id: UUID, version_id: UUID, include_content: bool
+) -> ClinicalDocumentVersion:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ehr_version_scope(%s, %s)", [clinic_id, version_id]
@@ -459,13 +503,18 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
         require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     except CurrentActorError:
         _denied(clinic_id, version_id, "role_denied")
+    versions = ClinicalDocumentVersion.objects.filter(
+        pk=version_id, document__encounter__clinic_id=clinic_id
+    ).select_related("template", "document__encounter")
+    # Preserve the same joins and RLS checks; the writer's repeat view audit
+    # needs no content from the already-read, locked version.
     version = (
-        ClinicalDocumentVersion.objects.filter(
-            pk=version_id, document__encounter__clinic_id=clinic_id
+        versions
+        if include_content
+        else versions.only(
+            "state", "author_id", "template__id", "document__encounter__id"
         )
-        .select_related("template", "document__encounter")
-        .first()
-    )
+    ).first()
     if version is None:
         _denied(clinic_id, version_id, "no_care_relationship")
     with connection.cursor() as cursor:
@@ -490,14 +539,7 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     return version
 
 
-def assignee_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
-    """Decide the version's clinic scope and its encounter's assignee, reads only.
-
-    Writers that act as the encounter's assigned physician rather than as the
-    version's author (amendment) call this before their first write, the read
-    audit included. Unknown and foreign versions share the undistinguished
-    denial; in-clinic refusals keep the fixed ``ehr.access.denied`` record.
-    """
+def _version_encounter(*, clinic_id: UUID, version_id: UUID) -> Encounter:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ehr_version_scope(%s, %s)", [clinic_id, version_id]
@@ -508,7 +550,20 @@ def assignee_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
     encounter = Encounter.objects.filter(pk=scope[0], clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    return _encounter_actor(clinic_id, encounter)
+    return encounter
+
+
+def assignee_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide the version's clinic scope and its encounter's assignee, reads only.
+
+    Writers that act as the encounter's assigned physician rather than as the
+    version's author (amendment) call this before their first write, the read
+    audit included. Unknown and foreign versions share the undistinguished
+    denial; in-clinic refusals keep the fixed ``ehr.access.denied`` record.
+    """
+    return _encounter_actor(
+        clinic_id, _version_encounter(clinic_id=clinic_id, version_id=version_id)
+    )
 
 
 def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
@@ -520,13 +575,28 @@ def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
     share the undistinguished denial; in-clinic refusals keep the fixed
     metadata-only ``ehr.access.denied`` record.
     """
-    actor = assignee_scope(clinic_id=clinic_id, version_id=version_id)
+    actor, _ = _author_scope(
+        clinic_id=clinic_id, version_id=version_id, for_autosave=False
+    )
+    return actor
+
+
+def _author_scope(
+    *, clinic_id: UUID, version_id: UUID, for_autosave: bool
+) -> tuple[UUID, bool]:
+    """Return the active author and whether this version is unscheduled."""
+    encounter = _version_encounter(clinic_id=clinic_id, version_id=version_id)
+    unscheduled = encounter.appointment_id is None
+    if for_autosave and unscheduled:
+        actor = _encounter_actor(clinic_id, encounter, autosave_version_id=version_id)
+        return actor, unscheduled
+    actor = _encounter_actor(clinic_id, encounter)
     version = (
         ClinicalDocumentVersion.objects.filter(pk=version_id).only("author_id").first()
     )
     if version is None or version.author_id != actor:
         _denied(clinic_id, version_id, "not_assigned")
-    return actor
+    return actor, unscheduled
 
 
 def record_clinical_note(
@@ -542,7 +612,7 @@ def record_clinical_note(
         version_id=version_id,
         expected_revision=expected_revision,
         content=content,
-        locked_edit_state=None,
+        locked_draft=None,
     )
 
 
@@ -552,13 +622,22 @@ def _record_clinical_note(
     version_id: UUID,
     expected_revision: int,
     content: dict[str, str],
-    locked_edit_state: DraftEditState | None,
+    locked_draft: tuple[ClinicalDocumentVersion, DraftEditState] | None,
 ) -> ClinicalDocumentVersion:
-    """Share the authorized revision writer with autosave, which locks edit state."""
-    if locked_edit_state is not None and locked_edit_state.version_id != version_id:
-        msg = "locked edit state belongs to a different draft"
+    """Share the authorized writer with autosave, which already holds both rows."""
+    if locked_draft is not None and (
+        locked_draft[0].pk != version_id or locked_draft[1].version_id != version_id
+    ):
+        msg = "locked rows belong to a different draft"
         raise ValueError(msg)
-    author_scope(clinic_id=clinic_id, version_id=version_id)
+    for_autosave = locked_draft is not None
+    decide = partial(
+        _author_scope,
+        clinic_id=clinic_id,
+        version_id=version_id,
+        for_autosave=for_autosave,
+    )
+    _, unscheduled = decide()
     if set(content) != set(SOAP_FIELDS) or any(
         not isinstance(v, str) or len(v) > MAX_CONTENT for v in content.values()
     ):
@@ -567,23 +646,39 @@ def _record_clinical_note(
     # The read audit is the first write; pinned_read decides authorship again
     # right after it. The locked write decides it once more on every path, the
     # unchanged no-op included.
-    pinned_read(
-        partial(view_version, clinic_id=clinic_id, version_id=version_id),
-        partial(author_scope, clinic_id=clinic_id, version_id=version_id),
+    read = (
+        partial(
+            _view_version,
+            clinic_id=clinic_id,
+            version_id=version_id,
+            include_content=False,
+        )
+        if for_autosave and unscheduled
+        else partial(view_version, clinic_id=clinic_id, version_id=version_id)
     )
-    with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
+    pinned_read(read, decide)
+    with decided(decide):
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path
         # is the contract's precondition_failed conflict, never a 500.
-        version = (
-            ClinicalDocumentVersion.objects.select_for_update()
-            .filter(pk=version_id)
-            .first()
+        locked = ClinicalDocumentVersion.objects.select_for_update().filter(
+            pk=version_id
         )
-        if version is None or version.state != "draft":
+        # Keep the fresh RLS/locking decision. Autosave already holds the
+        # version lock, so use its SOAP only for the same state and revision.
+        if locked_draft is not None:
+            locked = locked.only("state", "revision", "content_sha256")
+        checked = locked.first()
+        if checked is None or checked.state != "draft":
             msg = "precondition_failed"
             raise ClinicalConflictError(msg)
-        if version.revision != expected_revision:
+        version = checked if locked_draft is None else locked_draft[0]
+        if (
+            checked.revision != expected_revision
+            or version.state != checked.state
+            or version.revision != checked.revision
+            or version.content_sha256 != checked.content_sha256
+        ):
             msg = "stale_revision"
             raise ClinicalConflictError(msg)
         stored_sha256 = version.content_sha256
@@ -599,9 +694,7 @@ def _record_clinical_note(
             update_fields=("content", "content_sha256", "revision", "updated_at")
         )
         state = (
-            locked_edit_state
-            if locked_edit_state is not None
-            else draft_edit_state(version)
+            locked_draft[1] if locked_draft is not None else draft_edit_state(version)
         )
         _advance_section_epochs(state, previous, content)
         record_phase1_event(
