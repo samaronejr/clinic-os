@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import errno
 import json
 import math
 import os
@@ -37,6 +38,11 @@ WORKER_COUNT: Final = 2
 REQUEST_TIMEOUT_SECONDS: Final = 30
 MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
+# Linux TCP_TIMEWAIT_LEN is 60 seconds. This budget is for retired
+# connections only; it does not extend either process-group grace period.
+PORT_RELEASE_SECONDS: Final = 65
+TCP_TIME_WAIT: Final = "06"
+TFD_TIMER_ABSTIME: Final = 1
 PR_SET_CHILD_SUBREAPER: Final = 36
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
@@ -232,17 +238,84 @@ def _terminate_group(process: subprocess.Popen[bytes]) -> None:
     _fail("Gunicorn process group or listener still owned after teardown deadline")
 
 
-def require_released_port(port: int) -> None:
-    """Refuse success if the old port cannot be bound without a live listener."""
+def _time_wait_seconds(port: int) -> float | None:
+    # /proc exposes the remaining kernel timer in clock ticks. Only consider
+    # retired TCP sockets at the address this IPv4 listener used.
+    latest: int | None = None
+    with Path("/proc/self/net/tcp").open(encoding="ascii") as table:
+        next(table)
+        for line in table:
+            fields = line.split()
+            host, local_port = fields[1].split(":")
+            if (
+                fields[3] == TCP_TIME_WAIT
+                and int(local_port, 16) == port
+                and host in {"0100007F", "00000000"}
+            ):
+                _, ticks = fields[5].split(":")
+                latest = max(latest or 0, int(ticks, 16))
+    # Round up the exported tick count rather than waking before expiry.
+    return None if latest is None else (latest + 1) / os.sysconf("SC_CLK_TCK")
+
+
+class _Timespec(ctypes.Structure):
+    _fields_ = (("seconds", ctypes.c_long), ("nanoseconds", ctypes.c_long))
+
+
+class _TimerSpec(ctypes.Structure):
+    _fields_ = (("interval", _Timespec), ("value", _Timespec))
+
+
+def _wait_for_tcp_expiry(until: float) -> None:
+    # Python 3.12 does not expose timerfd; wait for the observed kernel
+    # expiry on a monotonic timer FD rather than periodically probing.
+    library = ctypes.CDLL(None, use_errno=True)
+    fd = int(library.timerfd_create(time.CLOCK_MONOTONIC, os.O_CLOEXEC))
+    if fd < 0:
+        _fail("could not open a Gunicorn port release timer")
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            # Match Gunicorn's reuse setting so harmless TIME_WAIT is not a leak.
-            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(("127.0.0.1", port))
-            probe.listen()
-    except OSError as error:
+        seconds = int(until)
+        expiration = _Timespec(seconds, int((until - seconds) * 1e9))
+        timer = _TimerSpec(_Timespec(), expiration)
+        armed = library.timerfd_settime(
+            fd, TFD_TIMER_ABSTIME, ctypes.byref(timer), None
+        )
+        if armed != 0:
+            _fail("could not arm the Gunicorn port release timer")
+        os.read(fd, 8)
+    finally:
+        os.close(fd)
+
+
+def require_released_port(port: int) -> None:
+    """Prove an ordinary caller can bind after the owned listener closes."""
+    deadline = time.monotonic() + PORT_RELEASE_SECONDS
+    while (error := _ordinary_bind_error(port)) is not None:
+        if error.errno != errno.EADDRINUSE or time.monotonic() >= deadline:
+            break
+        try:
+            remaining = _time_wait_seconds(port)
+        except OSError as inspect_error:
+            message = "could not inspect Gunicorn port release state"
+            raise SupervisorError(message) from inspect_error
+        if remaining is None:
+            # A retired socket can expire between the bind and the table read.
+            # Check once against the observed state; a live holder still fails.
+            error = _ordinary_bind_error(port)
+            break
+        _wait_for_tcp_expiry(min(deadline, time.monotonic() + remaining))
+    if error is not None:
         message = "Gunicorn listener port was not released"
         raise SupervisorError(message) from error
+
+
+def _ordinary_bind_error(port: int) -> OSError | None:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", port))
+    except OSError as error:
+        return error
+    return None
 
 
 class SupervisedMaster:

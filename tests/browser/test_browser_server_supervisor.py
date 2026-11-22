@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -253,12 +254,54 @@ def test_dead_master_teardown_releases_the_inherited_listener(
                 _rescue_worker(worker)
 
 
-def test_release_check_rejects_a_port_that_is_still_listening() -> None:
-    with (
-        controller.reserve_listener() as listener,
-        pytest.raises(supervisor.SupervisorError, match="port was not released"),
-    ):
-        supervisor.require_released_port(int(listener.getsockname()[1]))
+@pytest.mark.parametrize("listening", [True, False], ids=["listener", "reservation"])
+def test_release_check_requires_an_ordinary_bind(listening: bool) -> None:
+    with socket.socket() as held:
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind((controller.HOST, 0))
+        address = held.getsockname()
+        if listening:
+            held.listen()
+        with pytest.raises(supervisor.SupervisorError, match="port was not released"):
+            supervisor.require_released_port(int(address[1]))
+    # The post-teardown caller can bind only after the reservation closes.
+    supervisor.require_released_port(int(address[1]))
+    with socket.socket() as probe:
+        probe.bind(address)
+
+
+def test_release_check_waits_for_tcp_expiry_but_refuses_at_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with controller.reserve_listener() as listener, socket.socket() as client:
+        address = listener.getsockname()
+        client.settimeout(10)
+        listener.settimeout(10)
+        client.connect(address)
+        accepted, _ = listener.accept()
+        with accepted:
+            accepted.settimeout(10)
+            # The server sends the first FIN and therefore owns TIME_WAIT.
+            accepted.shutdown(socket.SHUT_WR)
+            assert client.recv(1) == b""
+            client.shutdown(socket.SHUT_WR)
+            assert accepted.recv(1) == b""
+
+    now = 100.0
+    deadlines: list[float] = []
+
+    def advance_clock(until: float) -> None:
+        nonlocal now
+        deadlines.append(until)
+        now = until
+
+    monkeypatch.setattr(time, "monotonic", lambda: now)
+    monkeypatch.setattr(supervisor, "PORT_RELEASE_SECONDS", 1)
+    monkeypatch.setattr(supervisor, "_wait_for_tcp_expiry", advance_clock)
+    with pytest.raises(supervisor.SupervisorError, match="port was not released"):
+        supervisor.require_released_port(int(address[1]))
+
+    assert deadlines == [101.0]
 
 
 class _HandoffInterruptError(Exception):
