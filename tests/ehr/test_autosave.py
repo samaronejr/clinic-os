@@ -125,17 +125,37 @@ def draft_world(graph: RbacGraph) -> ClinicalDocumentVersion:
         return draft(graph, appointment, template)
 
 
-def unscheduled_draft_world(graph: RbacGraph) -> tuple[UUID, ClinicalDocumentVersion]:
+def unscheduled_draft_world(
+    graph: RbacGraph, *, physician: UUID | None = None
+) -> tuple[UUID, ClinicalDocumentVersion]:
     _, template = seed(graph)
-    physician, enrolled = permission_actor(graph, "physician")
+    if physician is None:
+        physician, enrolled = permission_actor(graph, "physician")
+    else:
+        registration(graph, physician, graph.clinic_a)
+        enrolled = enrollment(graph, graph.clinic_a)
     with as_actor(graph, physician):
         encounter = open_walk_in(graph, enrolled)
+        assert encounter.appointment_id is None
         version = create_draft(
             clinic_id=graph.clinic_a,
             encounter_id=encounter.pk,
             template_id=template.pk,
         )
     return physician, version
+
+
+@pytest.fixture(params=("scheduled", "unscheduled"))
+def editor_draft(
+    rbac_graph: RbacGraph, request: pytest.FixtureRequest
+) -> ClinicalDocumentVersion:
+    """The authenticated test physician owns the draft in either encounter shape."""
+    if request.param == "scheduled":
+        return draft_world(rbac_graph)
+    _, draft_version = unscheduled_draft_world(
+        rbac_graph, physician=rbac_graph.physician
+    )
+    return draft_version
 
 
 def save(  # noqa: PLR0913 - test shorthand for the command's keyword contract
@@ -278,9 +298,11 @@ def care_team(graph: RbacGraph, user: UUID, enrolled: UUID) -> None:
 
 
 def test_autosave_acknowledges_revisions_and_counts_section_epochs(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     now = clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
         first = save(rbac_graph, version.pk, 1)
@@ -339,8 +361,10 @@ def test_every_accepted_write_advances_section_epochs(rbac_graph: RbacGraph) -> 
         ) == {"subjective": 1, "objective": 1, "assessment": 1, "plan": 3}
 
 
-def test_replay_writes_once_and_a_reused_key_is_refused(rbac_graph: RbacGraph) -> None:
-    version = draft_world(rbac_graph)
+def test_replay_writes_once_and_a_reused_key_is_refused(
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
+) -> None:
+    version = editor_draft
     command = uuid4()
     with as_actor(rbac_graph, rbac_graph.physician):
         first = save(rbac_graph, version.pk, 1, command=command)
@@ -365,9 +389,9 @@ def test_replay_writes_once_and_a_reused_key_is_refused(rbac_graph: RbacGraph) -
 
 
 def test_concurrent_replay_of_one_command_increments_once(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     command = uuid4()
     barrier = Barrier(2, timeout=15)
 
@@ -387,8 +411,10 @@ def test_concurrent_replay_of_one_command_increments_once(
     assert count(rbac_graph, DraftSaveReceipt) == 1
 
 
-def test_two_tabs_racing_one_revision_save_exactly_once(rbac_graph: RbacGraph) -> None:
-    version = draft_world(rbac_graph)
+def test_two_tabs_racing_one_revision_save_exactly_once(
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
+) -> None:
+    version = editor_draft
     barrier = Barrier(2, timeout=15)
     texts = {TAB_A: "Aba A", TAB_B: "Aba B"}
 
@@ -417,9 +443,11 @@ def test_two_tabs_racing_one_revision_save_exactly_once(rbac_graph: RbacGraph) -
 
 
 def test_stale_revision_compares_and_never_overwrites(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     theirs = {**SECTIONS, "assessment": "Linha comum\nLinha da aba A"}
     mine = {**SECTIONS, "assessment": "Linha comum\nLinha da aba B"}
     clock(timedelta(0))
@@ -475,9 +503,11 @@ def test_section_diff_marks_saved_only_and_editor_only_lines() -> None:
 
 
 def test_lock_refuses_other_tabs_until_it_expires(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
         save(rbac_graph, version.pk, 1)
@@ -502,29 +532,59 @@ def test_lock_refuses_other_tabs_until_it_expires(
 
 
 def test_handover_moves_the_lock_after_the_holder_saves(
-    rbac_graph: RbacGraph, clock: Callable[[timedelta], datetime]
+    rbac_graph: RbacGraph,
+    editor_draft: ClinicalDocumentVersion,
+    clock: Callable[[timedelta], datetime],
 ) -> None:
-    version = draft_world(rbac_graph)
+    version_id = editor_draft.pk
     clock(timedelta(0))
     with as_actor(rbac_graph, rbac_graph.physician):
-        save(rbac_graph, version.pk, 1)
-        asked = save(rbac_graph, version.pk, 1, session=TAB_B, handover=True)
+        save(rbac_graph, version_id, 1)
+        asked = save(rbac_graph, version_id, 1, session=TAB_B, handover=True)
         assert asked.status == AutosaveStatus.HANDOVER_REQUESTED
-        holder = save(rbac_graph, version.pk, 2, sections={**SECTIONS, "plan": "Final"})
-        assert (holder.status, holder.revision, holder.handed_over) == (
-            AutosaveStatus.SAVED,
-            3,
-            True,
-        )
-        assert save(rbac_graph, version.pk, 3).status == AutosaveStatus.LOCKED_BY_OTHER
-        # The requester's stale text is compared, never written over.
-        stale = save(rbac_graph, version.pk, 1, session=TAB_B)
-        assert stale.status == AutosaveStatus.CONFLICT
-        assert stored(rbac_graph, version.pk)[1]["plan"] == "Final"
-    assert audit_types(rbac_graph).count("ehr.draft.handed_over") == 1
+    events = AuditEvent.objects.filter(organization_id=rbac_graph.organization_a)
     with owner_context(rbac_graph.organization_a):
-        state = DraftEditState.objects.get(version_id=version.pk)
+        before = events.latest("seq").seq
+
+    command = uuid4()
+    changed = {**SECTIONS, "plan": "Final"}
+    with as_actor(rbac_graph, rbac_graph.physician):
+        holder = save(rbac_graph, version_id, 2, command=command, sections=changed)
+    assert (holder.status, holder.revision, holder.handed_over) == (
+        AutosaveStatus.SAVED,
+        3,
+        True,
+    )
+    assert stored(rbac_graph, version_id) == (3, changed)
+    with owner_context(rbac_graph.organization_a):
+        receipt = DraftSaveReceipt.objects.get(
+            version_id=version_id, command_id=command
+        )
+        assert (receipt.base_revision, receipt.revision, receipt.saved_at) == (
+            2,
+            3,
+            holder.saved_at,
+        )
+        state = DraftEditState.objects.get(version_id=version_id)
         assert (state.lock_holder, state.handover_requested_by) == (TAB_B, None)
+        chain = verify_chain(rbac_graph.organization_a)
+        assert chain.last_seq == events.latest("seq").seq
+        appended = events.filter(seq__gt=before).order_by("seq")
+        assert list(appended.values_list("event_type", flat=True)) == [
+            "ehr.record.viewed",
+            "ehr.record.viewed",
+            "ehr.document.saved",
+            "ehr.draft.handed_over",
+        ]
+        assert set(appended.values_list("affected_record_id", flat=True)) == {
+            str(version_id)
+        }
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert save(rbac_graph, version_id, 3).status == AutosaveStatus.LOCKED_BY_OTHER
+        # The requester's stale text is compared, never written over.
+        stale = save(rbac_graph, version_id, 1, session=TAB_B)
+        assert stale.status == AutosaveStatus.CONFLICT
+    assert stored(rbac_graph, version_id) == (3, changed)
 
 
 @pytest.mark.parametrize("unscheduled", [False, True], ids=["scheduled", "unscheduled"])
@@ -1320,9 +1380,9 @@ def test_ui_api_autosave_contract_and_identical_refusals(
 
 
 def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
-    rbac_graph: RbacGraph,
+    rbac_graph: RbacGraph, editor_draft: ClinicalDocumentVersion
 ) -> None:
-    version = draft_world(rbac_graph)
+    version = editor_draft
     request = verified_request(rbac_graph.physician)
     with as_actor(rbac_graph, rbac_graph.physician):
         save(rbac_graph, version.pk, 1)
@@ -1333,6 +1393,7 @@ def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
             request=request,
         )
     before = stored(rbac_graph, version.pk)
+    audit_before = audit_types(rbac_graph)
     with physician_client(rbac_graph) as client:
         refused = client.post(
             AUTOSAVE_URL,
@@ -1355,6 +1416,7 @@ def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
     )
     assert stored(rbac_graph, version.pk) == before
     assert count(rbac_graph, DraftSaveReceipt) == 1
+    assert audit_types(rbac_graph) == audit_before
 
 
 def test_explicit_stale_save_shows_the_compare_and_merges_explicitly(
