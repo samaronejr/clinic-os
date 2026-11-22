@@ -47,14 +47,23 @@ from config.display import (
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from ops.testing.browser_server_controller import reserve_listener, wait_until_ready
+from ops.testing.browser_server_controller import (
+    BrowserServerError,
+    listener_identity,
+    reserve_listener,
+    wait_until_ready,
+    with_server_log,
+)
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
     SupervisorError,
+    always_cleanup,
+    error_details,
     preserve_cleanup_error,
-    prove_port_release,
+    preserving_context,
     start_master,
     supervised_argv,
+    teardown_master,
 )
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.ci_pytest import coverage_targets
@@ -850,7 +859,10 @@ def _provision_database(
             passwords["CLINIC_SUPER_PASSWORD"],
             volume,
         )
-    finally:
+    except BaseException as error:
+        _remove_owned_database(container, volume, docker, pending=error)
+        raise
+    else:
         _remove_owned_database(container, volume, docker)
 
 
@@ -858,6 +870,8 @@ def _remove_owned_database(
     container: str,
     volume: str,
     docker: Callable[..., str],
+    *,
+    pending: BaseException | None = None,
 ) -> None:
     """Remove both owned resources; never turn failed teardown into success.
 
@@ -867,7 +881,6 @@ def _remove_owned_database(
     so recovery can find them, and an in-flight or fresh interruption always
     wins the exit contract.
     """
-    pending = sys.exception()
     failures: list[str] = []
     interrupted: RenewalInterruptError | None = None
     for arguments in (
@@ -1295,8 +1308,11 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         else _provision_database(repository, secrets.token_hex(8))
     )
     with (
-        _synthetic_secret_store(run_root) as secret_environment,
-        database_cm as database,
+        with_server_log(server_log),
+        preserving_context(
+            _synthetic_secret_store(run_root), "secret store cleanup failed"
+        ) as secret_environment,
+        preserving_context(database_cm, "database cleanup failed") as database,
         contextlib.ExitStack() as extra_processes,
     ):
         if override_dsn is not None:
@@ -1311,7 +1327,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
-        spawned: list[SupervisedMaster] = []
+        master: SupervisedMaster | None = None
         server_environment = {
             **_server_environment(app_dsn),
             **display_environment,
@@ -1327,40 +1343,55 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             ),
         }
         extra_processes.enter_context(
-            realtime_broker(
-                repository,
-                server_environment,
-                run_root,
-                enabled=suite in REALTIME_SUITES,
+            preserving_context(
+                realtime_broker(
+                    repository,
+                    server_environment,
+                    run_root,
+                    enabled=suite in REALTIME_SUITES,
+                ),
+                "realtime broker cleanup failed",
             )
         )
         frames = extra_processes.enter_context(
-            broker_tap(
-                server_environment["REALTIME_REDIS_URL"]
-                if suite in REALTIME_SUITES
-                else None
+            preserving_context(
+                broker_tap(
+                    server_environment["REALTIME_REDIS_URL"]
+                    if suite in REALTIME_SUITES
+                    else None
+                ),
+                "broker tap cleanup failed",
             )
         )
-        try:
+
+        def cleanup() -> None:
+            if master is not None:
+                _terminate_master(master, port=port)
+
+        with always_cleanup(cleanup, "browser server teardown failed"):
             with reserve_listener() as listener:
                 port, listener_fd = int(listener.getsockname()[1]), listener.fileno()
+                identity = listener_identity(listener)
                 master = start_master(
                     supervised_argv(
                         Path(sys.executable), listener_fd, artifact_root / "access.log"
                     ),
                     server_environment,
                     server_log,
-                    owner=spawned,
-                    pass_fds=(listener_fd,),
+                    owner=[],
+                    pass_fds=(listener,),
                 )
-            wait_until_ready(port, server_log, master.process)
+            wait_until_ready(port, master.process, identity)
             port_for_browser = extra_processes.enter_context(
-                browser_endpoint(
-                    repository,
-                    server_environment,
-                    run_root,
-                    port,
-                    enabled=suite in REALTIME_SUITES,
+                preserving_context(
+                    browser_endpoint(
+                        repository,
+                        server_environment,
+                        run_root,
+                        port,
+                        enabled=suite in REALTIME_SUITES,
+                    ),
+                    "browser endpoint cleanup failed",
                 )
             )
             base_url = f"http://127.0.0.1:{port_for_browser}"
@@ -1437,9 +1468,6 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     super_dsn=provisioned.super_dsn,
                     self_injecting=suite_injects_sentinels(SUITES[suite], repository),
                 )
-        finally:
-            if spawned:
-                _terminate_browser_master(spawned[0], port)
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
@@ -1549,11 +1577,6 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
     return results
 
 
-def _terminate_browser_master(master: SupervisedMaster, port: int) -> None:
-    with preserve_cleanup_error(sys.exception(), "browser server teardown failed"):
-        _terminate_master(master, port=port)
-
-
 def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
     """Terminate the supervised group; propagate any observed interruption.
 
@@ -1561,24 +1584,7 @@ def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> N
     abandon cleanup, but a cancellation observed during teardown is never
     swallowed: it is re-raised even when the retry succeeds.
     """
-    with prove_port_release(port):
-        interrupted: RenewalInterruptError | None = None
-        for _attempt in range(2):
-            try:
-                master.terminate()
-            except BaseException as error:
-                if interrupted is not None:
-                    interrupted.add_note(
-                        f"retry failed: {type(error).__name__}: {error}"
-                    )
-                    raise interrupted from error
-                if not isinstance(error, RenewalInterruptError):
-                    raise
-                interrupted = error
-            else:
-                break
-        if interrupted is not None:
-            raise interrupted
+    teardown_master(master, port)
 
 
 def _gate_migration(
@@ -1851,8 +1857,14 @@ def _gate_browser(
             code = 0
         except RenewalInterruptError:
             raise
-        except (IsolationError, OSError) as error:
-            report = {"error": str(error)}
+        except (
+            BrowserServerError,
+            IsolationError,
+            OSError,
+            SupervisorError,
+            ValueError,
+        ) as error:
+            report = {"error": error_details(error)}
             code = 2
         write_no_replace(
             suite_root / "report.json",
@@ -1886,13 +1898,19 @@ def _run_ci(repository: Path, artifact_root: Path, run_root: Path) -> int:
             # keep a best-effort partial report, and stop scheduling gates.
             gates[name] = cast(
                 "list[JsonValue]",
-                [{"command": name, "exit": 130, "error": str(error)}],
+                [{"command": name, "exit": 130, "error": error_details(error)}],
             )
-            with contextlib.suppress(IsolationError, OSError):
+            with preserve_cleanup_error(error, "partial CI report failed"):
                 _write_ci_report(artifact_root, gates)
             raise
-        except (IsolationError, OSError) as error:
-            results = [{"command": name, "exit": 2, "error": str(error)}]
+        except (
+            BrowserServerError,
+            IsolationError,
+            OSError,
+            SupervisorError,
+            ValueError,
+        ) as error:
+            results = [{"command": name, "exit": 2, "error": error_details(error)}]
         gates[name] = cast("list[JsonValue]", results)
     exits = _write_ci_report(artifact_root, gates)
     return 0 if exits and all(code == 0 for code in exits) else 1
@@ -1980,28 +1998,43 @@ def _interrupted(_signum: int, _frame: object) -> Never:
     raise RenewalInterruptError(message)
 
 
+@contextmanager
+def _interrupt_handlers() -> Iterator[None]:
+    previous_term = signal.signal(signal.SIGTERM, _interrupted)
+    with always_cleanup(
+        lambda: signal.signal(signal.SIGTERM, previous_term),
+        "SIGTERM handler restore failed",
+    ):
+        previous_int = signal.signal(signal.SIGINT, _interrupted)
+        with always_cleanup(
+            lambda: signal.signal(signal.SIGINT, previous_int),
+            "SIGINT handler restore failed",
+        ):
+            yield
+
+
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the closed browser/ci grammar; rejections exit 2."""
     arguments = sys.argv[1:] if argv is None else argv
-    previous_term = signal.signal(signal.SIGTERM, _interrupted)
-    previous_int = signal.signal(signal.SIGINT, _interrupted)
     try:
-        if not arguments:
+        with _interrupt_handlers():
+            if not arguments:
+                _fail("invalid renewal-runner command grammar")
+            operation, rest = arguments[0], arguments[1:]
+            if operation == "browser":
+                return _browser(rest)
+            if operation == "ci":
+                return _ci(rest)
             _fail("invalid renewal-runner command grammar")
-        operation, rest = arguments[0], arguments[1:]
-        if operation == "browser":
-            return _browser(rest)
-        if operation == "ci":
-            return _ci(rest)
-        _fail("invalid renewal-runner command grammar")
-    except (IsolationError, OSError, SupervisorError, ValueError) as error:
-        sys.stderr.write(f"renewal-runner: {error}\n")
-        for note in getattr(error, "__notes__", ()):
-            sys.stderr.write(f"renewal-runner: {note}\n")
+    except (
+        BrowserServerError,
+        IsolationError,
+        OSError,
+        SupervisorError,
+        ValueError,
+    ) as error:
+        sys.stderr.write(f"renewal-runner: {error_details(error)}\n")
         return 130 if isinstance(error, RenewalInterruptError) else 2
-    finally:
-        signal.signal(signal.SIGTERM, previous_term)
-        signal.signal(signal.SIGINT, previous_int)
 
 
 if __name__ == "__main__":

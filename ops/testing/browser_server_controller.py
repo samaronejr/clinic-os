@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import http.client
+import io
 import json
 import os
 import socket
@@ -28,9 +29,11 @@ from ops.testing.browser_artifact_publisher import (
 )
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_server_supervisor import (
+    always_cleanup,
     preserve_cleanup_error,
-    prove_port_release,
+    preserving_context,
     start_master,
+    teardown_master,
 )
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
@@ -77,7 +80,10 @@ def _fail(reason: str) -> Never:
 @contextlib.contextmanager
 def reserve_listener() -> Iterator[socket.socket]:
     """Own an ephemeral loopback listener until Gunicorn inherits it."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+    with preserving_context(
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+        "reserved listener close failed",
+    ) as listener:
         listener.bind((HOST, 0))
         if listener.getsockname()[1] == PROTECTED_DATABASE_PORT:
             _fail("ephemeral listener selected the protected database port")
@@ -85,42 +91,76 @@ def reserve_listener() -> Iterator[socket.socket]:
         yield listener
 
 
-def _readiness_failure(reason: str, server_log: Path) -> Never:
-    tail = ""
-    if server_log.exists():
-        tail = server_log.read_text(encoding="utf-8", errors="replace")[-2000:]
-    _fail(f"readiness never reached ({reason}); server log tail: {tail}")
+def _readiness_failure(reason: str) -> Never:
+    _fail(f"readiness never reached ({reason})")
 
 
-def _require_running(server: subprocess.Popen[bytes], server_log: Path) -> None:
+@contextlib.contextmanager
+def with_server_log(server_log: Path) -> Iterator[None]:
+    """Keep the server log tail with the primary startup or teardown failure."""
+    try:
+        yield
+    except BaseException as error:
+        with (
+            preserve_cleanup_error(error, "could not read server log tail"),
+            contextlib.suppress(FileNotFoundError),
+            server_log.open("rb") as stream,
+        ):
+            stream.seek(max(0, stream.seek(0, io.SEEK_END) - 2000))
+            tail = stream.read(2000).decode("utf-8", errors="replace")
+            BaseException.add_note(error, f"server log tail: {tail}")
+        raise
+
+
+def _require_running(server: subprocess.Popen[bytes]) -> None:
     status = server.poll()
     if status is not None:
-        _readiness_failure(f"server exited with status {status}", server_log)
+        _readiness_failure(f"server exited with status {status}")
 
 
 def wait_until_ready(
-    port: int, server_log: Path, server: subprocess.Popen[bytes]
+    port: int,
+    server: subprocess.Popen[bytes],
+    listener_identity: Path,
 ) -> None:
     """Poll the readiness endpoint until the supervised app serves traffic."""
     deadline = time.monotonic() + READY_TIMEOUT_SECONDS
     last = "no attempt"
     while time.monotonic() < deadline:
-        _require_running(server, server_log)
+        _require_running(server)
         connection = http.client.HTTPConnection(HOST, port, timeout=2)
-        try:
-            connection.request("GET", "/readyz")
-            status = connection.getresponse().status
-            if status == HTTPStatus.OK:
-                _require_running(server, server_log)
-                return
-            last = f"status {status}"
-        except (OSError, http.client.HTTPException) as error:
-            last = type(error).__name__
-        finally:
-            connection.close()
+        with always_cleanup(connection.close, "readiness connection close failed"):
+            try:
+                connection.request("GET", "/readyz")
+                status = connection.getresponse().status
+            except (OSError, http.client.HTTPException) as error:
+                last = type(error).__name__
+            else:
+                if status == HTTPStatus.OK:
+                    _require_running(server)
+                    if not _owns_listener(server.pid, listener_identity):
+                        _readiness_failure("server does not own the reserved listener")
+                    return
+                last = f"status {status}"
         time.sleep(READY_POLL_SECONDS)
-    _require_running(server, server_log)
-    _readiness_failure(last, server_log)
+    _require_running(server)
+    _readiness_failure(last)
+
+
+def listener_identity(listener: socket.socket) -> Path:
+    """Capture the reserved socket's kernel identity before the parent closes it."""
+    return Path(f"/proc/self/fd/{listener.fileno()}").readlink()
+
+
+def _owns_listener(pid: int, identity: Path) -> bool:
+    try:
+        for descriptor in Path(f"/proc/{pid}/fd").iterdir():
+            with contextlib.suppress(FileNotFoundError):
+                if descriptor.readlink() == identity:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 
 def start_server(
@@ -156,7 +196,7 @@ def start_server(
         environment,
         server_log,
         owner=owner,
-        pass_fds=(listener_fd,),
+        pass_fds=(listener,),
     )
 
 
@@ -235,21 +275,22 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
     spawned: list[SupervisedMaster] = []
-    try:
+    server: SupervisedMaster | None = None
+
+    def cleanup() -> None:
+        if server is not None:
+            teardown_master(server, port)
+
+    with (
+        with_server_log(server_log),
+        always_cleanup(cleanup, "browser server teardown failed"),
+    ):
         with reserve_listener() as listener:
             port = int(listener.getsockname()[1])
+            identity = listener_identity(listener)
             server = start_server(listener, environment, server_log, owner=spawned)
-        wait_until_ready(port, server_log, server.process)
+        wait_until_ready(port, server.process, identity)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
-    finally:
-        if spawned:
-            with (
-                preserve_cleanup_error(
-                    sys.exception(), "browser server teardown failed"
-                ),
-                prove_port_release(port),
-            ):
-                spawned[0].terminate()
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,

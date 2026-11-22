@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import signal
+import socket
 import subprocess
 import sys
 import textwrap
@@ -16,6 +17,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import pytest
 from apps.identity.models import UserPreference
@@ -28,7 +30,11 @@ from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
 from config.settings import base as base_settings
 from django.test import override_settings
 from ops.testing import renewal_runner as runner
-from ops.testing.browser_server_supervisor import SupervisedMaster, start_master
+from ops.testing.browser_server_supervisor import (
+    SupervisedMaster,
+    SupervisorError,
+    start_master,
+)
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.isolation_common import IsolationError, JsonObject
 from playwright.sync_api import (
@@ -1908,7 +1914,9 @@ def test_signing_suites_export_the_app_worker_dsn(
     )
     monkeypatch.setattr(runner, "broker_tap", lambda *_args: contextlib.nullcontext())
     monkeypatch.setattr(
-        runner, "start_master", lambda *_args, **_kwargs: SimpleNamespace(process=None)
+        runner,
+        "start_master",
+        lambda *_args, **_kwargs: Mock(spec=SupervisedMaster, process=None),
     )
     monkeypatch.setattr(runner, "wait_until_ready", lambda *_args: None)
     monkeypatch.setattr(
@@ -1936,6 +1944,104 @@ def test_signing_suites_export_the_app_worker_dsn(
 
     assert captured["CLINIC_BROWSER_ENGINE"] == engine
     assert captured["CLINIC_RENEWAL_WORKER_DATABASE_URL"] == database.app_dsn
+
+
+@pytest.fixture
+def stub_renewal_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Callable[[], JsonObject]:
+    suite = "journey-first-day"
+    monkeypatch.setenv(
+        "CLINIC_RENEWAL_APP_DATABASE_URL",
+        "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic",
+    )
+    monkeypatch.setenv("REALTIME_REDIS_URL", "redis://127.0.0.1:65431/1")
+    monkeypatch.setattr(runner, "_resolve_browser", lambda *_: "/unused")
+    monkeypatch.setattr(runner, "_capture_source", lambda *_: ({}, "digest"))
+    monkeypatch.setattr(runner, "_require_app_role", Mock())
+    monkeypatch.setattr(
+        runner, "realtime_broker", lambda *_, **__: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(runner, "broker_tap", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(
+        runner, "browser_endpoint", lambda *_, **__: contextlib.nullcontext(48000)
+    )
+    monkeypatch.setattr(runner, "_flagship_report", lambda *_: {})
+    monkeypatch.setattr(runner, "wait_until_ready", Mock())
+
+    def start(*_args: object, **kwargs: object) -> SupervisedMaster:
+        mock = Mock(spec=SupervisedMaster, process=None)
+        cast("list[SupervisedMaster]", kwargs["owner"]).append(mock)
+        (tmp_path / "server.log").write_text(
+            "synthetic server output", encoding="utf-8"
+        )
+        return cast("SupervisedMaster", mock)
+
+    def run(*_args: object, **_kwargs: object) -> int:
+        (tmp_path / "browser" / f"junit-{suite}.xml").write_text(
+            '<testsuite tests="1" failures="0" errors="0" skipped="0"/>',
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(runner, "start_master", start)
+    monkeypatch.setattr(runner, "_run_bounded", run)
+    return lambda: runner._run_browser_suite(
+        REPOSITORY, suite, tmp_path, tmp_path, None
+    )
+
+
+def test_renewal_rejects_occupied_port_inside_unrelated_except(
+    stub_renewal_launcher: Callable[[], JsonObject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with socket.socket() as competitor:
+        monkeypatch.setattr(
+            runner,
+            "wait_until_ready",
+            lambda port, *_: competitor.bind(("127.0.0.1", port)),
+        )
+        unrelated = LookupError("unrelated")
+        try:
+            raise unrelated
+        except LookupError:
+            with pytest.raises(SupervisorError, match="port was not released"):
+                stub_renewal_launcher()
+    assert not hasattr(unrelated, "__notes__")
+
+
+def test_renewal_reports_primary_and_later_diagnostics_through_outer_cleanup(
+    stub_renewal_launcher: Callable[[], JsonObject],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    primary = SupervisorError("primary teardown failure")
+    primary.add_note("nested port proof diagnostic")
+
+    def teardown(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    @contextlib.contextmanager
+    def interrupted_endpoint(*_args: object, **_kwargs: object) -> Iterator[int]:
+        try:
+            yield 48000
+        finally:
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    def browser(_args: list[str]) -> int:
+        with pytest.raises(SupervisorError) as captured:
+            stub_renewal_launcher()
+        assert captured.value is primary
+        raise primary
+
+    monkeypatch.setattr(runner, "_terminate_master", teardown)
+    monkeypatch.setattr(runner, "browser_endpoint", interrupted_endpoint)
+    monkeypatch.setattr(runner, "_browser", browser)
+    assert runner.main(["browser"]) == 2
+    stderr = capsys.readouterr().err
+    assert "primary teardown failure" in stderr
+    assert "nested port proof diagnostic" in stderr
+    assert "browser endpoint cleanup failed: RenewalInterruptError" in stderr
+    assert "server log tail: synthetic server output" in stderr
 
 
 def test_realtime_suites_lend_workers_the_served_broker_only() -> None:

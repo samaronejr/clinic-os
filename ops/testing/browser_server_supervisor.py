@@ -26,7 +26,8 @@ from typing import TYPE_CHECKING, Final, Never
 import rfc8785
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from contextlib import AbstractContextManager
 
 START_MASTER: Final = "start-master"
 STOP_MASTER: Final = "stop-master"
@@ -196,9 +197,18 @@ def _reap_adopted_workers(pgid: int, deadline: float) -> None:
 
 
 def _signal_group_and_wait(pgid: int, read_fd: int, signum: signal.Signals) -> bool:
-    with contextlib.suppress(ProcessLookupError):
+    try:
         os.killpg(pgid, signum)
-    return _wait_for_eof(read_fd, time.monotonic() + TERMINATION_GRACE_SECONDS)
+    except ProcessLookupError:
+        pass
+    except OSError as error:
+        message = f"could not send {signum.name} to Gunicorn process group"
+        raise SupervisorError(message) from error
+    try:
+        return _wait_for_eof(read_fd, time.monotonic() + TERMINATION_GRACE_SECONDS)
+    except (OSError, ValueError) as error:
+        message = "could not observe Gunicorn liveness pipe EOF"
+        raise SupervisorError(message) from error
 
 
 def _reap_group(process: subprocess.Popen[bytes]) -> None:
@@ -208,22 +218,26 @@ def _reap_group(process: subprocess.Popen[bytes]) -> None:
     except subprocess.TimeoutExpired as error:
         message = "Gunicorn master did not exit before teardown deadline"
         raise SupervisorError(message) from error
-    _reap_adopted_workers(process.pid, deadline)
+    except OSError as error:
+        message = "could not reap Gunicorn master"
+        raise SupervisorError(message) from error
+    try:
+        _reap_adopted_workers(process.pid, deadline)
+    except OSError as error:
+        message = "could not reap adopted Gunicorn workers"
+        raise SupervisorError(message) from error
 
 
 def _kill_and_reap(
     process: subprocess.Popen[bytes], read_fd: int, primary: BaseException | None = None
 ) -> None:
-    try:
-        # A failed observation must not bypass the KILL or reap steps.
-        with preserve_cleanup_error(primary, "Gunicorn KILL/EOF failed"):
-            if not _signal_group_and_wait(process.pid, read_fd, signal.SIGKILL):
-                _fail(
-                    "Gunicorn liveness pipe did not reach EOF before teardown deadline"
-                )
-    finally:
-        with preserve_cleanup_error(primary or sys.exception(), "Gunicorn reap failed"):
-            _reap_group(process)
+    # A failed observation must not bypass the KILL or reap steps.
+    with (
+        always_cleanup(lambda: _reap_group(process), "Gunicorn reap failed", primary),
+        preserve_cleanup_error(primary, "Gunicorn KILL/EOF failed"),
+    ):
+        if not _signal_group_and_wait(process.pid, read_fd, signal.SIGKILL):
+            _fail("Gunicorn liveness pipe did not reach EOF before teardown deadline")
 
 
 def _terminate_group(process: subprocess.Popen[bytes], read_fd: int) -> None:
@@ -232,18 +246,11 @@ def _terminate_group(process: subprocess.Popen[bytes], read_fd: int) -> None:
         eof = _signal_group_and_wait(process.pid, read_fd, signal.SIGTERM)
     except BaseException as error:
         _kill_and_reap(process, read_fd, error)
-        if isinstance(error, (OSError, ValueError)):
-            message = "could not observe Gunicorn liveness pipe EOF"
-            raise SupervisorError(message) from error
         raise
     if eof:
         _reap_group(process)
     else:
-        try:
-            _kill_and_reap(process, read_fd)
-        except (OSError, ValueError) as error:
-            message = "could not observe Gunicorn liveness pipe EOF"
-            raise SupervisorError(message) from error
+        _kill_and_reap(process, read_fd)
 
 
 def _time_wait_seconds(port: int) -> float | None:
@@ -281,7 +288,7 @@ def _wait_for_tcp_expiry(until: float) -> None:
     fd = int(library.timerfd_create(time.CLOCK_MONOTONIC, 0))
     if fd < 0:
         _fail("could not open a Gunicorn port release timer")
-    try:
+    with always_cleanup(lambda: os.close(fd), "port release timer close failed"):
         inherit_across_exec = False
         os.set_inheritable(fd, inherit_across_exec)
         seconds = int(until)
@@ -293,8 +300,6 @@ def _wait_for_tcp_expiry(until: float) -> None:
         if armed != 0:
             _fail("could not arm the Gunicorn port release timer")
         os.read(fd, 8)
-    finally:
-        os.close(fd)
 
 
 def require_released_port(port: int) -> None:
@@ -337,22 +342,86 @@ def preserve_cleanup_error(primary: BaseException | None, step: str) -> Iterator
         if primary is None:
             raise
         if error is not primary:
-            primary.add_note(f"{step}: {type(error).__name__}: {error}")
+            add_cleanup_note(primary, step, error)
+
+
+def error_details(error: BaseException, *, omit: BaseException | None = None) -> str:
+    """Render error messages, notes and explicit causes without trusting __str__."""
+    details: list[str] = []
+    seen: set[int] = {id(omit)}
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = "<exception message unavailable>"
+        with contextlib.suppress(BaseException):
+            message = str(current)
+        heading = f"{type(current).__name__}: {message}" if details else message
+        details.append(heading)
+        details.extend(getattr(current, "__notes__", ()))
+        current = current.__cause__
+    return "\n".join(details)
+
+
+def add_cleanup_note(primary: BaseException, step: str, error: BaseException) -> None:
+    """Retain a secondary failure and its diagnostics on the primary error."""
+    BaseException.add_note(
+        primary, f"{step}: {type(error).__name__}: {error_details(error, omit=primary)}"
+    )
+
+
+@contextlib.contextmanager
+def always_cleanup(
+    cleanup: Callable[[], object], step: str, primary: BaseException | None = None
+) -> Iterator[None]:
+    """Execute cleanup once, with only errors raised in this scope as primary."""
+    try:
+        yield
+    except BaseException as error:
+        with preserve_cleanup_error(error, step):
+            cleanup()
+        raise
+    else:
+        with preserve_cleanup_error(primary, step):
+            cleanup()
+
+
+@contextlib.contextmanager
+def preserving_context[T](
+    resource: AbstractContextManager[T], step: str
+) -> Iterator[T]:
+    """Release a resource without replacing a failure of its body."""
+    value = resource.__enter__()
+    try:
+        yield value
+    except BaseException as error:
+        with preserve_cleanup_error(error, step):
+            resource.__exit__(type(error), error, error.__traceback__)
+        raise
+    else:
+        resource.__exit__(None, None, None)
 
 
 @contextlib.contextmanager
 def prove_port_release(port: int | None) -> Iterator[None]:
     """Prove release even on failed teardown, preserving the primary error."""
-    try:
+    with always_cleanup(
+        lambda: require_released_port(port) if port is not None else None,
+        "port release proof failed",
+    ):
         yield
-    except BaseException as pending:
-        if port is not None:
-            with preserve_cleanup_error(pending, "port release proof failed"):
-                require_released_port(port)
-        raise
-    else:
-        if port is not None:
-            require_released_port(port)
+
+
+def teardown_master(master: SupervisedMaster, port: int | None) -> None:
+    """Run the same bounded teardown and ordinary bind for every spawned server."""
+    with prove_port_release(port):
+        try:
+            master.terminate()
+        except BaseException as error:
+            # Idempotent once the bounded group teardown has started; retry
+            # once in case cancellation landed before it acquired ownership.
+            with preserve_cleanup_error(error, "Gunicorn teardown retry failed"):
+                master.terminate()
+            raise
 
 
 class SupervisedMaster:
@@ -385,25 +454,22 @@ class SupervisedMaster:
         previous_mask = signal.pthread_sigmask(
             signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM}
         )
-        with _restore_signal_mask(previous_mask):
-            try:
-                _terminate_group(self.process, read_fd)
-            finally:
-                # Clear ownership before unmasking a pending cancellation.
-                self._read_fd = None
-                with preserve_cleanup_error(
-                    sys.exception(), "liveness reader close failed"
-                ):
-                    os.close(read_fd)
+        with (
+            _restore_signal_mask(previous_mask),
+            always_cleanup(lambda: os.close(read_fd), "liveness reader close failed"),
+        ):
+            # Clear ownership before unmasking a pending cancellation.
+            self._read_fd = None
+            _terminate_group(self.process, read_fd)
 
 
 @contextlib.contextmanager
 def _restore_signal_mask(previous_mask: set[int | signal.Signals]) -> Iterator[None]:
-    try:
+    with always_cleanup(
+        lambda: signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask),
+        "signal mask restore failed",
+    ):
         yield
-    finally:
-        with preserve_cleanup_error(sys.exception(), "signal mask restore failed"):
-            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
 def start_master(
@@ -412,7 +478,7 @@ def start_master(
     log: Path,
     *,
     owner: list[SupervisedMaster],
-    pass_fds: tuple[int, ...] = (),
+    pass_fds: tuple[int | socket.socket, ...] = (),
 ) -> SupervisedMaster:
     """Perform the journaled second phase: exec the master in a new group.
 
@@ -423,23 +489,46 @@ def start_master(
     pending cancellation lands inside the protected region, where the
     group is reaped before the exception propagates. Any other exception
     between the spawn and the completed handoff reaps the same way.
+    A socket in ``pass_fds`` is the reserved listener, closed and checked
+    by rollback before propagating the launch error.
     """
     _require_subreaper()
+    listener = next((fd for fd in pass_fds if isinstance(fd, socket.socket)), None)
+    inherited = tuple(fd if isinstance(fd, int) else fd.fileno() for fd in pass_fds)
     process: subprocess.Popen[bytes] | None = None
     master: SupervisedMaster | None = None
+    port = int(listener.getsockname()[1]) if listener is not None else None
     previous_mask = signal.pthread_sigmask(
         signal.SIG_BLOCK,
         {signal.SIGINT, signal.SIGTERM},
     )
     read_fd: int | None = None
-    try:
+    mask_restored = False
+
+    def restore_if_pending() -> None:
+        if not mask_restored:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+
+    def close_unowned_reader() -> None:
+        if read_fd is not None:
+            os.close(read_fd)
+
+    with (
+        always_cleanup(restore_if_pending, "signal mask restore failed"),
+        always_cleanup(close_unowned_reader, "liveness reader close failed"),
+    ):
         read_fd, write_fd = os.pipe()
         try:
-            with log.open("wb") as stream:
+            with (
+                always_cleanup(
+                    lambda: os.close(write_fd), "liveness writer close failed"
+                ),
+                preserving_context(log.open("wb"), "server log close failed") as stream,
+            ):
                 process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
                     argv,
                     env=environment,
-                    pass_fds=(*pass_fds, write_fd),
+                    pass_fds=(*inherited, write_fd),
                     start_new_session=True,
                     # The child must not inherit the blocked mask.
                     preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
@@ -449,32 +538,29 @@ def start_master(
                     stdout=stream,
                     stderr=subprocess.STDOUT,
                 )
-        finally:
-            with preserve_cleanup_error(
-                sys.exception(), "liveness writer close failed"
-            ):
-                os.close(write_fd)
-        master = SupervisedMaster(process, read_fd)
-        read_fd = None
-        owner.append(master)
-        # Ownership is published; a deferred cancellation now lands inside
-        # this protected region and reaps the group before propagating.
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-        return master  # noqa: TRY300 - the return boundary is where a deferred signal is delivered; it must stay inside the protected region.
-    except BaseException as error:
-        with preserve_cleanup_error(error, "failed-launch group teardown failed"):
-            if master is not None:
-                master.terminate()
-            elif process is not None and read_fd is not None:
-                _terminate_group(process, read_fd)
-        raise
-    finally:
-        with _restore_signal_mask(previous_mask):
-            if read_fd is not None:
+                master = SupervisedMaster(process, read_fd)
+                read_fd = None
+            owner.append(master)
+            # Unmask inside the protected region, after publishing ownership.
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            mask_restored = True
+            return master  # noqa: TRY300 - a deferred signal can land at the return.
+        except BaseException as error:
+            if process is not None:
+                if listener is not None:
+                    with preserve_cleanup_error(
+                        error, "reserved listener close failed"
+                    ):
+                        listener.close()
                 with preserve_cleanup_error(
-                    sys.exception(), "liveness reader close failed"
+                    error, "failed-launch group teardown failed"
                 ):
-                    os.close(read_fd)
+                    if master is None and read_fd is not None:
+                        master = SupervisedMaster(process, read_fd)
+                        read_fd = None
+                    if master is not None:
+                        teardown_master(master, port)
+            raise
 
 
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"

@@ -193,6 +193,7 @@ _POSIX_OS_APIS: Final = frozenset(
 
 
 def _assert_posix_os_apis(source: str) -> None:
+    """Check the allowlist as a best-effort guard, not a portability proof."""
     nodes = list(ast.walk(ast.parse(source)))
     for node in nodes:
         if isinstance(node, ast.Import):
@@ -293,10 +294,11 @@ def test_renewal_proves_port_release_after_select_failure(
     ) as raised:
         renewal_runner._terminate_master(master, port=int(address[1]))
     assert raised.value.__cause__ is failure
+    notes = "\n".join(raised.value.__notes__)
+    assert "Gunicorn KILL/EOF failed" in notes
+    assert "ValueError: injected select failure" in notes
     if interrupt_bind:
-        assert (
-            "KeyboardInterrupt: injected bind cancellation" in raised.value.__notes__[0]
-        )
+        assert "KeyboardInterrupt: injected bind cancellation" in notes
     assert master.process.returncode in {-signal.SIGTERM, -signal.SIGKILL}
     assert checked == [address[1]]
     with socket.socket() as probe:
