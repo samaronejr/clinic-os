@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from threading import Thread
 from typing import Any, Final, cast
 
 import pytest
@@ -164,21 +165,23 @@ def test_terminate_is_idempotent_and_leaves_no_zombie(tmp_path: Path) -> None:
 
 
 def _rescue_worker(worker: int) -> None:
-    with contextlib.suppress(ProcessLookupError):
-        worker_fd = os.pidfd_open(worker)
-        try:
-            assert select.select([worker_fd], [], [], 10)[0]
-            assert os.waitpid(worker, os.WNOHANG)[0] == worker
-        finally:
-            os.close(worker_fd)
+    def reap() -> None:
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(worker, 0)
+
+    waiter = Thread(target=reap, daemon=True)
+    waiter.start()
+    waiter.join(timeout=10)
+    assert not waiter.is_alive()
 
 
 @pytest.mark.parametrize("entrypoint", ["controller", "renewal"])
-def test_dead_master_teardown_releases_the_inherited_listener(
+def test_dead_master_teardown_without_pidfd_releases_the_inherited_listener(
     entrypoint: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Adopt a leaked worker in the red case so test-side rescue can reap it.
     require_subreaper()
+    monkeypatch.delattr(os, "pidfd_open", raising=False)
     monkeypatch.setattr(supervisor, "TERMINATION_GRACE_SECONDS", 1)
     worker: int | None = None
     processes: list[subprocess.Popen[bytes]] = []

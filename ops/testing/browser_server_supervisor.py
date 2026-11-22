@@ -13,15 +13,15 @@ import contextlib
 import ctypes
 import errno
 import json
-import math
 import os
-import select
 import signal
 import socket
 import subprocess
 import sys
 import time
+from concurrent.futures import Future
 from pathlib import Path
+from threading import Thread
 from typing import Final, Never
 
 import rfc8785
@@ -186,22 +186,43 @@ def _adopted_member(pgid: int) -> int | None:
     return None
 
 
-def _wait_for_exit(pid: int, deadline: float) -> bool:
+def _observe_exit(pid: int, exited: Future[None]) -> None:
     try:
-        fd = os.pidfd_open(pid)
-    except ProcessLookupError:
-        return True
-    try:
-        poller = select.poll()
-        poller.register(fd, select.POLLIN)
-        return bool(
-            poller.poll(max(0, math.ceil((deadline - time.monotonic()) * 1000)))
-        )
-    finally:
-        os.close(fd)
+        # Leave the child waitable. Only the supervisor reaps it, so the
+        # process group cannot lose this identity during signal escalation.
+        os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+    except (AttributeError, OSError) as error:
+        exited.set_exception(error)
+    else:
+        exited.set_result(None)
 
 
-def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
+def _wait_for_exit(
+    pid: int, deadline: float, observers: dict[int, Future[None]]
+) -> bool:
+    exited = observers.get(pid)
+    if exited is None:
+        exited = Future()
+        observers[pid] = exited
+        # Reuse across TERM/KILL phases. The observer cannot reap or signal
+        # anything, and a stuck child cannot block the supervisor's exit.
+        Thread(target=_observe_exit, args=(pid, exited), daemon=True).start()
+    try:
+        exited.result(timeout=max(0.0, deadline - time.monotonic()))
+    except TimeoutError:
+        return False
+    except (AttributeError, OSError) as error:
+        message = "could not observe owned Gunicorn child exit"
+        raise SupervisorError(message) from error
+    del observers[pid]
+    return True
+
+
+def _wait_for_group(
+    process: subprocess.Popen[bytes],
+    deadline: float,
+    observers: dict[int, Future[None]],
+) -> bool:
     while True:
         if process.poll() is None:
             pid = process.pid
@@ -218,7 +239,7 @@ def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
                     return False
                 continue
             pid = adopted
-        if not _wait_for_exit(pid, deadline):
+        if not _wait_for_exit(pid, deadline, observers):
             return False
         if pid != process.pid:
             with contextlib.suppress(ChildProcessError):
@@ -227,13 +248,15 @@ def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
 
 def _terminate_group(process: subprocess.Popen[bytes]) -> None:
     """Signal the owned session's process group even after its leader exits."""
+    observers: dict[int, Future[None]] = {}
     for signum in (signal.SIGTERM, signal.SIGKILL):
         # A live or unreaped owned child pins the group identity. Do not
         # signal a numeric PGID after the entire owned group has been reaped.
         if process.poll() is None or _adopted_member(process.pid) is not None:
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signum)
-        if _wait_for_group(process, time.monotonic() + TERMINATION_GRACE_SECONDS):
+        deadline = time.monotonic() + TERMINATION_GRACE_SECONDS
+        if _wait_for_group(process, deadline, observers):
             return
     _fail("Gunicorn process group or listener still owned after teardown deadline")
 
