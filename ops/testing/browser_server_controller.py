@@ -27,7 +27,11 @@ from ops.testing.browser_artifact_publisher import (
     require_acknowledged,
 )
 from ops.testing.browser_runner_contract import selected_suites
-from ops.testing.browser_server_supervisor import prove_port_release, start_master
+from ops.testing.browser_server_supervisor import (
+    preserve_cleanup_error,
+    prove_port_release,
+    start_master,
+)
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
@@ -239,7 +243,12 @@ def run_suite(suite_id: str, required: list[str]) -> int:
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
         if spawned:
-            with prove_port_release(port):
+            with (
+                preserve_cleanup_error(
+                    sys.exception(), "browser server teardown failed"
+                ),
+                prove_port_release(port),
+            ):
                 spawned[0].terminate()
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),

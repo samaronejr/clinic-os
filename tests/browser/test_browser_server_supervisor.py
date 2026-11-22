@@ -194,36 +194,39 @@ _POSIX_OS_APIS: Final = frozenset(
 
 def _assert_posix_os_apis(source: str) -> None:
     nodes = list(ast.walk(ast.parse(source)))
-    aliases = {
-        name.asname or name.name
-        for node in nodes
-        if isinstance(node, ast.Import)
-        for name in node.names
-        if name.name == "os"
-    }
-    references = {
-        name.name
-        for node in nodes
-        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "os"
-        for name in node.names
-    }
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            for name in node.names:
+                root = name.name.split(".")[0]
+                assert root not in {"builtins", "importlib"}, "no dynamic imports"
+                if root == "os":
+                    assert (name.name, name.asname) == ("os", None), (
+                        "use plain import os"
+                    )
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            root = (node.module or "").split(".")[0]
+            assert root not in {"builtins", "importlib"}, "no dynamic imports"
+            assert root != "os", "use plain import os"
+        elif isinstance(node, ast.Name):
+            assert node.id not in {"__import__", "__builtins__", "eval", "exec"}, (
+                "no dynamic imports"
+            )
     attributes = [
         node
         for node in nodes
         if isinstance(node, ast.Attribute)
         and isinstance(node.value, ast.Name)
-        and node.value.id in aliases
+        and node.value.id == "os"
     ]
-    references.update(node.attr for node in attributes)
     direct = {id(node.value) for node in attributes}
     assert not any(
         isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
-        and node.id in aliases
+        and node.id == "os"
         and id(node) not in direct
         for node in nodes
     ), "use direct os attributes so the POSIX allowlist can check them"
-    unknown = references - _POSIX_OS_APIS
+    unknown = {node.attr for node in attributes} - _POSIX_OS_APIS
     assert not unknown, f"os APIs outside POSIX allowlist: {sorted(unknown)}"
 
 
@@ -233,22 +236,33 @@ def test_browser_launch_and_teardown_use_only_allowed_os_apis() -> None:
 
 
 @pytest.mark.parametrize(
-    ("injected", "name"),
+    ("source", "name"),
     [
-        ("\nimport os\nos.pipe2(0)\n", "pipe2"),
-        ("\nimport os as posix\nposix.pipe2(0)\n", "pipe2"),
-        ("\nfrom os import waitid as wait\nwait(0, 0, 0)\n", "waitid"),
+        ("import os\nos.pipe2(0)", "pipe2"),
+        ("import os.path\nos.pipe2(0)", "plain import os"),
+        ("import os as posix\nposix.pipe()", "plain import os"),
+        ("import os.path as path\npath.join('a', 'b')", "plain import os"),
+        ("from os import path\npath.join('a', 'b')", "plain import os"),
+        ("from os import waitid as wait\nwait(0, 0, 0)", "plain import os"),
+        ('__import__("os").pipe2(0)', "dynamic imports"),
+        ('import builtins as b\nb.__import__("os").pipe()', "dynamic imports"),
+        ('import importlib as i\ni.import_module("os").pipe()', "dynamic imports"),
+        (
+            'from importlib import import_module as load\nload("os").pipe()',
+            "dynamic imports",
+        ),
     ],
 )
-def test_posix_allowlist_rejects_injected_optional_apis(
-    injected: str, name: str
-) -> None:
+def test_posix_allowlist_rejects_injected_optional_apis(source: str, name: str) -> None:
     with pytest.raises(AssertionError, match=name):
-        _assert_posix_os_apis(inspect.getsource(supervisor) + injected)
+        _assert_posix_os_apis(source)
 
 
+@pytest.mark.parametrize(
+    "interrupt_bind", [False, True], ids=["bind", "interrupted-bind"]
+)
 def test_renewal_proves_port_release_after_select_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupt_bind: bool
 ) -> None:
     with controller.reserve_listener() as listener:
         address = listener.getsockname()
@@ -258,6 +272,7 @@ def test_renewal_proves_port_release_after_select_failure(
             pass_fds=(listener.fileno(),),
         )
     failure = ValueError("injected select failure")
+    cancellation = KeyboardInterrupt("injected bind cancellation")
 
     def failed_select(*args: object) -> Never:
         raise failure
@@ -267,6 +282,8 @@ def test_renewal_proves_port_release_after_select_failure(
 
     def prove(port: int) -> OSError | None:
         checked.append(port)
+        if interrupt_bind:
+            raise cancellation
         return plain_bind(port)
 
     monkeypatch.setattr(select, "select", failed_select)
@@ -276,6 +293,10 @@ def test_renewal_proves_port_release_after_select_failure(
     ) as raised:
         renewal_runner._terminate_master(master, port=int(address[1]))
     assert raised.value.__cause__ is failure
+    if interrupt_bind:
+        assert (
+            "KeyboardInterrupt: injected bind cancellation" in raised.value.__notes__[0]
+        )
     assert master.process.returncode in {-signal.SIGTERM, -signal.SIGKILL}
     assert checked == [address[1]]
     with socket.socket() as probe:

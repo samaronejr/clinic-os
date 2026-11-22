@@ -51,6 +51,7 @@ from ops.testing.browser_server_controller import reserve_listener, wait_until_r
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
     SupervisorError,
+    preserve_cleanup_error,
     prove_port_release,
     start_master,
     supervised_argv,
@@ -962,10 +963,11 @@ def _run_bounded(
                 os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
             return 124
-        except BaseException:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
+        except BaseException as error:
+            with preserve_cleanup_error(error, "child process teardown failed"):
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
             raise
 
 
@@ -1437,7 +1439,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 )
         finally:
             if spawned:
-                _terminate_master(spawned[0], port=port)
+                _terminate_browser_master(spawned[0], port)
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
@@ -1547,6 +1549,11 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
     return results
 
 
+def _terminate_browser_master(master: SupervisedMaster, port: int) -> None:
+    with preserve_cleanup_error(sys.exception(), "browser server teardown failed"):
+        _terminate_master(master, port=port)
+
+
 def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
     """Terminate the supervised group; propagate any observed interruption.
 
@@ -1559,9 +1566,15 @@ def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> N
         for _attempt in range(2):
             try:
                 master.terminate()
-            except RenewalInterruptError as error:
-                if interrupted is None:
-                    interrupted = error
+            except BaseException as error:
+                if interrupted is not None:
+                    interrupted.add_note(
+                        f"retry failed: {type(error).__name__}: {error}"
+                    )
+                    raise interrupted from error
+                if not isinstance(error, RenewalInterruptError):
+                    raise
+                interrupted = error
             else:
                 break
         if interrupted is not None:
@@ -1981,12 +1994,11 @@ def main(argv: list[str] | None = None) -> int:
         if operation == "ci":
             return _ci(rest)
         _fail("invalid renewal-runner command grammar")
-    except RenewalInterruptError as error:
-        sys.stderr.write(f"renewal-runner: {error}\n")
-        return 130
     except (IsolationError, OSError, SupervisorError, ValueError) as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
-        return 2
+        for note in getattr(error, "__notes__", ()):
+            sys.stderr.write(f"renewal-runner: {note}\n")
+        return 130 if isinstance(error, RenewalInterruptError) else 2
     finally:
         signal.signal(signal.SIGTERM, previous_term)
         signal.signal(signal.SIGINT, previous_int)
