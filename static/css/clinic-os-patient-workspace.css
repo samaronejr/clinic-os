@@ -149,8 +149,9 @@
     align-items: end;
   }
 
+  /* The picker takes the whole row, so the longest section name fits. */
   .patient-workspace-select .field {
-    flex: 1 1 12rem;
+    flex: 1 1 100%;
     min-inline-size: 0;
     margin: 0;
   }

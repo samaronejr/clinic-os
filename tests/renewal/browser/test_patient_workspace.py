@@ -213,6 +213,21 @@ def _vitals(page: Page, artifact_root: Path) -> None:
     _capture(page, artifact_root, "invalid-unit")
 
 
+# Every section name, rendered in the select's own font, fits its text box
+# (client width less padding and the native arrow's reserve).
+OPTIONS_FIT_JS = """() => {
+  const select = document.querySelector('#patient-workspace-section');
+  const style = getComputedStyle(select);
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const room = select.clientWidth - parseFloat(style.paddingLeft)
+    - parseFloat(style.paddingRight) - 24;
+  return [...select.options]
+    .filter(option => context.measureText(option.text).width > room)
+    .map(option => option.value);
+}"""
+
+
 def test_vitals_trend_invalid_unit_and_workspace_tabs(
     renewal_page: Page,
     renewal_base_url: str,
@@ -268,6 +283,7 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= innerWidth"
             ), (key, width)
+            assert page.evaluate(OPTIONS_FIT_JS) == [], (key, width)
     page.set_viewport_size({"width": 1280, "height": 900})
     page.locator("#patient-workspace-title").focus()
     with page.expect_response(
