@@ -118,6 +118,12 @@ def preparation(head):
         "thresholds_sha256": registration["thresholds_sha256"],
         "domain_registration_commit": DOMAIN_COMMIT,
         "domain_protocol_sha256": sha(source[DOMAIN_PROTOCOL]),
+        "report_contract": {
+            "domain_protocol_sha256": sha(source[DOMAIN_PROTOCOL]),
+            "review_kind": "scripted_engineering",
+            "vote_workflow_complete": True,
+            "human_review_complete": False,
+        },
         "corpus_sha256": sha(source[corpus_paths[0]] + b"\0" + source[corpus_paths[1]]),
         "source_files": {name: sha(source[name]) for name in [REGISTRATION, DOMAIN_PROTOCOL, *corpus_paths, GENERATOR]},
         "dependency_files": {name: sha(source[name]) for name in ("uv.lock", "pyproject.toml")},
@@ -144,19 +150,9 @@ def source_identity(head):
     return value
 
 
-def generate(environment, output, request, deadline, commands):
-    from ops.testing.runtime_paths import runtime_directory
-
-    head = request["head"]
-    settings = preparation(head)
-    current = json.loads(root_manifest(E).read_bytes())
-    require(current["reviewed_head"] == head and current["f5_eval"] == settings
-            and request["f5_eval_sha256"]
-            == sha(json.dumps(settings, sort_keys=True).encode()),
-            "The F5 packet preparation does not bind this final head")
-    root = output / "packet"
-    root.mkdir(mode=0o700)
-    started = datetime.now(UTC)
+def preregistration(settings, started):
+    """Produce the same complete v2 chronology in real and in-memory packets."""
+    head = settings["reviewed_head"]
     source_time = git("show", "-s", "--format=%cI", head)
     require(datetime.fromisoformat(settings["threshold_registration_committed_at"])
             < datetime.fromisoformat(source_time) < started,
@@ -180,6 +176,22 @@ def generate(environment, output, request, deadline, commands):
         chronology["source_hash_chronology"].append({
             "path": path, "sha256": digest, "commit": commit, "committed_at": committed_at,
         })
+    return chronology
+
+
+def generate(environment, output, request, deadline, commands):
+    from ops.testing.runtime_paths import runtime_directory
+
+    head = request["head"]
+    settings = preparation(head)
+    current = json.loads(root_manifest(E).read_bytes())
+    require(current["reviewed_head"] == head and current["f5_eval"] == settings
+            and request["f5_eval_sha256"]
+            == sha(json.dumps(settings, sort_keys=True).encode()),
+            "The F5 packet preparation does not bind this final head")
+    root = output / "packet"
+    root.mkdir(mode=0o700)
+    chronology = preregistration(settings, datetime.now(UTC))
     write_json(root / "preregistration.json", chronology)
     before = source_identity(head)
     with runtime_directory(Path(environment["RUNNER_TEMP"]), purpose="f5-eval") as temporary:
@@ -237,6 +249,8 @@ def finalize(output, result):
         "provider": "synthetic", "review_kind": "scripted_engineering",
         "reports": 9, "passed_tests": 9, "includes_both_AI_01_legs": True,
         "chronology_verified": True, "preregistration": chronology,
+        "domain_registration_commit": settings["domain_registration_commit"],
+        "domain_protocol_sha256": settings["domain_protocol_sha256"],
         "threshold_registration_commit": THRESHOLD_COMMIT,
         "threshold_registration_committed_at": settings["threshold_registration_committed_at"],
         "thresholds_sha256": settings["thresholds_sha256"],
@@ -257,6 +271,9 @@ def verify_packet(root, settings):
     read = lambda name: packet.read_file(root, name)
     chronology = json.loads(read("preregistration.json"))
     manifest = packet.verify_manifest(read, settings, chronology)
+    require(manifest.get("domain_registration_commit") == DOMAIN_COMMIT
+            and manifest.get("domain_protocol_sha256") == settings["domain_protocol_sha256"],
+            "The manifest omits or substitutes the registered v2 protocol")
     require(manifest["source_tree"] == settings["tree"], "Wrong packet source tree")
     require({"model-bindings.json", "cleanup.json"} <= {
         row["path"] for row in manifest["files"]
@@ -279,7 +296,9 @@ def verify_packet(root, settings):
         value = json.loads(read(stem + ".json"))
         versions = value["report"]["versions"]
         report = value["report"]
-        require(report["domain_protocol_sha256"] == settings["domain_protocol_sha256"]
+        require(set(settings["report_contract"]) <= set(report)
+                and {"domain_registration_commit","domain_protocol_sha256"} <= set(chronology)
+                and report["domain_protocol_sha256"] == settings["domain_protocol_sha256"]
                 and chronology["domain_registration_commit"] == DOMAIN_COMMIT
                 and chronology["domain_protocol_sha256"] == settings["domain_protocol_sha256"]
                 and report["review_kind"] == "scripted_engineering"
