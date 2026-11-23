@@ -28,6 +28,7 @@ from apps.ehr.services import (
 )
 from apps.identity.models import (
     CareTeamMembership,
+    Clinic,
     ProfessionalRegistration,
     UserClinicRole,
 )
@@ -104,6 +105,7 @@ EXPECTED_COUNTS = {
 def _care_for(graph: RbacGraph, enrollments: list[UUID]) -> None:
     now = timezone.now()
     with owner_context(graph.organization_a):
+        clinic = Clinic.objects.get(pk=graph.clinic_a)
         ProfessionalRegistration.objects.create(
             organization_id=graph.organization_a,
             clinic_id=graph.clinic_a,
@@ -111,7 +113,7 @@ def _care_for(graph: RbacGraph, enrollments: list[UUID]) -> None:
             role="physician",
             council="CRM",
             number="SINTETICO-F6",
-            jurisdiction="SP",
+            jurisdiction=clinic.crm_uf,
             specialty="Sintetico",
             status="regular",
             valid_from=now - timedelta(days=1),
