@@ -4,7 +4,8 @@ Set DJANGO_SETTINGS_MODULE=config.settings.test and PYTHONPATH=.:tests. Point
 MIGRATION_DATABASE_URL at separate disposable databases for the default and
 ``--guarded-first`` runs of ``python -m infra.resume_catalog_capture``. Then
 run the same module with ``--merge normal.json guarded-first.json`` to emit the
-fixture. Production has no capture mode and never learns from a retry.
+fixture. ``--reapplied`` on a third empty DB emits the reversible-predecessor
+companion. Production has no capture mode and never learns from a retry.
 """
 
 from __future__ import annotations
@@ -231,6 +232,23 @@ def _unapplied(*_args: object) -> bool:
     return False
 
 
+def capture_reapplied(db: BaseDatabaseWrapper) -> dict[str, Delta]:
+    """Capture the exact extra physical slot left by identity's timezone round trip."""
+    executor = MigrationExecutor(db)
+    if executor.loader.applied_migrations:
+        msg = "Reapply capture requires a clean, bootstrapped database"
+        raise RuntimeError(msg)
+    target = ("identity", "0005_clinic_timezone")
+    parents = sorted(
+        node.key for node in executor.loader.graph.node_map[target].parents
+    )
+    executor.migrate([target])
+    normal = snapshot(db)
+    MigrationExecutor(db).migrate(parents)
+    MigrationExecutor(db).migrate([target])
+    return {".".join(target): _delta(normal, snapshot(db))}
+
+
 def _unchecked(*_args: object) -> None:
     return None
 
@@ -240,7 +258,10 @@ if __name__ == "__main__":
     from django.db import connection
 
     django.setup()
-    if sys.argv[1:2] == ["--merge"]:
+    result: Capture | dict[str, Delta]
+    if sys.argv[1:2] == ["--reapplied"]:
+        result = capture_reapplied(connection)
+    elif sys.argv[1:2] == ["--merge"]:
         normal, alternate = (
             cast("Capture", json.loads(Path(arg).read_text(encoding="utf-8")))
             for arg in sys.argv[2:]

@@ -24,6 +24,7 @@ type Delta = dict[str, dict[str, str | None]]
 type History = dict[str, list[tuple[str | None, Delta]]]
 
 FIXTURE = Path(__file__).with_name("_resume_catalog_pg16.json")
+REAPPLIED_FIXTURE = Path(__file__).with_name("_resume_catalog_reapplied_pg16.json")
 ARTIFACT_STEP = "artifact-retention:0"
 
 
@@ -88,6 +89,14 @@ def history() -> History:
 
 
 @cache
+def _reapplied() -> dict[str, Delta]:
+    """Catalog deltas measured after a legal reverse and second forward run."""
+    return cast(
+        "dict[str, Delta]", json.loads(REAPPLIED_FIXTURE.read_text(encoding="utf-8"))
+    )
+
+
+@cache
 def _checkpoints() -> dict[str, Checkpoint]:
     checkpoints = {}
     for migration, steps in history().items():
@@ -103,17 +112,24 @@ def _checkpoints() -> dict[str, Checkpoint]:
 
 def _boundaries(
     checkpoint: Checkpoint, applied: set[str], object_names: frozenset[str]
-) -> list[Catalog]:
-    catalog: Catalog = {name: {} for name in object_names}
+) -> list[tuple[int, Catalog]]:
+    catalogs: list[Catalog] = [{name: {} for name in object_names}]
     for migration, operations in history().items():
         if migration == "bootstrap" or (
             migration != checkpoint.migration and migration in applied
         ):
             for _, delta in operations:
-                catalog = _overlay(catalog, delta)
-    states = [catalog]
-    for _, delta in history()[checkpoint.migration]:
-        states.append(_overlay(states[-1], delta))
+                catalogs = [_overlay(catalog, delta) for catalog in catalogs]
+            # A reversible ADD COLUMN allocates a different physical slot on
+            # reapplication. Preserve attnum, dropped slots and their references:
+            # only the entire independently captured alternate layout can match.
+            alternate = _reapplied().get(migration)
+            if alternate and object_names.intersection(alternate):
+                catalogs += [_overlay(catalog, alternate) for catalog in catalogs]
+    states = [(0, catalog) for catalog in catalogs]
+    for prefix, (_, delta) in enumerate(history()[checkpoint.migration], 1):
+        catalogs = [_overlay(catalog, delta) for catalog in catalogs]
+        states.extend((prefix, catalog) for catalog in catalogs)
     return states
 
 
@@ -173,20 +189,20 @@ def checkpoint_applied(editor: BaseDatabaseSchemaEditor, step: str) -> bool:
 
 
 def match_boundary(
-    checkpoint: Checkpoint, actual: Catalog, states: list[Catalog]
+    checkpoint: Checkpoint, actual: Catalog, states: list[tuple[int, Catalog]]
 ) -> bool:
     """Use this same decision for DB reads and PostgreSQL catalog-row witnesses."""
     hashes = {name: fingerprint(definition) for name, definition in actual.items()}
     closest: tuple[int, int, list[str]] | None = None
     for index in range(len(states) - 1, -1, -1):
-        expected = states[index]
+        prefix, expected = states[index]
         names = [
             name
             for name in sorted(expected)
             if fingerprint(expected[name]) != hashes[name]
         ]
         if not names:
-            return index >= checkpoint.prefix
+            return prefix >= checkpoint.prefix
         # Choose the closest boundary just to diagnose. No partial match is
         # accepted: every complete object fingerprint must match one boundary.
         fields = sum(
@@ -200,9 +216,9 @@ def match_boundary(
         msg = f"{checkpoint.migration} has no captured catalog boundaries"
         raise ResumeCatalogError(msg)
     _, index, names = closest
+    _, expected = states[index]
     details = ", ".join(
-        f"{name}.{_first_difference(actual[name], states[index][name])}"
-        for name in names
+        f"{name}.{_first_difference(actual[name], expected[name])}" for name in names
     )
     msg = f"{checkpoint.migration} cannot resume: conflicting catalog for {details}"
     raise ResumeCatalogError(msg)

@@ -228,7 +228,7 @@ def _copies(
 
 def _refuses(name: str, original: dict[str, str], mutant: dict[str, str]) -> None:
     checkpoint = Checkpoint("catalog-meta", frozenset({name}), 1)
-    states: list[Catalog] = [{name: {}}, {name: original}]
+    states: list[tuple[int, Catalog]] = [(0, {name: {}}), (1, {name: original})]
     assert match_boundary(checkpoint, {name: original}, states)
     with pytest.raises(ResumeCatalogError, match="conflicting catalog"):
         match_boundary(checkpoint, {name: mutant}, states)
