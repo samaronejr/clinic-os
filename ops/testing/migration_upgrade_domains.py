@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4, uuid5
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 Row = dict[str, object]
 DIGEST: Final = "a" * 64
+ADDENDUM_TEXT: Final = "Synthetic addendum."
 BYTES32: Final = bytes(range(32))
 
 
@@ -855,6 +856,22 @@ MARKETING_BODY: Final = (
 # as-is, each with the reason.
 PUBLIC_COLUMNS: Final[dict[str, str]] = {
     "identity.ClinicConfiguration.brand_token": "a named visual design token",
+    "ai.ActionReceipt.key_id": "the attestation key's public identifier",
+    "ai.Approval.key_id": "the attestation key's public identifier",
+    "ai.KnowledgeArticle.key": "an article's catalog key",
+    "ai.ModelConfiguration.capability_key": "a provider registry capability name",
+    "ehr.SpecialtyPack.key": "a specialty pack's catalog name",
+    "ehr.SpecialtyTemplate.key": "a pack template's catalog name",
+    "identity.OnboardingProgress.step_key": "an onboarding step name",
+    "identity.SsoConnection.provider_key": "a provider registry capability name",
+    "intake.QuestionnaireTemplate.key": "a questionnaire's catalog name",
+    "interop.ApiWriteReceipt.idempotency_key": "a client-chosen replay key",
+    "orders.ResultVersion.storage_key": "a content-addressed object name",
+    "providers.ProviderCapability.key": "a provider registry capability name",
+    "retention.ArtifactPurge.deleted_keys": "names of the purged storage objects",
+    "scribe.AudioChunk.storage_key": "a content-addressed object name",
+    "workflows.PROAssignment.instrument_key": "a PRO instrument's catalog name",
+    "workflows.WorkflowDefinitionVersion.key": "a workflow definition's name",
 }
 
 # Columns holding secret material: the record keeps only their SHA-256.
@@ -863,6 +880,11 @@ SECRET_COLUMNS: Final[frozenset[str]] = frozenset(
         "identity.TotpSecret.secret",
         "identity.User.password",
         "scribe.AudioChunk.wrapped_key",
+        # The TOTP seed itself until identity.0050 moves it to TotpSecret.
+        "otp_totp.TOTPDevice.key",
+        "otp_static.StaticToken.token",
+        "identity.Passkey.credential_id",
+        "identity.Passkey.public_key",
     }
 )
 
@@ -936,6 +958,7 @@ LOAD_ROLES: Final[dict[str, str]] = {
 LEAF_INVARIANTS: Final[dict[str, str]] = {
     # Lifecycle and vocabulary rules the binding triggers enforce per row; the
     # round-2 review found each broken while those triggers were suspended.
+    # (A task product code opens itself, such as a PRO review, has no creator.)
     "appointment_receipt_is_lifecycle_edge": """
         SELECT count(*) FROM clinic_app.scheduling_appointmenttransition r
         JOIN clinic_app.scheduling_appointment a ON a.id=r.appointment_id
@@ -972,7 +995,7 @@ LEAF_INVARIANTS: Final[dict[str, str]] = {
         WHERE l.organization_id=%(organization)s""",
     "task_revision_counts_transitions": """
         SELECT count(*) FROM clinic_app.workflows_task t
-        WHERE t.organization_id=%(organization)s
+        WHERE t.organization_id=%(organization)s AND t.created_by_id IS NOT NULL
         AND t.state<>'open' AND t.revision=1""",
     "recording_session_revision_counts_transitions": """
         SELECT count(*) FROM clinic_app.scribe_recordingsession s
@@ -1049,6 +1072,10 @@ LEAF_INVARIANTS: Final[dict[str, str]] = {
         WHERE g.organization_id=%(organization)s
         AND g.represented_enrollment_id=g.delegate_enrollment_id""",
 }
+
+# Encrypted columns no reachable state of a seeded model holds, with the
+# reason; every other one must carry data in at least one seeded row.
+EMPTY_PROTECTED_EXCEPTIONS: Final[dict[str, str]] = {}
 
 # Columns a later candidate migration rewrites on purpose, with the reason.
 PRESERVATION_EXCEPTIONS: Final[dict[str, str]] = {
@@ -1216,7 +1243,13 @@ IDENTITY: Final[dict[str, Seed]] = {
         )
     ),
     "StaffInvitation": Seed(
-        lambda c: ({"bundle": "receptionist", "pending_user_id": c.physician},)
+        lambda c: (
+            {
+                "bundle": "receptionist",
+                "pending_user_id": c.physician,
+                "desired_username": "synthetic-reception",
+            },
+        )
     ),
     "PatientDelegateGrant": Seed(
         lambda c: (
@@ -1230,7 +1263,15 @@ IDENTITY: Final[dict[str, Seed]] = {
             },
         )
     ),
-    "Passkey": Seed(_rows({"credential_id": BYTES32, "public_key": BYTES32})),
+    "Passkey": Seed(
+        _rows(
+            {
+                "credential_id": BYTES32,
+                "public_key": BYTES32,
+                "nickname": "Synthetic key",
+            }
+        )
+    ),
     "TotpSecret": Seed(
         adopt="0050 moves every existing device secret here",
     ),
@@ -1565,14 +1606,48 @@ INTAKE: Final[dict[str, Seed]] = {
         _rows({"version": 1, "required_fields": ["legal_name"]})
     ),
     "EmergencyContact": Seed(
-        _rows({"relationship": "Synthetic sibling", "phone": "+55 11 0000-0000"})
+        _rows(
+            {
+                "name": "Synthetic Contact",
+                "relationship": "Synthetic sibling",
+                "phone": "+55 11 0000-0000",
+            }
+        )
     ),
-    "InsuranceMembership": Seed(),
+    "InsuranceMembership": Seed(
+        lambda c: (
+            {
+                "payer_name": "Synthetic Health",
+                "plan_name": "Synthetic Plan",
+                "membership_number": "SYN0000000001",
+                "ans_number": "123456",
+                "valid_until": (c.now + timedelta(days=365)).date(),
+            },
+        )
+    ),
     "PatientAddress": Seed(
-        _rows({"kind": "home", "city": "Synthetic City", "state_code": "SP"})
+        _rows(
+            {
+                "kind": "home",
+                "postal_code": "01000-000",
+                "street": "Rua Sintetica",
+                "street_number": "100",
+                "complement": "Sala 1",
+                "district": "Centro Sintetico",
+                "city": "Synthetic City",
+                "state_code": "SP",
+            }
+        )
     ),
     "PatientIdentifier": Seed(
-        _rows({"kind": "cns", "value": "SYNTHETIC-CNS-0001", "blind_index": BYTES32})
+        _rows(
+            {
+                "kind": "cns",
+                "value": "SYNTHETIC-CNS-0001",
+                "issuer": "SYNTHETIC-ISSUER",
+                "blind_index": BYTES32,
+            }
+        )
     ),
     # Patient-reported provenance with explicitly unknown fields, then the
     # staff correction receipt for the same version.
@@ -1582,6 +1657,12 @@ INTAKE: Final[dict[str, Seed]] = {
                 "version": 1,
                 "legal_name": "Synthetic Upgrade Persona",
                 "social_name": "Synthetic Persona",
+                "preferred_name": "Persona",
+                "birth_date": date(1990, 1, 1),
+                "sex_at_birth": "not_informed",
+                "gender_identity": "declined",
+                "language": "pt-BR",
+                "accessibility_needs": "Synthetic large print.",
                 "pronouns": "",
                 "occupation": None,
                 "source": "patient_reported",
@@ -1679,6 +1760,21 @@ INTAKE: Final[dict[str, Seed]] = {
         ),
         actor="physician",
         settings=MERGE_SETTINGS,
+        # The adjudicator then unmerges it from the same verified session.
+        updates=(
+            (
+                "intake.PatientAlias",
+                lambda c: (
+                    c.ref("intake.PatientAlias"),
+                    {
+                        "active": False,
+                        "deactivated_by_id": c.physician,
+                        "deactivation_session_id": c.key("merge-session"),
+                        "deactivation_reason": "Synthetic unmerge after review.",
+                    },
+                ),
+            ),
+        ),
     ),
     "PatientMergeTransfer": Seed(
         lambda c: (
@@ -1700,6 +1796,10 @@ INTAKE: Final[dict[str, Seed]] = {
                             "id": c.key("merge-result-demographics"),
                             "version": _latest_version(c, c.patient) + 1,
                             "legal_name": "Synthetic Upgrade Persona",
+                            # The adjudicated version answers the two fields
+                            # the patient left unknown or declined.
+                            "occupation": "Synthetic occupation",
+                            "pronouns": "ela/dela",
                             "source": "staff_recorded",
                             "created_at": TRANSACTION_TIME,
                         },
@@ -1855,8 +1955,21 @@ EHR: Final[dict[str, Seed]] = {
             },
         )
     ),
+    # The author saves the draft's text (revision 1 -> 2); the save's receipt
+    # acknowledges the committed revision.
     "AddendumSaveReceipt": Seed(
-        _rows({"request_sha256": DIGEST, "base_revision": 0, "revision": 1})
+        _rows({"request_sha256": DIGEST, "base_revision": 1, "revision": 2}),
+        prepare=(
+            (
+                "ehr.EncounterAddendum",
+                _move(
+                    lambda c: c.ref("ehr.EncounterAddendum"),
+                    text=ADDENDUM_TEXT,
+                    text_sha256=sha256(ADDENDUM_TEXT.encode()).hexdigest(),
+                    revision=F("revision") + 1,
+                ),
+            ),
+        ),
     ),
     # Patient-reported with unknown status, and an observed statement the
     # clinician then confirms through the reconciliation transition.
@@ -2243,6 +2356,18 @@ WORKFLOWS: Final[dict[str, Seed]] = {
                 "task_id": c.key("care-action-task"),
                 "fingerprint": DIGEST,
             },
+            # A patient instruction carries its text and no staff task.
+            {
+                "kind": "patient_instruction",
+                "instruction": "Synthetic patient instruction.",
+                "window_start": c.now,
+                "window_end": c.future,
+                "origin_version_id": _finalized(c, "id"),
+                "created_by_id": c.physician,
+                "approved_by_id": c.physician,
+                "task_id": None,
+                "fingerprint": DIGEST,
+            },
         ),
         actor="physician",
         support=(
@@ -2309,6 +2434,25 @@ WORKFLOWS: Final[dict[str, Seed]] = {
             },
         ),
         actor="physician",
+        # The physician records the patient's response; the AFTER trigger
+        # opens its review task under the response task id.
+        updates=(
+            (
+                "workflows.PROOccurrence",
+                lambda c: (
+                    c.ref("workflows.PROOccurrence"),
+                    {
+                        "state": "responded",
+                        "answers": {"q1": 0},
+                        "response_task_id": c.key("pro-response-task"),
+                        "recorded_at": TRANSACTION_TIME,
+                        "revision": F("revision") + 1,
+                        "last_command_key": c.key("pro-response-command"),
+                        "last_command_digest": DIGEST,
+                    },
+                ),
+            ),
+        ),
     ),
     # Scheduled now for a year out, as the recall service anchors it.
     "Recall": Seed(
@@ -2436,6 +2580,7 @@ COMMS: Final[dict[str, Seed]] = {
                 "provider_account_id": c.ref("comms.ProviderAccount"),
                 "contact_fingerprint": DIGEST,
                 "contact_address": "+55 11 0000-0000",
+                "contact_label": "Synthetic contact",
                 "last_activity_at": c.now,
             },
         ),
@@ -2472,7 +2617,7 @@ COMMS: Final[dict[str, Seed]] = {
                 "command_id": uuid4(),
                 "sent_by_id": c.owner,
                 "template_id": c.ref("comms.TemplateVersion", 1),
-                "template_parameters": None,
+                "template_parameters": "{}",
             },
             # The physician's portal reply that later carries a result notice.
             {
@@ -2676,6 +2821,7 @@ AI: Final[dict[str, Seed]] = {
                 "evaluation_set": "synthetic-upgrade",
                 "outcome": "proposal",
                 "reason_code": "",
+                "reviewer_edits": {"synthetic": True},
             }
         )
     ),
@@ -3435,14 +3581,15 @@ SCRIBE: Final[dict[str, Seed]] = {
         actor="physician",
         support=(_ai_output("scribe_draft", "draft-call", "complete"),),
     ),
-    # The note's author rejects the pending suggestion at the draft's current
+    # The note's author accepts the pending suggestion at the draft's current
     # revision and content, bound to the drafting call's configuration.
     "ReviewDecision": Seed(
         lambda c: (
             {
                 "suggestion_id": c.ref("scribe.DraftSectionSuggestion"),
                 "request_digest": DIGEST,
-                "action": "rejected",
+                "action": "accepted",
+                "applied_text": {"subjective": "Synthetic accepted suggestion."},
                 "section": "subjective",
                 "expected_revision": c.value(
                     "ehr.ClinicalDocumentVersion", "revision", id=c.key("open-draft")
@@ -3866,6 +4013,8 @@ BILLING: Final[dict[str, Seed]] = {
                 "source": "callback",
                 "status": "settled",
                 "decision": "verified",
+                "payment_code": "SYNTHETICPIXCODE",
+                "payment_url": "https://psp.synthetic.invalid/pay/1",
                 "version": 1,
                 "amount_minor": 15000,
                 "currency": "BRL",
@@ -3965,7 +4114,44 @@ BILLING: Final[dict[str, Seed]] = {
                 "create_command_id": c.key("fiscal-create"),
                 "last_command_id": c.key("fiscal-create"),
             },
-        )
+        ),
+        # The rehearsal document is submitted, authorized with its XML and PDF,
+        # then cancelled inside its window; each command is new.
+        updates=(
+            (
+                "billing.FiscalDocument",
+                lambda c: (
+                    c.ref("billing.FiscalDocument"),
+                    {"status": "submitted", "last_command_id": c.key("fiscal-submit")},
+                ),
+            ),
+            (
+                "billing.FiscalDocument",
+                lambda c: (
+                    c.ref("billing.FiscalDocument"),
+                    {
+                        "status": "authorized",
+                        "last_command_id": c.key("fiscal-authorize"),
+                        "xml_payload": b"<synthetic-nfse/>",
+                        "xml_reference": c.ref("billing.FiscalDocument"),
+                        "pdf_payload": b"%PDF-synthetic",
+                        "pdf_reference": c.ref("billing.FiscalDocument"),
+                        "provider_reference": "SYNTHETIC-NFSE-0001",
+                    },
+                ),
+            ),
+            (
+                "billing.FiscalDocument",
+                lambda c: (
+                    c.ref("billing.FiscalDocument"),
+                    {
+                        "status": "cancelled",
+                        "last_command_id": c.key("fiscal-cancel"),
+                        "cancellation_payload": b"<synthetic-cancel/>",
+                    },
+                ),
+            ),
+        ),
     ),
     "FiscalTransition": Seed(
         lambda c: (
@@ -4097,7 +4283,15 @@ INSURANCE: Final[dict[str, Seed]] = {
             }
         )
     ),
-    "Appeal": Seed(_rows({"body": "Synthetic appeal.", "content_sha256": DIGEST})),
+    "Appeal": Seed(
+        _rows(
+            {
+                "body": "Synthetic appeal.",
+                "clinical_assertions": "Synthetic clinical assertion.",
+                "content_sha256": DIGEST,
+            }
+        )
+    ),
     "ClinicalApproval": Seed(
         lambda c: ({"content_sha256": DIGEST, "approved_by_id": c.physician},),
         actor="physician",
@@ -4353,6 +4547,7 @@ INTEROP: Final[dict[str, Seed]] = {
         _rows(
             {
                 "role": "source",
+                "path": "synthetic/source.csv",
                 "sha256": DIGEST,
                 "size_bytes": 128,
                 "media_type": "text/csv",
@@ -4402,6 +4597,8 @@ INTEROP: Final[dict[str, Seed]] = {
                 "row_number": 1,
                 "kind": "patient",
                 "source_record_id": "SYN-ROW-1",
+                "content": {"nome": "Synthetic Imported Persona"},
+                "original_author": "Synthetic legacy system",
                 "content_sha256": DIGEST,
                 "patient_id": c.key("imported-patient"),
                 "enrollment_id": c.key("imported-enrollment"),
@@ -4418,7 +4615,7 @@ INTEROP: Final[dict[str, Seed]] = {
                             "full_name_index": sha256(
                                 b"synthetic-imported-persona"
                             ).digest(),
-                            "birth_date": None,
+                            "birth_date": date(1991, 2, 3),
                         },
                     )
                 ),

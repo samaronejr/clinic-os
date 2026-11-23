@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -229,6 +230,58 @@ def test_unreachable_history_fails_the_leaf(
     failures = stages.provenance_failures([_row(**overrides)])
     assert len(failures) == 1
     assert reason in failures[0]
+
+
+def test_totp_device_seed_is_recorded_only_as_digest() -> None:
+    # The seed a device holds until identity.0050 moves it: every recorded
+    # state (row, history, re-recorded write) passes through _recorded.
+    seed = bytes(range(20)).hex()
+    recorded = stages._recorded("otp_totp.TOTPDevice", "key", seed)
+    assert isinstance(recorded, str)
+    assert recorded.startswith("sha256:")
+    assert seed not in recorded
+    assert stages._recorded("otp_totp.TOTPDevice", "key", "") == ""
+
+
+@pytest.mark.parametrize("column", ["key", "session_key", "otp_seed", "pin", "nonce"])
+def test_unclassified_key_named_column_fails_closed(column: str) -> None:
+    with pytest.raises(LookupError, match="not classified"):
+        stages._recorded("crm.Lead", column, "f" * 40)
+
+
+def test_identifiers_and_counts_named_like_keys_are_not_material() -> None:
+    command = UUID("00000000-0000-4000-8000-000000000001")
+    assert stages._recorded("workflows.Task", "last_command_key", command) == str(
+        command
+    )
+    assert stages._recorded("ai.AIInvocation", "tokens_in", 4) == 4
+    assert stages._recorded("providers.ProviderCapability", "key", "pix") == "pix"
+
+
+def test_encrypted_column_empty_in_every_row_fails() -> None:
+    rows: list[dict[str, object]] = [
+        {
+            "model": "intake.PatientAddress",
+            "values": {"street": None},
+            "encrypted": ["street"],
+        },
+        {
+            "model": "intake.PatientAddress",
+            "values": {"street": ""},
+            "encrypted": ["street"],
+        },
+    ]
+    assert stages.empty_protected_failures(rows) == [
+        "intake.PatientAddress.street is empty in every seeded row"
+    ]
+    rows.append(
+        {
+            "model": "intake.PatientAddress",
+            "values": {"street": "Rua"},
+            "encrypted": ["street"],
+        }
+    )
+    assert stages.empty_protected_failures(rows) == []
 
 
 def test_secret_columns_are_recorded_only_as_digests() -> None:

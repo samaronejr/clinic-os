@@ -47,8 +47,10 @@ app_dsn="${app_dsn%/*}/$upgrade_db$app_query"
 # Service principals authenticate as the clinic_agent login (session_user is
 # their registered identity); the stager writes their records over it, as
 # service_principal_context does. An unset password gets a run-local one.
+agent_password_generated=0
 if [ -z "${CLINIC_AGENT_PASSWORD:-}" ]; then
     CLINIC_AGENT_PASSWORD="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    agent_password_generated=1
 fi
 export CLINIC_AGENT_PASSWORD
 agent_dsn="postgresql://clinic_agent:$CLINIC_AGENT_PASSWORD@${owner_dsn#*@}"
@@ -77,6 +79,18 @@ cleanup() {
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $upgrade_db" || true
     fi
     rm -rf "$secret_dir"
+    # The run-local clinic_agent password must not outlive the run: clear it
+    # and prove the role holds no password, on success and on failure.
+    if [ "$agent_password_generated" = 1 ]; then
+        psql_super -d postgres -qc "ALTER ROLE clinic_agent PASSWORD NULL" || rc=1
+        if [ "$(psql_super -d postgres -tAc \
+            "SELECT rolpassword IS NULL FROM pg_authid WHERE rolname='clinic_agent'")" != t ]; then
+            echo "migration-upgrade: clinic_agent still holds the run-local password" >&2
+            rc=1
+        else
+            echo "migration-upgrade: run-local clinic_agent password removed"
+        fi
+    fi
     exit $rc
 }
 trap cleanup EXIT
@@ -213,6 +227,13 @@ echo "== confirm no migration drift =="
     APP_DATABASE_URL="$owner_dsn" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
+
+echo "== scan published files for live secrets =="
+(cd "$project_root" && env \
+    APP_DATABASE_URL="$owner_dsn" \
+    CLINIC_SECRET_DIR="$secret_dir" \
+    uv run --frozen --no-sync --no-env-file python -m ops.testing.migration_upgrade_leaks \
+        "$work_root")
 
 printf '{"schema_version":1,"result":"PASS","base_sha":"%s","upgrade_db":"%s"}\n' \
     "$base_sha" "$upgrade_db" > "$work_root/verdict.json"

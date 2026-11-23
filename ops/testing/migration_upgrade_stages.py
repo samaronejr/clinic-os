@@ -23,10 +23,16 @@ replays that log against the row's recorded states (``provenance_failures``),
 requires no disabled user trigger at the leaf and runs the domains' cross-row
 and lifecycle invariants over the seeded graph.
 
-Secret-bearing columns never reach the record: ``SECRET_COLUMNS`` are kept
-as digests, and any unclassified column whose name marks secret material
-fails the load. Encryption is checked for every column that was protected in
-any migration state the row passed through, not only in the leaf model.
+Secret-bearing columns never reach the record: every recorded value (the
+row, each ``history`` state and each re-recorded product write) goes through
+``_recorded``, which keeps ``SECRET_COLUMNS`` as digests and fails the load on
+any column whose name marks key material (``SECRET_WORDS``: key, secret,
+seed, token, otp, ...) unless it is classified public, a digest, empty, an
+identifier or a number. The gate then scans every published file for each
+live secret value (``migration_upgrade_leaks``). Every encrypted column a
+seeded model holds must carry data in some seeded row. Encryption is
+checked for every column that was protected in any migration state the row
+passed through, not only in the leaf model.
 
 The set of new models is derived from the migration graph, never declared:
 concrete managed models of the leaf state that are absent from the state of
@@ -63,6 +69,7 @@ from psycopg import sql
 
 from ops.testing.migration_upgrade_domains import (
     DOMAIN_SEEDS,
+    EMPTY_PROTECTED_EXCEPTIONS,
     LEAF_INVARIANTS,
     LOAD_ROLES,
     PRESERVATION_EXCEPTIONS,
@@ -98,6 +105,26 @@ SECRET_TOKENS = (
     "access_token",
     "token",
     "signing_key",
+)
+# Name words that mark key material wherever they appear as a ``_`` part of
+# a column name (``key``, ``otp_seed``, ``session_token``) in any state.
+SECRET_WORDS = frozenset(
+    {
+        "key",
+        "keys",
+        "secret",
+        "seed",
+        "token",
+        "tokens",
+        "otp",
+        "password",
+        "private",
+        "salt",
+        "credential",
+        "passphrase",
+        "pin",
+        "nonce",
+    }
 )
 DIGEST_SUFFIXES = ("_hash", "_digest", "_sha256", "_fingerprint")
 # The database roles a staged write runs as: the migration owner (under FORCE
@@ -948,18 +975,33 @@ def _require_live_triggers(cursor: CursorWrapper) -> None:
 
 
 def _recorded(label: str, name: str, value: object) -> object:
-    """Record a value, keeping secret material as a digest only."""
+    """Record one column value, keeping secret material as a digest only.
+
+    This is the only path a value takes into the record: the inserted row,
+    every ``history`` state and every re-recorded product write. A column is
+    secret when ``SECRET_COLUMNS`` names it; a column whose name marks key
+    material (``SECRET_WORDS``, ``SECRET_TOKENS``) fails closed unless it is
+    ``PUBLIC_COLUMNS``-classified, a digest, empty, an identifier (UUID) or a
+    number. Classification follows the column name in every migration state
+    the row crosses, so a column a later state drops or clears is still kept
+    out of the record.
+    """
     if f"{label}.{name}" in SECRET_COLUMNS:
+        if value in (None, "", b""):
+            return _plain(value)
         raw = bytes(value) if isinstance(value, (bytes, memoryview)) else value
         content = raw if isinstance(raw, bytes) else json.dumps(_plain(raw)).encode()
         return "sha256:" + sha256(content).hexdigest()
     lowered = name.lower()
+    named = bool(SECRET_WORDS & set(lowered.split("_"))) or any(
+        token in lowered for token in SECRET_TOKENS
+    )
     if (
-        f"{label}.{name}" not in PUBLIC_COLUMNS
-        and any(token in lowered for token in SECRET_TOKENS)
+        named
+        and f"{label}.{name}" not in PUBLIC_COLUMNS
         and not lowered.endswith(DIGEST_SUFFIXES)
-        and isinstance(value, (bytes, memoryview, str))
-        and value
+        and value not in (None, "", b"", [], {})
+        and not isinstance(value, (UUID, bool, int, float, Decimal))
     ):
         message = f"{label}.{name} looks secret-bearing but is not classified"
         raise LookupError(message)
@@ -1235,6 +1277,32 @@ def provenance_failures(rows: Sequence[Mapping[str, object]]) -> list[str]:
     return failures
 
 
+def empty_protected_failures(rows: Sequence[Mapping[str, object]]) -> list[str]:
+    """Every encrypted column a seeded model holds is non-empty in some row.
+
+    A column protected in any state a row crossed that is empty in every
+    seeded row of its model would let its envelope check pass vacuously.
+    """
+    protected: dict[str, set[str]] = {}
+    filled: dict[str, set[str]] = {}
+    for row in rows:
+        label = str(row["model"])
+        values = cast("dict[str, object]", row["values"])
+        names = set(cast("list[str]", row.get("protected", []))) | set(
+            cast("list[str]", row.get("encrypted", []))
+        )
+        protected.setdefault(label, set()).update(names)
+        filled.setdefault(label, set()).update(
+            name for name in names if values.get(name) not in (None, "", {}, [])
+        )
+    return [
+        f"{label}.{name} is empty in every seeded row"
+        for label, names in sorted(protected.items())
+        for name in sorted(names - filled[label])
+        if f"{label}.{name}" not in EMPTY_PROTECTED_EXCEPTIONS
+    ]
+
+
 def invariant_failures(record: Mapping[str, object]) -> list[str]:
     """Run the domains' cross-row invariants over the seeded tenant."""
     import psycopg  # noqa: PLC0415 - verifier-only raw catalog access
@@ -1277,6 +1345,7 @@ def verify_stages(path: Path) -> list[str]:
         checked += row_checked
         empty += row_empty
     failures.extend(provenance_failures(rows))
+    failures.extend(empty_protected_failures(rows))
     failures.extend(invariant_failures(record))
     print(  # noqa: T201 - gate transcript
         f"upgrade-domains: read back {len(rows)} staged rows across "
