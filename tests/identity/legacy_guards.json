@@ -7561,7 +7561,6 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.scheduling.access.authorized_agenda_scope",
         "apps.scheduling.resource_booking.service_practitioners",
         "apps.identity.current_context.practitioner_display_label"
       ],
