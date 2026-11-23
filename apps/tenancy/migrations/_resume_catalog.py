@@ -24,7 +24,6 @@ type Delta = dict[str, dict[str, str | None]]
 type History = dict[str, list[tuple[str | None, Delta]]]
 
 FIXTURE = Path(__file__).with_name("_resume_catalog_pg16.json")
-REAPPLIED_FIXTURE = Path(__file__).with_name("_resume_catalog_reapplied_pg16.json")
 ARTIFACT_STEP = "artifact-retention:0"
 
 
@@ -89,14 +88,6 @@ def history() -> History:
 
 
 @cache
-def _reapplied() -> dict[str, Delta]:
-    """Catalog deltas measured after a legal reverse and second forward run."""
-    return cast(
-        "dict[str, Delta]", json.loads(REAPPLIED_FIXTURE.read_text(encoding="utf-8"))
-    )
-
-
-@cache
 def _checkpoints() -> dict[str, Checkpoint]:
     checkpoints = {}
     for migration, steps in history().items():
@@ -113,23 +104,17 @@ def _checkpoints() -> dict[str, Checkpoint]:
 def _boundaries(
     checkpoint: Checkpoint, applied: set[str], object_names: frozenset[str]
 ) -> list[tuple[int, Catalog]]:
-    catalogs: list[Catalog] = [{name: {} for name in object_names}]
+    catalog: Catalog = {name: {} for name in object_names}
     for migration, operations in history().items():
         if migration == "bootstrap" or (
             migration != checkpoint.migration and migration in applied
         ):
             for _, delta in operations:
-                catalogs = [_overlay(catalog, delta) for catalog in catalogs]
-            # A reversible ADD COLUMN allocates a different physical slot on
-            # reapplication. Preserve attnum, dropped slots and their references:
-            # only the entire independently captured alternate layout can match.
-            alternate = _reapplied().get(migration)
-            if alternate and object_names.intersection(alternate):
-                catalogs += [_overlay(catalog, alternate) for catalog in catalogs]
-    states = [(0, catalog) for catalog in catalogs]
+                catalog = _overlay(catalog, delta)
+    states = [(0, catalog)]
     for prefix, (_, delta) in enumerate(history()[checkpoint.migration], 1):
-        catalogs = [_overlay(catalog, delta) for catalog in catalogs]
-        states.extend((prefix, catalog) for catalog in catalogs)
+        catalog = _overlay(catalog, delta)
+        states.append((prefix, catalog))
     return states
 
 
@@ -139,7 +124,7 @@ def fingerprint(definition: Mapping[str, str]) -> str:
 
 
 _MEMBER_GROUPS = frozenset(
-    {"columns", "constraints", "indexes", "policies", "triggers", "constraint_triggers"}
+    {"columns", "constraints", "indexes", "policies", "triggers", "children", "parents"}
 )
 
 

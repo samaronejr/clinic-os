@@ -539,6 +539,17 @@ ownership, or direct `identity_user` access to `clinic_app`.
 - Use `uv run python manage.py showmigrations` for diagnosis. Do not edit an
   already-shipped migration to hide drift.
 
+The resume fingerprint compares schema, not the install date. For exactly
+`clinic_app.otp_totp_totpdevice.created_at` and
+`clinic_app.otp_static_staticdevice.created_at`, django-otp `0003_add_timestamps`
+adds a column with an install-time timestamp literal and then drops the SQL
+default. PostgreSQL retains the literal in `pg_attribute.attmissingval`, not the
+expression or function that supplied it. For that field alone the verifier
+compares the shape (one finite `timestamptz` literal, no declared default), not
+the instant. A retained default expression, its function, a different type or
+literal kind, and other columns' missing values remain subject to the normal
+exact check. No changes to migration recording or additional settings are needed.
+
 ### Authentication or tenant access returns 403
 
 - Confirm the user is active and has a `UserClinicRole` for the selected

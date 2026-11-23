@@ -93,7 +93,9 @@ def test_resume_preserves_preexisting_row_semantics(
                         RENAME swap_empty TO social_name;
                 """)
             assert _names(db)[2:4] == ("social_name", "legal_name")
-            diagnostic = r"intake_patientdemographics\.(legal_name|social_name)\.attnum"
+            diagnostic = (
+                r"intake_patientdemographics\.(legal_name|social_name)\.position"
+            )
         db.close()
         with pytest.raises(RuntimeError, match=diagnostic):
             MigrationExecutor(db).migrate([target])

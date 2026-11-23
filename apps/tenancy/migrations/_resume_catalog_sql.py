@@ -1,10 +1,11 @@
 """Fingerprint PostgreSQL catalog *rows*, not a projection of known attributes.
 
-The closed list below is the entire exclusion policy. ``to_jsonb(row)`` retains
-every other user column; PostgreSQL's implicit tuple header (xmin/xmax, ctid,
-etc.) is not part of a composite value. OID foreign keys are discovered from
-pg_get_catalog_foreign_keys and resolved by the server. Expressions and ACLs
-are normalized **in place**; their columns are not excluded.
+``to_jsonb(row)`` sees only user fields: xmin, xmax, cmin, cmax, ctid and
+tableoid are neither read nor fingerprinted. They identify a tuple version,
+command, physical location or catalog, not the object's logical definition.
+Physical attribute numbers are used to read visible order and resolve column
+references, never as fingerprint values. Other fields survive unless explicitly
+excluded below; OIDs, expressions and ACLs are normalized in place.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ VOLATILE: dict[str, tuple[str, ...]] = {
         "relhastriggers",
         "relhasrules",
         "relhassubclass",
+        "relnatts",  # includes dead slots; visible membership supplies logical arity
     ),
     "pg_attrdef": ("oid",),
     "pg_constraint": ("oid",),
@@ -44,6 +46,7 @@ VOLATILE: dict[str, tuple[str, ...]] = {
     "pg_proc": ("oid",),
     "pg_extension": ("oid",),
     "pg_rewrite": ("oid",),
+    "pg_attribute": ("attnum",),  # captured as dense visible ordinal, not a slot
 }
 
 
@@ -66,7 +69,8 @@ SOURCES = {
     "pg_attribute": RowSource(
         "m.parent",
         "m.path || ARRAY['columns', r.attname::text]",
-        _MEMBER + "attrelid WHERE r.attnum > 0 ORDER BY r.attrelid, r.attnum",
+        _MEMBER + "attrelid JOIN visible_columns vc "
+        "ON vc.rel=r.attrelid AND vc.slot=r.attnum ORDER BY vc.rel, vc.position",
     ),
     "pg_attrdef": RowSource(
         _OWNER,
@@ -101,14 +105,25 @@ SOURCES = {
     ),
     "pg_rewrite": RowSource(_OWNER, "ARRAY['rules', r.rulename]", _REL + "ev_class"),
     "pg_inherits": RowSource(
-        _OWNER,
-        "ARRAY['inherits', r.inhparent::regclass::text]",
-        _REL + "inhrelid",
+        "m.parent",
+        "m.path || ARRAY[edge.direction, r.inhparent::regclass::text,"
+        " r.inhrelid::regclass::text]",
+        "CROSS JOIN LATERAL (VALUES "
+        "(r.inhrelid,'parents'),(r.inhparent,'children')) edge(via,direction) "
+        "JOIN edge_scope s ON s.via=edge.via AND s.direction=edge.direction "
+        "JOIN members m ON m.oid=s.root "
+        "JOIN pg_catalog.pg_class child ON child.oid=r.inhrelid",
+    ),
+    "pg_partitioned_table": RowSource(
+        "m.parent",
+        "m.path || CASE WHEN m.oid=r.partrelid THEN ARRAY['partitioning'] "
+        "ELSE ARRAY['partitioning',r.partrelid::regclass::text] END",
+        "JOIN partition_scope s ON s.via=r.partrelid JOIN members m ON m.oid=s.root",
     ),
 }
 
 CTES = """
-WITH owners AS MATERIALIZED (
+WITH RECURSIVE owners AS MATERIALIZED (
     SELECT oid, relname FROM pg_catalog.pg_class
     WHERE relnamespace='clinic_app'::regnamespace AND relkind NOT IN ('i','I')
 ), members AS MATERIALIZED (
@@ -118,6 +133,26 @@ WITH owners AS MATERIALIZED (
            ARRAY['indexes', c.relname::text, 'pg_class']
     FROM owners o JOIN pg_catalog.pg_index i ON i.indrelid=o.oid
     JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+), descendants(root,via) AS (
+    SELECT oid,oid FROM members
+    UNION
+    SELECT d.root,i.inhrelid FROM descendants d
+    JOIN pg_catalog.pg_inherits i ON i.inhparent=d.via
+), ancestors(root,via) AS (
+    SELECT oid,oid FROM members
+    UNION
+    SELECT a.root,i.inhparent FROM ancestors a
+    JOIN pg_catalog.pg_inherits i ON i.inhrelid=a.via
+), edge_scope AS (
+    SELECT root,via,'children' AS direction FROM descendants
+    UNION ALL SELECT root,via,'parents' FROM ancestors
+), partition_scope AS (
+    SELECT root,via FROM descendants UNION SELECT root,via FROM ancestors
+), visible_columns AS MATERIALIZED (
+    SELECT a.attrelid AS rel, a.attnum AS slot, a.attname AS name,
+           row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS position
+    FROM pg_catalog.pg_attribute a JOIN members m ON m.oid=a.attrelid
+    WHERE a.attnum>0 AND NOT a.attisdropped
 ), trigger_names AS MATERIALIZED (
     SELECT t.oid, CASE WHEN t.tgisinternal AND c.contype='f'
             AND t.tgname ~ '^RI_ConstraintTrigger_[ac]_[0-9]+$'
@@ -138,20 +173,21 @@ _TRIGGER_DEF = (
     "'TRIGGER ' || pg_catalog.quote_ident(t.logical_name) || ' ')"
 )
 _SPECIAL = {
-    # The third-party OTP AddField(auto_now_add=True) writes the install-time
-    # clock as a fast default. Only the *original* atomic DDL tuple, witnessed
-    # by its recorder transaction, can stand for this symbolic clock. Never
-    # adopt an unverified value from the current database as a new reference.
+    # django-otp 0003 supplies an install-time literal, then drops the SQL
+    # default. There is no stored function or parse tree for this literal.
+    # Only its instant varies between clean installs. Keep the type, shape
+    # and absence of a declared default; all live pg_attrdef trees stay exact.
     ("pg_attribute", "attmissingval"): """
-        CASE WHEN r.atthasmissing AND r.attname='created_at' AND EXISTS (
-            SELECT FROM clinic_app.django_migrations dm
-            WHERE dm.xmin=r.xmin AND dm.name='0003_add_timestamps'
-              AND (dm.app,m.parent) IN (
-                ('otp_totp','relation otp_totp_totpdevice'),
-                ('otp_static','relation otp_static_staticdevice')
-              )
-              AND (dm.app='otp_totp')=(m.parent='relation otp_totp_totpdevice')
-        ) THEN to_jsonb('original atomic OTP migration clock'::text)
+        CASE WHEN r.attrelid IN (to_regclass('clinic_app.otp_totp_totpdevice'),
+                                 to_regclass('clinic_app.otp_static_staticdevice'))
+              AND r.attname='created_at'
+              AND r.atttypid='pg_catalog.timestamptz'::regtype
+              AND r.atttypmod=-1 AND r.attndims=0 AND r.attgenerated=''
+              AND r.attidentity='' AND r.atthasmissing AND NOT r.atthasdef
+              AND jsonb_array_length(to_jsonb(r.attmissingval))=1
+              AND jsonb_typeof(to_jsonb(r.attmissingval)->0)='string'
+              AND to_jsonb(r.attmissingval)->>0 NOT IN ('infinity','-infinity')
+        THEN jsonb_build_object('literal','finite timestamptz','elements',1)
         ELSE to_jsonb(r.attmissingval) END
     """,
     ("pg_class", "relpartbound"): "pg_catalog.pg_get_expr(r.relpartbound,r.oid)",
@@ -165,6 +201,10 @@ _SPECIAL = {
     ("pg_constraint", "conbin"): "pg_catalog.pg_get_expr(r.conbin,r.conrelid)",
     ("pg_index", "indexprs"): "pg_catalog.pg_get_expr(r.indexprs,r.indrelid)",
     ("pg_index", "indpred"): "pg_catalog.pg_get_expr(r.indpred,r.indrelid)",
+    (
+        "pg_partitioned_table",
+        "partexprs",
+    ): "pg_catalog.pg_get_expr(r.partexprs,r.partrelid)",
     ("pg_policy", "polqual"): "pg_catalog.pg_get_expr(r.polqual,r.polrelid)",
     ("pg_policy", "polwithcheck"): "pg_catalog.pg_get_expr(r.polwithcheck,r.polrelid)",
     ("pg_trigger", "tgname"): "t.logical_name",
@@ -179,6 +219,7 @@ _DEFINITION = {
     "pg_index": "pg_catalog.pg_get_indexdef(r.indexrelid)",
     "pg_trigger": _TRIGGER_DEF,
     "pg_proc": "pg_catalog.pg_get_functiondef(r.oid)",
+    "pg_partitioned_table": "pg_catalog.pg_get_partkeydef(r.partrelid)",
 }
 
 # Common reg* casts are much cheaper than pg_identify_object for every column
@@ -218,10 +259,12 @@ class Field(NamedTuple):
     type_name: str
     target: str | None
     vector: bool | None
+    column_relation: str | None
 
 
 _FIELDS_SQL = """
-SELECT c.relname, a.attname, a.atttypid::regtype::text, f.target, f.is_array
+SELECT c.relname, a.attname, a.atttypid::regtype::text, f.target,
+       COALESCE(f.is_array, colref.is_array), colref.relation
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid
 LEFT JOIN (
     SELECT fktable, fkcols[1] AS name, target.relname AS target, is_array
@@ -229,6 +272,12 @@ LEFT JOIN (
     JOIN pg_catalog.pg_class target ON target.oid=pktable
     WHERE pkcols=ARRAY['oid']::text[] AND cardinality(fkcols)=1
 ) f ON f.fktable=c.oid AND f.name=a.attname
+LEFT JOIN (
+    SELECT fktable, fkcols[1] AS relation, fkcols[2] AS field, is_array
+    FROM pg_catalog.pg_get_catalog_foreign_keys()
+    WHERE pktable='pg_attribute'::regclass
+      AND pkcols=ARRAY['attrelid','attnum']::text[] AND cardinality(fkcols)=2
+) colref ON colref.fktable=c.oid AND colref.field=a.attname
 WHERE c.relnamespace='pg_catalog'::regnamespace AND c.relname=ANY(%s)
   AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum
 """
@@ -241,9 +290,41 @@ def fields(connection: BaseDatabaseWrapper) -> tuple[Field, ...]:
         return tuple(Field(*row) for row in cursor.fetchall())
 
 
+def _column_ref(relation: str, value: str, *, vector: bool) -> str:
+    # Slot 0 is an expression position in indkey/partattrs/conkey, not a
+    # column. NULL and empty vectors are distinct. Resolve negative system
+    # attribute references by name without ever reading system-column values.
+    owner = 'r."' + relation.replace('"', '""') + '"'
+    slot = "item" if vector else value
+    identity = (
+        sql.SQL(
+            "CASE WHEN {slot}=0 THEN jsonb_build_array('expression') ELSE "
+            "(SELECT to_jsonb(a.attname) FROM pg_catalog.pg_attribute a "
+            "WHERE a.attrelid={owner} AND a.attnum={slot} AND NOT a.attisdropped) END"
+        )
+        .format(slot=sql.SQL(slot), owner=sql.SQL(owner))
+        .as_string()
+    )
+    if not vector:
+        return identity
+    return (
+        sql.SQL(
+            "CASE WHEN {v} IS NOT NULL THEN ARRAY(SELECT {ident} "
+            "FROM unnest({v}) WITH ORDINALITY AS u(item,ordinal) ORDER BY ordinal) END"
+        )
+        .format(v=sql.SQL(value), ident=sql.SQL(identity))
+        .as_string()
+    )
+
+
 def _normalizer(field: Field) -> str | None:
-    catalog, name, kind, target, vector = field
+    catalog, name, kind, target, vector, relation = field
     value = 'r."' + name.replace('"', '""') + '"'
+    if (catalog, name) == ("pg_constraint", "confdelsetcols"):
+        # PG16 doesn't list this optional subset in its composite foreign keys.
+        relation, vector = "conrelid", True
+    if relation:
+        return _column_ref(relation, value, vector=bool(vector))
     if expr := _SPECIAL.get((catalog, name)):
         return expr
     if kind == "aclitem[]":
@@ -297,6 +378,17 @@ def row_definition(catalog: str, schema: tuple[Field, ...]) -> str:
     ]
     if catalog in _DEFINITION:
         replacements += ["'definition'", _DEFINITION[catalog]]
+    if catalog == "pg_attribute":
+        replacements += ["'position'", "vc.position"]
+    elif catalog == "pg_inherits":
+        # An attached partition's bound is part of the parent's scan scope.
+        # Capture it even when the leaf belongs to a different schema.
+        replacements += [
+            "'child_partition'",
+            "child.relispartition",
+            "'child_bound'",
+            "pg_catalog.pg_get_expr(child.relpartbound,child.oid)",
+        ]
     if replacements:
         payload += " || pg_catalog.jsonb_build_object(" + ",".join(replacements) + ")"
     return payload

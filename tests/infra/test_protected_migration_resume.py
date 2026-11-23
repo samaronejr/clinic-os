@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from apps.tenancy.migrations._resume_catalog import FIXTURE, REAPPLIED_FIXTURE
+from apps.tenancy.migrations._resume_catalog import FIXTURE
 from django.db import DatabaseError, connections, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
@@ -20,7 +20,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from psycopg import sql
 
-from infra.resume_catalog_capture import capture, capture_reapplied, merged
+from infra.resume_catalog_capture import capture, merged
 from patients.test_intake_migrations import (
     _default_connection,
     _scratch_database,
@@ -563,12 +563,3 @@ def test_committed_fingerprints_match_fresh_migration_catalog(
     if (json.dumps(observed, indent=1) + "\n").encode() != FIXTURE.read_bytes():
         msg = "Fresh catalog reference differs in content or replay order"
         raise AssertionError(msg)
-    with (
-        django_db_blocker.unblock(),
-        _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
-        _default_connection(db),
-    ):
-        reapplied = capture_reapplied(db)
-    assert (
-        json.dumps(reapplied, indent=1) + "\n"
-    ).encode() == REAPPLIED_FIXTURE.read_bytes()

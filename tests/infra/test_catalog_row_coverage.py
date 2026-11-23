@@ -80,12 +80,13 @@ DDL_FIELDS = {
     ("pg_policy", "polqual"),
     ("pg_policy", "polwithcheck"),
     ("pg_class", "relpartbound"),
+    ("pg_partitioned_table", "partexprs"),
 }
 
 
 def _sample(field: Field) -> sql.Composable:
     """Prefer real, non-null values, including expression trees and anyarray."""
-    catalog, name, kind, target, _ = field
+    catalog, name, kind, target, _, _ = field
     guards = [sql.SQL("true")]
     if catalog == "pg_proc":
         guards.append(sql.SQL("s.prokind IN ('f','p')"))
@@ -109,7 +110,7 @@ def _sample(field: Field) -> sql.Composable:
 
 
 def _donor(field: Field) -> sql.Composable:
-    _, name, kind, target, vector = field
+    _, name, kind, target, vector, _ = field
     if target:
         # Use an existing logical FK, never a random local OID. For a numeric
         # vector preserve the PostgreSQL type (and thus its catalog semantics).
@@ -154,7 +155,7 @@ def _donor(field: Field) -> sql.Composable:
 
 
 def _variant(field: Field) -> sql.Composable:
-    _, name, kind, target, _ = field
+    _, name, kind, target, _, _ = field
     column = sql.Identifier("seed", name)
     if kind == "boolean":
         return sql.SQL("NOT {}").format(column)
@@ -184,9 +185,11 @@ def _copies(
     catalog, name, *_ = field
     samples = [f.name for f in schema if f.catalog == catalog]
     payload = sql.SQL(row_definition(catalog, schema))
-    # xmin is a system column, not part of a stored composite value. Give both
-    # scratch projections the same version for the OTP-only provenance join.
-    extra = sql.SQL(", '0'::xid AS xmin") if catalog == "pg_attribute" else sql.SQL("")
+    edge = (
+        sql.SQL("LEFT JOIN pg_catalog.pg_class child ON child.oid=r.inhrelid")
+        if catalog == "pg_inherits"
+        else sql.SQL("")
+    )
     projections = []
     for changed in (False, True):
         columns = sql.SQL(",").join(
@@ -200,13 +203,14 @@ def _copies(
         )
         projections.append(
             sql.SQL(
-                "SELECT ({})::text FROM (SELECT {} {} FROM seed) r "
+                "SELECT ({})::text FROM (SELECT {} FROM seed) r {} "
                 "CROSS JOIN (VALUES ('relation catalog_probe')) m(parent) "
+                "CROSS JOIN (VALUES (1)) vc(position) "
                 "CROSS JOIN LATERAL (SELECT {} AS logical_name) t"
             ).format(
                 payload,
                 columns,
-                extra,
+                edge,
                 sql.SQL("r.tgname::text") if catalog == "pg_trigger" else sql.SQL("''"),
             )
         )
@@ -382,6 +386,12 @@ def test_catalog_ddl_semantics_refuse_drift(django_db_blocker: DjangoDbBlocker) 
                 "ALTER TABLE catalog_parts DETACH PARTITION catalog_part; "
                 "ALTER TABLE catalog_parts ATTACH PARTITION catalog_part "
                 "FOR VALUES FROM (-1) TO (10)",
+            ),
+            (
+                "relation catalog_parts",
+                "partitioning.partexprs",
+                "DROP TABLE catalog_parts CASCADE; "
+                "CREATE TABLE catalog_parts (n integer) PARTITION BY RANGE ((n+1))",
             ),
         ]:
             before = snapshot(db)[name]
