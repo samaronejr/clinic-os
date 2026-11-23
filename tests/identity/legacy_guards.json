@@ -445,9 +445,10 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.identity.current_context.current_actor_id"
+        "apps.identity.current_context.current_actor_id",
+        "clinic_app.has_permission"
       ],
-      "reason": "Lists only the actor's own active plans; care plan row security (tasks.view through has_permission) decides visibility."
+      "reason": "Lists the actor's active plans. Pending bundle visibility now also calls the current patient-choice reader, whose staff permission gate delegates to has_permission; the requesting actor alone is not authority to return a pending bundle."
     },
     {
       "symbol": "apps.ai.care_views.care_coordination",
@@ -1205,10 +1206,10 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ai.artifacts.input_for",
-        "apps.ai.artifacts.read_artifact"
+        "apps.ai.effects.check_invocation",
+        "apps.ai.revenue_sources._guide_context"
       ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+      "reason": "The retained-output helper verifies the invocation, checks the exact guide and original input, and returns the authorized context before _ready validates the model reply."
     },
     {
       "symbol": "apps.ai.revenue_cycle.check_revenue_sources",
@@ -1230,9 +1231,9 @@
       "kind": "delegated",
       "enforced_by": [
         "apps.insurance.access.authority",
-        "apps.ai.artifacts.read_artifact"
+        "apps.ai.revenue_sources._guide_context"
       ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+      "reason": "The review resolves only the Finance requester's own invocation. Its completed items require the currently authorized guide and original protected input; there is no separate direct-artifact read."
     },
     {
       "symbol": "apps.ai.revenue_cycle.request_revenue_cycle",
@@ -1300,9 +1301,9 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ai.artifacts.read_artifact"
+        "apps.ai.revenue_sources._guide_context"
       ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+      "reason": "After selecting a revenue proposal's output this preview delegates to collect_revenue_cycle; the guide and original-input scope gate precedes rendering the reply."
     },
     {
       "symbol": "apps.ai.revenue_views.revenue_cycle_page",
