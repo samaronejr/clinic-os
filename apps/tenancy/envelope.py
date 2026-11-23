@@ -24,6 +24,7 @@ from django.db import DatabaseError, connection
 from apps.core.secrets import secret_store
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
 
 KEK_SECRET_NAME = "tenant-kek"  # noqa: S105 - a secret name, not a value
@@ -217,6 +218,47 @@ def reveal(*, purpose: str, envelope: bytes) -> bytes:
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
     return bytes(result)
+
+
+def reveal_many(
+    *, purpose: str, envelopes: Sequence[bytes | memoryview | None]
+) -> tuple[bytes | None, ...]:
+    """Reveal a bounded, already authorized projection in input order.
+
+    As with ``reveal``, the database checks tenant and purpose on each
+    non-null envelope. The KEK is fetched once per batch, never cached.
+    """
+    _validate_purpose(purpose)
+    if all(item is None for item in envelopes):
+        return (None,) * len(envelopes)
+    params = (
+        _kek(),
+        purpose,
+        [None if item is None else bytes(item) for item in envelopes],
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT CASE WHEN item IS NOT NULL "
+                "THEN clinic_app.protected_decrypt(%s, %s, item) END "
+                "FROM pg_catalog.unnest(%s::bytea[]) WITH ORDINALITY AS batch(item, n) "
+                "ORDER BY n",
+                params,
+            )
+            rows = cursor.fetchall()
+    except DatabaseError as error:
+        _raise_mapped(error)
+    if len(rows) != len(envelopes):
+        raise EnvelopeUnavailableError
+    revealed: list[bytes | None] = []
+    for (value,), envelope in zip(rows, envelopes, strict=True):
+        if envelope is None and value is None:
+            revealed.append(None)
+        elif envelope is not None and isinstance(value, (bytes, memoryview)):
+            revealed.append(bytes(value))
+        else:
+            raise EnvelopeUnavailableError
+    return tuple(revealed)
 
 
 def blind_indexes(*, purpose: str, plaintext: bytes) -> tuple[bytes, ...]:

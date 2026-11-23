@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import BinaryField, ExpressionWrapper, F, Q
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -49,6 +49,7 @@ from apps.scheduling.models import (
     ServiceType,
 )
 from apps.scheduling.timezones import civil_day_bounds, format_local_minute
+from apps.tenancy.envelope import reveal_many
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -475,6 +476,7 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     row: Appointment,
     rules: _MoveRules,
     *,
+    patient_display_name: str,
     book: tuple[_Grant, ...],
     move: tuple[_Grant, ...],
     lane_resources: set[UUID],
@@ -485,7 +487,7 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     deadline = row.hold_expires_at if held else None
     return BoardAppointment(
         appointment_id=row.pk,
-        patient_display_name=row.patient.full_name,
+        patient_display_name=patient_display_name,
         practitioner_id=row.practitioner_id,
         resource_ids=tuple(pk for pk in row.resource_ids if pk in lane_resources),
         service_type_id=row.service_type_id,
@@ -560,29 +562,48 @@ def view_agenda_board(
         if view == "month":
             counts = _counts(shown, _days(first_day, last_day), timezone_key)
         else:
-            # The board shows only the patient's name. Loading their birth
-            # date would also call protected_decrypt for every non-null date.
+            # Keep the scoped patient join, but skip the encrypted field's
+            # per-row converter. Reveal only names on the bounded board page.
             ordered = tuple(
-                shown.select_related("patient")
-                .defer("patient__birth_date")
+                shown.annotate(
+                    name_envelope=ExpressionWrapper(
+                        F("patient__full_name"), output_field=BinaryField()
+                    )
+                )
+                .only(
+                    "practitioner_id",
+                    "resource_ids",
+                    "service_type_id",
+                    "start_at",
+                    "end_at",
+                    "status",
+                    "revision",
+                    "hold_expires_at",
+                )
                 .order_by("start_at", "practitioner_id", "pk")[
                     : MAX_BOARD_APPOINTMENTS + 1
                 ]
             )
             truncated = len(ordered) > MAX_BOARD_APPOINTMENTS
+            visible = ordered[:MAX_BOARD_APPOINTMENTS]
+            names = reveal_many(
+                purpose="intake.patient.full_name",
+                envelopes=[row.name_envelope for row in visible],
+            )
             lane_resources = {lane.lane_id for lane in resources}
             now = timezone.now()
             appointments = tuple(
                 _presented(
                     row,
                     rules,
+                    patient_display_name="" if name is None else name.decode("utf-8"),
                     book=book,
                     move=move,
                     lane_resources=lane_resources,
                     timezone_key=timezone_key,
                     now=now,
                 )
-                for row in ordered[:MAX_BOARD_APPOINTMENTS]
+                for row, name in zip(visible, names, strict=True)
             )
             if view != "list":
                 occupancy = _occupancy(

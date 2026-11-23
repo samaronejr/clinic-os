@@ -26,7 +26,9 @@ from apps.tenancy.envelope import (
     decrypt,
     encrypt,
     issue_tenant_key,
+    protect,
     reencrypt,
+    reveal_many,
     rewrap_tenant_keys,
     tenant_key_status,
 )
@@ -185,6 +187,79 @@ def test_envelope_round_trip_binds_tenant_and_purpose(
             pytest.raises(EnvelopeUnavailableError),
         ):
             decrypt(purpose=PURPOSE, envelope=envelope)
+
+
+def test_batch_reveal_preserves_order_and_refuses_invalid_envelopes(
+    rbac_graph: RbacGraph,
+    encryption_orgs: EncryptionOrgs,
+    tmp_path: Path,
+) -> None:
+    root = _issue(encryption_orgs.organization_a, rbac_graph.physician, tmp_path)
+    other_plaintext = b"second synthetic value"
+    with override_settings(
+        CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
+    ):
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+        ):
+            first = protect(purpose=PURPOSE, plaintext=PLAINTEXT)
+            second = protect(purpose=PURPOSE, plaintext=other_plaintext)
+            assert reveal_many(
+                purpose=PURPOSE, envelopes=[memoryview(second), None, first, second]
+            ) == (other_plaintext, None, PLAINTEXT, other_plaintext)
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeFormatError),
+        ):
+            reveal_many(purpose="other-purpose", envelopes=[None, first])
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeFormatError),
+        ):
+            reveal_many(purpose=PURPOSE, envelopes=[first, b"short"])
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.shared_user, encryption_orgs.organization_b),
+            pytest.raises(EnvelopeUnavailableError),
+        ):
+            reveal_many(purpose=PURPOSE, envelopes=[first])
+        with runtime_role(), pytest.raises(EnvelopeContextError):
+            reveal_many(purpose=PURPOSE, envelopes=[first])
+
+
+def test_batch_reveal_reloads_key_material_after_a_successful_read(
+    rbac_graph: RbacGraph,
+    encryption_orgs: EncryptionOrgs,
+    tmp_path: Path,
+) -> None:
+    root = _issue(encryption_orgs.organization_a, rbac_graph.physician, tmp_path)
+    key = root / "tenant-kek.secret"
+    with (
+        override_settings(
+            CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
+        ),
+        runtime_role(),
+    ):
+        with tenant_context(rbac_graph.physician, encryption_orgs.organization_a):
+            ciphertext = protect(purpose=PURPOSE, plaintext=PLAINTEXT)
+            assert reveal_many(purpose=PURPOSE, envelopes=[ciphertext]) == (PLAINTEXT,)
+        key.write_text(OTHER_KEK)
+        with (
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeError),
+        ):
+            reveal_many(purpose=PURPOSE, envelopes=[ciphertext])
+        key.unlink()
+        assert reveal_many(purpose=PURPOSE, envelopes=[]) == ()
+        assert reveal_many(purpose=PURPOSE, envelopes=[None, None]) == (None, None)
+        with (
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(SecretUnavailableError),
+        ):
+            reveal_many(purpose=PURPOSE, envelopes=[ciphertext])
 
 
 def test_key_rotation_retires_and_reencrypts(

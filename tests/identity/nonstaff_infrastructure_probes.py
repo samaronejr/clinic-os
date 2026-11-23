@@ -175,6 +175,16 @@ def infrastructure_probes(
             database_role="clinic_owner",
         ),
         DifferentialProbe(
+            "apps.tenancy.envelope.reveal_many",
+            lambda: (
+                envelope.reveal_many(
+                    purpose="synthetic.differential", envelopes=[None, d.encrypted]
+                )
+                == (None, b"Sintetico")
+            ),
+            database_role="clinic_owner",
+        ),
+        DifferentialProbe(
             "apps.tenancy.envelope.blind_indexes",
             lambda: envelope.blind_indexes(
                 purpose="synthetic.differential", plaintext=b"Sintetico"

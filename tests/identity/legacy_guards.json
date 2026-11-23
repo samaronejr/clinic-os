@@ -9265,6 +9265,18 @@
       ]
     },
     {
+      "symbol": "apps.tenancy.envelope.reveal_many",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The batch read uses the same protected_decrypt tenant and purpose boundary as scalar reveal. The differential oracle executes the real call.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.reveal_many#observed"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.envelope.rewrap_tenant_keys",
       "signals": [
         "resolver"
@@ -11394,6 +11406,7 @@
     "apps.tenancy.envelope.protect#observed",
     "apps.tenancy.envelope.reencrypt#observed",
     "apps.tenancy.envelope.reveal#observed",
+    "apps.tenancy.envelope.reveal_many#observed",
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
