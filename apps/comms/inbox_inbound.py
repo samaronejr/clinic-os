@@ -48,6 +48,7 @@ from apps.comms.models import (
     TemplateVersion,
 )
 from apps.comms.triage import classify_inbound
+from apps.core.integration import hold_subject_mutation_lock
 from apps.core.secrets import SecretUnavailableError, secret_store
 
 if TYPE_CHECKING:
@@ -210,7 +211,9 @@ class _DuplicateEventError(Exception):
     """The provider event id was already recorded: a true replay, nothing else."""
 
 
-def _record_event(account: ResolvedAccount, event: ParsedEvent) -> None:
+def _record_event(
+    account: ResolvedAccount, event: ParsedEvent, *, operation_id: UUID | None = None
+) -> None:
     """Record the event id; only a clash on that unique key is a replay."""
     try:
         with transaction.atomic():
@@ -219,8 +222,15 @@ def _record_event(account: ResolvedAccount, event: ParsedEvent) -> None:
                 provider_account_id=account.account_id,
                 event_id=event.event_id,
                 kind=_kind(event),
+                operation_id=operation_id,
+                delivery_state=event.status if isinstance(event, StatusUpdate) else "",
             )
     except IntegrityError as error:
+        if (
+            getattr(getattr(error.__cause__, "diag", None), "constraint_name", None)
+            != "comms_inbound_event_uniq"
+        ):
+            raise
         raise _DuplicateEventError from error
 
 
@@ -249,7 +259,8 @@ def _apply(account: ResolvedAccount, events: tuple[ParsedEvent, ...]) -> Inbound
             # The receipt and its effect commit or roll back together; any other
             # integrity failure propagates so the provider redelivers.
             with transaction.atomic():
-                _record_event(account, event)
+                if not isinstance(event, StatusUpdate):
+                    _record_event(account, event)
                 _dispatch(account, event)
         except _DuplicateEventError:
             duplicates += 1
@@ -396,22 +407,28 @@ def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:
         ).exists():
             raise _RetryLaterError
         return False
+    hold_subject_mutation_lock(SUBJECT_TYPE, operation.subject_id)
     message = (
-        Message.objects.select_for_update()
+        Message.objects.select_for_update(of=("self",))
         .filter(
             pk=operation.subject_id,
             direction="out",
             conversation__clinic_id=account.clinic_id,
+            conversation__provider_account_id=account.account_id,
         )
         .first()
     )
     if message is None:
         return False
-    state = advance_provider_state(
-        current=message.provider_state, incoming=event.status
-    )
-    if state != message.provider_state:
-        Message.objects.filter(pk=message.pk).update(provider_state=state)
+    _record_event(account, event, operation_id=operation.pk)
+    # Positive proof survives *all* attempts. Negative progress belongs only
+    # to the authenticated reference on its immutable event receipt.
+    if event.status in {"delivered", "read"}:
+        state = advance_provider_state(
+            current=message.provider_state, incoming=event.status
+        )
+        if state != message.provider_state:
+            Message.objects.filter(pk=message.pk).update(provider_state=state)
     if event.pricing_category and event.status in {"sent", "delivered"}:
         MessageMeter.objects.get_or_create(
             organization_id=account.organization_id,

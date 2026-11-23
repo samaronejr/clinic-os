@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, transaction
 from django.forms import Select
 from django.http import HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
@@ -115,13 +115,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OK = 200
 CONFLICT = 409
-_SIGN_LOCK_NAMESPACE: Final = "clinic-lock-v1:prescription-sign:"
 # Operations already handed to the identity/provider boundary. A ``draft``
 # operation left behind by an interrupted step-up or evidence check is not
 # in flight; the service supersedes it on the next authorized attempt.
 _IN_FLIGHT_STATES: Final = (
     SignatureOperation.State.PREPARED,
     SignatureOperation.State.SIGNING,
+    SignatureOperation.State.SIGNED_UNVERIFIED,
 )
 _ITEM_FIELDS: Final = (
     ("medication_description", "Descrição do medicamento"),
@@ -380,6 +380,7 @@ _BADGES: Final[dict[str, tuple[str, str]]] = {
     SignatureOperation.State.ISSUED: ("success", "Emitido"),
     SignatureOperation.State.FAILED: ("error", "Assinatura falhou"),
     SignatureOperation.State.SIGNING: ("pending", "Aguardando o provedor"),
+    SignatureOperation.State.SIGNED_UNVERIFIED: ("pending", "Aguardando verificação"),
     SignatureOperation.State.PREPARED: ("pending", "Preparado, aguardando envio"),
     SignatureOperation.State.DRAFT: ("pending", "Interrompida antes da confirmação"),
 }
@@ -598,22 +599,6 @@ def _render_document(
     return redirect(review_continuation(clinic_id, document.pk))
 
 
-def _hold_signing_lock(document_id: UUID) -> None:
-    """Serialize sign requests per document for the rest of the transaction.
-
-    Two submits of the same button (a double click, a retried request) queue
-    on this lock; the second one finds the operation the first created and
-    resumes it instead of starting another. Disabled buttons are feedback;
-    this lock is the guarantee.
-    """
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_catalog.pg_advisory_xact_lock("
-            "pg_catalog.hashtextextended(%s, 0))",
-            [f"{_SIGN_LOCK_NAMESPACE}{document_id}"],
-        )
-
-
 def _sign_document(
     request: HttpRequest,
     clinic_id: UUID,
@@ -623,13 +608,6 @@ def _sign_document(
     subject: Subject,
 ) -> HttpResponseBase | ActionOutcome:
     """Start signing once per document, or resume the in-flight operation."""
-    _hold_signing_lock(document_id)
-    existing = SignatureOperation.objects.filter(
-        document_id=document_id,
-        state__in=_IN_FLIGHT_STATES,
-    ).first()
-    if existing is not None:
-        return redirect(signing_continuation(clinic_id, existing.pk))
     try:
         operation = request_signature(
             request=request, clinic_id=clinic_id, document_id=document_id

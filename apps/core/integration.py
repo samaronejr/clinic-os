@@ -606,8 +606,18 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
         operation.not_before is not None and operation.not_before > timezone.now()
     ):
         return _ClaimDecision("skipped", operation.provider)
+    if (
+        operation.kind == OperationKind.COMMUNICATION
+        and operation.status == _IN_PROGRESS
+    ):
+        _mark_uncertain(operation, reclaimed=True)
+        return _ClaimDecision("reconcile", "")
     if not _actor_has_clinic_authority(scope):
         return _ClaimDecision("revoked", operation.provider)
+    return _claim_sendable(operation)
+
+
+def _claim_sendable(operation: IntegrationOperation) -> _ClaimDecision:
     recovering = (
         operation.kind == OperationKind.ACTION
         and operation.status == _IN_PROGRESS
@@ -624,6 +634,36 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
     if not recovering:
         operation.save(update_fields=("attempt_count", "updated_at"))
     return _ClaimDecision("reconcile", operation.provider)
+
+
+def _mark_uncertain(operation: IntegrationOperation, *, reclaimed: bool) -> None:
+    if operation.last_error != "outcome_unknown":
+        operation.last_error = "outcome_unknown"
+        if reclaimed and operation.attempt_count < operation.max_attempts:
+            operation.attempt_count += 1
+        operation.save(update_fields=("last_error", "attempt_count", "updated_at"))
+
+
+def _hold_uncertain_communication(scope: OperationScope, *, reclaimed: bool) -> bool:
+    """Retain unknown delivery under custody, even after the sender is offboarded.
+
+    No subject, content or authority to send is loaded. A known transient refusal
+    goes back to pending instead, where its original bounded retry budget applies.
+    """
+    with _stored_scope_context(scope):
+        operation = (
+            IntegrationOperation.objects.select_for_update()
+            .filter(
+                pk=scope.operation_id,
+                kind=OperationKind.COMMUNICATION,
+                status=_IN_PROGRESS,
+            )
+            .first()
+        )
+        if operation is None:
+            return False
+        _mark_uncertain(operation, reclaimed=reclaimed)
+        return True
 
 
 def _persisted_outcome(scope: OperationScope) -> ExecutionResult:
@@ -918,6 +958,7 @@ def _deliver(
         result = adapter.send(prepared, operation_id=scope.operation_id)
     except AmbiguousSendError:
         # Do not reset to pending: a remote effect may already exist.
+        _hold_uncertain_communication(scope, reclaimed=False)
         outcome = "reconcile"
     except TransientSendError:
         outcome = "retry" if _release_for_retry(scope) else _persisted_outcome(scope)
@@ -933,6 +974,8 @@ def _deliver(
             type(provider_reference) is not str
             or not 1 <= len(provider_reference) <= MAX_PROVIDER_REFERENCE_LENGTH
         ):
+            if _hold_uncertain_communication(scope, reclaimed=False):
+                return "reconcile"
             outcome = (
                 "failed"
                 if _fail_operation(scope, reason_code="invalid_provider_reference")
@@ -1023,7 +1066,12 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
             with tenant_context(scope.actor_id, scope.organization_id):
                 decision = _claim_row(scope)
         except TenantAccessDeniedError:
-            decision = _ClaimDecision("revoked", "")
+            decision = _ClaimDecision(
+                "reconcile"
+                if _hold_uncertain_communication(scope, reclaimed=True)
+                else "revoked",
+                "",
+            )
         outcome: ExecutionResult
         if decision.outcome == "revoked":
             outcome = (

@@ -212,6 +212,8 @@ def message_send_eligible(scope: OperationScope) -> bool:
     )
     if message is None or message.conversation.clinic_id != scope.clinic_id:
         return False
+    if message.provider_state in {"delivered", "read"}:
+        return False
     conversation, template = message.conversation, message.template
     if conversation.purpose == "marketing":
         from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415

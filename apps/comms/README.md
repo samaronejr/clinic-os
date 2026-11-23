@@ -150,6 +150,10 @@ outbox lifecycle (queued/sent/failed) combined with the provider's monotonic sta
 (`delivered`, `read`, `failed`); a failure never overwrites proof of delivery.
 A failed message offers `retry_message` under a fresh operation; the stable
 operation id stays the provider idempotency key, so recovery does not duplicate.
+An abandoned send, ambiguous reply or malformed acceptance reference is **not**
+a failed delivery. It stays `in_progress/outcome_unknown`, outside the automatic
+scan and fresh-key retry paths, including when the sender has left the clinic.
+Only known transient refusals return to pending and consume the send budget.
 Roles per purpose: transactional - clinic admin, clinic manager, receptionist,
 scheduler, nurse and physician; care - nurse/physician with patient-scoped
 `clinical.read`; marketing - clinic admin and clinic manager with a registered
@@ -203,8 +207,12 @@ Staff commands append fixed `comms.*` events (no content). Machine ingest append
 principal's account and tenant, and `comms_ingest_audit` appends the hash-chained
 row with the principal as actor. Payload keys are only `clinic_id` and
 `object_verb`; no body, address or label. A replayed or foreign-claim delivery
-appends nothing, and the outbox state machine is untouched: the inbox's delivered
-and read states stay derived from `Message.provider_state`.
+appends nothing. New status receipts bind the reported progress to the operation
+resolved by its own provider reference and the proven conversation account.
+Only the current attempt's negative progress can authorize retry; delivery/read
+proof from **any** attempt survives in `Message.provider_state` and vetoes a
+queued retry at the send boundary. Historical unbound negative reports are not
+attributed to a successor by recency.
 
 ### Contact tokens
 

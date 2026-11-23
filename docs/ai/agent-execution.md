@@ -114,6 +114,13 @@ Known failure can enter `compensating`. Only the compensation policy already
 bound into approval may run, under current authority. Uncertain cancellation,
 revoked authority, or a manual/none strategy leaves `manual_required`.
 Compensation history and receipts are retained; no record is hard-deleted.
+After interruption, a worker that regains send custody **only looks up the
+retained compensation key**. An authenticated cancellation receipt completes
+that same execution; absent or unverifiable evidence atomically moves it to
+manual review without another cancel. `manage.py recover_agent_work --clinic-id
+<clinic> --principal-id <principal>` authenticates the machine and republishes
+bounded, opaque references for that scope. The worker derives its action from
+the durable state; neither the operator nor broker payload supplies a verdict.
 The administrative queue exposes rejected, unknown and manual-required work.
 
 ## Provenance and privacy

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from typing import TYPE_CHECKING
 from unittest.mock import patch
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from apps.ai import action_validation, tool_gateway
@@ -15,13 +16,17 @@ from apps.ai.action_contracts import Refusal
 from apps.ai.action_payload import instant
 from apps.ai.action_recovery import compensate_action, reconcile_action
 from apps.ai.execution import execute_action
-from apps.ai.models import ActionExecution, ActionProposal, ActionReceipt
+from apps.ai.models import ActionExecution, ActionProposal, ActionReceipt, Compensation
 from apps.ai.proposals import AgentContext
+from apps.ai.tasks import run_agent
 from apps.ai.untrusted import UntrustedContent
 from apps.comms import agent_reminders
 from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from apps.workflows.services import publish_definition
+from config.celery import app as celery_app
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, connections
 from django.utils import timezone
 
@@ -29,15 +34,19 @@ from ai.agent_support import AgentWorld, agent_world, approve, propose
 from identity.permission_support import owner_context
 from identity.test_service_principals import agent_password
 from patient_service_support import runtime_role
+from renewal.broker_support import QUEUE, broker, broker_url, delivery, worker
+from resilience.test_broker_worker_death import _accepted_before_sigkill
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from apps.ai.action_contracts import ExecutionResult
+    from redis import Redis
 
     from rbac_fixtures import RbacGraph
+    from renewal.broker_support import Worker
 
-__all__ = ("agent_password",)
+__all__ = ("agent_password", "broker", "broker_url", "worker")
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
 
 
@@ -295,20 +304,156 @@ def test_known_failure_runs_bound_compensation_once(
 
     monkeypatch.setattr(agent_reminders, "send_reminder", failed)
     assert execute(world, proposal.pk).state == "failure"
-    result = compensate_action(
-        clinic_id=world.gateway.graph.clinic_a,
-        proposal_id=proposal.pk,
-        principal_id=world.principal.pk,
-    )
-    assert result.state == "compensated"
-    assert (
-        compensate_action(
+    original_key = UUID(str(world.payload.data()["idempotency_key"]))
+    cancel_key = uuid5(original_key, "compensation-v1")
+    with patch("apps.ai.execution_tasks.execute.apply_async") as publish:
+        with pytest.raises(CommandError, match="agent recovery unavailable"):
+            call_command(
+                "recover_agent_work",
+                clinic_id=str(world.gateway.graph.clinic_c),
+                principal_id=str(world.principal.pk),
+            )
+        publish.assert_not_called()
+        assert (
+            call_command(
+                "recover_agent_work",
+                clinic_id=str(world.gateway.graph.clinic_a),
+                principal_id=str(world.principal.pk),
+            )
+            == "Queued agent work: 1"
+        )
+        publish.assert_called_once_with(
+            kwargs={
+                "clinic_id": str(world.gateway.graph.clinic_a),
+                "proposal_id": str(proposal.pk),
+                "principal_id": str(world.principal.pk),
+            },
+            queue="ai-batch",
+        )
+    with (
+        patch("apps.ai.tasks.fair_acquire", return_value=True),
+        patch.object(
+            agent_reminders, "cancel_reminder", wraps=agent_reminders.cancel_reminder
+        ) as cancel,
+    ):
+        assert (
+            run_agent(
+                clinic_id=str(world.gateway.graph.clinic_a),
+                proposal_id=str(proposal.pk),
+                principal_id=str(world.principal.pk),
+            )
+            == "compensated"
+        )
+        replay = compensate_action(
             clinic_id=world.gateway.graph.clinic_a,
             proposal_id=proposal.pk,
             principal_id=world.principal.pk,
-        ).state
-        == "compensated"
+        )
+        assert replay.state == "compensated"
+        cancel.assert_called_once_with(
+            provider_key=cancel_key, original_key=original_key
+        )
+    with owner_context(world.gateway.graph.organization_a):
+        receipt = ActionReceipt.objects.get(kind="compensation")
+        assert (
+            receipt.pk,
+            receipt.execution_id,
+            receipt.digest,
+            receipt.provider_reference,
+            receipt.outcome,
+        ) == (
+            replay.receipt_id,
+            replay.execution_id,
+            proposal.digest,
+            uuid5(cancel_key, "synthetic-logistics-v1"),
+            "cancelled",
+        )
+
+
+@pytest.mark.skipif(
+    os.environ.get("CLINIC_BROKER_GATE") != "required",
+    reason="requires the dedicated real broker/PG gate",
+)
+@pytest.mark.parametrize("cut", ["before", "after"])
+def test_interrupted_compensation_redelivery_never_recancels(
+    world: AgentWorld,
+    broker: Redis,
+    worker: Worker,
+    tmp_path: Path,
+    cut: str,
+) -> None:
+    proposal = propose(world)
+    approve(world, proposal)
+
+    def failed(*, provider_key: UUID, template: str) -> agent_reminders.ReminderOutcome:
+        return agent_reminders._outcome(provider_key, "failed")
+
+    with patch.object(agent_reminders, "send_reminder", failed):
+        result = execute(world, proposal.pk)
+    assert result.state == "failure"
+    assert result.execution_id is not None
+    graph = world.gateway.graph
+    ledger = tmp_path / "cancellations"
+    original = UUID(str(world.payload.data()["idempotency_key"]))
+    key = uuid5(original, "compensation-v1")
+    effects = [] if cut == "before" else [f"{key} {original}"]
+    queued = celery_app.send_task(
+        "gate.compensate",
+        kwargs={
+            "clinic_id": str(graph.clinic_a),
+            "principal_id": str(world.principal.pk),
+            "operation_id": str(proposal.pk),
+        },
+        queue=QUEUE,
     )
+    with worker.start(
+        CLINIC_GATE_AGENT_PASSWORD=connections["agent"].settings_dict["PASSWORD"],
+        CLINIC_GATE_CANCEL_CUT=cut,
+        CLINIC_GATE_CANCEL_LEDGER=str(ledger),
+    ) as process:
+        with _accepted_before_sigkill(broker, process.pid) as task_id:
+            assert task_id == queued.id
+            assert (
+                ledger.read_text().splitlines() if ledger.exists() else []
+            ) == effects
+            with owner_context(graph.organization_a):
+                compensation = Compensation.objects.get(
+                    execution_id=result.execution_id
+                )
+                assert (compensation.state, compensation.provider_key) == (
+                    "compensating",
+                    key,
+                )
+                assert not ActionReceipt.objects.filter(kind="compensation").exists()
+        replay = delivery(broker, proposal.pk)
+    assert (replay.task_id, replay.redelivered) == (task_id, True)
+    expected = "manual_required" if cut == "before" else "compensated"
+    assert replay.outcome == expected
+    assert (ledger.read_text().splitlines() if ledger.exists() else []) == effects
+    assert ledger.with_suffix(".lookups").read_text().splitlines() == [str(key)]
+    with owner_context(graph.organization_a):
+        assert list(Compensation.objects.values_list("pk", "state")) == [
+            (compensation.pk, expected)
+        ]
+        assert ActionExecution.objects.get(pk=result.execution_id).state == expected
+        proposal.refresh_from_db()
+        assert proposal.state == expected
+        receipts = ActionReceipt.objects.filter(kind="compensation")
+        if cut == "before":
+            assert not receipts.exists()
+        else:
+            receipt = receipts.get()
+            assert (
+                receipt.execution_id,
+                receipt.digest,
+                receipt.outcome,
+                receipt.provider_reference,
+            ) == (
+                result.execution_id,
+                proposal.digest,
+                "cancelled",
+                uuid5(key, "synthetic-logistics-v1"),
+            )
 
 
 def test_document_injection_is_flagged_and_never_calls_tools(world: AgentWorld) -> None:

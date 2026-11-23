@@ -138,6 +138,8 @@ def test_windowless_channels_never_need_a_window() -> None:
         ("failed", "", "failed"),
         ("cancelled", "", "failed"),
         ("succeeded", "failed", "failed"),
+        ("failed", "delivered", "delivered"),
+        ("delivered", "failed", "delivered"),
     ],
 )
 def test_effective_state_combines_outbox_and_provider(
@@ -154,6 +156,7 @@ def test_provider_state_is_monotonic_and_keeps_delivery_proof() -> None:
     assert advance_provider_state(current="read", incoming="delivered") == "read"
     assert advance_provider_state(current="delivered", incoming="failed") == "delivered"
     assert advance_provider_state(current="failed", incoming="delivered") == "delivered"
+    assert advance_provider_state(current="failed", incoming="sent") == "failed"
     assert advance_provider_state(current="sent", incoming="failed") == "failed"
     assert advance_provider_state(current="sent", incoming="unknown") == "sent"
 

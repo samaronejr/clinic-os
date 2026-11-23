@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from apps.comms.channel_adapters import SMSReminderAdapter
+from apps.comms.inbox_adapters import WhatsAppInboxAdapter
 from apps.core.integration import register_send_adapter
 from apps.prescription.signature_provider import (
     SYNTHETIC_PROVIDER,
@@ -83,6 +84,19 @@ class _SigningProvider(SyntheticSignatureProvider):
         return acceptance
 
 
+class _InboxProvider(WhatsAppInboxAdapter):
+    def __init__(self, ledger: Path) -> None:
+        self.ledger = ledger
+
+    def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
+        result = super().send(prepared, operation_id=operation_id)
+        first = not self.ledger.exists()
+        record_effect(self.ledger, result.provider_reference)
+        if first:
+            _hold_after_acceptance()
+        return result
+
+
 def install(ledger: Path) -> None:
     """Leave production prepare, claim, provider-key derivation and bind intact."""
     # Both aliases use the test PG endpoint; label the sessions so the
@@ -90,6 +104,7 @@ def install(ledger: Path) -> None:
     for alias in ("default", "locks"):
         connections.databases[alias]["OPTIONS"]["application_name"] = f"f7-gate-{alias}"
     register_send_adapter(_MessagingProvider(ledger))
+    register_send_adapter(_InboxProvider(ledger))
 
     def provider_for(name: str) -> CallbackSignatureProvider:
         provider = signature_provider_for(name)

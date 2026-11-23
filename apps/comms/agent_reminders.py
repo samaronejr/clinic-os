@@ -88,10 +88,15 @@ def cancel_reminder(*, provider_key: UUID, original_key: UUID) -> ReminderOutcom
     if settings.CLINIC_DATA_MODE != SYNTHETIC_DATA_MODE:
         raise ActionRefusedError(Refusal.TOOL)
     with _LOCK:
+        if provider_key in _EFFECTS:
+            return _EFFECTS[provider_key]
         if original_key not in _EFFECTS:
             return _outcome(provider_key, "unknown")
         _EFFECTS[original_key] = _outcome(original_key, "cancelled")
-        return _outcome(provider_key, "cancelled")
+        _EFFECTS[provider_key] = _outcome(provider_key, "cancelled")
+        if len(_EFFECTS) > MAX_SIMULATED_EFFECTS:
+            _EFFECTS.popitem(last=False)
+        return _EFFECTS[provider_key]
 
 
 def authenticate_outcome(*, result: ReminderOutcome, provider_key: UUID) -> None:

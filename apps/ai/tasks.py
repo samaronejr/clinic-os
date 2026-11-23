@@ -8,6 +8,7 @@ from uuid import UUID
 from celery import shared_task
 
 from apps.ai.action_contracts import ActionAccessDeniedError
+from apps.ai.action_recovery import compensate_action, reconcile_action
 from apps.ai.completion import finish_failure
 from apps.ai.contracts import Purpose
 from apps.ai.execution import execute_action
@@ -131,9 +132,18 @@ def run_agent(*, clinic_id: str, proposal_id: str, principal_id: str) -> str:
             countdown=DEFER_COUNTDOWN_SECONDS,
         )
         return "deferred"
-    return execute_action(
+    result = execute_action(
         clinic_id=clinic, proposal_id=proposal, principal_id=principal
-    ).state
+    )
+    if result.state in {"failure", "compensating"}:
+        return compensate_action(
+            clinic_id=clinic, proposal_id=proposal, principal_id=principal
+        ).state
+    if result.state == "unknown":
+        return reconcile_action(
+            clinic_id=clinic, proposal_id=proposal, principal_id=principal
+        ).state
+    return result.state
 
 
 execute_agent: _TaskSender = shared_task(name="apps.ai.tasks.execute_agent")(run_agent)

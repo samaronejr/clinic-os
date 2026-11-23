@@ -254,7 +254,7 @@ class SignatureOperation(TenantScopedModel):
 
     States are ``draft`` -> ``prepared`` -> ``signing`` -> ``issued`` |
     ``rehearsal_complete`` | ``failed``; a ``prepared`` operation may also
-    fail before dispatch and a live operation may be abandoned to ``failed``.
+    fail before dispatch; local abandonment requires proof dispatch never began.
     ``operation_id`` is the provider-side reference returned when the
     provider accepts the operation. ``issued`` is reserved for an approved
     real provider; a verified synthetic callback reaches only
@@ -290,6 +290,7 @@ class SignatureOperation(TenantScopedModel):
     issuer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     provider = models.CharField(max_length=64)
     operation_id = models.CharField(max_length=128, default="")
+    dispatch_started = models.BooleanField(default=False, db_default=False)
     state = models.CharField(max_length=24, choices=State, default=State.DRAFT)
     category = models.CharField(  # noqa: DJ001 - legacy/unselected is not a class
         max_length=40, choices=PrescriptionClass, null=True, blank=True
@@ -312,6 +313,13 @@ class SignatureOperation(TenantScopedModel):
     failure_reason = models.CharField(max_length=64, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True)
+
+    @property
+    def can_abandon(self) -> bool:
+        """Return whether local state proves the provider never saw this request."""
+        return self.state == self.State.DRAFT or (
+            self.state == self.State.PREPARED and not self.dispatch_started
+        )
 
     class Meta:
         """Bind one live operation per document and one provider reference."""

@@ -134,6 +134,12 @@ instead retains the in-progress operation for reconciliation.
 The status page can show `prepared` until the worker has bound a provider
 reference; a failed publish or transient failure leaves the same operation
 available for an explicit retry. `signing` is acceptance, not issuance.
+The worker commits `dispatch_started` before `begin`. Once that boundary is
+crossed, local abandonment, a malformed reply or lost authority cannot free
+a new signing key. Pre-upgrade prepared rows conservatively count as possibly
+dispatched. The ordinary sign command resumes the existing key; for
+`signed_unverified`, its worker verifies the retained bytes instead of signing
+again. An unavailable verifier is not a negative verification.
 
 ## Issuance command and recorded SNCR allocation
 

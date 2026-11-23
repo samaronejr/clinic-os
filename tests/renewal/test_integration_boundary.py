@@ -815,7 +815,7 @@ def test_callback_reference_collision_resolves_one_tenant(
     _assert_gucs_empty()
 
 
-def test_ambiguous_send_exhausts_to_failed(
+def test_ambiguous_send_exceeds_recovery_ceiling_without_resending(
     tenant_graph: TenantGraph,
     harness: Harness,
     recorded_dispatch: list[str],
@@ -834,11 +834,13 @@ def test_ambiguous_send_exhausts_to_failed(
     with runtime_role():
         assert _run_task(operation_id) == "reconcile"
         assert _run_task(operation_id) == "reconcile"
-        assert _run_task(operation_id) == "failed"
+        assert _run_task(operation_id) == "reconcile"
+        assert _run_task(operation_id) == "reconcile"
 
     operation = _operation(tenant_graph.organization_a, operation_id)
-    assert operation.status == IntegrationOperation.Status.FAILED
-    assert operation.attempt_count == 3
-    assert operation.last_error == "attempts_exhausted"
+    assert operation.status == IntegrationOperation.Status.IN_PROGRESS
+    assert operation.attempt_count == 2
+    assert operation.last_error == "outcome_unknown"
+    assert operation.provider_reference is None
     assert len(harness.adapter.sent) == 1
     _assert_gucs_empty()

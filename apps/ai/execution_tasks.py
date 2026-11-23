@@ -51,13 +51,20 @@ def dispatch_approved(*, clinic_id: UUID, proposal_id: UUID) -> None:
 
 
 def recover_approved(*, clinic_id: UUID, principal_id: UUID) -> int:
-    """Republish at most 100 durable approvals for one authenticated machine."""
+    """Publish up to 100 execution or recovery references for this principal."""
     with service_principal_context(principal_id=principal_id, clinic_id=clinic_id):
         rows = tuple(
             ActionProposal.objects.using("agent")
             .filter(
                 clinic_id=clinic_id,
-                state="approved",
+                state__in=(
+                    "approved",
+                    "executing",
+                    "unknown",
+                    "failure",
+                    "compensating",
+                ),
+                run__principal_id=principal_id,
             )
             .order_by("created_at")
             .values_list("pk", flat=True)[:100],

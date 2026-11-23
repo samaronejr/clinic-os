@@ -28,6 +28,7 @@ from apps.comms.inbound_providers import WebhookRejectedError, normalize_address
 from apps.comms.inbox_rules import (
     MAX_BODY_CHARS,
     SendRequest,
+    advance_provider_state,
     decide_send,
     effective_delivery_state,
     placeholder_count,
@@ -35,6 +36,7 @@ from apps.comms.inbox_rules import (
 )
 from apps.comms.models import (
     Conversation,
+    InboundEvent,
     IntegrationOperation,
     InternalNote,
     Message,
@@ -48,6 +50,7 @@ from apps.core.integration import (
     OperationRequest,
     enqueue_operation,
     hold_subject_mutation_key,
+    hold_subject_mutation_lock,
 )
 from apps.identity.current_context import (
     CurrentActorError,
@@ -659,6 +662,8 @@ def retry_message(
     if message is None:
         raise InboxAccessDeniedError
     conversation, _ = _conversation(clinic_id, message.conversation_id, lock=True)
+    hold_subject_mutation_lock(SUBJECT_TYPE, message_id)
+    message.refresh_from_db(fields=["provider_state"])
     state = message_states([message]).get(message.pk, "queued")
     if state != "failed":
         raise InboxRefusedError(Reason.NOT_FAILED)
@@ -684,20 +689,49 @@ def retry_message(
 
 def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
     """Derive each outbound message's display state from outbox and provider facts."""
-    ids = [m.pk for m in messages if m.direction == "out"]
+    outbound = {m.pk: m for m in messages if m.direction == "out"}
     latest: dict[UUID, IntegrationOperation] = {}
-    for operation in IntegrationOperation.objects.filter(
-        subject_type=SUBJECT_TYPE, subject_id__in=ids
+    repeated: set[UUID] = set()
+    for attempt in IntegrationOperation.objects.filter(
+        subject_type=SUBJECT_TYPE, subject_id__in=outbound
     ).order_by("created_at", "id"):
-        latest[operation.subject_id] = operation
-    return {
-        m.pk: effective_delivery_state(
-            operation_status=latest[m.pk].status if m.pk in latest else "pending",
-            provider_state=m.provider_state,
+        if attempt.subject_id in latest:
+            repeated.add(attempt.subject_id)
+        latest[attempt.subject_id] = attempt
+    attempts: dict[UUID, str] = {}
+    for key, progress in (
+        InboundEvent.objects.filter(operation_id__in=[op.pk for op in latest.values()])
+        .values_list("operation_id", "delivery_state")
+        .distinct()
+    ):
+        if key is not None:
+            attempts[key] = advance_provider_state(
+                current=attempts.get(key, ""), incoming=progress
+            )
+    states: dict[UUID, str] = {}
+    for message_id, message in outbound.items():
+        operation = latest.get(message_id)
+        progress = message.provider_state
+        # Legacy negative/sent projections did not name an attempt. Never use
+        # one as evidence against a successor, even on an upgraded database.
+        if message_id in repeated and progress not in {"delivered", "read"}:
+            progress = ""
+        if operation is not None:
+            progress = advance_provider_state(
+                current=progress, incoming=attempts.get(operation.pk, "")
+            )
+        state = effective_delivery_state(
+            operation_status=operation.status if operation else "pending",
+            provider_state=progress,
         )
-        for m in messages
-        if m.direction == "out"
-    }
+        states[message_id] = (
+            "unconfirmed"
+            if operation
+            and operation.last_error == "outcome_unknown"
+            and state == "queued"
+            else state
+        )
+    return states
 
 
 def create_template_version(  # noqa: PLR0913 - one field per stored template term

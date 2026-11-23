@@ -57,10 +57,12 @@ from apps.prescription.verification import release_document
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
 from django.test import override_settings
+from django.urls import reverse
 
 from patient_service_support import runtime_role
 from provider_gate_support import seed_capabilities
 from renewal.test_document_artifacts import ITEM
+from renewal.test_encounters import physician_client
 from renewal.test_signatures import NOW, SigningSetup, owner_scope
 from renewal.test_signatures import setup as signing_setup
 
@@ -313,6 +315,51 @@ def authenticated_body(payload: dict[str, object]) -> tuple[dict[str, str], byte
             provider_module.SYNTHETIC_SECRET, body, hashlib.sha256
         ).hexdigest()
     }, body
+
+
+def test_sign_request_cannot_replace_a_candidate_awaiting_verification(
+    recorded: RecordedSetup,
+) -> None:
+    operation, headers, body, expected = recorded.candidate("timeout")
+    assert recorded.receive(headers, body) == "reconcile"
+    repeated = recorded.base.request_signature()
+    assert repeated.pk == operation.pk
+    assert repeated.state == "signed_unverified"
+    assert bytes(repeated.signed_bytes) == expected.signed_bytes
+    graph = recorded.base.graph
+    with physician_client(graph) as client:
+        review = reverse(
+            "prescription:review", args=(graph.clinic_a, operation.document_id)
+        )
+        page = reverse("prescription:signing", args=(graph.clinic_a, operation.pk))
+        resumed = client.post(
+            review, {"action": "sign_document", "document_id": operation.document_id}
+        )
+        assert (resumed.status_code, resumed.headers["Location"]) == (302, page)
+        shown = client.get(page)
+        assert shown.status_code == 200
+        assert b'value="abandon"' not in shown.content
+        assert b'value="retry_dispatch"' in shown.content
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        with pytest.raises(ClinicalConflictError):
+            signing.abandon_signature(
+                clinic_id=graph.clinic_a, operation_id=operation.pk
+            )
+        with pytest.raises(ClinicalAccessDeniedError):
+            signing.download_signed_document(
+                clinic_id=graph.clinic_a, operation_id=operation.pk
+            )
+        with pytest.raises(DatabaseError), transaction.atomic():
+            SignatureOperation.objects.filter(pk=operation.pk).update(
+                state="failed",
+                failure_reason="superseded",
+                completed_at=NOW,
+            )
+    recorded.provider.verifier = verification_adapter(recorded_api("valid", expected))
+    assert recorded.reconcile(operation) == "completed"
+    assert bytes(recorded.base.refresh(operation).signed_bytes) == expected.signed_bytes
+    with owner_scope(graph.organization_a):
+        assert SignatureOperation.objects.count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -792,11 +839,17 @@ def test_missing_independent_verifier_cannot_complete_a_candidate(
         return SyntheticSignatureProvider()
 
     monkeypatch.setattr(signing, "signature_provider_for", unavailable)
-    assert recorded.reconcile(operation) == "failed"
-    assert recorded.base.refresh(operation).failure_reason == "signature_invalid"
+    assert recorded.reconcile(operation) == "reconcile"
+    held = recorded.base.refresh(operation)
+    assert (held.state, held.completed_at, held.failure_reason) == (
+        "signed_unverified",
+        None,
+        "",
+    )
+    assert recorded.base.enqueue_signature().pk == operation.pk
 
 
-def test_abandon_during_verification_cannot_complete_the_candidate(
+def test_abandon_cannot_interrupt_verification_of_the_bound_candidate(
     recorded: RecordedSetup,
 ) -> None:
     operation, headers, body, expected = recorded.candidate("valid")
@@ -805,7 +858,10 @@ def test_abandon_during_verification_cannot_complete_the_candidate(
 
     class AbandoningAPI:
         def verify(self, signed_bytes: bytes) -> bytes:
-            with tenant_context(graph.physician, graph.organization_a):
+            with (
+                tenant_context(graph.physician, graph.organization_a),
+                pytest.raises(ClinicalConflictError),
+            ):
                 signing.abandon_signature(
                     clinic_id=graph.clinic_a, operation_id=operation.pk
                 )
@@ -814,8 +870,10 @@ def test_abandon_during_verification_cannot_complete_the_candidate(
     recorded.provider.verifier = verification_adapter(AbandoningAPI())
     assert recorded.receive(headers, body) == "applied"
     final = recorded.base.refresh(operation)
-    assert final.state == "failed"
-    assert final.failure_reason == "abandoned"
+    assert final.state == "rehearsal_complete"
+    assert final.failure_reason == ""
+    assert bytes(final.signed_bytes) == expected.signed_bytes
+    assert final.operation_id == expected.operation_ref
     with runtime_role():
         assert signing.reconcile_signature(uuid4()) == "skipped"
 

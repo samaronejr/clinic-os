@@ -14297,6 +14297,7 @@
     "clinic_app.comms_due_reminders_v1": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_attempt_delivery_sql.py",
           "apps/comms/migrations/_reminder_sql.py"
         ],
         "policies": [],
@@ -14372,7 +14373,8 @@
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.comms_message_guard_v1",
-          "clinic_app.comms_open_window"
+          "clinic_app.comms_open_window",
+          "clinic_app.comms_status_attempt_guard"
         ],
         "signatures": [
           {
@@ -14531,6 +14533,7 @@
     "clinic_app.comms_recover_pending_v1": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_attempt_delivery_sql.py",
           "apps/comms/migrations/_recovery_sql.py"
         ],
         "policies": [],
@@ -14600,6 +14603,26 @@
           }
         ]
       }
+    },
+    "clinic_app.comms_status_attempt_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_attempt_delivery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "A status receipt binds the authenticated provider account, tenant, clinic, message and exact outbound operation. Runtime may insert receipts but cannot update them."
     },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",

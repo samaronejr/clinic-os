@@ -20,6 +20,9 @@ from apps.comms import agent_reminders
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.action_payload import ActionPayload
+    from apps.ai.models import ActionProposal, AgentPolicyVersion
+
 
 def reconcile_action(
     *, clinic_id: UUID, proposal_id: UUID, principal_id: UUID
@@ -85,6 +88,66 @@ def reconcile_action(
             return ExecutionResult(proposal.pk, state, current.pk, receipt.pk)
 
 
+def _begin_compensation(
+    *, execution: ActionExecution, proposal: ActionProposal, using: str
+) -> Compensation:
+    if execution.state != "failure":
+        raise ActionRefusedError(Refusal.STATE)
+    compensation = Compensation.objects.using(using).create(
+        organization_id=execution.organization_id,
+        clinic_id=execution.clinic_id,
+        execution=execution,
+        provider_key=uuid5(execution.provider_key, "compensation-v1"),
+        policy_version=1,
+    )
+    record_phase1_event(
+        "ai.compensation.compensating",
+        clinic_id=execution.clinic_id,
+        affected_record_id=compensation.pk,
+    )
+    set_execution_state(execution, "compensating", using=using)
+    transition(proposal, "compensating", using=using)
+    return compensation
+
+
+def _cancel_permitted(
+    *,
+    proposal: ActionProposal,
+    payload: ActionPayload,
+    policy: AgentPolicyVersion,
+    using: str,
+) -> bool:
+    terms = closed(payload.data()["compensation_policy"], {"mode", "version"})
+    if terms["mode"] != "synthetic_cancel":
+        return False
+    try:
+        verify_approvals(proposal=proposal, payload=payload, using=using)
+        validate_current(
+            payload=payload, policy=policy, proposal_id=proposal.pk, using=using
+        )
+    except ActionRefusedError:
+        return False
+    return True
+
+
+def _cancel_or_lookup(
+    *, compensation: Compensation, original_key: UUID, recover: bool
+) -> agent_reminders.ReminderOutcome | None:
+    key = compensation.provider_key
+    try:
+        result = (
+            agent_reminders.reconcile_reminder(provider_key=key)
+            if recover
+            else agent_reminders.cancel_reminder(
+                provider_key=key, original_key=original_key
+            )
+        )
+        agent_reminders.authenticate_outcome(result=result, provider_key=key)
+    except (TimeoutError, ConnectionError, ActionRefusedError):
+        return None
+    return result if result.outcome != "unknown" else None
+
+
 def compensate_action(
     *, clinic_id: UUID, proposal_id: UUID, principal_id: UUID
 ) -> ExecutionResult:
@@ -107,45 +170,31 @@ def compensate_action(
             prior = (
                 Compensation.objects.using(using).filter(execution=execution).first()
             )
-            if prior is not None:
-                return ExecutionResult(proposal.pk, prior.state, execution.pk)
-            if execution.state != "failure":
-                raise ActionRefusedError(Refusal.STATE)
-            terms = closed(payload.data()["compensation_policy"], {"mode", "version"})
-            compensation = Compensation.objects.using(using).create(
-                organization_id=execution.organization_id,
-                clinic_id=clinic_id,
-                execution=execution,
-                provider_key=uuid5(execution.provider_key, "compensation-v1"),
-                policy_version=1,
+            if prior is not None and prior.state != "compensating":
+                receipt_id = (
+                    ActionReceipt.objects.using(using)
+                    .filter(execution=execution, kind="compensation")
+                    .values_list("pk", flat=True)
+                    .first()
+                )
+                return ExecutionResult(
+                    proposal.pk, prior.state, execution.pk, receipt_id
+                )
+            compensation = prior or _begin_compensation(
+                execution=execution, proposal=proposal, using=using
             )
-            record_phase1_event(
-                "ai.compensation.compensating",
-                clinic_id=clinic_id,
-                affected_record_id=compensation.pk,
+            permitted = prior is not None or _cancel_permitted(
+                proposal=proposal, payload=payload, policy=policy, using=using
             )
-            set_execution_state(execution, "compensating", using=using)
-            transition(proposal, "compensating", using=using)
-            permitted = terms["mode"] == "synthetic_cancel"
-            try:
-                verify_approvals(proposal=proposal, payload=payload, using=using)
-                validate_current(
-                    payload=payload, policy=policy, proposal_id=proposal_id, using=using
-                )
-            except ActionRefusedError:
-                permitted = False
-        result = None
-        if permitted:
-            try:
-                result = agent_reminders.cancel_reminder(
-                    provider_key=compensation.provider_key,
-                    original_key=execution.provider_key,
-                )
-                agent_reminders.authenticate_outcome(
-                    result=result, provider_key=compensation.provider_key
-                )
-            except (TimeoutError, ConnectionError, ActionRefusedError):
-                result = None
+        result = (
+            _cancel_or_lookup(
+                compensation=compensation,
+                original_key=execution.provider_key,
+                recover=prior is not None,
+            )
+            if permitted
+            else None
+        )
         with action_scope(clinic_id=clinic_id, principal_id=principal_id):
             current = (
                 ActionExecution.objects.using(using)

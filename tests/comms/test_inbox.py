@@ -242,6 +242,120 @@ def test_a_status_for_no_pending_send_is_ignored_with_200(world: InboxWorld) -> 
     assert (receipt.accepted, receipt.ignored, receipt.retry) == (0, 1, 0)
 
 
+def test_late_status_belongs_to_its_provider_attempt(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+
+    def send_attempt() -> str:
+        with owner_context(graph.organization_a):
+            operation = IntegrationOperation.objects.get(
+                subject_id=message_id, status="pending"
+            )
+        with runtime_role():
+            assert execute_operation(operation.pk) == "succeeded"
+        with owner_context(graph.organization_a):
+            operation.refresh_from_db()
+        assert operation.provider_reference
+        return operation.provider_reference
+
+    def state() -> str:
+        with as_actor(graph, manager_of(graph)):
+            return services.message_states([Message.objects.get(pk=message_id)])[
+                message_id
+            ]
+
+    def retry() -> None:
+        with as_actor(graph, manager_of(graph)):
+            services.retry_message(
+                clinic_id=graph.clinic_a, message_id=message_id, command_id=uuid4()
+            )
+
+    first = send_attempt()
+    failed = world.status_body(provider_message_id=first, status="failed")
+    assert world.receive(failed).accepted == 1
+    assert state() == "failed"
+    retry()
+    second = send_attempt()
+    assert second != first
+    assert state() == "sent"
+    assert world.receive(failed.replace(b"1790000000", b"1790000001")).accepted == 1
+    assert state() == "sent"
+    with pytest.raises(InboxRefusedError, match=Reason.NOT_FAILED):
+        retry()
+    assert (
+        world.receive(
+            world.status_body(provider_message_id=first, status="read")
+        ).accepted
+        == 1
+    )
+    assert (
+        world.receive(
+            world.status_body(provider_message_id=second, status="failed")
+        ).accepted
+        == 1
+    )
+    assert state() == "read"
+    with pytest.raises(InboxRefusedError, match=Reason.NOT_FAILED):
+        retry()
+    with owner_context(graph.organization_a):
+        assert IntegrationOperation.objects.filter(subject_id=message_id).count() == 2
+
+
+def test_delivery_proof_received_before_retry_dispatch_vetoes_the_new_send(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        first = IntegrationOperation.objects.get(subject_id=message_id)
+    with runtime_role():
+        assert execute_operation(first.pk) == "succeeded"
+    with owner_context(graph.organization_a):
+        first.refresh_from_db()
+    assert first.provider_reference
+    assert (
+        world.receive(
+            world.status_body(
+                provider_message_id=first.provider_reference, status="failed"
+            )
+        ).accepted
+        == 1
+    )
+    with as_actor(graph, manager_of(graph)):
+        services.retry_message(
+            clinic_id=graph.clinic_a, message_id=message_id, command_id=uuid4()
+        )
+        second = IntegrationOperation.objects.get(
+            subject_id=message_id, status="pending"
+        )
+    assert (
+        world.receive(
+            world.status_body(
+                provider_message_id=first.provider_reference, status="delivered"
+            )
+        ).accepted
+        == 1
+    )
+    with runtime_role():
+        assert execute_operation(second.pk) == "cancelled"
+    with owner_context(graph.organization_a):
+        second.refresh_from_db()
+        assert second.provider_reference is None
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "delivered"
+        }
+        assert set(
+            InboundEvent.objects.filter(kind="status").values_list(
+                "operation_id", "delivery_state"
+            )
+        ) == {
+            (first.pk, "failed"),
+            (first.pk, "delivered"),
+        }
+
+
 def test_forged_webhook_is_rejected_before_any_scope_query(world: InboxWorld) -> None:
     body = world.message_body(text="oi")
     with (
