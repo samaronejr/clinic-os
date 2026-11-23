@@ -205,7 +205,7 @@ def _patient_text_projection(
         )
 
 
-def test_batch_reveal_preserves_order_and_refuses_invalid_envelopes(
+def test_column_reveal_preserves_order_and_refuses_invalid_envelopes(
     rbac_graph: RbacGraph,
     encryption_orgs: EncryptionOrgs,
     tmp_path: Path,
@@ -266,7 +266,7 @@ def test_batch_reveal_preserves_order_and_refuses_invalid_envelopes(
             assert _patient_text_projection(patients, purpose=purpose) == ()
 
 
-def test_batch_reveal_reloads_key_material_after_a_successful_read(
+def test_column_reveal_reloads_key_material_after_a_successful_read(
     rbac_graph: RbacGraph,
     encryption_orgs: EncryptionOrgs,
     tmp_path: Path,
