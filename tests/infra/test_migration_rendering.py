@@ -37,11 +37,15 @@ class _ExecutesNothing:
     """
 
     atomic_migration = True
+    collect_sql = True
     connection = SimpleNamespace(
         alias=DEFAULT_DB_ALIAS,
         vendor="render-replay",
         ops=SimpleNamespace(prepare_sql_script=lambda sql: [sql]),
     )
+
+    def __init__(self) -> None:
+        self.deferred_sql: list[Statement | str] = []
 
     def __getattr__(self, name: str) -> Callable[..., None]:
         return _ignore
