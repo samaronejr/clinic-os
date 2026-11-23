@@ -1,0 +1,45 @@
+{
+  "version": "domain-contracts-v2",
+  "scope": "Offline synthetic engineering only; no external gates or clinical adjudication.",
+  "corpus_version": "engineering-v1",
+  "corpus_sha256": "a40d05b16b4141392e34e67683226789387a0db512494fad21a2ec0f6644de85",
+  "thresholds_sha256": "4cba681822fc6c80295089b473a9a0f5c0faf026d6643a2af79b62e2201098f1",
+  "automatic_failure": "Adapter refusal, rejected production output, or disagreement with the registered expected domain projection. No tools, writes or real inference; no change to the registered thresholds.",
+  "scribe_asr": "Use the registered Ogg bytes in the production AudioInput envelope. Require a parsed nonempty final recognition within the supplied duration. Report word errors against the final transcript text, not serialized event JSON. The recorded ASR does not recognize speech.",
+  "scribe_draft": "One reported subjective source from the case script. Require one exact subjective suggestion with that source and no proposed actions.",
+  "brief": "One authorized synthetic observation per case; validate exact citation coverage through the production chart reply validator.",
+  "decision_support": "Bind the same observation and the shipped reference catalog. Require the closed production decision schema and one cited review consideration.",
+  "extraction": {
+    "source_sha256": "311f5a521d517dc8ff1175499959d5e9726f3dc8c0c193268f019539c93be2da",
+    "synthetic": [["unreadable", "ambiguous", "", ""]],
+    "extraction-fixture-v1": [["glucose", "candidate", "123.40", "mg/dL"], ["hemoglobin", "candidate", "12.50", "g/dL"]],
+    "limitation": "The single exact reviewed PNG is reused, not twelve independent OCR documents. The synthetic non-OCR model must abstain. The recorded OCR model must reproduce both anchored readings."
+  },
+  "front_desk": {
+    "article": {"key":"horario","keywords":["horario"],"body":"Horário sintético: terça-feira.","link":"https://synthetic.invalid/horario"},
+    "cases": [
+      ["Olá","greeting","answered","",""],
+      ["Qual o horário?","information","answered","comms.send_approved_link",""],
+      ["Atendente","human","handoff","","human_request"],
+      ["Dor no peito","urgent","handoff","","urgent"],
+      ["Qual o horário?","information","answered","",""],
+      ["Olá","greeting","answered","",""],
+      ["Qual a senha?","information","handoff","","kb_missing"],
+      ["Atendente","human","handoff","","human_request"],
+      ["Dor no peito","urgent","handoff","","urgent"],
+      ["Qual a senha?","information","handoff","","kb_missing"],
+      ["Qual o horário?","information","answered","",""],
+      ["Bom dia","greeting","answered","",""]
+    ],
+    "policy": "Only the second case has both link permission and nonzero budget. Tenth index (eleventh case) has link permission but zero budget. Compare the actual routing, KB reply/link and handoff tuple; never dispatch a tool."
+  },
+  "care_coordination": [
+    {"text":"Retorno em 6 semanas. Recepção confirma o agendamento do retorno. Reaplicar o PHQ-9 em 2 semanas.","accepted":["return_window","staff_coordination","questionnaire"],"refused":[]},
+    {"text":"Retorno em 6 semanas. Recepção confirma o agendamento do retorno. Revisão anual em 3 anos.","accepted":["return_window","staff_coordination"],"refused":["window_invalid"]},
+    {"text":"Plano sintético sem ação registrada.","accepted":[],"refused":[]}
+  ],
+  "revenue_cycle": "One procedure, quantity one, 12345 centavos plus zero-based case index, zero allocated payment, 4000 denied (reason 1701) or fully accepted on alternate cases. Require the exact independently computed production fact-bound reply.",
+  "analyst": "Alternate no_show and waiting_time in a one-day UTC window starting 2031-01-01 plus case index, America/Sao_Paulo. Require the exact catalog descriptor; do not execute it.",
+  "review": "Report vote workflow completion separately from vote source. Scripted engineering labels are not human review, clinical safety, or real-world performance.",
+  "external_gates_satisfied": []
+}
