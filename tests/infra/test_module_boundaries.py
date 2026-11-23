@@ -611,7 +611,7 @@ def test_subscription_services_keep_explicit_scope_and_keyword_only_authority(
         ),
         (
             evaluation_services.rate_case,
-            ["clinic_id", "run_id", "case_id", "labels"],
+            ["clinic_id", "run_id", "case_id", "labels", "review_source"],
         ),
         (evaluation_services.finish_run, ["clinic_id", "run_id"]),
         (evaluation_services.request_change, ["clinic_id", "run_id"]),

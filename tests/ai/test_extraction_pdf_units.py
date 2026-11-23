@@ -151,6 +151,35 @@ def _post_review(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_split_pdf_numbers_cannot_be_confirmed_even_with_a_manual_unit(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values = ("1 234,50", "12 ,34", "12 .34", "12 34", r"1\240234,50")
+    draws = " ".join(f"(lab{i}: {v} mg/dL) Tj 0 -30 Td" for i, v in enumerate(values))
+    data = pdf_with_stream(stream=f"BT /F1 12 Tf 40 740 Td {draws} ET", win_ansi=True)
+    job = extracted_job(rbac_graph, monkeypatch, data=data)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        rows = list(job.candidates.order_by("position"))
+        assert len(rows) == len(values)
+        for row in rows:
+            assert (row.status, row.payload["parsed_value"], row.payload["unit"]) == (
+                "ambiguous",
+                "",
+                "",
+            )
+            with pytest.raises(ExtractionInputError):
+                review_extraction(
+                    clinic_id=job.clinic_id,
+                    candidate_id=row.pk,
+                    decision="confirmed",
+                    manual_unit="mg/dL",
+                )
+        assert not ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_pdf_swap_is_not_stored_or_rendered_as_an_ai_unit(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:

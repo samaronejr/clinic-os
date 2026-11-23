@@ -659,7 +659,9 @@ pending PDF rows that do not meet the new contract cannot be confirmed; start a
 fresh extraction or use manual result entry. Dates remain unitless.
 
 Decimal parsing requires pt-BR decimal syntax; dot-only separators and split
-numbers are not repaired. Dates require DD/MM/YYYY. For a PDF, collection and
+numbers are not repaired. A whitespace-separated continuation (including a
+group followed by a decimal comma) stays unresolved in full, never as a shorter
+confirmable prefix. Dates require DD/MM/YYYY. For a PDF, collection and
 confirmation match the proposed value, field and interval against local PDF
 text layout at the cited box under current source authority. Text layout is
 not proof of visible content; the clinician must verify the value on the rendered
@@ -743,13 +745,30 @@ clinical errors, complete case-level citation/action correctness, twelve cases
 and four encounters. These are software-test thresholds, not EG-3 clinical
 thresholds selected after looking at a candidate.
 
+`domain-protocol-v2.json` preregisters typed inputs and expected domain outcomes
+without changing the engineering-v1 corpus or its original rubric. New protocol
+rows bind its digest; historical registrations do not acquire it retroactively.
+The ASR case scores final transcript words. Scribe suggestions, chart briefs,
+anchored extraction, plan actions, claim replies, catalog descriptors and decision
+support all use their production parsers. The offline front-desk leg compares
+the actual classifier, handoff and reviewed KB decision without sending a reply.
+The synthetic image adapter must abstain; the recorded OCR adapter is tested
+on the one exact reviewed PNG, not twelve independent real documents.
+
 `EvaluationRun` binds the exact configuration/version, model terms digest and
 prompt/retrieval/schema source hashes. Scoring uses only the registered synthetic
-providers through the unchanged `output_validation.call_provider` boundary,
+providers through the `output_validation.call_provider` boundary (front-desk
+routing is deterministic and needs no inference call),
 outside all transactions. It never executes agent tools. Observations and
 candidate output are encrypted with purpose `ai.evaluation.samples.v1`; they
 never enter metering, audit, task arguments or telemetry. Every run remains
-pending until independent structured human review completes.
+pending until its structured voting workflow completes. Each observation
+carries its producing run, stage, purpose, model configuration, source versions,
+protocol and corpus digests. Storage verifies the producer receipt; the native
+writer checks the original run and ordered case bindings inside the encrypted
+packet and derives failures from the observations. A detached replay cannot be
+attached to a run. Scripted votes are explicitly marked at submission; their
+completion does not attest human review. Legacy votes are unattested.
 
 Two distinct assigned physicians submit immutable `EvaluationRating` rows.
 The run creator cannot occupy either rater slot or the adjudicator slot.

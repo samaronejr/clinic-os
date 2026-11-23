@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -100,6 +100,19 @@ class DraftSource:
     text: str = field(repr=False)
     assertion_class: AssertionClass
     uncertain: bool = False
+
+
+def draft_material(sections: tuple[str, ...], sources: tuple[DraftSource, ...]) -> str:
+    """Encode the exact source-excerpt envelope used for note drafting."""
+    return json.dumps(
+        {
+            "schema": "scribe-material-v1",
+            "sections": sections,
+            "sources": [asdict(source) for source in sources],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 @dataclass(frozen=True, slots=True)

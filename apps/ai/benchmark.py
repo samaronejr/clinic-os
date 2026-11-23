@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 from django.db import transaction
 
 from apps.ai.adapters import provider_for
+from apps.ai.benchmark_inputs import benchmark_input
 from apps.ai.contracts import (
     REGION_CLASSES,
     GatewayInputError,
@@ -29,7 +30,6 @@ from apps.ai.contracts import (
 from apps.ai.evaluation.corpus import ADVERSARIAL_TAGS, Corpus, load_corpus
 from apps.ai.evaluation.metrics import WordErrors, word_errors
 from apps.ai.evaluation.protocol import CLINICAL_LABELS, EvaluationInputError
-from apps.ai.evaluation.runner import _request
 from apps.ai.output_validation import call_provider
 from apps.ai.prompt_registry import load_prompt
 from apps.identity.management.base import assert_owner_database_role
@@ -216,7 +216,7 @@ def _measure(candidate: Candidate, purpose: Purpose, corpus: Corpus) -> Candidat
     cost = 0
     valid = 0
     for case in corpus.cases:
-        content, method = _request(case, CAPABILITY[purpose], purpose)
+        content, method = benchmark_input(case, purpose)
         request = ProviderRequest(
             candidate.model,
             ENDPOINTS[candidate.adapter],

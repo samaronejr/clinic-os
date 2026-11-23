@@ -272,14 +272,19 @@ def _draft(region: Region, text: str) -> dict[str, object] | None:
     if not colon or _FIELD.fullmatch(field) is None:
         return None
     tokens, bracket, interval = remainder.strip().partition(" [")
-    value, _, tail = tokens.partition(" ")
-    if not value:
+    words = tokens.split()
+    if not words:
         return None
-    next_word = tail.split(" ", 1)[0]
-    if next_word.isdecimal():
-        # A numeric continuation may be part of the value. Do not guess by
-        # truncating it or by joining digits across a layout boundary.
-        value += f" {next_word}"
+    value, *tail = words
+    # Only discard a single, nonnumeric suffix. Never recognize a unit, join
+    # number fragments, or manufacture an independent match for a prefix.
+    if tail and (
+        len(tail) != 1
+        or re.fullmatch(r"[^\W\d_]+(?:/[^\W\d_]+[0-9]?)?|%", tail[0]) is None
+    ):
+        # Do not copy the ambiguous remainder (possibly a proposed PDF unit)
+        # into any value field, even when the result will be refused.
+        value = ""
     interval = interval.removesuffix("]") if bracket else ""
     return {
         "field": field,

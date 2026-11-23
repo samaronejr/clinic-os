@@ -55,6 +55,7 @@ def pdf_with_stream(
     stream: str,
     rotation: int = 0,
     size: tuple[int, int] = (612, 792),
+    win_ansi: bool = False,
 ) -> bytes:
     """Render the given synthetic drawing stream in the standard fixture page."""
     objects = [
@@ -63,7 +64,9 @@ def pdf_with_stream(
         f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {size[0]} {size[1]}] "
         f"/Rotate {rotation} /Resources << /Font << /F1 4 0 R >> >> "
         "/Contents 5 0 R >>",
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica"
+        + (" /Encoding /WinAnsiEncoding" if win_ansi else "")
+        + " >>",
         f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
     ]
     data = b"%PDF-1.4\n"

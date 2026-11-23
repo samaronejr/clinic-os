@@ -3,6 +3,7 @@
 from ai import (
     test_agent_execution,
     test_evaluation_authority,
+    test_evaluation_fidelity,
     test_evaluation_native,
     test_evaluation_runtime,
     test_rollout,
@@ -57,6 +58,11 @@ SQL_PROTOCOL_ORACLES["clinic_app.ai_evaluation_rollout_guard"] = [
     *_SHARED_CASES,
     _ROW_GUARD_CASE,
 ]
+_ORIGIN_CASE = (
+    test_evaluation_fidelity.test_shadow_rejects_offline_samples_and_forged_counts
+)
+CASES[_ORIGIN_CASE.__name__] = _ORIGIN_CASE
+SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_store"] = [_ORIGIN_CASE.__name__]
 ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
     (
         "clinic_app.ai_eval_rating_visible(uuid,text,uuid)",

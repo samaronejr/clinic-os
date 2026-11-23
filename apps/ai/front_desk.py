@@ -71,7 +71,7 @@ from apps.scheduling.patient_booking import (
 from apps.tenancy.envelope import KEK_SECRET_NAME, protect
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from apps.scheduling.models import Appointment
 
@@ -79,6 +79,7 @@ __all__ = (
     "Decision",
     "classify",
     "enqueue_turn",
+    "route_message",
     "run_pending_turns",
     "run_portal_turn",
 )
@@ -396,8 +397,8 @@ def _verify(turn_id: UUID, birth: str | None, kek: str) -> tuple[bool, bool]:
     return (row is not None and row[0] is True, row is not None and row[2] is True)
 
 
-def _information(ctx: Context) -> Decision:
-    answer = best_answer(_articles(ctx.turn_id), ctx.text)
+def _information(ctx: Context, articles: Sequence[ArticleAnswer]) -> Decision:
+    answer = best_answer(articles, ctx.text)
     if answer is None:
         return Decision("information", "handoff", _(UNKNOWN), handoff="kb_missing")
     # The approved link is a tool use: it needs the policy and budget left.
@@ -445,8 +446,10 @@ _FIXED: Final = {
 }
 
 
-def _decide(ctx: Context, kek: str) -> Decision:
-    """Decide one turn inside the principal context; appointments come later."""
+def route_message(
+    ctx: Context, articles: Callable[[], Sequence[ArticleAnswer]]
+) -> Decision:
+    """Return the initial policy decision without verifying, booking or sending."""
     offer = ctx.offered_start is not None
     intent = classify(
         ctx.text, challenge_pending=ctx.challenge_pending, offer_pending=offer
@@ -457,11 +460,18 @@ def _decide(ctx: Context, kek: str) -> Decision:
     if intent == "greeting":
         return Decision(intent, "answered", _(GREETING))
     if intent == "information":
-        return _information(ctx)
+        return _information(ctx, articles())
     if intent == "accept" and ctx.verified and not ctx.offer_received:
         return Decision(intent, "refused", _(CONFIRM_OFFER))
-    # Verified: the appointment step runs under the patient session.
-    return _identity(ctx, intent, kek) or Decision(intent, "", "")
+    return Decision(intent, "", "")
+
+
+def _decide(ctx: Context, kek: str) -> Decision:
+    """Only a still-open intent can enter the principal-bound identity step."""
+    initial = route_message(ctx, lambda: _articles(ctx.turn_id))
+    return (
+        initial if initial.outcome else (_identity(ctx, initial.intent, kek) or initial)
+    )
 
 
 def _slot_practitioner(token: str) -> UUID:

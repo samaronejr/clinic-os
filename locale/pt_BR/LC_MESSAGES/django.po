@@ -11568,3 +11568,18 @@ msgstr "Curador(a)"
 
 msgid "Patient-authorized adult"
 msgstr "Adulto autorizado pelo paciente"
+
+msgid "Scripted votes completed the review workflow. No human reviewed these samples."
+msgstr "Votos simulados concluíram o fluxo de revisão. Nenhuma pessoa revisou estas amostras."
+
+msgid "Human review is not attested for all votes."
+msgstr "Não há confirmação de revisão humana para todos os votos."
+
+msgid "Newer AI use records"
+msgstr "Registros de uso de IA mais recentes"
+
+msgid "Older AI use records"
+msgstr "Registros de uso de IA anteriores"
+
+msgid "Synthetic engineering fixtures and scripted review are not representative clinical validation. Zero observed critical errors is a gate, not a safety claim. Real-world performance and clinical thresholds require EG-3/EG-11."
+msgstr "Casos sintéticos de engenharia e revisão simulada não constituem validação clínica representativa. A ausência de erros críticos observados é um critério, não uma afirmação de segurança. O desempenho no mundo real e os limiares clínicos exigem EG-3/EG-11."

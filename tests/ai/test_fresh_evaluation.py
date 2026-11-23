@@ -47,6 +47,11 @@ def test_fresh_engineering_report_binds_current_source_and_preregistered_thresho
     assert report["thresholds_sha256"] == threshold_hash(ENGINEERING_THRESHOLDS)
     assert report["real_world_performance"] is False
     assert report["external_gates_satisfied"] == []
+    assert report["human_review_complete"] is False
+    assert report["vote_workflow_complete"] is True
+    assert report["review_kind"] == "scripted_engineering"
+    assert report["run_id"] == str(world.run.pk)
+    assert report["domain_protocol_sha256"] == world.protocol.domain_protocol_sha256
     assert report["rollout_stage"] == "offline"
     destination = os.environ.get("CPI80_FRESH_EVAL_DIR")
     if destination is None:

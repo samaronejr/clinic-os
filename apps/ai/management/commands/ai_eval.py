@@ -13,12 +13,11 @@ from apps.ai.contracts import (
     GatewayAccessDeniedError,
     GatewayRefusedError,
     ProviderUnavailableError,
-    Purpose,
 )
 from apps.ai.evaluation.corpus import CAPABILITIES
 from apps.ai.evaluation.protocol import ENGINEERING_THRESHOLDS, EvaluationInputError
 from apps.ai.evaluation.report import build_report, report_html
-from apps.ai.evaluation.runner import evaluate
+from apps.ai.evaluation.runner import score_run
 from apps.ai.evaluation.services import (
     ReviewerAssignment,
     decide_change,
@@ -230,13 +229,7 @@ class Command(OwnerDatabaseCommand):
                     reviewers=reviewers,
                 )
         # The real shared provider boundary refuses calls inside a transaction.
-        results = evaluate(
-            capability=run.protocol.capability,
-            corpus_version=run.protocol.corpus_version,
-            provider_key=run.configuration.provider,
-            model_id=run.configuration.model_id,
-            purpose=Purpose(run.configuration.purpose),
-        )
+        results = score_run(run)
         with _command_context(context):
             stored = store_results(clinic_id=clinic, run_id=run.pk, results=results)
         return json.dumps({"run_id": str(stored.pk), "status": stored.status})

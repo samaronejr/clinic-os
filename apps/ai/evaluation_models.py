@@ -22,6 +22,7 @@ class EvaluationProtocol(TenantScopedModel):
     case_manifest = models.JSONField()
     thresholds_document = models.TextField()
     thresholds_sha256 = models.CharField(max_length=64)
+    domain_protocol_sha256 = models.CharField(max_length=64, default="")
     registered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
@@ -86,6 +87,7 @@ class EvaluationRating(TenantScopedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     labels = models.JSONField()
+    review_source = models.CharField(max_length=16, default="unattested")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

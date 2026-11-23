@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from django.db import connection, transaction
@@ -22,6 +21,7 @@ from apps.scribe.draft_contracts import (
     DraftReason,
     DraftRequest,
     document,
+    draft_material,
     parse_suggestions,
 )
 from apps.scribe.draft_sources import drafting_consent, note_frame, resolve_sources
@@ -188,15 +188,7 @@ def materialize_draft(artifact: AIArtifact) -> str | None:
     if draft is None:
         return None
     sources = sources_for_draft(draft)
-    return json.dumps(
-        {
-            "schema": "scribe-material-v1",
-            "sections": draft.sections,
-            "sources": [asdict(source) for source in sources],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
+    return draft_material(tuple(draft.sections), sources)
 
 
 def complete_draft(*, invocation_id: UUID, content: str) -> None:

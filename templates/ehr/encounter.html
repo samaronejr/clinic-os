@@ -32,7 +32,7 @@
     <p data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">Atendimento {{ encounter.get_state_display|lower }}{% if encounter.closed_at %} em {{ encounter.closed_at|date:"d/m/Y H:i" }}{% endif %} · Iniciado em {{ encounter.created_at|date:"d/m/Y H:i" }}</p>
     {% if version %}
     {% if version.state == "draft" %}<form method="post" action="{% url 'scribe:review' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="version_id" value="{{ version.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Review source-linked AI suggestions" %}</button></form>{% endif %}
-    {% note_ai_history clinic_id encounter.pk %}
+    {% note_ai_history clinic_id encounter.pk request.POST.ai_use_page %}
     <section class="panel ehr-autosave" data-version="{{ version.pk }}" data-revision="{{ version.revision }}" data-template-version="{{ version.template.version }}" data-state="{{ version.state }}"{% if version.content_digest %} data-digest="{{ version.content_digest }}"{% endif %}{% if version.amendment_of_id %} data-amendment-of="{{ version.amendment_of_id }}"{% endif %}>
       <h2>{{ version.template.title }}</h2>
       <p>Modelo versão {{ version.template.version }} · Documento versão {{ version.version }} · Revisão salva <span data-saved-revision>{{ version.revision }}</span></p>
