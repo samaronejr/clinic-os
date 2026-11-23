@@ -17,6 +17,7 @@ from apps.ai.evaluation.corpus import CAPABILITIES, load_corpus
 from apps.ai.evaluation.origin import (
     PURPOSE_CAPABILITIES,
     domain_protocol_hash,
+    packet_bytes,
     run_origin,
     verify_receipt,
 )
@@ -300,9 +301,7 @@ def store_results(
         raise EvaluationInputError
     envelope = protect(
         purpose="ai.evaluation.samples.v1",
-        plaintext=json.dumps(
-            results, ensure_ascii=False, allow_nan=False, separators=(",", ":")
-        ).encode(),
+        plaintext=packet_bytes(results),
     )
     with connection.cursor() as cursor:
         cursor.execute(

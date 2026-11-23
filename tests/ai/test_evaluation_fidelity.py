@@ -187,7 +187,7 @@ def test_genuine_samples_cannot_be_reattached_to_another_run(
         # The authenticated ciphertext of the other run cannot be copied into
         # the native writer even without going through the Python service.
         with (
-            pytest.raises(DatabaseError, match="invalid evaluation origin"),
+            pytest.raises(DatabaseError, match="invalid evaluation receipt"),
             transaction.atomic(),
             connection.cursor() as cursor,
         ):
@@ -231,7 +231,7 @@ def test_shadow_rejects_offline_samples_and_forged_counts(
             purpose="ai.evaluation.samples.v1", plaintext=json.dumps(tampered).encode()
         )
         with (
-            pytest.raises(DatabaseError, match="invalid evaluation count"),
+            pytest.raises(DatabaseError, match="invalid evaluation receipt"),
             transaction.atomic(),
             connection.cursor() as cursor,
         ):

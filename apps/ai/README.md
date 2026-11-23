@@ -764,10 +764,19 @@ candidate output are encrypted with purpose `ai.evaluation.samples.v1`; they
 never enter metering, audit, task arguments or telemetry. Every run remains
 pending until its structured voting workflow completes. Each observation
 carries its producing run, stage, purpose, model configuration, source versions,
-protocol and corpus digests. Storage verifies the producer receipt; the native
-writer checks the original run and ordered case bindings inside the encrypted
-packet and derives failures from the observations. A detached replay cannot be
-attached to a run. Scripted votes are explicitly marked at submission; their
+protocol and corpus digests. Only the owner database scorer can issue a receipt.
+It scores outside a transaction, then locks the still-pending run and commits
+the SHA-256 of the **entire signed canonical packet** to a single-assignment
+column. The packet identifies the scorer source and binds the ordered case
+inputs actually used, including each available provider request and method.
+The runtime can read but cannot insert a precommitted run, issue a commitment
+or change it. The native writer locks the run, decrypts the submitted packet,
+checks its bytes against that owner-issued commitment, then validates its
+origin, ordered cases and observed failure count. Successful storage spends
+the receipt once; a caller with a genuine envelope cannot re-sign, relabel or
+replay the result. An existing unscored run without a commitment fails closed;
+old scores are not back-certified. A detached replay cannot be attached to a
+run. Scripted votes are explicitly marked at submission; their
 completion does not attest human review. Legacy votes are unattested.
 
 Two distinct assigned physicians submit immutable `EvaluationRating` rows.

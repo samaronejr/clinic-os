@@ -1,16 +1,19 @@
 """Bind evaluation SQL discovery to executed real-role and workflow tests."""
 
+from collections.abc import Callable
+
 from ai import (
     test_agent_execution,
     test_evaluation_authority,
     test_evaluation_fidelity,
     test_evaluation_native,
     test_evaluation_runtime,
+    test_native_score_receipts,
     test_rollout,
     test_rollout_posture,
 )
 
-CASES = {
+CASES: dict[str, Callable[..., None]] = {
     case.__name__: case
     for case in (
         test_evaluation_authority.test_evaluation_sql_checks_every_stored_role_and_exact_clinic,
@@ -62,7 +65,18 @@ _ORIGIN_CASE = (
     test_evaluation_fidelity.test_shadow_rejects_offline_samples_and_forged_counts
 )
 CASES[_ORIGIN_CASE.__name__] = _ORIGIN_CASE
-SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_store"] = [_ORIGIN_CASE.__name__]
+_RECEIPT_CASES = (
+    test_native_score_receipts.test_native_writer_refuses_nonissued_or_spent_score,
+    test_native_score_receipts.test_native_scorer_receipt_catalog_posture,
+)
+CASES.update({case.__name__: case for case in _RECEIPT_CASES})
+SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_store"] = [
+    _ORIGIN_CASE.__name__,
+    *(case.__name__ for case in _RECEIPT_CASES),
+]
+SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_record_guard"].extend(
+    case.__name__ for case in _RECEIPT_CASES
+)
 ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
     (
         "clinic_app.ai_eval_rating_visible(uuid,text,uuid)",

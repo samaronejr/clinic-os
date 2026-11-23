@@ -66,6 +66,9 @@ class EvaluationRun(TenantScopedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     sample_results = EncryptedJSONField(purpose="ai.evaluation.samples.v1", null=True)
+    # No protected content: one owner-issued commitment to the exact signed
+    # plaintext packet. Runtime has neither an issue function nor UPDATE here.
+    producer_commitment = models.BinaryField(null=True, editable=False)
     automatic_failures = models.PositiveSmallIntegerField(default=0)
     scored_at = models.DateTimeField(null=True)
     status = models.CharField(max_length=8, default="pending")

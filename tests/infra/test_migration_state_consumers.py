@@ -119,6 +119,13 @@ def test_batch_constraint_metadata_reaches_reverse_python_callbacks(
 
 def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None:
     loader = MigrationLoader(None)
+    receipt_migration = loader.disk_migrations["ai", "0022_native_scorer_receipt"]
+    assert receipt_migration.atomic is False
+    assert len(receipt_migration.operations) == 1
+    receipt_batch = receipt_migration.operations[0]
+    assert isinstance(receipt_batch, migrations.SeparateDatabaseAndState)
+    assert receipt_batch.atomic is True
+    assert receipt_batch.reversible is False
     migration = loader.disk_migrations["ai", "0005_evaluation"]
     batch = migration.operations[0]
     assert isinstance(batch, migrations.SeparateDatabaseAndState)

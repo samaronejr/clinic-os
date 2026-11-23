@@ -80,6 +80,17 @@ def observation_receipt(samples: dict[str, object]) -> str:
     return signing.Signer(salt="ai.evaluation.produced-samples.v2").sign(digest)
 
 
+def packet_bytes(samples: dict[str, object]) -> bytes:
+    """Identical byte representation for owner issuance and runtime sealing."""
+    return json.dumps(
+        samples,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode()
+
+
 def verify_receipt(results: dict[str, object]) -> bool:
     """Verify producer output before storage checks the immutable run binding."""
     unsigned = results.copy()
