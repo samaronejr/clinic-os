@@ -767,17 +767,25 @@ carries its producing run, stage, purpose, model configuration, source versions,
 protocol and corpus digests. Only the owner database scorer can issue a receipt.
 It scores outside a transaction, then locks the still-pending run and commits
 the SHA-256 of the **entire signed canonical packet** to a single-assignment
-column. The packet identifies the scorer source and binds the ordered case
-inputs actually used, including each available provider request and method.
-The runtime can read but cannot insert a precommitted run, issue a commitment
-or change it. The native writer locks the run, decrypts the submitted packet,
+column. The packet identifies the scorer source and records the scorer's
+digest of the ordered case inputs, including each available provider request
+and method. The native writer checks the packet bytes; it does not independently
+reconstruct those inputs. A `clinic_app` creator can insert a pending run with
+a NULL commitment. The same insert with a preset 32-byte value gets `23514` /
+`invalid evaluation receipt` and creates no row. The runtime cannot issue or
+update a commitment; even the owner cannot replace one already issued.
+The native writer locks the run, decrypts the submitted packet,
 checks its bytes against that owner-issued commitment, then validates its
 origin, ordered cases and observed failure count. Successful storage spends
 the receipt once; a caller with a genuine envelope cannot re-sign, relabel or
 replay the result. An existing unscored run without a commitment fails closed;
-old scores are not back-certified. A detached replay cannot be attached to a
-run. Scripted votes are explicitly marked at submission; their
-completion does not attest human review. Legacy votes are unattested.
+scores stored before `ai.0022` are not back-certified. Those already-scored
+runs remain eligible to finish and support promotion under the existing review
+and activation rules; neither step requires a retroactive receipt. Issuance
+does not emit a separate audit event; `ai.evaluation.scored` records successful
+storage. A detached replay cannot be attached to a run. Scripted votes are
+explicitly marked at submission; their completion does not attest human review.
+Legacy votes are unattested.
 
 Two distinct assigned physicians submit immutable `EvaluationRating` rows.
 The run creator cannot occupy either rater slot or the adjudicator slot.

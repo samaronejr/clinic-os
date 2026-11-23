@@ -12452,24 +12452,13 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
         "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
-        "test_two_independent_reviews_and_explicit_owner_change_are_required",
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
-        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
-        "test_offline_approval_cannot_skip_shadow",
-        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
-        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
-        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
-        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
-        "test_revoked_approver_blocks_after_approval",
-        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader",
-        "test_native_writer_refuses_nonissued_or_spent_score",
-        "test_native_scorer_receipt_catalog_posture"
+        "test_runtime_cannot_insert_precommitted_evaluation_run",
+        "test_issued_pending_commitment_cannot_be_replaced"
       ],
-      "reason": "Preregistered evaluation and human change-control protocol; native score issuance is a separate one-time pending-run transition. The runtime may not seed, replace or issue the owner scorer's observation commitment."
+      "reason": "The row guard checks protocol changes, ratings and run assignments. A runtime creator's precommitted INSERT and an owner's replacement on an issued, still-unscored run both return 23514 / invalid evaluation receipt without changing the run set or the issued value. The same runtime INSERT with NULL is admitted."
     },
     "clinic_app.ai_eval_run_visible": {
       "discovery": {
@@ -12576,8 +12565,7 @@
       "kind": "domain_protocol",
       "probes": [
         "test_shadow_rejects_offline_samples_and_forged_counts",
-        "test_native_writer_refuses_nonissued_or_spent_score",
-        "test_native_scorer_receipt_catalog_posture"
+        "test_native_writer_refuses_nonissued_or_spent_score"
       ],
       "reason": "A current authorized creator may spend the pending run's single owner-scorer-issued commitment only on the exact signed packet. Native missing/invalid, other-run, replayed and altered input/scorer observations are indistinguishably denied without mutation."
     },
