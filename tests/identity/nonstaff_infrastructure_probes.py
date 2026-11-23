@@ -17,6 +17,7 @@ from apps.ehr.management.commands.encrypt_attachment_objects import Command
 from apps.identity.management import base
 from apps.identity.management.bootstrap import BootstrapRequest, bootstrap_clinic
 from apps.identity.phase1a_identity_acl_migration import remove_runtime_identity_acl
+from apps.intake.models import Patient
 from apps.tenancy import envelope
 from django.db import connection
 from django.db.migrations.state import ProjectState
@@ -62,6 +63,16 @@ def _versioned_blind_indexes() -> bool:
         assert len(row.blind_index) == 32
         assert row.key_version > 0
     return True
+
+
+def _reveal_patient_name(data: NonstaffSubjects) -> bool:
+    field = Patient.full_name.field
+    revealed = (
+        Patient.objects.filter(organization_id=data.legacy.graph.organization_a)
+        .annotate(revealed_name=field.reveal_column(column="full_name"))
+        .values_list("revealed_name", flat=True)
+    )
+    return any(field.decode_revealed(value) for value in revealed)
 
 
 def infrastructure_probes(
@@ -175,14 +186,8 @@ def infrastructure_probes(
             database_role="clinic_owner",
         ),
         DifferentialProbe(
-            "apps.tenancy.envelope.reveal_many",
-            lambda: (
-                envelope.reveal_many(
-                    purpose="synthetic.differential", envelopes=[None, d.encrypted]
-                )
-                == (None, b"Sintetico")
-            ),
-            database_role="clinic_owner",
+            "apps.tenancy.fields.EncryptedTextField.reveal_column",
+            lambda: _reveal_patient_name(d),
         ),
         DifferentialProbe(
             "apps.tenancy.envelope.blind_indexes",

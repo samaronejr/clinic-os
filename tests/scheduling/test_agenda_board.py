@@ -15,11 +15,11 @@ from html.parser import HTMLParser
 from queue import Queue
 from threading import Barrier, Thread
 from typing import TYPE_CHECKING, Final
-from unittest.mock import Mock
 from uuid import UUID, uuid4
 
 import pytest
 from apps.core.patient_context import SESSION_PREFIX
+from apps.core.secrets import SecretUnavailableError
 from apps.identity.models import User, UserClinicRole
 from apps.intake.models import PatientClinicEnrollment
 from apps.intake.services import create_patient
@@ -45,8 +45,9 @@ from apps.scheduling.services import (
     create_availability,
 )
 from apps.tenancy.db import tenant_context
-from apps.tenancy.envelope import reveal_many
+from apps.tenancy.envelope import EnvelopeFormatError, protect
 from django.db import connection, connections, transaction
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils.translation import gettext
 
@@ -130,7 +131,8 @@ def _world(graph: RbacGraph) -> tuple[Client, User, AppointmentSetup, Appointmen
     return client, receptionist, setup, booked
 
 
-def _book_later_names(setup: AppointmentSetup) -> None:
+def _book_later_names(setup: AppointmentSetup) -> list[UUID]:
+    patients = []
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
         for hour, name in enumerate(LATER_NAMES, start=10):
             registration = create_patient(
@@ -139,6 +141,7 @@ def _book_later_names(setup: AppointmentSetup) -> None:
                 birth_date=None,
                 idempotency_key=uuid4(),
             )
+            patients.append(registration.patient.pk)
             create_appointment(
                 clinic_id=setup.clinic_id,
                 enrollment_id=registration.enrollment.pk,
@@ -148,6 +151,7 @@ def _book_later_names(setup: AppointmentSetup) -> None:
                 ),
                 idempotency_key=uuid4(),
             )
+    return patients
 
 
 def _pin(client: Client, clinic_id: UUID, enrollment_id: UUID) -> None:
@@ -222,7 +226,7 @@ def test_every_view_renders_the_authorized_board_once_without_url_selectors(
     assert after[len(before) :].count(AGENDA_VIEWED_EVENT) == len(pages)
 
 
-@pytest.mark.parametrize(("view", "budget"), [("day", 56), ("week", 56), ("list", 55)])
+@pytest.mark.parametrize(("view", "budget"), [("day", 55), ("week", 55), ("list", 54)])
 def test_full_agenda_board_query_budget(
     rbac_graph: RbacGraph, view: str, budget: int
 ) -> None:
@@ -243,7 +247,7 @@ def test_full_agenda_board_query_budget(
     )
     assert not page.wsgi_request.session.modified
     # Includes the tenant transactions and two cleanup batches, shell, read
-    # audit and one batch reveal. Day and week also read occupancy.
+    # audit and one joined projection/reveal. Day and week also read occupancy.
     assert len(captured) == budget
     assert sum("clinic_app.protected_decrypt(" in q["sql"] for q in captured) == 1
     # Route authorization, clinic discovery, then fresh selected-clinic grants.
@@ -255,10 +259,30 @@ def test_truncated_board_does_not_reveal_the_lookahead_name(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, _, setup, _ = _world(rbac_graph)
-    _book_later_names(setup)
-    reveal = Mock(wraps=reveal_many)
+    _, lookahead = _book_later_names(setup)
+    with transaction.atomic(), owner_context(setup.organization_id):
+        wrong_purpose = protect(purpose="synthetic.other_field", plaintext=b"Sintetico")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "ALTER TABLE clinic_app.intake_patient "
+                "DISABLE TRIGGER intake_patient_mirror_guard"
+            )
+            cursor.execute(
+                "UPDATE clinic_app.intake_patient SET full_name = %s WHERE id = %s",
+                [wrong_purpose, lookahead],
+            )
+            assert cursor.rowcount == 1
+            cursor.execute(
+                "ALTER TABLE clinic_app.intake_patient "
+                "ENABLE TRIGGER intake_patient_mirror_guard"
+            )
+    with (
+        runtime_role(),
+        tenant_context(setup.actor_id, setup.organization_id),
+        pytest.raises(EnvelopeFormatError),
+    ):
+        view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
     monkeypatch.setattr(agenda_board, "MAX_BOARD_APPOINTMENTS", 2)
-    monkeypatch.setattr(agenda_board, "reveal_many", reveal)
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
         board = view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
         month = view_agenda_board(clinic_id=setup.clinic_id, view="month", date=DAY)
@@ -269,8 +293,6 @@ def test_truncated_board_does_not_reveal_the_lookahead_name(
     ]
     assert not month.appointments
     assert sum(day.total for day in month.counts) == 3
-    assert reveal.call_count == 1
-    assert len(reveal.call_args.kwargs["envelopes"]) == 2
 
 
 def test_board_unknown_and_wrong_clinic_denials_are_silent(
@@ -294,6 +316,24 @@ def test_board_unknown_and_wrong_clinic_denials_are_silent(
                     "FOR NO KEY UPDATE SKIP LOCKED",
                 )
             )
+
+
+def test_only_populated_board_reads_require_key_material(rbac_graph: RbacGraph) -> None:
+    _, _, setup, _ = _world(rbac_graph)
+    with (
+        override_settings(CLINIC_SECRET_BACKEND=None, CLINIC_SECRET_DIR=None),
+        runtime_role(),
+        tenant_context(setup.actor_id, setup.organization_id),
+    ):
+        empty = view_agenda_board(
+            clinic_id=setup.clinic_id,
+            view="list",
+            date=DAY,
+            filters=AgendaFilters(status="cancelled"),
+        )
+        assert not empty.appointments
+        with pytest.raises(SecretUnavailableError):
+            view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
 
 
 def test_owner_reads_the_board_without_booking_or_lifecycle_hooks(

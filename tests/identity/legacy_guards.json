@@ -9265,18 +9265,6 @@
       ]
     },
     {
-      "symbol": "apps.tenancy.envelope.reveal_many",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "The batch read uses the same protected_decrypt tenant and purpose boundary as scalar reveal. The differential oracle executes the real call.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.reveal_many#observed"
-      ]
-    },
-    {
       "symbol": "apps.tenancy.envelope.rewrap_tenant_keys",
       "signals": [
         "resolver"
@@ -9310,6 +9298,18 @@
         "apps.tenancy.db.tenant_context"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.tenancy.fields.EncryptedTextField.reveal_column",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The projection resolves each non-null stored column through protected_decrypt; the live probe executes the RLS query as clinic_app.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.fields.EncryptedTextField.reveal_column#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.middleware.TenantMiddleware._patient",
@@ -11406,9 +11406,9 @@
     "apps.tenancy.envelope.protect#observed",
     "apps.tenancy.envelope.reencrypt#observed",
     "apps.tenancy.envelope.reveal#observed",
-    "apps.tenancy.envelope.reveal_many#observed",
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
+    "apps.tenancy.fields.EncryptedTextField.reveal_column#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
     "apps.tenancy.middleware.TenantMiddleware._response",
     "apps.workflows.access.may_self_claim#cut1",

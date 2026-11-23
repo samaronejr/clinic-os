@@ -23,10 +23,14 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import BinaryField, ExpressionWrapper, F, Q
+from django.db.models import BinaryField, Case, F, Q, Value, When, Window
+from django.db.models.functions import RowNumber
+from django.db.models.lookups import IsNull, LessThanOrEqual
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
+from apps.core.secrets import SecretUnavailableError
+from apps.intake.models import Patient
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
     authorized_agenda_scope,
@@ -49,7 +53,7 @@ from apps.scheduling.models import (
     ServiceType,
 )
 from apps.scheduling.timezones import civil_day_bounds, format_local_minute
-from apps.tenancy.envelope import reveal_many
+from apps.tenancy.envelope import map_envelope_errors
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -70,6 +74,8 @@ CROSS_ORGANIZATION_BUSY: Final = False
 LOCAL_DATE: Final = slice(0, 10)
 LOCAL_TIME: Final = slice(11, 16)
 _RESOURCE_KINDS: Final = (Resource.Kind.ROOM, Resource.Kind.EQUIPMENT)
+_BOOKING_ORDER: Final = ("start_at", "practitioner_id", "pk")
+_NAME_COLUMN: Final = "patient__full_name"
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,6 +512,62 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     )
 
 
+def _appointment_rows(
+    *,
+    shown: QuerySet[Appointment],
+) -> tuple[tuple[tuple[Appointment, str], ...], bool]:
+    """Read the authorized page; the one look-ahead row is never decrypted."""
+    field = Patient.full_name.field
+    ordered = shown.only(
+        "practitioner_id",
+        "resource_ids",
+        "service_type_id",
+        "start_at",
+        "end_at",
+        "status",
+        "revision",
+        "hold_expires_at",
+    ).order_by(*_BOOKING_ORDER)[: MAX_BOARD_APPOINTMENTS + 1]
+    try:
+        reveal = field.reveal_column(column=_NAME_COLUMN)
+    except SecretUnavailableError:
+        # Preserve an empty/all-null board during a KEK outage. Keep the same
+        # RLS patient join and do not select ciphertext even on this path.
+        missing_names = tuple(
+            ordered.annotate(name_missing=IsNull(F(_NAME_COLUMN), rhs=True))
+        )
+        visible = missing_names[:MAX_BOARD_APPOINTMENTS]
+        if any(not row.name_missing for row in visible):
+            raise
+        return (
+            tuple((row, field.decode_revealed(None)) for row in visible),
+            len(missing_names) > MAX_BOARD_APPOINTMENTS,
+        )
+    # The window ranks filtered, joined rows by metadata only. CASE keeps
+    # the extra truncation witness out of protected_decrypt. Both the
+    # statement and its parameters are free of patient envelope values.
+    visible_rank = LessThanOrEqual(
+        Window(expression=RowNumber(), order_by=_BOOKING_ORDER),
+        Value(MAX_BOARD_APPOINTMENTS),
+    )
+    with map_envelope_errors():
+        rows = tuple(
+            ordered.annotate(
+                revealed_name=Case(
+                    When(visible_rank, then=reveal),
+                    output_field=BinaryField(),
+                )
+            )
+        )
+    return (
+        tuple(
+            (row, field.decode_revealed(row.revealed_name))
+            for row in rows[:MAX_BOARD_APPOINTMENTS]
+        ),
+        len(rows) > MAX_BOARD_APPOINTMENTS,
+    )
+
+
 def view_agenda_board(
     *,
     clinic_id: UUID,
@@ -562,48 +624,21 @@ def view_agenda_board(
         if view == "month":
             counts = _counts(shown, _days(first_day, last_day), timezone_key)
         else:
-            # Keep the scoped patient join, but skip the encrypted field's
-            # per-row converter. Reveal only names on the bounded board page.
-            ordered = tuple(
-                shown.annotate(
-                    name_envelope=ExpressionWrapper(
-                        F("patient__full_name"), output_field=BinaryField()
-                    )
-                )
-                .only(
-                    "practitioner_id",
-                    "resource_ids",
-                    "service_type_id",
-                    "start_at",
-                    "end_at",
-                    "status",
-                    "revision",
-                    "hold_expires_at",
-                )
-                .order_by("start_at", "practitioner_id", "pk")[
-                    : MAX_BOARD_APPOINTMENTS + 1
-                ]
-            )
-            truncated = len(ordered) > MAX_BOARD_APPOINTMENTS
-            visible = ordered[:MAX_BOARD_APPOINTMENTS]
-            names = reveal_many(
-                purpose="intake.patient.full_name",
-                envelopes=[row.name_envelope for row in visible],
-            )
+            visible, truncated = _appointment_rows(shown=shown)
             lane_resources = {lane.lane_id for lane in resources}
             now = timezone.now()
             appointments = tuple(
                 _presented(
                     row,
                     rules,
-                    patient_display_name="" if name is None else name.decode("utf-8"),
+                    patient_display_name=name,
                     book=book,
                     move=move,
                     lane_resources=lane_resources,
                     timezone_key=timezone_key,
                     now=now,
                 )
-                for row, name in zip(visible, names, strict=True)
+                for row, name in visible
             )
             if view != "list":
                 occupancy = _occupancy(

@@ -178,3 +178,65 @@ raise SystemExit(pytest.main(sys.argv[1:], plugins=[ExtraQuery()]))
 ```
 
 `$PROBE` used the same private synthetic bootstrap on `clinic`, asserted `discover() == {row["symbol"]: row["signals"] for row in INVENTORY["candidates"]}`, verified the new row's `#observed` declarations, seeded one empty clinic and encrypted a synthetic value there, then built the real `infrastructure_probes(...)` list with that envelope. It selected the `reveal_many` row and ran `_invoke(probe, actor, tenant.organization_id, authority=AuthorityObserver(catalog, catalog.derive()))`, required the expected true result, and required `("guc", "app.current_tenant")` in the observer touches. Only the count and pass outcome were printed.
+
+## R2 — repair the PostgreSQL error-log boundary
+
+R1 above is historical and was **rejected** by `REVIEW-OPTION-C.md` in the integration checkout. Its packed array was safe against SQL injection but not safe to log: with Django's psycopg client binding the failing PostgreSQL statement included every envelope literal. An application-side exception handler cannot prevent a PostgreSQL error log already emitted during execution.
+
+**Repair by construction.** `apps/scheduling/agenda_board.py::_appointment_rows` keeps the same authorized `shown` queryset and non-null FK inner join. It projects decrypted bytes directly from the **column** in the existing bounded appointment SELECT. `EncryptedTextField.reveal_column` takes a resolved Django column reference, not an envelope list or IDs, and calls the same STABLE `clinic_app.protected_decrypt` in that column projection. The SQL and bind values contain no patient, appointment, enrollment or envelope values: only the existing clinic/organization/scheduling selectors and KEK, purpose and display limit. No second lookup, new function, ACL, policy, logging configuration, driver mode, or ability to bypass RLS. The existing KEK interpolation onto a failing statement remains a separate, pre-existing cross-cutting issue and is not claimed fixed here; the negative-control log is never published.
+
+- Authorization is still before the joined read, in the same order. Scope and filter predicates are unchanged; name decrypt is a SELECT expression, never a filter or sort. The metadata-only window uses the same `start_at, practitioner_id, pk` order and `LIMIT 401`; a `CASE` does not evaluate the resolver on the look-ahead ordinal. Week still has its original DTO coverage and one rendered lane; month, hidden rows, and anonymous busy intervals keep their own non-name paths.
+- The expression gets both the purpose and empty/UTF-8 codec from the actual patient field (`Patient.full_name.field`), without duplicating the literal or conversion. There is one KEK fetch per attempted populated projection and no cache across requests. An unavailable KEK still allows an empty/all-null result by querying only NULL flags on the same scoped join; it never yields partial names or ciphertext. SQL failures still map into the same envelope errors, roll back the board savepoint, render no names and commit no read audit. Successful audit payload and the session touch are unchanged.
+- The look-ahead test no longer spies on Python arguments. It places a genuine wrong-purpose ciphertext in the extra row; that row fails the full board when visible, yet the truncated and month views succeed with the unchanged ordered data. The earlier array-specific crypto cases were adapted to query actual stored columns through RLS. The new `#observed` authority probe runs a real column SELECT as `clinic_app` rather than `clinic_owner`; the reviewed full inventory still has a direct observed resolver call, not a new staff matrix. None of the day/week/list, denial, audit, admission, RLS, or touch selections was dropped.
+
+### R2 SC-7 negative control
+
+Run `tests/scheduling/postgres_error_log_probe.py` as a standalone test from each checkout with `PYTHONPATH` set to that checkout, `OPTION_C_PG` naming the owned container, and `OPTION_C_ROOT` naming the mode-0700 runtime root. The only output used as evidence is the summary tally. The executable validates the owned container port, confirms default `log_statement=none` and `log_min_error_statement=error`, seeds three synthetic bookings, and checks that the warm request displays all three names with one audit. It inserts a real wrong-purpose envelope into the middle row with the mirror trigger restored **before** exercising the same HTTP GET as `clinic_app`. It requires the PostgreSQL backend PID's authentic wrong-purpose ERROR and its STATEMENT in the container log. It captures but never dumps or stores those payloads, instead searching the complete post-request log slice in memory for the two valid envelopes, the bad envelope, all three names, and nine patient/booking/enrollment ids.
+
+| Same standalone test | Exit | Good/bad envelopes in log | IDs / names in log | HTTP / audit delta |
+|---|---:|---|---|---|
+| `f04ff286` in detached private worktree | **1** (expected) | **2/2, 1/1** | 0/9, 0/3 | 500 / 0 |
+| R2 | **0** | **0/2, 0/1** | 0/9, 0/3 | 500 / 0 |
+
+### Full authority comparison
+
+Same Python 3.12 locked venv and one owned server. Before each full invocation, `test_clinic` had zero users, zero service principals and zero disabled noninternal triggers. No assertion or selection was relaxed. Wave H is the exact untouched `4f8d2454987ca1d083ead53a7501126d647a89bc`, not the rejected R1 head.
+
+| Run | Exit | Evidence |
+|---|---:|---|
+| Initial R2 development collection | 4 | Ran before the obsolete array-helper import was replaced in the encryption test module; no DB census credit. |
+| R2 first full attempt | 1 | 62.73 s setup + 66.13 s call + 12.12 s teardown. The real new column probe ran in setup and the exact inventory assertion passed, then the existing Cut 1 front-desk oracle hit `GatewayRefusedError(configuration_unavailable)` at `apps/ai/front_desk.py:297` via `tests/ai/test_front_desk.py:302`. 288 requests, 50 refusals, 0 guard violations; not a timeout or a pass. |
+| Wave H clean comparator | **0** | **1 passed**; 63.53 s setup + 891.67 s call + 40.53 s teardown, 1002.72 s wall including runner. 513 requests, 72 refusals, 0 guard violations. This directly explains why the previous 480 s deadline was not a valid completion budget even before R1. |
+
+This comparison is against the unchanged candidate diff for `apps/ai`, `apps/comms`, the front-desk oracle, and the Cut 1 runner. The first R2 oracle failure did **not** also occur in this Wave H run; it is not classified as proven baseline contamination or a product regression on that one observation. No front-desk code, test, or configuration is changed by this lane.
+
+### Reproduction commands
+
+Use the R1 definitions of `N` and the scoped node lists in this claim. R2 uses `V=<lane worktree>/.venv/bin`, `S=/run/user/1000/cpi-t83c-r2-st01a205a3`, `PG=cpi-t83c-pg-r2-st01a205a3`, and `P=("$V/python" -m pytest -p no:cacheprovider --reuse-db -q --tb=short --show-capture=no)`. Use `--basetemp="$S/pytest-$label"` for each pytest run. All credentials and URLs were child environment only. Fresh disk-backed PG16.14, 1 CPU / 768 MiB, internal port 55451 and host `127.0.0.1:32910`; no logging options added or changed.
+
+```bash
+docker volume create --label owner=st_01a205a3-r2 "$PG-data"
+"${N[@]}" docker run --pull=never -d --name "$PG" --cpus 1 --memory 768m \
+  --memory-swap 768m --pids-limit 128 --shm-size 128m \
+  --mount "type=volume,source=$PG-data,target=/var/lib/postgresql/data" \
+  -p 127.0.0.1::55451 -e PGPORT -e POSTGRES_USER -e POSTGRES_DB -e POSTGRES_PASSWORD \
+  --entrypoint /usr/bin/ionice postgres:16.14 -c 3 nice -n 10 \
+  docker-entrypoint.sh postgres -p 55451 -c shared_buffers=96MB
+# 0/0; `docker logs --follow "$PG"` reaped after final readiness.
+docker port "$PG" 55451/tcp
+"${N[@]}" make db-bootstrap
+"${N[@]}" "$V/python" manage.py migrate --noinput --settings=config.settings.test
+# 0/0/0 for both owner DSN DB names clinic and test_clinic.
+
+git worktree add --detach "$S/rejected-worktree" f04ff286c8f9d2710e1c5993768bbc2fff12650c
+# 0; from rejected checkout and then the candidate checkout:
+PYTHONPATH="$PWD" OPTION_C_PG="$PG" OPTION_C_ROOT="$S" \
+  "${N[@]}" "$V/python" "$V/../../tests/scheduling/postgres_error_log_probe.py"
+# red 1 / green 0. Script path points to the same lane file both times.
+
+CENSUS=tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for
+"${N[@]}" timeout -s INT -k 30s 1800s "${P[@]}" \
+  --basetemp="$S/pytest-$label" --durations=5 -o junit_family=xunit1 \
+  --junitxml="$S/$label.xml" "$CENSUS"
+# See exact revision outcomes above. The timeout is a process deadline, not a test sleep.
+```
