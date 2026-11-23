@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 __all__ = ("agenda_staff",)
 
 NO_OVERFLOW: Final = "document.documentElement.scrollWidth <= innerWidth"
+RECEPTION_START_DAY: Final = date(2036, 4, 6)
 SENTINELS: Final = (
     FixtureSecret("SINTETICO-SENTINELA-PATIENT"),
     FixtureSecret("Consulta sintética"),
@@ -48,7 +49,7 @@ SENTINELS: Final = (
 def reception_world(agenda_staff: dict[str, str]) -> SliceWorld:
     """Reuse real scheduling seeds on deterministic dates in this owned database."""
     world = SliceWorld(agenda_staff)
-    world.next_day = date(2036, 4, 6)
+    world.next_day = RECEPTION_START_DAY
     with world._owner() as connection:
         connection.execute(
             "INSERT INTO clinic_app.scheduling_resource "

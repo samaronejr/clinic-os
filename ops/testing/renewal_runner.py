@@ -1307,7 +1307,6 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
-        port = reserve_port()
         spawned: list[SupervisedMaster] = []
         server_environment = {
             **_server_environment(app_dsn),
@@ -1339,14 +1338,16 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
             )
         )
         try:
-            start_master(
-                supervised_argv(
-                    Path(sys.executable), port, artifact_root / "access.log"
-                ),
-                server_environment,
-                server_log,
-                owner=spawned,
-            )
+            with reserve_port() as (port, listener_fd):
+                start_master(
+                    supervised_argv(
+                        Path(sys.executable), listener_fd, artifact_root / "access.log"
+                    ),
+                    server_environment,
+                    server_log,
+                    owner=spawned,
+                    pass_fds=(listener_fd,),
+                )
             wait_until_ready(port, server_log)
             port_for_browser = extra_processes.enter_context(
                 browser_endpoint(

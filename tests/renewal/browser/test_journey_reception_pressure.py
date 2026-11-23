@@ -18,7 +18,10 @@ side by side on the reference clinic's organization.
 # Injects SINTETICO-SENTINELA-* values into protected fields (runner scan).
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
+
+import pytest
 
 import renewal.browser.test_agenda_grid as grid
 import renewal.browser.test_agenda_slice as agenda_slice
@@ -34,7 +37,6 @@ from renewal.browser.test_agenda_grid import (
     grid_report,
     grid_root,
     grid_state,
-    grid_world,
 )
 from renewal.browser.test_agenda_slice import (
     scene,
@@ -75,6 +77,14 @@ __all__ = (
 
 # Order matters: the waitlist and reception proofs own clinic A until the agenda
 # grid and slice worlds seed their rooms and days later in this session.
+
+
+@pytest.fixture(scope="session")
+def grid_world(agenda_staff: dict[str, str]) -> grid.GridWorld:
+    """Use the Monday after reception's fixture week, not the grid's random shift."""
+    world = grid.GridWorld(agenda_staff)
+    world.next_day = reception.RECEPTION_START_DAY + timedelta(days=8)
+    return world
 
 
 def test_j3_adapters_and_provider_legs(

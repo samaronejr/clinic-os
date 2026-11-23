@@ -1903,7 +1903,9 @@ def test_signing_suites_export_the_app_worker_dsn(
         ),
     )
     monkeypatch.setattr(runner, "_require_app_role", lambda _dsn: None)
-    monkeypatch.setattr(runner, "reserve_port", lambda: 48000)
+    monkeypatch.setattr(
+        runner, "reserve_port", lambda: contextlib.nullcontext((48000, 7))
+    )
     monkeypatch.setattr(
         runner, "realtime_broker", lambda *_args, **_kwargs: contextlib.nullcontext()
     )

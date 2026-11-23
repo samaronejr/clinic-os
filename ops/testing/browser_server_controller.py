@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 from ops.testing.browser_artifact_publisher import (
     frame_suite_artifacts,
@@ -70,14 +70,18 @@ def _fail(reason: str) -> Never:
     raise BrowserServerError(reason)
 
 
-def reserve_port() -> int:
-    """Return one free loopback TCP port that is never the protected 5432."""
+@contextlib.contextmanager
+def reserve_port() -> Iterator[tuple[int, int]]:
+    """Yield a loopback port and its listening FD, keeping ownership through spawn."""
     for _attempt in range(PORT_ATTEMPTS):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind((HOST, 0))
-            port = int(probe.getsockname()[1])
-        if port != PROTECTED_DATABASE_PORT:
-            return port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind((HOST, 0))
+            port = int(listener.getsockname()[1])
+            if port == PROTECTED_DATABASE_PORT:
+                continue
+            listener.listen()
+            yield port, listener.fileno()
+            return
     _fail("no free loopback port")
 
 
@@ -105,7 +109,7 @@ def wait_until_ready(port: int, server_log: Path) -> None:
 
 
 def start_server(
-    port: int,
+    listener_fd: int,
     environment: dict[str, str],
     server_log: Path,
 ) -> subprocess.Popen[bytes]:
@@ -120,7 +124,7 @@ def start_server(
                 "-m",
                 "gunicorn",
                 "--bind",
-                f"{HOST}:{port}",
+                f"fd://{listener_fd}",
                 "--workers=2",
                 "--preload",
                 "--access-logfile",
@@ -133,6 +137,7 @@ def start_server(
                 "config.wsgi:application",
             ],
             env=environment,
+            pass_fds=(listener_fd,),
             start_new_session=True,
             stdout=stream,
             stderr=subprocess.STDOUT,
@@ -223,17 +228,19 @@ def run_suite(suite_id: str, required: list[str]) -> int:
             _fail(f"missing {name}")
     evidence_root = Path(os.environ["CLINIC_BROWSER_EVIDENCE_ROOT"])
     evidence_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    port = reserve_port()
     environment = dict(os.environ)
     environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
-    server = start_server(port, environment, server_log)
+    server = None
     try:
+        with reserve_port() as (port, listener_fd):
+            server = start_server(listener_fd, environment, server_log)
         wait_until_ready(port, server_log)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
-        stop_server(server)
+        if server is not None:
+            stop_server(server)
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,
