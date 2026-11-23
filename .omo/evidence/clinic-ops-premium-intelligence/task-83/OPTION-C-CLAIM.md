@@ -242,3 +242,48 @@ CENSUS=tests/identity/test_permission_parity.py::test_every_authorization_candid
   --junitxml="$S/$label.xml" "$CENSUS"
 # See exact revision outcomes above. The timeout is a process deadline, not a test sleep.
 ```
+
+### R2 committed verification
+
+The product and initial regression suite were tested at `e674b103ea0ed590859513cea91821c5d66c0475` (tree `8b21a53b546650172f04275e546dbb321090f326`). The staged and committed trees matched. The review follow-up is `ac272bbf44afd99b185688fb7259d0fc1e19f050` (tree `399b8c7b1324ad722cf5506db5e50f57f607fc54`); it changes only tests, the serial manifest, and this claim, not the production tree. Except for the disclosed rejected-head test overlay, exact test units checked the expected HEAD, tree, and clean status before and after the command.
+
+`git diff --stat e674b103..ac272bbf`: five files, 194 insertions and 31 deletions: this claim, `ops/testing/ci-serial-tests.txt`, `tests/renewal/test_encryption_readiness.py`, `tests/scheduling/postgres_error_log_probe.py`, and `tests/scheduling/test_agenda_board_query_privacy.py`. No production file changed; both `apps` trees are `fdee31d51e470f51faf0bb3038c6d12e5b480ac4`. The required production-bound census is the passing `e674b103` run below.
+
+**Why a per-member error cannot log the inputs:** `apps/scheduling/agenda_board.py:515–568` keeps decrypt in the authorized SELECT; `apps/tenancy/fields.py:135–159` binds the KEK and field purpose but supplies the envelope solely as a SQL column reference. The statement and binds do not carry patient/appointment/enrollment IDs or envelope bytes, and the fixed PostgreSQL resolver errors do not interpolate those inputs (`apps/tenancy/migrations/_envelope_sql.py:250–302`). `CASE` excludes NULL and rank-401 names; the array staging and extra round trip are gone. The existing field supplies the codec and the live authority probe runs under `clinic_app`. The corrupt-lookahead test proves a real failure when the row is visible and success when it is excluded. Authorization, audit, policies, ACLs, settings, rendered behavior, and session touch are unchanged.
+
+The read-only R2 code-quality review approved the product diff with no blockers. The follow-up renames the two column tests, replaces standalone-probe `assert` statements with optimization-safe checks, and adds a CI-discoverable serial DB test that checks Django's actual captured SQL text and execute-wrapper binds on both HTTP paths using three stored names and a fourth wrong-purpose envelope. M1 above records the existing KEK convention and the newly broader logging surface, not a claim that R2 fixes KEK logging. The review's nonblocking error classification, sort cost, all-null/truncation coverage, typing and file size notes are not claimed fixed.
+
+The 300-booking synthetic count replay on the unchanged R2 product showed first day 58 total statements / 1 decrypt projection / 300 rendered names, warm day 55/1/300, warm week 55/1/25, warm list 54/1/300, month 54/0/0. Each successful GET made one read audit append and one session touch. Versus Wave H warm counts 355/355/354, the drop is 300 client statements per request. These counts are not latency, server-side decrypt counts, or F4 acceptance.
+
+Each gate used `systemd-run --user --wait --collect --property=Nice=15 --property=IOSchedulingClass=idle --property=UMask=0077`, serially against one private PostgreSQL container on port `32910`, with distinct pytest temp paths. In the first committed R2 scope run, exit 1 (105 pass/1 fail, 2309.77 s) was a test fixture role error: a context called `user_has_org` without `runtime_role()`. The fixture is corrected in `e674b103`. Earlier test DB residue was cleared by dropping and recreating only the owned `test_clinic`; bootstrap/migration passed and confirmed zero users, service principals and disabled noninternal triggers at preflight.
+
+| `e674b103` unit or R1 control | Exit | Receipt |
+|---|---:|---|
+| Scoped PostgreSQL | 0 | 106 passed; unit 2794.60 s, pytest 2784.30 s; 186 requests, 82 refusals, 0 guard violations. |
+| Redis admission | 0 | 7 passed, none skipped; unit 684.21 s, pytest 665.32 s. Real Redis 7.4.11 owned by the test fixture; not the F4 rig. |
+| Inject `SELECT 1` into each warm GET | 1 expected | Three assertion failures only: day 56 vs 55, week 56 vs 55, list 55 vs 54; 187.86 s. |
+| Uninjected budgets | 0 | JUnit 3 tests, no failure/error/skip; 112.38 s. |
+| Module boundaries and six manifest nodes | 0 | JUnit 281 tests, no failure/error/skip; 17.51 s. |
+| Default PostgreSQL error log, R1 / R2 | 1 expected / 0 | 17.72 s / 5.65 s; same authenticated HTTP 500 and zero audit delta. R1 logged 2/2 neighboring and 1/1 failing envelopes; R2 logged 0/2 and 0/1. Both logged 0/9 IDs and 0/3 names. |
+| Full authority census, xunit1, 1,800 s deadline + 30 s kill grace | 0 | One JUnit case, no failure/error/skip; **1692.65 s wall** (96.25 s setup / 1489.24 s call / 101.51 s teardown), 513 requests, 72 refusals, 0 guard violations. The earlier front-desk failure did not reproduce. |
+| Ruff lint, Ruff format, strict mypy, migration drift | 0 each | 0.04 s / 0.02 s / 30.14 s / 6.61 s; seven Python files and no migration changes. |
+
+The untouched Wave H comparator completed in **1002.718 s wall** in the retained local receipt; **1,088 s** was separately reported by the orchestrator and is not the number in that receipt. Both exceed the original 480 s deadline before the candidate's change. These wall times establish deadline sufficiency, not equivalent scheduler conditions or a performance result.
+
+| `ac272bbf` review-follow-up unit or R1 control | Exit | Receipt |
+|---|---:|---|
+| CI SQL-capture guard on R2 | 0 | One JUnit test, no failure/error/skip; 178.13 s. Both success and actual `EnvelopeFormatError` request executed. |
+| Same CI SQL-capture guard on rejected R1 | 1 expected | 30.33 s, one JUnit assertion failure with identical test and serial registration overlaid on detached `f04ff286`; success and failure both carried the seeded envelopes in SQL text and binds. Initial control exit 4 at collection lacked that serial registration; no regression credit for that attempt. |
+| Standalone default log under `python -O`, invalid target | 2 expected | Rejected the non-owned target in 7.32 s, before DB work. |
+| Standalone default log under `python -O`, R1 / R2 | 1 expected / 0 | 7.41 s / 2.47 s; same HTTP, audit and log tallies as above. |
+| Affected scheduling and encryption DB modules plus CI guard | 0 | 32 JUnit tests, no failure/error/skip, 791.54 s, including all three budget variants. |
+| Module boundaries and six serial-manifest nodes | 0 | 281 JUnit tests, no failure/error/skip; 2.82 s. |
+| Ruff lint, Ruff format, strict mypy, migration drift | 0 each | 0.03 s / 0.02 s / 11.44 s / 2.12 s; eight Python files, no migration changes. |
+| Same full authority census, optional repeat | 0 | One JUnit case, no failure/error/skip; **1066.14 s wall** (67.51 s setup / 953.19 s call / 39.78 s teardown), within the same 1,800 s deadline. 513 requests, 72 refusals, 0 guard violations. |
+| Injected `SELECT 1`, repeated on the follow-up commit | 1 expected | 61.35 s; JUnit 3 failures, 0 errors/skips. Day 56 vs 55, week 56 vs 55, list 55 vs 54. |
+| Full scoped PostgreSQL repeat on the follow-up commit | 0 | JUnit 107 passed, no failure/error/skip; 2005.16 s wall, pytest 2003.02 s. Includes all three uninjected budgets and the new guard; 188 requests, 82 refusals, 0 guard violations. |
+| Redis admission repeat on the follow-up commit | 0 | JUnit 7 passed, no failure/error/skip; 127.37 s wall, pytest 122.67 s. Fixture-owned Redis, not the F4 rig. |
+
+**Cleanup (verified):** All task-owned systemd units and test/Redis processes stopped. Removed the owned PostgreSQL container and its named volume; exact-name Docker queries returned no entries and `ss` returned no listener on `32910`. Both detached control/test worktrees and the private runtime directory were removed and verified absent. The retained evidence contains only safe summaries, not raw SQL, credentials, or patient values.
+
+The delivery commit after `ac272bbf` changes only this claim. No merge, Wave H change, or perf/native/browser/full-CI acceptance is included.
