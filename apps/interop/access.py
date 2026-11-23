@@ -59,6 +59,7 @@ class Code(StrEnum):
     MAPPING_SOURCE_KIND = "mapping_source_kind"
     NOTHING_TO_COMMIT = "nothing_to_commit"
     REJECTS_UNACKNOWLEDGED = "rejects_unacknowledged"
+    ROW_ACCOUNTING_MISMATCH = "row_accounting_mismatch"
     SCAN_UNAVAILABLE = "scan_unavailable"
     SOURCE_SIZE = "source_size"
     TOO_MANY_ROWS = "too_many_rows"

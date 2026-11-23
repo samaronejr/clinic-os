@@ -283,6 +283,7 @@ def mapped_rows(
     else:
         datasets = sources.read_datasets(job.source_kind, data, options)
         witness = None
+    counts = _check_profile_scope(job, data, datasets)
     if not contract.mapped_columns_present(document, datasets):
         raise ImportInputError(Code.MAPPING_COLUMNS)
     normalized = normalize(
@@ -292,6 +293,8 @@ def mapped_rows(
         attachments=attachment_facts(job),
         required_fields=_required_fields(clinic.pk),
     )
+    if normalized.row_counts != counts:
+        raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
     if witness is not None:
         return replace(normalized, source_projection=read_witness(witness))
     return normalized
@@ -358,11 +361,12 @@ def stage_upload(
             raise ImportInputError(Code.ARCHIVE_LAYOUT)
         if witness is not None:
             read_witness(witness)
-        sources.archive_datasets(members, None)
+        datasets = sources.archive_datasets(members, None)
         attachments = sources.archive_attachments(members)
     else:
-        sources.read_datasets(kind, data)
+        datasets = sources.read_datasets(kind, data)
         attachments = ()
+    census = sources.dataset_census(datasets)
     source_kind = kind
     fingerprint = _fingerprint(source_kind, actual, len(data))
     with transaction.atomic():
@@ -421,6 +425,7 @@ def stage_upload(
                 actor_id=actor,
                 report={
                     "bytes": len(data),
+                    "row_census": census,
                     "attachments": len(attachments),
                     "quarantined": sum(1 for a in attachments if a.verdict != "clean"),
                 },
@@ -514,9 +519,14 @@ def profile_import(
         job = record(ImportJob, clinic_id=clinic_id, record_id=job_id)
         latest = expect(job, expected_sequence=expected_sequence, states=("uploaded",))
         data = source_bytes(job)
-        profile = _profile(job, sources.read_datasets(job.source_kind, data), data)
+        datasets = sources.read_datasets(job.source_kind, data)
+        _check_source_census(job, data, datasets, latest)
+        counts = sources.dataset_row_counts(datasets)
+        profile = _profile(job, datasets, data)
         if not contract.validate_profile(profile):
             raise ImportInputError(Code.INVALID_PROFILE)
+        if _profile_counts(profile) != counts:
+            raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
         transition = append(
             job, latest, state="profiled", actor_id=actor, report=profile
         )
@@ -533,6 +543,55 @@ def stored_profile(job: ImportJob) -> dict[str, object]:
     if profiled is None or not isinstance(profiled.report, dict):
         raise ImportConflictError(Code.INTEROP_TRANSITION)
     return cast("dict[str, object]", profiled.report)
+
+
+def _profile_counts(profile: Mapping[str, object]) -> dict[str, int]:
+    datasets = profile.get("datasets")
+    if not isinstance(datasets, dict) or "patients" not in datasets:
+        raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
+    counts: dict[str, int] = {}
+    for name, entry in datasets.items():
+        count = entry.get("row_count") if isinstance(entry, dict) else None
+        if name not in sources.DATASET_FILES or type(count) is not int:
+            raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
+        if not 0 <= count <= sources.MAX_ROWS:
+            raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
+        counts[name] = count
+    return counts
+
+
+def profiled_row_counts(job: ImportJob) -> dict[str, int]:
+    """Return the immutable profile's counted source rows by dataset."""
+    return _profile_counts(stored_profile(job))
+
+
+def _check_source_census(
+    job: ImportJob,
+    data: bytes,
+    datasets: Mapping[str, sources.Dataset],
+    uploaded: ImportTransition,
+) -> None:
+    report = uploaded.report
+    if not isinstance(report, dict):
+        raise ImportConflictError(Code.INTEROP_TRANSITION)
+    if "row_census" in report:
+        census = report["row_census"]
+    else:
+        # Older uploads predate the census; derive it from the same sealed bytes.
+        census = sources.dataset_census(sources.read_datasets(job.source_kind, data))
+    if census != sources.dataset_census(datasets):
+        raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
+
+
+def _check_profile_scope(
+    job: ImportJob, data: bytes, datasets: Mapping[str, sources.Dataset]
+) -> dict[str, int]:
+    uploaded = ImportTransition.objects.get(job_id=job.pk, sequence=1, state="uploaded")
+    _check_source_census(job, data, datasets, uploaded)
+    counts = profiled_row_counts(job)
+    if counts != sources.dataset_row_counts(datasets):
+        raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
+    return counts
 
 
 def suggest_mapping(*, clinic_id: UUID, job_id: UUID) -> contract.MappingSuggestion:
@@ -623,9 +682,9 @@ def apply_mapping(
         if mapping.source_kind != job.source_kind:
             raise ImportInputError(Code.MAPPING_SOURCE_KIND)
         document = cast("dict[str, object]", mapping.document)
-        datasets = sources.read_datasets(
-            job.source_kind, source_bytes(job), csv_options(document)
-        )
+        data = source_bytes(job)
+        datasets = sources.read_datasets(job.source_kind, data, csv_options(document))
+        _check_profile_scope(job, data, datasets)
         if not contract.mapped_columns_present(document, datasets):
             raise ImportInputError(Code.MAPPING_COLUMNS)
         transition = append(
@@ -707,6 +766,8 @@ def dry_run_import(
         latest = expect(job, expected_sequence=expected_sequence, states=("mapped",))
         mapping = cast("ImportMapping", latest.mapping)
         normalized = mapped_rows(job, clinic=clinic, mapping=mapping)
+        if not normalized.outcomes_cover_source():
+            raise ImportConflictError(Code.ROW_ACCOUNTING_MISMATCH)
         duplicates = existing_duplicates(clinic, normalized.patients)
         digest = dataset_digest_for(job, mapping, normalized)
         report = dry_run_document(normalized, duplicates)
@@ -725,7 +786,7 @@ def dry_run_import(
             counts=(
                 normalized.row_count,
                 normalized.valid_count,
-                len(normalized.rejections),
+                normalized.nonwrite_count,
                 len(duplicates),
             ),
         )
@@ -746,7 +807,7 @@ def dataset_digest_for(
 def dry_run_document(
     normalized: Normalized, duplicates: Mapping[int, list[str]]
 ) -> dict[str, object]:
-    """Report counts that reconcile: rows = accepted + rejected per dataset."""
+    """Report accepted, rejected, and explicitly excluded source rows."""
     datasets: dict[str, dict[str, int]] = {}
     for name, rows in normalized.row_counts.items():
         accepted = len(
@@ -759,6 +820,9 @@ def dry_run_document(
                 1 for item in normalized.rejections if item.dataset == name
             ),
         }
+    exclusions = normalized.exclusions()
+    if exclusions:
+        datasets["history"]["excluded"] = len(normalized.excluded_history_rows)
     return {
         "schema": DRY_RUN_REPORT,
         "datasets": datasets,
@@ -767,13 +831,14 @@ def dry_run_document(
             for item in normalized.rejections
         ],
         "duplicates": [[row, signals] for row, signals in duplicates.items()],
+        **({"exclusions": exclusions} if exclusions else {}),
     }
 
 
 def approve_import(
     *, clinic_id: UUID, job_id: UUID, expected_sequence: int, plan: CutoverPlan
 ) -> ImportJobView:
-    """Sign off the cutover and rollback plan bound to the exact dry run."""
+    """Sign off the exact dry run, including rejects and explicit exclusions."""
     if (
         not isinstance(plan, CutoverPlan)
         or type(plan.rollback_window_hours) is not int

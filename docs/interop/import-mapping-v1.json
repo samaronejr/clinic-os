@@ -51,6 +51,9 @@
             "ISO-8601-offset"
           ]
         },
+        "history_exclusion": {
+          "const": "operator_excluded_history"
+        },
         "csv": {
           "type": "object",
           "additionalProperties": false,

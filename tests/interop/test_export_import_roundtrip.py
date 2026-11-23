@@ -327,7 +327,7 @@ def _commit(
     upload: services.ImportJobView,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    expected: tuple[int, int] | None = (7, 3),
+    expected: tuple[int, int, int] = (7, 0, 3),
     document: dict[str, object] | None = None,
 ) -> services.ReconciliationReport:
     clinic_id, job_id = world.graph.clinic_a, upload.job_id
@@ -349,9 +349,10 @@ def _commit(
         dry_run = services.dry_run_import(
             clinic_id=clinic_id, job_id=job_id, expected_sequence=mapped.sequence
         )
-    assert dry_run.job.rejected_count == dry_run.job.duplicate_count == 0
-    if expected is not None:
-        assert dry_run.job.valid_count == expected[0]
+    accepted, rejected, batches = expected
+    assert dry_run.job.rejected_count == rejected
+    assert dry_run.job.duplicate_count == 0
+    assert dry_run.job.valid_count == accepted
     approved = approve(world, dry_run)
     dispatched: list[dict[str, str]] = []
     monkeypatch.setattr(
@@ -366,8 +367,7 @@ def _commit(
             expected_sequence=approved.sequence,
             session_key=world.session,
         )
-    if expected is not None:
-        assert len(receipt.batch_ids) == expected[1]
+    assert len(receipt.batch_ids) == batches
     assert dispatched == [{"batch_id": str(batch)} for batch in receipt.batch_ids]
     assert run_batches(world, job_id, monkeypatch) == ["committed"] * len(
         receipt.batch_ids
@@ -741,7 +741,7 @@ def test_v5_roundtrip_preserves_previously_imported_history(
         target,
         _upload(target, source, tuple(sorted(IMPORTABLE_DATASETS))),
         monkeypatch,
-        expected=None,
+        expected=(4, 0, 2),
     )
     assert report.reconciled, report.report["canonical_values"]
     assert part(report.report, "datasets", "history", "committed") == 3
@@ -837,12 +837,15 @@ def test_v5_reconciliation_rejects_loss_in_a_valid_mapping(
         target,
         _upload(target, source, tuple(sorted(IMPORTABLE_DATASETS))),
         monkeypatch,
-        expected=None,
+        expected=(2, 5, 2) if missing == "history" else (7, 0, 3),
         document=mapping,
     )
     assert report.reconciled is False
     assert part(report.report, "canonical_values", "source_projection_matches") is False
     assert part(report.report, "canonical_values", "v5_source", "history", "count") == 5
+    assert part(report.report, "datasets", "history", "rejected") == (
+        5 if missing == "history" else 0
+    )
     expected_target = 0 if missing == "history" else 5
     assert (
         part(report.report, "canonical_values", "mapped", "history", "count")
@@ -972,7 +975,7 @@ def test_v5_patient_only_selection_ignores_native_attachments(
         target,
         _upload(target, source, ("intake_patient",)),
         monkeypatch,
-        expected=(2, 2),
+        expected=(2, 0, 2),
     )
 
     assert report.reconciled

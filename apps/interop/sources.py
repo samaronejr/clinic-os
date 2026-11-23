@@ -80,6 +80,7 @@ class Dataset:
     name: str
     headers: tuple[str, ...]
     rows: tuple[Row, ...]
+    csv_record_ends: tuple[int, ...] = ()
 
     def column(self, header: str) -> int:
         """Return a mapped header's position; mappings are validated first."""
@@ -149,21 +150,27 @@ def _headers(raw: list[str]) -> tuple[str, ...]:
     return headers
 
 
-def _rows(name: str, records: Iterator[list[str]]) -> Dataset:
+def _rows(
+    name: str,
+    records: Iterator[list[str]],
+    *,
+    line_number: Callable[[], int] | None = None,
+) -> Dataset:
     try:
         header = next(records, None)
         if header is None:
             raise ImportInputError(Code.EMPTY_DATASET)
         headers = _headers(header)
+        ends = [line_number()] if line_number is not None else []
         rows: list[Row] = []
         for cells in records:
-            if not cells:
-                continue
             if len(rows) >= MAX_ROWS:
                 raise ImportInputError(Code.TOO_MANY_ROWS)
             number = len(rows) + 1
             defect = ""
-            if len(cells) != len(headers):
+            if not cells:
+                defect = "blank_row"
+            elif len(cells) != len(headers):
                 defect = "column_count"
             elif any(len(cell) > MAX_CELL_CHARS for cell in cells):
                 defect = "too_long"
@@ -174,9 +181,13 @@ def _rows(name: str, records: Iterator[list[str]]) -> Dataset:
                     defect=defect,
                 )
             )
+            if line_number is not None:
+                ends.append(line_number())
     except csv.Error:
         raise ImportInputError(Code.MALFORMED_CSV) from None
-    return Dataset(name=name, headers=headers, rows=tuple(rows))
+    return Dataset(
+        name=name, headers=headers, rows=tuple(rows), csv_record_ends=tuple(ends)
+    )
 
 
 def read_csv(name: str, data: bytes, options: CsvOptions) -> Dataset:
@@ -187,7 +198,7 @@ def read_csv(name: str, data: bytes, options: CsvOptions) -> Dataset:
     reader = csv.reader(
         io.StringIO(text, newline=""), delimiter=options.delimiter, strict=True
     )
-    return _rows(name, iter(reader))
+    return _rows(name, iter(reader), line_number=lambda: reader.line_num)
 
 
 def read_api(data: bytes) -> dict[str, Dataset]:
@@ -440,12 +451,15 @@ def read_xlsx(data: bytes) -> Dataset:
             value, cell_defect = _cell_value(cell, strings)
             cells[position] = value
             defect = defect or cell_defect
-        if not cells:
+        if not cells and not parsed:
             continue
         if len(parsed) > MAX_ROWS:
             raise ImportInputError(Code.TOO_MANY_ROWS)
         parsed.append(
-            ([cells.get(index, "") for index in range(max(cells) + 1)], defect)
+            (
+                [cells.get(index, "") for index in range(max(cells, default=-1) + 1)],
+                defect,
+            )
         )
     if not parsed:
         raise ImportInputError(Code.EMPTY_DATASET)
@@ -454,7 +468,8 @@ def read_xlsx(data: bytes) -> Dataset:
         raise ImportInputError(Code.INVALID_HEADER)
     width = len(header)
     records = [header] + [
-        cells + [""] * (width - len(cells)) for cells, _defect in parsed[1:]
+        cells + [""] * (width - len(cells)) if cells else []
+        for cells, _defect in parsed[1:]
     ]
     dataset = _rows("patients", iter(records))
     rows = tuple(
@@ -521,6 +536,30 @@ def read_datasets(
     if kind == "zip":
         return archive_datasets(open_archive(data), options)
     raise ImportInputError(Code.UNSUPPORTED_SOURCE)
+
+
+def dataset_row_counts(datasets: Mapping[str, Dataset]) -> dict[str, int]:
+    """Count parsed data rows, including structural rejects, in every dataset."""
+    return {name: len(dataset.rows) for name, dataset in datasets.items()}
+
+
+def dataset_census(datasets: Mapping[str, Dataset]) -> dict[str, object]:
+    """Bind counts and CSV record boundaries without storing any source cells."""
+    return {
+        name: {
+            "row_count": len(dataset.rows),
+            **(
+                {
+                    "csv_record_ends_sha256": sha256_hex(
+                        ",".join(map(str, dataset.csv_record_ends)).encode("ascii")
+                    )
+                }
+                if dataset.csv_record_ends
+                else {}
+            ),
+        }
+        for name, dataset in datasets.items()
+    }
 
 
 def archive_datasets(

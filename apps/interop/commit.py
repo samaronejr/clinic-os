@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 from collections import Counter
 from dataclasses import dataclass
+from itertools import chain
 from typing import TYPE_CHECKING, Final, cast
 
 from django.db import connection, transaction
@@ -38,6 +39,7 @@ from apps.interop.jobs import (
     job_view,
     latest_transition,
     mapped_rows,
+    profiled_row_counts,
     source_bytes,
 )
 from apps.interop.models import (
@@ -54,6 +56,7 @@ from apps.interop.validation import (
     HistoryRow,
     PatientRow,
     canonical_bytes,
+    rows_accounted,
     rows_digest,
 )
 from apps.scheduling.locks import acquire_advisory_locks, clinic_lock_key
@@ -381,18 +384,18 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
         return BatchOutcome(batch_id=batch.pk, state="committed", committed=committed)
 
 
-def _matches_approved_counts_and_rejects(
+def _matches_approved_outcomes(
     job: ImportJob, normalized: Normalized, approval: ImportTransition
 ) -> bool:
     if (
         normalized.row_count != approval.row_count
         or normalized.valid_count != approval.valid_count
-        or len(normalized.rejections) != approval.rejected_count
+        or normalized.nonwrite_count != approval.rejected_count
     ):
         return False
-    if not normalized.rejections:
+    if not normalized.nonwrite_count:
         return True
-    # The batch hashes bind accepted rows; only the approval binds rejects.
+    # The batch hashes bind writes; the approval also binds non-write outcomes.
     report = approval.report
     if not isinstance(report, dict):
         return False
@@ -409,6 +412,7 @@ def reconciliation(
     job: ImportJob, normalized: Normalized, *, approval: ImportTransition
 ) -> dict[str, object]:
     """Compare source, mapped and committed counts, values and attachment bytes."""
+    counts = profiled_row_counts(job)
     target = list(
         ImportedRecord.objects.filter(job_id=job.pk).values_list(
             "dataset",
@@ -419,9 +423,7 @@ def reconciliation(
             "file__path",
         )
     )
-    committed = {
-        name: sum(item[0] == name for item in target) for name in normalized.row_counts
-    }
+    committed = Counter(item[0] for item in target)
     accepted = {
         "patients": len(normalized.patients),
         "history": len(normalized.history),
@@ -453,13 +455,16 @@ def reconciliation(
         source_verified = False
     datasets = {
         name: {
-            "rows": normalized.row_counts[name],
+            "rows": count,
             "accepted": accepted[name],
             "rejected": rejected[name],
             "committed": committed[name],
         }
-        for name in normalized.row_counts
+        for name, count in counts.items()
     }
+    exclusions = normalized.exclusions()
+    if exclusions:
+        datasets["history"]["excluded"] = len(normalized.excluded_history_rows)
     target_patients = {
         row: (patient, enrollment)
         for dataset, row, _, patient, enrollment, _ in target
@@ -488,13 +493,12 @@ def reconciliation(
         len(expected_records) == len(target) == normalized.valid_count
         and expected_records == actual_records
     )
-    positions = actual_records.keys() | {
-        (item.dataset, item.row) for item in normalized.rejections
-    }
-    accounted_count = len(target) + len(normalized.rejections)
-    # The parser numbers each dataset's counted rows contiguously from one.
-    rows_accounted = len(positions) == accounted_count == normalized.row_count and all(
-        1 <= row <= normalized.row_counts.get(dataset, 0) for dataset, row in positions
+    source_rows_accounted = counts == normalized.row_counts and rows_accounted(
+        counts,
+        chain(
+            ((dataset, row) for dataset, row, *_ in target),
+            normalized.nonwrite_positions(),
+        ),
     )
     source = normalized.source_projection
     mapped = summarize(mapped_values(normalized)) if source is not None else None
@@ -509,8 +513,8 @@ def reconciliation(
         if row.file is not None
     }
     reconciled = (
-        rows_accounted
-        and _matches_approved_counts_and_rejects(job, normalized, approval)
+        source_rows_accounted
+        and _matches_approved_outcomes(job, normalized, approval)
         and source_verified
         and mismatches == 0
         and linked == len(expected_files)
@@ -523,7 +527,9 @@ def reconciliation(
     return {
         "schema": "import-reconciliation-v1",
         "reconciled": reconciled,
+        "row_accounting_verified": source_rows_accounted,
         "datasets": datasets,
+        **({"exclusions": exclusions} if exclusions else {}),
         "batches": batches,
         "bytes": {"source": job.size_bytes, "attachments": attachment_bytes},
         "checksums": {
