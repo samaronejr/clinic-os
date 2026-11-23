@@ -1,4 +1,4 @@
-"""Validate F6 checkpoints against the frozen, clean PostgreSQL 16 catalog."""
+"""Check whole PostgreSQL objects against clean migration boundaries."""
 
 from __future__ import annotations
 
@@ -6,88 +6,176 @@ import json
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
-from apps.tenancy.migrations._resume_catalog_sql import CATALOG_SQL
+from django.db.migrations.recorder import MigrationRecorder
+
+from apps.tenancy.migrations._resume_catalog_sql import CATALOG_SQL, FK_TRIGGERS_SQL
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from django.db.backends.base.base import BaseDatabaseWrapper
     from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
-type Definition = str | None
+type Definition = dict[str, str]
 type Catalog = dict[str, Definition]
-type Changes = dict[str, tuple[Definition, Definition]]
-type Checkpoint = tuple[str, tuple[Catalog, ...], int]
+type Delta = dict[str, dict[str, str | None]]
+type History = dict[str, list[tuple[str | None, Delta]]]
 
-_AI = "artifact-retention:0"
-_CONTENT = "column ai_aiartifact.content"
-_PURGED = "column ai_aiartifact.purged_at"
-_CHECK = "constraint ai_aiartifact.ai_artifact_values"
+FIXTURE = Path(__file__).with_name("_resume_catalog_pg16.json")
+ARTIFACT_STEP = "artifact-retention:0"
 
 
 class ResumeCatalogError(RuntimeError):
-    """A migration cannot tell a conflicting catalog from a partial publication."""
+    """The schema does not match any committed prefix of the migration."""
 
 
-def _boundaries(steps: list[Changes], *, artifact: bool) -> tuple[Catalog, ...]:
-    initial: Catalog = {}
-    for changes in steps:
-        for name, (before, _) in changes.items():
-            initial.setdefault(name, before)
-    states = [initial]
-    for changes in steps:
-        after = states[-1] | {name: end for name, (_, end) in changes.items()}
-        if artifact:
-            # The pre-F6 migration could commit these three operations alone.
-            # Its exact legacy prefixes are safe to finish, never to record.
-            nullable = initial | {_CONTENT: after[_CONTENT]}
-            added = nullable | {_PURGED: after[_PURGED]}
-            states.extend((nullable, added, added | {_CHECK: None}))
-        states.append(after)
-    return tuple(states)
+class Checkpoint(NamedTuple):
+    """A migration's capture order, its owned scope and its requested prefix."""
+
+    migration: str
+    scope: frozenset[str]
+    prefix: int
+
+
+def snapshot(connection: BaseDatabaseWrapper) -> Catalog:
+    """Collect complete object definitions from a single catalog statement."""
+    with connection.cursor() as cursor:
+        cursor.execute(CATALOG_SQL + "\nUNION ALL\n" + FK_TRIGGERS_SQL)
+        catalog: Catalog = {}
+        for name, path, payload in cursor.fetchall():
+            definition = catalog.setdefault(name, {})
+            for attribute, value in json.loads(payload).items():
+                key = ".".join([*path, attribute])
+                if key in definition:
+                    msg = f"Ambiguous catalog attribute for {name}.{key}"
+                    raise ResumeCatalogError(msg)
+                definition[key] = json.dumps(value, sort_keys=True)
+    return catalog
+
+
+def _overlay(catalog: Catalog, delta: Delta) -> Catalog:
+    result = catalog.copy()
+    for name, patch in delta.items():
+        if name not in result:
+            continue
+        definition = result[name].copy()
+        for key, value in patch.items():
+            if value is None:
+                definition.pop(key, None)
+            else:
+                definition[key] = value
+        result[name] = definition
+    return result
+
+
+@cache
+def history() -> History:
+    """Read the captured clean object history in migration execution order."""
+    return cast("History", json.loads(FIXTURE.read_text(encoding="utf-8"))["history"])
 
 
 @cache
 def _checkpoints() -> dict[str, Checkpoint]:
-    fixture = Path(__file__).with_name("_resume_catalog_pg16.json")
-    migrations = cast(
-        "dict[str, dict[str, Changes]]", json.loads(fixture.read_text(encoding="utf-8"))
-    )
-    checkpoints: dict[str, Checkpoint] = {}
-    for migration, steps in migrations.items():
-        artifact = _AI in steps
-        states = _boundaries(list(steps.values()), artifact=artifact)
-        for index, step in enumerate(steps, start=4 if artifact else 1):
-            checkpoints[step] = migration, states, index
+    checkpoints = {}
+    for migration, steps in history().items():
+        guarded = [delta for step, delta in steps if step is not None]
+        scope = frozenset().union(*(delta.keys() for delta in guarded))
+        for prefix, (step, _) in enumerate(steps, 1):
+            # The first three actual DDL statements of the older AI migration
+            # could commit separately. Only the fourth can be recorded.
+            if step is not None and not step.startswith("legacy:"):
+                checkpoints[step] = Checkpoint(migration, scope, prefix)
     return checkpoints
 
 
-def snapshot(editor: BaseDatabaseSchemaEditor) -> Catalog:
-    """Read deparsed definitions, independent of physical database OIDs."""
-    with editor.connection.cursor() as cursor:
-        cursor.execute(CATALOG_SQL)
-        return {
-            name: sha256(definition.encode("utf-8")).hexdigest()
-            for name, definition in cursor.fetchall()
-        }
+def _boundaries(
+    checkpoint: Checkpoint, applied: set[str], object_names: frozenset[str]
+) -> list[Catalog]:
+    catalog: Catalog = {name: {} for name in object_names}
+    for migration, operations in history().items():
+        if migration == "bootstrap" or (
+            migration != checkpoint.migration and migration in applied
+        ):
+            for _, delta in operations:
+                catalog = _overlay(catalog, delta)
+    states = [catalog]
+    for _, delta in history()[checkpoint.migration]:
+        states.append(_overlay(states[-1], delta))
+    return states
+
+
+def fingerprint(definition: Mapping[str, str]) -> str:
+    """Hash the complete canonical definition, including member names."""
+    return sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
+
+
+_MEMBER_GROUPS = frozenset(
+    {"columns", "constraints", "indexes", "policies", "triggers", "constraint_triggers"}
+)
+
+
+def _first_difference(actual: Definition, expected: Definition) -> str:
+    for key in sorted(
+        actual.keys() | expected.keys(),
+        key=lambda k: (k.partition(".")[0] not in _MEMBER_GROUPS, k),
+    ):
+        if actual.get(key) != expected.get(key):
+            parts = key.split(".")
+            if parts[0] in _MEMBER_GROUPS:
+                parts = parts[1:]
+            change = (
+                "unexpected"
+                if key not in expected
+                else "missing"
+                if key not in actual
+                else "differs"
+            )
+            return f"{'.'.join(parts)} ({change})"
+    msg = "Unequal catalog fingerprints without a differing attribute"
+    raise ResumeCatalogError(msg)
 
 
 def checkpoint_applied(editor: BaseDatabaseSchemaEditor, step: str) -> bool:
-    """Match a whole committed prefix, including objects modified by later steps."""
+    """Accept only an exact whole-object catalog at a clean captured boundary."""
     if editor.collect_sql:
         return False
-    migration, states, index = _checkpoints()[step]
-    catalog = snapshot(editor)
-    mismatches = [
-        [name for name, expected in state.items() if catalog.get(name) != expected]
-        for state in states
-    ]
-    for boundary in range(len(states) - 1, -1, -1):
-        if not mismatches[boundary]:
-            return boundary >= index
-    # Pick the closest known boundary for actionable diagnostics. Ties prefer
-    # the later boundary (e.g. a same-name index with a conflicting definition).
-    closest = min(reversed(mismatches), key=len)
-    msg = f"{migration} cannot resume: conflicting catalog for {', '.join(closest)}"
+    checkpoint = _checkpoints()[step]
+    recorder = MigrationRecorder(editor.connection)
+    applied = {f"{app}.{name}" for app, name in recorder.applied_migrations()}
+    live = snapshot(editor.connection)
+    actual = {name: live.get(name, {}) for name in checkpoint.scope}
+    hashes = {name: fingerprint(definition) for name, definition in actual.items()}
+    states = _boundaries(checkpoint, applied, checkpoint.scope)
+    closest: tuple[int, int, list[str]] | None = None
+    for index in range(len(states) - 1, -1, -1):
+        expected = states[index]
+        names = [
+            name
+            for name in sorted(expected)
+            if fingerprint(expected[name]) != hashes[name]
+        ]
+        if not names:
+            return index >= checkpoint.prefix
+        # Choose the closest boundary just to diagnose. No partial match is
+        # accepted: every complete object fingerprint must match one boundary.
+        fields = sum(
+            actual[name].get(key) != expected[name].get(key)
+            for name in names
+            for key in actual[name].keys() | expected[name].keys()
+        )
+        if closest is None or fields < closest[0]:
+            closest = fields, index, names
+    if closest is None:
+        msg = f"{checkpoint.migration} has no captured catalog boundaries"
+        raise ResumeCatalogError(msg)
+    _, index, names = closest
+    details = ", ".join(
+        f"{name}.{_first_difference(actual[name], states[index][name])}"
+        for name in names
+    )
+    msg = f"{checkpoint.migration} cannot resume: conflicting catalog for {details}"
     raise ResumeCatalogError(msg)
 
 

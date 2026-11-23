@@ -1,97 +1,152 @@
-"""OID-independent definitions for the PostgreSQL 16 resume contracts."""
+"""Read whole object definitions without physical IDs or runtime statistics."""
 
 CATALOG_SQL = """
 WITH rels AS (
     SELECT * FROM pg_catalog.pg_class
     WHERE relnamespace = 'clinic_app'::pg_catalog.regnamespace
+      AND relkind NOT IN ('i', 'I')
 ), cols AS (
-    SELECT r.oid, r.relname, a.*
-    FROM rels AS r JOIN pg_catalog.pg_attribute AS a ON a.attrelid = r.oid
-    WHERE a.attnum > 0 AND NOT a.attisdropped AND r.relkind IN ('r', 'p', 'v', 'm')
-), funcs AS (
-    SELECT p.*, p.proname || '(' ||
-        pg_catalog.oidvectortypes(p.proargtypes) || ')' AS signature
-    FROM pg_catalog.pg_proc AS p
-    WHERE pronamespace = 'clinic_app'::pg_catalog.regnamespace AND prokind IN ('f', 'p')
+    SELECT a.*
+    FROM pg_catalog.pg_attribute AS a JOIN rels AS r ON r.oid = attrelid
+    WHERE attnum > 0 AND NOT attisdropped AND relkind <> 'S'
 ), facts AS (
-    SELECT 'relation ' || relname AS object_name,
-           pg_catalog.jsonb_build_array(relkind, relpersistence, relispartition,
-               pg_catalog.pg_get_userbyid(relowner), reloptions,
-               CASE WHEN relkind IN ('v', 'm') THEN pg_catalog.pg_get_viewdef(oid) END
-           ) AS definition
-    FROM rels
+    SELECT 'relation ' || relname AS object_name, ARRAY[]::text[] AS path,
+        pg_catalog.jsonb_build_object(
+            'kind', relkind, 'persistence', relpersistence,
+            'owner', pg_catalog.pg_get_userbyid(relowner),
+            'rls', relrowsecurity, 'force_rls', relforcerowsecurity,
+            'replica_identity', relreplident, 'options', reloptions,
+            'access_method', amname, 'tablespace', spcname,
+            'partition_key', pg_catalog.pg_get_partkeydef(r.oid),
+            'partition_bound', pg_catalog.pg_get_expr(relpartbound, r.oid),
+            'view', CASE WHEN relkind IN ('v', 'm')
+                THEN pg_catalog.pg_get_viewdef(r.oid) END
+        ) AS definition
+    FROM rels AS r
+    LEFT JOIN pg_catalog.pg_am ON relam = pg_am.oid
+    LEFT JOIN pg_catalog.pg_tablespace ON reltablespace = pg_tablespace.oid
     UNION ALL
-    SELECT 'RLS flags ' || relname,
-           pg_catalog.jsonb_build_array(relrowsecurity, relforcerowsecurity)
-    FROM rels WHERE relkind IN ('r', 'p')
-    UNION ALL
-    SELECT 'column ' || relname || '.' || attname,
-           pg_catalog.jsonb_build_array(pg_catalog.format_type(atttypid, atttypmod),
-               attnotnull, attidentity, attgenerated,
-               attcollation::pg_catalog.regcollation::text,
-               pg_catalog.pg_get_expr(adbin, adrelid))
-    FROM cols
+    SELECT 'relation ' || relname, ARRAY['columns', attname],
+        pg_catalog.jsonb_build_object(
+            'type', pg_catalog.format_type(atttypid, NULL),
+            'typmod', atttypmod, 'not_null', attnotnull,
+            'default', pg_catalog.pg_get_expr(adbin, adrelid),
+            'storage', attstorage, 'compression', attcompression,
+            'collation', attcollation::pg_catalog.regcollation::text,
+            'identity', attidentity, 'generated', attgenerated,
+            'options', attoptions, 'foreign_options', attfdwoptions,
+            'statistics_target', attstattarget
+        )
+    FROM cols JOIN rels ON attrelid = rels.oid
     LEFT JOIN pg_catalog.pg_attrdef ON adrelid = attrelid AND adnum = attnum
     UNION ALL
-    SELECT 'policy ' || tablename || '.' || policyname,
-           pg_catalog.jsonb_build_array(permissive, cmd, qual, with_check,
-               ARRAY(SELECT role FROM pg_catalog.unnest(roles) AS role ORDER BY role))
-    FROM pg_catalog.pg_policies WHERE schemaname = 'clinic_app'
-    UNION ALL
-    SELECT 'constraint ' || relname || '.' || conname,
-           pg_catalog.jsonb_build_array(contype, convalidated, condeferrable,
-               condeferred, connoinherit, pg_catalog.pg_get_constraintdef(c.oid))
+    SELECT 'relation ' || relname, ARRAY['constraints', conname],
+        pg_catalog.jsonb_build_object(
+            'definition', pg_catalog.pg_get_constraintdef(c.oid),
+            'kind', contype, 'validated', convalidated, 'deferrable', condeferrable,
+            'deferred', condeferred, 'no_inherit', connoinherit
+        )
     FROM pg_catalog.pg_constraint AS c JOIN rels ON conrelid = rels.oid
     UNION ALL
-    SELECT 'trigger ' || relname || '.' || tgname,
-           pg_catalog.jsonb_build_array(tgenabled, pg_catalog.pg_get_triggerdef(t.oid))
+    SELECT 'relation ' || tablename, ARRAY['policies', policyname],
+        pg_catalog.jsonb_build_object(
+            'permissive', permissive, 'command', cmd, 'using', qual,
+            'with_check', with_check,
+            'roles', ARRAY(
+                SELECT role FROM pg_catalog.unnest(roles) AS role ORDER BY role
+            )
+        )
+    FROM pg_catalog.pg_policies WHERE schemaname = 'clinic_app'
+    UNION ALL
+    SELECT 'relation ' || relname, ARRAY['triggers', tgname],
+        pg_catalog.jsonb_build_object(
+            'definition', pg_catalog.pg_get_triggerdef(t.oid), 'enabled', tgenabled
+        )
     FROM pg_catalog.pg_trigger AS t JOIN rels ON tgrelid = rels.oid
     WHERE NOT tgisinternal
     UNION ALL
-    SELECT 'index ' || i.relname,
-           pg_catalog.jsonb_build_array(indisvalid, indisready, indislive,
-               pg_catalog.pg_get_indexdef(indexrelid))
-    FROM pg_catalog.pg_index JOIN rels AS i ON i.oid = indexrelid
+    SELECT 'relation ' || r.relname, ARRAY['indexes', i.relname],
+        pg_catalog.jsonb_build_object(
+            'definition', pg_catalog.pg_get_indexdef(indexrelid), 'valid', indisvalid,
+            'ready', indisready, 'live', indislive, 'clustered', indisclustered,
+            'replica_identity', indisreplident, 'options', i.reloptions,
+            'tablespace', spcname
+        )
+    FROM pg_catalog.pg_index JOIN rels AS r ON indrelid = r.oid
+    JOIN pg_catalog.pg_class AS i ON indexrelid = i.oid
+    LEFT JOIN pg_catalog.pg_tablespace ON i.reltablespace = pg_tablespace.oid
     UNION ALL
-    SELECT 'function ' || signature,
-           pg_catalog.jsonb_build_array(pg_catalog.pg_get_functiondef(p.oid),
-               pg_catalog.pg_get_userbyid(proowner), proleakproof)
-    FROM funcs AS p
+    SELECT 'relation ' || relname, ARRAY['sequence'],
+        pg_catalog.jsonb_build_object(
+            'type', pg_catalog.format_type(seqtypid, NULL), 'start', seqstart,
+            'increment', seqincrement, 'min', seqmin, 'max', seqmax,
+            'cache', seqcache, 'cycle', seqcycle
+        )
+    FROM pg_catalog.pg_sequence JOIN rels ON seqrelid = rels.oid
     UNION ALL
-    SELECT 'extension ' || extname,
-           pg_catalog.jsonb_build_array(nspname, extversion,
-               pg_catalog.pg_get_userbyid(extowner))
+    SELECT 'function ' || proname || '(' ||
+        pg_catalog.oidvectortypes(proargtypes) || ')', ARRAY[]::text[],
+        pg_catalog.jsonb_build_object(
+            'definition', pg_catalog.pg_get_functiondef(p.oid),
+            'owner', pg_catalog.pg_get_userbyid(proowner), 'leakproof', proleakproof
+        )
+    FROM pg_catalog.pg_proc AS p
+    WHERE pronamespace = 'clinic_app'::pg_catalog.regnamespace AND prokind IN ('f', 'p')
+    UNION ALL
+    SELECT 'extension ' || extname, ARRAY[]::text[],
+        pg_catalog.jsonb_build_object(
+            'schema', nspname, 'version', extversion,
+            'owner', pg_catalog.pg_get_userbyid(extowner)
+        )
     FROM pg_catalog.pg_extension
     JOIN pg_catalog.pg_namespace ON extnamespace = pg_namespace.oid
     WHERE extname = 'unaccent'
+), privileges AS (
+    SELECT 'relation ' || relname AS object_name, ARRAY['grants'] AS path,
+        g.*
+    FROM rels CROSS JOIN LATERAL pg_catalog.aclexplode(
+        COALESCE(relacl, pg_catalog.acldefault(
+            CASE WHEN relkind = 'S' THEN 's'::"char" ELSE 'r'::"char" END, relowner
+        ))
+    ) AS g
     UNION ALL
-    SELECT 'grants ' || relname,
-           pg_catalog.to_jsonb(ARRAY(
-               SELECT acl::text FROM pg_catalog.unnest(
-                   COALESCE(relacl, pg_catalog.acldefault(
-                       CASE WHEN relkind = 'S' THEN 's'::"char" ELSE 'r'::"char" END,
-                       relowner
-                   ))
-               ) AS acl ORDER BY acl::text COLLATE "C"
-           ))
-    FROM rels WHERE relkind IN ('r', 'p', 'v', 'm', 'S')
+    SELECT 'relation ' || relname, ARRAY['columns', attname, 'grants'], g.*
+    FROM cols JOIN rels ON rels.oid = attrelid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(attacl) AS g
     UNION ALL
-    SELECT 'column grants ' || r.relname,
-           pg_catalog.to_jsonb(ARRAY(
-               SELECT a.attname || ':' || acl::text
-               FROM cols AS a CROSS JOIN LATERAL pg_catalog.unnest(a.attacl) AS acl
-               WHERE a.attrelid = r.oid
-               ORDER BY (a.attname || ':' || acl::text) COLLATE "C"
-           ))
-    FROM rels AS r WHERE relkind IN ('r', 'p', 'v', 'm')
-    UNION ALL
-    SELECT 'function grants ' || signature,
-           pg_catalog.to_jsonb(ARRAY(
-               SELECT acl::text FROM pg_catalog.unnest(
-                   COALESCE(proacl, pg_catalog.acldefault('f', proowner))
-               ) AS acl ORDER BY acl::text COLLATE "C"
-           ))
-    FROM funcs
+    SELECT 'function ' || proname || '(' ||
+        pg_catalog.oidvectortypes(proargtypes) || ')', ARRAY['grants'], g.*
+    FROM pg_catalog.pg_proc AS p
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+        COALESCE(proacl, pg_catalog.acldefault('f', proowner))
+    ) AS g
+    WHERE pronamespace = 'clinic_app'::pg_catalog.regnamespace AND prokind IN ('f', 'p')
+), grants AS (
+    SELECT object_name, path, pg_catalog.jsonb_object_agg(
+        CASE WHEN grantee = 0 THEN 'PUBLIC' ELSE pg_catalog.pg_get_userbyid(grantee) END
+        || ':' || privilege_type || ':' || pg_catalog.pg_get_userbyid(grantor),
+        is_grantable
+    ) AS definition
+    FROM privileges GROUP BY object_name, path
 )
-SELECT object_name, definition::text FROM facts ORDER BY object_name COLLATE "C"
+SELECT object_name, path, definition::text FROM facts
+UNION ALL
+SELECT object_name, path, definition::text FROM grants
+"""
+
+# PostgreSQL-generated FK trigger names contain local OIDs. The logical key
+# instead identifies the owning constraint, the target and the RI function.
+FK_TRIGGERS_SQL = """
+SELECT 'relation ' || target.relname,
+       ARRAY['constraint_triggers', source.relname || '.' || conname || '.' || proname],
+       pg_catalog.jsonb_build_object(
+           'enabled', tgenabled, 'event', tgtype,
+           'deferrable', tgdeferrable, 'deferred', tginitdeferred
+       )::text
+FROM pg_catalog.pg_trigger AS t
+JOIN pg_catalog.pg_constraint AS c ON c.oid = tgconstraint
+JOIN pg_catalog.pg_class AS source ON source.oid = conrelid
+JOIN pg_catalog.pg_class AS target ON target.oid = tgrelid
+JOIN pg_catalog.pg_proc ON pg_proc.oid = tgfoid
+WHERE tgisinternal AND target.relnamespace = 'clinic_app'::pg_catalog.regnamespace
 """

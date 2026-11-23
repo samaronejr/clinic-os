@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from contextlib import contextmanager
@@ -11,13 +12,15 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from django.db import connections, transaction
+from apps.tenancy.migrations._resume_catalog import FIXTURE
+from django.db import DatabaseError, connections, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from psycopg import sql
 
+from infra.resume_catalog_capture import capture, merged
 from patients.test_intake_migrations import (
     _default_connection,
     _scratch_database,
@@ -48,7 +51,8 @@ WITH rels AS (
     UNION ALL
     SELECT 'column', relname || '.' || attname,
            jsonb_build_array(format_type(atttypid, atttypmod), attnotnull,
-                             attacl::text, pg_get_expr(adbin, adrelid))
+                             attacl::text, pg_get_expr(adbin, adrelid),
+                             attstorage, attcompression)
     FROM pg_attribute JOIN rels ON attrelid = rels.oid
     LEFT JOIN pg_attrdef ON adrelid = attrelid AND adnum = attnum
     WHERE attnum > 0 AND NOT attisdropped AND relkind IN ('r', 'p', 'v', 'm')
@@ -115,7 +119,11 @@ def _catalog(db: DatabaseWrapper) -> list[tuple[object, ...]]:
 
 
 def _seed(
-    db: DatabaseWrapper, state: ProjectState, target: Target
+    db: DatabaseWrapper,
+    state: ProjectState,
+    target: Target,
+    *,
+    artifact_content: str = "Synthetic AI fixture",
 ) -> Callable[[DatabaseWrapper], tuple[object, ...]]:
     """Write a protected row through the pre-migration authorities."""
     registry = state.apps
@@ -125,7 +133,9 @@ def _seed(
             "SELECT set_config('app.current_tenant', %s, true)", [str(org_id)]
         )
         registry.get_model("identity", "Organization").objects.create(
-            id=org_id, name="Synthetic Migration Resume", cnpj="00000000000001"
+            id=org_id,
+            name="Synthetic Migration Resume",
+            cnpj=f"{org_id.int % 10**14:014d}",
         )
         _scratch_tenant_key(db, org_id)
         if target == INTAKE:
@@ -144,7 +154,7 @@ def _seed(
                 timezone="America/Sao_Paulo",
             )
             user = registry.get_model("identity", "User").objects.create(
-                username="synthetic-resume"
+                username=f"synthetic-resume-{org_id.hex}"
             )
             registry.get_model("identity", "UserClinicRole").objects.create(
                 user_id=user.pk,
@@ -161,7 +171,7 @@ def _seed(
                 user_id=user.pk,
                 purpose="front_desk",
                 retention_class="transient_input",
-                content="Synthetic AI fixture",
+                content=artifact_content,
                 expires_at=timezone.now() + timedelta(days=1),
             )
             columns = "content, retention_class"
@@ -358,6 +368,30 @@ def test_resume_after_each_committed_boundary(
             """,
             id="replacement-check",
         ),
+        pytest.param(
+            (INTAKE, 1),
+            "intake_patientdemographics.review_extra_required",
+            """
+            ALTER TABLE clinic_app.intake_patientdemographics
+                ADD COLUMN review_extra_required integer NOT NULL;
+            """,
+            id="extra-required-column",
+        ),
+        pytest.param(
+            (INTAKE, 1),
+            "intake_patientdemographics.review_extra_index",
+            """
+            CREATE INDEX review_extra_index
+                ON clinic_app.intake_patientdemographics (organization_id);
+            """,
+            id="extra-index",
+        ),
+        pytest.param(
+            (AI, 1),
+            "ai_aiartifact.grants",
+            "GRANT DELETE ON clinic_app.ai_aiartifact TO clinic_app;",
+            id="extra-grant",
+        ),
     ],
 )
 def test_resume_refuses_conflicting_catalog(
@@ -417,3 +451,75 @@ def test_resume_refuses_conflicting_catalog(
             )
             assert _catalog(interrupted) == planted
             assert read_bytes(interrupted) == protected
+
+
+def test_resume_refuses_wrong_storage_after_encrypted_write_witness(
+    django_db_blocker: DjangoDbBlocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
+    with (
+        django_db_blocker.unblock(),
+        _scratch_database(admin_url) as template,
+        _default_connection(template),
+    ):
+        executor = MigrationExecutor(template)
+        parents = sorted(
+            node.key for node in executor.loader.graph.node_map[AI].parents
+        )
+        state = executor.migrate(parents)
+        read_bytes = _seed(template, state, AI)
+        protected = read_bytes(template)
+        payload = "x" * 65_536
+
+        with _clone(admin_url, template) as clean:
+            _apply_with_cut(clean, AI, monkeypatch)
+            read_long = _seed(clean, state, AI, artifact_content=payload)
+            ciphertext = read_long(clean)[0]
+            assert isinstance(ciphertext, bytes | memoryview)
+            assert len(ciphertext) > len(payload)
+
+        with _clone(admin_url, template) as interrupted:
+            with pytest.raises(SimulatedInterruptionError, match="transaction commit"):
+                _apply_with_cut(interrupted, AI, monkeypatch, 1)
+            interrupted.close()
+            assert AI not in MigrationExecutor(interrupted).loader.applied_migrations
+            before = _catalog(interrupted)
+            with interrupted.cursor() as cursor:
+                cursor.execute(
+                    "ALTER TABLE clinic_app.ai_aiartifact ALTER COLUMN content "
+                    "SET STORAGE PLAIN"
+                )
+            interrupted.close()
+            with pytest.raises(DatabaseError) as write_error:
+                _seed(interrupted, state, AI, artifact_content=payload)
+            cause = write_error.value.__cause__
+            assert isinstance(cause, psycopg.Error)
+            assert cause.sqlstate == "54000"
+            planted = _catalog(interrupted)
+            assert planted != before
+            with pytest.raises(RuntimeError, match=r"ai_aiartifact\.content\.storage"):
+                MigrationExecutor(interrupted).migrate([AI])
+            interrupted.close()
+            assert AI not in MigrationExecutor(interrupted).loader.applied_migrations
+            assert _catalog(interrupted) == planted
+            assert read_bytes(interrupted) == protected
+
+
+def test_committed_fingerprints_match_fresh_migration_catalog(
+    django_db_blocker: DjangoDbBlocker,
+) -> None:
+    with (
+        django_db_blocker.unblock(),
+        _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
+        _default_connection(db),
+    ):
+        expected = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        normal = capture(db)
+    with (
+        django_db_blocker.unblock(),
+        _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
+        _default_connection(db),
+    ):
+        observed = merged(normal, capture(db, guarded_first=True))
+    assert observed["fingerprints"] == expected["fingerprints"]
+    assert json.loads(json.dumps(observed["history"])) == expected["history"]
