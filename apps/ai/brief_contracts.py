@@ -126,6 +126,7 @@ class ChartDisplay:
 
     encounter: UUID | None
     session: str = field(repr=False)
+    appointment: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

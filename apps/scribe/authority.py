@@ -98,6 +98,27 @@ def active_consent(
     return consent
 
 
+def transcription_consent(recording: RecordingSession) -> ConsentAcceptance | None:
+    """Recheck both patient choices against the recording's own assigned visit."""
+    scope = encounter_scope(
+        clinic_id=recording.clinic_id, encounter_id=recording.encounter_id
+    )
+    if (
+        scope.enrollment.pk != recording.enrollment_id
+        or scope.physician_id != recording.physician_id
+    ):
+        return None
+    try:
+        active_consent(scope, lock=False, acceptance_id=recording.consent_id)
+    except ScribeError:
+        return None
+    return consent_for_future_use(
+        clinic_id=recording.clinic_id,
+        enrollment_id=recording.enrollment_id,
+        purpose="ai_assistance",
+    )
+
+
 def issue_encounter_token(
     *, clinic_id: UUID, encounter_id: UUID, browser_binding: str
 ) -> str:

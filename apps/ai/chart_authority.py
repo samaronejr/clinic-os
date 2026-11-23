@@ -79,6 +79,18 @@ def recheck_chart_permission(
         )
     ):
         raise GatewayAccessDeniedError
+    if display is not None and display.appointment is not None:
+        if not Encounter.objects.filter(
+            pk=binding.encounter,
+            clinic_id=clinic_id,
+            appointment_id=display.appointment,
+        ).exists():
+            raise GatewayAccessDeniedError
+        if display.encounter is None:
+            # This is the original appointment, but it no longer has an open
+            # visit. Never resolve an unrelated open visit for this refresh.
+            record_denial(clinic_id, binding.encounter, "ai_permission_unavailable")
+            raise GatewayRefusedError(reason="authority_revoked")
     if (
         visit_permission(
             clinic_id=clinic_id,

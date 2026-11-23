@@ -16,7 +16,7 @@ from apps.ai.action_contracts import ActionRefusedError, Refusal
 from apps.ai.action_payload import JSON, closed, identifier, integer, parse_payload
 from apps.ai.action_validation import authority_snapshot, database_time
 from apps.ai.agent_policies import REVENUE_TOOLS
-from apps.ai.artifacts import create_input, input_for, read_artifact
+from apps.ai.artifacts import create_input
 from apps.ai.care_sources import instant_text
 from apps.ai.contracts import (
     Budget,
@@ -37,7 +37,6 @@ from apps.ai.proposals import propose_action
 from apps.ai.revenue_contracts import KINDS, validate_reply
 from apps.ai.revenue_sources import (
     RevenueContext,
-    recheck_context,
     require_finance,
     retained_output,
     retrieve_context,
@@ -170,17 +169,10 @@ def _render(item: dict[str, JSON], context: RevenueContext) -> str:
 def _ready(
     *, clinic_id: UUID, output_id: UUID
 ) -> tuple[AIArtifact, RevenueContext, tuple[dict[str, JSON], ...]]:
-    output = retained_output(clinic_id=clinic_id, output_id=output_id)
+    output, context = retained_output(clinic_id=clinic_id, output_id=output_id)
     if output.invocation is None or output.invocation.status != "succeeded":
         raise GatewayAccessDeniedError
-    source = input_for(
-        clinic_id=clinic_id,
-        inputs_ref=output.invocation.inputs_ref_id,
-        purpose=Purpose.REVENUE_CYCLE,
-    )
-    context = recheck_context(clinic_id=clinic_id, content=source.content)
-    reply = read_artifact(clinic_id=clinic_id, artifact_id=output.pk)
-    return output, context, validate_reply(reply, context.facts)
+    return output, context, validate_reply(output.content, context.facts)
 
 
 @transaction.atomic

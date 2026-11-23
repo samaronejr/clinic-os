@@ -184,6 +184,21 @@ def eligible_draft(artifact: AIArtifact) -> bool:
     return any(current_generation(draft, section) for section in draft.sections)
 
 
+def retained_draft_allowed(artifact: AIArtifact) -> bool:
+    """Check the original receipt before disclosing an unapplied artifact."""
+    try:
+        draft = draft_for_input(artifact)
+        if draft is None:
+            return False
+        frame = note_frame(clinic_id=artifact.clinic_id, version_id=draft.version_id)
+        return (
+            frame.scope.enrollment.pk == artifact.patient_enrollment_id
+            and drafting_consent(frame).pk == draft.consent_id
+        )
+    except (DraftAccessDeniedError, DraftInputError, GatewayRefusedError):
+        return False
+
+
 def materialize_draft(artifact: AIArtifact) -> str | None:
     """Plaintext is ephemeral and repr-hidden in the shared provider request."""
     draft = draft_for_input(artifact)

@@ -201,20 +201,23 @@ class ReviewPanel:
 def read_review(*, clinic_id: UUID, version_id: UUID) -> ReviewPanel:
     """Resolve sources once; an unavailable feature never blocks manual care."""
     frame = note_frame(clinic_id=clinic_id, version_id=version_id)
+    try:
+        consent = drafting_consent(frame)
+    except (GatewayRefusedError, DraftAccessDeniedError):
+        # The note and its clinician decisions belong to the clinical record.
+        # No draft model, suggestion, prefill or source text crosses this return.
+        return ReviewPanel(
+            frame.version, None, (), (), (), available=False, latest=None
+        )
     transcript = None
     sources: tuple[DraftSource, ...] = ()
     with suppress(DraftConflictError):
         transcript, sources = resolve_sources(frame)
-    available = False
-    try:
-        drafting_consent(frame)
-        available = (
-            transcript is not None and transcript.state == "final" and bool(sources)
-        )
-    except (GatewayRefusedError, DraftAccessDeniedError):
-        pass
+    available = transcript is not None and transcript.state == "final" and bool(sources)
     drafts = tuple(
-        AIDraft.objects.filter(version_id=version_id).order_by("-generation")[:50]
+        AIDraft.objects.filter(version_id=version_id, consent_id=consent.pk).order_by(
+            "-generation"
+        )[:50]
     )
     rows: list[SuggestionRow] = []
     references = sorted(

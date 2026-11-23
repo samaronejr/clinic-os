@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from django.db import transaction
 
+from apps.ai.pending_choice import pending_choice_allows
 from apps.audit.services import record_phase1_event
 from apps.comms.inbox_rules import MAX_BODY_CHARS
 from apps.comms.inbox_services import (
@@ -68,6 +69,10 @@ def request_suggestion(*, clinic_id: UUID, conversation_id: UUID) -> UUID:
     conversation, _ = _conversation(clinic_id, conversation_id, lock=True)
     if conversation.purpose == "marketing" or conversation.needs_clinician:
         raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
+    if conversation.enrollment_id is not None and not pending_choice_allows(
+        clinic_id=clinic_id, enrollment_id=conversation.enrollment_id
+    ):
+        raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
     inbound = (
         Message.objects.filter(conversation=conversation, direction="in")
         .order_by("-created_at", "-id")
@@ -77,6 +82,12 @@ def request_suggestion(*, clinic_id: UUID, conversation_id: UUID) -> UUID:
         raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
     live = SuggestedReply.objects.filter(in_reply_to=inbound, state="proposed").first()
     if live is not None:
+        if conversation.enrollment_id is not None and not pending_choice_allows(
+            clinic_id=clinic_id,
+            enrollment_id=conversation.enrollment_id,
+            generated_at=live.created_at,
+        ):
+            raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
         return live.pk
     if not classify_inbound(inbound.body).allow_ai_suggestion:
         raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
@@ -130,6 +141,13 @@ def use_suggestion(
     """Send the human-reviewed text; ``body`` is what the reviewer finally chose."""
     with transaction.atomic():
         suggestion = _suggestion(clinic_id, suggestion_id)
+        enrollment = suggestion.conversation.enrollment_id
+        if enrollment is not None and not pending_choice_allows(
+            clinic_id=clinic_id,
+            enrollment_id=enrollment,
+            generated_at=suggestion.created_at,
+        ):
+            raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
         receipt = send_message(
             clinic_id=clinic_id,
             conversation_id=suggestion.conversation_id,

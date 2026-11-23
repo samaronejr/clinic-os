@@ -13,7 +13,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
-from apps.ai.brief import Brief, display_brief, request_brief
+from apps.ai.brief import Brief, display_chart_turn, request_brief
+from apps.ai.brief_contracts import ChartDisplay
 from apps.ai.brief_forms import ChartQuestionForm
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError
 from apps.core.patient_context import bind_patient_context
@@ -88,17 +89,22 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         ).hexdigest()
         subject = None if visit is not None else enrolled
         with transaction.atomic():
-            if today is not None and visit is None:
+            if data["command"] == "display":
+                brief = display_chart_turn(
+                    clinic_id=clinic_id,
+                    enrollment_id=subject,
+                    invocation_id=data["invocation_id"],
+                    display=ChartDisplay(
+                        visit,
+                        binding,
+                        today.next_patient.appointment_id
+                        if today is not None and today.next_patient is not None
+                        else None,
+                    ),
+                )
+            elif today is not None and visit is None:
                 record_denial(clinic_id, enrolled, "ai_permission_unavailable")
                 brief = Brief("unavailable")
-            elif data["command"] == "display":
-                brief = display_brief(
-                    clinic_id=clinic_id,
-                    encounter_id=visit,
-                    enrollment_id=subject,
-                    session_binding=binding,
-                    invocation_id=data["invocation_id"],
-                )
             else:
                 brief = request_brief(
                     clinic_id=clinic_id,

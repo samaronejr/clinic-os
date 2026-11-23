@@ -251,14 +251,14 @@
       "reason": "Owner-connection benchmark lifecycle record, not a staff-role grant. The entry directly checks the executable database-role guard before any write; the owner-only refusal and that selection records never approve are covered by tests/ai/test_benchmark_report.py."
     },
     {
-      "symbol": "apps.ai.brief.display_brief",
+      "symbol": "apps.ai.brief.display_chart_turn",
       "signals": [
         "actor",
         "denial"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.brief.display_brief#cut1"
+        "apps.ai.brief.display_chart_turn#cut1"
       ]
     },
     {
@@ -1247,13 +1247,13 @@
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     },
     {
-      "symbol": "apps.ai.revenue_sources.recheck_context",
+      "symbol": "apps.ai.revenue_sources.recheck_pending_context",
       "signals": [
         "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.insurance.access.authority"
+        "apps.ai.revenue_sources._guide_context"
       ],
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     },
@@ -1270,16 +1270,15 @@
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
     },
     {
-      "symbol": "apps.ai.revenue_sources.retrieve_context",
+      "symbol": "apps.ai.revenue_sources._guide_context",
       "signals": [
-        "denial"
+        "denial",
+        "resolver"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.insurance.access.authority",
-        "apps.billing.security.financial_actor"
-      ],
-      "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
+      "kind": "direct",
+      "probes": [
+        "apps.ai.revenue_sources._guide_context#cut1"
+      ]
     },
     {
       "symbol": "apps.ai.revenue_views._command",
@@ -8838,6 +8837,28 @@
       "reason": "The executed census enters this actual callable on populated native coverage and verifies assigned active admission, another actor, another tenant, inactive assignment and unknown-record refusal under clinic_app. No staff-independence exemption is claimed."
     },
     {
+      "symbol": "apps.scribe.transcripts.finalize_transcript",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Finalization authorizes the exact recording before locking it, then rechecks the original patient choices before any unreviewed segment can become a clinician record."
+    },
+    {
+      "symbol": "apps.scribe.transcripts.review_segment",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Recording scope precedes work on a segment. A segment hidden by the read-time patient choice cannot be accepted or returned by relabel/correct."
+    },
+    {
       "symbol": "apps.scribe.views.capture_chunk",
       "signals": [
         "decorator"
@@ -10807,7 +10828,7 @@
     "apps.ai.authorization._authorize_staff_input#cut1",
     "apps.ai.authorization.authorize_capability#cut1",
     "apps.ai.brief._admit#cut1",
-    "apps.ai.brief.display_brief#cut1",
+    "apps.ai.brief.display_chart_turn#cut1",
     "apps.ai.brief_views._selected_visit#cut1",
     "apps.ai.brief_views.chart_assistant#cut1",
     "apps.ai.chart_authority.recheck_chart_permission#cut1",
@@ -10884,6 +10905,7 @@
     "apps.ai.policy.organization_policy#cut1",
     "apps.ai.policy.rollout_approval#cut1",
     "apps.ai.proposals.propose_action#cut1",
+    "apps.ai.revenue_sources._guide_context#cut1",
     "apps.ai.services.invoke#cut1",
     "apps.ai.tasks.run_agent#cut1",
     "apps.ai.views.settings_view#cut1",
@@ -16397,6 +16419,7 @@
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ai_front_desk_guard",
+          "clinic_app.ai_guide_consent",
           "clinic_app.ai_imported_observation",
           "clinic_app.ai_revenue_row",
           "clinic_app.ai_review_extraction",
@@ -19077,6 +19100,7 @@
           "clinic_app.ai_front_desk_finish",
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
+          "clinic_app.ai_guide_consent",
           "clinic_app.comms_patient_messages",
           "clinic_app.comms_patient_reply",
           "clinic_app.insurance_link_registered_payer",
@@ -26024,6 +26048,28 @@
         "test_refresh_step_requires_its_exact_effect_and_replays_once"
       ],
       "reason": "Governed analytics protocol: the named real-role tests execute scope, authorization-version, immutable history and workflow receipt checks."
+    },
+    "clinic_app.ai_guide_consent": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_guide uuid, requested_encounter uuid, retained_input uuid, kek text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_guide_consent_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_finance_guide_binding_is_one_bit_and_never_rebinds"
+      ],
+      "reason": "Finance-only, guide-and-encounter-scoped boolean predicate. The runtime-role oracle crosses two actual guides, unknown/foreign selectors and another actor, then verifies withdrawal and replacement against the immutable original input; no consent history is returned."
     },
     "clinic_app.ai_revenue_ancestry": {
       "discovery": {

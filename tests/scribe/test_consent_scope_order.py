@@ -69,5 +69,5 @@ def test_asr_checks_input_binding_before_recording_or_ai_consent(
         def no_consent_read(*_args: object, **_kwargs: object) -> None:
             pytest.fail("out-of-scope audio input reached recording consent")
 
-        monkeypatch.setattr(transcription, "active_consent", no_consent_read)
+        monkeypatch.setattr(transcription, "transcription_consent", no_consent_read)
         assert not transcription.eligible_input(crossed)

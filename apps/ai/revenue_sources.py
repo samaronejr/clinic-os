@@ -7,21 +7,26 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from django.db import connection
+
 from apps.ai.action_contracts import ActionInputError, ActionRefusedError, Refusal
 from apps.ai.action_payload import JSON, closed, digest_text, identifier
 from apps.ai.action_validation import database_time
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError, Purpose
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.policy import enabled_policy
 from apps.ai.revenue_contracts import MAX_ROWS, RevenueFacts, decode, parse_model_input
 from apps.billing.errors import BillingAccessDeniedError
 from apps.billing.models import InvoiceTerms, JournalEntry, SettlementAllocation
 from apps.billing.security import book_write
+from apps.core.secrets import secret_store
 from apps.identity.current_context import CurrentActorError, current_actor_id
 from apps.insurance.access import authority, clinic_write, scoped
 from apps.insurance.errors import InsuranceDeniedError
 from apps.insurance.guides import stored_facts
 from apps.insurance.models import Glosa, Guide
+from apps.tenancy.envelope import KEK_SECRET_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -40,7 +45,9 @@ def require_finance(*, clinic_id: UUID) -> UUID:
         raise GatewayAccessDeniedError from None
 
 
-def retained_output(*, clinic_id: UUID, output_id: UUID) -> AIArtifact:
+def retained_output(
+    *, clinic_id: UUID, output_id: UUID
+) -> tuple[AIArtifact, RevenueContext]:
     """Resolve the requester's exact current output before admitting any proposal."""
     require_finance(clinic_id=clinic_id)
     output = (
@@ -56,10 +63,15 @@ def retained_output(*, clinic_id: UUID, output_id: UUID) -> AIArtifact:
         )
         .first()
     )
-    if output is None or output.invocation_id is None:
+    if output is None or output.invocation is None:
         raise GatewayAccessDeniedError
-    check_invocation(clinic_id=clinic_id, invocation_id=output.invocation_id)
-    return output
+    check_invocation(clinic_id=clinic_id, invocation_id=output.invocation.pk)
+    source = output.invocation.inputs_ref
+    context = recheck_pending_context(
+        clinic_id=clinic_id, content=source.content, retained_input=source.pk
+    )
+    enabled_policy(Purpose.REVENUE_CYCLE)
+    return output, context
 
 
 def proposal_invocation(
@@ -71,9 +83,10 @@ def proposal_invocation(
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
     if subject["kind"] != "ai_artifact":
         raise ActionRefusedError(Refusal.SOURCE)
-    return retained_output(
+    output, _context = retained_output(
         clinic_id=clinic_id, output_id=identifier(subject["id"])
-    ).invocation_id
+    )
+    return output.invocation_id
 
 
 def _digest(value: object) -> str:
@@ -158,6 +171,12 @@ def retrieve_context(*, clinic_id: UUID, guide_id: UUID) -> RevenueContext:
     Guide procedure facts were bound to the actual completed encounter by the
     insurance service/trigger; this reader never opens the chart or membership.
     """
+    return _guide_context(clinic_id=clinic_id, guide_id=guide_id, retained_input=None)
+
+
+def _guide_context(
+    *, clinic_id: UUID, guide_id: UUID, retained_input: UUID | None
+) -> RevenueContext:
     require_finance(clinic_id=clinic_id)
     try:
         with (
@@ -165,8 +184,21 @@ def retrieve_context(*, clinic_id: UUID, guide_id: UUID) -> RevenueContext:
             book_write(clinic_id=clinic_id, permission="charge.read") as book,
         ):
             guide = scoped(model=Guide, clinic_id=clinic_id, identifier=guide_id)
-            if Guide.objects.filter(clinic_id=clinic_id, predecessor=guide).exists():
-                raise GatewayAccessDeniedError
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT clinic_app.ai_guide_consent(%s,%s,%s,%s,%s)",
+                    [
+                        clinic_id,
+                        guide.pk,
+                        guide.encounter_id,
+                        retained_input,
+                        secret_store().get_secret(KEK_SECRET_NAME)
+                        if retained_input is not None
+                        else None,
+                    ],
+                )
+                if cursor.fetchone() != (True,):
+                    raise GatewayAccessDeniedError
             procedures: list[JSON] = [
                 {
                     "table": p.table,
@@ -309,8 +341,19 @@ def retrieve_context(*, clinic_id: UUID, guide_id: UUID) -> RevenueContext:
 
 def recheck_context(*, clinic_id: UUID, content: str) -> RevenueContext:
     """Invalidate changed sources, new returns/allocations or a superseding guide."""
+    return recheck_pending_context(
+        clinic_id=clinic_id, content=content, retained_input=None
+    )
+
+
+def recheck_pending_context(
+    *, clinic_id: UUID, content: str, retained_input: UUID | None
+) -> RevenueContext:
+    """Reject an AI output superseded by a later source or patient receipt."""
     expected = parse_context(content)
-    current = retrieve_context(clinic_id=clinic_id, guide_id=expected.guide_id)
+    current = _guide_context(
+        clinic_id=clinic_id, guide_id=expected.guide_id, retained_input=retained_input
+    )
     if current.encode() != expected.encode():
         raise GatewayAccessDeniedError
     return current

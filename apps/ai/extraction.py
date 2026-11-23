@@ -31,6 +31,7 @@ from apps.ai.models import (
     ExtractionCandidateRecord,
     ExtractionJob,
 )
+from apps.ai.pending_choice import pending_choice_allows
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import secret_store
@@ -180,6 +181,12 @@ def authorized_job(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
         raise GatewayAccessDeniedError from None
     source = job_source(job=job, include_bytes=False)
     if source.sha256 != job.sha256 or source.enrollment_id != job.patient_enrollment_id:
+        raise GatewayAccessDeniedError
+    if not pending_choice_allows(
+        clinic_id=clinic_id,
+        enrollment_id=source.enrollment_id,
+        generated_at=job.created_at,
+    ):
         raise GatewayAccessDeniedError
     return job
 

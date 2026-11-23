@@ -39,6 +39,7 @@ from apps.ai.care_coordination import (
     decide_care_item,
     pending_bundle,
     request_care_coordination,
+    visible_care_items,
 )
 from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayAccessDeniedError
@@ -202,9 +203,12 @@ def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
     for plan in plans:
         bundles = tuple(
             dict.fromkeys(
-                CareProposal.objects.filter(clinic_id=clinic_id, plan=plan)
-                .order_by("-created_at")
-                .values_list("invocation_id", flat=True)
+                item.invocation_id
+                for item in visible_care_items(
+                    CareProposal.objects.filter(
+                        clinic_id=clinic_id, plan=plan
+                    ).order_by("-created_at")
+                )
             )
         )
         rows.append(
@@ -220,9 +224,11 @@ def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
 
 def _bundles(clinic_id: UUID, zone: ZoneInfo) -> tuple[BundleRow, ...]:
     pending: dict[UUID, list[CareProposal]] = {}
-    for item in CareProposal.objects.filter(
-        clinic_id=clinic_id, audience="administrative", state="pending"
-    ).order_by("created_at"):
+    for item in visible_care_items(
+        CareProposal.objects.filter(
+            clinic_id=clinic_id, audience="administrative", state="pending"
+        ).order_by("created_at")
+    ):
         pending.setdefault(item.invocation_id, []).append(item)
     return tuple(
         BundleRow(invocation, _minute(items[0].created_at, zone), len(items))

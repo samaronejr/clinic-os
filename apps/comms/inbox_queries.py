@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.utils.translation import gettext, pgettext_lazy
 from django.utils.translation import gettext_lazy as _
 
+from apps.ai.pending_choice import pending_choice_allows
 from apps.comms.inbox_rules import window_closes_at, window_open
 from apps.comms.inbox_services import (
     CLINICIAN_ROLES,
@@ -257,9 +258,21 @@ def conversation_view(
         for t in templates
         if _fits(t, conversation.purpose)
     )
-    suggestion = SuggestedReply.objects.filter(
-        conversation=conversation, state="proposed"
-    ).first()
+    suggestion = (
+        SuggestedReply.objects.filter(conversation=conversation, state="proposed")
+        .defer("body")
+        .first()
+    )
+    if (
+        suggestion is not None
+        and conversation.enrollment_id is not None
+        and not pending_choice_allows(
+            clinic_id=clinic_id,
+            enrollment_id=conversation.enrollment_id,
+            generated_at=suggestion.created_at,
+        )
+    ):
+        suggestion = None
     free_text = conversation.purpose != "marketing" and (
         conversation.channel != "whatsapp"
         or window_open(last_inbound_at=conversation.last_inbound_at, now=now)

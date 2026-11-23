@@ -51,6 +51,7 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
+from apps.ai.pending_choice import pending_choice_allows
 from apps.ai.policy import enabled_policy
 from apps.ai.proposals import AgentContext, propose_action
 from apps.ai.services import invoke
@@ -83,6 +84,7 @@ __all__ = (
     "decide_care_item",
     "pending_bundle",
     "request_care_coordination",
+    "visible_care_items",
 )
 
 BUDGET: Final = Budget(
@@ -168,19 +170,22 @@ def request_care_coordination(*, clinic_id: UUID, plan_id: UUID) -> CareBundle:
         parse_request(request.encode())
     except GatewayInputError:
         return CareBundle("unavailable", plan_id=plan.pk)
-    source = create_input(
-        clinic_id=clinic_id,
-        purpose=Purpose.CARE_COORDINATION,
-        patient_enrollment_id=plan.enrollment_id,
-        content=request.encode(),
-    )
-    result = invoke(
-        clinic_id=clinic_id,
-        purpose=Purpose.CARE_COORDINATION,
-        principal=current_actor_id(),
-        inputs_ref=source.pk,
-        budget=BUDGET,
-    )
+    try:
+        source = create_input(
+            clinic_id=clinic_id,
+            purpose=Purpose.CARE_COORDINATION,
+            patient_enrollment_id=plan.enrollment_id,
+            content=request.encode(),
+        )
+        result = invoke(
+            clinic_id=clinic_id,
+            purpose=Purpose.CARE_COORDINATION,
+            principal=current_actor_id(),
+            inputs_ref=source.pk,
+            budget=BUDGET,
+        )
+    except GatewayRefusedError:
+        return CareBundle("unavailable", plan_id=plan.pk)
     if result.invocation_id is None:
         return CareBundle("unavailable", plan_id=plan.pk)
     record_phase1_event(
@@ -191,8 +196,26 @@ def request_care_coordination(*, clinic_id: UUID, plan_id: UUID) -> CareBundle:
     return CareBundle("generating", result.invocation_id, plan.pk)
 
 
+def visible_care_items(items: Iterable[CareProposal]) -> tuple[CareProposal, ...]:
+    """Use only RLS-visible rows; staff need not read the clinician's input."""
+    allowed: dict[UUID, bool] = {}
+    visible = []
+    for item in items:
+        if item.state not in ("accepted", "approved", "rejected"):
+            if item.invocation_id not in allowed:
+                allowed[item.invocation_id] = pending_choice_allows(
+                    clinic_id=item.clinic_id,
+                    enrollment_id=item.enrollment_id,
+                    generated_at=item.created_at,
+                )
+            if not allowed[item.invocation_id]:
+                continue
+        visible.append(item)
+    return tuple(visible)
+
+
 def _visible_items(clinic_id: UUID, invocation_id: UUID) -> tuple[CareProposal, ...]:
-    return tuple(
+    return visible_care_items(
         CareProposal.objects.filter(clinic_id=clinic_id, invocation_id=invocation_id)
         .select_related("plan")
         .order_by("position")
@@ -222,7 +245,12 @@ def _requested(
         if plan is None:
             raise _deny()
         require_clinician(clinic_id=clinic_id, enrollment_id=plan.enrollment_id)
-    except (GatewayAccessDeniedError, GatewayInputError, CurrentActorError):
+    except (
+        GatewayAccessDeniedError,
+        GatewayInputError,
+        GatewayRefusedError,
+        CurrentActorError,
+    ):
         raise _deny() from None
     return invocation, request, plan
 
@@ -345,7 +373,7 @@ def pending_bundle(*, clinic_id: UUID, invocation_id: UUID) -> tuple[CareProposa
     """Lock the pending administrative items a staff approver may preview."""
     if not _care_staff(clinic_id):
         raise _deny()
-    return tuple(
+    items = tuple(
         CareProposal.objects.select_for_update()
         .filter(
             clinic_id=clinic_id,
@@ -356,6 +384,9 @@ def pending_bundle(*, clinic_id: UUID, invocation_id: UUID) -> tuple[CareProposa
         .select_related("plan")
         .order_by("position")
     )
+    if items and not visible_care_items(items):
+        raise _deny()
+    return items
 
 
 def _decide(item: CareProposal, state: str, **links: object) -> CareProposal:
@@ -604,6 +635,8 @@ def decide_care_item(
     _decider(clinic_id=clinic_id, item=item, decision=decision)
     if item.revision != expected_revision or item.state != "pending":
         raise CareConflictError
+    if not visible_care_items((item,)):
+        raise _deny()
     if decision == "reject":
         return _decide(item, "rejected")
     return _accept(clinic_id=clinic_id, item=item)

@@ -16,6 +16,7 @@ from apps.ai.action_contracts import (
     ActionInputError,
     ActionRefusedError,
 )
+from apps.ai.action_payload import parse_payload
 from apps.ai.agent_forms import ActionDecisionForm, AgentPolicyForm
 from apps.ai.agent_policies import (
     CAPABILITIES,
@@ -25,7 +26,10 @@ from apps.ai.agent_policies import (
 from apps.ai.agent_presenter import present_proposal
 from apps.ai.approvals import approve_action, reject_action
 from apps.ai.attestations import step_up_evidence
+from apps.ai.care_sources import check_care_sources
+from apps.ai.contracts import GatewayRefusedError
 from apps.ai.models import ActionProposal, AgentPolicyVersion
+from apps.ai.revenue_cycle import check_revenue_sources
 from apps.core.secrets import SecretUnavailableError
 from apps.identity.current_context import CurrentActorError
 from apps.identity.otp import flow_redirect, privileged_totp_required
@@ -91,13 +95,34 @@ def agent_queue(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
         "ai/automations.html",
         {
             "clinic_id": clinic_id,
-            "rows": [present_proposal(row) for row in proposals],
+            "rows": [present_proposal(row) for row in proposals if _visible(row)],
             "error": error,
         },
         status=status,
     )
     response["Cache-Control"] = "no-store, private"
     return response
+
+
+def _visible(proposal: ActionProposal) -> bool:
+    """Retained human decisions remain history; proposed effects need live sources."""
+    if proposal.state not in ("proposal", "validated"):
+        return True
+    capability = proposal.run.policy.capability
+    try:
+        if capability == "revenue_cycle":
+            check_revenue_sources(
+                clinic_id=proposal.clinic_id,
+                data=parse_payload(proposal.payload).data(),
+            )
+        elif capability == "care_coordination":
+            check_care_sources(
+                clinic_id=proposal.clinic_id,
+                data=parse_payload(proposal.payload).data(),
+            )
+    except (ActionRefusedError, ActionInputError, GatewayRefusedError):
+        return False
+    return True
 
 
 def _decide(request: HttpRequest, clinic_id: UUID, form: ActionDecisionForm) -> None:

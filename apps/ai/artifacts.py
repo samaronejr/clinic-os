@@ -20,6 +20,7 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
+from apps.ai.retained_readers import check_retained_input
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id
 from apps.identity.models import Clinic
@@ -97,7 +98,12 @@ def input_for(
     authorization.authorize_capability(
         purpose,
         StaffInput(
-            clinic_id, artifact.patient_enrollment_id, artifact.content, display
+            clinic_id,
+            artifact.patient_enrollment_id,
+            artifact.content,
+            display,
+            generated_at=artifact.created_at,
+            retained_input=artifact.pk,
         ),
     )
     if purpose is Purpose.REVENUE_CYCLE:
@@ -126,8 +132,15 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         source = artifact
     authorization.authorize_capability(
         Purpose(artifact.purpose),
-        StaffInput(clinic_id, artifact.patient_enrollment_id, source.content),
+        StaffInput(
+            clinic_id,
+            artifact.patient_enrollment_id,
+            source.content,
+            generated_at=source.created_at,
+            retained_input=source.pk,
+        ),
     )
+    check_retained_input(source)
     if artifact.purpose == Purpose.REVENUE_CYCLE.value:
         enabled_policy(Purpose.REVENUE_CYCLE)
     content: str = artifact.content

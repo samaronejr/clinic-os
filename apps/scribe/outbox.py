@@ -88,6 +88,13 @@ def consent_lock_key(scope: OperationScope, _chunk_id: UUID) -> str:
 
 def register_gateway() -> None:
     """Extend inference only through the existing startup registries."""
+    from apps.ai.contracts import Purpose  # noqa: PLC0415
+    from apps.ai.retained_readers import register_scribe_reader  # noqa: PLC0415
+    from apps.scribe.drafting import retained_draft_allowed  # noqa: PLC0415
+    from apps.scribe.transcription import eligible_input  # noqa: PLC0415
+
+    register_scribe_reader(Purpose.SCRIBE_DRAFT, retained_draft_allowed)
+    register_scribe_reader(Purpose.SCRIBE_ASR, eligible_input)
     register_provider(ScribeSyntheticProvider())
     register_provider(ScribeRecordedProvider())
     register_action_adapter(ScribeGatewayActionAdapter())

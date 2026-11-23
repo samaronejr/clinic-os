@@ -201,6 +201,10 @@ def test_refresh_exposes_two_new_missing_slots_without_another_recognition(
     with (
         patch("apps.scribe.transcripts.authorized_recording", return_value=recording),
         patch("apps.scribe.transcripts.current_snapshot", return_value=snapshot),
+        patch(
+            "apps.scribe.transcripts._current_chunk_ids",
+            return_value={slot.chunk_id for slot in snapshot.coverage},
+        ),
         patch("apps.scribe.transcripts.coverage_for", return_value=live_coverage),
         patch("apps.scribe.transcript_views.coverage_for", return_value=live_coverage),
         patch("apps.scribe.transcript_views.browser_binding"),
@@ -279,6 +283,10 @@ def _review(switches: _Switches, *, flip: str | None) -> str:
     with (
         patch("apps.scribe.transcripts.authorized_recording", return_value=recording),
         patch("apps.scribe.transcripts.current_snapshot", return_value=snapshot),
+        patch(
+            "apps.scribe.transcripts._current_chunk_ids",
+            return_value={slot.chunk_id for slot in snapshot.coverage},
+        ),
         patch("apps.scribe.transcripts.coverage_for", return_value=snapshot.coverage),
         patch("apps.scribe.transcript_views.coverage_for", return_value=()),
         patch("apps.scribe.transcript_views.browser_binding"),

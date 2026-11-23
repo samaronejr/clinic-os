@@ -15,13 +15,12 @@ from apps.ai.contracts import Budget, Purpose, Usage
 from apps.ai.effects import check_invocation
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
-from apps.consent.services import consent_for_future_use
 from apps.identity.current_context import CurrentActorError
 from apps.scribe.asr import AudioInput, AudioReference, decode_reference, parse_batch
 from apps.scribe.authority import (
-    active_consent,
     lock_recording_consent,
     recording_scope,
+    transcription_consent,
 )
 from apps.scribe.contracts import SLICE_MS, ScribeError
 from apps.scribe.models import AudioChunk, ChunkTranscription, RecordingSession
@@ -83,12 +82,7 @@ def _consented(
                     [f"consent:{clinic_id}:ai_assistance"],
                 )
             lock_recording_consent(clinic_id=clinic_id)
-        active_consent(scope, lock=False, acceptance_id=recording.consent_id)
-        consent = consent_for_future_use(
-            clinic_id=clinic_id,
-            enrollment_id=recording.enrollment_id,
-            purpose="ai_assistance",
-        )
+        consent = transcription_consent(recording)
         if consent is None:
             raise TranscriptAccessDeniedError
     except (ScribeError, CurrentActorError) as error:

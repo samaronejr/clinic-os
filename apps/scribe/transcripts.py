@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, replace
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from uuid import UUID
 
 from django.db import IntegrityError, connection, transaction
 
 from apps.audit.services import record_phase1_event
-from apps.scribe.authority import recording_scope
+from apps.scribe.authority import recording_scope, transcription_consent
 from apps.scribe.contracts import ScribeError
-from apps.scribe.models import RecordingSession, TranscriptSegment, TranscriptVersion
+from apps.scribe.models import (
+    ChunkTranscription,
+    RecordingSession,
+    TranscriptSegment,
+    TranscriptVersion,
+)
 from apps.scribe.transcript_contracts import (
     MAX_COVERAGE_BYTES,
     CoverageSlot,
@@ -25,9 +30,6 @@ from apps.scribe.transcript_contracts import (
     finalize,
     revise,
 )
-
-if TYPE_CHECKING:
-    from apps.scribe.models import ChunkTranscription
 
 type Mutation = Literal["recognized", "finalized", "speaker_relabeled", "corrected"]
 
@@ -282,7 +284,37 @@ def read_transcript(
     """Return no source until the caller's own assigned encounter is resolved."""
     recording = authorized_recording(clinic_id=clinic_id, session_id=session_id)
     value = current_snapshot(recording)
-    return refresh_coverage(value, recording) if value.revision else None
+    if not value.revision:
+        return None
+    return _display_snapshot(refresh_coverage(value, recording), recording)
+
+
+def _display_snapshot(
+    value: TranscriptVersionDTO, recording: RecordingSession
+) -> TranscriptVersionDTO:
+    """Never return an unreviewed hypothesis from an earlier AI acceptance."""
+    if value.state == "final" or not value.segments:
+        return value
+    permitted = _current_chunk_ids(recording)
+    return replace(
+        value,
+        segments=tuple(
+            item
+            for item in value.segments
+            if item.text_reviewed or item.chunk_id in permitted
+        ),
+    )
+
+
+def _current_chunk_ids(recording: RecordingSession) -> set[UUID]:
+    consent = transcription_consent(recording)
+    if consent is None:
+        return set()
+    return set(
+        ChunkTranscription.objects.filter(
+            session=recording, consent_id=consent.pk
+        ).values_list("chunk_id", flat=True)
+    )
 
 
 @transaction.atomic
@@ -299,6 +331,8 @@ def finalize_transcript(
     value = refresh_coverage(current_snapshot(recording), recording)
     if value.revision != expected_revision:
         raise TranscriptError(TranscriptReason.STALE)
+    if len(_display_snapshot(value, recording).segments) != len(value.segments):
+        raise TranscriptAccessDeniedError
     return save_snapshot(
         recording,
         finalize(value, acknowledge_incomplete=acknowledge_incomplete),
@@ -320,7 +354,10 @@ def review_segment(
     value = refresh_coverage(current_snapshot(recording), recording)
     if value.revision != expected_revision:
         raise TranscriptError(TranscriptReason.STALE)
-    return save_snapshot(
+    visible = _display_snapshot(value, recording)
+    if not any(item.segment_id == review.segment_id for item in visible.segments):
+        raise TranscriptAccessDeniedError
+    stored = save_snapshot(
         recording,
         revise(
             value,
@@ -332,3 +369,4 @@ def review_segment(
         mutation="corrected" if review.text is not None else "speaker_relabeled",
         changed_source=review.segment_id,
     )
+    return _display_snapshot(stored, recording)

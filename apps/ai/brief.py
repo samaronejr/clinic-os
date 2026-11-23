@@ -116,8 +116,24 @@ def display_brief(
     encounter_id: UUID | None = None,
 ) -> Brief:
     """Resolve every citation again; revocation hides the item, not its count."""
+    return display_chart_turn(
+        clinic_id=clinic_id,
+        enrollment_id=enrollment_id,
+        invocation_id=invocation_id,
+        display=ChartDisplay(encounter_id, session_binding),
+    )
+
+
+def display_chart_turn(
+    *,
+    clinic_id: UUID,
+    enrollment_id: UUID | None,
+    invocation_id: UUID,
+    display: ChartDisplay,
+) -> Brief:
+    """Bind a workspace or scheduled surface before disclosing a chart turn."""
     enrolled = chart_enrollment(
-        clinic_id=clinic_id, enrollment_id=enrollment_id, encounter_id=encounter_id
+        clinic_id=clinic_id, enrollment_id=enrollment_id, encounter_id=display.encounter
     )
     invocation = AIInvocation.objects.filter(
         pk=invocation_id,
@@ -133,7 +149,7 @@ def display_brief(
             clinic_id=clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose.BRIEF,
-            display=ChartDisplay(encounter_id, session_binding),
+            display=display,
         )
         enabled_policy(Purpose.BRIEF)
     except GatewayRefusedError:

@@ -18,6 +18,7 @@ from apps.ai.action_payload import care_window, closed, identifier
 from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.effects import check_invocation
+from apps.ai.pending_choice import pending_choice_allows
 from apps.workflows.access import WorkflowAccessDeniedError
 from apps.workflows.care.access import version_scope
 from apps.workflows.care.models import CarePlan
@@ -127,6 +128,11 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
         or item.plan_revision != plan.revision
         or item.state != "pending"
         or item.audience != "administrative"
+        or not pending_choice_allows(
+            clinic_id=clinic_id,
+            enrollment_id=item.enrollment_id,
+            generated_at=item.created_at,
+        )
         or cited["care_proposal"] != item_source(item)
         or care_window(data["parameters"])
         != (item.kind, item.window_start, item.window_end)

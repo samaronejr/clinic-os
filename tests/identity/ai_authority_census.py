@@ -28,6 +28,7 @@ from ai import (
     test_evaluation_runtime,
     test_extraction_rollout,
     test_gateway,
+    test_guide_consent,
     test_manual_appeal,
     test_posture,
     test_revenue_rollout,
@@ -87,6 +88,16 @@ def exercise_ai_authority(
     secret_root: Path,
 ) -> None:
     """Bind source candidates to executed scope, role, owner and transport checks."""
+    with patch.context() as local:
+        local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
+        finance = finance_setup._get_wrapped_function()(graph())
+        proofs.run(
+            "Finance guide consent: isolated bindings, withdrawal and replacement",
+            partial(
+                test_guide_consent.test_finance_guide_binding_is_one_bit_and_never_rebinds,
+                revenue_world(finance, local, secret_root),
+            ),
+        )
     with patch.context() as local:
         local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
         finance = finance_setup._get_wrapped_function()(graph())
