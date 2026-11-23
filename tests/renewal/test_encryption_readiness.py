@@ -292,12 +292,14 @@ def test_batch_reveal_reloads_key_material_after_a_successful_read(
             assert _patient_text_projection(patients, purpose=purpose) == (name,)
         key.write_text(OTHER_KEK)
         with (
+            runtime_role(),
             tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
             pytest.raises(EnvelopeError),
         ):
             _patient_text_projection(patients, purpose=purpose)
         key.unlink()
         with (
+            runtime_role(),
             tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
             pytest.raises(SecretUnavailableError),
         ):
