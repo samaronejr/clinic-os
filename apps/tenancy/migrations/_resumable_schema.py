@@ -140,7 +140,7 @@ class AtomicRunSQL(migrations.RunSQL):
     def deconstruct(self) -> tuple[str, list[object], dict[str, object]]:
         """Preserve the catalog contract when serializing the operation."""
         name, args, kwargs = super().deconstruct()
-        return name, args, {**kwargs, "receipt": self.receipt}
+        return name, list(args), {**kwargs, "receipt": self.receipt}
 
     def database_forwards(
         self,
