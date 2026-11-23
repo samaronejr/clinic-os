@@ -6,6 +6,8 @@ that exist there. It writes one organization with a clinic, an owner user
 and clinic role, one patient + enrollment, one availability block, one
 appointment, and two hash-chained audit events — the representative
 patient/scheduling/role/audit state the candidate upgrade must preserve.
+It then loads the base's populated Phase 1A fixture into a second tenant
+and records its byte/audit-chain witnesses (``migration_upgrade_witness``).
 
 Marker values are exported to ``$UPGRADE_SEED_FILE`` as JSON so the
 post-migration verifier can bind to exactly these rows.
@@ -152,6 +154,18 @@ if markers["ai_present"]:
         run_path(str(helper))["seed_ai"],
     )
     markers["ai"] = seed_ai(markers)
+# The populated Phase 1A fixture in a second tenant carries the S1-S6 byte
+# and audit-chain witnesses, and is the legacy graph new domains build on.
+seed_witness = cast(
+    "Callable[[dict[str, object]], dict[str, str]]",
+    run_path(
+        str(
+            Path(os.environ["UPGRADE_HELPER_ROOT"])
+            / "ops/testing/migration_upgrade_witness.py"
+        )
+    )["seed_witness"],
+)
+markers["witness"] = seed_witness(markers)
 seed_path = os.environ.get("UPGRADE_SEED_FILE", "")
 if seed_path:
     Path(seed_path).write_text(

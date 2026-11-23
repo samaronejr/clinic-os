@@ -3,13 +3,18 @@
 #
 # Builds a disposable database on the job's claimed PostgreSQL, migrates it
 # with the *base* revision, seeds representative data through base service
-# entrypoints, migrates it forward with the candidate, then verifies data
-# preservation, protected-field transformation, FORCE RLS, tenant denial,
-# audit integrity, grants, and migration drift.
+# entrypoints plus the base's populated Phase 1A fixture (byte/audit-chain
+# witnesses), migrates it forward with the candidate while staging one
+# representative synthetic row graph into every model the candidate adds
+# (each at the first migration state where it exists, through historical
+# models), then verifies data preservation, protected-field transformation,
+# FORCE RLS, tenant denial, audit integrity, grants, every staged row's
+# readback and encrypted round trip, and migration drift.
 #
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
-#   MIGRATION_DATABASE_URL APP_DATABASE_URL GITHUB_WORKSPACE RUNNER_TEMP
+#   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
+#   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 set -euo pipefail
 
@@ -19,6 +24,9 @@ readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
 readonly base_worktree="$work_root/base"
 readonly upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
+readonly domain_seed_file="$work_root/domain-seed.json"
+readonly witness_file="$work_root/witness-before.json"
+: "${TEST_SUPERUSER_DATABASE_URL:?clinic_super URL required for the witness census}"
 
 mkdir -p "$work_root"
 
@@ -91,6 +99,9 @@ fi
 mkdir -m 0700 -p "$secret_dir"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
+# Witness attachment objects and the fixture key probe stay private too.
+readonly attachment_root="$secret_dir/attachments"
+mkdir -m 0700 "$attachment_root"
 
 echo "== migrate at base revision =="
 (cd "$base_worktree" && env \
@@ -108,6 +119,10 @@ echo "== seed representative data at base revision =="
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
+    EHR_ATTACHMENT_ROOT="$attachment_root" \
+    UPGRADE_APP_DATABASE_URL="$app_dsn" \
+    UPGRADE_PRIVATE_DIR="$secret_dir" \
+    UPGRADE_WITNESS_FILE="$witness_file" \
     UPGRADE_SEED_FILE="$seed_file" \
     UPGRADE_HELPER_ROOT="$project_root" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
@@ -157,14 +172,16 @@ PYEOF
 )
 fi
 
-echo "== migrate forward with the candidate =="
+echo "== migrate forward with the candidate, staging every new domain =="
 (cd "$project_root" && env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
-    uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
+    UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_DOMAIN_SEED_FILE="$domain_seed_file" \
+    uv run --frozen --no-sync --no-env-file python -m ops.testing.migration_upgrade_stages)
 
 echo "== verify preserved data, transform, and boundaries =="
 (cd "$project_root" && env \
@@ -173,8 +190,12 @@ echo "== verify preserved data, transform, and boundaries =="
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
+    EHR_ATTACHMENT_ROOT="$attachment_root" \
     UPGRADE_APP_DATABASE_URL="$app_dsn" \
+    UPGRADE_PRIVATE_DIR="$secret_dir" \
+    UPGRADE_WITNESS_FILE="$witness_file" \
     UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_DOMAIN_SEED_FILE="$domain_seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
 

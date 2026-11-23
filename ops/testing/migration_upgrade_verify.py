@@ -12,6 +12,9 @@ upgraded database. Reads ``UPGRADE_SEED_FILE`` markers written by
   cross-tenant row;
 * the two seeded audit events still verify as a hash chain;
 * grants on the new comms tables remain narrow;
+* the populated fixture's S1-S6 byte and audit-chain witnesses still hold;
+* every model the candidate adds has a staged row that reads back with its
+  seeded values, encrypted columns still envelopes of the seeded plaintext;
 * ``makemigrations --check --dry-run`` reports no drift (run separately).
 
 The script exits non-zero with named failures when any check fails.
@@ -31,6 +34,8 @@ from apps.intake.models import Patient
 from django.db import connection
 
 from ops.testing.migration_upgrade_ai_verify import verify_ai
+from ops.testing.migration_upgrade_stages import verify_stages
+from ops.testing.migration_upgrade_witness import compare_witness
 
 failures: list[str] = []
 
@@ -164,6 +169,8 @@ else:
     )
 
 failures.extend(verify_ai(markers))
+failures.extend(compare_witness(markers))
+failures.extend(verify_stages(Path(os.environ["UPGRADE_DOMAIN_SEED_FILE"])))
 
 if failures:
     for name in failures:
