@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
 
-_DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+_DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 _PURPOSE: Final = re.compile(r"[a-z][a-z0-9-]{0,63}")
 
 

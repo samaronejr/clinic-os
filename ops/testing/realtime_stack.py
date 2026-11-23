@@ -10,18 +10,30 @@ import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 from ops.testing.browser_server_supervisor import (
-    always_cleanup,
-    preserving_context,
+    blocked_launch_signals,
+    child_argv,
+    owned_child,
     start_signal_blocked_thread,
+)
+from ops.testing.diagnostic_redaction import (
+    Failures,
+    always_cleanup,
+    diagnostics,
+    error_details,
+    preserving_context,
 )
 
 if TYPE_CHECKING:
+    import signal
     from collections.abc import Callable, Iterator
+    from typing import TextIO
+
+    from ops.testing.diagnostic_redaction import DiagnosticSink
 
 REDIS_IMAGE: Final = (
     "redis:7-alpine@sha256:"
@@ -48,26 +60,59 @@ def _stop(process: subprocess.Popen[str], repository: Path) -> None:
         process.wait(timeout=10)
 
 
+def _dispose_observer(process: subprocess.Popen[str], repository: Path) -> None:
+    stream = process.stdout
+    if stream is not None and not stream.closed:
+        with always_cleanup(stream.close, "realtime stdout close failed"):
+            _stop(process, repository)
+
+
+@contextmanager
 def _ready(
-    process: subprocess.Popen[str], marker: str, log: IO[str]
-) -> threading.Thread:
+    process: subprocess.Popen[str], marker: str, log: TextIO, repository: Path
+) -> Iterator[None]:
     ready = threading.Event()
+    sink = diagnostics()
+    failures = Failures()
+    stream = process.stdout
+    if stream is None:
+        message = "realtime harness has no readiness stream"
+        raise RealtimeHarnessError(message)
 
     def read() -> None:
-        if process.stdout is None:
-            return
-        for line in process.stdout:
-            log.write(line)
-            log.flush()
-            if marker in line:
-                ready.set()
+        try:
+            for line in stream:
+                sink.line(log, line)
+                log.flush()
+                if marker in line:
+                    ready.set()
+        except Exception as error:  # noqa: BLE001 - pass observer failures to its owner.
+            failures.record("realtime log observation failed", error)
+            ready.set()
 
     thread = threading.Thread(target=read, daemon=True)
-    start_signal_blocked_thread(thread)
-    if not ready.wait(READY_SECONDS):
-        message = "realtime harness did not emit readiness"
-        raise RealtimeHarnessError(message)
-    return thread
+
+    def finish_log() -> None:
+        if thread.ident is not None:
+            thread.join(timeout=10)
+            if thread.is_alive():
+                message = "realtime log observer did not stop"
+                raise RealtimeHarnessError(message)
+        failures.raise_if_failed()
+
+    with (
+        always_cleanup(stream.close, "realtime stdout close failed"),
+        always_cleanup(finish_log, "realtime log thread join failed"),
+        always_cleanup(
+            lambda: _stop(process, repository), "realtime observer stop failed"
+        ),
+    ):
+        start_signal_blocked_thread(thread)
+        if not ready.wait(READY_SECONDS):
+            message = "realtime harness did not emit readiness"
+            raise RealtimeHarnessError(message)
+        failures.raise_if_failed()
+        yield
 
 
 @contextmanager
@@ -91,18 +136,37 @@ def redis_server(repository: Path, root: Path) -> Iterator[str]:
         "--appendonly",
         "no",
     ]
-    subprocess.run(argv, check=True, capture_output=True, cwd=repository)  # noqa: S603 - owned container, fixed binary.
-    observer = None
-    try:
-        with (root / "redis.log").open("w") as log:
-            observer = subprocess.Popen(  # noqa: S603 - fixed docker logs for owned container.
-                ["/usr/bin/docker", "logs", "--follow", name],
-                cwd=repository,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            thread = _ready(observer, "Ready to accept connections", log)
+
+    def remove() -> None:
+        # Redis declares VOLUME /data even with persistence disabled.
+        subprocess.run(  # noqa: S603 - exact owned container.
+            ["/usr/bin/docker", "rm", "-f", "-v", name],
+            check=True,
+            capture_output=True,
+            cwd=repository,
+        )
+
+    def observe(mask: set[int | signal.Signals]) -> subprocess.Popen[str]:
+        return subprocess.Popen(  # noqa: S603 - fixed docker logs for owned container.
+            child_argv(["/usr/bin/docker", "logs", "--follow", name], mask),
+            cwd=repository,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    with always_cleanup(remove, "realtime Redis removal failed"):
+        with blocked_launch_signals():
+            subprocess.run(argv, check=True, capture_output=True, cwd=repository)  # noqa: S603 - owned container, fixed binary.
+        with (
+            diagnostics().live_log(root / "redis.log") as log,
+            owned_child(
+                observe, lambda process: _dispose_observer(process, repository)
+            ) as observer,
+            _ready(observer, "Ready to accept connections", log, repository),
+        ):
             result = subprocess.run(  # noqa: S603 - inspect the exact owned container.
                 [
                     "/usr/bin/docker",
@@ -116,27 +180,8 @@ def redis_server(repository: Path, root: Path) -> Iterator[str]:
                 text=True,
                 cwd=repository,
             )
-            # The prefork supervisor requires a single-threaded spawn/handoff.
-            # Readiness is a one-shot observation, not a session-long log pump.
-            _stop(observer, repository)
-            thread.join(timeout=10)
-            if thread.is_alive():
-                message = "realtime readiness observer did not stop"
-                raise RealtimeHarnessError(message)
-            yield f"redis://127.0.0.1:{int(result.stdout.strip())}/0"
-    finally:
-        if observer is not None:
-            _stop(observer, repository)
-            if observer.stdout is not None:
-                observer.stdout.close()
-        subprocess.run(  # noqa: S603 - fixed Docker argv; exact owned container.
-            # Redis declares VOLUME /data even with persistence disabled.
-            # Remove that owned anonymous volume, not just its container.
-            ["/usr/bin/docker", "rm", "-f", "-v", name],
-            check=True,
-            capture_output=True,
-            cwd=repository,
-        )
+        # WSGI preloads only after the temporary log observer has exited.
+        yield f"redis://127.0.0.1:{int(result.stdout.strip())}/0"
 
 
 class RealtimeStack:
@@ -161,74 +206,97 @@ class RealtimeStack:
     @contextmanager
     def run(self) -> Iterator[RealtimeStack]:
         """Own sockets, thread, process and logs through all exception paths."""
+        diagnostics(self.environment)
         with (
             preserving_context(
                 socket.socket(), "realtime listener close failed"
             ) as listener,
-            preserving_context(
-                (self.root / "realtime.log").open("w"), "realtime log close failed"
-            ) as log,
+            diagnostics().live_log(self.root / "realtime.log") as log,
         ):
             listener.bind(("127.0.0.1", 0))
             listener.listen()
             rt_port = int(listener.getsockname()[1])
-            self.process = subprocess.Popen(  # noqa: S603 - fixed interpreter/uvicorn entrypoint.
-                [
-                    sys.executable,
-                    "-m",
-                    "uvicorn",
-                    "config.asgi_realtime:application",
-                    "--fd",
-                    str(listener.fileno()),
-                    "--no-access-log",
-                    "--no-proxy-headers",
-                    "--lifespan=off",
-                    "--timeout-graceful-shutdown=1",
-                ],
-                cwd=self.repository,
-                env={**self.environment, "CLINIC_REALTIME_MODE": "renewal"},
-                pass_fds=(listener.fileno(),),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            upstream = self.process.stdout
 
-            def close_stdout() -> None:
-                if upstream is not None:
-                    upstream.close()
+            def spawn(mask: set[int | signal.Signals]) -> subprocess.Popen[str]:
+                self.process = subprocess.Popen(  # noqa: S603 - fixed interpreter/uvicorn entrypoint.
+                    child_argv(
+                        [
+                            sys.executable,
+                            "-m",
+                            "uvicorn",
+                            "config.asgi_realtime:application",
+                            "--fd",
+                            str(listener.fileno()),
+                            "--no-access-log",
+                            "--no-proxy-headers",
+                            "--lifespan=off",
+                            "--timeout-graceful-shutdown=1",
+                        ],
+                        mask,
+                    ),
+                    cwd=self.repository,
+                    env={**self.environment, "CLINIC_REALTIME_MODE": "renewal"},
+                    pass_fds=(listener.fileno(),),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                return self.process
 
             with (
-                always_cleanup(close_stdout, "realtime stdout close failed"),
-                always_cleanup(self.stop_realtime, "realtime stop failed"),
+                owned_child(
+                    spawn, lambda child: _dispose_observer(child, self.repository)
+                ) as process,
+                _ready(process, "Uvicorn running on", log, self.repository),
+                self._proxy(rt_port),
             ):
-                thread = _ready(self.process, "Uvicorn running on", log)
                 listener.close()
-                proxy = ThreadingHTTPServer(
-                    ("127.0.0.1", 0),
-                    _proxy_handler(self.web_port, rt_port, self.stop_realtime),
-                )
-                self.port = int(proxy.server_address[1])
-                proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
-                with always_cleanup(proxy.server_close, "realtime proxy close failed"):
-                    start_signal_blocked_thread(proxy_thread)
-                    with (
-                        always_cleanup(
-                            lambda: thread.join(timeout=10),
-                            "realtime log thread join failed",
-                        ),
-                        always_cleanup(
-                            self.stop_realtime, "realtime sidecar stop failed"
-                        ),
-                        always_cleanup(
-                            lambda: proxy_thread.join(timeout=10),
-                            "realtime proxy join failed",
-                        ),
-                        always_cleanup(
-                            proxy.shutdown, "realtime proxy shutdown failed"
-                        ),
-                    ):
-                        yield self
+                yield self
+
+    @contextmanager
+    def _proxy(self, rt_port: int) -> Iterator[None]:
+        proxy = _DiagnosticProxy(
+            ("127.0.0.1", 0),
+            _proxy_handler(self.web_port, rt_port, self.stop_realtime),
+        )
+        proxy.diagnostics = diagnostics()
+        thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+
+        def join() -> None:
+            if thread.ident is not None:
+                thread.join(timeout=10)
+                if thread.is_alive():
+                    message = "realtime proxy did not stop"
+                    raise RealtimeHarnessError(message)
+
+        with (
+            always_cleanup(proxy.server_close, "realtime proxy close failed"),
+            always_cleanup(join, "realtime proxy join failed"),
+            always_cleanup(
+                lambda: proxy.shutdown() if thread.ident is not None else None,
+                "realtime proxy shutdown failed",
+            ),
+        ):
+            self.port = int(proxy.server_address[1])
+            start_signal_blocked_thread(thread)
+            yield
+
+
+class _DiagnosticProxy(ThreadingHTTPServer):
+    """Never let the standard request exception handler print a raw traceback."""
+
+    diagnostics: DiagnosticSink
+
+    def handle_error(self, request: object, client_address: object) -> None:
+        """Render only redacted request-handler failures."""
+        del request, client_address
+        error = sys.exception()
+        if error is not None:
+            self.diagnostics.screen(
+                f"realtime proxy: {error_details(error)}\n", error=True
+            )
 
 
 @contextmanager

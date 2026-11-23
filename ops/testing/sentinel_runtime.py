@@ -37,11 +37,9 @@ from contextlib import contextmanager
 from http.cookiejar import CookieJar
 from typing import TYPE_CHECKING, Final, Never
 
-from ops.testing.browser_server_supervisor import (
-    always_cleanup,
-    start_signal_blocked_thread,
-)
-from ops.testing.isolation_common import IsolationError, canonical_bytes
+from ops.testing.browser_server_supervisor import start_signal_blocked_thread
+from ops.testing.diagnostic_redaction import always_cleanup, diagnostics
+from ops.testing.isolation_common import IsolationError
 from ops.testing.sentinel_scan import (
     SENTINEL_PREFIX,
     SentinelScan,
@@ -51,7 +49,7 @@ from ops.testing.sentinel_scan import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from ops.testing.isolation_common import JsonObject
@@ -102,13 +100,14 @@ def broker_tap(redis_url: str | None) -> Iterator[list[bytes] | None]:
     with (
         always_cleanup(client.close, "broker client close failed"),
         always_cleanup(pubsub.close, "broker subscription close failed"),
+        always_cleanup(
+            lambda: worker.join() if worker.ident is not None else None,
+            "broker tap join failed",
+        ),
+        always_cleanup(stop.set, "broker tap stop failed"),
     ):
         start_signal_blocked_thread(worker)
-        with (
-            always_cleanup(worker.join, "broker tap join failed"),
-            always_cleanup(stop.set, "broker tap stop failed"),
-        ):
-            yield frames
+        yield frames
 
 
 def inject_probes(
@@ -195,10 +194,14 @@ def scan_suite_runtime(  # noqa: PLR0913 - one receipt needs every sink
     frames: list[bytes] | None,
     super_dsn: str,
     self_injecting: bool,
+    live_logs: Callable[[], tuple[str, ...]] | None = None,
 ) -> JsonObject:
     """Scan every runtime sink of the finished suite and write the receipt."""
     sentinels, probe_urls, statuses = inject_probes(base_url)
     scan = SentinelScan((SENTINEL_PREFIX, *sentinels))
+    if live_logs is not None:
+        for log in live_logs():
+            scan.logs(log.splitlines())
     for name in ("server.log", "access.log"):
         path = artifact_root / name
         if path.is_file():
@@ -232,7 +235,7 @@ def scan_suite_runtime(  # noqa: PLR0913 - one receipt needs every sink
         "self_injecting": self_injecting,
         "not_applicable": ["push"] if frames is not None else ["push", "sse"],
     }
-    (artifact_root / RECEIPT).write_bytes(canonical_bytes(receipt))
+    diagnostics().report(artifact_root / RECEIPT, receipt)
     if not scan.clean:
         _fail(f"{suite} leaked a sentinel into a runtime sink (see {RECEIPT})")
     return receipt

@@ -1,11 +1,4 @@
-"""Durable supervisor that owns the Gunicorn master for the browser session.
-
-The thin shell execs this module. The supervisor never runs product code: it
-serves one authenticated request protocol for its journal-bound controller
-child, performs the journaled two-phase fork/exec of the Gunicorn master into
-its own process group, and guarantees a bounded TERM/wait/KILL/reap teardown so
-no master, worker, or listener can outlive the session.
-"""
+"""Own Gunicorn from fork through bounded process-group reap and bind proof."""
 
 from __future__ import annotations
 
@@ -20,18 +13,36 @@ import socket
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
 import rfc8785
 
 from ops.testing.browser_readiness import WSGI_APPLICATION
-from ops.testing.diagnostic_redaction import redact_diagnostic
+from ops.testing.diagnostic_redaction import (
+    always_cleanup,
+    diagnostics,
+    error_details,
+    preserve_cleanup_error,
+    preserving_context,
+)
+from ops.testing.isolation_common import IsolationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from contextlib import AbstractContextManager
     from threading import Thread
+    from typing import BinaryIO
+
+    from ops.testing.diagnostic_redaction import DiagnosticSink
+
+__all__ = [
+    "always_cleanup",
+    "error_details",
+    "preserve_cleanup_error",
+    "preserving_context",
+]
 
 START_MASTER: Final = "start-master"
 STOP_MASTER: Final = "stop-master"
@@ -62,6 +73,40 @@ class SupervisorError(RuntimeError):
     def __init__(self, reason: str) -> None:
         """Expose one precise non-identifying supervisor failure."""
         super().__init__(f"browser supervisor rejected: {reason}")
+
+
+class RenewalInterruptError(IsolationError):
+    """Cancellation of either browser launcher by SIGINT or SIGTERM."""
+
+
+def interrupted(_signum: int, _frame: object) -> Never:
+    """Convert either signal into the shared cancellation exception."""
+    message = "renewal runner interrupted"
+    raise RenewalInterruptError(message)
+
+
+@contextlib.contextmanager
+def interrupt_handlers() -> Iterator[None]:
+    """Turn both signals into one cancellation, never a nested unwind."""
+    cancelled = False
+
+    def cancel(signum: int, frame: object) -> None:
+        nonlocal cancelled
+        if not cancelled:
+            cancelled = True
+            interrupted(signum, frame)
+
+    with ExitStack() as installed:
+        with blocked_launch_signals():
+            for signum in LAUNCH_SIGNALS:
+                previous = signal.signal(signum, cancel)
+                installed.enter_context(
+                    always_cleanup(
+                        partial(signal.signal, signum, previous),
+                        f"{signum.name} handler restore failed",
+                    )
+                )
+        yield
 
 
 def _fail(reason: str) -> Never:
@@ -338,92 +383,21 @@ def _ordinary_bind_error(port: int) -> OSError | None:
     return None
 
 
-@contextlib.contextmanager
-def preserve_cleanup_error(primary: BaseException | None, step: str) -> Iterator[None]:
-    """Raise a cleanup failure unless an earlier error must stay primary."""
+def _require_complete_proof(port: int) -> None:
     try:
-        yield
-    except BaseException as error:
-        if primary is None:
-            raise
-        if error is not primary:
-            add_cleanup_note(primary, step, error)
-
-
-def error_details(error: BaseException, *, omit: BaseException | None = None) -> str:
-    """Render error messages, notes and explicit causes without trusting __str__."""
-    details: list[str] = []
-    seen: set[int] = {id(omit)}
-    current: BaseException | None = error
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        message = "<exception message unavailable>"
-        if isinstance(current, subprocess.TimeoutExpired):
-            message = "subprocess timed out"
-        elif isinstance(current, subprocess.CalledProcessError):
-            message = f"subprocess failed (exit {current.returncode})"
-        else:
-            with contextlib.suppress(BaseException):
-                message = redact_diagnostic(str(current))
-        heading = f"{type(current).__name__}: {message}" if details else message
-        details.append(heading)
-        notes = getattr(current, "__notes__", None)
-        if isinstance(notes, (list, tuple)):
-            details.extend(
-                redact_diagnostic(note) for note in notes if isinstance(note, str)
-            )
-        current = current.__cause__ or (
-            None if current.__suppress_context__ else current.__context__
-        )
-    return "\n".join(details)
-
-
-def add_cleanup_note(primary: BaseException, step: str, error: BaseException) -> None:
-    """Retain a secondary failure and its diagnostics on the primary error."""
-    with contextlib.suppress(BaseException):
-        BaseException.add_note(
-            primary,
-            f"{step}: {type(error).__name__}: {error_details(error, omit=primary)}",
-        )
-
-
-@contextlib.contextmanager
-def always_cleanup(
-    cleanup: Callable[[], object], step: str, primary: BaseException | None = None
-) -> Iterator[None]:
-    """Execute cleanup once, with only errors raised in this scope as primary."""
-    try:
-        yield
-    except BaseException as error:
-        with preserve_cleanup_error(error, step):
-            cleanup()
+        require_released_port(port)
+    except SupervisorError:
         raise
-    else:
-        with preserve_cleanup_error(primary, step):
-            cleanup()
-
-
-@contextlib.contextmanager
-def preserving_context[T](
-    resource: AbstractContextManager[T], step: str
-) -> Iterator[T]:
-    """Release a resource without replacing a failure of its body."""
-    value = resource.__enter__()
-    try:
-        yield value
     except BaseException as error:
-        with preserve_cleanup_error(error, step):
-            resource.__exit__(type(error), error, error.__traceback__)
-        raise
-    else:
-        resource.__exit__(None, None, None)
+        message = "Gunicorn listener port was not released: proof did not complete"
+        raise SupervisorError(message) from error
 
 
 @contextlib.contextmanager
 def prove_port_release(port: int | None) -> Iterator[None]:
     """Prove release even on failed teardown, preserving the primary error."""
     with always_cleanup(
-        lambda: require_released_port(port) if port is not None else None,
+        lambda: _require_complete_proof(port) if port is not None else None,
         "port release proof failed",
     ):
         yield
@@ -431,23 +405,24 @@ def prove_port_release(port: int | None) -> Iterator[None]:
 
 def teardown_master(master: SupervisedMaster, port: int | None) -> None:
     """Run the same bounded teardown and ordinary bind for every spawned server."""
-    if port is not None and getattr(master, "release_checked", False) is True:
-        return
-    with (
-        always_cleanup(
-            lambda: setattr(master, "release_checked", port is not None),
-            "release proof bookkeeping failed",
-        ),
-        prove_port_release(port),
-    ):
-        try:
-            master.terminate()
-        except BaseException as error:
-            # Idempotent once the bounded group teardown has started; retry
-            # once in case cancellation landed before it acquired ownership.
-            with preserve_cleanup_error(error, "Gunicorn teardown retry failed"):
+
+    def prove() -> None:
+        if port is not None:
+            _require_complete_proof(port)
+            master.release_checked = True
+
+    # All harness helper threads inherit this mask. Restore it only after
+    # reaping, closing, proving release, and recording the outcome.
+    with blocked_launch_signals():
+        if port is not None and getattr(master, "release_checked", False) is True:
+            return
+        with always_cleanup(prove, "port release proof failed"):
+            try:
                 master.terminate()
-            raise
+            except BaseException as error:
+                with preserve_cleanup_error(error, "Gunicorn teardown retry failed"):
+                    master.terminate()
+                raise
 
 
 class SupervisedMaster:
@@ -460,6 +435,8 @@ class SupervisedMaster:
         self.pgid = process.pid
         self._read_fd: int | None = read_fd
         self.release_checked = False
+        self.log_stack = ExitStack()
+        self.log_streams: list[BinaryIO] = []
 
     @property
     def pid(self) -> int:
@@ -478,8 +455,10 @@ class SupervisedMaster:
         read_fd = self._read_fd
         if read_fd is None:
             return
-        previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, LAUNCH_SIGNALS)
-        with _restore_signal_mask(previous_mask):
+        with (
+            blocked_launch_signals(),
+            always_cleanup(self.log_stack.close, "server log publication failed"),
+        ):
             try:
                 _terminate_group(self.process, read_fd)
             except BaseException as error:
@@ -499,21 +478,80 @@ class SupervisedMaster:
         self._read_fd = None
         os.close(read_fd)
 
+    def log_snapshot(self) -> tuple[str, ...]:
+        """Observe private live logs without publishing or changing their offsets."""
+        snapshots = []
+        for stream in self.log_streams:
+            fd = stream.fileno()
+            size = os.fstat(fd).st_size
+            # Reopen the anonymous inode to obtain an independent read offset.
+            with preserving_context(
+                Path(f"/proc/self/fd/{fd}").open("rb"), "live log reader close failed"
+            ) as reader:
+                snapshots.append(reader.read(size).decode("utf-8", errors="replace"))
+        return tuple(snapshots)
+
 
 def start_signal_blocked_thread(thread: Thread) -> None:
     """Start a helper with a mask that keeps cancellation on the owner."""
-    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, LAUNCH_SIGNALS)
-    with _restore_signal_mask(previous_mask):
+    with blocked_launch_signals():
         thread.start()
 
 
 @contextlib.contextmanager
-def _restore_signal_mask(previous_mask: set[int | signal.Signals]) -> Iterator[None]:
+def blocked_launch_signals() -> Iterator[set[int | signal.Signals]]:
+    """Defer either launcher signal until the entire guarded operation exits."""
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, LAUNCH_SIGNALS)
     with always_cleanup(
         lambda: signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask),
         "signal mask restore failed",
     ):
-        yield
+        yield previous_mask
+
+
+@contextlib.contextmanager
+def owned_child[T](
+    spawn: Callable[[set[int | signal.Signals]], T],
+    stop: Callable[[T], object],
+) -> Iterator[T]:
+    """Publish a child handle before unmasking and protect its finalizer."""
+    child: T | None = None
+
+    def cleanup() -> None:
+        if child is not None:
+            with blocked_launch_signals():
+                stop(child)
+
+    with always_cleanup(cleanup, "owned child cleanup failed"):
+        with blocked_launch_signals() as mask:
+            child = spawn(mask)
+        yield child
+
+
+def child_argv(argv: list[str], mask: set[int | signal.Signals], /) -> list[str]:
+    """Restore the child's mask post-exec, avoiding preexec_fn with threads."""
+    return [
+        sys.executable,
+        "-c",
+        "import os, signal, sys; "
+        "signal.pthread_sigmask(signal.SIG_SETMASK, map(int, sys.argv[1].split(',')) "
+        "if sys.argv[1] else ()); os.execvp(sys.argv[2], sys.argv[2:])",
+        ",".join(map(str, sorted(mask))),
+        *argv,
+    ]
+
+
+def _capture_server_logs(
+    sink: DiagnosticSink, stack: ExitStack, log: Path, argv: list[str]
+) -> tuple[list[BinaryIO], list[str], tuple[int, ...]]:
+    streams = [stack.enter_context(sink.capture(log, server_log=True))]
+    if "--access-logfile" not in argv:
+        return streams, argv, ()
+    index = argv.index("--access-logfile") + 1
+    access = stack.enter_context(sink.capture(Path(argv[index])))
+    streams.append(access)
+    fd = access.fileno()
+    return streams, [*argv[:index], f"/proc/self/fd/{fd}", *argv[index + 1 :]], (fd,)
 
 
 def start_master(
@@ -542,95 +580,83 @@ def start_master(
     process: subprocess.Popen[bytes] | None = None
     master: SupervisedMaster | None = None
     port = int(listener.getsockname()[1]) if listener is not None else None
-    previous_mask = signal.pthread_sigmask(
-        signal.SIG_BLOCK,
-        LAUNCH_SIGNALS,
-    )
+    sink = diagnostics(environment)
+    log_stack = ExitStack()
     read_fd: int | None = None
-    mask_restored = False
-
-    def restore_if_pending() -> None:
-        if not mask_restored:
-            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
     def close_unowned_reader() -> None:
         if read_fd is not None:
             os.close(read_fd)
 
+    def close_unowned_logs() -> None:
+        if master is None:
+            log_stack.close()
+
     with (
-        always_cleanup(restore_if_pending, "signal mask restore failed"),
         always_cleanup(close_unowned_reader, "liveness reader close failed"),
+        always_cleanup(close_unowned_logs, "unowned server log publication failed"),
     ):
-        read_fd, write_fd = os.pipe()
         try:
-            with (
-                always_cleanup(
+            with blocked_launch_signals() as previous_mask:
+                read_fd, write_fd = os.pipe()
+                with always_cleanup(
                     lambda: os.close(write_fd), "liveness writer close failed"
-                ),
-                preserving_context(log.open("wb"), "server log close failed") as stream,
-            ):
-                process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
-                    argv,
-                    env=environment,
-                    pass_fds=(*inherited, write_fd),
-                    start_new_session=True,
-                    # The child must not inherit the blocked mask.
-                    preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
-                        signal.SIG_SETMASK,
-                        previous_mask,
-                    ),
-                    stdout=stream,
-                    stderr=subprocess.STDOUT,
-                )
-                master = SupervisedMaster(process, read_fd)
-                read_fd = None
-            owner.append(master)
-            # Unmask inside the protected region, after publishing ownership.
-            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-            mask_restored = True
+                ):
+                    log_streams, argv, log_fds = _capture_server_logs(
+                        sink, log_stack, log, argv
+                    )
+                    process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
+                        argv,
+                        env=environment,
+                        pass_fds=(*inherited, *log_fds, write_fd),
+                        start_new_session=True,
+                        # The child must not inherit the blocked mask.
+                        preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
+                            signal.SIG_SETMASK,
+                            previous_mask,
+                        ),
+                        stdout=log_streams[0],
+                        stderr=subprocess.STDOUT,
+                    )
+                    master = SupervisedMaster(process, read_fd)
+                    master.log_stack = log_stack
+                    master.log_streams = log_streams
+                    read_fd = None
+                owner.append(master)
             return master  # noqa: TRY300 - a deferred signal can land at the return.
         except BaseException as error:
-            if process is not None:
-                if listener is not None:
-                    with preserve_cleanup_error(
-                        error, "reserved listener close failed"
-                    ):
-                        listener.close()
-                with preserve_cleanup_error(
-                    error, "failed-launch group teardown failed"
-                ):
-                    if master is None and read_fd is not None:
-                        master = SupervisedMaster(process, read_fd)
-                        read_fd = None
-                    if master is not None:
-                        teardown_master(master, port)
+            with (
+                preserve_cleanup_error(error, "failed-launch group teardown failed"),
+                blocked_launch_signals(),
+            ):
+                if master is None and process is not None and read_fd is not None:
+                    master = SupervisedMaster(process, read_fd)
+                    master.log_stack = log_stack
+                    read_fd = None
+                if master is not None:
+                    _rollback_master(master, listener, port)
             raise
+
+
+def _rollback_master(
+    master: SupervisedMaster, listener: socket.socket | None, port: int | None
+) -> None:
+    with always_cleanup(
+        lambda: teardown_master(master, port), "launch rollback failed"
+    ):
+        if listener is not None:
+            listener.close()
 
 
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
 
 
 def main() -> int:
-    """Fork the journal-bound controller child and reap it on every exit."""
-    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    """Keep the controller in the launcher PID so signals reach its owner."""
     interpreter = sys.executable
-    pid = os.fork()
-    if pid == 0:
-        parent.close()
-        os.environ["CLINIC_BROWSER_SUPERVISOR_FD"] = str(child.fileno())
-        child.set_inheritable(True)
-        os.execv(  # noqa: S606 - fixed interpreter and closed module argv, never a shell.
-            interpreter,
-            [interpreter, "-m", CONTROLLER_MODULE, *sys.argv[1:]],
-        )
-        raise SystemExit(127)
-    child.close()
-    try:
-        _, status = os.waitpid(pid, 0)
-    finally:
-        with contextlib.suppress(OSError):
-            parent.close()
-    return os.waitstatus_to_exitcode(status)
+    os.execv(  # noqa: S606 - fixed interpreter and closed module argv, never a shell.
+        interpreter, [interpreter, "-m", CONTROLLER_MODULE, *sys.argv[1:]]
+    )
 
 
 if __name__ == "__main__":

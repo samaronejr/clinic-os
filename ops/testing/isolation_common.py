@@ -133,7 +133,8 @@ def regular_identity(path: Path, *, mode: int, links: int = 1) -> JsonObject:
 
 def fsync_directory(path: Path) -> None:
     """Persist one directory entry update."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    # Python opens non-inheritable descriptors, even without O_CLOEXEC.
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(descriptor)
     finally:
@@ -142,7 +143,7 @@ def fsync_directory(path: Path) -> None:
 
 def write_no_replace(path: Path, raw: bytes, *, mode: int) -> None:
     """Publish one file exactly once with file and parent durability."""
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
     descriptor = os.open(path, flags, MODE_PRIVATE)
     try:
         view = memoryview(raw)

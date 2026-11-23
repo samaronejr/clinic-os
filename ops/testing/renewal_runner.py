@@ -28,7 +28,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, BinaryIO, Final, Never, cast
@@ -49,19 +49,19 @@ from playwright.sync_api import sync_playwright
 
 from ops.testing.browser_readiness import READINESS_KEY, new_readiness_key
 from ops.testing.browser_server_controller import (
-    BrowserServerError,
     listener_identity,
     reserve_listener,
     wait_until_ready,
     with_server_log,
 )
 from ops.testing.browser_server_supervisor import (
+    RenewalInterruptError,
     SupervisedMaster,
-    SupervisorError,
-    always_cleanup,
-    error_details,
-    preserve_cleanup_error,
-    preserving_context,
+    blocked_launch_signals,
+    child_argv,
+    interrupt_handlers,
+    interrupted,
+    owned_child,
     start_master,
     supervised_argv,
     teardown_master,
@@ -72,14 +72,22 @@ from ops.testing.current_source_snapshot import (
     capture_current_source,
     verify_current_source_record,
 )
-from ops.testing.diagnostic_redaction import redact_diagnostic
+from ops.testing.diagnostic_redaction import (
+    Failures,
+    always_cleanup,
+    diagnostic_scope,
+    diagnostics,
+    error_details,
+    has_diagnostics,
+    preserve_cleanup_error,
+    preserving_context,
+)
 from ops.testing.isolation_common import (
     MODE_DIRECTORY,
     MODE_PRIVATE,
     IsolationError,
     JsonObject,
     JsonValue,
-    canonical_bytes,
     ensure_private_directory,
     utc_now,
     write_no_replace,
@@ -95,6 +103,11 @@ from ops.testing.sentinel_runtime import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
+
+__all__ = ["RenewalInterruptError"]
+_interrupted = (
+    interrupted  # Shared signal handler for callers that install it directly.
+)
 
 SUITES: Final = {
     "onboarding": (
@@ -487,10 +500,6 @@ class RenewalRunnerError(IsolationError):
     """Reject a malformed or unprovable renewal-runner invocation."""
 
 
-class RenewalInterruptError(RenewalRunnerError):
-    """Abort the run while still unwinding every owned resource."""
-
-
 def _fail(message: str) -> Never:
     raise RenewalRunnerError(message)
 
@@ -740,6 +749,7 @@ def _docker(
     stdin: bytes | None = None,
     environment: dict[str, str] | None = None,
 ) -> str:
+    sink = diagnostics(environment)
     executable = shutil.which("docker")
     if executable is None:
         _fail("docker executable is unavailable")
@@ -756,9 +766,7 @@ def _docker(
         message = "renewal docker command timed out"
         raise RenewalRunnerError(message) from error
     if completed.returncode != 0:
-        tail = redact_diagnostic(
-            completed.stderr.decode("utf-8", errors="replace"), environment
-        )
+        tail = sink.text(completed.stderr.decode("utf-8", errors="replace"))
         tail = tail[-500:]
         _fail(f"renewal docker command failed: {tail.strip()}")
     return completed.stdout.decode("utf-8", errors="replace")
@@ -798,6 +806,7 @@ def _provision_database(
         "CLINIC_APP_PASSWORD": secrets.token_urlsafe(24),
         "CLINIC_SUPER_PASSWORD": secrets.token_urlsafe(24),
     }
+    diagnostics(passwords)
     bootstrap = repository / "ops/db/bootstrap.sql"
     init = repository / "ops/db/init"
     if not bootstrap.is_file() or not init.is_dir():
@@ -877,35 +886,32 @@ def _remove_owned_database(
     *,
     pending: BaseException | None = None,
 ) -> None:
-    """Remove both owned resources; never turn failed teardown into success.
-
-    Every removal is attempted even when an earlier one fails or the run is
-    interrupted again mid-teardown; resources the daemon reports as absent
-    are already removed. Failures propagate with the owned-resource identity
-    so recovery can find them, and an in-flight or fresh interruption always
-    wins the exit contract.
-    """
-    failures: list[str] = []
-    interrupted: RenewalInterruptError | None = None
-    for arguments in (
-        ("container", "rm", "-f", container),
-        ("volume", "rm", volume),
+    """Attempt both removals, keeping the body or first teardown error primary."""
+    failures = Failures(pending)
+    with (
+        preserve_cleanup_error(pending, "database teardown interrupted"),
+        blocked_launch_signals(),
     ):
-        try:
-            docker(*arguments)
-        except RenewalInterruptError as error:
-            interrupted = error
-        except RenewalRunnerError as error:
-            if "no such" not in str(error).lower():
-                failures.append(f"{' '.join(arguments)}: {error}")
-    detail = "; ".join(failures)
-    if interrupted is not None or isinstance(pending, RenewalInterruptError):
-        message = "renewal runner interrupted"
-        if detail:
-            message = f"{message}; teardown incomplete: {detail}"
-        raise RenewalInterruptError(message) from interrupted or pending
-    if failures:
-        _fail(f"renewal teardown failed; owned resources retained: {detail}")
+        for arguments in (
+            ("container", "rm", "-f", container),
+            ("volume", "rm", volume),
+        ):
+            try:
+                docker(*arguments)
+            except BaseException as error:  # noqa: BLE001 - record every teardown step.
+                if (
+                    isinstance(error, RenewalRunnerError)
+                    and "no such" in str(error).lower()
+                ):
+                    continue  # The exact owned object is already absent.
+                step = f"renewal teardown failed; {' '.join(arguments)}"
+                if failures.primary is None:
+                    failures.record(step, error)
+                    failures.diagnostic(step)
+                else:
+                    failures.record(step, error)
+        if pending is None:
+            failures.raise_if_failed()
 
 
 def _await_database(
@@ -965,69 +971,70 @@ def _run_bounded(
 ) -> int:
     """Run one child in its own process group with a hard wall-clock bound."""
     try:
-        with _reported_child_log(log, environment) as stream:
-            return _wait_bounded_child(argv, environment, stream, timeout, cwd)
+        with ExitStack() as captures:
+            sink = diagnostics(environment)
+            stream = captures.enter_context(sink.capture(log))
+            inherited: tuple[int, ...] = ()
+            for index, arg in enumerate(argv):
+                if arg.startswith("--junitxml="):
+                    junit = captures.enter_context(
+                        sink.capture(Path(arg.split("=", 1)[1]), junit=True)
+                    )
+                    inherited = (junit.fileno(),)
+                    argv = [
+                        *argv[:index],
+                        f"--junitxml=/proc/self/fd/{inherited[0]}",
+                        *argv[index + 1 :],
+                    ]
+                    break
+            return _wait_bounded_child(
+                argv, environment, stream, timeout, cwd, inherited
+            )
     except subprocess.TimeoutExpired as error:
-        if not getattr(error, "__notes__", None):
+        if not has_diagnostics(error):
             return 124
         message = "child process exceeded its deadline"
         raise RenewalRunnerError(message) from error
 
 
-@contextmanager
-def _reported_child_log(log: Path, environment: dict[str, str]) -> Iterator[BinaryIO]:
-    """Publish only scrubbed output; raw subprocess output has no open pathname."""
-    with preserving_context(
-        runtime_directory(log.parent.resolve(), purpose="renewal-child-log"),
-        "child log staging cleanup failed",
-    ) as staging:
-        raw = staging / "output"
-        with preserving_context(raw.open("w+b"), "child log close failed") as stream:
-            raw.unlink()
-
-            def publish() -> None:
-                stream.seek(0)
-                with preserving_context(
-                    log.open("w", encoding="utf-8"), "reported child log close failed"
-                ) as output:
-                    for line in stream:
-                        output.write(
-                            redact_diagnostic(
-                                line.decode("utf-8", errors="replace"), environment
-                            )
-                        )
-
-            with always_cleanup(publish, "child log publication failed"):
-                yield stream
-
-
-def _wait_bounded_child(
+def _wait_bounded_child(  # noqa: PLR0913 - complete subprocess and output context.
     argv: list[str],
     environment: dict[str, str],
     stream: BinaryIO,
     timeout: int,
     cwd: Path | None,
+    inherited: tuple[int, ...],
 ) -> int:
     """Wait, then attempt group kill and reap independently on failure."""
-    process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
-        argv,
-        cwd=cwd,
-        env=environment,
-        start_new_session=True,
-        stdout=stream,
-        stderr=subprocess.STDOUT,
-    )
-    try:
-        return process.wait(timeout=timeout)
-    except BaseException as error:
-        with (
-            preserve_cleanup_error(error, "child process group kill failed"),
-            contextlib.suppress(ProcessLookupError),
+    reaped = False
+
+    def spawn(mask: set[int | signal.Signals]) -> subprocess.Popen[bytes]:
+        return subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
+            child_argv(argv, mask),
+            cwd=cwd,
+            env=environment,
+            pass_fds=inherited,
+            start_new_session=True,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+        )
+
+    def stop(process: subprocess.Popen[bytes]) -> None:
+        if reaped:
+            return
+        with always_cleanup(
+            lambda: process.wait(timeout=COMMAND_TIMEOUT_SECONDS),
+            "child process reap failed",
         ):
-            os.killpg(process.pid, signal.SIGKILL)
-        with preserve_cleanup_error(error, "child process reap failed"):
-            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
-        raise
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return  # Already gone; always_cleanup still collects its status.
+
+    with owned_child(spawn, stop) as process:
+        status = process.wait(timeout=timeout)
+        reaped = True
+        return status
 
 
 def _migrate(repository: Path, owner_dsn: str, log: Path) -> None:
@@ -1065,6 +1072,7 @@ def _seed(
     owner_id = str(uuid4())
     username = f"renewal-owner-{secrets.token_hex(4)}"
     password = secrets.token_urlsafe(18)
+    diagnostics().remember(password)
     code = _run_bounded(
         [sys.executable, "-m", "ops.testing.renewal_provision"],
         _child_env(
@@ -1110,10 +1118,15 @@ def _synthetic_secret_store(run_root: Path) -> Iterator[dict[str, str]]:
     rehearsal stand-in for the approved managed store; its material lives in
     a private runtime child of the run root and is removed with it.
     """
-    with runtime_directory(run_root, purpose="renewal-secrets") as root:
+    with preserving_context(
+        runtime_directory(run_root, purpose="renewal-secrets"),
+        "secret store removal failed",
+    ) as root:
+        key = secrets.token_hex(32)
+        diagnostics().remember(key)
         write_no_replace(
             root / KEK_SECRET_FILE,
-            secrets.token_hex(32).encode("ascii"),
+            key.encode("ascii"),
             mode=MODE_PRIVATE,
         )
         yield {
@@ -1367,9 +1380,12 @@ def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full
             if not isinstance(database, ProvisionedDatabase):
                 _fail("renewal database provisioning returned no lease")
             provisioned = database
-            _migrate(repository, provisioned.owner_dsn, pytest_log)
+            _migrate(repository, provisioned.owner_dsn, artifact_root / "migrate.log")
             fixture = _seed(
-                repository, provisioned.owner_dsn, pytest_log, secret_environment
+                repository,
+                provisioned.owner_dsn,
+                artifact_root / "seed.log",
+                secret_environment,
             )
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
@@ -1388,7 +1404,9 @@ def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full
                 if suite == "scribe-capture" or suite in FLAGSHIP_SUITES
                 else {}
             ),
+            READINESS_KEY: key,
         }
+        diagnostics(server_environment)
         extra_processes.enter_context(
             preserving_context(
                 realtime_broker(
@@ -1413,7 +1431,7 @@ def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full
                     supervised_argv(
                         Path(sys.executable), listener_fd, artifact_root / "access.log"
                     ),
-                    {**server_environment, READINESS_KEY: key},
+                    server_environment,
                     server_log,
                     owner=spawned,
                     pass_fds=(listener,),
@@ -1505,7 +1523,9 @@ def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full
                 timeout=PYTEST_TIMEOUT_SECONDS,
                 cwd=repository,
             )
-            if provisioned is not None and pytest_code == 0:
+            # Establish the real pytest/JUnit failure before any teardown.
+            tests = _passing_tests(junit, pytest_code)
+            if provisioned is not None:
                 sentinel_receipt = scan_suite_runtime(
                     suite=suite,
                     base_url=f"http://127.0.0.1:{port}",
@@ -1514,8 +1534,8 @@ def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full
                     frames=frames,
                     super_dsn=provisioned.super_dsn,
                     self_injecting=suite_injects_sentinels(SUITES[suite], repository),
+                    live_logs=master.log_snapshot,
                 )
-    tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
         _flagship_report(browser_root, suite, sentinel_receipt)
@@ -1625,12 +1645,7 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
 
 
 def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
-    """Terminate the supervised group; propagate any observed interruption.
-
-    The bounded TERM/KILL/reap is retried once so a second signal cannot
-    abandon cleanup, but a cancellation observed during teardown is never
-    swallowed: it is re-raised even when the retry succeeds.
-    """
+    """Tear down and prove release through the shared supervisor."""
     teardown_master(master, port)
 
 
@@ -1899,6 +1914,7 @@ def _gate_browser(
     repository: Path,
     artifact_root: Path,
     run_root: Path,
+    failures: Failures | None = None,
 ) -> list[JsonObject]:
     results: list[JsonObject] = []
     for suite in sorted(SUITES):
@@ -1911,30 +1927,26 @@ def _gate_browser(
             code = 0
         except RenewalInterruptError:
             raise
-        except (
-            BrowserServerError,
-            IsolationError,
-            OSError,
-            SupervisorError,
-            ValueError,
-        ) as error:
+        except Exception as error:
+            if failures is not None:
+                failures.record(f"browser-{suite} failed", error)
             with preserve_cleanup_error(
                 error, "browser failure receipt could not be written"
             ):
-                write_no_replace(
-                    suite_root / "report.json",
-                    canonical_bytes({"error": error_details(error)}),
-                    mode=MODE_PRIVATE,
+                diagnostics().report(
+                    suite_root / "report.json", {"error": error_details(error)}
                 )
-                results.append({"command": f"browser-{suite}", "exit": 2})
+                results.append(
+                    {
+                        "command": f"browser-{suite}",
+                        "exit": 2,
+                        "error": error_details(error),
+                    }
+                )
                 continue
             raise
         else:
-            write_no_replace(
-                suite_root / "report.json",
-                canonical_bytes(report),
-                mode=MODE_PRIVATE,
-            )
+            diagnostics().report(suite_root / "report.json", report)
         results.append({"command": f"browser-{suite}", "exit": code})
     return results
 
@@ -1945,14 +1957,16 @@ def _run_ci(repository: Path, artifact_root: Path, run_root: Path) -> int:
     ensure_private_directory(logs)
     token = secrets.token_hex(6)
     gates: dict[str, JsonValue] = {}
+    failures = Failures()
     gate_functions: dict[str, Callable[[], list[JsonObject]]] = {
         "static": lambda: _gate_static(repository, logs),
         "migration": lambda: _gate_migration(repository, logs, token),
         "coverage": lambda: _gate_coverage(repository, logs, token),
         "dependency": lambda: _gate_dependency(repository, logs),
         "image-tls": lambda: _gate_image_tls(repository, logs, run_root),
-        "browser": lambda: _gate_browser(repository, artifact_root, run_root),
+        "browser": lambda: _gate_browser(repository, artifact_root, run_root, failures),
     }
+    interrupted_run = False
     for name in CI_GATES:
         results: list[JsonObject]
         try:
@@ -1960,23 +1974,23 @@ def _run_ci(repository: Path, artifact_root: Path, run_root: Path) -> int:
         except RenewalInterruptError as error:
             # Cancellation is not a gate failure: record the interrupted gate,
             # keep a best-effort partial report, and stop scheduling gates.
-            gates[name] = cast(
-                "list[JsonValue]",
-                [{"command": name, "exit": 130, "error": error_details(error)}],
-            )
-            with preserve_cleanup_error(error, "partial CI report failed"):
-                _write_ci_report(artifact_root, gates)
-            raise
-        except (
-            BrowserServerError,
-            IsolationError,
-            OSError,
-            SupervisorError,
-            ValueError,
-        ) as error:
+            failures.record(f"{name} interrupted", error)
+            results = [{"command": name, "exit": 130, "error": error_details(error)}]
+            interrupted_run = True
+        except Exception as error:  # noqa: BLE001 - publish each gate's failure.
+            failures.record(f"{name} gate failed", error)
             results = [{"command": name, "exit": 2, "error": error_details(error)}]
         gates[name] = cast("list[JsonValue]", results)
-    exits = _write_ci_report(artifact_root, gates)
+        if interrupted_run:
+            break
+    try:
+        exits = _write_ci_report(artifact_root, gates)
+    except BaseException as error:
+        failures.record("CI report publication failed", error)
+        failures.raise_if_failed()
+        raise
+    if interrupted_run:
+        failures.raise_if_failed()
     return 0 if exits and all(code == 0 for code in exits) else 1
 
 
@@ -1993,12 +2007,7 @@ def _write_ci_report(artifact_root: Path, gates: dict[str, JsonValue]) -> list[i
         "ok": all(code == 0 for code in exits),
         "schema_version": 1,
     }
-    write_no_replace(
-        artifact_root / "ci-report.json",
-        canonical_bytes(report),
-        mode=MODE_PRIVATE,
-    )
-    sys.stdout.write(canonical_bytes(report).decode())
+    diagnostics().report(artifact_root / "ci-report.json", report, echo=True)
     return exits
 
 
@@ -2040,12 +2049,7 @@ def _browser(arguments: list[str]) -> int:
         engine,
         display,
     )
-    write_no_replace(
-        artifact_root / "report.json",
-        canonical_bytes(report),
-        mode=MODE_PRIVATE,
-    )
-    sys.stdout.write(canonical_bytes(report).decode())
+    diagnostics().report(artifact_root / "report.json", report, echo=True)
     return 0
 
 
@@ -2057,48 +2061,23 @@ def _ci(arguments: list[str]) -> int:
     return _run_ci(repository, artifact_root, run_root)
 
 
-def _interrupted(_signum: int, _frame: object) -> Never:
-    message = "renewal runner interrupted"
-    raise RenewalInterruptError(message)
-
-
-@contextmanager
-def _interrupt_handlers() -> Iterator[None]:
-    previous_term = signal.signal(signal.SIGTERM, _interrupted)
-    with always_cleanup(
-        lambda: signal.signal(signal.SIGTERM, previous_term),
-        "SIGTERM handler restore failed",
-    ):
-        previous_int = signal.signal(signal.SIGINT, _interrupted)
-        with always_cleanup(
-            lambda: signal.signal(signal.SIGINT, previous_int),
-            "SIGINT handler restore failed",
-        ):
-            yield
-
-
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the closed browser/ci grammar; rejections exit 2."""
     arguments = sys.argv[1:] if argv is None else argv
-    try:
-        with _interrupt_handlers():
-            if not arguments:
+    with diagnostic_scope() as sink:
+        try:
+            with interrupt_handlers():
+                if not arguments:
+                    _fail("invalid renewal-runner command grammar")
+                operation, rest = arguments[0], arguments[1:]
+                if operation == "browser":
+                    return _browser(rest)
+                if operation == "ci":
+                    return _ci(rest)
                 _fail("invalid renewal-runner command grammar")
-            operation, rest = arguments[0], arguments[1:]
-            if operation == "browser":
-                return _browser(rest)
-            if operation == "ci":
-                return _ci(rest)
-            _fail("invalid renewal-runner command grammar")
-    except (
-        BrowserServerError,
-        IsolationError,
-        OSError,
-        SupervisorError,
-        ValueError,
-    ) as error:
-        sys.stderr.write(f"renewal-runner: {error_details(error)}\n")
-        return 130 if isinstance(error, RenewalInterruptError) else 2
+        except Exception as error:  # noqa: BLE001 - do not bypass the redacting CLI boundary.
+            sink.screen(f"renewal-runner: {error_details(error)}\n", error=True)
+            return 130 if isinstance(error, RenewalInterruptError) else 2
 
 
 if __name__ == "__main__":

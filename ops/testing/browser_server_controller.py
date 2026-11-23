@@ -7,7 +7,6 @@ import hashlib
 import hmac
 import http.client
 import io
-import json
 import os
 import socket
 import sys
@@ -21,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from ops.testing.browser_server_supervisor import SupervisedMaster
+    from ops.testing.isolation_common import JsonObject
 
 from ops.testing.browser_artifact_publisher import (
     frame_suite_artifacts,
@@ -39,11 +39,8 @@ from ops.testing.browser_readiness import (
 )
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_server_supervisor import (
-    SupervisorError,
-    always_cleanup,
-    error_details,
-    preserve_cleanup_error,
-    preserving_context,
+    RenewalInterruptError,
+    interrupt_handlers,
     start_master,
     teardown_master,
 )
@@ -51,7 +48,15 @@ from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
 from ops.testing.browser_totp_code import TotpContext, confirmed_code
-from ops.testing.diagnostic_redaction import redact_diagnostic
+from ops.testing.diagnostic_redaction import (
+    Failures,
+    always_cleanup,
+    diagnostic_scope,
+    diagnostics,
+    error_details,
+    preserve_cleanup_error,
+    preserving_context,
+)
 
 AVAILABLE_SUITES: Final = ["availability", "patient", "scheduling"]
 PHYSICIAN_SUITES: Final = frozenset({"availability", "scheduling"})
@@ -115,19 +120,21 @@ def with_server_log(server_log: Path) -> Iterator[None]:
     try:
         yield
     except BaseException as error:
-        with (
-            preserve_cleanup_error(error, "could not read server log tail"),
-            contextlib.suppress(FileNotFoundError),
-            server_log.open("rb") as stream,
-        ):
-            offset = max(0, stream.seek(0, io.SEEK_END) - 8192)
-            stream.seek(offset)
-            if offset:
-                stream.readline(8192)
-            report = redact_diagnostic(
-                stream.read(8192).decode("utf-8", errors="replace")
-            )
-            BaseException.add_note(error, f"server log tail: {report[-2000:]}")
+        with preserve_cleanup_error(error, "could not read server log tail"):
+            try:
+                stream = server_log.open("rb")
+            except FileNotFoundError:
+                stream = None  # No child output was published.
+            if stream is not None:
+                with preserving_context(stream, "server log tail reader close failed"):
+                    offset = max(0, stream.seek(0, io.SEEK_END) - 8192)
+                    stream.seek(offset)
+                    if offset:
+                        stream.readline(8192)
+                    report = diagnostics().text(
+                        stream.read(8192).decode("utf-8", errors="replace")
+                    )
+                    Failures(error).diagnostic(f"server log tail: {report[-2000:]}")
         raise
 
 
@@ -197,9 +204,11 @@ def _owns_listener(pid: int, identity: Path, port: int) -> bool:
             ):
                 return False
         for descriptor in Path(f"/proc/{pid}/fd").iterdir():
-            with contextlib.suppress(FileNotFoundError):
+            try:
                 if descriptor.readlink() == identity:
                     return True
+            except FileNotFoundError:
+                continue  # The descriptor closed during the ownership observation.
     except FileNotFoundError:
         return False
     return False
@@ -250,8 +259,7 @@ def publish(evidence_root: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
         if not destination.resolve().is_relative_to(evidence_root.resolve()):
             _fail("artifact escaped the evidence root")
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        destination.write_bytes(content)
-        destination.chmod(0o600)
+        diagnostics().artifact(destination, content)
         published[relative] = hashlib.sha256(content).hexdigest()
     return published
 
@@ -293,6 +301,10 @@ def export_artifacts(
     artifacts: dict[str, bytes],
 ) -> dict[str, str]:
     """Frame, publish, and require acknowledgement of one bounded artifact set."""
+    artifacts = {
+        name: diagnostics().artifact_bytes(Path(name), content)
+        for name, content in artifacts.items()
+    }
     frames = frame_suite_artifacts(suite_id, artifacts)
     published = publish(evidence_root, artifacts)
     digest = manifest_digest(frames)
@@ -317,6 +329,7 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     key = new_readiness_key()
     environment[READINESS_KEY] = key
+    diagnostics(environment)
     server_log = evidence_root / "server.log"
     spawned: list[SupervisedMaster] = []
 
@@ -334,17 +347,14 @@ def run_suite(suite_id: str, required: list[str]) -> int:
             server = start_server(listener, environment, server_log, owner=spawned)
         wait_until_ready(port, server.process, identity, key)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
-    manifest = {
-        "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
+    manifest: JsonObject = {
+        "artifacts": dict(export_artifacts(evidence_root, suite_id, artifacts)),
         "schema_version": 1,
         "suite_ids": [suite_id],
     }
     manifest_path = evidence_root / "manifest.json"
-    manifest_path.write_bytes(
-        json.dumps(manifest, sort_keys=True, indent=2).encode() + b"\n"
-    )
-    manifest_path.chmod(0o600)
-    sys.stdout.write(f"{manifest_path}\n")
+    diagnostics().report(manifest_path, manifest)
+    diagnostics().screen(f"{manifest_path}\n")
     return 0
 
 
@@ -371,12 +381,14 @@ def parse_suite_arguments(arguments: list[str]) -> tuple[str, list[str]]:
 
 def main() -> int:
     """Dispatch the single supported suite operation after shell validation."""
-    suite_id, required = parse_suite_arguments(sys.argv[1:])
-    try:
-        return run_suite(suite_id, required)
-    except (BrowserServerError, SupervisorError, OSError, ValueError) as error:
-        sys.stderr.write(f"browser controller: {error_details(error)}\n")
-        return 2
+    with diagnostic_scope() as sink:
+        try:
+            with interrupt_handlers():
+                suite_id, required = parse_suite_arguments(sys.argv[1:])
+                return run_suite(suite_id, required)
+        except Exception as error:  # noqa: BLE001 - do not bypass the redacting CLI boundary.
+            sink.screen(f"browser controller: {error_details(error)}\n", error=True)
+            return 130 if isinstance(error, RenewalInterruptError) else 2
 
 
 if __name__ == "__main__":

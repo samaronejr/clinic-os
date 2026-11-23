@@ -180,6 +180,7 @@ _POSIX_OS_APIS: Final = frozenset(
         "close",
         "environ",
         "execv",
+        "fstat",
         "fork",
         "killpg",
         "pipe",
@@ -352,7 +353,7 @@ def wait_capabilities(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     if request.param:
-        for name in ("pidfd_open", "waitid", "WNOWAIT", "O_CLOEXEC"):
+        for name in ("pidfd_open", "waitid", "WNOWAIT", "O_CLOEXEC", "pread"):
             monkeypatch.delattr(os, name, raising=False)
 
 

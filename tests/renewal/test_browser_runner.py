@@ -29,6 +29,7 @@ from apps.identity.preferences import (
 from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
 from config.settings import base as base_settings
 from django.test import override_settings
+from ops.testing import diagnostic_redaction
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
@@ -1953,7 +1954,7 @@ def stub_renewal_launcher(
     suite = "journey-first-day"
     monkeypatch.setenv(
         "CLINIC_RENEWAL_APP_DATABASE_URL",
-        "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic",
+        f"postgresql://clinic_app:{secrets.token_hex(18)}@127.0.0.1:55432/clinic",
     )
     monkeypatch.setenv("REALTIME_REDIS_URL", "redis://127.0.0.1:65431/1")
     monkeypatch.setattr(runner, "_resolve_browser", lambda *_: "/unused")
@@ -2090,7 +2091,7 @@ def test_browser_failure_receipt_error_cannot_replace_teardown(
     primary.add_note("server log tail: original")
     monkeypatch.setattr(runner, "_run_browser_suite", Mock(side_effect=primary))
     monkeypatch.setattr(
-        runner,
+        diagnostic_redaction,
         "write_no_replace",
         Mock(side_effect=FileExistsError("late receipt collision")),
     )
@@ -2321,15 +2322,18 @@ def test_provision_teardown_reports_docker_failures() -> None:
         return ""
 
     with (
-        pytest.raises(IsolationError, match="teardown failed"),
+        pytest.raises(IsolationError, match="Docker removal failed") as caught,
         runner._provision_database(REPOSITORY, "badteard", docker=fake_docker),
     ):
         pass
+    details = diagnostic_redaction.error_details(caught.value)
+    assert "teardown failed; container rm" in details
+    assert "teardown failed; volume rm" in details
     assert ("container", "rm", "-f", "clinic_renewal_db_badteard") in calls
     assert ("volume", "rm", "clinic_renewal_db_badteard_data") in calls
 
 
-def test_provision_teardown_failure_surfaces_over_body_error() -> None:
+def test_provision_teardown_failure_attaches_to_body_error() -> None:
     calls: list[tuple[str, ...]] = []
 
     def fake_docker(
@@ -2343,11 +2347,14 @@ def test_provision_teardown_failure_surfaces_over_body_error() -> None:
 
     body_error = ValueError("body exploded")
     with (
-        pytest.raises(IsolationError, match="teardown failed") as caught,
+        pytest.raises(ValueError, match="body exploded") as caught,
         runner._provision_database(REPOSITORY, "bodyfail", docker=fake_docker),
     ):
         raise body_error
-    assert caught.value.__context__ is body_error
+    assert caught.value is body_error
+    details = diagnostic_redaction.error_details(caught.value)
+    assert "teardown failed; volume rm" in details
+    assert "volume removal timed out" in details
     assert ("container", "rm", "-f", "clinic_renewal_db_bodyfail") in calls
     assert ("volume", "rm", "clinic_renewal_db_bodyfail_data") in calls
 
@@ -2437,9 +2444,8 @@ def test_teardown_interrupt_is_reaped_then_propagated(
 ) -> None:
     """A first SIGTERM during otherwise-successful teardown still exits 130.
 
-    The child is real: the interrupted first ``terminate`` is retried so the
-    bounded TERM/reap completes, then the cancellation propagates instead of
-    becoming a successful run.
+    The real signal must be deferred throughout the first and only termination,
+    then cancellation propagates instead of becoming a successful run.
     """
     log = tmp_path / "teardown.log"
     master = start_master(
@@ -2465,7 +2471,7 @@ def test_teardown_interrupt_is_reaped_then_propagated(
         signal.signal(signal.SIGTERM, previous)
         if process.poll() is None:
             original(master)
-    assert calls == 2
+    assert calls == 1
     assert process.poll() is not None
 
 

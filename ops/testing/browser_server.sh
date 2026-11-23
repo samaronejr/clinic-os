@@ -49,25 +49,23 @@ readonly python_bin="$environment_root/bin/python"
 : "${APP_DATABASE_URL:?browser-server: missing APP_DATABASE_URL}"
 [[ "$CLINIC_BROWSER_EVIDENCE_ROOT" == /* ]] || fail
 
-exec env -i \
-  HOME="${HOME:?}" \
-  LANG=C.UTF-8 \
-  PATH=/usr/bin:/bin \
-  PYTHONDONTWRITEBYTECODE=1 \
-  PYTHONPATH="$project_root" \
-  PYTHONTZPATH='' \
-  DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:?}" \
-  APP_DATABASE_URL="$APP_DATABASE_URL" \
-  CLINIC_DATA_MODE=synthetic \
-  CLINIC_BROWSER_BASE_URL="$CLINIC_BROWSER_BASE_URL" \
-  CLINIC_BROWSER_CLINIC_ID="$CLINIC_BROWSER_CLINIC_ID" \
-  CLINIC_BROWSER_EVIDENCE_ROOT="$CLINIC_BROWSER_EVIDENCE_ROOT" \
-  CLINIC_BROWSER_USERNAME="$CLINIC_BROWSER_USERNAME" \
-  CLINIC_BROWSER_PASSWORD="$CLINIC_BROWSER_PASSWORD" \
-  CLINIC_BROWSER_FIXTURE_DATABASE_URL="${CLINIC_BROWSER_FIXTURE_DATABASE_URL:-}" \
-  CLINIC_BROWSER_ORG_ID="${CLINIC_BROWSER_ORG_ID:-}" \
-  CLINIC_BROWSER_PHYSICIAN_ID="${CLINIC_BROWSER_PHYSICIAN_ID:-}" \
-  CLINIC_BROWSER_PHYSICIAN_USERNAME="${CLINIC_BROWSER_PHYSICIAN_USERNAME:-}" \
-  CLINIC_BROWSER_PHYSICIAN_PASSWORD="${CLINIC_BROWSER_PHYSICIAN_PASSWORD:-}" \
-  "$python_bin" -m ops.testing.browser_server_supervisor \
+# An external `env -i NAME=value ...` exposes those values in its argv.
+# De-export instead; only Bash builtins handle these assignments.
+while IFS= read -r name; do
+  case "$name" in
+    HOME|DJANGO_SETTINGS_MODULE|APP_DATABASE_URL|CLINIC_BROWSER_BASE_URL|\
+    CLINIC_BROWSER_CLINIC_ID|CLINIC_BROWSER_EVIDENCE_ROOT|CLINIC_BROWSER_USERNAME|\
+    CLINIC_BROWSER_PASSWORD|CLINIC_BROWSER_FIXTURE_DATABASE_URL|CLINIC_BROWSER_ORG_ID|\
+    CLINIC_BROWSER_PHYSICIAN_ID|CLINIC_BROWSER_PHYSICIAN_USERNAME|\
+    CLINIC_BROWSER_PHYSICIAN_PASSWORD) ;;
+    *) export -n "$name" ;;
+  esac
+done < <(compgen -e)
+while IFS= read -r name; do
+  export -nf "$name"
+done < <(compgen -A function)
+: "${HOME:?}" "${DJANGO_SETTINGS_MODULE:?}"
+export LANG=C.UTF-8 PATH=/usr/bin:/bin PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONPATH="$project_root" PYTHONTZPATH='' CLINIC_DATA_MODE=synthetic
+exec "$python_bin" -m ops.testing.browser_server_supervisor \
   "$operation" "${selected[@]}" "${required[@]}"
