@@ -520,6 +520,23 @@ def _brief_post(page: Page, button: Locator) -> None:
     assert posted.value.status == 200
 
 
+def consent_to_brief(
+    patch: pytest.MonkeyPatch, staff: dict[str, str], administrator: str, encounter: str
+) -> None:
+    result = _brief_command(
+        patch,
+        staff["dsn"],
+        "permission",
+        staff["organization"],
+        staff["clinic_a"],
+        administrator,
+        staff["receptionist_id"],
+        staff["physician_a_id"],
+        encounter,
+    )
+    assert result == {"status": "consented"}
+
+
 def _unauthorized_brief(
     page: Page,
     base: str,
@@ -652,8 +669,8 @@ def chart_brief_journey(
         page.keyboard.press("Enter")
     expect(page.locator("[data-encounter]")).to_have_count(1)
     data.update(_brief_source(page, staff, monkeypatch))
-    goto_settled(page, url)
     administrator = seed_ai_admin(staff, "light")
+    consent_to_brief(monkeypatch, staff, administrator["id"], data["encounter"])
     assert (
         _brief_command(
             monkeypatch,

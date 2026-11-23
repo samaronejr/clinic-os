@@ -6,6 +6,8 @@ import hmac
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from django.db import transaction
+
 from apps.ai.artifacts import create_input, input_for, read_artifact
 from apps.ai.brief_contracts import (
     ChartRequest,
@@ -13,6 +15,7 @@ from apps.ai.brief_contracts import (
     question_topic,
     validate_reply,
 )
+from apps.ai.chart_authority import visit_permission
 from apps.ai.context import assemble_context
 from apps.ai.contracts import (
     Budget,
@@ -31,6 +34,8 @@ from apps.identity.current_context import current_actor_id
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from apps.ai.contracts import InvocationResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,41 +62,49 @@ def request_brief(
     )
     try:
         enabled_policy(Purpose.BRIEF)
+        permission = visit_permission(
+            clinic_id=clinic_id, enrollment_id=enrolled, encounter_id=encounter_id
+        )
+        topic = question_topic(question) if question else "brief"
+        if topic is None:
+            return Brief("ready", answer="refused")
+        with transaction.atomic():
+            context = assemble_context(clinic_id=clinic_id, enrollment_id=enrolled)
+            request = ChartRequest(
+                enrolled,
+                session_binding,
+                topic,
+                question,
+                tuple(source.reference() for source in context.sources),
+                permission,
+            )
+            result = _admit(clinic_id, request)
+            if result.reason is not None:
+                transaction.set_rollback(True)
+                return Brief("unavailable")
+            return Brief("generating", result.invocation_id)
     except GatewayRefusedError:
         return Brief("unavailable")
-    topic = question_topic(question) if question else "brief"
-    if topic is None:
-        return Brief("ready", answer="refused")
-    context = assemble_context(clinic_id=clinic_id, enrollment_id=enrolled)
-    request = ChartRequest(
-        enrolled,
-        session_binding,
-        topic,
-        question,
-        tuple(source.reference() for source in context.sources),
-    )
-    # The parser is also the programmatic boundary: callers cannot supply an
-    # invalid session binding, question/topic mismatch or open source vocabulary.
-    parse_request(request.encode())
+
+
+def _admit(clinic_id: UUID, request: ChartRequest) -> InvocationResult:
+    content = request.encode()
+    parse_request(content)
     source = create_input(
         clinic_id=clinic_id,
-        patient_enrollment_id=enrolled,
+        patient_enrollment_id=request.enrollment,
         purpose=Purpose.BRIEF,
-        content=request.encode(),
+        content=content,
     )
-    result = invoke(
+    return invoke(
         clinic_id=clinic_id,
         purpose=Purpose.BRIEF,
         principal=current_actor_id(),
         inputs_ref=source.pk,
         budget=Budget(
-            Usage(tokens_in=50_000, tokens_out=50_000),
-            maximum_micros=1_000_000,
+            Usage(tokens_in=50_000, tokens_out=50_000), maximum_micros=1_000_000
         ),
     )
-    if result.reason is not None:
-        return Brief("unavailable")
-    return Brief("generating", result.invocation_id)
 
 
 def display_brief(
@@ -114,18 +127,25 @@ def display_brief(
     ).first()
     if invocation is None:
         raise GatewayAccessDeniedError
-    source = input_for(
-        clinic_id=clinic_id, inputs_ref=invocation.inputs_ref_id, purpose=Purpose.BRIEF
-    )
-    request = parse_request(source.content)
-    if request.enrollment != enrolled or not hmac.compare_digest(
-        request.session, session_binding
-    ):
-        raise GatewayAccessDeniedError
     try:
+        source = input_for(
+            clinic_id=clinic_id,
+            inputs_ref=invocation.inputs_ref_id,
+            purpose=Purpose.BRIEF,
+        )
         enabled_policy(Purpose.BRIEF)
+        binding = visit_permission(
+            clinic_id=clinic_id, enrollment_id=enrolled, encounter_id=encounter_id
+        )
     except GatewayRefusedError:
         return Brief("unavailable")
+    request = parse_request(source.content)
+    if (
+        request.enrollment != enrolled
+        or request.permission != binding
+        or not hmac.compare_digest(request.session, session_binding)
+    ):
+        raise GatewayAccessDeniedError
     if invocation.status == "reserved":
         return Brief("generating", invocation_id)
     if invocation.status != "succeeded":
@@ -135,7 +155,7 @@ def display_brief(
             read_artifact(clinic_id=clinic_id, artifact_id=invocation.output.pk),
             request,
         )
-    except GatewayInputError:
+    except (GatewayInputError, GatewayRefusedError):
         return Brief("unavailable")
     current = assemble_context(clinic_id=clinic_id, enrollment_id=enrolled)
     sources: tuple[ChartSource, ...] = tuple(

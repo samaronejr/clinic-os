@@ -12,6 +12,7 @@ from apps.billing.collections import (
 )
 from apps.billing.compensation import prepare_invoice_terms, record_completion
 from apps.billing.fiscal import prepare_fiscal_document, submit_fiscal_rehearsal
+from apps.billing.journal import create_book
 from apps.billing.models import FiscalConfiguration, JournalBook, JournalEntry, Receipt
 from apps.billing.money_types import SettlementObservation
 from apps.billing.services import create_invoice, issue_invoice
@@ -206,8 +207,8 @@ def _guide(data: dict[str, str]) -> Guide:
         )
 
 
-def _reconcile(data: dict[str, str], guide: Guide) -> None:
-    """Retain adjudication separately from the independently verified payer cash."""
+def _payer_denial(data: dict[str, str], guide: Guide) -> Glosa:
+    """Build a real guide-bound adjudication, independent of cash and appeals."""
     clinic, organization, actor = (
         UUID(data[key]) for key in ("clinic", "organization", "actor")
     )
@@ -249,6 +250,16 @@ def _reconcile(data: dict[str, str], guide: Guide) -> None:
         assert (
             JournalEntry.objects.filter(book__clinic_id=clinic).count() == before_return
         )
+        return glosa
+
+
+def _reconcile(data: dict[str, str], guide: Guide) -> None:
+    """Retain adjudication separately from the independently verified payer cash."""
+    _payer_denial(data, guide)
+    clinic, organization, actor = (
+        UUID(data[key]) for key in ("clinic", "organization", "actor")
+    )
+    with runtime_role(), tenant_context(actor, organization):
         settlement = observe_settlement(
             clinic_id=clinic,
             observation=SettlementObservation(ACCEPTED, "insurer", "bank", uuid4()),
@@ -273,6 +284,19 @@ def _reconcile(data: dict[str, str], guide: Guide) -> None:
         assert matched.pk == replay_match.pk
         assert matched.allocation.terms.invoice_id == guide.invoice_id
         assert matched.allocation.amount_minor == ACCEPTED
+
+
+def manual_denial(data: dict[str, str]) -> dict[str, object]:
+    """Seed once per clinic: all four AI-off cases handle the very same denial."""
+    clinic, org = UUID(data["clinic"]), UUID(data["organization"])
+    with runtime_role(), tenant_context(UUID(data["actor"]), org):
+        denial = Glosa.objects.filter(clinic_id=clinic, denied_minor=DENIED).first()
+    if denial is None:
+        with runtime_role(), tenant_context(UUID(data["administrator"]), org):
+            create_book(clinic_id=clinic)
+        with override_settings(INSURANCE_SYNTHETIC_ENABLED=True):
+            denial = _payer_denial(data, _guide(data))
+    return {"guide": str(denial.guide_id), "denial": str(denial.pk)}
 
 
 def reconcile_documents(data: dict[str, str]) -> dict[str, object]:

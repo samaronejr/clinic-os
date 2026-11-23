@@ -40,6 +40,10 @@ def chart_panel(
     }
     if not enrollment_id and not encounter_id:
         return result
+    # A refreshed full page/partial must preserve the original POST selector.
+    if context.get("chart_encounter_id"):
+        encounter_id = context["chart_encounter_id"]
+        enrollment_id = None
     try:
         enrolled = chart_enrollment(
             clinic_id=clinic_id,
@@ -72,6 +76,7 @@ def chart_panel(
     result.update(
         can_request=True,
         enrollment_id=enrolled,
+        encounter_id=encounter_id,
         brief=brief,
         clinic_timezone=Clinic.objects.get(pk=clinic_id).timezone,
         sections=[

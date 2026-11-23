@@ -11,7 +11,9 @@ from apps.ai.controls import set_organization_policy
 from apps.ai.models import ModelConfiguration
 from apps.ai.owner import set_global_switch, transition_model
 from apps.ai.policy import OrganizationPolicy
+from apps.consent.services import record_ai_disclosure
 from apps.core.integration import execute_operation
+from apps.ehr.chart_sources import chart_enrollment
 from apps.ehr.history import HistoryChange, save_history
 from apps.identity.clinic_configuration import (
     ConfigurationContent,
@@ -22,6 +24,7 @@ from apps.identity.models import Clinic, UserClinicRole
 from apps.providers.lifecycle import VersionInput, propose_version
 from apps.tenancy.db import tenant_context
 
+from ai.chart_consent_support import ConsentActors, choose_ai
 from ai.support import model
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
@@ -76,6 +79,17 @@ def main() -> None:
         actor, clinic, organization = (UUID(item) for item in sys.argv[2:])
         seed(actor=actor, clinic=clinic, organization=organization)
         status = "seeded"
+    elif mode == "permission":
+        organization, clinic, publisher, inviter, physician, encounter = (
+            UUID(item) for item in sys.argv[2:]
+        )
+        with runtime_role(), tenant_context(physician, organization):
+            enrollment = chart_enrollment(clinic_id=clinic, encounter_id=encounter)
+            record_ai_disclosure(
+                clinic_id=clinic, encounter_id=encounter, informed=True, refused=False
+            )
+        choose_ai(ConsentActors(organization, clinic, publisher, inviter), enrollment)
+        status = "consented"
     elif mode == "execute":
         status = execute_operation(UUID(sys.argv[2]))
     elif mode == "source":

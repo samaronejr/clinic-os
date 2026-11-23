@@ -3,65 +3,31 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING
 
 from django.db import transaction
 from django.utils import timezone
 
+from apps.ai import authorization
+from apps.ai.authorization import StaffInput
 from apps.ai.contracts import (
     MAX_CONTENT_BYTES,
     GatewayAccessDeniedError,
     GatewayInputError,
     Method,
     Purpose,
-    request_schema,
 )
-from apps.ai.decision_policy import authorize_decision
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
-from apps.ai.revenue_sources import recheck_context as recheck_revenue_context
-from apps.ai.revenue_sources import require_finance
-from apps.analytics.analyst_contracts import recheck_request as recheck_analyst_request
-from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
 from apps.audit.services import record_phase1_event
-from apps.identity.current_context import current_actor_id, require_permission
+from apps.identity.current_context import current_actor_id
 from apps.identity.models import Clinic
 
 if TYPE_CHECKING:
     from uuid import UUID
 
 
-def check_authority(
-    *, clinic_id: UUID, purpose: Purpose, patient_enrollment_id: UUID | None
-) -> UUID:
-    """Recheck authority; service principals never borrow a staff identity."""
-    match purpose:
-        case Purpose.FRONT_DESK:
-            permission = "appointment.read"
-        case Purpose.ANALYST:
-            permission = "charge.read"
-        case Purpose.REVENUE_CYCLE:
-            if patient_enrollment_id is not None:
-                raise GatewayAccessDeniedError
-            return require_finance(clinic_id=clinic_id)
-        case (
-            Purpose.SCRIBE_ASR
-            | Purpose.SCRIBE_DRAFT
-            | Purpose.BRIEF
-            | Purpose.EXTRACTION
-            | Purpose.DECISION_SUPPORT
-            | Purpose.CARE_COORDINATION
-        ):
-            permission = "clinical.read"
-        case unreachable:
-            assert_never(unreachable)
-    return require_permission(
-        permission, clinic_id=clinic_id, patient_enrollment_id=patient_enrollment_id
-    )
-
-
-@transaction.atomic
 def create_input(
     *,
     clinic_id: UUID,
@@ -71,14 +37,6 @@ def create_input(
     method: Method = "complete",
 ) -> AIArtifact:
     """Store immutable, purpose-bound synthetic source material as ciphertext."""
-    user_id = check_authority(
-        clinic_id=clinic_id,
-        purpose=purpose,
-        patient_enrollment_id=patient_enrollment_id,
-    )
-    enabled_policy(purpose)
-    if purpose is Purpose.ANALYST and request_schema(content) == ANALYST_SCHEMA:
-        recheck_analyst_request(clinic_id=clinic_id, content=content)
     if (
         type(content) is not str
         or not content
@@ -86,33 +44,32 @@ def create_input(
         or method not in {"complete", "stream", "transcribe", "extract"}
         or (purpose is Purpose.SCRIBE_ASR and method != "transcribe")
         or (purpose is Purpose.EXTRACTION and method != "extract")
+        or (
+            purpose in {Purpose.DECISION_SUPPORT, Purpose.REVENUE_CYCLE, Purpose.BRIEF}
+            and method != "complete"
+        )
     ):
         raise GatewayInputError
-    if purpose is Purpose.DECISION_SUPPORT:
-        if method != "complete":
-            raise GatewayInputError
-        authorize_decision(
-            clinic_id=clinic_id, content=content, enrollment_id=patient_enrollment_id
-        )
-    if purpose is Purpose.REVENUE_CYCLE:
-        if method != "complete":
-            raise GatewayInputError
-        recheck_revenue_context(clinic_id=clinic_id, content=content)
+    user_id = authorization.authorize_capability(
+        purpose, StaffInput(clinic_id, patient_enrollment_id, content)
+    )
+    enabled_policy(purpose)
     clinic = Clinic.objects.get(pk=clinic_id)
-    artifact = AIArtifact.objects.create(
-        organization_id=clinic.organization_id,
-        clinic_id=clinic_id,
-        user_id=user_id,
-        purpose=purpose.value,
-        patient_enrollment_id=patient_enrollment_id,
-        method=method,
-        content=content,
-        retention_class="transient_input",
-        expires_at=timezone.now() + timedelta(days=1),
-    )
-    record_phase1_event(
-        "ai.artifact.created", clinic_id=clinic_id, affected_record_id=artifact.pk
-    )
+    with transaction.atomic():
+        artifact = AIArtifact.objects.create(
+            organization_id=clinic.organization_id,
+            clinic_id=clinic_id,
+            user_id=user_id,
+            purpose=purpose.value,
+            patient_enrollment_id=patient_enrollment_id,
+            method=method,
+            content=content,
+            retention_class="transient_input",
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        record_phase1_event(
+            "ai.artifact.created", clinic_id=clinic_id, affected_record_id=artifact.pk
+        )
     return artifact
 
 
@@ -129,25 +86,11 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
     ).first()
     if artifact is None:
         raise GatewayAccessDeniedError
-    check_authority(
-        clinic_id=clinic_id,
-        purpose=purpose,
-        patient_enrollment_id=artifact.patient_enrollment_id,
+    authorization.authorize_capability(
+        purpose, StaffInput(clinic_id, artifact.patient_enrollment_id, artifact.content)
     )
-    if (
-        purpose is Purpose.ANALYST
-        and request_schema(artifact.content) == ANALYST_SCHEMA
-    ):
-        recheck_analyst_request(clinic_id=clinic_id, content=artifact.content)
-    if purpose is Purpose.DECISION_SUPPORT:
-        authorize_decision(
-            clinic_id=clinic_id,
-            content=artifact.content,
-            enrollment_id=artifact.patient_enrollment_id,
-        )
     if purpose is Purpose.REVENUE_CYCLE:
         enabled_policy(purpose)
-        recheck_revenue_context(clinic_id=clinic_id, content=artifact.content)
     return artifact
 
 
@@ -167,47 +110,14 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         if invocation is None:
             raise GatewayAccessDeniedError
         check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
-    check_authority(
-        clinic_id=clinic_id,
-        purpose=Purpose(artifact.purpose),
-        patient_enrollment_id=artifact.patient_enrollment_id,
+        source = invocation.inputs_ref
+    else:
+        source = artifact
+    authorization.authorize_capability(
+        Purpose(artifact.purpose),
+        StaffInput(clinic_id, artifact.patient_enrollment_id, source.content),
     )
-    if artifact.purpose == Purpose.ANALYST.value:
-        invocation = artifact.invocation
-        source = (
-            artifact
-            if artifact.kind == "input"
-            else (invocation.inputs_ref if invocation is not None else None)
-        )
-        if source is not None and request_schema(source.content) == ANALYST_SCHEMA:
-            recheck_analyst_request(clinic_id=clinic_id, content=source.content)
-    if artifact.purpose == Purpose.DECISION_SUPPORT.value:
-        invocation = artifact.invocation
-        source = (
-            artifact
-            if artifact.kind == "input"
-            else (invocation.inputs_ref if invocation is not None else None)
-        )
-        if source is None:
-            raise GatewayAccessDeniedError
-        authorize_decision(
-            clinic_id=clinic_id,
-            content=source.content,
-            enrollment_id=artifact.patient_enrollment_id,
-        )
     if artifact.purpose == Purpose.REVENUE_CYCLE.value:
         enabled_policy(Purpose.REVENUE_CYCLE)
-        source = (
-            artifact
-            if artifact.kind == "input"
-            else (
-                artifact.invocation.inputs_ref
-                if artifact.invocation is not None
-                else None
-            )
-        )
-        if source is None:
-            raise GatewayAccessDeniedError
-        recheck_revenue_context(clinic_id=clinic_id, content=source.content)
     content: str = artifact.content
     return content

@@ -27,6 +27,7 @@ from apps.consent.models import (
     ParticipantKind,
     RefusalRecord,
 )
+from apps.core.integration import hold_subject_mutation_key
 from apps.ehr.models import Encounter
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import Clinic
@@ -68,7 +69,11 @@ def patient_authority() -> ConsentAuthority:
     return ConsentAuthority(*row)
 
 
-def _lock(clinic_id: UUID, purpose: str) -> None:
+def _lock(clinic_id: UUID, purpose: str, organization_id: UUID) -> None:
+    if purpose in {ConsentPurpose.AI_ASSISTANCE, ConsentPurpose.CONSULTATION_RECORDING}:
+        # The gateway holds the matching session lock across final recheck and
+        # send. No model call may overtake a committed patient withdrawal.
+        hold_subject_mutation_key(f"ai-organization:{organization_id}")
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
@@ -94,10 +99,10 @@ def publish_text(
         raise ValidationError(msg)
     validate_overlay_text(text)
     with transaction.atomic():
-        _lock(clinic_id, purpose)
         organization_id = Clinic.objects.values_list("organization_id", flat=True).get(
             pk=clinic_id
         )
+        _lock(clinic_id, purpose, organization_id)
         previous = (
             ConsentText.objects.filter(clinic_id=clinic_id, purpose=purpose)
             .order_by("-version")
@@ -137,10 +142,10 @@ def publish_notice(
         raise ValidationError(msg)
     validate_overlay_text(text)
     with transaction.atomic():
-        _lock(clinic_id, f"notice:{topic}")
         organization_id = Clinic.objects.values_list("organization_id", flat=True).get(
             pk=clinic_id
         )
+        _lock(clinic_id, f"notice:{topic}", organization_id)
         previous = (
             NoticeVersion.objects.filter(clinic_id=clinic_id, topic=topic)
             .order_by("-version")
@@ -235,7 +240,7 @@ def _resolve_offer(
         text_id = UUID(data["text"])
     except (signing.BadSignature, ValueError, KeyError, TypeError) as error:
         raise PatientAccessDeniedError from error
-    _lock(authority.clinic_id, purpose)
+    _lock(authority.clinic_id, purpose, authority.organization_id)
     current = (
         ConsentText.objects.filter(clinic_id=authority.clinic_id, purpose=purpose)
         .order_by("-version")
@@ -365,7 +370,7 @@ def revoke_consent(*, acceptance_id: UUID) -> ConsentRevocation:
         )
         if acceptance is None:
             raise PatientAccessDeniedError
-        _lock(authority.clinic_id, acceptance.text.purpose)
+        _lock(authority.clinic_id, acceptance.text.purpose, authority.organization_id)
         result, created = ConsentRevocation.objects.get_or_create(
             acceptance=acceptance,
             defaults={
@@ -516,6 +521,25 @@ def ai_disclosure_status(
     return AIUseDisclosure.objects.filter(
         clinic_id=clinic_id, encounter_id=encounter_id
     ).first()
+
+
+def current_ai_acceptance(
+    *, clinic_id: UUID, encounter_id: UUID, enrollment_id: UUID
+) -> ConsentAcceptance | None:
+    """Require both independent patient choices for the *same* visit subject."""
+    disclosure = ai_disclosure_status(clinic_id=clinic_id, encounter_id=encounter_id)
+    if disclosure is None or not disclosure.informed or disclosure.refused:
+        return None
+    consent = consent_for_future_use(
+        clinic_id=clinic_id,
+        enrollment_id=enrollment_id,
+        purpose=ConsentPurpose.AI_ASSISTANCE,
+    )
+    return (
+        consent
+        if consent is not None and consent.patient_id == disclosure.patient_id
+        else None
+    )
 
 
 def acknowledge_participant(

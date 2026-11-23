@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Literal
 from django.db import transaction
 
 from apps.ai.artifacts import create_input, input_for, read_artifact
-from apps.ai.brief_contracts import ChartRequest
+from apps.ai.brief_contracts import ChartRequest, VisitPermission
+from apps.ai.chart_authority import visit_permission
 from apps.ai.context import assemble_context
 from apps.ai.contracts import (
     Budget,
@@ -28,7 +29,6 @@ from apps.ai.decision_policy import authorized_catalog
 from apps.ai.models import AIInvocation
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
-from apps.consent.services import ai_disclosure_status
 from apps.ehr.chart_sources import chart_enrollment
 from apps.identity.current_context import current_actor_id
 
@@ -61,13 +61,17 @@ class DecisionPanel:
 
 def encounter_catalog(
     *, clinic_id: UUID, encounter_id: UUID
-) -> tuple[UUID, tuple[CatalogEntry, ...]]:
+) -> tuple[UUID, VisitPermission, tuple[CatalogEntry, ...]]:
     """Authorize the encounter before checking optional capability availability."""
     enrolled = chart_enrollment(clinic_id=clinic_id, encounter_id=encounter_id)
-    disclosure = ai_disclosure_status(clinic_id=clinic_id, encounter_id=encounter_id)
-    if disclosure is None or not disclosure.informed or disclosure.refused:
-        raise GatewayRefusedError(reason="disabled")
-    return enrolled, authorized_catalog(clinic_id=clinic_id)
+    catalog = authorized_catalog(clinic_id=clinic_id)
+    return (
+        enrolled,
+        visit_permission(
+            clinic_id=clinic_id, enrollment_id=enrolled, encounter_id=encounter_id
+        ),
+        catalog,
+    )
 
 
 def open_decision_support(*, clinic_id: UUID, encounter_id: UUID) -> DecisionPanel:
@@ -93,12 +97,12 @@ def request_decision_support(
     if not opt_in:
         return DecisionPanel()
     try:
+        enrolled, permission, catalog = encounter_catalog(
+            clinic_id=clinic_id, encounter_id=encounter_id
+        )
         # A budget/configuration refusal must also roll back the input artifact,
         # chart-read audit entries and after-commit callbacks, not merely the job.
         with transaction.atomic():
-            enrolled, catalog = encounter_catalog(
-                clinic_id=clinic_id, encounter_id=encounter_id
-            )
             chart = assemble_context(clinic_id=clinic_id, enrollment_id=enrolled)
             request = DecisionRequest(
                 encounter_id,
@@ -108,6 +112,7 @@ def request_decision_support(
                     "brief",
                     "",
                     tuple(source.reference() for source in chart.sources),
+                    permission,
                 ),
                 tuple(entry.reference() for entry in catalog),
             )
@@ -194,7 +199,6 @@ def display_decision_support(
     )
 
 
-@transaction.atomic
 def record_decision(
     *,
     clinic_id: UUID,

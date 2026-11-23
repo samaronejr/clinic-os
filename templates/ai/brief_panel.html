@@ -12,7 +12,7 @@
       {% if brief.state == "generating" %}
       <p role="status">{% trans "Generating brief. Continue reviewing the chart manually." %}</p>
       <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
-        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
+        {% csrf_token %}{% include "ai/brief_selector.html" %}<input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
         <button type="submit" name="command" value="display">{% trans "Refresh brief" %}</button>
       </form>
       {% elif brief.state == "unavailable" %}
@@ -31,7 +31,7 @@
           {% timezone clinic_timezone %}<p class="hint">{% trans "Source" %}: {{ source.kind|citation_kind }} · {% trans "Version" %} {{ source.version }} · <time datetime="{{ source.date|date:'c' }}">{{ source.date|date:"d/m/Y H:i" }}</time></p>{% endtimezone %}
           <p class="hint"><code>{{ source.id }}</code></p>
           <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
+            {% csrf_token %}{% include "ai/brief_selector.html" %}<input type="hidden" name="surface" value="{{ surface }}"><input type="hidden" name="invocation_id" value="{{ brief.invocation_id }}">
             <button class="button--quiet" type="submit" name="command" value="display">{% trans "Recheck source access" %}</button>
           </form>
         </article>
@@ -43,11 +43,11 @@
       {% endif %}
       {% ai_enabled "brief" as brief_enabled %}{% if brief.state != "generating" and brief_enabled %}
       <form method="post" action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
-        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}">
+        {% csrf_token %}{% include "ai/brief_selector.html" %}<input type="hidden" name="surface" value="{{ surface }}">
         <button type="submit" name="command" value="generate">{% trans "Generate pre-visit brief" %}</button>
       </form>
       <form method="post" novalidate data-auth-form action="{% url 'ai:chart-assistant' clinic_id %}" hx-post="{% url 'ai:chart-assistant' clinic_id %}" hx-target="#chart-panel" hx-swap="outerHTML">
-        {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><input type="hidden" name="surface" value="{{ surface }}">
+        {% csrf_token %}{% include "ai/brief_selector.html" %}<input type="hidden" name="surface" value="{{ surface }}">
         <div class="field"><label for="chart-question">{% trans "Question about the current chart" %}</label><input id="chart-question" name="question" maxlength="500" required list="chart-questions" aria-describedby="chart-question-hint">
         <datalist id="chart-questions"><option value="{% trans 'What problems are recorded?' %}"><option value="{% trans 'What allergies are recorded?' %}"><option value="{% trans 'What medications are recorded?' %}"><option value="{% trans 'What observations are recorded?' %}"><option value="{% trans 'What results are recorded?' %}"><option value="{% trans 'What tasks are outstanding?' %}"><option value="{% trans 'What prior decisions are recorded?' %}"><option value="{% trans 'What encounters are recorded?' %}"></datalist>
         <p class="hint" id="chart-question-hint">{% trans "Choose a listed chart question. Names, other patients and instructions are refused without a search." %}</p></div>

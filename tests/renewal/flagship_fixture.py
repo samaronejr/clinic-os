@@ -823,9 +823,11 @@ def _import_rehearsal(data: dict[str, str]) -> dict[str, object]:
 
 def _financial_documents(data: dict[str, str]) -> dict[str, object]:
     """Exercise the service-only fiscal and payer-return legs of the close."""
-    from renewal.financial_close_fixture import reconcile_documents  # noqa: PLC0415
+    from renewal import financial_close_fixture  # noqa: PLC0415
 
-    return reconcile_documents(data)
+    if data.get("fixture") == "denial":
+        return financial_close_fixture.manual_denial(data)
+    return financial_close_fixture.reconcile_documents(data)
 
 
 def _approve_without_dispatch(data: dict[str, str]) -> dict[str, object]:

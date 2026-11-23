@@ -70,6 +70,8 @@ GOVERNANCE: Final = frozenset(
         "ai:settings",
     }
 )
+# Purely manual fallback: these commands inspect a denial and save human text.
+MANUAL: Final = {"ai:manual-claims": frozenset({"inspect", "draft"})}
 # A link to an assistant page is itself an offer of AI work.
 ASSISTANT_LINKS: Final = {"ai:revenue-cycle": "revenue_cycle"}
 # A view-computed context flag that guards a template exactly like an ai_enabled
@@ -175,7 +177,7 @@ def _form_problems(
             starts.add(endpoint)
             if not template.guarded(offset, STARTS[endpoint][0]):
                 problems.append(f"{where} renders without its ai_enabled guard")
-        elif command not in REVIEWED.get(endpoint, frozenset()):
+        elif command not in REVIEWED.get(endpoint, MANUAL.get(endpoint, frozenset())):
             problems.append(f"{where} is an unclassified AI command")
     return problems
 
@@ -193,7 +195,7 @@ def scan(name: str, text: str) -> tuple[list[str], set[str]]:
             starts.add(f"link {endpoint}")
             if not template.guarded(link.start(), ASSISTANT_LINKS[endpoint]):
                 problems.append(f"{name}: link {endpoint} without its guard")
-        elif _ai(endpoint) and endpoint not in GOVERNANCE:
+        elif _ai(endpoint) and endpoint not in GOVERNANCE and endpoint not in MANUAL:
             problems.append(f"{name}: unclassified AI link {endpoint}")
     return problems, starts
 

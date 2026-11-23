@@ -13,12 +13,13 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
-from apps.ai.brief import display_brief, request_brief
+from apps.ai.brief import Brief, display_brief, request_brief
 from apps.ai.brief_forms import ChartQuestionForm
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError
 from apps.core.patient_context import bind_patient_context
 from apps.ehr.chart_sources import chart_enrollment
-from apps.ehr.services import ClinicalAccessDeniedError
+from apps.ehr.models import Encounter
+from apps.ehr.services import ClinicalAccessDeniedError, record_denial
 from apps.identity.current_context import CurrentActorError
 from apps.identity.otp import privileged_totp_required
 from apps.workflows.today import view_today
@@ -27,6 +28,29 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from django.http import HttpRequest, HttpResponse
+
+    from apps.workflows.today import TodayView
+
+
+def _selected_visit(
+    clinic: UUID, enrolled: UUID, visit: UUID | None, today: TodayView | None
+) -> UUID | None:
+    if today is None:
+        return visit
+    patient = today.next_patient
+    if patient is None or patient.enrollment_id != enrolled:
+        raise GatewayAccessDeniedError
+    # A pre-visit row cannot borrow some *other* open visit's consent.
+    scheduled = (
+        Encounter.objects.filter(
+            clinic_id=clinic, appointment_id=patient.appointment_id, state="open"
+        )
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if visit is not None and scheduled != visit:
+        raise GatewayAccessDeniedError
+    return scheduled
 
 
 def _continuation(clinic_id: UUID) -> str:
@@ -56,27 +80,30 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             encounter_id=data["encounter_id"],
         )
         today = view_today(clinic_id=clinic_id) if data["surface"] == "today" else None
-        if today is not None and (
-            today.next_patient is None or today.next_patient.enrollment_id != enrolled
-        ):
-            return render(request, "403.html", status=403)
+        visit = _selected_visit(clinic_id, enrolled, data["encounter_id"], today)
         if not request.session.session_key:
             return render(request, "403.html", status=403)
         binding = salted_hmac(
             "ai.chart-session.v1", request.session.session_key, algorithm="sha256"
         ).hexdigest()
+        subject = None if visit is not None else enrolled
         with transaction.atomic():
-            if data["command"] == "display":
+            if today is not None and visit is None:
+                record_denial(clinic_id, enrolled, "ai_permission_unavailable")
+                brief = Brief("unavailable")
+            elif data["command"] == "display":
                 brief = display_brief(
                     clinic_id=clinic_id,
-                    enrollment_id=enrolled,
+                    encounter_id=visit,
+                    enrollment_id=subject,
                     session_binding=binding,
                     invocation_id=data["invocation_id"],
                 )
             else:
                 brief = request_brief(
                     clinic_id=clinic_id,
-                    enrollment_id=enrolled,
+                    encounter_id=visit,
+                    enrollment_id=subject,
                     session_binding=binding,
                     question=data["question"] if data["command"] == "ask" else "",
                 )
@@ -84,6 +111,7 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             "clinic_id": clinic_id,
             "chart_brief": brief,
             "chart_enrollment_id": enrolled,
+            "chart_encounter_id": visit,
             "chart_surface": data["surface"],
         }
         bind_patient_context(

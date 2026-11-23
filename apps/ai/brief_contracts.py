@@ -113,6 +113,14 @@ def reference(raw: object) -> Reference:
 
 
 @dataclass(frozen=True, slots=True)
+class VisitPermission:
+    """Immutable point-of-use identity, never an authorization in itself."""
+
+    encounter: UUID
+    acceptance: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class ChartRequest:
     """Only question text is protected content; sources are opaque exact references."""
 
@@ -121,6 +129,7 @@ class ChartRequest:
     topic: Topic
     question: str = field(repr=False)
     sources: tuple[Reference, ...]
+    permission: VisitPermission | None = None
 
     def encode(self) -> str:
         """Store one isolated turn, with no previous conversation or chart text."""
@@ -132,6 +141,14 @@ class ChartRequest:
                 "topic": self.topic,
                 "question": self.question,
                 "sources": self.sources,
+                **(
+                    {
+                        "encounter": str(self.permission.encounter),
+                        "acceptance": str(self.permission.acceptance),
+                    }
+                    if self.permission is not None
+                    else {}
+                ),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -141,11 +158,21 @@ class ChartRequest:
 def parse_request(raw: str) -> ChartRequest:
     """Reject unknown keys and any disagreement between the question and topic."""
     data = _json(raw)
+    keys = {"schema", "enrollment", "session", "topic", "question", "sources"}
     if (
-        set(data) != {"schema", "enrollment", "session", "topic", "question", "sources"}
+        set(data) not in (keys, keys | {"encounter", "acceptance"})
         or data["schema"] != SCHEMA
     ):
         raise GatewayInputError
+    permission = None
+    if "encounter" in data:
+        encounter, acceptance = data["encounter"], data["acceptance"]
+        if not isinstance(encounter, str) or not isinstance(acceptance, str):
+            raise GatewayInputError
+        try:
+            permission = VisitPermission(UUID(encounter), UUID(acceptance))
+        except ValueError as error:
+            raise GatewayInputError from error
     enrollment, session = data["enrollment"], data["session"]
     topic, question, sources = data["topic"], data["question"], data["sources"]
     if (
@@ -168,7 +195,9 @@ def parse_request(raw: str) -> ChartRequest:
     refs = tuple(reference(item) for item in sources)
     if len({json.dumps(item, sort_keys=True) for item in refs}) != len(refs):
         raise GatewayInputError
-    return ChartRequest(enrolled, session, cast("Topic", topic), question, refs)
+    return ChartRequest(
+        enrolled, session, cast("Topic", topic), question, refs, permission
+    )
 
 
 def selected_sources(request: ChartRequest) -> tuple[Reference, ...]:

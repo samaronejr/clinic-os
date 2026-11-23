@@ -24,7 +24,8 @@ from apps.providers.lifecycle import (
 )
 from django.db import connection, transaction
 
-from ai.brief_support import BINDING, BriefWorld, seeded
+from ai.brief_support import BINDING, BriefWorld, without_patient_choice
+from ai.chart_consent_support import accept_ai
 from ai.support import model
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
 
 
 def world_for(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> BriefWorld:
-    world = seeded(graph, monkeypatch)
+    world = without_patient_choice(graph, monkeypatch)
     model(
         organization=graph.organization_a,
         clinic=graph.clinic_a,
@@ -92,6 +93,7 @@ def revoke_gate(world: BriefWorld) -> None:
 
 def enable(world: BriefWorld, *, cap: int = 10_000_000) -> None:
     g = world.graph
+    accept_ai(g, world.chart.enrollment)
     with as_actor(g, world.gateway.administrator):
         current = latest_configuration(g.clinic_a)
         assert current is not None

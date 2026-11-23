@@ -35,6 +35,8 @@ from django.utils import formats, timezone, translation
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 
+from apps.ai import authorization
+from apps.ai.authorization import MessageSubject
 from apps.ai.contracts import GatewayRefusedError, Purpose
 from apps.ai.evaluation.versions import source_versions
 from apps.ai.front_desk_kb import ArticleAnswer, best_answer, fold
@@ -278,17 +280,15 @@ def _source_receipt(subject: UUID, kind: str) -> bytes:
 
 def _authorize(turn_id: UUID, *, completed: bool = False) -> str:
     """Bind fresh source bytes to this turn and the current database transaction."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT clinic_app.ai_front_desk_authorize(%s,%s,%s)",
-            [
-                turn_id,
-                _source_receipt(turn_id, "completed_turn" if completed else "turn"),
-                secret_store().get_secret(KEK_SECRET_NAME),
-            ],
-        )
-        row = cursor.fetchone()
-    return str(row[0]) if row and row[0] else ""
+    result = authorization.authorize_capability(
+        Purpose.FRONT_DESK,
+        MessageSubject(
+            turn_id,
+            "completed_turn" if completed else "turn",
+            _source_receipt(turn_id, "completed_turn" if completed else "turn"),
+        ),
+    )
+    return result if isinstance(result, str) else ""
 
 
 def _require_effect(turn_id: UUID, *, completed: bool = False) -> None:
@@ -298,17 +298,11 @@ def _require_effect(turn_id: UUID, *, completed: bool = False) -> None:
 
 
 def _enqueue(message_id: UUID) -> UUID | None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT clinic_app.ai_front_desk_enqueue(%s,%s,%s)",
-            [
-                message_id,
-                _source_receipt(message_id, "message"),
-                secret_store().get_secret(KEK_SECRET_NAME),
-            ],
-        )
-        row = cursor.fetchone()
-    return row[0] if row and isinstance(row[0], UUID) else None
+    result = authorization.authorize_capability(
+        Purpose.FRONT_DESK,
+        MessageSubject(message_id, "message", _source_receipt(message_id, "message")),
+    )
+    return result if isinstance(result, UUID) else None
 
 
 def enqueue_turn(message_id: UUID, channel: str) -> None:

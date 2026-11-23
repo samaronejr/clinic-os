@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from apps.ai.context import assemble_context
 from apps.ai.contracts import Purpose
 from apps.ai.policy import enabled_policy, select_configuration
-from apps.consent.services import ai_disclosure_status, consent_for_future_use
+from apps.consent.services import current_ai_acceptance
 from apps.ehr.models import ClinicalDocumentVersion, DraftEditState
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError
@@ -78,20 +78,12 @@ def drafting_consent(frame: NoteFrame) -> ConsentAcceptance:
     clinic = frame.scope.encounter.clinic_id
     enabled_policy(Purpose.SCRIBE_DRAFT)
     select_configuration(clinic_id=clinic, purpose=Purpose.SCRIBE_DRAFT)
-    consent = consent_for_future_use(
+    consent = current_ai_acceptance(
         clinic_id=clinic,
         enrollment_id=frame.scope.enrollment.pk,
-        purpose="ai_assistance",
+        encounter_id=frame.scope.encounter.pk,
     )
-    disclosure = ai_disclosure_status(
-        clinic_id=clinic, encounter_id=frame.scope.encounter.pk
-    )
-    if (
-        consent is None
-        or disclosure is None
-        or not disclosure.informed
-        or disclosure.refused
-    ):
+    if consent is None:
         raise DraftAccessDeniedError
     return consent
 

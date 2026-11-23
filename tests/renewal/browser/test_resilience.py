@@ -26,6 +26,7 @@ from renewal.browser._navigation import click_to_navigate, expect_document, goto
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import full_page_screenshot
+from renewal.browser.flagship_support import run_fixture
 from renewal.browser.messages_support import (
     count,
     latest_operation,
@@ -52,6 +53,7 @@ from renewal.browser.test_clinical_inbox import (
     _arrived_today,
     _brief_command,
     _brief_post,
+    consent_to_brief,
 )
 from renewal.browser.test_document_verification import _operation_row, drive_signature
 from renewal.browser.test_encounter import FIELDS, press, press_in_view, seed, stored
@@ -402,6 +404,9 @@ def test_ai_failure_keeps_the_manual_chart_available(
     with pytest.MonkeyPatch.context() as patch:
         # Approve the fixture model before faulting its runtime provider.
         patch.delenv("CLINIC_SYNTHETIC_FAULTS", raising=False)
+        encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
+        assert encounter
+        consent_to_brief(patch, staff, administrator["id"], encounter)
         assert (
             _brief_command(
                 patch,
@@ -858,7 +863,7 @@ def test_ai_off_leaves_finance_manual(
     availability_staff: dict[str, str],
     case: tuple[str, int],
 ) -> None:
-    """AI-06 off: finance issues a charge and settles money received by hand."""
+    """AI-06 off: author the appeal for the denial, and retain the billing journey."""
     switch, width = case
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
     manager = seed_manager(staff)
@@ -867,6 +872,21 @@ def test_ai_off_leaves_finance_manual(
     payer = seed_patient(staff, f"Paciente Sintetico IA {switch} {width}")
     administrator = seed_ai_admin(staff, "light")["id"]
     set_ai(staff, administrator, off=None)
+    denial = run_fixture(
+        staff["dsn"],
+        "financial-documents",
+        {
+            "organization": staff["organization"],
+            "clinic": staff["clinic_a"],
+            "actor": manager["id"],
+            "administrator": administrator,
+            "fixture": "denial",
+            "physician": staff["physician_b_id"],
+            "receptionist": staff["receptionist_id"],
+            "patient": payer["patient"],
+            "enrollment": payer["enrollment"],
+        },
+    )
     browser = renewal_page.context.browser
     assert browser is not None
     with browser.new_context(
@@ -883,6 +903,18 @@ def test_ai_off_leaves_finance_manual(
         goto_settled(page, finance)
         expect(assistant).to_have_count(0)
         capture(page, root, f"ai-off-finance-{switch}", width)
+        click_to_navigate(page.locator("[data-manual-claim-link]"))
+        page.locator("#manual-guide").select_option(str(denial["guide"]))
+        click_to_navigate(page.get_by_role("button", name=gettext("Payer return item")))
+        row = page.locator("article").filter(
+            has=page.locator(f'input[name="glosa_id"][value="{denial["denial"]}"]')
+        )
+        row.get_by_label(gettext("Administrative appeal draft")).fill(
+            "Recurso administrativo sintético da glosa apresentada."
+        )
+        click_to_navigate(row.get_by_role("button", name=gettext("Save draft")))
+        expect(page.locator("[data-manual-appeal-saved]")).to_be_visible()
+        capture(page, root, f"ai-off-appeal-{switch}", width)
         create_charge(page, ledger_url(base, staff), payer["patient"], AMOUNT)
         press(page, "issue")
         expect_state(page, "issued")

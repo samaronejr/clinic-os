@@ -78,6 +78,11 @@ validator and todo-39 A3 approvals; no such command is authorized by AI-06.
 The native private/no-store review page is Finance > Revenue-cycle assistant.
 Selectors travel only in POST bodies with CSRF/TOTP and a manual workflow path.
 Audit/outbox/logs retain metadata only; all content remains encrypted.
+Finance > Create an administrative appeal draft is a separate, non-AI surface.
+It shows actual denied payer items under current `tiss.read` and `tiss.manage`.
+A person writes the appeal; the insurance command binds its bytes and command
+key to the denial. The only write is a draft, not approval, submission, journal
+posting or a coding change. Neither AI switch nor automation authority is needed.
 
 Migration `0010_revenue_cycle` follows AI 0009 and insurance 0001. It widens frozen
 vocabularies, adds the A1-only policy CHECK and installs exact Finance scope
@@ -146,6 +151,19 @@ creates a prescription, runs an agent tool, sends a message or affects care.
 Modification is a clinician's explicit choice to edit in the manual clinical
 record, not an automatic rewrite of the immutable model artifact. Refusals roll
 back their input, chart-read audit entries and publication callbacks.
+
+Both chart consumers (brief and decision support) also require the current
+patient `ai_assistance` acceptance **and** the exact encounter's informed,
+unrefused attestation before retrieval. Neither chart access nor clinician
+opt-in substitutes. The encrypted input pins the visit and original acceptance.
+Every input admission, dispatch recheck, direct artifact read and display uses
+that same current authority; subsequent acceptance never revives retained work.
+Unbound historical inputs are not grandfathered. A Today row binds only its
+own appointment's open encounter; the enrollment-only workspace requires
+exactly one open encounter. Neither searches for a favorable disclosure.
+If no visit can be bound, AI is unavailable and the manual chart is unchanged.
+Withdrawal and publication of replacement terms serialize with the gateway's
+final send lock. Patient-choice denials use a fixed, content-free audit reason.
 
 This is the binding contract for todo 38. All inference is offline simulation.
 No model configuration, organization opt-in, command, or test satisfies an

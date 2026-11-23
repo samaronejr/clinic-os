@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from apps.ai.chart_authority import recheck_chart_permission
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError, Purpose
 from apps.ai.decision_contracts import parse_decision_request, resolve_catalog
 from apps.ai.policy import enabled_policy
 from apps.ai.reference_catalog import load_catalog
-from apps.consent.services import ai_disclosure_status
-from apps.ehr.chart_sources import chart_enrollment
 from apps.identity.current_context import require_current_actor_clinic_roles
 from apps.identity.models import UserClinicRole
 from apps.providers.services import current_version
@@ -52,13 +51,11 @@ def authorize_decision(
 ) -> DecisionRequest:
     """Recheck authorization at artifact, gateway, dispatch and display boundaries."""
     request = parse_decision_request(content)
-    enrolled = chart_enrollment(clinic_id=clinic_id, encounter_id=request.encounter)
-    if enrolled != request.chart.enrollment or enrolled != enrollment_id:
+    binding = request.chart.permission
+    if binding is None or binding.encounter != request.encounter:
         raise GatewayAccessDeniedError
-    disclosure = ai_disclosure_status(
-        clinic_id=clinic_id, encounter_id=request.encounter
+    recheck_chart_permission(
+        clinic_id=clinic_id, request=request.chart, enrollment_id=enrollment_id
     )
-    if disclosure is None or not disclosure.informed or disclosure.refused:
-        raise GatewayRefusedError(reason="disabled")
     resolve_catalog(request, authorized_catalog(clinic_id=clinic_id))
     return request

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load billing_money i18n %}
+{% block title %}{% trans "Claim guide" %} · Clinic Ops{% endblock %}
+{% block content %}
+<section class="page-stack" data-manual-claim-review aria-labelledby="manual-claims-heading">
+  <h1 id="manual-claims-heading">{% trans "Create an administrative appeal draft" %}</h1>
+  <p>{% trans "The payer return records a denied amount. A person must review the source and any appeal." %}</p>
+  {% if conflict %}<p class="feedback feedback--error" role="alert">{% trans "The source or proposal changed. Refresh and review it again." %}</p>{% endif %}
+  {% if saved %}<p role="status" class="feedback feedback--success" data-manual-appeal-saved>{% trans "Review recorded. An appeal remains a draft and needs separate human submission approval." %}</p>{% endif %}
+  {% if guides %}
+  <form method="post" action="{% url 'ai:manual-claims' clinic_id %}">
+    {% csrf_token %}<input type="hidden" name="command" value="inspect">
+    <label for="manual-guide">{% trans "Claim guide" %}</label>
+    <select id="manual-guide" name="guide_id" required>{% for guide in guides %}<option value="{{ guide.pk }}"{% if guide.pk == selected.pk %} selected{% endif %}>{{ guide.number }}</option>{% endfor %}</select>
+    <button type="submit" class="button">{% trans "Payer return item" %}</button>
+  </form>
+  {% else %}<p role="status">{% trans "No claim sources are available in this clinic." %}</p>{% endif %}
+  {% for denial, key in denials %}
+  <article aria-labelledby="denial-{{ forloop.counter }}">
+    <h2 id="denial-{{ forloop.counter }}">{% trans "Payer return item" %} {{ denial.sequence }} · {{ selected.number }}</h2>
+    <dl>
+      <dt>{% trans "Administrative source code" %}</dt><dd>{{ denial.code }}</dd>
+      <dt>{% trans "Amount" %}</dt><dd>{{ denial.denied_minor|minor_brl }}</dd>
+    </dl>
+    <form method="post" action="{% url 'ai:manual-claims' clinic_id %}">
+      {% csrf_token %}<input type="hidden" name="command" value="draft">
+      <input type="hidden" name="glosa_id" value="{{ denial.pk }}"><input type="hidden" name="command_id" value="{{ key }}">
+      <label for="manual-body-{{ forloop.counter }}">{% trans "Administrative appeal draft" %}</label>
+      <textarea id="manual-body-{{ forloop.counter }}" name="body" maxlength="{{ maximum }}" required></textarea>
+      <button class="button" type="submit">{% trans "Save draft" %}</button>
+    </form>
+  </article>
+  {% endfor %}
+  <a href="{% url 'billing:finance' clinic_id %}">{% trans "Finance" %}</a>
+</section>
+{% endblock %}

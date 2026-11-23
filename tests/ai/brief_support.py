@@ -11,9 +11,11 @@ from apps.ai.controls import set_organization_policy
 from apps.ai.models import AIInvocation
 from apps.ai.policy import OrganizationPolicy
 from apps.ai.tasks import run_operation
+from apps.consent.services import record_ai_disclosure
 from apps.identity.clinic_configuration import latest_configuration
 from apps.identity.models import UserClinicRole
 
+from ai.chart_consent_support import accept_ai
 from ai.support import GatewayWorld, model, seed
 from ehr.longitudinal_support import ChartWorld, chart_world
 from ehr.test_autosave import as_actor
@@ -38,6 +40,21 @@ class BriefWorld:
 
 
 def seeded(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> BriefWorld:
+    world = without_patient_choice(graph, monkeypatch)
+    accept_ai(graph, world.chart.enrollment)
+    with as_actor(graph, graph.physician):
+        record_ai_disclosure(
+            clinic_id=graph.clinic_a,
+            encounter_id=world.chart.version.document.encounter_id,
+            informed=True,
+            refused=False,
+        )
+    return world
+
+
+def without_patient_choice(
+    graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> BriefWorld:
     chart = chart_world(graph)
     gateway = seed(graph, monkeypatch)
     model(
@@ -71,7 +88,7 @@ def generate(
     with as_actor(g, user or g.physician):
         return request_brief(
             clinic_id=g.clinic_a,
-            enrollment_id=world.chart.enrollment,
+            encounter_id=world.chart.version.document.encounter_id,
             session_binding=BINDING,
             question=question,
         )
@@ -93,7 +110,7 @@ def display(world: BriefWorld, queued: Brief, *, user: UUID | None = None) -> Br
     with as_actor(world.graph, user or world.graph.physician):
         return display_brief(
             clinic_id=world.graph.clinic_a,
-            enrollment_id=world.chart.enrollment,
+            encounter_id=world.chart.version.document.encounter_id,
             session_binding=BINDING,
             invocation_id=queued.invocation_id,
         )
