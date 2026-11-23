@@ -31,6 +31,7 @@ pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agen
 CLINICIAN = {
     "apps.ai.care_views._clinician": ("automation.propose_clinical",),
     "apps.ai.care_views._context": ("automation.propose_clinical",),
+    "apps.ai.care_views._plans": ("clinical.write", "demographics.read"),
 }
 STAFF = {
     "apps.ai.care_coordination._care_staff": ("automation.admin", "tasks.assign"),

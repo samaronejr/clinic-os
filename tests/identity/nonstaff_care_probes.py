@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from apps.ai import care_coordination, care_views
 from apps.ai.care_coordination import CareAccessDeniedError
@@ -23,6 +24,7 @@ SYMBOLS = frozenset(
         "apps.ai.care_views._care_staff",
         "apps.ai.care_views._clinician",
         "apps.ai.care_views._context",
+        "apps.ai.care_views._plans",
     }
 )
 
@@ -43,6 +45,11 @@ def care_calls(graph: RbacGraph) -> dict[str, Callable[[], bool]]:
         "apps.ai.care_views._care_staff": lambda: care_views._care_staff(clinic),
         "apps.ai.care_views._clinician": lambda: care_views._clinician(clinic),
         "apps.ai.care_views._context": context,
+        # An active plan is still a human record. Probe the pending bundle
+        # references, not just the presence of an authorized plan row.
+        "apps.ai.care_views._plans": lambda: any(
+            row.bundles for row in care_views._plans(clinic, ZoneInfo("UTC"))
+        ),
     }
 
 
