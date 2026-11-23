@@ -18850,6 +18850,7 @@
     "clinic_app.prescription_signature_guard": {
       "discovery": {
         "migrations": [
+          "apps/prescription/migrations/_dispatch_custody_sql.py",
           "apps/prescription/migrations/_independent_signature_sql.py",
           "apps/prescription/migrations/_signature_sql.py"
         ],

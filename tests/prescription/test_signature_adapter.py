@@ -362,6 +362,37 @@ def test_sign_request_cannot_replace_a_candidate_awaiting_verification(
         assert SignatureOperation.objects.count() == 1
 
 
+@pytest.mark.parametrize(
+    ("verdict", "reason"),
+    [("valid", "authorization_expired"), ("revoked_cert", "signature_invalid")],
+)
+def test_expired_approval_holds_the_signing_key_until_a_verdict_is_recorded(
+    recorded: RecordedSetup, monkeypatch: pytest.MonkeyPatch, verdict: str, reason: str
+) -> None:
+    operation, headers, body, expected = recorded.candidate(verdict)
+    recorded.provider.verifier = verification_adapter(recorded_api("timeout", expected))
+    assert recorded.receive(headers, body) == "reconcile"
+    pending = recorded.base.refresh(operation)
+    assert pending.authorized_until is not None
+    monkeypatch.setattr(signing, "utc_now", lambda: pending.authorized_until)
+    assert recorded.reconcile(operation) == "reconcile"
+    held = recorded.base.refresh(operation)
+    assert (held.state, held.completed_at, held.failure_reason) == (
+        "signed_unverified",
+        None,
+        "",
+    )
+    assert recorded.base.initiate().pk == operation.pk
+    with owner_scope(recorded.base.graph.organization_a):
+        assert SignatureOperation.objects.count() == 1
+    recorded.provider.verifier = verification_adapter(recorded_api(verdict, expected))
+    assert recorded.reconcile(operation) == "failed"
+    resolved = recorded.base.refresh(operation)
+    assert (resolved.state, resolved.failure_reason) == ("failed", reason)
+    assert bytes(resolved.signed_bytes) == expected.signed_bytes
+    assert recorded.base.initiate().pk != operation.pk
+
+
 @pytest.mark.django_db(transaction=True)
 def test_independent_verifier_rejects_tampered_signed_bytes(
     recorded: RecordedSetup,

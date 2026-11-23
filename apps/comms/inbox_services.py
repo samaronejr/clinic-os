@@ -687,49 +687,66 @@ def retry_message(
     return SendReceipt(message.pk, conversation.pk, replayed=False)
 
 
+_OPEN_PROGRESS: Final = ("queued", "unconfirmed", "sent", "delivered", "read")
+
+
+def _attempt_state(attempt: IntegrationOperation, progress: str) -> str:
+    state = effective_delivery_state(
+        operation_status=attempt.status, provider_state=progress
+    )
+    if attempt.last_error == "outcome_unknown" and state == "queued":
+        return "unconfirmed"
+    return state
+
+
 def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
-    """Derive each outbound message's display state from outbox and provider facts."""
+    """Derive each outbound message's display state from outbox and provider facts.
+
+    Attempts are never ordered by their worker-assigned timestamps. A retry is
+    queued only while every earlier attempt carries its own negative evidence,
+    so a message is ``failed`` only when all of its attempts are; otherwise the
+    attempt still open is the current one. A late failure for an earlier
+    attempt therefore never reopens a send once a successor was accepted.
+    """
     outbound = {m.pk: m for m in messages if m.direction == "out"}
-    latest: dict[UUID, IntegrationOperation] = {}
-    repeated: set[UUID] = set()
+    attempts: dict[UUID, list[IntegrationOperation]] = {}
     for attempt in IntegrationOperation.objects.filter(
         subject_type=SUBJECT_TYPE, subject_id__in=outbound
-    ).order_by("created_at", "id"):
-        if attempt.subject_id in latest:
-            repeated.add(attempt.subject_id)
-        latest[attempt.subject_id] = attempt
-    attempts: dict[UUID, str] = {}
+    ):
+        attempts.setdefault(attempt.subject_id, []).append(attempt)
+    reported: dict[UUID, str] = {}
     for key, progress in (
-        InboundEvent.objects.filter(operation_id__in=[op.pk for op in latest.values()])
+        InboundEvent.objects.filter(
+            operation_id__in=[op.pk for ops in attempts.values() for op in ops]
+        )
         .values_list("operation_id", "delivery_state")
         .distinct()
     ):
-        if key is not None:
-            attempts[key] = advance_provider_state(
-                current=attempts.get(key, ""), incoming=progress
-            )
+        reported[key] = advance_provider_state(
+            current=reported.get(key, ""), incoming=progress
+        )
     states: dict[UUID, str] = {}
     for message_id, message in outbound.items():
-        operation = latest.get(message_id)
-        progress = message.provider_state
+        own = attempts.get(message_id, [])
+        legacy = message.provider_state
         # Legacy negative/sent projections did not name an attempt. Never use
-        # one as evidence against a successor, even on an upgraded database.
-        if message_id in repeated and progress not in {"delivered", "read"}:
-            progress = ""
-        if operation is not None:
-            progress = advance_provider_state(
-                current=progress, incoming=attempts.get(operation.pk, "")
+        # one as evidence about a retried message, even on an upgraded database.
+        if len(own) > 1 and legacy not in {"delivered", "read"}:
+            legacy = ""
+        candidates = [
+            _attempt_state(
+                attempt,
+                advance_provider_state(
+                    current=legacy, incoming=reported.get(attempt.pk, "")
+                ),
             )
-        state = effective_delivery_state(
-            operation_status=operation.status if operation else "pending",
-            provider_state=progress,
-        )
+            for attempt in own
+        ] or [
+            effective_delivery_state(operation_status="pending", provider_state=legacy)
+        ]
+        open_attempts = [state for state in candidates if state != "failed"]
         states[message_id] = (
-            "unconfirmed"
-            if operation
-            and operation.last_error == "outcome_unknown"
-            and state == "queued"
-            else state
+            max(open_attempts, key=_OPEN_PROGRESS.index) if open_attempts else "failed"
         )
     return states
 

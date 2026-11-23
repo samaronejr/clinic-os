@@ -209,7 +209,9 @@ row with the principal as actor. Payload keys are only `clinic_id` and
 `object_verb`; no body, address or label. A replayed or foreign-claim delivery
 appends nothing. New status receipts bind the reported progress to the operation
 resolved by its own provider reference and the proven conversation account.
-Only the current attempt's negative progress can authorize retry; delivery/read
+Retry is offered only when **every** attempt carries its own negative evidence;
+worker timestamps never decide which attempt is current, so once a successor is
+accepted a late failure for an earlier attempt cannot reopen a send. Delivery/read
 proof from **any** attempt survives in `Message.provider_state` and vetoes a
 queued retry at the send boundary. Historical unbound negative reports are not
 attributed to a successor by recency.

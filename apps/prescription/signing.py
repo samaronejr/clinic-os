@@ -897,7 +897,7 @@ def _verification_request(operation: SignatureOperation) -> VerificationRequest:
 
 
 def _verification_failure(operation: SignatureOperation) -> str:
-    """Revalidate authority both before and after independent verification."""
+    """Revalidate the approval at issuance; any failure refuses release."""
     try:
         require_issuance_class(category=operation.category)
     except ValidationError as refusal:
@@ -933,7 +933,12 @@ def _fail_verification(operation: SignatureOperation, reason: str) -> None:
 def _pending_verification(
     scope: _SignatureScope,
 ) -> VerificationRequest | ReconciliationResult:
-    """Materialize approved bytes inside scope, then leave the transaction."""
+    """Materialize approved bytes inside scope, then leave the transaction.
+
+    Lost or expired authority is not a verdict on the retained candidate: it
+    keeps the document's signing key until verification answers, and
+    ``_complete_verification`` refuses its release afterwards.
+    """
     with _stored_scope_context(scope):
         operation = (
             SignatureOperation.objects.select_for_update()
@@ -945,10 +950,6 @@ def _pending_verification(
         )
         if operation is None:
             return "skipped"
-        failure = _verification_failure(operation)
-        if failure:
-            _fail_verification(operation, failure)
-            return "failed"
         try:
             return _verification_request(operation)
         except (SignatureVerificationError, DocumentStorageError):
@@ -988,7 +989,11 @@ def _complete_verification(
             return "skipped"
         failure = _verification_failure(operation)
         if failure or verified is None:
-            _fail_verification(operation, failure or "signature_invalid")
+            # An invalid signature stays negative evidence even past its approval;
+            # a valid one past its approval is only refused release.
+            _fail_verification(
+                operation, "signature_invalid" if verified is None else failure
+            )
             return "failed"
         document_order(operation.document)
         operation.state = SignatureOperation.State.REHEARSAL_COMPLETE

@@ -302,6 +302,65 @@ def test_late_status_belongs_to_its_provider_attempt(world: InboxWorld) -> None:
         assert IntegrationOperation.objects.filter(subject_id=message_id).count() == 2
 
 
+def test_accepted_retry_stays_current_when_its_worker_clock_runs_behind(
+    world: InboxWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        first = IntegrationOperation.objects.get(subject_id=message_id)
+    with runtime_role():
+        assert execute_operation(first.pk) == "succeeded"
+    with owner_context(graph.organization_a):
+        first.refresh_from_db()
+    assert first.provider_reference
+    failed = world.status_body(
+        provider_message_id=first.provider_reference, status="failed"
+    )
+    assert world.receive(failed).accepted == 1
+
+    def retry() -> None:
+        with as_actor(graph, manager_of(graph)):
+            services.retry_message(
+                clinic_id=graph.clinic_a, message_id=message_id, command_id=uuid4()
+            )
+
+    # The retrying web worker's clock runs ten seconds behind the first sender's.
+    created_at = IntegrationOperation._meta.get_field("created_at")
+    behind = first.created_at - timedelta(seconds=10)
+
+    def behind_clock(instance: IntegrationOperation, *, add: bool) -> datetime:
+        assert add
+        setattr(instance, created_at.attname, behind)
+        return behind
+
+    with monkeypatch.context() as clock:
+        clock.setattr(created_at, "pre_save", behind_clock)
+        retry()
+    with owner_context(graph.organization_a):
+        second = IntegrationOperation.objects.get(
+            subject_id=message_id, status="pending"
+        )
+    assert second.created_at < first.created_at
+    with runtime_role():
+        assert execute_operation(second.pk) == "succeeded"
+    with owner_context(graph.organization_a):
+        second.refresh_from_db()
+    assert second.provider_reference not in {None, first.provider_reference}
+    assert world.receive(failed).duplicates == 1
+    late = world.receive(failed.replace(b"1790000000", b"1790000001"))
+    assert late.accepted == 1
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+    with pytest.raises(InboxRefusedError, match=Reason.NOT_FAILED):
+        retry()
+    with owner_context(graph.organization_a):
+        assert IntegrationOperation.objects.filter(subject_id=message_id).count() == 2
+
+
 def test_delivery_proof_received_before_retry_dispatch_vetoes_the_new_send(
     world: InboxWorld,
 ) -> None:

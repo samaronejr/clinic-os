@@ -139,7 +139,10 @@ crossed, local abandonment, a malformed reply or lost authority cannot free
 a new signing key. Pre-upgrade prepared rows conservatively count as possibly
 dispatched. The ordinary sign command resumes the existing key; for
 `signed_unverified`, its worker verifies the retained bytes instead of signing
-again. An unavailable verifier is not a negative verification.
+again. An unavailable verifier is not a negative verification. A retained
+candidate keeps the document's signing key until its verification verdict is
+recorded: an expired, stale or revoked approval refuses release only after that
+verdict, never in place of it.
 
 ## Issuance command and recorded SNCR allocation
 
