@@ -1,10 +1,17 @@
-"""A stop or kill of the harness at any point releases the server's port."""
+"""A stop or kill of the harness at any point releases the server's port.
+
+Every case first records what it observes (server processes gone, port not
+listening, a plain bind possible, caller mask kept) and asserts that record;
+cleanup of anything a failing run leaves behind happens only in ``finally``.
+"""
 
 from __future__ import annotations
 
 import contextlib
 import ctypes
+import errno
 import http.client
+import json
 import os
 import select
 import signal
@@ -30,11 +37,16 @@ if TYPE_CHECKING:
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PR_SET_CHILD_SUBREAPER = 36
+PR_GET_CHILD_SUBREAPER = 37
+TCP_LISTEN = "0A"
 HARNESS_SECONDS = 60
+# Kernel-delivered deaths are immediate; this bound stays well inside the
+# controller's own 60 s readiness deadline, which would end a leak itself.
+DEATH_SECONDS = 30
 # Answers with the server's process group; /hold then keeps its worker busy
-# for good, so only a signal (not Gunicorn's idle parent check) ends it. Its
-# connection lingers 0 s, so the worker's death resets it synchronously
-# instead of leaving a FIN handshake in flight at the port check.
+# for good, so only a signal (not Gunicorn's idle parent check) ends it. The
+# held connection lingers 0 s, so the worker's death resets it rather than
+# leaving the server side in TIME_WAIT (readiness clients reset theirs).
 STUB_APP_SOURCE = (
     "import os, socket, struct, threading\n"
     "def application(environ, start_response):\n"
@@ -49,6 +61,18 @@ STUB_APP_SOURCE = (
     "    if hold:\n"
     "        threading.Event().wait()\n"
 )
+# Django settings that hold the real config.wsgi preload in the master: it
+# reports its pid, its parent (the controller), its group and its inherited
+# port, then waits until a signal ends it.
+HOLD_SETTINGS_SOURCE = (
+    "import json, os, signal, socket, sys\n"
+    "fd = int(sys.argv[sys.argv.index('--bind') + 1].removeprefix('fd://'))\n"
+    "with socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM) as listener:\n"
+    "    port = listener.getsockname()[1]\n"
+    "with open(os.environ['CPI_FLAKE3_HOLD_FIFO'], 'w') as fifo:\n"
+    "    fifo.write(json.dumps([os.getpid(), os.getppid(), os.getpgid(0), port]))\n"
+    "signal.pause()\n"
+)
 
 
 def _unexpected_readiness(*_args: object) -> None:
@@ -59,26 +83,36 @@ def _caller_mask() -> set[int]:
     return set(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
 
 
-def _assert_released(
-    child: subprocess.Popen[bytes], port: int, mask_before: set[int]
-) -> None:
-    # Launcher cleanup alone: reaped by its own wait, port free, mask kept.
-    assert child.returncode == -signal.SIGTERM
-    with pytest.raises(ProcessLookupError):
-        os.kill(child.pid, 0)
-    with socket.socket() as probe:
-        probe.bind((controller.HOST, port))
-    assert _caller_mask() == mask_before
+def _listening(port: int) -> bool:
+    """Report whether any IPv4/IPv6 TCP socket listens on ``port``."""
+    hexport = f":{port:04X}"
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        for row in Path(table).read_text(encoding="ascii").splitlines()[1:]:
+            local, state = row.split()[1], row.split()[3]
+            if local.endswith(hexport) and state == TCP_LISTEN:
+                return True
+    return False
 
 
-def _assert_rebindable(port: int) -> None:
-    # Answered requests leave TIME_WAIT entries, so bind as a restarting
-    # server does (Gunicorn sets SO_REUSEADDR); Linux still refuses this
-    # while any socket listens on the port.
+def _plain_bindable(port: int) -> bool:
     with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        probe.bind((controller.HOST, port))
-        probe.listen()
+        try:
+            probe.bind((controller.HOST, port))
+        except OSError as error:
+            if error.errno != errno.EADDRINUSE:
+                raise
+            return False
+    return True
+
+
+def _alive(pid: int) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def _prepare_controller(
@@ -207,13 +241,75 @@ def test_stop_before_the_handle_is_stored_releases_the_port(
         with pytest.raises(case.unwind):
             run()
         assert len(launched) == 1
-        _assert_released(*launched[0], mask_before)
+        child, port = launched[0]
+        observed = {
+            "launcher_reaped": child.returncode,
+            "alive": _alive(child.pid),
+            "listening": _listening(port),
+            "plain_bind": _plain_bindable(port),
+            "mask_kept": _caller_mask() == mask_before,
+        }
+        assert observed == {
+            "launcher_reaped": -signal.SIGTERM,
+            "alive": False,
+            "listening": False,
+            "plain_bind": True,
+            "mask_kept": True,
+        }
     finally:
         signal.signal(sig, previous)
         for child, _port in launched:
             if child.returncode is None:
                 child.kill()
                 child.wait(timeout=10)
+
+
+def test_reservation_is_exclusive_before_listen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_socket = socket.socket
+    peers: list[socket.socket] = []
+    refusals: list[int | None] = []
+    reserve_errors: list[int | None] = []
+    reserved: list[int] = []
+
+    class PeerAtListen(socket.socket):
+        def listen(self, *args: int) -> None:
+            # A reuse-enabled peer tries the same endpoint between our bind
+            # and our listen, the only point where the port is not yet owned.
+            peer = real_socket(socket.AF_INET, socket.SOCK_STREAM)
+            peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                peer.bind(self.getsockname())
+                peer.listen()
+                peers.append(peer)
+            except OSError as error:
+                refusals.append(error.errno)
+                peer.close()
+            super().listen(*args)
+
+    monkeypatch.setattr(socket, "socket", PeerAtListen)
+    try:
+        try:
+            with controller.reserve_port() as (port, _listener_fd):
+                reserved.append(port)
+        except OSError as error:
+            reserve_errors.append(error.errno)
+        observed = {
+            "peer_listening": len(peers),
+            "peer_refused": refusals,
+            "reserve_errors": reserve_errors,
+            "reserved": len(reserved),
+        }
+        assert observed == {
+            "peer_listening": 0,
+            "peer_refused": [errno.EADDRINUSE],
+            "reserve_errors": [],
+            "reserved": 1,
+        }
+    finally:
+        for peer in peers:
+            peer.close()
 
 
 class _MaskInterruptError(Exception):
@@ -245,58 +341,162 @@ def test_interrupted_mask_block_restores_the_caller_mask(
             supervisor.start_master(
                 [sys.executable, "-c", "pass"], {}, tmp_path / "mask.log", owner=[]
             )
-        assert real_sigmask(signal.SIG_BLOCK, ()) == mask_before
-        assert spawned == []
+        observed = {
+            "mask_kept": set(real_sigmask(signal.SIG_BLOCK, ())) == mask_before,
+            "spawned": spawned,
+        }
+        assert observed == {"mask_kept": True, "spawned": []}
     finally:
         real_sigmask(signal.SIG_SETMASK, mask_before)
 
 
-_PRCTL = ctypes.CDLL(None, use_errno=True).prctl
-_PRCTL.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
-_PRCTL.restype = ctypes.c_int
+class _AlarmError(Exception):
+    """The caller's SIGALRM handler, raised at entry to the mask restore."""
+
+
+def _alarm(_signum: int, _frame: object) -> None:
+    raise _AlarmError
+
+
+def test_signal_at_the_restore_on_an_error_path_keeps_the_caller_mask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_sigmask = signal.pthread_sigmask
+    mask_before = _caller_mask()
+
+    def alarm_before_restore(
+        how: int, mask: tuple[int, ...] | frozenset[int]
+    ) -> set[int]:
+        if how == signal.SIG_SETMASK:
+            # The caller's alarm fires just before the restoring syscall.
+            signal.raise_signal(signal.SIGALRM)
+        return real_sigmask(how, mask)
+
+    previous_alarm = signal.signal(signal.SIGALRM, _alarm)
+    monkeypatch.setattr(signal, "pthread_sigmask", alarm_before_restore)
+    try:
+        # The log path is a directory: the launch fails before any spawn.
+        with pytest.raises(_AlarmError):
+            supervisor.start_master(
+                [sys.executable, "-c", "pass"], {}, tmp_path, owner=[]
+            )
+        observed = {"mask_kept": set(real_sigmask(signal.SIG_BLOCK, ())) == mask_before}
+        assert observed == {"mask_kept": True}
+    finally:
+        real_sigmask(signal.SIG_SETMASK, mask_before)
+        signal.signal(signal.SIGALRM, previous_alarm)
+
+
+def test_missing_pthread_sigmask_fails_closed_at_launch_for_both_launchers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[str] = []
+
+    def record_spawn(argv: list[str], **_kwargs: object) -> None:
+        started.append("spawn")
+
+    def record_fork() -> int:
+        started.append("fork")
+        raise AssertionError
+
+    monkeypatch.delattr(signal, "pthread_sigmask")
+    monkeypatch.setattr(subprocess, "Popen", record_spawn)
+    monkeypatch.setattr(os, "fork", record_fork)
+    reasons: list[str] = []
+    for launch in (
+        partial(
+            supervisor.start_master,
+            [sys.executable, "-c", "pass"],
+            {},
+            tmp_path / "api.log",
+            owner=[],
+        ),
+        supervisor.main,
+    ):
+        with pytest.raises(supervisor.SupervisorError) as rejected:
+            launch()
+        reasons.append(str(rejected.value))
+    observed = {"started": started, "reasons": reasons}
+    reason = "browser supervisor rejected: signal.pthread_sigmask is unavailable"
+    assert observed == {
+        "started": [],
+        "reasons": [f"{reason} on this Python build"] * 2,
+    }
+
+
+def test_missing_libc_prctl_fails_at_launch_not_import() -> None:
+    probe = (
+        "import ctypes\n"
+        "class NoPrctl(ctypes.CDLL):\n"
+        "    def __getattr__(self, name):\n"
+        "        if name == 'prctl':\n"
+        "            raise AttributeError(name)\n"
+        "        return super().__getattr__(name)\n"
+        "ctypes.CDLL = NoPrctl\n"
+        "from ops.testing import browser_server_supervisor as supervisor\n"
+        "print('imported')\n"
+        "try:\n"
+        "    supervisor.require_process_controls()\n"
+        "except supervisor.SupervisorError as error:\n"
+        "    print(error)\n"
+    )
+    completed = subprocess.run(  # noqa: S603 - this interpreter, fixed probe.
+        [sys.executable, "-c", probe],
+        cwd=REPOSITORY,
+        env={**os.environ, "PYTHONPATH": str(REPOSITORY)},
+        capture_output=True,
+        text=True,
+        timeout=HARNESS_SECONDS,
+        check=False,
+    )
+    assert (completed.returncode, completed.stdout.splitlines()) == (
+        0,
+        [
+            "imported",
+            "browser supervisor rejected: libc prctl is unavailable; "
+            "the server cannot follow its harness",
+        ],
+    )
 
 
 @contextmanager
 def _child_subreaper() -> Iterator[None]:
-    """Adopt orphaned descendants so the test can wait for the server group."""
-    assert _PRCTL(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == 0
+    """Adopt orphaned descendants so the test can wait for the server."""
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
+    prctl.restype = ctypes.c_int
+    saved = ctypes.c_int()
+    assert prctl(PR_GET_CHILD_SUBREAPER, ctypes.addressof(saved), 0, 0, 0) == 0
+    assert prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == 0
     try:
         yield
     finally:
-        _PRCTL(PR_SET_CHILD_SUBREAPER, 0, 0, 0, 0)
+        prctl(PR_SET_CHILD_SUBREAPER, saved.value, 0, 0, 0)
 
 
-def _reap_group(pgid: int, done: threading.Event) -> None:
-    """Reap every adopted member of the group; ECHILD means none is left."""
-    try:
-        while True:
-            os.waitpid(-pgid, 0)
-    except ChildProcessError:
-        done.set()
+def _reap(targets: tuple[int, ...], done: threading.Event) -> None:
+    """Reap adopted pids or ``-pgid`` groups; ECHILD means none is left."""
+    for target in targets:
+        with contextlib.suppress(ChildProcessError):
+            while True:
+                os.waitpid(target, 0)
+    done.set()
 
 
-@pytest.mark.parametrize(
-    ("mode", "stop", "exit_signal"),
-    [
-        pytest.param(
-            "controller-second-stop",
-            signal.SIGINT,
-            signal.SIGTERM,
-            id="controller-second-stop-in-teardown",
-        ),
-        pytest.param(
-            "controller", signal.SIGKILL, signal.SIGKILL, id="controller-killed"
-        ),
-        pytest.param(
-            "supervisor", signal.SIGKILL, signal.SIGKILL, id="start-master-killed"
-        ),
-    ],
-)
-def test_ended_harness_takes_its_server_down(
-    mode: str, stop: signal.Signals, exit_signal: signal.Signals, tmp_path: Path
-) -> None:
+class _Harness(NamedTuple):
+    module: str
+    mode: tuple[str, ...]
+    stop: signal.Signals
+    exit_signal: signal.Signals
+
+
+def _harness_environment(tmp_path: Path, *, preload: bool) -> dict[str, str]:
     (tmp_path / "cpi_flake3_stop_app.py").write_text(STUB_APP_SOURCE, encoding="utf-8")
-    environment = {
+    (tmp_path / "cpi_flake3_hold_settings.py").write_text(
+        HOLD_SETTINGS_SOURCE, encoding="utf-8"
+    )
+    hold = {"DJANGO_SETTINGS_MODULE": "cpi_flake3_hold_settings"} if preload else {}
+    return {
         **os.environ,
         **dict.fromkeys(controller.REQUIRED_ENVIRONMENT, "synthetic"),
         "CLINIC_BROWSER_EVIDENCE_ROOT": str(tmp_path),
@@ -305,21 +505,93 @@ def test_ended_harness_takes_its_server_down(
         ),
         # Gunicorn's control socket stays inside this test's directory.
         "XDG_RUNTIME_DIR": str(tmp_path),
+        "CPI_FLAKE3_HOLD_FIFO": str(tmp_path / "hold.fifo"),
+        **hold,
     }
-    reaped = threading.Event()
-    reaper = threading.Thread(target=_reap_group, args=(0, reaped))
-    held = http.client.HTTPConnection(controller.HOST, 0)
-    pgid = 0
+
+
+def _held_server(
+    harness: subprocess.Popen[str], held: list[http.client.HTTPResponse]
+) -> tuple[int, int, int]:
+    """Hold one worker in a request; return (port, pgid, no separate controller)."""
+    assert harness.stdout is not None
+    assert select.select([harness.stdout], [], [], HARNESS_SECONDS)[0]
+    port = int(harness.stdout.readline().strip().rsplit(":", 1)[1])
+    connection = http.client.HTTPConnection(controller.HOST, port, timeout=10)
+    connection.request("GET", "/hold")
+    # The response owns the socket; keep it open while the worker is held.
+    held.append(connection.getresponse())
+    pgid = int(held[0].readline())
+    return port, pgid, 0
+
+
+def _preloading_server(fifo: int) -> tuple[int, int, int]:
+    """Read the held preload's report; return (port, pgid, controller pid)."""
+    assert select.select([fifo], [], [], HARNESS_SECONDS)[0]
+    _master, controller_pid, pgid, port = json.loads(os.read(fifo, 4096))
+    return port, pgid, controller_pid
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            _Harness(
+                "browser.browser_server_stop_harness",
+                ("controller-second-stop",),
+                signal.SIGINT,
+                signal.SIGTERM,
+            ),
+            id="controller-second-stop-in-teardown",
+        ),
+        pytest.param(
+            _Harness(
+                "browser.browser_server_stop_harness",
+                ("controller",),
+                signal.SIGKILL,
+                signal.SIGKILL,
+            ),
+            id="controller-killed",
+        ),
+        pytest.param(
+            _Harness(
+                "browser.browser_server_stop_harness",
+                ("supervisor",),
+                signal.SIGKILL,
+                signal.SIGKILL,
+            ),
+            id="start-master-killed",
+        ),
+        pytest.param(
+            _Harness(
+                supervisor.__name__,
+                ("suite", "patient"),
+                signal.SIGKILL,
+                signal.SIGKILL,
+            ),
+            id="shell-supervisor-killed-in-preload",
+        ),
+    ],
+)
+def test_ended_harness_takes_its_server_down(case: _Harness, tmp_path: Path) -> None:
+    shell_path = case.module == supervisor.__name__
+    environment = _harness_environment(tmp_path, preload=shell_path)
+    held: list[http.client.HTTPResponse] = []
+    os.mkfifo(environment["CPI_FLAKE3_HOLD_FIFO"])
+    fifo = os.open(environment["CPI_FLAKE3_HOLD_FIFO"], os.O_RDONLY | os.O_NONBLOCK)
+    gone = threading.Event()
+    reaper: threading.Thread | None = None
+    survivors: tuple[int, int] = (0, 0)
     with (
         _child_subreaper(),
         (tmp_path / "harness.log").open("wb") as harness_log,
-        subprocess.Popen(  # noqa: S603 - this interpreter and a fixed test module.
+        subprocess.Popen(  # noqa: S603 - this interpreter and a fixed module.
             [
                 sys.executable,
                 "-m",
-                "browser.browser_server_stop_harness",
-                mode,
-                str(tmp_path),
+                case.module,
+                *case.mode,
+                *(() if shell_path else (str(tmp_path),)),
             ],
             cwd=REPOSITORY,
             env=environment,
@@ -328,37 +600,47 @@ def test_ended_harness_takes_its_server_down(
             text=True,
         ) as harness,
     ):
-        assert harness.stdout is not None
         try:
-            assert select.select([harness.stdout], [], [], HARNESS_SECONDS)[0]
-            base_url = harness.stdout.readline().strip()
-            port = int(base_url.rsplit(":", 1)[1])
-            held = http.client.HTTPConnection(controller.HOST, port, timeout=10)
-            held.request("GET", "/hold")
-            # A worker is now inside the request and will not return.
-            pgid = int(held.getresponse().readline())
-
-            harness.send_signal(stop)
+            port, pgid, controller_pid = (
+                _preloading_server(fifo) if shell_path else _held_server(harness, held)
+            )
+            survivors = (controller_pid, pgid)
+            harness.send_signal(case.stop)
             harness_exit = harness.wait(timeout=HARNESS_SECONDS)
-            # The harness is gone; its orphans are ours. Nothing is signalled.
-            reaper = threading.Thread(target=_reap_group, args=(pgid, reaped))
+            # The harness is gone and its orphans are ours: only wait.
+            targets = (*((controller_pid,) if controller_pid else ()), -pgid)
+            reaper = threading.Thread(target=_reap, args=(targets, gone), daemon=True)
             reaper.start()
-            assert reaped.wait(timeout=HARNESS_SECONDS), "server group outlived"
-            with pytest.raises(ProcessLookupError):
-                os.killpg(pgid, 0)
-            _assert_rebindable(port)
-            # The harness itself ended by that signal, without unwinding.
-            assert harness_exit == -exit_signal
+            observed = {
+                "server_gone": gone.wait(timeout=DEATH_SECONDS),
+                "controller_alive": _alive(controller_pid),
+                "listening": _listening(port),
+                "plain_bind": _plain_bindable(port),
+                "harness_exit": harness_exit,
+            }
+            assert observed == {
+                "server_gone": True,
+                "controller_alive": False,
+                "listening": False,
+                "plain_bind": True,
+                "harness_exit": -case.exit_signal,
+            }
         finally:
-            # Rescue only after the assertions, for a failing run.
-            held.close()
+            # Only now, and only for a failing run, end what is left.
+            os.close(fifo)
+            for response in held:
+                response.close()
             if harness.returncode is None:
                 harness.kill()
                 harness.wait(timeout=HARNESS_SECONDS)
-            if pgid and not reaped.is_set():
+            controller_pid, pgid = survivors
+            if pgid and not gone.is_set():
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(pgid, signal.SIGKILL)
-                if not reaper.is_alive():
-                    reaper = threading.Thread(target=_reap_group, args=(pgid, reaped))
-                    reaper.start()
-                reaper.join(timeout=HARNESS_SECONDS)
+                if controller_pid:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.kill(controller_pid, signal.SIGKILL)
+                if reaper is None:
+                    _reap((*((controller_pid,) if controller_pid else ()), -pgid), gone)
+                else:
+                    reaper.join(timeout=HARNESS_SECONDS)

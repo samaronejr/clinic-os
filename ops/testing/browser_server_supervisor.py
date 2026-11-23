@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import functools
 import json
 import os
 import signal
@@ -18,7 +19,10 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import rfc8785
 
@@ -36,13 +40,9 @@ MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
-STOP_SIGNALS: Final = frozenset({signal.SIGINT, signal.SIGTERM})
 # Harness-only Gunicorn hooks: each worker dies with its master.
 GUNICORN_CONFIG: Final = "python:ops.testing.browser_gunicorn_config"
 PR_SET_PDEATHSIG: Final = 1
-_PRCTL = ctypes.CDLL(None, use_errno=True).prctl
-_PRCTL.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
-_PRCTL.restype = ctypes.c_int
 
 
 class SupervisorError(RuntimeError):
@@ -163,13 +163,35 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
     ]
 
 
+@functools.cache
+def _prctl() -> Callable[..., int]:
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
+    prctl.restype = ctypes.c_int
+    return prctl
+
+
+def require_process_controls() -> None:
+    """Fail closed before any launch on a build without the lifetime controls.
+
+    Both launchers (``start_master`` and the shell's ``main``) call this one
+    check; importing this module never needs either control.
+    """
+    if not hasattr(signal, "pthread_sigmask"):
+        _fail("signal.pthread_sigmask is unavailable on this Python build")
+    try:
+        _prctl()
+    except (AttributeError, OSError):
+        _fail("libc prctl is unavailable; the server cannot follow its harness")
+
+
 def die_with_parent(parent_pid: int) -> None:
     """Ask the kernel to SIGKILL this process when its forking thread ends.
 
     Linux delivers the signal when the thread that forked this process
     exits, for any reason, SIGKILL included; fork from the main thread.
     """
-    if _PRCTL(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+    if _prctl()(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
         error = ctypes.get_errno()
         raise OSError(error, os.strerror(error))
     if os.getppid() != parent_pid:
@@ -232,13 +254,16 @@ def start_master(
     and each worker dies with the master through ``GUNICORN_CONFIG``. Call
     this from the main thread.
 
-    SIGINT/SIGTERM are blocked only while the child is started and its
-    handle stored in ``owner``, so an in-process stop unwinds with the
-    handle published and the group is reaped before the exception
-    propagates. The mask is per thread: start no helper thread first, since
-    a signal taken by another thread still runs its handler on this one.
-    The caller's mask is read before the block and restored in ``finally``.
+    Signals are blocked only while the child is started and its handle
+    stored in ``owner``, so an in-process stop unwinds with the handle
+    published and the group is reaped before the exception propagates. The
+    mask is per thread: start no helper thread first, since a signal taken
+    by another thread still runs its handler on this one. The caller's mask
+    is read before anything changes. Every catchable signal stays blocked
+    until it is restored, so no handler can run before the restoring
+    syscall in ``finally``, which does nothing else.
     """
+    require_process_controls()
     process: subprocess.Popen[bytes] | None = None
     parent_pid = os.getpid()
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
@@ -249,7 +274,8 @@ def start_master(
         die_with_parent(parent_pid)
 
     try:
-        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
+        # A handler tripped earlier runs at this call's return, inside try.
+        signal.pthread_sigmask(signal.SIG_BLOCK, signal.valid_signals())
         with log.open("wb") as stream:
             process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
                 argv,
@@ -284,10 +310,14 @@ CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
 
 def main() -> int:
     """Fork the journal-bound controller child and reap it on every exit."""
+    require_process_controls()
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     interpreter = sys.executable
+    supervisor_pid = os.getpid()
     pid = os.fork()
     if pid == 0:
+        # The controller, and through it the server, ends with this process.
+        die_with_parent(supervisor_pid)
         parent.close()
         os.environ["CLINIC_BROWSER_SUPERVISOR_FD"] = str(child.fileno())
         child.set_inheritable(True)

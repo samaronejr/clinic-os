@@ -8,6 +8,7 @@ import http.client
 import json
 import os
 import socket
+import struct
 import sys
 import time
 from http import HTTPStatus
@@ -77,9 +78,6 @@ def reserve_port() -> Iterator[tuple[int, int]]:
     """Yield a loopback port and its listening FD, keeping ownership through spawn."""
     for _attempt in range(PORT_ATTEMPTS):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-            # Gunicorn sets this on every listener; set it before any
-            # connection is queued so the port can be reused after a run.
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind((HOST, 0))
             port = int(listener.getsockname()[1])
             if port == PROTECTED_DATABASE_PORT:
@@ -98,6 +96,14 @@ def wait_until_ready(port: int, server_log: Path) -> None:
         connection = http.client.HTTPConnection(HOST, port, timeout=2)
         try:
             connection.request("GET", "/readyz")
+            if connection.sock is not None:
+                # Close with a reset, not a FIN, so the server side of the
+                # reserved port never enters TIME_WAIT and the port is
+                # bindable again as soon as the server ends. Set it now: a
+                # Connection: close response takes over the socket.
+                connection.sock.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                )
             status = connection.getresponse().status
             if status == HTTPStatus.OK:
                 return
