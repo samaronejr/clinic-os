@@ -575,20 +575,48 @@ def test_unapproved_or_failed_exam_issuance_never_places_an_order(
                 user_id=setup.graph.physician
             ).update(revoked_at=timezone.now())
     elif failure == "abandoned":
+        # Local intent cannot abandon an accepted provider key. Only the
+        # authenticated negative outcome closes it; a later signed frame loses.
         with (
             runtime_role(),
             tenant_context(setup.graph.physician, setup.graph.organization_a),
+            pytest.raises(ClinicalConflictError, match="invalid_state"),
         ):
             abandon_signature(clinic_id=setup.graph.clinic_a, operation_id=operation.pk)
+        assert setup.request_signature().pk == operation.pk
+        assert setup.refresh(operation).state == "signing"
+        assert setup.receive(*setup.callback(operation, status="failed")) == "applied"
     headers, body = setup.callback(
         operation, status="failed" if failure == "provider_failed" else "signed"
     )
     outcome = setup.receive(headers, body)
-    assert outcome in {"applied", "rejected"}
+    assert outcome == ("rejected" if failure == "abandoned" else "applied")
     with owner_context(setup.graph.organization_a):
         assert not Order.objects.exists()
         operation.refresh_from_db()
         assert operation.state == "failed"
+
+
+def test_abandoned_predispatch_exam_never_reaches_the_provider_or_places_an_order(
+    exam_signing: SigningSetup,
+) -> None:
+    setup = exam_signing
+    operation = setup.enqueue_signature()
+    assert operation.state == "prepared"
+    with (
+        runtime_role(),
+        tenant_context(setup.graph.physician, setup.graph.organization_a),
+    ):
+        abandoned = abandon_signature(
+            clinic_id=setup.graph.clinic_a, operation_id=operation.pk
+        )
+    assert (abandoned.state, abandoned.failure_reason) == ("failed", "abandoned")
+    assert setup.dispatch(operation.pk) == "failed"
+    with owner_context(setup.graph.organization_a):
+        operation.refresh_from_db()
+        assert (operation.dispatch_started, operation.operation_id) == (False, "")
+        assert not SignatureCallback.objects.filter(operation=operation).exists()
+        assert not Order.objects.exists()
 
 
 class IssuanceInterruptedError(Exception):
