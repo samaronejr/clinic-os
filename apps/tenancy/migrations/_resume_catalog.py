@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 from django.db.migrations.recorder import MigrationRecorder
 
-from apps.tenancy.migrations._resume_catalog_sql import CATALOG_SQL, FK_TRIGGERS_SQL
+from apps.tenancy.migrations._resume_catalog_sql import catalog_sql, fields
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -41,8 +41,9 @@ class Checkpoint(NamedTuple):
 
 def snapshot(connection: BaseDatabaseWrapper) -> Catalog:
     """Collect complete object definitions from a single catalog statement."""
+    query = catalog_sql(fields(connection))
     with connection.cursor() as cursor:
-        cursor.execute(CATALOG_SQL + "\nUNION ALL\n" + FK_TRIGGERS_SQL)
+        cursor.execute(query)
         catalog: Catalog = {}
         for name, path, payload in cursor.fetchall():
             definition = catalog.setdefault(name, {})
@@ -52,6 +53,16 @@ def snapshot(connection: BaseDatabaseWrapper) -> Catalog:
                     msg = f"Ambiguous catalog attribute for {name}.{key}"
                     raise ResumeCatalogError(msg)
                 definition[key] = json.dumps(value, sort_keys=True)
+                if attribute in {"relacl", "attacl", "proacl"} and isinstance(
+                    value, dict
+                ):
+                    # Independent grants can be installed by independent
+                    # branches. Keep each privilege as its own replay fact.
+                    definition[key] = "{}"
+                    definition.update(
+                        (f"{key}.{grant}", json.dumps(option))
+                        for grant, option in value.items()
+                    )
     return catalog
 
 
@@ -119,12 +130,22 @@ _MEMBER_GROUPS = frozenset(
 def _first_difference(actual: Definition, expected: Definition) -> str:
     for key in sorted(
         actual.keys() | expected.keys(),
-        key=lambda k: (k.partition(".")[0] not in _MEMBER_GROUPS, k),
+        key=lambda k: (
+            k not in actual or k not in expected,
+            k.partition(".")[0] not in _MEMBER_GROUPS,
+            k,
+        ),
     ):
         if actual.get(key) != expected.get(key):
             parts = key.split(".")
             if parts[0] in _MEMBER_GROUPS:
                 parts = parts[1:]
+            parts = [
+                {"attstorage": "storage", "relacl": "grants", "proacl": "grants"}.get(
+                    part, part
+                )
+                for part in parts
+            ]
             change = (
                 "unexpected"
                 if key not in expected
@@ -146,8 +167,16 @@ def checkpoint_applied(editor: BaseDatabaseSchemaEditor, step: str) -> bool:
     applied = {f"{app}.{name}" for app, name in recorder.applied_migrations()}
     live = snapshot(editor.connection)
     actual = {name: live.get(name, {}) for name in checkpoint.scope}
+    return match_boundary(
+        checkpoint, actual, _boundaries(checkpoint, applied, checkpoint.scope)
+    )
+
+
+def match_boundary(
+    checkpoint: Checkpoint, actual: Catalog, states: list[Catalog]
+) -> bool:
+    """Use this same decision for DB reads and PostgreSQL catalog-row witnesses."""
     hashes = {name: fingerprint(definition) for name, definition in actual.items()}
-    states = _boundaries(checkpoint, applied, checkpoint.scope)
     closest: tuple[int, int, list[str]] | None = None
     for index in range(len(states) - 1, -1, -1):
         expected = states[index]

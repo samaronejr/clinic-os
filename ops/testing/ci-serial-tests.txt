@@ -35,6 +35,8 @@ server-state tests/ehr/test_ehr_migrations.py::test_migrated_accented_soap_note_
 server-state tests/ehr/test_longitudinal_posture.py::test_longitudinal_contract_failure_rolls_back_new_schema
 server-state tests/patients/test_intake_migrations.py::test_populated_protected_migration_runs_on_real_schema
 server-state tests/infra/test_protected_migration_resume.py
+server-state tests/infra/test_catalog_row_resume.py
+server-state tests/infra/test_catalog_row_coverage.py
 server-state tests/patients/test_survivor_confirmation_migration.py::test_survivor_confirmation_reverse_reapply_restores_exact_catalog
 # Todo 7's session fixture identity.test_service_principals.agent_password
 # commits ALTER ROLE clinic_agent PASSWORD to a per-session secret and restores

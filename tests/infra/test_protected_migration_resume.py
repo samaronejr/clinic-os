@@ -29,6 +29,7 @@ from patients.test_intake_migrations import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from uuid import UUID
 
     from django.db.migrations.state import ProjectState
     from pytest_django.plugin import DjangoDbBlocker
@@ -52,7 +53,8 @@ WITH rels AS (
     SELECT 'column', relname || '.' || attname,
            jsonb_build_array(format_type(atttypid, atttypmod), attnotnull,
                              attacl::text, pg_get_expr(adbin, adrelid),
-                             attstorage, attcompression)
+                             attstorage, attcompression, attnum, atthasmissing,
+                             attmissingval::text, attgenerated)
     FROM pg_attribute JOIN rels ON attrelid = rels.oid
     LEFT JOIN pg_attrdef ON adrelid = attrelid AND adnum = attnum
     WHERE attnum > 0 AND NOT attisdropped AND relkind IN ('r', 'p', 'v', 'm')
@@ -124,10 +126,11 @@ def _seed(
     target: Target,
     *,
     artifact_content: str = "Synthetic AI fixture",
+    organization_id: UUID | None = None,
 ) -> Callable[[DatabaseWrapper], tuple[object, ...]]:
     """Write a protected row through the pre-migration authorities."""
     registry = state.apps
-    org_id = uuid4()
+    org_id = organization_id or uuid4()
     with transaction.atomic(using=db.alias), db.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [str(org_id)]
@@ -392,6 +395,42 @@ def test_resume_after_each_committed_boundary(
             "GRANT DELETE ON clinic_app.ai_aiartifact TO clinic_app;",
             id="extra-grant",
         ),
+        pytest.param(
+            (INTAKE, 11),
+            "intake_identity_append_only_v1",
+            "ALTER FUNCTION clinic_app.intake_identity_append_only_v1() STABLE",
+            id="unchanged-body-volatility",
+        ),
+        pytest.param(
+            (INTAKE, 14),
+            "patient_registry_count",
+            "ALTER FUNCTION clinic_app.patient_registry_count(text,uuid,text,date) "
+            "SECURITY INVOKER",
+            id="unchanged-body-security",
+        ),
+        pytest.param(
+            (INTAKE, 4),
+            "intake_patientdemographics.tenant_isolation.polpermissive",
+            """
+            DROP POLICY tenant_isolation ON clinic_app.intake_patientdemographics;
+            CREATE POLICY tenant_isolation ON clinic_app.intake_patientdemographics
+              AS RESTRICTIVE FOR ALL TO PUBLIC USING (organization_id =
+                NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+              WITH CHECK (organization_id =
+                NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+            """,
+            id="unchanged-predicates-restrictive",
+        ),
+        pytest.param(
+            (AI, 1),
+            "ai_aiartifact.purged_at",
+            """
+            ALTER TABLE clinic_app.ai_aiartifact DROP COLUMN purged_at;
+            ALTER TABLE clinic_app.ai_aiartifact ADD COLUMN purged_at timestamptz
+              GENERATED ALWAYS AS ('2001-01-01T00:00:00Z'::timestamptz) STORED;
+            """,
+            id="generated-expression",
+        ),
     ],
 )
 def test_resume_refuses_conflicting_catalog(
@@ -513,7 +552,6 @@ def test_committed_fingerprints_match_fresh_migration_catalog(
         _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
         _default_connection(db),
     ):
-        expected = json.loads(FIXTURE.read_text(encoding="utf-8"))
         normal = capture(db)
     with (
         django_db_blocker.unblock(),
@@ -521,5 +559,7 @@ def test_committed_fingerprints_match_fresh_migration_catalog(
         _default_connection(db),
     ):
         observed = merged(normal, capture(db, guarded_first=True))
-    assert observed["fingerprints"] == expected["fingerprints"]
-    assert json.loads(json.dumps(observed["history"])) == expected["history"]
+    # Use the generator's exact bytes, including the migration replay order.
+    if (json.dumps(observed, indent=1) + "\n").encode() != FIXTURE.read_bytes():
+        msg = "Fresh catalog reference differs in content or replay order"
+        raise AssertionError(msg)
