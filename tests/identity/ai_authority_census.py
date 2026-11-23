@@ -28,6 +28,7 @@ from ai import (
     test_evaluation_runtime,
     test_extraction_rollout,
     test_gateway,
+    test_manual_appeal,
     test_posture,
     test_revenue_rollout,
     test_rollout,
@@ -98,6 +99,12 @@ def exercise_ai_authority(
                 local,
                 "advanced_stage",
                 native=False,
+            ),
+        )
+        proofs.run(
+            "Manual claim draft with AI off: scoped denial, idempotent, unsubmitted",
+            partial(
+                test_manual_appeal.test_manual_appeal_with_ai_off, revenue, "global"
             ),
         )
     with patch.context() as local:

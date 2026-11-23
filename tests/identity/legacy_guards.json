@@ -183,16 +183,28 @@
       ]
     },
     {
-      "symbol": "apps.ai.artifacts.check_authority",
+      "symbol": "apps.ai.authorization._authorize_staff_input",
       "signals": [
         "denial",
-        "permission",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.authorization._authorize_staff_input#cut1"
+      ],
+      "reason": "Current GUC actor, clinic and patient-scoped has_permission; BRIEF and DECISION_SUPPORT also recheck the pinned visit and current acceptance."
+    },
+    {
+      "symbol": "apps.ai.authorization.authorize_capability",
+      "signals": [
+        "denial",
         "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.artifacts.check_authority#cut1"
-      ]
+        "apps.ai.authorization.authorize_capability#cut1"
+      ],
+      "reason": "Chooses the staff permission boundary or the synthetic-only front desk message/session resolver; no caller-supplied actor or equivalent staff grant."
     },
     {
       "symbol": "apps.ai.artifacts.input_for",
@@ -250,13 +262,64 @@
       ]
     },
     {
-      "symbol": "apps.ai.brief.request_brief",
+      "symbol": "apps.ai.brief._admit",
       "signals": [
         "actor"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.brief.request_brief#cut1"
+        "apps.ai.brief._admit#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.brief_views._selected_visit",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.brief_views._selected_visit#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.chart_authority.visit_permission",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.chart_authority.visit_permission#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.chart_authority.recheck_chart_permission",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.chart_authority.recheck_chart_permission#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.manual_claims.manual_claims",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.manual_claims.manual_claims#cut1"
+      ],
+      "reason": "Privileged TOTP plus current tiss.read/tiss.manage; reads only the clinic's actual guide/glosa, writes an unsubmitted appeal through the insurance guard, and never calls AI or submits a guide."
+    },
+    {
+      "symbol": "apps.ai.authorization._authorize_message",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.authorization._authorize_message#cut1"
       ]
     },
     {
@@ -313,7 +376,7 @@
         "apps.workflows.care.access.load_plan",
         "apps.workflows.care.access.require_clinician",
         "apps.ehr.services.view_version",
-        "apps.ai.artifacts.check_authority",
+        "apps.ai.authorization.authorize_capability",
         "apps.ai.services.invoke"
       ],
       "reason": "Only the plan's clinician asks: care plan visibility, patient-scoped clinical.write, the EHR version reader and the governed gateway admission decide; the actor id only names the requester."
@@ -719,7 +782,7 @@
         "clinic_app.has_permission",
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.ai.artifacts.check_authority",
+        "apps.ai.authorization.authorize_capability",
         "apps.ai.services.invoke"
       ],
       "reason": "Admission uses current domain source authority and the existing patient-bound, current-human gateway admission; no new machine or role bypass is introduced."
@@ -735,7 +798,7 @@
         "clinic_app.has_permission",
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.ai.artifacts.check_authority",
+        "apps.ai.authorization.authorize_capability",
         "apps.ai.artifacts.read_artifact",
         "apps.ai.services.invoke"
       ],
@@ -752,7 +815,7 @@
         "clinic_app.has_permission",
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.ai.artifacts.check_authority",
+        "apps.ai.authorization.authorize_capability",
         "apps.ai.artifacts.read_artifact",
         "apps.ai.services.invoke"
       ],
@@ -857,28 +920,6 @@
         "apps.ai.effects.check_invocation#cut1"
       ],
       "reason": "Executed retained-output and gateway witnesses recheck exact clinic, current source identity, original stage authority and kill switches; native source receipts cannot give retained output a later permission."
-    },
-    {
-      "symbol": "apps.ai.front_desk._authorize",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.front_desk._authorize#cut1"
-      ],
-      "reason": "Authenticates fresh source evidence for the pinned clinic permission and transaction through the native resolver; signed inbound, portal, native refusal and kill/replay witnesses execute this boundary."
-    },
-    {
-      "symbol": "apps.ai.front_desk._enqueue",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.front_desk._enqueue#cut1"
-      ],
-      "reason": "Binds a stored inbound message to its current clinic evaluation permission through authenticated source evidence; the owning signed provider or verified portal session is rechecked in PostgreSQL."
     },
     {
       "symbol": "apps.ai.front_desk._propose",
@@ -1200,7 +1241,7 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ai.artifacts.check_authority",
+        "apps.ai.authorization.authorize_capability",
         "apps.ai.services.invoke"
       ],
       "reason": "AI-06 delegates to these existing executable authority boundaries; exact-clinic finance and requester/source rechecks run before disclosure or effect."
@@ -10759,13 +10800,18 @@
     "apps.ai.approvals.approve_action#cut1",
     "apps.ai.approvals.reject_action#cut1",
     "apps.ai.approvals.verify_approvals#cut1",
-    "apps.ai.artifacts.check_authority#cut1",
     "apps.ai.artifacts.input_for#cut1",
     "apps.ai.artifacts.read_artifact#cut1",
     "apps.ai.attestations.step_up_evidence#cut1",
+    "apps.ai.authorization._authorize_message#cut1",
+    "apps.ai.authorization._authorize_staff_input#cut1",
+    "apps.ai.authorization.authorize_capability#cut1",
+    "apps.ai.brief._admit#cut1",
     "apps.ai.brief.display_brief#cut1",
-    "apps.ai.brief.request_brief#cut1",
+    "apps.ai.brief_views._selected_visit#cut1",
     "apps.ai.brief_views.chart_assistant#cut1",
+    "apps.ai.chart_authority.recheck_chart_permission#cut1",
+    "apps.ai.chart_authority.visit_permission#cut1",
     "apps.ai.context.recheck_context#cut1",
     "apps.ai.controls.current_policy#cut1",
     "apps.ai.controls.set_organization_policy#cut1",
@@ -10806,9 +10852,7 @@
     "apps.ai.front_desk._appointment_step#cut1",
     "apps.ai.front_desk._articles#cut1",
     "apps.ai.front_desk._audit_turn#cut1",
-    "apps.ai.front_desk._authorize#cut1",
     "apps.ai.front_desk._context#cut1",
-    "apps.ai.front_desk._enqueue#cut1",
     "apps.ai.front_desk._finish#cut1",
     "apps.ai.front_desk._pending#cut1",
     "apps.ai.front_desk._propose#cut1",
@@ -10828,6 +10872,7 @@
     "apps.ai.management.commands.ai_eval.Command.handle#cut1",
     "apps.ai.management.commands.ai_eval.Command.handle#observed",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
+    "apps.ai.manual_claims.manual_claims#cut1",
     "apps.ai.outbox.GatewayActionAdapter.send#cut1",
     "apps.ai.owner.propose_model#cut1",
     "apps.ai.owner.reset_circuit#cut1",
