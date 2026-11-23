@@ -255,6 +255,19 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
     for width in (640, 320):
         page.set_viewport_size({"width": width, "height": 900})
         _capture(page, renewal_artifact_root, f"reflow-{width}")
+    # Phones switch sections with the select; no section widens the page.
+    page.set_viewport_size({"width": 375, "height": 900})
+    expect(page.locator(".patient-workspace-tabs")).to_be_hidden()
+    for key in ("results", "plans", "messages"):
+        select = page.locator("#patient-workspace-section")
+        select.select_option(key)
+        _submit(page, page.locator(".patient-workspace-select button[type=submit]"))
+        expect(page.locator("#patient-workspace-section")).to_have_value(key)
+        for width in (375, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= innerWidth"
+            ), (key, width)
     page.set_viewport_size({"width": 1280, "height": 900})
     page.locator("#patient-workspace-title").focus()
     with page.expect_response(

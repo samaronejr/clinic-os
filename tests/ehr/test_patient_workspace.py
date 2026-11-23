@@ -231,6 +231,8 @@ def test_results_plans_and_messages_tabs_read_their_owning_features(
             html = response.content.decode()
             assert f'value="{tab}"' in html
             assert gettext(empty) in html
+            # The phone select carries the same current section.
+            assert f'<option value="{tab}" selected>' in html
 
 
 def test_unknown_and_foreign_patient_selectors_have_identical_refusal(

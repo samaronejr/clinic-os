@@ -11629,3 +11629,9 @@ msgstr "Ativo"
 msgctxt "care plan state"
 msgid "Superseded"
 msgstr "Substituído"
+
+msgid "Record section"
+msgstr "Seção do prontuário"
+
+msgid "Open section"
+msgstr "Abrir seção"

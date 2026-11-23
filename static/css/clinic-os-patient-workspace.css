@@ -118,10 +118,45 @@
   display: none;
 }
 
+/* Section tables scroll inside their region; positioning it keeps the row
+   actions' visually hidden names inside it, so the page never widens. */
+.patient-workspace .table-scroll {
+  position: relative;
+  max-inline-size: 100%;
+}
+
+/* Columns keep their words; a narrow screen scrolls the region, not the page. */
+.patient-workspace .table th,
+.patient-workspace .table td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* The section select is the phone form of the tabs (IA: tab select). */
+.patient-workspace-select {
+  display: none;
+}
+
 @media (max-width: 47.99rem) {
-  /* Phones have no g+letter keyboard: the tabs keep only their names. */
-  .patient-workspace-key {
+  .patient-workspace-tabs {
     display: none;
+  }
+
+  .patient-workspace-select {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: end;
+  }
+
+  .patient-workspace-select .field {
+    flex: 1 1 12rem;
+    min-inline-size: 0;
+    margin: 0;
+  }
+
+  .patient-workspace-select select {
+    inline-size: 100%;
   }
 
   .patient-workspace-filter {
