@@ -4,7 +4,10 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from apps.interop.export_import import IMPORTABLE_DATASETS
+import pytest
+from apps.interop.access import Code, ImportInputError
+from apps.interop.export_import import IMPORTABLE_DATASETS, _visible_scopes
+from apps.interop.export_import_archive import VerifiedExport
 from apps.interop.export_registry import datasets
 
 COVERAGE = Path(__file__).resolve().parents[2] / "docs/api/export-v5-import-coverage.md"
@@ -30,3 +33,22 @@ def test_every_v5_dataset_has_one_import_classification_and_reason() -> None:
             importable.update(names)
     assert classified == Counter(entry.relation for entry in datasets())
     assert importable == IMPORTABLE_DATASETS
+
+
+def test_v5_rejects_unresolvable_hidden_enrollment_instead_of_revealing_it() -> None:
+    verified = VerifiedExport(
+        rows={
+            "intake_patientclinicenrollment": [
+                {
+                    "id": "synthetic-enrollment",
+                    "patient_id": "patient",
+                    "clinic_id": "clinic",
+                }
+            ],
+            "interop_hiddenenrollment": [{"enrollment_id": "missing-enrollment"}],
+        },
+        attachments={},
+    )
+    with pytest.raises(ImportInputError) as refused:
+        _visible_scopes(verified)
+    assert refused.value.code == Code.MANIFEST_MISMATCH

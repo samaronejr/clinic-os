@@ -11,6 +11,7 @@ import rfc8785
 from django.conf import settings
 
 from apps.ehr.attachments import EXTENSIONS
+from apps.ehr.models import ClinicalAttachment, ClinicalDocumentVersion
 from apps.interop import contract, sources
 from apps.interop.access import (
     Code,
@@ -63,7 +64,7 @@ def _text(row: dict[str, object], name: str, *, nullable: bool = False) -> str:
     value = row.get(name)
     if nullable and value is None and name in row:
         return ""
-    if not isinstance(value, str) or (not nullable and not value):
+    if not isinstance(value, str) or not value:
         raise ImportInputError(Code.MANIFEST_MISMATCH)
     return value
 
@@ -92,11 +93,14 @@ def _current(
 
 
 def _visible_scopes(verified: VerifiedExport) -> set[tuple[str, str]]:
+    enrollments = _by_id(verified.rows[_ENROLLMENTS])
     hidden = {_text(row, "enrollment_id") for row in verified.rows[_HIDDEN]}
+    if not hidden <= enrollments.keys() or len(hidden) != len(verified.rows[_HIDDEN]):
+        raise ImportInputError(Code.MANIFEST_MISMATCH)
     return {
         (_text(row, "patient_id"), _text(row, "clinic_id"))
-        for row in verified.rows[_ENROLLMENTS]
-        if _text(row, "id") not in hidden
+        for enrollment_id, row in enrollments.items()
+        if enrollment_id not in hidden
     }
 
 
@@ -104,11 +108,15 @@ def _patient_rows(
     verified: VerifiedExport, visible_scopes: set[tuple[str, str]]
 ) -> dict[str, dict[str, str]]:
     patient_ids = {patient_id for patient_id, _ in visible_scopes}
-    authors = {
-        _text(row, "patient_id"): _text(row, "actor_label")
-        for row in verified.rows[_CORRECTIONS]
-        if row.get("previous_id") is None
-    }
+    authors: dict[str, str] = {}
+    for row in verified.rows[_CORRECTIONS]:
+        previous_id = _text(row, "previous_id", nullable=True)
+        if previous_id:
+            continue
+        patient_id = _text(row, "patient_id")
+        if patient_id in authors:
+            raise ImportInputError(Code.MANIFEST_MISMATCH)
+        authors[patient_id] = _text(row, "actor_label")
     patients = {
         patient_id: {
             "source_id": patient_id,
@@ -136,7 +144,8 @@ def _patient_rows(
     )
     for row in _current(identifiers, "patient_id", "kind"):
         patient = patients.get(_text(row, "patient_id"))
-        if patient is not None and row.get("retired_at") is None:
+        retired_at = _text(row, "retired_at", nullable=True)
+        if patient is not None and not retired_at:
             patient[_text(row, "kind")] = _text(row, "value")
     return patients
 
@@ -147,7 +156,13 @@ def _note_rows(
     documents = _by_id(rows.get(_DOCUMENTS, []))
     encounters = _by_id(rows.get(_ENCOUNTERS, []))
     for row in rows.get(NOTES, []):
-        if row.get("state") not in ("finalized", "superseded"):
+        state = _text(row, "state")
+        if state not in ClinicalDocumentVersion.State.values:
+            raise ImportInputError(Code.MANIFEST_MISMATCH)
+        if state in (
+            ClinicalDocumentVersion.State.DRAFT,
+            ClinicalDocumentVersion.State.DISCARDED,
+        ):
             continue
         document = documents.get(_text(row, "document_id"))
         encounter = (
@@ -206,8 +221,11 @@ def _attachment_rows(
 ) -> Iterable[dict[str, str]]:
     for row in verified.rows.get(ATTACHMENTS, []):
         patient_id = _text(row, "patient_id")
+        state = _text(row, "state")
+        if state not in ClinicalAttachment.State.values:
+            raise ImportInputError(Code.MANIFEST_MISMATCH)
         if (
-            row.get("state") != "available"
+            state != ClinicalAttachment.State.AVAILABLE
             or (patient_id, _text(row, "clinic_id")) not in visible_scopes
         ):
             continue

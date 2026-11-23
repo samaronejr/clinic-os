@@ -146,8 +146,9 @@ the identity of whoever supplied the export.
 
 The operator profiles the upload, saves and applies `v5_import_mapping()`,
 then follows the normal dry-run, sign-off, step-up commit and reconciliation
-flow. The import job's source digest identifies the staged archive; retain
-the original v5 receipt separately. The projection uses JSONL, not the
+flow. The import job's source digest and idempotency key bind the staged
+archive, not the exporting receipt; retain that receipt separately. The
+projection uses JSONL, not the
 spreadsheet-neutralized CSV. It keeps source timestamps with explicit offsets
 and sub-minute precision.
 

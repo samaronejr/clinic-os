@@ -188,5 +188,13 @@ def verify_export(
             return _checked_members(
                 archive, relations, keep_attachments=keep_attachments
             )
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError, zlib.error):
+    except (
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+        OSError,
+        EOFError,
+        NotImplementedError,
+        UnicodeDecodeError,
+        zlib.error,
+    ):
         raise ImportInputError(Code.MALFORMED_ARCHIVE) from None
