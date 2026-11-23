@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Literal
 
 from django.db import connection
 from django.utils import timezone
@@ -14,13 +14,18 @@ from apps.billing.psp_contracts import (
     PaymentUnavailableError,
 )
 from apps.billing.psp_flow import dispatch_payment
-from apps.billing.psp_gate import require_psp_sandbox
+from apps.billing.psp_gate import require_psp_rehearsal, require_psp_sandbox
 from apps.billing.psp_models import PspIntent
+from apps.billing.psp_observer import finish_observation
 from apps.billing.psp_policy import classify_payment
 from apps.billing.psp_services import SUBJECT_TYPE, payment_request, request_digest
 from apps.billing.psp_storage import (
     PspScope,
+    load_intent,
+    lock_evidence,
+    observation_id,
     record_status,
+    resolve_intent,
     status_event_id,
     stored_context,
 )
@@ -79,11 +84,10 @@ class PreparedPayment:
 class PspSendAdapter:
     """Create outside transactions; retain unknown effects for status lookup."""
 
-    def __init__(self, client: PaymentProvider, *, recovery: bool = False) -> None:
-        """Bind an explicit adapter and a non-mutating recovery mode."""
+    def __init__(self, client: PaymentProvider) -> None:
+        """Bind the human-authorized first send adapter."""
         self.client = client
         self.provider = client.provider
-        self.recovery = recovery
 
     def prepare(self, operation: IntegrationOperation) -> PreparedPayment:
         """Reload authorized immutable terms and verify the outbox digest."""
@@ -109,7 +113,6 @@ class PspSendAdapter:
                 clinic_id=operation.clinic_id,
                 method=request.method,
                 version_id=intent.capability_version_id,
-                lookup_only=self.recovery,
             )
         except PaymentUnavailableError as error:
             raise PermanentSendError from error
@@ -138,7 +141,7 @@ class PspSendAdapter:
             with stored_context(prepared.scope), connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT clinic_app.billing_psp_dispatchable(%s,%s)",
-                    [prepared.scope.intent_id, not self.recovery],
+                    [prepared.scope.intent_id, True],
                 )
                 if cursor.fetchone() != (True,):
                     raise PermanentSendError
@@ -146,26 +149,93 @@ class PspSendAdapter:
                 clinic_id=prepared.scope.clinic_id,
                 method=prepared.request.method,
                 version_id=prepared.version_id,
-                lookup_only=self.recovery,
             )
+            # Do not start a new remote effect with no provisioned way to
+            # observe this key if the process dies before recording acceptance.
+            load_intent(replace(prepared.scope, observer=True))
             status = dispatch_payment(
                 provider=self.client,
                 request=prepared.request,
-                recovery=self.recovery or prepared.expires_at <= timezone.now(),
+                recovery=prepared.expires_at <= timezone.now(),
             )
         except (PaymentLookupError, TimeoutError):
             status = None
         except PaymentUnavailableError as error:
             raise PermanentSendError from error
-        record_status(
-            scope=prepared.scope,
-            authoritative=status,
-            event=("status", status_event_id(status)),
-            decision=classify_payment(prepared.request, status),
-        )
+        try:
+            record_status(
+                scope=replace(prepared.scope, observer=True),
+                authoritative=status,
+                event=("status", status_event_id(status)),
+                decision=classify_payment(prepared.request, status),
+            )
+        except PaymentUnavailableError as error:
+            # Authority to observe can close after the send. The effect remains
+            # unresolved, not retryable and not a known rejection.
+            raise AmbiguousSendError from error
         if status is None or status.status == "unknown":
             raise AmbiguousSendError
         return SendResult(status.provider_reference)
+
+
+def _recover(operation: IntegrationOperation) -> Literal["reconcile", "succeeded"]:
+    """Look up a claimed key with no staff membership, step-up, or send authority."""
+    try:
+        require_psp_rehearsal()
+        scope = resolve_intent(operation.subject_id)
+        if (
+            scope is None
+            or not scope.observer
+            or (scope.organization_id, scope.clinic_id, scope.actor_id)
+            != (operation.organization_id, operation.clinic_id, operation.actor_id)
+        ):
+            return "reconcile"
+        intent = load_intent(scope)
+        request = payment_request(intent)
+        if (
+            operation.subject_type != SUBJECT_TYPE
+            or operation.provider != intent.provider
+            or operation.idempotency_key != request.idempotency_key
+            or operation.payload_digest != request_digest(request)
+        ):
+            return "reconcile"
+        client = payment_provider(intent.provider)
+        try:
+            status = client.lookup(request=request)
+        except (PaymentLookupError, TimeoutError):
+            status = None
+        decision = classify_payment(request, status)
+        retained = record_status(
+            scope=scope,
+            authoritative=status,
+            event=("status", status_event_id(status)),
+            decision=decision,
+        )
+        if (
+            status is None
+            or decision not in {"verified", "recorded"}
+            or retained
+            not in {
+                "verified",
+                "recorded",
+                "duplicate",
+            }
+        ):
+            return "reconcile"
+        with stored_context(scope):
+            lock_evidence(scope)
+            if finish_observation(
+                scope=scope,
+                operation_id=operation.pk,
+                provider_reference=status.provider_reference,
+                observation_id=observation_id(intent.pk, status),
+            ):
+                return "succeeded"
+    except PaymentUnavailableError:
+        # Revoked binding or missing observer proof: no new send, no false
+        # cancellation/no-effect decision, and no reuse of the staff actor.
+        return "reconcile"
+    return "reconcile"
 
 
 def register_payment_provider(client: PaymentProvider) -> None:
@@ -180,5 +250,5 @@ def register_payment_provider(client: PaymentProvider) -> None:
         raise PaymentUnavailableError
     _PROVIDERS[client.provider] = client
     register_action_adapter(PspSendAdapter(client))
-    register_action_recovery_adapter(PspSendAdapter(client, recovery=True))
+    register_action_recovery_adapter(client.provider, _recover)
     register_subject_recheck(SUBJECT_TYPE, _eligible)

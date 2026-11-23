@@ -144,10 +144,6 @@ def apply_psp_evidence(*, clinic_id: UUID, evidence_id: UUID) -> UUID:
             version_id=intent.capability_version_id,
             lookup_only=True,
         )
-        if evidence.decision == "unknown" and intent.kind in {"refund", "payout"}:
-            return _outgoing(clinic_id, intent, "unknown")
-        if evidence.decision not in {"verified", "matched"}:
-            raise JournalConflictError
         if (
             PspEvidence.objects.filter(intent=intent)
             .exclude(source="statement", decision="quarantined")
@@ -165,6 +161,10 @@ def apply_psp_evidence(*, clinic_id: UUID, evidence_id: UUID) -> UUID:
             )
             .exists()
         ):
+            raise JournalConflictError
+        if evidence.decision == "unknown" and intent.kind in {"refund", "payout"}:
+            return _outgoing(clinic_id, intent, "unknown")
+        if evidence.decision not in {"verified", "matched"}:
             raise JournalConflictError
         if intent.kind == "charge":
             result = _collection(clinic_id, intent)

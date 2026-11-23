@@ -13,6 +13,7 @@ from billing import (
     test_outgoing_sessions,
     test_refund_policy,
     test_suspense_policy,
+    test_transfer_identity,
 )
 
 # These are protocols, not exemptions from actor validation. Definition's own
@@ -76,6 +77,7 @@ CASES = {
         test_outgoing_sessions.test_fresh_executor_can_use_frozen_instruction_after_old_session_revocation,
         test_refund_policy.test_split_refunds_reverse_exact_total_entitlement_with_cumulative_half_even,
         test_suspense_policy.test_suspense_requires_a_real_scoped_owner_not_an_arbitrary_uuid,
+        test_transfer_identity.test_one_transfer_line_cannot_clear_two_instructions,
     )
 }
 _READERS = [
@@ -96,6 +98,9 @@ _CASH = [
     "test_cash_close_has_zero_unexplained_balance_and_reopen_requires_persisted_step_up",
 ]
 SQL_PROTOCOL_ORACLES = {
+    "clinic_app.billing_bind_transfer": [
+        "test_one_transfer_line_cannot_clear_two_instructions",
+    ],
     "clinic_app.billing_account_balance": _CASH,
     "clinic_app.billing_allocation_guard": _COMPLETION,
     "clinic_app.billing_allocation_paid": _COMPLETION,

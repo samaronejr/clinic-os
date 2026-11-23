@@ -238,6 +238,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_paymentevent",
         # Task 56: exact custom policies and immutable money posture.
         "billing_journalbook",
+        "billing_transferconfirmation",
         "billing_account",
         "billing_journalentry",
         "billing_journalline",

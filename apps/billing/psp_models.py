@@ -16,6 +16,7 @@ class PspPolicy(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     book = models.ForeignKey("billing.JournalBook", on_delete=models.PROTECT)
     max_installments = models.PositiveSmallIntegerField(default=1)
+    observer_verifier = models.BinaryField(max_length=32, null=True, editable=False)
     command_id = models.UUIDField()
     created_at = models.DateTimeField(default=timezone.now, editable=False)
 

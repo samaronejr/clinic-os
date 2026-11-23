@@ -9,6 +9,25 @@ from django.utils import timezone
 from apps.tenancy.models import TenantScopedModel
 
 
+class TransferConfirmation(TenantScopedModel):
+    """Bind one bank/PSP transfer line to one refund or payout posting."""
+
+    entry = models.OneToOneField(
+        "billing.JournalEntry", on_delete=models.PROTECT, primary_key=True
+    )
+    book = models.ForeignKey("billing.JournalBook", on_delete=models.PROTECT)
+    evidence_reference = models.UUIDField()
+
+    class Meta:
+        """Refunds and payouts share a single transfer-line namespace per book."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("book", "evidence_reference"), name="billing_transfer_line_uniq"
+            )
+        ]
+
+
 class Refund(TenantScopedModel):
     """Reserve an allocation before approval or dispatch; unknown retains the claim."""
 

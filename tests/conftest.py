@@ -130,6 +130,7 @@ TRUNCATE_GUARDS = (
             "billing_settlementallocation",
             "billing_refund",
             "billing_payout",
+            "billing_transferconfirmation",
             "billing_cashsession",
             "billing_cashsessionevent",
         )
@@ -198,6 +199,11 @@ def isolated_integration_registrations(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         integration, "_ACTION_DISPATCHERS", dict(integration._ACTION_DISPATCHERS)
+    )
+    monkeypatch.setattr(
+        integration,
+        "_ACTION_RECOVERY_ADAPTERS",
+        dict(integration._ACTION_RECOVERY_ADAPTERS),
     )
     monkeypatch.setattr(
         integration,

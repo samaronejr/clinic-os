@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
 import rfc8785
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.audit.events import build_integration_audit_event
@@ -106,6 +107,9 @@ type ExecutionResult = Literal[
     "cancelled",
 ]
 type CallbackResult = Literal["applied", "duplicate", "rejected"]
+type ActionRecovery = Callable[
+    [IntegrationOperation], Literal["reconcile", "succeeded"]
+]
 
 DEFAULT_MAX_ATTEMPTS: Final = 5
 MAX_ATTEMPTS_BOUND: Final = 32767
@@ -127,7 +131,7 @@ type _PresendDecision = Literal["send", "missing", "ineligible", "revoked"]
 _SEND_ADAPTERS: dict[str, SendAdapter] = {}
 _ACTION_ADAPTERS: dict[str, SendAdapter] = {}
 _ACTION_DISPATCHERS: dict[str, Callable[[OperationScope], None]] = {}
-_ACTION_RECOVERY_ADAPTERS: dict[str, SendAdapter] = {}
+_ACTION_RECOVERY_ADAPTERS: dict[str, ActionRecovery] = {}
 _CALLBACK_AUTHENTICATORS: dict[str, CallbackAuthenticator] = {}
 _SUBJECT_RECHECKS: dict[str, Callable[[OperationScope], bool]] = {}
 _SUBJECT_LOCK_KEYS: dict[str, Callable[[OperationScope, UUID], str | None]] = {}
@@ -219,9 +223,9 @@ def register_action_dispatcher(
     _ACTION_DISPATCHERS[provider] = dispatcher
 
 
-def register_action_recovery_adapter(adapter: SendAdapter) -> None:
-    """Register lookup-only recovery, never a second action send after ambiguity."""
-    _ACTION_RECOVERY_ADAPTERS[adapter.provider] = adapter
+def register_action_recovery_adapter(provider: str, recover: ActionRecovery) -> None:
+    """Register a lookup-only boundary that supplies its own non-staff authority."""
+    _ACTION_RECOVERY_ADAPTERS[provider] = recover
 
 
 def register_callback_authenticator(authenticator: CallbackAuthenticator) -> None:
@@ -608,22 +612,44 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
         return _ClaimDecision("skipped", operation.provider)
     if not _actor_has_clinic_authority(scope):
         return _ClaimDecision("revoked", operation.provider)
-    recovering = (
-        operation.kind == OperationKind.ACTION
-        and operation.status == _IN_PROGRESS
-        and operation.provider in _ACTION_RECOVERY_ADAPTERS
-    )
-    if not recovering and operation.attempt_count >= operation.max_attempts:
+    if operation.attempt_count >= operation.max_attempts:
         return _ClaimDecision("exhausted", operation.provider)
-    if not recovering:
-        operation.attempt_count += 1
+    operation.attempt_count += 1
     if operation.status == _PENDING:
         operation.status = _IN_PROGRESS
         operation.save(update_fields=("status", "attempt_count", "updated_at"))
         return _ClaimDecision("send", operation.provider)
-    if not recovering:
-        operation.save(update_fields=("attempt_count", "updated_at"))
+    operation.save(update_fields=("attempt_count", "updated_at"))
     return _ClaimDecision("reconcile", operation.provider)
+
+
+def _action_recovery(
+    scope: OperationScope,
+) -> tuple[ActionRecovery, IntegrationOperation] | None:
+    """Elect recovery under the operation lock, before checking the send actor."""
+    if not _ACTION_RECOVERY_ADAPTERS:
+        return None
+    with transaction.atomic(durable=True), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(scope.organization_id)],
+        )
+        operation = (
+            IntegrationOperation.objects.filter(
+                pk=scope.operation_id,
+                clinic_id=scope.clinic_id,
+                kind=OperationKind.ACTION,
+                status=_IN_PROGRESS,
+                attempt_count__gt=0,
+                provider__in=_ACTION_RECOVERY_ADAPTERS,
+            )
+            .filter(Q(not_before__isnull=True) | Q(not_before__lte=timezone.now()))
+            .first()
+        )
+    if operation is None:
+        return None
+    recover = _ACTION_RECOVERY_ADAPTERS.get(operation.provider)
+    return (recover, operation) if recover is not None else None
 
 
 def _persisted_outcome(scope: OperationScope) -> ExecutionResult:
@@ -957,14 +983,12 @@ def _prepare_with_authority(
     return adapter.prepare(_operation_for_prepare(scope))
 
 
-def _send_claimed(
-    scope: OperationScope, provider: str, *, recovery: bool = False
-) -> ExecutionResult:
+def _send_claimed(scope: OperationScope, provider: str) -> ExecutionResult:
     """Prepare inside the tenant transaction, then send outside it."""
     with _stored_scope_context(scope):
         operation = _operation_for_prepare(scope)
         adapters = (
-            (_ACTION_RECOVERY_ADAPTERS if recovery else _ACTION_ADAPTERS)
+            _ACTION_ADAPTERS
             if operation.kind == OperationKind.ACTION
             else _SEND_ADAPTERS
         )
@@ -1019,6 +1043,9 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
     with _operation_lock(operation_id) as acquired:
         if not acquired:
             return "reconcile"
+        if (recovery := _action_recovery(scope)) is not None:
+            recover, operation = recovery
+            return recover(operation)
         try:
             with tenant_context(scope.actor_id, scope.organization_id):
                 decision = _claim_row(scope)
@@ -1037,11 +1064,6 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
             )
         elif decision.outcome == "send":
             outcome = _send_claimed(scope, decision.provider)
-        elif (
-            decision.outcome == "reconcile"
-            and decision.provider in _ACTION_RECOVERY_ADAPTERS
-        ):
-            outcome = _send_claimed(scope, decision.provider, recovery=True)
         else:
             outcome = decision.outcome
         return outcome

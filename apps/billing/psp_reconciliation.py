@@ -14,15 +14,14 @@ from apps.billing.psp_contracts import (
 )
 from apps.billing.psp_flow import receive_event
 from apps.billing.psp_gate import require_psp_rehearsal, require_psp_sandbox
-from apps.billing.psp_models import PspIntent
 from apps.billing.psp_policy import classify_payment, match_statement
+from apps.billing.psp_services import payment_request
 from apps.billing.psp_storage import (
     DatabasePaymentEventStore,
-    load_request,
+    load_intent,
     record_status,
     resolve_intent,
     status_event_id,
-    stored_context,
 )
 
 if TYPE_CHECKING:
@@ -59,19 +58,19 @@ def reconcile_psp_intent(*, intent_id: UUID) -> str:
     scope = resolve_intent(intent_id)
     if scope is None:
         return "rejected"
-    request = load_request(scope)
-    with stored_context(scope):
-        intent = PspIntent.objects.get(pk=intent_id)
-        version_id = intent.capability_version_id
-        provider = intent.provider
+    try:
+        intent = load_intent(scope)
+    except PaymentUnavailableError:
+        return "unknown" if scope.observer else "rejected"
+    request = payment_request(intent)
     try:
         require_psp_sandbox(
             clinic_id=scope.clinic_id,
             method=request.method,
-            version_id=version_id,
+            version_id=intent.capability_version_id,
             lookup_only=True,
         )
-        authoritative = payment_provider(provider).lookup(request=request)
+        authoritative = payment_provider(intent.provider).lookup(request=request)
     except (PaymentLookupError, PaymentUnavailableError):
         authoritative = None
     return record_status(
@@ -90,28 +89,37 @@ def reconcile_psp_statement(*, intent_id: UUID) -> tuple[str, ...]:
     scope = resolve_intent(intent_id)
     if scope is None:
         return ("rejected",)
-    request = load_request(scope)
-    with stored_context(scope):
-        intent = PspIntent.objects.get(pk=intent_id)
-        version_id = intent.capability_version_id
-        book_id = intent.book_id
+    try:
+        intent = load_intent(scope)
         client: PaymentProvider = payment_provider(intent.provider)
+    except PaymentUnavailableError:
+        return ("unknown",) if scope.observer else ("rejected",)
+    request = payment_request(intent)
     require_psp_sandbox(
         clinic_id=scope.clinic_id,
         method=request.method,
-        version_id=version_id,
+        version_id=intent.capability_version_id,
         lookup_only=True,
     )
     try:
         status = client.lookup(request=request)
-        lines = client.fetch_statement(account_reference=book_id)
+    except PaymentLookupError:
+        return ("unknown",)
+    if status is None:
+        return ("unknown",)
+    # This observation is independent of the statement: even an unavailable,
+    # empty, repeated or mismatching statement must not hide a newer reversal.
+    record_status(
+        scope=scope,
+        event=("status", status_event_id(status)),
+        authoritative=status,
+        decision=classify_payment(request, status),
+    )
+    try:
+        lines = client.fetch_statement(account_reference=intent.book_id)
     except PaymentLookupError:
         return ("unknown",)
     # A statement may include other books. Never resolve or import those references.
-    if status is None:
-        return ("unknown",)
-    if not lines:
-        return ("unmatched",)
     return tuple(
         record_status(
             scope=scope,
@@ -123,4 +131,4 @@ def reconcile_psp_statement(*, intent_id: UUID) -> tuple[str, ...]:
         if line.provider_reference == status.provider_reference
         else "unmatched"
         for line in lines
-    )
+    ) or ("unmatched",)

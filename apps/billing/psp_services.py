@@ -22,6 +22,7 @@ from apps.billing.psp_contracts import (
 )
 from apps.billing.psp_gate import require_psp_sandbox
 from apps.billing.psp_models import PspBinding, PspIntent, PspPolicy
+from apps.billing.psp_observer_key import observer_verifier
 from apps.billing.psp_policy import validate_installments
 from apps.billing.security import (
     book_write,
@@ -75,6 +76,7 @@ def set_psp_policy(
             organization_id=book.organization_id,
             book=book,
             max_installments=max_installments,
+            observer_verifier=observer_verifier(clinic_id=clinic_id),
             command_id=command_id,
         )
         record_phase1_event(

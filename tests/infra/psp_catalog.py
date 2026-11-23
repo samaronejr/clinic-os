@@ -9,7 +9,10 @@ TABLES: Final = {
     "billing_pspevidence",
     "billing_pspreceipt",
 }
-TABLE_GRANTS: Final = {(table, "SELECT") for table in TABLES}
+TABLE_GRANTS: Final = {(table, "SELECT") for table in TABLES} | {
+    ("billing_pspevidence", "INSERT"),
+    ("billing_pspbinding", "INSERT"),
+}
 RESULTS: Final = {
     ("billing_psp_access", "requested_intent uuid"): "boolean",
     (
@@ -35,13 +38,36 @@ RESULTS: Final = {
     "amount_minor bigint, receipt_reference uuid, "
     "receipt_issued_at timestamp with time zone)",
     ("billing_psp_guard", ""): "trigger",
+    ("billing_psp_dispatched", "requested uuid"): "uuid",
+    ("billing_psp_observer_target", "requested uuid"): "uuid",
+    (
+        "billing_psp_observer_request",
+        "requested uuid, proof bytea",
+    ): "SETOF billing_pspintent",
+    (
+        "billing_psp_observer_record",
+        "requested uuid, proof bytea, reference text, fact jsonb, code bytea, "
+        "url bytea, occurred timestamp with time zone, content_hash bytea",
+    ): "text",
+    (
+        "billing_psp_observer_finish",
+        "requested uuid, operation uuid, proof bytea, reference text, "
+        "observation text, "
+        "occurred timestamp with time zone, content_hash bytea",
+    ): "boolean",
+    (
+        "billing_psp_observed",
+        "requested uuid, observed_status text, observed_version bigint, "
+        "observed_amount bigint, observed_currency text, observed_fee bigint, "
+        "proof bytea",
+    ): "boolean",
 }
 POSTURE: Final = {
     name: (
         "s" if name == "billing_patient_psp_instructions" else "v",
-        name != "billing_psp_guard",
+        name not in {"billing_psp_guard", "billing_psp_observer_target"},
         ["clinic_resolver"]
-        if name == "billing_psp_guard"
+        if name in {"billing_psp_guard", "billing_psp_observer_target"}
         else ["clinic_app", "clinic_resolver"],
     )
     for name, _arguments in RESULTS
