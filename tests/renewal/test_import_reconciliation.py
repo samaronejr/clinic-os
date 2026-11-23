@@ -7,12 +7,35 @@ from typing import TYPE_CHECKING
 import pytest
 
 from interop.support import committed, import_world, patient_row, patients_csv
+from renewal.flagship_fixture import _import_rehearsal
 from renewal.import_reconciliation_fixture import reconcile_source
 
 if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def test_s16_reconciles_the_partner_spreadsheet_with_acknowledged_rejects(
+    rbac_graph: RbacGraph,
+) -> None:
+    world = import_world(rbac_graph)
+    result = _import_rehearsal(
+        {
+            "organization": str(world.graph.organization_a),
+            "clinic": str(world.graph.clinic_a),
+            "actor": str(world.operator),
+            "session": world.session,
+            "offset": "71600",
+            "count": "4",
+            "commit": "1",
+        }
+    )
+
+    assert result["datasets"] == {"patients": {"rows": 7, "accepted": 4, "rejected": 3}}
+    assert result["reasons"] == ["duplicate_identifier", "invalid_cpf", "invalid_date"]
+    assert result["committed_state"] == "committed"
+    assert result["outcomes"] == ["committed"] * 4
 
 
 @pytest.mark.parametrize(

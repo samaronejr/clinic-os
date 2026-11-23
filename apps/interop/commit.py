@@ -11,6 +11,7 @@ author and time. The last batch records the reconciliation report.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
@@ -347,7 +348,7 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
             )
             completion: tuple[dict[str, object], str] | None = None
             if not ImportBatch.objects.filter(job_id=job.pk, state="pending").exists():
-                report = reconciliation(job, normalized)
+                report = reconciliation(job, normalized, approval=latest)
                 completion = report, contract.document_digest(report)
             # A clinical writer may have arrived during preparation.
             # Re-check without waiting and roll back if that race was lost.
@@ -380,7 +381,33 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
         return BatchOutcome(batch_id=batch.pk, state="committed", committed=committed)
 
 
-def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
+def _matches_approved_counts_and_rejects(
+    job: ImportJob, normalized: Normalized, approval: ImportTransition
+) -> bool:
+    if (
+        normalized.row_count != approval.row_count
+        or normalized.valid_count != approval.valid_count
+        or len(normalized.rejections) != approval.rejected_count
+    ):
+        return False
+    if not normalized.rejections:
+        return True
+    # The batch hashes bind accepted rows; only the approval binds rejects.
+    report = approval.report
+    if not isinstance(report, dict):
+        return False
+    plan = report.get("plan")
+    return (
+        isinstance(plan, dict)
+        and plan.get("rejects_acknowledged") is True
+        and report.get("dry_run_digest")
+        == dataset_digest_for(job, cast("ImportMapping", approval.mapping), normalized)
+    )
+
+
+def reconciliation(
+    job: ImportJob, normalized: Normalized, *, approval: ImportTransition
+) -> dict[str, object]:
     """Compare source, mapped and committed counts, values and attachment bytes."""
     target = list(
         ImportedRecord.objects.filter(job_id=job.pk).values_list(
@@ -399,6 +426,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         "patients": len(normalized.patients),
         "history": len(normalized.history),
     }
+    rejected = Counter(item.dataset for item in normalized.rejections)
     batches = []
     batches_verified = True
     for batch in ImportBatch.objects.filter(job_id=job.pk).order_by("sequence"):
@@ -427,7 +455,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         name: {
             "rows": normalized.row_counts[name],
             "accepted": accepted[name],
-            "rejected": normalized.row_counts[name] - accepted[name],
+            "rejected": rejected[name],
             "committed": committed[name],
         }
         for name in normalized.row_counts
@@ -448,7 +476,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         )
         for row in normalized.history
     }
-    committed_values_verified = expected_records == {
+    actual_records = {
         (dataset, row): (
             digest,
             (patient, enrollment) if dataset == "history" else None,
@@ -456,6 +484,18 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         )
         for dataset, row, digest, patient, enrollment, file in target
     }
+    committed_values_verified = (
+        len(expected_records) == len(target) == normalized.valid_count
+        and expected_records == actual_records
+    )
+    positions = actual_records.keys() | {
+        (item.dataset, item.row) for item in normalized.rejections
+    }
+    accounted_count = len(target) + len(normalized.rejections)
+    # The parser numbers each dataset's counted rows contiguously from one.
+    rows_accounted = len(positions) == accounted_count == normalized.row_count and all(
+        1 <= row <= normalized.row_counts.get(dataset, 0) for dataset, row in positions
+    )
     source = normalized.source_projection
     mapped = summarize(mapped_values(normalized)) if source is not None else None
     values: dict[str, object] = {"committed_values_verified": committed_values_verified}
@@ -469,10 +509,8 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         if row.file is not None
     }
     reconciled = (
-        all(
-            entry["rows"] == entry["accepted"] == entry["committed"]
-            for entry in datasets.values()
-        )
+        rows_accounted
+        and _matches_approved_counts_and_rejects(job, normalized, approval)
         and source_verified
         and mismatches == 0
         and linked == len(expected_files)
