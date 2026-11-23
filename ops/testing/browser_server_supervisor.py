@@ -40,6 +40,7 @@ MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
+STOP_SIGNALS: Final = frozenset({signal.SIGINT, signal.SIGTERM})
 # Harness-only Gunicorn hooks: each worker dies with its master.
 GUNICORN_CONFIG: Final = "python:ops.testing.browser_gunicorn_config"
 PR_SET_PDEATHSIG: Final = 1
@@ -171,18 +172,27 @@ def _prctl() -> Callable[..., int]:
     return prctl
 
 
-def require_process_controls() -> None:
-    """Fail closed before any launch on a build without the lifetime controls.
+@functools.cache
+def process_controls_available() -> bool:
+    """Report, once, whether this build has every lifetime control used here.
 
-    Both launchers (``start_master`` and the shell's ``main``) call this one
-    check; importing this module never needs either control.
+    The one shared check for both launchers and the worker hook: the masked
+    spawn needs ``signal.pthread_sigmask`` and parent-death needs libc
+    ``prctl``. Without them each launcher spawns exactly as the a81da6e3
+    baseline did (no mask, no parent-death), so serving still works.
     """
-    if not hasattr(signal, "pthread_sigmask"):
-        _fail("signal.pthread_sigmask is unavailable on this Python build")
     try:
         _prctl()
     except (AttributeError, OSError):
-        _fail("libc prctl is unavailable; the server cannot follow its harness")
+        available = False
+    else:
+        available = hasattr(signal, "pthread_sigmask")
+    if not available:
+        sys.stderr.write(
+            "browser supervisor: signal masking or prctl is unavailable; "
+            "the server is not tied to its harness on this build\n"
+        )
+    return available
 
 
 def die_with_parent(parent_pid: int) -> None:
@@ -254,17 +264,54 @@ def start_master(
     and each worker dies with the master through ``GUNICORN_CONFIG``. Call
     this from the main thread.
 
-    Signals are blocked only while the child is started and its handle
-    stored in ``owner``, so an in-process stop unwinds with the handle
-    published and the group is reaped before the exception propagates. The
+    Only SIGINT/SIGTERM are blocked, and only while the child is started and
+    its handle stored in ``owner``: opening the log and any reap happen
+    outside, so a caller's other signals (a deadline) interrupt them as
+    before. A stop deferred by the mask lands at the restore, after the
+    handle is stored, and the group is reaped before it propagates. The
     mask is per thread: start no helper thread first, since a signal taken
-    by another thread still runs its handler on this one. The caller's mask
-    is read before anything changes. Every catchable signal stays blocked
-    until it is restored, so no handler can run before the restoring
-    syscall in ``finally``, which does nothing else.
+    by another thread still runs its handler on this one. Without the
+    lifetime controls (``process_controls_available``) this spawns as the
+    baseline did.
     """
-    require_process_controls()
-    process: subprocess.Popen[bytes] | None = None
+    started: list[subprocess.Popen[bytes]] = []
+    with log.open("wb") as stream:
+
+        def start(prepare: Callable[[], None] | None) -> subprocess.Popen[bytes]:
+            return subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
+                argv,
+                env=environment,
+                pass_fds=pass_fds,
+                start_new_session=True,
+                preexec_fn=prepare,  # noqa: PLW1509 - single-threaded spawn; one sigmask and one prctl call.
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+            )
+
+        try:
+            if process_controls_available():
+                _spawn_and_record(start, started, owner)
+            else:
+                started.append(start(None))
+                owner.append(SupervisedMaster(started[0]))
+        except BaseException:
+            # The mask is restored; reap whatever was spawned, retried once
+            # so a second signal during cleanup cannot orphan the child.
+            for process in started:
+                for _attempt in range(2):
+                    with contextlib.suppress(Exception):
+                        _terminate_group(process)
+                        break
+            raise
+    return owner[-1]
+
+
+def _spawn_and_record(
+    start: Callable[[Callable[[], None]], subprocess.Popen[bytes]],
+    started: list[subprocess.Popen[bytes]],
+    owner: list[SupervisedMaster],
+) -> None:
+    """Start the master and store its handle with only SIGINT/SIGTERM blocked."""
     parent_pid = os.getpid()
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
 
@@ -274,35 +321,16 @@ def start_master(
         die_with_parent(parent_pid)
 
     try:
-        # A handler tripped earlier runs at this call's return, inside try.
-        signal.pthread_sigmask(signal.SIG_BLOCK, signal.valid_signals())
-        with log.open("wb") as stream:
-            process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
-                argv,
-                env=environment,
-                pass_fds=pass_fds,
-                start_new_session=True,
-                preexec_fn=prepare_child,  # noqa: PLW1509 - single-threaded spawn; one sigmask and one prctl call.
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-            )
-        master = SupervisedMaster(process)
-        owner.append(master)
-        # Ownership is published; a deferred cancellation now lands inside
-        # this protected region and reaps the group before propagating.
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-        return master  # noqa: TRY300 - the return boundary is where a deferred signal is delivered; it must stay inside the protected region.
-    except BaseException:
-        # Still owned here: bounded TERM/KILL/reap, retried once so a second
-        # signal during cleanup cannot orphan the child before propagating.
-        if process is not None:
-            for _attempt in range(2):
-                with contextlib.suppress(Exception):
-                    _terminate_group(process)
-                    break
-        raise
+        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
+        started.append(start(prepare_child))
+        owner.append(SupervisedMaster(started[0]))
     finally:
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        # Nothing else here. If a caller handler pre-empts the first restore
+        # the second still runs; a stop deferred by the mask raises after it.
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
@@ -310,14 +338,15 @@ CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
 
 def main() -> int:
     """Fork the journal-bound controller child and reap it on every exit."""
-    require_process_controls()
+    guarded = process_controls_available()
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     interpreter = sys.executable
     supervisor_pid = os.getpid()
     pid = os.fork()
     if pid == 0:
-        # The controller, and through it the server, ends with this process.
-        die_with_parent(supervisor_pid)
+        if guarded:
+            # The controller, and through it the server, ends with this process.
+            die_with_parent(supervisor_pid)
         parent.close()
         os.environ["CLINIC_BROWSER_SUPERVISOR_FD"] = str(child.fileno())
         child.set_inheritable(True)

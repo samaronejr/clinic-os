@@ -84,14 +84,16 @@ def _caller_mask() -> set[int]:
 
 
 def _listening(port: int) -> bool:
-    """Report whether any IPv4/IPv6 TCP socket listens on ``port``."""
-    hexport = f":{port:04X}"
-    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
-        for row in Path(table).read_text(encoding="ascii").splitlines()[1:]:
-            local, state = row.split()[1], row.split()[3]
-            if local.endswith(hexport) and state == TCP_LISTEN:
-                return True
-    return False
+    """Report whether a TCP socket listens on the server's own 127.0.0.1:port.
+
+    Only that exact endpoint: listeners on other addresses (127.0.0.2,
+    IPv6) do not serve it and do not stop the server's restart.
+    """
+    endpoint = f"0100007F:{port:04X}"
+    rows = Path("/proc/net/tcp").read_text(encoding="ascii").splitlines()[1:]
+    return any(
+        row.split()[1] == endpoint and row.split()[3] == TCP_LISTEN for row in rows
+    )
 
 
 def _plain_bindable(port: int) -> bool:
@@ -364,21 +366,24 @@ def test_signal_at_the_restore_on_an_error_path_keeps_the_caller_mask(
     real_sigmask = signal.pthread_sigmask
     mask_before = _caller_mask()
 
+    fired: list[int] = []
+
     def alarm_before_restore(
         how: int, mask: tuple[int, ...] | frozenset[int]
     ) -> set[int]:
-        if how == signal.SIG_SETMASK:
-            # The caller's alarm fires just before the restoring syscall.
+        if how == signal.SIG_SETMASK and not fired:
+            # One caller alarm fires just before the restoring syscall.
+            fired.append(how)
             signal.raise_signal(signal.SIGALRM)
         return real_sigmask(how, mask)
 
     previous_alarm = signal.signal(signal.SIGALRM, _alarm)
     monkeypatch.setattr(signal, "pthread_sigmask", alarm_before_restore)
     try:
-        # The log path is a directory: the launch fails before any spawn.
+        # The executable is missing: the spawn fails inside the masked region.
         with pytest.raises(_AlarmError):
             supervisor.start_master(
-                [sys.executable, "-c", "pass"], {}, tmp_path, owner=[]
+                [str(tmp_path / "missing")], {}, tmp_path / "spawn.log", owner=[]
             )
         observed = {"mask_kept": set(real_sigmask(signal.SIG_BLOCK, ())) == mask_before}
         assert observed == {"mask_kept": True}
@@ -387,44 +392,69 @@ def test_signal_at_the_restore_on_an_error_path_keeps_the_caller_mask(
         signal.signal(signal.SIGALRM, previous_alarm)
 
 
-def test_missing_pthread_sigmask_fails_closed_at_launch_for_both_launchers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+# A one-shot HTTP server on the inherited listener: proof that serving works.
+ONE_SHOT_SERVER = (
+    "import socket, sys\n"
+    "listener = socket.socket(fileno=int(sys.argv[1]))\n"
+    "client, _ = listener.accept()\n"
+    "client.recv(4096)\n"
+    "client.sendall(b'HTTP/1.0 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n')\n"
+    "client.close()\n"
+)
+
+
+def _without_prctl() -> Callable[..., int]:
+    raise AttributeError(name="prctl")
+
+
+def _reset_capabilities() -> None:
+    # 0c588c40 had no cached check; the fix caches its one shared answer.
+    cached = getattr(supervisor, "process_controls_available", None)
+    if cached is not None:
+        cached.cache_clear()
+
+
+@pytest.mark.parametrize("missing", ["pthread_sigmask", "valid_signals", "prctl"])
+def test_missing_lifetime_control_falls_back_and_still_serves(
+    missing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    started: list[str] = []
+    if missing == "prctl":
+        monkeypatch.setattr(supervisor, "_prctl", _without_prctl)
+    else:
+        monkeypatch.delattr(signal, missing)
+    _reset_capabilities()
+    owner: list[supervisor.SupervisedMaster] = []
+    statuses: list[int] = []
+    raised: list[str] = []
+    try:
+        with controller.reserve_port() as (port, listener_fd):
+            try:
+                supervisor.start_master(
+                    [sys.executable, "-c", ONE_SHOT_SERVER, str(listener_fd)],
+                    dict(os.environ),
+                    tmp_path / "fallback.log",
+                    owner=owner,
+                    pass_fds=(listener_fd,),
+                )
+            except Exception as error:  # noqa: BLE001 - recorded as the outcome
+                raised.append(type(error).__name__)
+        if owner:
+            connection = http.client.HTTPConnection(controller.HOST, port, timeout=10)
+            try:
+                connection.request("GET", "/")
+                statuses.append(connection.getresponse().status)
+            finally:
+                connection.close()
+        observed = {"raised": raised, "statuses": statuses, "owned": len(owner)}
+        assert observed == {"raised": [], "statuses": [200], "owned": 1}
+    finally:
+        for master in owner:
+            master.terminate()
+        monkeypatch.undo()
+        _reset_capabilities()
 
-    def record_spawn(argv: list[str], **_kwargs: object) -> None:
-        started.append("spawn")
 
-    def record_fork() -> int:
-        started.append("fork")
-        raise AssertionError
-
-    monkeypatch.delattr(signal, "pthread_sigmask")
-    monkeypatch.setattr(subprocess, "Popen", record_spawn)
-    monkeypatch.setattr(os, "fork", record_fork)
-    reasons: list[str] = []
-    for launch in (
-        partial(
-            supervisor.start_master,
-            [sys.executable, "-c", "pass"],
-            {},
-            tmp_path / "api.log",
-            owner=[],
-        ),
-        supervisor.main,
-    ):
-        with pytest.raises(supervisor.SupervisorError) as rejected:
-            launch()
-        reasons.append(str(rejected.value))
-    observed = {"started": started, "reasons": reasons}
-    reason = "browser supervisor rejected: signal.pthread_sigmask is unavailable"
-    assert observed == {
-        "started": [],
-        "reasons": [f"{reason} on this Python build"] * 2,
-    }
-
-
-def test_missing_libc_prctl_fails_at_launch_not_import() -> None:
+def test_missing_libc_prctl_still_imports_and_reports_unavailable() -> None:
     probe = (
         "import ctypes\n"
         "class NoPrctl(ctypes.CDLL):\n"
@@ -434,11 +464,7 @@ def test_missing_libc_prctl_fails_at_launch_not_import() -> None:
         "        return super().__getattr__(name)\n"
         "ctypes.CDLL = NoPrctl\n"
         "from ops.testing import browser_server_supervisor as supervisor\n"
-        "print('imported')\n"
-        "try:\n"
-        "    supervisor.require_process_controls()\n"
-        "except supervisor.SupervisorError as error:\n"
-        "    print(error)\n"
+        "print('imported', supervisor.process_controls_available())\n"
     )
     completed = subprocess.run(  # noqa: S603 - this interpreter, fixed probe.
         [sys.executable, "-c", probe],
@@ -451,12 +477,67 @@ def test_missing_libc_prctl_fails_at_launch_not_import() -> None:
     )
     assert (completed.returncode, completed.stdout.splitlines()) == (
         0,
-        [
-            "imported",
-            "browser supervisor rejected: libc prctl is unavailable; "
-            "the server cannot follow its harness",
-        ],
+        ["imported False"],
     )
+
+
+class _DeadlineError(Exception):
+    """The caller's own deadline handler (SIGALRM)."""
+
+
+def _deadline(_signum: int, _frame: object) -> None:
+    raise _DeadlineError
+
+
+def test_caller_deadline_interrupts_a_blocking_log_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The log is a FIFO with no reader, so opening it blocks until one comes.
+    log_fifo = tmp_path / "server.log"
+    os.mkfifo(log_fifo)
+    release = threading.Event()
+    spawned: list[list[str]] = []
+    spawn = subprocess.Popen
+
+    path_open = cast("Any", type(log_fifo).open)
+
+    def deadline_at_open(path: Path, *args: object, **kwargs: object) -> object:
+        if path == log_fifo:
+            # The caller's deadline fires as the launcher starts the open.
+            signal.raise_signal(signal.SIGALRM)
+        return path_open(path, *args, **kwargs)
+
+    def unblock_a_red_run() -> None:
+        # Bounded: only a launcher that deferred the deadline is still
+        # blocked in open() when this fires; then it is let through.
+        if not release.wait(timeout=10):
+            with contextlib.suppress(OSError):
+                os.close(os.open(log_fifo, os.O_RDONLY | os.O_NONBLOCK))
+
+    def record_spawn(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        spawned.append(argv)
+        return spawn(argv, **cast("Any", kwargs))
+
+    monkeypatch.setattr(type(log_fifo), "open", deadline_at_open)
+    monkeypatch.setattr(subprocess, "Popen", record_spawn)
+    previous = signal.signal(signal.SIGALRM, _deadline)
+    releaser = threading.Thread(target=unblock_a_red_run, daemon=True)
+    releaser.start()
+    mask_before = _caller_mask()
+    try:
+        with pytest.raises(_DeadlineError):
+            supervisor.start_master(
+                [sys.executable, "-c", "pass"],
+                {},
+                log_fifo,
+                owner=[],
+            )
+        observed = {"spawned": spawned, "mask_kept": _caller_mask() == mask_before}
+        assert observed == {"spawned": [], "mask_kept": True}
+    finally:
+        signal.signal(signal.SIGALRM, previous)
+        release.set()
+        releaser.join(timeout=15)
 
 
 @contextmanager
@@ -574,73 +655,185 @@ def _preloading_server(fifo: int) -> tuple[int, int, int]:
     ],
 )
 def test_ended_harness_takes_its_server_down(case: _Harness, tmp_path: Path) -> None:
+    observed = _end_harness(case, tmp_path)
+    assert observed == {
+        "server_gone": True,
+        "controller_alive": False,
+        "listening": False,
+        "plain_bind": True,
+        "harness_exit": -case.exit_signal,
+    }
+
+
+def _end_harness(case: _Harness, tmp_path: Path) -> dict[str, object]:
+    """Start the harness, end it by ``case.stop`` and record what is left.
+
+    Everything acquired here is released by the ExitStack, also when setup
+    fails; a failing run's survivors are ended only after the observations.
+    """
     shell_path = case.module == supervisor.__name__
     environment = _harness_environment(tmp_path, preload=shell_path)
-    held: list[http.client.HTTPResponse] = []
+    gone = threading.Event()
+    survivors: list[int] = []
+    with contextlib.ExitStack() as stack:
+        os.mkfifo(environment["CPI_FLAKE3_HOLD_FIFO"])
+        fifo = os.open(environment["CPI_FLAKE3_HOLD_FIFO"], os.O_RDONLY | os.O_NONBLOCK)
+        stack.callback(os.close, fifo)
+        stack.enter_context(_child_subreaper())
+        harness_log = stack.enter_context((tmp_path / "harness.log").open("wb"))
+        harness = stack.enter_context(
+            subprocess.Popen(  # noqa: S603 - this interpreter and a fixed module.
+                [
+                    sys.executable,
+                    "-m",
+                    case.module,
+                    *case.mode,
+                    *(() if shell_path else (str(tmp_path),)),
+                ],
+                cwd=REPOSITORY,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=harness_log,
+                text=True,
+            )
+        )
+        stack.callback(_end_survivors, harness, survivors, gone)
+        held: list[http.client.HTTPResponse] = []
+        stack.callback(_close_all, held)
+        port, pgid, controller_pid = (
+            _preloading_server(fifo) if shell_path else _held_server(harness, held)
+        )
+        survivors.extend((controller_pid, pgid))
+        harness.send_signal(case.stop)
+        harness_exit = harness.wait(timeout=HARNESS_SECONDS)
+        # The harness is gone and its orphans are ours: only wait.
+        targets = (*((controller_pid,) if controller_pid else ()), -pgid)
+        threading.Thread(target=_reap, args=(targets, gone), daemon=True).start()
+        return {
+            "server_gone": gone.wait(timeout=DEATH_SECONDS),
+            "controller_alive": _alive(controller_pid),
+            "listening": _listening(port),
+            "plain_bind": _plain_bindable(port),
+            "harness_exit": harness_exit,
+        }
+
+
+def _close_all(responses: list[http.client.HTTPResponse]) -> None:
+    for response in responses:
+        response.close()
+
+
+def _end_survivors(
+    harness: subprocess.Popen[str], survivors: list[int], gone: threading.Event
+) -> None:
+    """Only after the observations, and only for a failing run, end leftovers."""
+    if harness.returncode is None:
+        harness.kill()
+        harness.wait(timeout=HARNESS_SECONDS)
+    if len(survivors) == 2 and not gone.is_set():
+        controller_pid, pgid = survivors
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+        if controller_pid:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(controller_pid, signal.SIGKILL)
+        gone.wait(timeout=HARNESS_SECONDS)
+
+
+def test_failed_harness_start_leaves_no_test_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno.EAGAIN, "spawn refused")
+
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    case = _Harness(
+        supervisor.__name__, ("suite", "patient"), signal.SIGKILL, signal.SIGKILL
+    )
+    with pytest.raises(OSError, match="spawn refused"):
+        _end_harness(case, tmp_path)
+    fifo = str(tmp_path / "hold.fifo")
+    open_fifos = [
+        entry.name for entry in Path("/proc/self/fd").iterdir() if _link(entry) == fifo
+    ]
+    assert open_fifos == []
+
+
+def _link(entry: Path) -> str:
+    try:
+        return str(entry.readlink())
+    except OSError:
+        return ""
+
+
+def test_release_witness_checks_only_the_servers_address() -> None:
+    with socket.socket() as other:
+        # Another address on the same port does not serve 127.0.0.1:port.
+        other.bind(("127.0.0.2", 0))
+        other.listen()
+        port = other.getsockname()[1]
+        observed = {"listening": _listening(port), "plain_bind": _plain_bindable(port)}
+        with socket.socket() as own:
+            own.bind((controller.HOST, port))
+            own.listen()
+            observed["own_listening"] = _listening(port)
+    assert observed == {"listening": False, "plain_bind": True, "own_listening": True}
+
+
+def test_caught_repeated_stops_in_teardown_still_end_the_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real controller, the real config.wsgi preload held in the master, a
+    # caller that catches the unwind: one Ctrl-C in the body, then another at
+    # every entry to the production teardown.
+    environment = _harness_environment(tmp_path, preload=True)
+    for name in ("DJANGO_SETTINGS_MODULE", "CPI_FLAKE3_HOLD_FIFO", "PYTHONPATH"):
+        monkeypatch.setenv(name, environment[name])
+    for name in controller.REQUIRED_ENVIRONMENT:
+        monkeypatch.setenv(name, environment[name])
+    monkeypatch.setattr(sys, "argv", ["browser_server_controller", "suite", "patient"])
     os.mkfifo(environment["CPI_FLAKE3_HOLD_FIFO"])
     fifo = os.open(environment["CPI_FLAKE3_HOLD_FIFO"], os.O_RDONLY | os.O_NONBLOCK)
-    gone = threading.Event()
-    reaper: threading.Thread | None = None
-    survivors: tuple[int, int] = (0, 0)
-    with (
-        _child_subreaper(),
-        (tmp_path / "harness.log").open("wb") as harness_log,
-        subprocess.Popen(  # noqa: S603 - this interpreter and a fixed module.
-            [
-                sys.executable,
-                "-m",
-                case.module,
-                *case.mode,
-                *(() if shell_path else (str(tmp_path),)),
-            ],
-            cwd=REPOSITORY,
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=harness_log,
-            text=True,
-        ) as harness,
-    ):
-        try:
-            port, pgid, controller_pid = (
-                _preloading_server(fifo) if shell_path else _held_server(harness, held)
-            )
-            survivors = (controller_pid, pgid)
-            harness.send_signal(case.stop)
-            harness_exit = harness.wait(timeout=HARNESS_SECONDS)
-            # The harness is gone and its orphans are ours: only wait.
-            targets = (*((controller_pid,) if controller_pid else ()), -pgid)
-            reaper = threading.Thread(target=_reap, args=(targets, gone), daemon=True)
-            reaper.start()
-            observed = {
-                "server_gone": gone.wait(timeout=DEATH_SECONDS),
-                "controller_alive": _alive(controller_pid),
-                "listening": _listening(port),
-                "plain_bind": _plain_bindable(port),
-                "harness_exit": harness_exit,
-            }
-            assert observed == {
-                "server_gone": True,
-                "controller_alive": False,
-                "listening": False,
-                "plain_bind": True,
-                "harness_exit": -case.exit_signal,
-            }
-        finally:
-            # Only now, and only for a failing run, end what is left.
-            os.close(fifo)
-            for response in held:
-                response.close()
-            if harness.returncode is None:
-                harness.kill()
-                harness.wait(timeout=HARNESS_SECONDS)
-            controller_pid, pgid = survivors
-            if pgid and not gone.is_set():
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(pgid, signal.SIGKILL)
-                if controller_pid:
-                    with contextlib.suppress(ProcessLookupError):
-                        os.kill(controller_pid, signal.SIGKILL)
-                if reaper is None:
-                    _reap((*((controller_pid,) if controller_pid else ()), -pgid), gone)
-                else:
-                    reaper.join(timeout=HARNESS_SECONDS)
+    server: list[int] = []
+    teardowns: list[supervisor.SupervisedMaster] = []
+    terminate = supervisor.SupervisedMaster.terminate
+
+    def ctrl_c_once_preloading(_port: int, _log: Path) -> None:
+        server.extend(_preloading_server(fifo)[:2])
+        signal.raise_signal(signal.SIGINT)
+
+    def ctrl_c_then_terminate(master: supervisor.SupervisedMaster) -> None:
+        teardowns.append(master)
+        signal.raise_signal(signal.SIGINT)
+        terminate(master)
+
+    monkeypatch.setattr(controller, "wait_until_ready", ctrl_c_once_preloading)
+    monkeypatch.setattr(supervisor.SupervisedMaster, "terminate", ctrl_c_then_terminate)
+    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+    mask_before = _caller_mask()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            controller.main()
+        port, pgid = server
+        observed = {
+            "teardowns": len(teardowns),
+            "server_alive": _alive(pgid),
+            "listening": _listening(port),
+            "plain_bind": _plain_bindable(port),
+            "mask_kept": _caller_mask() == mask_before,
+        }
+        assert observed == {
+            "teardowns": 1,
+            "server_alive": False,
+            "listening": False,
+            "plain_bind": True,
+            "mask_kept": True,
+        }
+    finally:
+        signal.signal(signal.SIGINT, previous)
+        os.close(fifo)
+        # A failing run's server is ended through its own handle, afterwards.
+        for master in teardowns:
+            if master.process.poll() is None:
+                os.killpg(master.pid, signal.SIGKILL)
+                master.process.wait(timeout=HARNESS_SECONDS)
