@@ -784,39 +784,29 @@ def _end_survivors(
     """After the assertion, end and reap whatever a failing run left.
 
     Covers every child adopted since ``before`` was taken, whatever the run
-    managed to learn about it, plus the recorded controller and group. Each
-    group is killed and reaped here (bounded join), never by waiting on a
-    reaper that an interrupted run may not have started.
+    managed to learn about it, plus the recorded controller and master, by
+    pid only. Each is killed and reaped here (bounded join), never by
+    waiting on a reaper that an interrupted run may not have started.
     """
     if harness.returncode is None:
         harness.kill()
         harness.wait(timeout=HARNESS_SECONDS)
-    pending = list(_targets(survivors)) if len(survivors) == 2 else []
-    if gone.is_set():
-        pending = []
+    # PID-only: signal and reap exactly the processes this test spawned or
+    # adopted, never a process group (it may hold processes the test does
+    # not own). The master's pid is its recorded group id.
+    pending = [pid for pid in survivors if pid > 0] if not gone.is_set() else []
     handled: set[int] = set()
     # One pass per tree level (shell supervisor, controller, master,
     # workers): a grandchild is adopted only once its parent is reaped.
     for _level in range(4):
-        targets = list(pending)
+        targets = [*pending, *(_children() - set(before) - {harness.pid} - handled)]
         pending = []
-        for pid in _children() - set(before) - {harness.pid} - handled:
-            handled.add(pid)
-            # A child left in this runner's own group (the shell's
-            # controller) is ended by pid; signalling that group would kill
-            # the runner itself.
-            with contextlib.suppress(ProcessLookupError):
-                if _foreign_group(pgid := os.getpgid(pid)):
-                    targets.append(-pgid)
-            targets.append(pid)
         if not targets:
             return
-        for target in targets:
+        handled.update(targets)
+        for pid in targets:
             with contextlib.suppress(ProcessLookupError):
-                if target < 0:
-                    os.killpg(-target, signal.SIGKILL)
-                else:
-                    os.kill(target, signal.SIGKILL)
+                os.kill(pid, signal.SIGKILL)
         reaper = threading.Thread(
             target=_reap, args=(tuple(targets), threading.Event()), daemon=True
         )
@@ -914,7 +904,7 @@ def test_failed_hold_leaves_no_adopted_child(
     finally:
         for pid in _children() - before:
             with contextlib.suppress(ProcessLookupError):
-                os.killpg(os.getpgid(pid), signal.SIGKILL)
+                os.kill(pid, signal.SIGKILL)
             with contextlib.suppress(ChildProcessError):
                 os.waitpid(pid, 0)
 
@@ -975,6 +965,52 @@ def test_failed_preload_report_leaves_runner_alive_and_nothing_unreaped(
                     os.kill(pid, signal.SIGKILL)
                 with contextlib.suppress(ChildProcessError):
                     os.waitpid(pid, 0)
+
+
+def test_cleanup_spares_an_unrelated_process_in_an_adopted_childs_group() -> None:
+    # An unrelated process already running before the test leads a group;
+    # a test-owned grandchild joins that group and is adopted. Cleanup must
+    # reap the test-owned child and leave the unrelated process alone.
+    unrelated = subprocess.Popen(
+        [sys.executable, "-c", "import signal; signal.pause()"], process_group=0
+    )
+    spawner = (
+        "import signal, subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c',"
+        " 'import signal; signal.pause()'], process_group=int(sys.argv[1]))\n"
+        "print(child.pid, flush=True)\n"
+        "signal.pause()\n"
+    )
+    try:
+        with (
+            _child_subreaper(),
+            subprocess.Popen(  # noqa: S603 - this interpreter, fixed probe.
+                [sys.executable, "-c", spawner, str(unrelated.pid)],
+                stdout=subprocess.PIPE,
+                text=True,
+            ) as harness,
+        ):
+            before = _children()
+            assert harness.stdout is not None
+            assert select.select([harness.stdout], [], [], HARNESS_SECONDS)[0]
+            owned = int(harness.stdout.readline())
+            harness.kill()
+            harness.wait(timeout=HARNESS_SECONDS)
+            _end_survivors(harness, [], threading.Event(), before)
+            observed = {
+                "owned_alive": _alive(owned),
+                "owned_unreaped": owned in _children(),
+                "unrelated_alive": unrelated.poll() is None,
+            }
+            assert observed == {
+                "owned_alive": False,
+                "owned_unreaped": False,
+                "unrelated_alive": True,
+            }
+    finally:
+        if unrelated.poll() is None:
+            unrelated.kill()
+        unrelated.wait(timeout=HARNESS_SECONDS)
 
 
 def _link(entry: Path) -> str:
@@ -1171,7 +1207,7 @@ def test_caught_repeated_stops_in_teardown_still_end_the_server(
         # A failing run's server is ended through its own handle, afterwards.
         for master in spawned:
             if master.process.poll() is None:
-                os.killpg(master.pid, signal.SIGKILL)
+                master.process.kill()
                 master.process.wait(timeout=HARNESS_SECONDS)
 
 
@@ -1274,5 +1310,5 @@ def test_renewal_second_stop_at_teardown_entry_still_ends_the_server(
         # A failing run's server is ended through its own handle, afterwards.
         for master in spawned:
             if master.process.poll() is None:
-                os.killpg(master.pid, signal.SIGKILL)
+                master.process.kill()
                 master.process.wait(timeout=HARNESS_SECONDS)
