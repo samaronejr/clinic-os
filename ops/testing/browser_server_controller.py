@@ -28,10 +28,10 @@ from ops.testing.browser_artifact_publisher import (
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_server_supervisor import (
     GUNICORN_CONFIG,
-    STOP_SIGNALS,
     SupervisedMaster,
-    process_controls_available,
+    end_recorded,
     start_master,
+    stop_mask_available,
 )
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
@@ -235,38 +235,22 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
     spawned: list[SupervisedMaster] = []
-    guarded = process_controls_available()
-    caller_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ()) if guarded else set()
+    caller_mask = (
+        set(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+        if stop_mask_available()
+        else None
+    )
     try:
-        with reserve_port() as (port, listener_fd):
-            start_server(listener_fd, environment, server_log, owner=spawned)
-        wait_until_ready(port, server_log)
-        artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
-    finally:
-        # End the recorded server even when stops keep arriving and the
-        # caller survives them. Inline, not a helper: a stop already pending
-        # as teardown starts would fire at a helper's entry. Here it raises
-        # in the first mask call, after that call has blocked further stops,
-        # inside its try; at most one per stop signal is pending, hence two.
-        interrupted: BaseException | None = None
-        if guarded:
-            try:
-                signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
-            except BaseException as error:  # noqa: BLE001 - re-raised below
-                interrupted = error
-            try:
-                signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
-            except BaseException as error:  # noqa: BLE001 - re-raised below
-                interrupted = interrupted or error
         try:
-            for master in spawned:
-                master.terminate()
+            with reserve_port() as (port, listener_fd):
+                start_server(listener_fd, environment, server_log, owner=spawned)
+            wait_until_ready(port, server_log)
+            artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
         finally:
-            if guarded:
-                # Stops held back during teardown are delivered here.
-                signal.pthread_sigmask(signal.SIG_SETMASK, caller_mask)
-        if interrupted is not None:
-            raise interrupted
+            end_recorded(spawned, caller_mask)
+    finally:
+        # Completes a teardown that a signal cut short at its very start.
+        end_recorded(spawned, caller_mask)
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,

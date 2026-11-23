@@ -11,6 +11,7 @@ import contextlib
 import ctypes
 import errno
 import http.client
+import inspect
 import json
 import os
 import select
@@ -31,7 +32,8 @@ from ops.testing import renewal_runner as runner
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from types import FrameType
+    from contextlib import AbstractContextManager
+    from types import CodeType, FrameType
 
     Tap = Callable[[str | None], object]
 
@@ -157,6 +159,15 @@ def _prepare_renewal(
     )
 
 
+def _prepare_renewal_without_prctl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tap: Tap
+) -> Callable[[], object]:
+    # Missing prctl must cost only parent-death, never the stop mask.
+    monkeypatch.setattr(supervisor, "_prctl", _without_prctl)
+    _reset_capabilities()
+    return _prepare_renewal(tmp_path, monkeypatch, tap)
+
+
 class _Case(NamedTuple):
     prepare: Callable[[Path, pytest.MonkeyPatch, Tap], Callable[[], object]]
     sig: signal.Signals
@@ -185,6 +196,15 @@ class _Case(NamedTuple):
                 runner.RenewalInterruptError,
             ),
             id="renewal-stop",
+        ),
+        pytest.param(
+            _Case(
+                _prepare_renewal_without_prctl,
+                signal.SIGTERM,
+                runner._interrupted,
+                runner.RenewalInterruptError,
+            ),
+            id="renewal-stop-without-prctl",
         ),
     ],
 )
@@ -264,6 +284,8 @@ def test_stop_before_the_handle_is_stored_releases_the_port(
             if child.returncode is None:
                 child.kill()
                 child.wait(timeout=10)
+        monkeypatch.undo()
+        _reset_capabilities()
 
 
 def test_reservation_is_exclusive_before_listen(
@@ -408,10 +430,11 @@ def _without_prctl() -> Callable[..., int]:
 
 
 def _reset_capabilities() -> None:
-    # 0c588c40 had no cached check; the fix caches its one shared answer.
-    cached = getattr(supervisor, "process_controls_available", None)
-    if cached is not None:
-        cached.cache_clear()
+    # Older revisions had other (or no) cached checks.
+    for name in ("process_controls_available", "parent_death_available"):
+        cached = getattr(supervisor, name, None)
+        if cached is not None:
+            cached.cache_clear()
 
 
 @pytest.mark.parametrize("missing", ["pthread_sigmask", "valid_signals", "prctl"])
@@ -464,7 +487,7 @@ def test_missing_libc_prctl_still_imports_and_reports_unavailable() -> None:
         "        return super().__getattr__(name)\n"
         "ctypes.CDLL = NoPrctl\n"
         "from ops.testing import browser_server_supervisor as supervisor\n"
-        "print('imported', supervisor.process_controls_available())\n"
+        "print('imported', supervisor.parent_death_available())\n"
     )
     completed = subprocess.run(  # noqa: S603 - this interpreter, fixed probe.
         [sys.executable, "-c", probe],
@@ -655,21 +678,25 @@ def _preloading_server(fifo: int) -> tuple[int, int, int]:
     ],
 )
 def test_ended_harness_takes_its_server_down(case: _Harness, tmp_path: Path) -> None:
-    observed = _end_harness(case, tmp_path)
-    assert observed == {
-        "server_gone": True,
-        "controller_alive": False,
-        "listening": False,
-        "plain_bind": True,
-        "harness_exit": -case.exit_signal,
-    }
+    _end_harness(
+        case,
+        tmp_path,
+        {
+            "server_gone": True,
+            "controller_alive": False,
+            "listening": False,
+            "plain_bind": True,
+            "harness_exit": -case.exit_signal,
+        },
+    )
 
 
-def _end_harness(case: _Harness, tmp_path: Path) -> dict[str, object]:
-    """Start the harness, end it by ``case.stop`` and record what is left.
+def _end_harness(case: _Harness, tmp_path: Path, expected: dict[str, object]) -> None:
+    """Start the harness, end it by ``case.stop`` and assert what is left.
 
     Everything acquired here is released by the ExitStack, also when setup
-    fails; a failing run's survivors are ended only after the observations.
+    fails; the assertion runs inside it, before a failing run's survivors
+    are ended.
     """
     shell_path = case.module == supervisor.__name__
     environment = _harness_environment(tmp_path, preload=shell_path)
@@ -707,15 +734,22 @@ def _end_harness(case: _Harness, tmp_path: Path) -> dict[str, object]:
         harness.send_signal(case.stop)
         harness_exit = harness.wait(timeout=HARNESS_SECONDS)
         # The harness is gone and its orphans are ours: only wait.
-        targets = (*((controller_pid,) if controller_pid else ()), -pgid)
-        threading.Thread(target=_reap, args=(targets, gone), daemon=True).start()
-        return {
+        threading.Thread(
+            target=_reap, args=(_targets(survivors), gone), daemon=True
+        ).start()
+        observed = {
             "server_gone": gone.wait(timeout=DEATH_SECONDS),
             "controller_alive": _alive(controller_pid),
             "listening": _listening(port),
             "plain_bind": _plain_bindable(port),
             "harness_exit": harness_exit,
         }
+        assert observed == expected
+
+
+def _targets(survivors: list[int]) -> tuple[int, ...]:
+    controller_pid, pgid = survivors
+    return (*((controller_pid,) if controller_pid else ()), -pgid)
 
 
 def _close_all(responses: list[http.client.HTTPResponse]) -> None:
@@ -726,18 +760,66 @@ def _close_all(responses: list[http.client.HTTPResponse]) -> None:
 def _end_survivors(
     harness: subprocess.Popen[str], survivors: list[int], gone: threading.Event
 ) -> None:
-    """Only after the observations, and only for a failing run, end leftovers."""
+    """After the assertion, end and reap whatever a failing run left.
+
+    Reaps the adopted children itself (bounded join) rather than relying on
+    a reaper that an interrupted run may never have started.
+    """
     if harness.returncode is None:
         harness.kill()
         harness.wait(timeout=HARNESS_SECONDS)
-    if len(survivors) == 2 and not gone.is_set():
-        controller_pid, pgid = survivors
+    if len(survivors) != 2 or gone.is_set():
+        return
+    controller_pid, pgid = survivors
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pgid, signal.SIGKILL)
+    if controller_pid:
         with contextlib.suppress(ProcessLookupError):
-            os.killpg(pgid, signal.SIGKILL)
-        if controller_pid:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(controller_pid, signal.SIGKILL)
-        gone.wait(timeout=HARNESS_SECONDS)
+            os.kill(controller_pid, signal.SIGKILL)
+    reaper = threading.Thread(
+        target=_reap, args=(_targets(survivors), threading.Event()), daemon=True
+    )
+    reaper.start()
+    reaper.join(timeout=HARNESS_SECONDS)
+
+
+def test_cleanup_reaps_adopted_children_without_a_running_reaper() -> None:
+    # A run interrupted after the harness exited but before its reaper began:
+    # the adopted server group must still be ended and reaped by cleanup.
+    spawner = (
+        "import signal, subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c',"
+        " 'import signal; signal.pause()'], start_new_session=True)\n"
+        "print(child.pid, flush=True)\n"
+        "signal.pause()\n"
+    )
+    leftovers: list[int] = []
+    with (
+        _child_subreaper(),
+        subprocess.Popen(  # noqa: S603 - this interpreter, fixed probe.
+            [sys.executable, "-c", spawner], stdout=subprocess.PIPE, text=True
+        ) as harness,
+    ):
+        assert harness.stdout is not None
+        assert select.select([harness.stdout], [], [], HARNESS_SECONDS)[0]
+        orphan = int(harness.stdout.readline())
+        harness.kill()
+        harness.wait(timeout=HARNESS_SECONDS)
+        try:
+            _end_survivors(harness, [0, orphan], threading.Event())
+            try:
+                reaped, _status = os.waitpid(orphan, os.WNOHANG)
+            except ChildProcessError:
+                reaped = -1
+            if reaped == orphan:
+                leftovers.append(orphan)
+            observed = {"left_unreaped": leftovers, "alive": _alive(orphan)}
+            assert observed == {"left_unreaped": [], "alive": False}
+        finally:
+            if _alive(orphan):
+                os.kill(orphan, signal.SIGKILL)
+                with contextlib.suppress(ChildProcessError):
+                    os.waitpid(orphan, 0)
 
 
 def test_failed_harness_start_leaves_no_test_descriptor(
@@ -751,7 +833,7 @@ def test_failed_harness_start_leaves_no_test_descriptor(
         supervisor.__name__, ("suite", "patient"), signal.SIGKILL, signal.SIGKILL
     )
     with pytest.raises(OSError, match="spawn refused"):
-        _end_harness(case, tmp_path)
+        _end_harness(case, tmp_path, {})
     fifo = str(tmp_path / "hold.fifo")
     open_fifos = [
         entry.name for entry in Path("/proc/self/fd").iterdir() if _link(entry) == fifo
@@ -767,25 +849,145 @@ def _link(entry: Path) -> str:
 
 
 def test_release_witness_checks_only_the_servers_address() -> None:
-    with socket.socket() as other:
-        # Another address on the same port does not serve 127.0.0.1:port.
-        other.bind(("127.0.0.2", 0))
+    with socket.socket() as own, socket.socket() as other:
+        # Hold 127.0.0.1:port (bound, not listening), then listen on the same
+        # port at another address: that listener does not serve 127.0.0.1.
+        own.bind((controller.HOST, 0))
+        port = own.getsockname()[1]
+        other.bind(("127.0.0.2", port))
         other.listen()
-        port = other.getsockname()[1]
-        observed = {"listening": _listening(port), "plain_bind": _plain_bindable(port)}
-        with socket.socket() as own:
-            own.bind((controller.HOST, port))
-            own.listen()
-            observed["own_listening"] = _listening(port)
-    assert observed == {"listening": False, "plain_bind": True, "own_listening": True}
+        observed = {"other_address_only": _listening(port)}
+        own.listen()
+        observed["own_listening"] = _listening(port)
+    assert observed == {"other_address_only": False, "own_listening": True}
 
 
+class _AlarmInTeardownError(Exception):
+    """The caller's deadline handler firing during teardown."""
+
+
+def _alarm_in_teardown(_signum: int, _frame: object) -> None:
+    raise _AlarmInTeardownError
+
+
+def _teardown_first_line() -> int:
+    """Line of the first statement (not a comment) in ``run_suite``'s finally."""
+    lines, start = inspect.getsourcelines(controller.run_suite)
+    at = next(index for index, line in enumerate(lines) if line.strip() == "finally:")
+    following = next(
+        index
+        for index in range(at + 1, len(lines))
+        if lines[index].strip() and not lines[index].strip().startswith("#")
+    )
+    return start + following
+
+
+@contextmanager
+def _signal_at_line(
+    code: CodeType, line: int, sig: signal.Signals
+) -> Iterator[list[int]]:
+    """Deliver ``sig`` once, by a real kernel signal, as ``line`` starts."""
+    monitoring = sys.monitoring
+    tool = next(
+        candidate for candidate in range(6) if monitoring.get_tool(candidate) is None
+    )
+    monitoring.use_tool_id(tool, "cpi-flake3-teardown-cut")
+    fired: list[int] = []
+
+    def at_line(_code: CodeType, number: int) -> object:
+        if number == line and not fired:
+            fired.append(number)
+            signal.raise_signal(sig)
+        return None
+
+    monitoring.register_callback(tool, monitoring.events.LINE, at_line)
+    monitoring.set_local_events(tool, code, monitoring.events.LINE)
+    try:
+        yield fired
+    finally:
+        monitoring.set_local_events(tool, code, 0)
+        monitoring.register_callback(tool, monitoring.events.LINE, None)
+        monitoring.free_tool_id(tool)
+
+
+def _teardown_cut(  # noqa: PLR0913 - one cut: where, which signal, and its records.
+    where: str,
+    second: signal.Signals,
+    fifo: int,
+    server: list[int],
+    teardowns: list[supervisor.SupervisedMaster],
+    spawned: list[supervisor.SupervisedMaster],
+    monkeypatch: pytest.MonkeyPatch,
+) -> AbstractContextManager[list[int]]:
+    """Patch in the body Ctrl-C and the second signal at ``where``.
+
+    The context yields a non-empty list once the second signal was sent.
+    """
+    terminate = supervisor.SupervisedMaster.terminate
+    launch = cast("Any", supervisor.start_master)
+    real_sigmask = signal.pthread_sigmask
+    fired: list[int] = []
+
+    def record_master(*args: object, **kwargs: object) -> supervisor.SupervisedMaster:
+        master: supervisor.SupervisedMaster = launch(*args, **kwargs)
+        spawned.append(master)
+        return master
+
+    def ctrl_c_once_preloading(_port: int, _log: Path) -> None:
+        server.extend(_preloading_server(fifo)[:2])
+        if where == "never-ready":
+            # The server never becomes ready: readiness fails as in production.
+            fired.append(0)
+            controller._fail("readiness never reached (no attempt)")
+        signal.raise_signal(signal.SIGINT)
+
+    def signal_then_terminate(master: supervisor.SupervisedMaster) -> None:
+        teardowns.append(master)
+        if where == "terminate-entry":
+            fired.append(second)
+            signal.raise_signal(second)
+        terminate(master)
+
+    def signal_before_first_restore(
+        how: int, mask: tuple[int, ...] | frozenset[int] | set[int]
+    ) -> set[int]:
+        if how == signal.SIG_SETMASK and teardowns and not fired:
+            fired.append(how)
+            signal.raise_signal(second)
+        return set(real_sigmask(how, mask))
+
+    monkeypatch.setattr(controller, "start_master", record_master)
+    monkeypatch.setattr(controller, "wait_until_ready", ctrl_c_once_preloading)
+    monkeypatch.setattr(supervisor.SupervisedMaster, "terminate", signal_then_terminate)
+    if where == "final-restore":
+        monkeypatch.setattr(signal, "pthread_sigmask", signal_before_first_restore)
+    if where == "first-line":
+        return _signal_at_line(
+            controller.run_suite.__code__, _teardown_first_line(), second
+        )
+    return nullcontext(fired)
+
+
+@pytest.mark.parametrize(
+    ("where", "second"),
+    [
+        pytest.param("terminate-entry", signal.SIGINT, id="ctrl-c-at-terminate"),
+        pytest.param("terminate-entry", signal.SIGALRM, id="alarm-at-terminate"),
+        pytest.param("final-restore", signal.SIGALRM, id="alarm-at-mask-restore"),
+        pytest.param("first-line", signal.SIGINT, id="ctrl-c-at-teardown-start"),
+        pytest.param("never-ready", signal.SIGINT, id="server-never-ready"),
+    ],
+)
 def test_caught_repeated_stops_in_teardown_still_end_the_server(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    where: str,
+    second: signal.Signals,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The real controller, the real config.wsgi preload held in the master, a
-    # caller that catches the unwind: one Ctrl-C in the body, then another at
-    # every entry to the production teardown.
+    # caller that catches the unwind: one Ctrl-C in the body, then a second
+    # signal in the production teardown (at its start, at every entry to
+    # terminate, or as the caller's mask is restored).
     environment = _harness_environment(tmp_path, preload=True)
     for name in ("DJANGO_SETTINGS_MODULE", "CPI_FLAKE3_HOLD_FIFO", "PYTHONPATH"):
         monkeypatch.setenv(name, environment[name])
@@ -796,44 +998,42 @@ def test_caught_repeated_stops_in_teardown_still_end_the_server(
     fifo = os.open(environment["CPI_FLAKE3_HOLD_FIFO"], os.O_RDONLY | os.O_NONBLOCK)
     server: list[int] = []
     teardowns: list[supervisor.SupervisedMaster] = []
-    terminate = supervisor.SupervisedMaster.terminate
-
-    def ctrl_c_once_preloading(_port: int, _log: Path) -> None:
-        server.extend(_preloading_server(fifo)[:2])
-        signal.raise_signal(signal.SIGINT)
-
-    def ctrl_c_then_terminate(master: supervisor.SupervisedMaster) -> None:
-        teardowns.append(master)
-        signal.raise_signal(signal.SIGINT)
-        terminate(master)
-
-    monkeypatch.setattr(controller, "wait_until_ready", ctrl_c_once_preloading)
-    monkeypatch.setattr(supervisor.SupervisedMaster, "terminate", ctrl_c_then_terminate)
-    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
-    mask_before = _caller_mask()
+    real_sigmask = signal.pthread_sigmask
+    previous_int = signal.signal(signal.SIGINT, signal.default_int_handler)
+    previous_alarm = signal.signal(signal.SIGALRM, _alarm_in_teardown)
+    mask_before = set(real_sigmask(signal.SIG_BLOCK, ()))
+    spawned: list[supervisor.SupervisedMaster] = []
+    cut = _teardown_cut(where, second, fifo, server, teardowns, spawned, monkeypatch)
     try:
-        with pytest.raises(KeyboardInterrupt):
+        unwinds = (
+            KeyboardInterrupt,
+            _AlarmInTeardownError,
+            controller.BrowserServerError,
+        )
+        with cut as fired, pytest.raises(unwinds):
             controller.main()
         port, pgid = server
         observed = {
-            "teardowns": len(teardowns),
+            "second_signal_sent": bool(fired),
             "server_alive": _alive(pgid),
             "listening": _listening(port),
             "plain_bind": _plain_bindable(port),
-            "mask_kept": _caller_mask() == mask_before,
+            "mask_kept": set(real_sigmask(signal.SIG_BLOCK, ())) == mask_before,
         }
         assert observed == {
-            "teardowns": 1,
+            "second_signal_sent": True,
             "server_alive": False,
             "listening": False,
             "plain_bind": True,
             "mask_kept": True,
         }
     finally:
-        signal.signal(signal.SIGINT, previous)
+        real_sigmask(signal.SIG_SETMASK, mask_before)
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGALRM, previous_alarm)
         os.close(fifo)
         # A failing run's server is ended through its own handle, afterwards.
-        for master in teardowns:
+        for master in spawned:
             if master.process.poll() is None:
                 os.killpg(master.pid, signal.SIGKILL)
                 master.process.wait(timeout=HARNESS_SECONDS)

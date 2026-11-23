@@ -172,27 +172,28 @@ def _prctl() -> Callable[..., int]:
     return prctl
 
 
-@functools.cache
-def process_controls_available() -> bool:
-    """Report, once, whether this build has every lifetime control used here.
+def stop_mask_available() -> bool:
+    """Report whether this build can block SIGINT/SIGTERM (``pthread_sigmask``)."""
+    return hasattr(signal, "pthread_sigmask")
 
-    The one shared check for both launchers and the worker hook: the masked
-    spawn needs ``signal.pthread_sigmask`` and parent-death needs libc
-    ``prctl``. Without them each launcher spawns exactly as the a81da6e3
-    baseline did (no mask, no parent-death), so serving still works.
+
+@functools.cache
+def parent_death_available() -> bool:
+    """Report, once, whether libc ``prctl`` can tie a child to its parent.
+
+    Independent of the stop mask: without ``prctl`` only parent-death is
+    lost (the server then outlives a killed harness, as at a81da6e3); the
+    masked spawn and teardown still work.
     """
     try:
         _prctl()
     except (AttributeError, OSError):
-        available = False
-    else:
-        available = hasattr(signal, "pthread_sigmask")
-    if not available:
         sys.stderr.write(
-            "browser supervisor: signal masking or prctl is unavailable; "
-            "the server is not tied to its harness on this build\n"
+            "browser supervisor: prctl is unavailable; the server is not "
+            "killed with its harness on this build\n"
         )
-    return available
+        return False
+    return True
 
 
 def die_with_parent(parent_pid: int) -> None:
@@ -271,8 +272,8 @@ def start_master(
     handle is stored, and the group is reaped before it propagates. The
     mask is per thread: start no helper thread first, since a signal taken
     by another thread still runs its handler on this one. Without the
-    lifetime controls (``process_controls_available``) this spawns as the
-    baseline did.
+    stop mask (``stop_mask_available``) this spawns as the baseline did;
+    without ``prctl`` only parent-death is skipped.
     """
     started: list[subprocess.Popen[bytes]] = []
     with log.open("wb") as stream:
@@ -289,7 +290,7 @@ def start_master(
             )
 
         try:
-            if process_controls_available():
+            if stop_mask_available():
                 _spawn_and_record(start, started, owner)
             else:
                 started.append(start(None))
@@ -313,12 +314,14 @@ def _spawn_and_record(
 ) -> None:
     """Start the master and store its handle with only SIGINT/SIGTERM blocked."""
     parent_pid = os.getpid()
+    follow_parent = parent_death_available()
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
 
     def prepare_child() -> None:
         # Restore the inherited mask so the master stays killable.
         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-        die_with_parent(parent_pid)
+        if follow_parent:
+            die_with_parent(parent_pid)
 
     try:
         signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
@@ -333,12 +336,49 @@ def _spawn_and_record(
             signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
+def end_recorded(masters: list[SupervisedMaster], caller_mask: set[int] | None) -> None:
+    """End every recorded master, then restore ``caller_mask``.
+
+    ``caller_mask`` is the caller's mask read before the run (``None``
+    without a stop mask). Every signal is blocked first; a handler already
+    pending raises at that call, after the block, and is re-raised once the
+    masters are gone. Every signal stays blocked until the final restore,
+    so no handler can run before it, and whatever arrived during teardown
+    is delivered right after it. Callers run this twice (nested
+    ``finally``) so a signal that cuts the first call short at its start
+    is still followed by a complete teardown; ending an ended master is a
+    no-op.
+    """
+    if caller_mask is None:
+        for master in masters:
+            master.terminate()
+        return
+    every = signal.valid_signals() if hasattr(signal, "valid_signals") else STOP_SIGNALS
+    interrupted: BaseException | None = None
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, every)
+    except BaseException as error:  # noqa: BLE001 - re-raised below
+        interrupted = error
+    try:
+        # A second distinct handler pending at once raises here.
+        signal.pthread_sigmask(signal.SIG_BLOCK, every)
+    except BaseException as error:  # noqa: BLE001 - re-raised below
+        interrupted = interrupted or error
+    try:
+        for master in masters:
+            master.terminate()
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, caller_mask)
+    if interrupted is not None:
+        raise interrupted
+
+
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
 
 
 def main() -> int:
     """Fork the journal-bound controller child and reap it on every exit."""
-    guarded = process_controls_available()
+    guarded = parent_death_available()
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     interpreter = sys.executable
     supervisor_pid = os.getpid()
