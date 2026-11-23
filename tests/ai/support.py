@@ -55,11 +55,6 @@ def model(
     fallback: bool = False,
     region: str = "br-synthetic",
 ) -> ModelConfiguration:
-    if not fallback:
-        for previous in ModelConfiguration.objects.filter(
-            purpose=purpose.value, state="active", route="primary"
-        ):
-            transition_model(configuration_id=previous.pk, state="retired")
     terms = ModelTerms(
         purpose=purpose,
         provider="recorded_fixture" if fallback else "synthetic",
@@ -70,6 +65,20 @@ def model(
         price=Price(3, 5, 1, 7),
         route="fallback" if fallback else "primary",
     )
+    return activate_reviewed_model(
+        organization=organization, clinic=clinic, terms=terms
+    )
+
+
+def activate_reviewed_model(
+    *, organization: UUID, clinic: UUID, terms: ModelTerms
+) -> ModelConfiguration:
+    """Use the normal evaluation and rollout workflow for these exact model terms."""
+    if terms.route == "primary":
+        for previous in ModelConfiguration.objects.filter(
+            purpose=terms.purpose.value, state="active", route="primary"
+        ):
+            transition_model(configuration_id=previous.pk, state="retired")
     configuration = propose_model(terms=terms)
     transition_model(
         configuration_id=configuration.pk,

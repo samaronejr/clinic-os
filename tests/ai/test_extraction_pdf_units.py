@@ -15,7 +15,6 @@ from apps.ai.extraction_contracts import (
 )
 from apps.ai.extraction_documents import (
     document_input,
-    recorded_document_extraction,
     source_regions,
     synthetic_document_extraction,
 )
@@ -35,7 +34,11 @@ from ai.test_extraction import (
     pdf_with_stream,
     scan_fixture,
 )
-from ai.test_extraction_runtime import extracted_job
+from ai.test_extraction_runtime import (
+    collect_enabled_job,
+    enable_extraction,
+    extracted_job,
+)
 from auth.stepup_test_support import verified_request
 from ehr.test_autosave import as_actor
 
@@ -190,8 +193,9 @@ def test_pdf_swap_is_not_stored_or_rendered_as_an_ai_unit(
         row["raw_text"] = "glucose: 123,40 g/dL [70,0 - 99,0]"
         return json.dumps(reply)
 
+    enable_extraction(rbac_graph, monkeypatch)
     monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", forged_reply)
-    job = extracted_job(rbac_graph, monkeypatch)
+    job = collect_enabled_job(rbac_graph)
     with as_actor(rbac_graph, rbac_graph.physician):
         row = job.candidates.get(position=0)
         assert (row.status, row.payload["value"], row.payload["unit"]) == (
@@ -314,13 +318,14 @@ def test_native_pdf_filing_rejects_a_forged_observation_unit_without_manual_entr
 def test_reviewed_image_ocr_still_confirms_its_bound_unit(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        "apps.ai.adapters.synthetic_document_extraction", recorded_document_extraction
-    )
-    job = extracted_job(
-        rbac_graph, monkeypatch, data=scan_fixture(), content_type="image/png"
-    )
+    enable_extraction(rbac_graph, monkeypatch, recorded_scan=True)
+    job = collect_enabled_job(rbac_graph, data=scan_fixture(), content_type="image/png")
     with as_actor(rbac_graph, rbac_graph.physician):
+        configuration = job.invocation.configuration
+        assert (configuration.provider, configuration.model_id) == (
+            "recorded_fixture",
+            "extraction-fixture-v1",
+        )
         row = job.candidates.get(position=0)
         assert row.payload["unit"] == "mg/dL"
         identifier = review_extraction(

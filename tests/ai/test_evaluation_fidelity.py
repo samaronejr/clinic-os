@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from functools import partial
 from gettext import GNUTranslations
 from importlib import import_module
 from io import BytesIO
@@ -23,6 +24,7 @@ from apps.ai.evaluation.services import (
     store_results,
 )
 from apps.ai.evaluation.versions import source_versions
+from apps.ai.extraction_documents import recorded_document_extraction
 from apps.core.secrets import secret_store
 from apps.tenancy.envelope import KEK_SECRET_NAME, protect
 from django.db import DatabaseError, connection, transaction
@@ -69,18 +71,34 @@ def test_samples_marked_valid_are_domain_outputs(purpose: Purpose) -> None:
     )
 
 
-def test_evaluation_scores_the_recorded_ocr_against_its_reviewed_source() -> None:
-    result = evaluate(
+def test_evaluation_scores_the_recorded_ocr_against_its_reviewed_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replay = partial(
+        evaluate,
         capability="AI-03",
         purpose=Purpose.EXTRACTION,
         corpus_version="engineering-v1",
         provider_key="recorded_fixture",
         model_id="extraction-fixture-v1",
     )
+    result = replay()
     assert result["automatic_failures"] == 0
     cases = result["cases"]
     assert isinstance(cases, list)
     assert all(len(json.loads(case["output"])["candidates"]) == 2 for case in cases)
+
+    def substituted_unit(content: str) -> str:
+        reply = json.loads(recorded_document_extraction(content))
+        row = reply["candidates"][0]
+        row["unit"] = "g/dL"
+        row["raw_text"] = row["raw_text"].replace("mg/dL", "g/dL")
+        return json.dumps(reply)
+
+    monkeypatch.setattr(
+        "apps.ai.adapters.recorded_document_extraction", substituted_unit
+    )
+    assert replay()["automatic_failures"] == 12
 
 
 @pytest.mark.parametrize(

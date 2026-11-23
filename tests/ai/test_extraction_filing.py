@@ -43,7 +43,11 @@ from ai.test_extraction import (
     pdf_fixture,
     scan_fixture,
 )
-from ai.test_extraction_runtime import extracted_job
+from ai.test_extraction_runtime import (
+    collect_enabled_job,
+    enable_extraction,
+    extracted_job,
+)
 from ehr.test_autosave import as_actor
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
@@ -172,10 +176,9 @@ def test_reviewed_scan_cannot_file_contradictory_unit(
             row["raw_text"] = row["raw_text"].replace("mg/dL", "g/dL")
         return json.dumps(reply)
 
-    monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", extract)
-    job = extracted_job(
-        rbac_graph, monkeypatch, data=scan_fixture(), content_type="image/png"
-    )
+    enable_extraction(rbac_graph, monkeypatch, recorded_scan=True)
+    monkeypatch.setattr("apps.ai.adapters.recorded_document_extraction", extract)
+    job = collect_enabled_job(rbac_graph, data=scan_fixture(), content_type="image/png")
     with as_actor(rbac_graph, rbac_graph.physician):
         assert job.candidates.get(position=1).status == "candidate"
         assert_unit_refused(job, position=0)
