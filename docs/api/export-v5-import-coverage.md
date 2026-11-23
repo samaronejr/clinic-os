@@ -1,7 +1,7 @@
 # Export v5 → governed import coverage
 
 This is the complete `apps.interop.export_registry.datasets()` inventory for
-v5: **6 IMPORTABLE, 249 EXPORT-ONLY**. Each relation is named exactly once.
+v5: **8 IMPORTABLE, 247 EXPORT-ONLY**. Each relation is named exactly once.
 The registry drift test checks both directions and checks that the importable
 set equals the service allowlist. `IMPORTABLE` means the documented
 [projection](export-v5.md#import-compatibility), not a table restore.
@@ -28,7 +28,9 @@ Excluded relations are not datasets and are not in this matrix.
 | EXPORT-ONLY | `insurance_appeal`, `insurance_batch`, `insurance_batchguide`, `insurance_clinicalapproval`, `insurance_glosa`, `insurance_guide`, `insurance_insurancemembership`, `insurance_payer`, `insurance_payercontract`, `insurance_payerrequest`, `insurance_paymentmatch`, `insurance_pricetable`, `insurance_return`, `insurance_submission`, `insurance_tussterm` | Insurance workflows, adjudication and payer records have no governed mapping. |
 | EXPORT-ONLY | `intake_demographicscorrection`, `intake_patientclinicenrollment`, `interop_hiddenenrollment` | Source lookup only: derive original registrar labels and exclude hidden enrollment scopes; no source receipts or enrollments are restored. |
 | EXPORT-ONLY | `intake_clinicintakepolicy`, `intake_datasubjectrequest`, `intake_duplicatecandidate`, `intake_emergencycontact`, `intake_insurancemembership`, `intake_mergedecision`, `intake_patientaddress`, `intake_patientalias`, `intake_patientchannelpreference`, `intake_patientcontact`, `intake_patientcontactevent`, `intake_patientduplicateindex`, `intake_patientmergetransfer`, `intake_questionnaireevent`, `intake_questionnaireresponse`, `intake_questionnairetemplate` | Outside registration fields; the target regenerates its own indexes and duplicate review. |
-| EXPORT-ONLY | `interop_importedrecord`, `interop_importfile`, `interop_importjob`, `interop_importmapping`, `interop_importtransition` | Prior import lifecycle and its historical payloads are retained in the export, not replayed or revived in the target. |
+| IMPORTABLE | `interop_importedrecord` | Committed, non-rolled-back visible patient provenance and clinical facts; written under a fresh governed job. |
+| IMPORTABLE | `interop_importfile` | Clean attachments linked by eligible history; never sealed source uploads or unreferenced files. |
+| EXPORT-ONLY | `interop_importjob`, `interop_importmapping`, `interop_importtransition` | Prior workflow is not replayed; transitions are read only to determine whether a fact was committed and not rolled back. |
 | EXPORT-ONLY | `interop_apiclient`, `interop_apiwritereceipt`, `interop_organizationexport`, `interop_rndssubmission`, `interop_webhookattempt`, `interop_webhookdelivery`, `interop_webhooksubscription` | Integration configuration, receipts and send history are not migration inputs. |
 | EXPORT-ONLY | `inventory_batch`, `inventory_calibration`, `inventory_equipment`, `inventory_item`, `inventory_location`, `inventory_maintenance`, `inventory_minimumstock`, `inventory_purchasebudget`, `inventory_purchaserequest`, `inventory_stockmovement`, `inventory_supplier` | Inventory and procurement state have no governed mapping. |
 | EXPORT-ONLY | `orders_labaccount`, `orders_order`, `orders_orderevent`, `orders_orderitem`, `orders_result`, `orders_resultacknowledgment`, `orders_resultmatch`, `orders_resultobservation`, `orders_resultquarantine`, `orders_resultrejection`, `orders_resultrelease`, `orders_resultversion`, `orders_resultworkitem` | Do not replay order/result lifecycles, publication, quarantine or lab authority as history. |

@@ -40,6 +40,7 @@ MAX_COMPRESSION_RATIO: Final = 100
 SMALL_MEMBER_BYTES: Final = 64 * 1024
 ARCHIVE_VERSION: Final = "clinic-import-archive-v1"
 MANIFEST: Final = "manifest.json"
+PROJECTION_WITNESS: Final = "v5-projection.json"
 DATASET_FILES: Final = {"patients": "patients.csv", "history": "history.csv"}
 ATTACHMENT_NAME: Final = re.compile(r"files/[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 DELIMITERS: Final = (",", ";", "\t", "|")
@@ -333,7 +334,7 @@ def open_archive(data: bytes) -> dict[str, bytes]:
             members = bounded_members(
                 archive,
                 allowed_file=lambda name: (
-                    name in (MANIFEST, *DATASET_FILES.values())
+                    name in (MANIFEST, PROJECTION_WITNESS, *DATASET_FILES.values())
                     or ATTACHMENT_NAME.fullmatch(name) is not None
                 ),
                 required_files={MANIFEST, DATASET_FILES["patients"]},
@@ -518,19 +519,27 @@ def read_datasets(
     if kind == "api":
         return read_api(data)
     if kind == "zip":
-        contents = open_archive(data)
-        result: dict[str, Dataset] = {}
-        for name, member in DATASET_FILES.items():
-            if member in contents:
-                chosen = (options or {}).get(name) or detect_csv(contents[member])
-                result[name] = read_csv(name, contents[member], chosen)
-        return result
+        return archive_datasets(open_archive(data), options)
     raise ImportInputError(Code.UNSUPPORTED_SOURCE)
 
 
-def archive_attachments(data: bytes) -> tuple[Attachment, ...]:
+def archive_datasets(
+    contents: Mapping[str, bytes], options: Mapping[str, CsvOptions] | None
+) -> dict[str, Dataset]:
+    """Parse the tables from an already verified staged archive."""
+    return {
+        name: read_csv(
+            name,
+            contents[member],
+            (options or {}).get(name) or detect_csv(contents[member]),
+        )
+        for name, member in DATASET_FILES.items()
+        if member in contents
+    }
+
+
+def archive_attachments(contents: Mapping[str, bytes]) -> tuple[Attachment, ...]:
     """Scan every archive attachment; rejected bytes stay quarantined."""
-    contents = open_archive(data)
     return tuple(
         scan_attachment(path, member)
         for path, member in sorted(contents.items())

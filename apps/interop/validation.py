@@ -76,10 +76,16 @@ class PatientRow:
     identifiers: tuple[tuple[str, str], ...]
     registered_at: datetime | None
     registered_by: str | None
+    original_source_id: str | None = None
 
     def canonical(self) -> dict[str, object]:
         """Return the JSON form bound by the dry-run and batch digests."""
         return {
+            **(
+                {"original_source_id": self.original_source_id}
+                if self.original_source_id
+                else {}
+            ),
             "row": self.row,
             "source_id": self.source_id,
             "legal_name": self.legal_name,
@@ -106,10 +112,16 @@ class HistoryRow:
     author: str
     content: dict[str, str | int | None]
     file: str | None
+    original_source_id: str | None = None
 
     def canonical(self) -> dict[str, object]:
         """Return the JSON form bound by the dry-run and batch digests."""
         return {
+            **(
+                {"original_source_id": self.original_source_id}
+                if self.original_source_id
+                else {}
+            ),
             "row": self.row,
             "source_id": self.source_id,
             "patient_row": self.patient_row,
@@ -139,6 +151,7 @@ class Normalized:
     history: tuple[HistoryRow, ...]
     rejections: tuple[Rejection, ...]
     row_counts: dict[str, int]
+    source_projection: dict[str, object] | None = None
 
     @property
     def row_count(self) -> int:
@@ -340,6 +353,12 @@ def _patient(
             maximum=MAX_AUTHOR,
             required=False,
         ),
+        original_source_id=_text(
+            values.get("original_source_id", ""),
+            field="original_source_id",
+            maximum=MAX_SOURCE_ID,
+            required=False,
+        ),
     )
 
 
@@ -380,11 +399,13 @@ def _attachment(
         _reject("file", "missing_file")
     if facts.verdict != "clean":
         _reject("file", "file_rejected")
-    title = _text(
-        values.get("title", ""), field="title", maximum=MAX_TITLE, required=False
-    )
+    title = values.get("title", "")
+    if len(title) > MAX_TITLE:
+        _reject("title", "too_long")
+    if any(unicodedata.category(character) in CONTROL for character in title):
+        _reject("title", "invalid_text")
     return {
-        "title": title,
+        "title": title or None,
         "media_type": facts.media_type,
         "sha256": facts.sha256,
         "size_bytes": facts.size_bytes,
@@ -432,6 +453,12 @@ def _history(
         author=author,
         content=content,
         file=file,
+        original_source_id=_text(
+            values.get("original_source_id", ""),
+            field="original_source_id",
+            maximum=MAX_SOURCE_ID,
+            required=False,
+        ),
     )
 
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID
 
@@ -48,6 +48,7 @@ from apps.interop.models import (
     ImportMapping,
     ImportTransition,
 )
+from apps.interop.projection import mapped_values, read_witness, summarize
 from apps.interop.spreadsheet import write_csv
 from apps.interop.validation import (
     AttachmentFacts,
@@ -273,18 +274,27 @@ def mapped_rows(
 ) -> Normalized:
     """Validate the stored source exactly as mapped; deterministic on replay."""
     document = cast("dict[str, object]", mapping.document)
-    datasets = sources.read_datasets(
-        job.source_kind, source_bytes(job), csv_options(document)
-    )
+    data = source_bytes(job)
+    options = csv_options(document)
+    if job.source_kind == "zip":
+        members = sources.open_archive(data)
+        datasets = sources.archive_datasets(members, options)
+        witness = members.get(sources.PROJECTION_WITNESS)
+    else:
+        datasets = sources.read_datasets(job.source_kind, data, options)
+        witness = None
     if not contract.mapped_columns_present(document, datasets):
         raise ImportInputError(Code.MAPPING_COLUMNS)
-    return normalize(
+    normalized = normalize(
         datasets,
         document,
         clinic=clinic,
         attachments=attachment_facts(job),
         required_fields=_required_fields(clinic.pk),
     )
+    if witness is not None:
+        return replace(normalized, source_projection=read_witness(witness))
+    return normalized
 
 
 def _fingerprint(source_kind: str, digest: str, size: int) -> str:
@@ -313,14 +323,47 @@ def upload_import(
     declared_sha256: str,
     idempotency_key: UUID,
 ) -> ImportJobView:
-    """Store one source after its checksum and structure verify; never parse twice."""
+    """Stage a source supplied directly by the import operator."""
     if source_kind not in contract.SOURCE_KINDS:
         raise ImportInputError(Code.UNSUPPORTED_SOURCE)
+    return stage_upload(
+        clinic_id=clinic_id,
+        source_kind=source_kind,
+        data=data,
+        declared_sha256=declared_sha256,
+        idempotency_key=idempotency_key,
+    )
+
+
+V5_PROJECTION: Final = "v5-projection"
+
+
+def stage_upload(
+    *,
+    clinic_id: UUID,
+    source_kind: str,
+    data: bytes,
+    declared_sha256: str,
+    idempotency_key: UUID,
+) -> ImportJobView:
+    """Store a verified direct upload or a projection created by the v5 adapter."""
     if type(idempotency_key) is not UUID:
         raise ImportInputError(Code.INVALID_COMMAND)
     actual = verified_upload_digest(data, declared_sha256)
-    sources.read_datasets(source_kind, data)
-    attachments = sources.archive_attachments(data) if source_kind == "zip" else ()
+    kind = "zip" if source_kind == V5_PROJECTION else source_kind
+    if kind == "zip":
+        members = sources.open_archive(data)
+        witness = members.get(sources.PROJECTION_WITNESS)
+        if (witness is not None) != (source_kind == V5_PROJECTION):
+            raise ImportInputError(Code.ARCHIVE_LAYOUT)
+        if witness is not None:
+            read_witness(witness)
+        sources.archive_datasets(members, None)
+        attachments = sources.archive_attachments(members)
+    else:
+        sources.read_datasets(kind, data)
+        attachments = ()
+    source_kind = kind
     fingerprint = _fingerprint(source_kind, actual, len(data))
     with transaction.atomic():
         actor = import_authority(clinic_id=clinic_id)
@@ -667,6 +710,10 @@ def dry_run_import(
         duplicates = existing_duplicates(clinic, normalized.patients)
         digest = dataset_digest_for(job, mapping, normalized)
         report = dry_run_document(normalized, duplicates)
+        if normalized.source_projection is not None:
+            report["source_projection_matches"] = (
+                normalized.source_projection == summarize(mapped_values(normalized))
+            )
         transition = append(
             job,
             latest,

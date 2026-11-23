@@ -48,6 +48,7 @@ from apps.interop.models import (
     ImportTransition,
 )
 from apps.interop.patients import register
+from apps.interop.projection import mapped_values, summarize
 from apps.interop.validation import (
     HistoryRow,
     PatientRow,
@@ -187,7 +188,7 @@ def _commit_patients(
             kind="patient",
             patient_id=imported.patient_id,
             enrollment_id=imported.enrollment_id,
-            source_record_id=row.source_id,
+            source_record_id=row.original_source_id or row.source_id,
             original_author=row.registered_by,
             original_recorded_at=row.registered_at,
             content={"fields": sorted(k for k, v in row.canonical().items() if v)},
@@ -218,9 +219,15 @@ def _commit_history(
     for row in rows:
         patient = patients[row.patient_row]
         stored = files.get(row.file) if row.file else None
-        if row.file and (stored is None or stored.sha256 != row.content.get("sha256")):
+        if row.file and (
+            stored is None
+            or stored.scan_verdict != "clean"
+            or stored.sha256 != row.content["sha256"]
+            or stored.media_type != row.content["media_type"]
+            or stored.size_bytes != row.content["size_bytes"]
+        ):
             raise ImportConflictError(Code.CHECKSUM_MISMATCH)
-        ImportedRecord.objects.create(
+        target = ImportedRecord(
             organization_id=clinic.organization_id,
             clinic=clinic,
             job_id=batch.job_id,
@@ -231,12 +238,30 @@ def _commit_history(
             patient_id=patient.patient_id,
             enrollment_id=patient.enrollment_id,
             file=stored,
-            source_record_id=row.source_id,
+            source_record_id=row.original_source_id or row.source_id,
             original_author=row.author,
             original_recorded_at=row.recorded_at,
             content=dict(row.content),
-            content_sha256=_content_digest(row),
         )
+        # Bind the values actually supplied to the immutable target insert.
+        # At reconciliation only the hash/structural metadata may be read.
+        values = row.canonical()
+        values["original_source_id" if row.original_source_id else "source_id"] = (
+            target.source_record_id
+        )
+        values.update(
+            kind=target.kind,
+            recorded_at=(
+                target.original_recorded_at.isoformat()
+                if target.original_recorded_at
+                else None
+            ),
+            author=target.original_author,
+            content=target.content,
+            file=stored.path if stored else None,
+        )
+        target.content_sha256 = hashlib.sha256(canonical_bytes(values)).hexdigest()
+        target.save(force_insert=True)
     return len(rows)
 
 
@@ -356,10 +381,19 @@ def run_batch(*, clinic_id: UUID, batch_id: UUID) -> BatchOutcome:
 
 
 def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
-    """Compare accepted and committed counts, bytes and every stored checksum."""
+    """Compare source, mapped and committed counts, values and attachment bytes."""
+    target = list(
+        ImportedRecord.objects.filter(job_id=job.pk).values_list(
+            "dataset",
+            "row_number",
+            "content_sha256",
+            "patient_id",
+            "enrollment_id",
+            "file__path",
+        )
+    )
     committed = {
-        name: ImportedRecord.objects.filter(job_id=job.pk, dataset=name).count()
-        for name in normalized.row_counts
+        name: sum(item[0] == name for item in target) for name in normalized.row_counts
     }
     accepted = {
         "patients": len(normalized.patients),
@@ -398,11 +432,55 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
         }
         for name in normalized.row_counts
     }
+    target_patients = {
+        row: (patient, enrollment)
+        for dataset, row, _, patient, enrollment, _ in target
+        if dataset == "patients"
+    }
+    expected_records = {
+        ("patients", row.row): (_content_digest(row), None, None)
+        for row in normalized.patients
+    } | {
+        ("history", row.row): (
+            _content_digest(row),
+            target_patients.get(row.patient_row),
+            row.file,
+        )
+        for row in normalized.history
+    }
+    committed_values_verified = expected_records == {
+        (dataset, row): (
+            digest,
+            (patient, enrollment) if dataset == "history" else None,
+            file or None,
+        )
+        for dataset, row, digest, patient, enrollment, file in target
+    }
+    source = normalized.source_projection
+    mapped = summarize(mapped_values(normalized)) if source is not None else None
+    values: dict[str, object] = {"committed_values_verified": committed_values_verified}
+    if source is not None:
+        values.update(
+            v5_source=source, mapped=mapped, source_projection_matches=source == mapped
+        )
+    expected_files = {
+        row.file: row.content["size_bytes"]
+        for row in normalized.history
+        if row.file is not None
+    }
     reconciled = (
-        all(entry["accepted"] == entry["committed"] for entry in datasets.values())
+        all(
+            entry["rows"] == entry["accepted"] == entry["committed"]
+            for entry in datasets.values()
+        )
         and source_verified
         and mismatches == 0
+        and linked == len(expected_files)
+        and attachment_bytes
+        == sum(int(value) for value in expected_files.values() if value is not None)
         and batches_verified
+        and committed_values_verified
+        and source == mapped
     )
     return {
         "schema": "import-reconciliation-v1",
@@ -417,6 +495,7 @@ def reconciliation(job: ImportJob, normalized: Normalized) -> dict[str, object]:
             "attachment_mismatches": mismatches,
             "batches_verified": batches_verified,
         },
+        "canonical_values": values,
     }
 
 

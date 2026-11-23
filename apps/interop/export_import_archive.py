@@ -128,6 +128,24 @@ def _file_facts(
     return declared
 
 
+def text(row: dict[str, object], name: str, *, nullable: bool = False) -> str:
+    """Read a required wire field, allowing explicit null only when declared."""
+    value = row.get(name)
+    if nullable and value is None and name in row:
+        return ""
+    if not isinstance(value, str) or not value:
+        raise ImportInputError(Code.MANIFEST_MISMATCH)
+    return value
+
+
+def by_id(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    """Index source rows without losing duplicates."""
+    indexed = {text(row, "id"): row for row in rows}
+    if len(indexed) != len(rows):
+        raise ImportInputError(Code.MANIFEST_MISMATCH)
+    return indexed
+
+
 def _rows(raw: bytes, count: int) -> list[dict[str, object]]:
     if count > sources.MAX_ROWS:
         raise ImportInputError(Code.TOO_MANY_ROWS)

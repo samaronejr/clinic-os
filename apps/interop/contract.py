@@ -31,6 +31,7 @@ MIN_PARTIAL_SYNONYM: Final = 4
 SOURCE_KINDS: Final = ("csv", "xlsx", "zip", "api")
 PATIENT_FIELDS: Final = (
     "source_id",
+    "original_source_id",
     "legal_name",
     "social_name",
     "birth_date",
@@ -42,6 +43,7 @@ PATIENT_FIELDS: Final = (
 )
 HISTORY_FIELDS: Final = (
     "source_id",
+    "original_source_id",
     "patient_source_id",
     "kind",
     "recorded_at",

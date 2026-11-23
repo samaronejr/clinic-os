@@ -60,11 +60,16 @@ from auth.stepup_test_support import create_role_actor, verified_request
 from identity.permission_support import owner_context
 from interop.support import (
     approve,
+    archive,
+    committed,
     cpf,
+    history_csv,
+    history_row,
     import_world,
     operating,
     org_admin,
     part,
+    patients_csv,
     run_batches,
 )
 from interop.test_org_export import _archive, _build, _receipt, _request, dispatched
@@ -252,7 +257,9 @@ def _seed_observation_and_attachment(
         clinic_id=graph.clinic_a,
         encounter_id=encounter.pk,
         upload=AttachmentInput(
-            file_name=f"sintético-{index}.{suffix}", declared_type=media, data=data
+            file_name=f"sintético  arquivo-{index}.{suffix}",
+            declared_type=media,
+            data=data,
         ),
     )
     assert (
@@ -316,7 +323,12 @@ def _upload(
 
 
 def _commit(
-    world: ImportWorld, upload: services.ImportJobView, monkeypatch: pytest.MonkeyPatch
+    world: ImportWorld,
+    upload: services.ImportJobView,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expected: tuple[int, int] | None = (7, 3),
+    document: dict[str, object] | None = None,
 ) -> services.ReconciliationReport:
     clinic_id, job_id = world.graph.clinic_a, upload.job_id
     with operating(world):
@@ -324,7 +336,9 @@ def _commit(
             clinic_id=clinic_id, job_id=job_id, expected_sequence=upload.sequence
         )
         mapping = services.save_mapping(
-            clinic_id=clinic_id, code="export-v5", document=services.v5_import_mapping()
+            clinic_id=clinic_id,
+            code="export-v5",
+            document=document if document is not None else services.v5_import_mapping(),
         )
         mapped = services.apply_mapping(
             clinic_id=clinic_id,
@@ -336,7 +350,8 @@ def _commit(
             clinic_id=clinic_id, job_id=job_id, expected_sequence=mapped.sequence
         )
     assert dry_run.job.rejected_count == dry_run.job.duplicate_count == 0
-    assert dry_run.job.valid_count == 7
+    if expected is not None:
+        assert dry_run.job.valid_count == expected[0]
     approved = approve(world, dry_run)
     dispatched: list[dict[str, str]] = []
     monkeypatch.setattr(
@@ -351,9 +366,12 @@ def _commit(
             expected_sequence=approved.sequence,
             session_key=world.session,
         )
-    assert len(receipt.batch_ids) == 3
+    if expected is not None:
+        assert len(receipt.batch_ids) == expected[1]
     assert dispatched == [{"batch_id": str(batch)} for batch in receipt.batch_ids]
-    assert run_batches(world, job_id, monkeypatch) == ["committed"] * 3
+    assert run_batches(world, job_id, monkeypatch) == ["committed"] * len(
+        receipt.batch_ids
+    )
     with operating(world):
         return services.reconciliation_report(clinic_id=clinic_id, job_id=job_id)
 
@@ -646,14 +664,13 @@ def test_v5_roundtrip_checks_every_importable_dataset(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
 ) -> None:
-    assert EXPECTED_COUNTS.keys() == IMPORTABLE_DATASETS
     admin = org_admin(rbac_graph)
     enrollments = _seed_identities(rbac_graph)
     _seed_clinical(rbac_graph, enrollments)
     source = _export(rbac_graph, admin)
     job = _upload(target, source, tuple(EXPECTED_COUNTS))
     report = _commit(target, job, monkeypatch)
-    assert report.reconciled
+    assert report.reconciled, report.report["canonical_values"]
     assert report.job.state == "committed"
     assert part(report.report, "datasets") == {
         "patients": {"rows": 2, "accepted": 2, "rejected": 0, "committed": 2},
@@ -676,9 +693,161 @@ def test_v5_roundtrip_checks_every_importable_dataset(
         request.node,
     )
     _check_history(source, target, job.job_id, checks)
+    assert part(report.report, "canonical_values", "source_projection_matches") is True
+    assert part(report.report, "canonical_values", "committed_values_verified") is True
+    assert (
+        EXPECTED_COUNTS.keys() | {"interop_importedrecord", "interop_importfile"}
+        == IMPORTABLE_DATASETS
+    )
     for organization in (rbac_graph.organization_a, target.graph.organization_a):
         with owner_context(organization):
             assert verify_chain(organization).valid
+
+
+def test_v5_roundtrip_preserves_previously_imported_history(
+    rbac_graph: RbacGraph,
+    target: ImportWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    source_world = import_world(rbac_graph)
+    history = [
+        history_row("old-note", "SIN-000001", "Evolucao", text="Nota sintética"),
+        history_row(
+            "old-observation",
+            "SIN-000001",
+            "Sinal vital",
+            measure=("temperature", "36.50", "Cel"),
+        ),
+        history_row("old-pdf", "SIN-000001", "Anexo", file="document.pdf"),
+    ]
+    committed(
+        source_world,
+        archive(
+            {
+                "patients.csv": patients_csv(1),
+                "history.csv": history_csv(history),
+                "files/document.pdf": PDF_BYTES,
+            }
+        ),
+        monkeypatch,
+        kind="zip",
+    )
+    source = _export(rbac_graph, org_admin(rbac_graph))
+    assert len(source.rows("interop_importedrecord")) == 4
+    assert len(source.rows("interop_importfile")) == 2
+    assert not source.rows("ehr_clinicaldocumentversion")
+    report = _commit(
+        target,
+        _upload(target, source, tuple(sorted(IMPORTABLE_DATASETS))),
+        monkeypatch,
+        expected=None,
+    )
+    assert report.reconciled, report.report["canonical_values"]
+    assert part(report.report, "datasets", "history", "committed") == 3
+    with owner_context(target.graph.organization_a):
+        records = tuple(ImportedRecord.objects.filter(job_id=report.job.job_id))
+        (target_file,) = ImportFile.objects.filter(
+            job_id=report.job.job_id, role="attachment"
+        ).defer("data")
+    origins = ("kind", "source_record_id", "original_author")
+    expected = [
+        {key: row[key] for key in origins}
+        | {
+            "original_recorded_at": _timestamp(row["original_recorded_at"]),
+            "content": None if row["kind"] == "patient" else row["content"],
+        }
+        for row in source.rows("interop_importedrecord")
+    ]
+    actual = [
+        {
+            "kind": row.kind,
+            "source_record_id": row.source_record_id,
+            "original_author": row.original_author,
+            "content": None if row.kind == "patient" else row.content,
+            "original_recorded_at": _timestamp(row.original_recorded_at),
+        }
+        for row in records
+    ]
+    assert len(actual) == len(expected) == 4
+    prior_digest = _digest(expected)
+    assert _digest(actual) == prior_digest
+    (patient,) = (r for r in records if r.kind == "patient")
+    (old_patient,) = (
+        r for r in source.rows("interop_importedrecord") if r["kind"] == "patient"
+    )
+    assert patient.source_record_id == old_patient["source_record_id"]
+    assert patient.original_author == old_patient["original_author"]
+    assert _timestamp(patient.original_recorded_at) == _timestamp(
+        old_patient["original_recorded_at"]
+    )
+    assert all(row.patient_id == patient.patient_id for row in records)
+    _care_for(target.graph, [patient.enrollment_id])
+    (attachment,) = (r for r in records if r.kind == "attachment")
+    (prior_file,) = (
+        row for row in source.rows("interop_importfile") if row["role"] == "attachment"
+    )
+    keys = ("media_type", "sha256", "size_bytes")
+    file_digest = _digest([{key: prior_file[key] for key in keys}])
+    assert _digest([{key: getattr(target_file, key) for key in keys}]) == file_digest
+    assert attachment.file_id == target_file.pk
+    with operating(target, target.graph.physician):
+        downloaded = services.imported_attachment(
+            clinic_id=target.graph.clinic_a, record_id=attachment.pk
+        )
+    assert downloaded.data == PDF_BYTES
+    assert (
+        sha256(downloaded.data).hexdigest() == downloaded.sha256 == target_file.sha256
+    )
+    with pytest.raises(ImportInputError) as omitted:
+        _upload(target, source, tuple(EXPECTED_COUNTS))
+    assert omitted.value.code == Code.UNSUPPORTED_DATASET
+    assert isinstance(request.node, pytest.Item)
+    request.node.user_properties.extend(
+        [
+            ("interop_importedrecord_source_count", len(expected)),
+            ("interop_importedrecord_target_count", len(actual)),
+            ("interop_importedrecord_matched_sha256", prior_digest),
+            ("interop_importfile_source_count", 1),
+            ("interop_importfile_target_count", 1),
+            ("interop_importfile_matched_sha256", file_digest),
+            ("prior_attachment_matched_sha256", downloaded.sha256),
+            ("prior_attachment_bytes", len(downloaded.data)),
+        ]
+    )
+
+
+@pytest.mark.parametrize("missing", ["history", "title"])
+@pytest.mark.usefixtures("attachment_root")
+def test_v5_reconciliation_rejects_loss_in_a_valid_mapping(
+    rbac_graph: RbacGraph,
+    target: ImportWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    enrollments = _seed_identities(rbac_graph)
+    _seed_clinical(rbac_graph, enrollments)
+    source = _export(rbac_graph, org_admin(rbac_graph))
+    mapping = services.v5_import_mapping()
+    if missing == "history":
+        del part(mapping, "datasets")["history"]
+    else:
+        del part(mapping, "datasets", "history", "columns")["title"]
+    report = _commit(
+        target,
+        _upload(target, source, tuple(sorted(IMPORTABLE_DATASETS))),
+        monkeypatch,
+        expected=None,
+        document=mapping,
+    )
+    assert report.reconciled is False
+    assert part(report.report, "canonical_values", "source_projection_matches") is False
+    assert part(report.report, "canonical_values", "v5_source", "history", "count") == 5
+    expected_target = 0 if missing == "history" else 5
+    assert (
+        part(report.report, "canonical_values", "mapped", "history", "count")
+        == expected_target
+    )
 
 
 def _refusal_input(source: Source, case: str) -> tuple[bytes, tuple[str, ...]]:
@@ -699,8 +868,21 @@ def _refusal_input(source: Source, case: str) -> tuple[bytes, tuple[str, ...]]:
         ]
         entry["sha256"] = "0" * 64
     elif case == "truncated_member":
-        assert len(members[patient_file]) > 1
+        assert members[patient_file].endswith(b"\n")
         members[patient_file] = members[patient_file][:-1]
+    elif case == "dangling_hidden_enrollment":
+        path = "data/interop_hiddenenrollment.jsonl"
+        raw = rfc8785.dumps({"enrollment_id": str(uuid4())}) + b"\n"
+        members[path] = raw
+        [entry] = [f for f in manifest["files"] if f["path"] == path]
+        entry.update(sha256=sha256(raw).hexdigest(), bytes=len(raw))
+        [dataset] = [
+            d
+            for d in manifest["datasets"]
+            if d["relation"] == "interop_hiddenenrollment"
+        ]
+        dataset["records"] = 1
+        manifest["record_count"] += 1
     del manifest["manifest_sha256"]
     manifest["manifest_sha256"] = (
         "0" * 64
@@ -749,6 +931,7 @@ def _target_counts(organization: UUID) -> tuple[int, ...]:
         ("member_checksum", ImportConflictError, Code.CHECKSUM_MISMATCH),
         ("truncated_member", ImportConflictError, Code.CHECKSUM_MISMATCH),
         ("export_only", ImportInputError, Code.UNSUPPORTED_DATASET),
+        ("dangling_hidden_enrollment", ImportInputError, Code.MANIFEST_MISMATCH),
     ],
 )
 def test_v5_refuses_without_partial_writes(

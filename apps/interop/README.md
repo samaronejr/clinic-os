@@ -147,6 +147,10 @@ matching signature, no active content); only clean ones can be linked.
 The last batch appends `committed` with the reconciliation report: per
 dataset rows, accepted, rejected and committed counts; per batch digests;
 source and attachment bytes; source and attachment checksums re-verified.
+For v5 projections, the sealed source also binds patient and history row
+counts and canonical values before the mapping. A commit is not reconciled
+if its mapping drops or changes those values, or if the target count,
+record digest, linkage or attachment check differs.
 Linked attachments are re-verified inside the database
 (`clinic_app.interop_attachment_checks`), which returns only counts, bytes and
 mismatches, never the bytes.
