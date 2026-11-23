@@ -104,7 +104,7 @@ COLUMN_GRANTS: Final = frozenset(
 ) | frozenset(
     (table, column, "UPDATE")
     for table, columns in {
-        "ai_evaluationrun": ("sample_results", "automatic_failures", "scored_at"),
+        # ai.0021: only the bound-observation resolver updates evaluation scores.
         "ai_knowledgearticle": (
             "state",
             "approved_by_id",
