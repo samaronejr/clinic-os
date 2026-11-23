@@ -131,8 +131,8 @@ def _first_difference(actual: Definition, expected: Definition) -> str:
     for key in sorted(
         actual.keys() | expected.keys(),
         key=lambda k: (
-            k not in actual or k not in expected,
             k.partition(".")[0] not in _MEMBER_GROUPS,
+            k not in actual or k not in expected,
             k,
         ),
     ):
