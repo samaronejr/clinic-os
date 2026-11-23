@@ -7,7 +7,6 @@ import hashlib
 import http.client
 import json
 import os
-import signal
 import socket
 import sys
 import time
@@ -25,7 +24,11 @@ from ops.testing.browser_artifact_publisher import (
     require_acknowledged,
 )
 from ops.testing.browser_runner_contract import selected_suites
-from ops.testing.browser_server_supervisor import SupervisedMaster, start_master
+from ops.testing.browser_server_supervisor import (
+    GUNICORN_CONFIG,
+    SupervisedMaster,
+    start_master,
+)
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
@@ -74,6 +77,9 @@ def reserve_port() -> Iterator[tuple[int, int]]:
     """Yield a loopback port and its listening FD, keeping ownership through spawn."""
     for _attempt in range(PORT_ATTEMPTS):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            # Gunicorn sets this on every listener; set it before any
+            # connection is queued so the port can be reused after a run.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind((HOST, 0))
             port = int(listener.getsockname()[1])
             if port == PROTECTED_DATABASE_PORT:
@@ -127,6 +133,8 @@ def start_server(
             f"fd://{listener_fd}",
             "--workers=2",
             "--preload",
+            "--config",
+            GUNICORN_CONFIG,
             "--access-logfile",
             environment["CLINIC_BROWSER_ACCESS_LOG"],
             # ADR-014: method + status + duration only; no request line.
@@ -261,18 +269,10 @@ def parse_suite_arguments(arguments: list[str]) -> tuple[str, list[str]]:
     return suite_id, sorted(set(required)) or [suite_id]
 
 
-def _interrupted(signum: int, _frame: object) -> Never:
-    raise SystemExit(128 + signum)
-
-
 def main() -> int:
     """Dispatch the single supported suite operation after shell validation."""
     suite_id, required = parse_suite_arguments(sys.argv[1:])
-    previous_term = signal.signal(signal.SIGTERM, _interrupted)
-    try:
-        return run_suite(suite_id, required)
-    finally:
-        signal.signal(signal.SIGTERM, previous_term)
+    return run_suite(suite_id, required)
 
 
 if __name__ == "__main__":

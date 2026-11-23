@@ -10,6 +10,7 @@ no master, worker, or listener can outlive the session.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import json
 import os
 import signal
@@ -35,6 +36,13 @@ MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
+STOP_SIGNALS: Final = frozenset({signal.SIGINT, signal.SIGTERM})
+# Harness-only Gunicorn hooks: each worker dies with its master.
+GUNICORN_CONFIG: Final = "python:ops.testing.browser_gunicorn_config"
+PR_SET_PDEATHSIG: Final = 1
+_PRCTL = ctypes.CDLL(None, use_errno=True).prctl
+_PRCTL.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
+_PRCTL.restype = ctypes.c_int
 
 
 class SupervisorError(RuntimeError):
@@ -142,6 +150,8 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
         "--threads=1",
         f"--timeout={REQUEST_TIMEOUT_SECONDS}",
         "--preload",
+        "--config",
+        GUNICORN_CONFIG,
         "--access-logfile",
         str(access_log),
         # ADR-014: method + status + duration only; no request line or peer.
@@ -151,6 +161,20 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
         "-",
         "config.wsgi:application",
     ]
+
+
+def die_with_parent(parent_pid: int) -> None:
+    """Ask the kernel to SIGKILL this process when its forking thread ends.
+
+    Linux delivers the signal when the thread that forked this process
+    exits, for any reason, SIGKILL included; fork from the main thread.
+    """
+    if _PRCTL(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if os.getppid() != parent_pid:
+        # The parent ended before the request took effect.
+        os._exit(1)
 
 
 def _terminate_group(process: subprocess.Popen[bytes]) -> None:
@@ -202,35 +226,37 @@ def start_master(
 ) -> SupervisedMaster:
     """Perform the journaled second phase: exec the master in a new group.
 
-    SIGINT/SIGTERM are blocked for the whole spawn→publish interval, so a
-    cancellation can never land while a live spawned process is unowned:
-    the child restores the inherited mask before exec, the handle is
-    published into ``owner``, and only then is the mask restored — a
-    pending cancellation lands inside the protected region, where the
-    group is reaped before the exception propagates. Any other exception
-    between the spawn and the completed handoff reaps the same way.
+    The master's lifetime follows the calling thread: the child sets
+    PR_SET_PDEATHSIG before exec, so however this process ends (an
+    interrupted teardown or SIGKILL included) the kernel kills the master,
+    and each worker dies with the master through ``GUNICORN_CONFIG``. Call
+    this from the main thread.
 
-    The mask is per thread, so call this before starting any helper thread:
+    SIGINT/SIGTERM are blocked only while the child is started and its
+    handle stored in ``owner``, so an in-process stop unwinds with the
+    handle published and the group is reaped before the exception
+    propagates. The mask is per thread: start no helper thread first, since
     a signal taken by another thread still runs its handler on this one.
+    The caller's mask is read before the block and restored in ``finally``.
     """
     process: subprocess.Popen[bytes] | None = None
-    previous_mask = signal.pthread_sigmask(
-        signal.SIG_BLOCK,
-        {signal.SIGINT, signal.SIGTERM},
-    )
+    parent_pid = os.getpid()
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
+
+    def prepare_child() -> None:
+        # Restore the inherited mask so the master stays killable.
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        die_with_parent(parent_pid)
+
     try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
         with log.open("wb") as stream:
             process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
                 argv,
                 env=environment,
                 pass_fds=pass_fds,
                 start_new_session=True,
-                # The child must not inherit the blocked mask: restore it
-                # after fork, before exec, so the master stays killable.
-                preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
-                    signal.SIG_SETMASK,
-                    previous_mask,
-                ),
+                preexec_fn=prepare_child,  # noqa: PLW1509 - single-threaded spawn; one sigmask and one prctl call.
                 stdout=stream,
                 stderr=subprocess.STDOUT,
             )
