@@ -230,6 +230,10 @@ An `unknown` at a provider sequence records uncertainty, not a contrary
 status. An independent concrete result can resolve it at that sequence,
 but not below it. A concrete reversal at the same or a later sequence
 still blocks stale application and completion.
+First send and lookup-only recovery use the same database finalizer. It locks
+against evidence inserts, checks the retained observation in the guarded update,
+and writes the completion audit in the same transaction. A late response can
+remain in evidence without setting the outbox reference or marking it succeeded.
 
 `PspReceipt` is created only after a verified collection is posted and exactly
 allocated. Existing legacy Settlement/Receipt one-to-one contracts remain intact.
@@ -248,6 +252,10 @@ Financial read authority alone cannot manufacture proof for another actor.
 For this synthetic rehearsal, provision `psp-observer-v1` in the managed
 secret store independently of the callback secret and tenant encryption key.
 `set_psp_policy` stores only the verifier of the clinic-derived credential.
+Only the resolver can read the raw intent-to-operation association. The
+runtime dispatch check requires the current proof for the requested clinic;
+unknown, wrong-clinic and unauthorized inputs have the same null result, not
+a dispatch flag or an operation UUID.
 After an upgrade or credential rotation, append a fresh authorized policy
 with a new command ID; no old intent or approval changes. A missing or stale
 credential or revoked capability leaves an abandoned send unresolved. Fresh

@@ -22,7 +22,6 @@ from apps.billing.psp_services import SUBJECT_TYPE, payment_request, request_dig
 from apps.billing.psp_storage import (
     PspScope,
     load_intent,
-    lock_evidence,
     observation_id,
     record_status,
     resolve_intent,
@@ -32,9 +31,9 @@ from apps.billing.psp_storage import (
 from apps.comms.adapters import (
     AmbiguousSendError,
     PermanentSendError,
-    SendResult,
 )
 from apps.core.integration import (
+    PersistedSendResult,
     register_action_adapter,
     register_action_recovery_adapter,
     register_subject_recheck,
@@ -44,7 +43,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
-    from apps.billing.psp_contracts import PaymentProvider
+    from apps.billing.psp_contracts import PaymentProvider, PaymentStatus
     from apps.comms.adapters import OperationScope
     from apps.comms.models import IntegrationOperation
 
@@ -129,7 +128,7 @@ class PspSendAdapter:
             intent.expires_at,
         )
 
-    def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
+    def send(self, prepared: object, *, operation_id: UUID) -> PersistedSendResult:
         """Look up the original key; recovery never calls a mutating method."""
         if (
             not isinstance(prepared, PreparedPayment)
@@ -163,19 +162,48 @@ class PspSendAdapter:
         except PaymentUnavailableError as error:
             raise PermanentSendError from error
         try:
-            record_status(
+            finished = _retain_and_finish(
                 scope=replace(prepared.scope, observer=True),
-                authoritative=status,
-                event=("status", status_event_id(status)),
-                decision=classify_payment(prepared.request, status),
+                operation_id=operation_id,
+                request=prepared.request,
+                status=status,
             )
         except PaymentUnavailableError as error:
             # Authority to observe can close after the send. The effect remains
             # unresolved, not retryable and not a known rejection.
             raise AmbiguousSendError from error
-        if status is None or status.status == "unknown":
+        if finished is None:
             raise AmbiguousSendError
-        return SendResult(status.provider_reference)
+        return finished
+
+
+def _retain_and_finish(
+    *,
+    scope: PspScope,
+    operation_id: UUID,
+    request: PaymentRequest,
+    status: PaymentStatus | None,
+) -> PersistedSendResult | None:
+    """Retain even a late reply; only the locked database decision can finish it."""
+    retained = record_status(
+        scope=scope,
+        authoritative=status,
+        event=("status", status_event_id(status)),
+        decision=classify_payment(request, status),
+    )
+    if status is None or retained not in {"verified", "recorded", "duplicate"}:
+        return None
+    # A later fact may have committed after retention. Recheck the exact
+    # persisted observation under the evidence lock, in the completion txn.
+    with stored_context(scope):
+        if finish_observation(
+            scope=scope,
+            operation_id=operation_id,
+            provider_reference=status.provider_reference,
+            observation_id=observation_id(scope.intent_id, status),
+        ):
+            return PersistedSendResult(status.provider_reference)
+    return None
 
 
 def _recover(operation: IntegrationOperation) -> Literal["reconcile", "succeeded"]:
@@ -204,33 +232,16 @@ def _recover(operation: IntegrationOperation) -> Literal["reconcile", "succeeded
             status = client.lookup(request=request)
         except (PaymentLookupError, TimeoutError):
             status = None
-        decision = classify_payment(request, status)
-        retained = record_status(
-            scope=scope,
-            authoritative=status,
-            event=("status", status_event_id(status)),
-            decision=decision,
-        )
         if (
-            status is None
-            or decision not in {"verified", "recorded"}
-            or retained
-            not in {
-                "verified",
-                "recorded",
-                "duplicate",
-            }
-        ):
-            return "reconcile"
-        with stored_context(scope):
-            lock_evidence(scope)
-            if finish_observation(
+            _retain_and_finish(
                 scope=scope,
                 operation_id=operation.pk,
-                provider_reference=status.provider_reference,
-                observation_id=observation_id(intent.pk, status),
-            ):
-                return "succeeded"
+                request=request,
+                status=status,
+            )
+            is not None
+        ):
+            return "succeeded"
     except PaymentUnavailableError:
         # Revoked binding or missing observer proof: no new send, no false
         # cancellation/no-effect decision, and no reuse of the staff actor.

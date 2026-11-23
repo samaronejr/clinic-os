@@ -39,6 +39,10 @@ RESULTS: Final = {
     "receipt_issued_at timestamp with time zone)",
     ("billing_psp_guard", ""): "trigger",
     ("billing_psp_dispatched", "requested uuid"): "uuid",
+    (
+        "billing_psp_dispatch_state",
+        "requested uuid, caller_clinic uuid, proof bytea",
+    ): "boolean",
     ("billing_psp_observer_target", "requested uuid"): "uuid",
     (
         "billing_psp_observer_request",
@@ -62,13 +66,16 @@ RESULTS: Final = {
         "proof bytea",
     ): "boolean",
 }
+_PRIVATE: Final = {
+    "billing_psp_guard",
+    "billing_psp_observer_target",
+    "billing_psp_dispatched",
+}
 POSTURE: Final = {
     name: (
         "s" if name == "billing_patient_psp_instructions" else "v",
-        name not in {"billing_psp_guard", "billing_psp_observer_target"},
-        ["clinic_resolver"]
-        if name in {"billing_psp_guard", "billing_psp_observer_target"}
-        else ["clinic_app", "clinic_resolver"],
+        name not in _PRIVATE,
+        ["clinic_resolver"] if name in _PRIVATE else ["clinic_app", "clinic_resolver"],
     )
     for name, _arguments in RESULTS
 }

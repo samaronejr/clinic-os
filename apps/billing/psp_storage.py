@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING
 
 from django.db import IntegrityError, connection, transaction
@@ -51,12 +51,28 @@ def resolve_intent(intent_id: UUID) -> PspScope | None:
         raise JournalConflictError
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT s.*,clinic_app.billing_psp_dispatched(s.intent_id) IS NOT NULL "
-            "FROM clinic_app.billing_psp_intent_scope(%s) s",
+            "SELECT * FROM clinic_app.billing_psp_intent_scope(%s)",
             [intent_id],
         )
         row = cursor.fetchone()
-    return PspScope(*row) if row is not None else None
+    return _dispatch_scope(PspScope(*row)) if row is not None else None
+
+
+def _dispatch_scope(scope: PspScope) -> PspScope | None:
+    """Only the clinic's credential may distinguish pending from dispatched."""
+    try:
+        proof = observer_key(clinic_id=scope.clinic_id)
+    except PaymentUnavailableError:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.billing_psp_dispatch_state(%s,%s,%s)",
+            [scope.intent_id, scope.clinic_id, proof],
+        )
+        row = cursor.fetchone()
+    if row is None or not isinstance(row[0], bool):
+        return None
+    return replace(scope, observer=row[0])
 
 
 @contextmanager
@@ -314,14 +330,15 @@ class DatabasePaymentEventStore:
             raise JournalConflictError
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT s.*,clinic_app.billing_psp_dispatched(s.intent_id) IS NOT NULL "
-                "FROM clinic_app.billing_psp_scope(%s,%s) s",
+                "SELECT * FROM clinic_app.billing_psp_scope(%s,%s)",
                 [provider, reference],
             )
             rows = cursor.fetchall()
         if len(rows) != 1:
             return None
-        self.scope = PspScope(*rows[0])
+        self.scope = _dispatch_scope(PspScope(*rows[0]))
+        if self.scope is None:
+            return None
         try:
             intent = load_intent(self.scope)
             require_psp_sandbox(

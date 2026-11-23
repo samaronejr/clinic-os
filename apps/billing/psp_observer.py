@@ -106,7 +106,7 @@ def finish_observation(
     provider_reference: str,
     observation_id: str,
 ) -> bool:
-    """Close the abandoned outbox row using the retained status, not a new send."""
+    """Let the database close a first or recovered send only on current evidence."""
     append = build_integration_audit_event(
         "comms.operation.succeeded",
         clinic_id=scope.clinic_id,

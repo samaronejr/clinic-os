@@ -21,6 +21,38 @@ GUARD = ORIGINAL_GUARD.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").
     _HUMAN, _OBSERVER
 )
 
+OBSERVER_FINISH = """CREATE FUNCTION clinic_app.billing_psp_observer_finish(
+ requested uuid, operation uuid, proof bytea, reference text, observation text,
+ occurred timestamptz, content_hash bytea)
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE intent clinic_app.billing_pspintent; clinic uuid;
+BEGIN
+ SELECT * INTO intent FROM clinic_app.billing_psp_observer_request(requested,proof);
+ IF intent.id IS NULL OR operation IS DISTINCT FROM
+ clinic_app.billing_psp_observer_target(intent.id) THEN RETURN false; END IF;
+ IF NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspbinding
+  WHERE intent_id=intent.id AND provider_reference=reference)
+ OR NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspevidence e
+  WHERE e.intent_id=intent.id AND e.source='status' AND e.event_id=observation
+  AND e.decision IN ('verified','recorded')
+  AND NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspevidence n
+   WHERE n.intent_id=e.intent_id
+   AND NOT (n.source='statement' AND n.decision='quarantined')
+   AND (n.version>e.version OR (n.version=e.version AND
+    (n.status,n.amount_minor,n.currency,n.fee_minor) IS DISTINCT FROM
+    (e.status,e.amount_minor,e.currency,e.fee_minor))))) THEN
+  RETURN false;
+ END IF;
+ UPDATE clinic_app.comms_integrationoperation SET status='succeeded',
+  provider_reference=reference,last_error='',updated_at=clock_timestamp()
+  WHERE id=operation AND status='in_progress' RETURNING clinic_id INTO clinic;
+ IF NOT FOUND THEN RETURN false; END IF;
+ PERFORM clinic_app.billing_psp_observer_audit(
+  intent.organization_id,clinic,operation,true,occurred,content_hash);
+ RETURN true;
+END $f$;"""
+
 _SQL_TEMPLATE = """
 CREATE FUNCTION clinic_app.billing_psp_observer_audit(
  tenant uuid, clinic uuid, subject uuid, completed boolean,
@@ -158,37 +190,7 @@ BEGIN
  RETURN outcome;
 END $f$;
 
-CREATE FUNCTION clinic_app.billing_psp_observer_finish(
- requested uuid, operation uuid, proof bytea, reference text, observation text,
- occurred timestamptz, content_hash bytea)
-RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
-DECLARE intent clinic_app.billing_pspintent; clinic uuid;
-BEGIN
- SELECT * INTO intent FROM clinic_app.billing_psp_observer_request(requested,proof);
- IF intent.id IS NULL OR operation IS DISTINCT FROM
- clinic_app.billing_psp_observer_target(intent.id) THEN RETURN false; END IF;
- IF NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspbinding
-  WHERE intent_id=intent.id AND provider_reference=reference)
- OR NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspevidence e
-  WHERE e.intent_id=intent.id AND e.source='status' AND e.event_id=observation
-  AND e.decision IN ('verified','recorded')
-  AND NOT EXISTS (SELECT 1 FROM clinic_app.billing_pspevidence n
-   WHERE n.intent_id=e.intent_id
-   AND NOT (n.source='statement' AND n.decision='quarantined')
-   AND (n.version>e.version OR (n.version=e.version AND
-    (n.status,n.amount_minor,n.currency,n.fee_minor) IS DISTINCT FROM
-    (e.status,e.amount_minor,e.currency,e.fee_minor))))) THEN
-  RETURN false;
- END IF;
- UPDATE clinic_app.comms_integrationoperation SET status='succeeded',
-  provider_reference=reference,last_error='',updated_at=clock_timestamp()
-  WHERE id=operation AND status='in_progress' RETURNING clinic_id INTO clinic;
- IF NOT FOUND THEN RETURN false; END IF;
- PERFORM clinic_app.billing_psp_observer_audit(
-  intent.organization_id,clinic,operation,true,occurred,content_hash);
- RETURN true;
-END $f$;
+__OBSERVER_FINISH__
 
 CREATE FUNCTION clinic_app.billing_psp_observed(
  requested uuid, observed_status text, observed_version bigint,
@@ -220,4 +222,8 @@ GRANT EXECUTE ON FUNCTION clinic_app.billing_psp_dispatched(uuid),
 RESET ROLE;
 """
 
-SQL = _SQL_TEMPLATE.replace("__PRINCIPAL__", PRINCIPAL).replace("__GUARD__", GUARD)
+SQL = (
+    _SQL_TEMPLATE.replace("__PRINCIPAL__", PRINCIPAL)
+    .replace("__GUARD__", GUARD)
+    .replace("__OBSERVER_FINISH__", OBSERVER_FINISH)
+)

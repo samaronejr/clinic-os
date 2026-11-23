@@ -1868,6 +1868,15 @@
       "reason": "Retains or reads PSP observations under stored intent scope; this is not a staff-role decision. The real-role observation and offboarding tests exercise delivery ordering and the non-staff credential."
     },
     {
+      "symbol": "apps.billing.psp_storage._dispatch_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "The database checks the current clinic observer credential and stored intent scope. Denial cannot select staff mode."
+    },
+    {
       "symbol": "apps.billing.psp_storage._insert",
       "signals": [
         "resolver"
@@ -25578,6 +25587,28 @@
       ],
       "reason": "The confirmation trigger atomically consumes the transfer line for its immutable target posting."
     },
+    "clinic_app.billing_psp_dispatch_state": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested uuid, caller_clinic uuid, proof bytea",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_psp_dispatch_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_dispatch_state_is_clinic_and_observer_bound"
+      ],
+      "reason": "Only a credential bound to the requested intent’s clinic may see a dispatch flag; mixed, missing, unknown and foreign-clinic contexts receive the same denial."
+    },
     "clinic_app.billing_psp_dispatched": {
       "discovery": {
         "signatures": [
@@ -25593,14 +25624,15 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.billing_psp_dispatch_state",
           "clinic_app.billing_psp_observer_target"
         ]
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_observer_needs_a_dispatched_intent_and_current_clinic_credential"
+        "test_dispatch_uuid_helper_is_private"
       ],
-      "reason": "Only an exact committed PSP action identity with a positive attempt count selects the observer route."
+      "reason": "Only the resolver role can execute the raw intent-to-operation lookup. The runtime role has no EXECUTE grant."
     },
     "clinic_app.billing_psp_observed": {
       "discovery": {
@@ -25660,6 +25692,7 @@
           }
         ],
         "migrations": [
+          "apps/billing/migrations/_psp_dispatch_scope_sql.py",
           "apps/billing/migrations/_psp_observer_sql.py"
         ],
         "policies": [],
@@ -25667,9 +25700,10 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_accepted_effect_recovers_without_the_requesters_identity"
+        "test_accepted_effect_recovers_without_the_requesters_identity",
+        "test_first_send_never_completes_against_a_committed_newer_version"
       ],
-      "reason": "Credential, frozen action binding and current retained evidence guard the sole in-progress to succeeded transition."
+      "reason": "Locks against evidence writers and atomically checks the exact retained status, operation binding and current clinic proof before moving an in-progress first or recovered send to succeeded."
     },
     "clinic_app.billing_psp_observer_record": {
       "discovery": {
@@ -25734,6 +25768,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.billing_psp_dispatch_state",
           "clinic_app.billing_psp_guard",
           "clinic_app.billing_psp_observer_finish",
           "clinic_app.billing_psp_observer_request"

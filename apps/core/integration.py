@@ -64,6 +64,7 @@ from apps.comms.adapters import (
     OperationScope,
     PermanentSendError,
     SendAdapter,
+    SendResult,
     TransientSendError,
 )
 from apps.comms.models import IntegrationOperation, OperationKind
@@ -83,6 +84,7 @@ __all__ = (
     "IntegrationInputError",
     "OperationKind",
     "OperationRequest",
+    "PersistedSendResult",
     "clear_integration_registrations",
     "enqueue_operation",
     "execute_operation",
@@ -110,6 +112,11 @@ type CallbackResult = Literal["applied", "duplicate", "rejected"]
 type ActionRecovery = Callable[
     [IntegrationOperation], Literal["reconcile", "succeeded"]
 ]
+
+
+class PersistedSendResult(SendResult):
+    """The domain committed its own guarded completion; only read it back."""
+
 
 DEFAULT_MAX_ATTEMPTS: Final = 5
 MAX_ATTEMPTS_BOUND: Final = 32767
@@ -954,6 +961,8 @@ def _deliver(
             else _persisted_outcome(scope)
         )
     else:
+        if isinstance(result, PersistedSendResult):
+            return _persisted_outcome(scope)
         provider_reference = result.provider_reference
         if (
             type(provider_reference) is not str

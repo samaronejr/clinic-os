@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from billing import (
+    test_psp_dispatch_scope,
+    test_psp_first_send_order,
     test_psp_inactive_actor,
     test_psp_observations,
     test_psp_observer_authority,
@@ -29,6 +31,9 @@ ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
 )
 ACTOR_PROTOCOL_ORACLES.update(
     {
+        "clinic_app.billing_psp_dispatch_state(uuid,uuid,bytea)": (
+            "billing.test_psp_dispatch_scope.test_dispatch_state_is_clinic_and_observer_bound",
+        ),
         "clinic_app.billing_psp_observer_request(uuid,bytea)": (
             "billing.test_psp_observer_authority."
             "test_observer_needs_a_dispatched_intent_and_current_clinic_credential",
@@ -72,6 +77,9 @@ CASES.update(
     {
         case.__name__: case
         for case in (
+            test_psp_dispatch_scope.test_dispatch_uuid_helper_is_private,
+            test_psp_dispatch_scope.test_dispatch_state_is_clinic_and_observer_bound,
+            test_psp_first_send_order.test_first_send_never_completes_against_a_committed_newer_version,
             test_psp_observations.test_new_lookup_blocks_stale_collection_despite_delivery_disposition,
             test_psp_observer_authority.test_observer_needs_a_dispatched_intent_and_current_clinic_credential,
             test_psp_offboarding.test_accepted_effect_recovers_without_the_requesters_identity,
@@ -80,12 +88,19 @@ CASES.update(
 )
 SQL_PROTOCOL_ORACLES.update(
     {
+        "clinic_app.billing_psp_dispatched": ["test_dispatch_uuid_helper_is_private"],
+        "clinic_app.billing_psp_dispatch_state": [
+            "test_dispatch_state_is_clinic_and_observer_bound"
+        ],
+        "clinic_app.billing_psp_observer_finish": [
+            "test_accepted_effect_recovers_without_the_requesters_identity",
+            "test_first_send_never_completes_against_a_committed_newer_version",
+        ],
         **{
             name: [
                 "test_observer_needs_a_dispatched_intent_and_current_clinic_credential"
             ]
             for name in (
-                "clinic_app.billing_psp_dispatched",
                 "clinic_app.billing_psp_observer_request",
                 "clinic_app.billing_psp_observer_target",
             )
@@ -94,7 +109,6 @@ SQL_PROTOCOL_ORACLES.update(
             name: ["test_accepted_effect_recovers_without_the_requesters_identity"]
             for name in (
                 "clinic_app.billing_psp_observer_record",
-                "clinic_app.billing_psp_observer_finish",
                 "clinic_app.billing_psp_observer_audit",
             )
         },
@@ -117,6 +131,7 @@ PROVIDER = (
     "apps.billing.psp_gate.require_psp_rehearsal",
     "apps.billing.psp_gate.require_psp_sandbox",
     "apps.billing.psp_storage.DatabasePaymentEventStore.resolve",
+    "apps.billing.psp_storage._dispatch_scope",
     "apps.billing.psp_storage._already_observed",
     "apps.billing.psp_storage._insert",
     "apps.billing.psp_storage.resolve_intent",
