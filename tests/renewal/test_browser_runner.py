@@ -28,7 +28,7 @@ from config.display import DENSITIES, THEMES, DisplayValueError, resolve_display
 from config.settings import base as base_settings
 from django.test import override_settings
 from ops.testing import renewal_runner as runner
-from ops.testing.browser_server_supervisor import SupervisedMaster
+from ops.testing.browser_server_supervisor import SupervisedMaster, end_recorded
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
 from ops.testing.isolation_common import IsolationError, JsonObject
 from playwright.sync_api import (
@@ -2190,42 +2190,16 @@ def test_await_database_propagates_interruption() -> None:
         runner._await_database("clinic_renewal_db_x", docker=fake_docker)
 
 
-def test_terminate_master_retries_once_then_propagates_the_interrupt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A successful retry still propagates the observed cancellation."""
-    master = object.__new__(SupervisedMaster)
-    terminations: list[str] = []
-
-    def flaky_terminate() -> None:
-        terminations.append("terminate")
-        if len(terminations) == 1:
-            message = "renewal runner interrupted"
-            raise runner.RenewalInterruptError(message)
-
-    monkeypatch.setattr(master, "terminate", flaky_terminate)
-    with pytest.raises(runner.RenewalInterruptError):
-        runner._terminate_master(master)
-    assert terminations == ["terminate", "terminate"]
-
-    def stuck_terminate() -> None:
-        message = "renewal runner interrupted"
-        raise runner.RenewalInterruptError(message)
-
-    monkeypatch.setattr(master, "terminate", stuck_terminate)
-    with pytest.raises(runner.RenewalInterruptError):
-        runner._terminate_master(master)
-
-
 def test_teardown_interrupt_is_reaped_then_propagated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A first SIGTERM during otherwise-successful teardown still exits 130.
+    """A SIGTERM during otherwise-successful teardown still exits 130.
 
-    The child is real: the interrupted first ``terminate`` is retried so the
-    bounded TERM/reap completes, then the cancellation propagates instead of
-    becoming a successful run.
+    The child is real: the stop arrives while the shared teardown has every
+    signal blocked, so the bounded TERM/reap completes first; the
+    cancellation then propagates instead of becoming a successful run, and
+    the caller's mask is restored.
     """
     log = tmp_path / "teardown.log"
     with log.open("wb") as stream:
@@ -2248,15 +2222,20 @@ def test_teardown_interrupt_is_reaped_then_propagated(
 
     previous = signal.signal(signal.SIGTERM, runner._interrupted)
     monkeypatch.setattr(SupervisedMaster, "terminate", terminate_with_signal)
+    mask = set(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
     try:
         with pytest.raises(runner.RenewalInterruptError):
-            runner._terminate_master(master)
+            end_recorded([master], mask)
+        observed = {
+            "terminations": calls,
+            "reaped": process.poll() is not None,
+            "mask_kept": set(signal.pthread_sigmask(signal.SIG_BLOCK, ())) == mask,
+        }
+        assert observed == {"terminations": 1, "reaped": True, "mask_kept": True}
     finally:
         signal.signal(signal.SIGTERM, previous)
         if process.poll() is None:
             original(master)
-    assert calls == 2
-    assert process.poll() is not None
 
 
 def test_ci_interruption_stops_later_gates_and_exits_130(
