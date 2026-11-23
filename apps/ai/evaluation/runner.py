@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from hashlib import sha256
-from hmac import compare_digest
 from typing import TYPE_CHECKING
 
-from django.core import signing
 from django.db import connections
 
 from apps.ai.adapters import provider_for
@@ -24,6 +21,7 @@ from apps.ai.evaluation.metrics import word_errors
 from apps.ai.evaluation.origin import (
     PURPOSE_CAPABILITIES,
     domain_protocol_hash,
+    observation_receipt,
     run_origin,
 )
 from apps.ai.evaluation.protocol import EvaluationInputError
@@ -38,27 +36,6 @@ from apps.scribe.transcript_contracts import TranscriptError
 if TYPE_CHECKING:
     from apps.ai.evaluation.corpus import Case
     from apps.ai.models import EvaluationRun
-
-
-def _receipt(samples: dict[str, object]) -> str:
-    digest = sha256(
-        json.dumps(
-            samples, sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode()
-    ).hexdigest()
-    return signing.Signer(salt="ai.evaluation.produced-samples.v2").sign(digest)
-
-
-def verify_receipt(results: dict[str, object]) -> bool:
-    """Authenticate the *whole* producer output before checking its run binding."""
-    unsigned = results.copy()
-    receipt = unsigned.pop("receipt", None)
-    if not isinstance(receipt, str):
-        return False
-    try:
-        return compare_digest(receipt, _receipt(unsigned))
-    except (ValueError, TypeError):
-        return False
 
 
 def score_run(run: EvaluationRun) -> dict[str, object]:
@@ -84,7 +61,7 @@ def score_run(run: EvaluationRun) -> dict[str, object]:
         provider_key=run.configuration.provider,
         origin=run_origin(run),
     )
-    results["receipt"] = _receipt(results)
+    results["receipt"] = observation_receipt(results)
     return results
 
 

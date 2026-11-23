@@ -47,6 +47,7 @@ def test_fresh_worker_discovers_agent_execution_without_database_io(
 ) -> None:
     script = """
 import django
+import sys
 from unittest.mock import patch
 with patch(
     "django.db.backends.base.base.BaseDatabaseWrapper.ensure_connection",
@@ -56,6 +57,12 @@ with patch(
     from config.celery import app
     app.autodiscover_tasks(force=True)
     assert "apps.ai.tasks.execute_agent" in app.tasks
+    # An unrelated management command checks the project's URL configuration
+    # before it can consume its TOTP token. Do not load the offline scorer there.
+    from apps.identity.management.commands.provision_staff import Command
+    Command().check()
+    assert "apps.ai.evaluation.runner" not in sys.modules
+    assert "apps.ai.evaluation.trials" not in sys.modules
 """
     log = tmp_path / "worker-registration.log"
     result = renewal_runner._run_bounded(

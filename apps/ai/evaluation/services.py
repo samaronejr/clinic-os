@@ -18,6 +18,7 @@ from apps.ai.evaluation.origin import (
     PURPOSE_CAPABILITIES,
     domain_protocol_hash,
     run_origin,
+    verify_receipt,
 )
 from apps.ai.evaluation.protocol import (
     EvaluationInputError,
@@ -31,7 +32,6 @@ from apps.ai.evaluation.rollout import (
     rollout_status,
     stop_rollout,
 )
-from apps.ai.evaluation.runner import verify_receipt
 from apps.ai.evaluation.versions import candidate_versions
 from apps.ai.models import (
     EvaluationProtocol,

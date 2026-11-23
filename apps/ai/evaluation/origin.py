@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from hashlib import sha256
+from hmac import compare_digest
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from django.core import signing
 
 from apps.ai.contracts import Purpose
 
@@ -64,3 +68,25 @@ def run_origin(run: EvaluationRun) -> dict[str, object]:
         "thresholds_sha256": run.protocol.thresholds_sha256,
         "corpus_sha256": run.protocol.corpus_sha256,
     }
+
+
+def observation_receipt(samples: dict[str, object]) -> str:
+    """Authenticate the whole canonical result without importing the scorer."""
+    digest = sha256(
+        json.dumps(
+            samples, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    ).hexdigest()
+    return signing.Signer(salt="ai.evaluation.produced-samples.v2").sign(digest)
+
+
+def verify_receipt(results: dict[str, object]) -> bool:
+    """Verify producer output before storage checks the immutable run binding."""
+    unsigned = results.copy()
+    receipt = unsigned.pop("receipt", None)
+    if not isinstance(receipt, str):
+        return False
+    try:
+        return compare_digest(receipt, observation_receipt(unsigned))
+    except (ValueError, TypeError):
+        return False
