@@ -209,6 +209,9 @@ def start_master(
     pending cancellation lands inside the protected region, where the
     group is reaped before the exception propagates. Any other exception
     between the spawn and the completed handoff reaps the same way.
+
+    The mask is per thread, so call this before starting any helper thread:
+    a signal taken by another thread still runs its handler on this one.
     """
     process: subprocess.Popen[bytes] | None = None
     previous_mask = signal.pthread_sigmask(

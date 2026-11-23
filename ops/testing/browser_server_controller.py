@@ -9,7 +9,6 @@ import json
 import os
 import signal
 import socket
-import subprocess
 import sys
 import time
 from http import HTTPStatus
@@ -26,6 +25,7 @@ from ops.testing.browser_artifact_publisher import (
     require_acknowledged,
 )
 from ops.testing.browser_runner_contract import selected_suites
+from ops.testing.browser_server_supervisor import SupervisedMaster, start_master
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
@@ -45,7 +45,6 @@ PHYSICIAN_ENVIRONMENT: Final = (
 FIXTURE_DATABASE_VARIABLE: Final = "CLINIC_BROWSER_FIXTURE_DATABASE_URL"
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
-TERMINATION_GRACE_SECONDS: Final = 10
 HOST: Final = "127.0.0.1"
 PROTECTED_DATABASE_PORT: Final = 5432
 PORT_ATTEMPTS: Final = 32
@@ -112,50 +111,36 @@ def start_server(
     listener_fd: int,
     environment: dict[str, str],
     server_log: Path,
-) -> subprocess.Popen[bytes]:
+    *,
+    owner: list[SupervisedMaster],
+) -> None:
     """Fork and exec one supervised Gunicorn master in its own process group."""
     interpreter = Path(sys.executable)
     if not interpreter.is_absolute() or not os.access(interpreter, os.X_OK):
         _fail("supervised interpreter is not an executable absolute path")
-    with server_log.open("wb") as stream:
-        return subprocess.Popen(  # noqa: S603 - resolved interpreter, closed argv.
-            [
-                str(interpreter),
-                "-m",
-                "gunicorn",
-                "--bind",
-                f"fd://{listener_fd}",
-                "--workers=2",
-                "--preload",
-                "--access-logfile",
-                environment["CLINIC_BROWSER_ACCESS_LOG"],
-                # ADR-014: method + status + duration only; no request line.
-                "--access-logformat",
-                "%(m)s %(s)s %(D)s",
-                "--error-logfile",
-                "-",
-                "config.wsgi:application",
-            ],
-            env=environment,
-            pass_fds=(listener_fd,),
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-
-
-def stop_server(process: subprocess.Popen[bytes]) -> None:
-    """Terminate the supervised process group and reap every descendant."""
-    if process.poll() is not None:
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+    start_master(
+        [
+            str(interpreter),
+            "-m",
+            "gunicorn",
+            "--bind",
+            f"fd://{listener_fd}",
+            "--workers=2",
+            "--preload",
+            "--access-logfile",
+            environment["CLINIC_BROWSER_ACCESS_LOG"],
+            # ADR-014: method + status + duration only; no request line.
+            "--access-logformat",
+            "%(m)s %(s)s %(D)s",
+            "--error-logfile",
+            "-",
+            "config.wsgi:application",
+        ],
+        environment,
+        server_log,
+        owner=owner,
+        pass_fds=(listener_fd,),
+    )
 
 
 def publish(evidence_root: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
@@ -232,15 +217,15 @@ def run_suite(suite_id: str, required: list[str]) -> int:
     environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
-    server = None
+    spawned: list[SupervisedMaster] = []
     try:
         with reserve_port() as (port, listener_fd):
-            server = start_server(listener_fd, environment, server_log)
+            start_server(listener_fd, environment, server_log, owner=spawned)
         wait_until_ready(port, server_log)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
-        if server is not None:
-            stop_server(server)
+        if spawned:
+            spawned[0].terminate()
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,
@@ -276,10 +261,18 @@ def parse_suite_arguments(arguments: list[str]) -> tuple[str, list[str]]:
     return suite_id, sorted(set(required)) or [suite_id]
 
 
+def _interrupted(signum: int, _frame: object) -> Never:
+    raise SystemExit(128 + signum)
+
+
 def main() -> int:
     """Dispatch the single supported suite operation after shell validation."""
     suite_id, required = parse_suite_arguments(sys.argv[1:])
-    return run_suite(suite_id, required)
+    previous_term = signal.signal(signal.SIGTERM, _interrupted)
+    try:
+        return run_suite(suite_id, required)
+    finally:
+        signal.signal(signal.SIGTERM, previous_term)
 
 
 if __name__ == "__main__":

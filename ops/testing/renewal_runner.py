@@ -1330,13 +1330,6 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 enabled=suite in REALTIME_SUITES,
             )
         )
-        frames = extra_processes.enter_context(
-            broker_tap(
-                server_environment["REALTIME_REDIS_URL"]
-                if suite in REALTIME_SUITES
-                else None
-            )
-        )
         try:
             with reserve_port() as (port, listener_fd):
                 start_master(
@@ -1348,6 +1341,16 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     owner=spawned,
                     pass_fds=(listener_fd,),
                 )
+            # start_master's signal mask covers this thread only; a running
+            # tap thread could take a stop before the handle is stored. Tap
+            # after the handoff, before any request can publish a frame.
+            frames = extra_processes.enter_context(
+                broker_tap(
+                    server_environment["REALTIME_REDIS_URL"]
+                    if suite in REALTIME_SUITES
+                    else None
+                )
+            )
             wait_until_ready(port, server_log)
             port_for_browser = extra_processes.enter_context(
                 browser_endpoint(
