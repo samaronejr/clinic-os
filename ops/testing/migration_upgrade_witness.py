@@ -522,6 +522,163 @@ def seed_witness(markers: Mapping[str, object]) -> dict[str, str]:
     return tenant
 
 
+# Run in the base worktree with the fixture's synthetic switches: a second
+# prescription on the open visit, signed and never revoked (the fixture's own
+# document is revoked).
+_SIGNED_PRESCRIPTION = r"""
+import json, os, sys
+from uuid import UUID
+import django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.base")
+django.setup()
+import ops.testing.restore_fixture as rf
+from apps.prescription.signature_provider import (
+    SYNTHETIC_PROVIDER,
+    SignatureRequest,
+    SyntheticSignatureProvider,
+)
+from apps.prescription.policy import SYNTHETIC_CATEGORY
+from apps.prescription.services import create_draft, render_document, save_draft
+from apps.prescription.signing import receive_signature_callback, request_signature
+from apps.tenancy.db import tenant_context
+from django.db import connection
+args = json.loads(sys.argv[1])
+org, clinic = UUID(args["organization"]), UUID(args["clinic"])
+physician = UUID(args["physician"])
+encounter, patient = UUID(args["encounter"]), UUID(args["patient"])
+request = rf._verified_request(physician)
+with rf._runtime_role(), tenant_context(physician, org):
+    draft = create_draft(clinic_id=clinic, encounter_id=encounter, patient_id=patient,
+                         issuer_id=physician, category=SYNTHETIC_CATEGORY)
+    item = {
+        "medication_description": "Medicamento ficticio",
+        "strength_form": "Sintetica",
+        "dose": "Dose sintetica",
+        "route": "Via sintetica",
+        "frequency": "Sintetica",
+        "duration": "Sintetica",
+        "quantity": "Sintetica",
+        "instructions": "Sinteticas.",
+    }
+    save_draft(
+        clinic_id=clinic, draft_id=draft.pk, encounter_id=encounter,
+        patient_id=patient, issuer_id=physician, category=SYNTHETIC_CATEGORY,
+        expected_version=1, items=[item],
+    )
+    document = render_document(
+        clinic_id=clinic, draft_id=draft.pk, encounter_id=encounter,
+        patient_id=patient, issuer_id=physician, expected_version=2,
+    )
+    operation = request_signature(
+        request=request, clinic_id=clinic, document_id=document.pk
+    )
+with rf._owner_scope(org):
+    operation.refresh_from_db()
+signed = SignatureRequest(
+    operation_id=operation.pk,
+    issuer_id=operation.issuer_id,
+    signer_subject=operation.signer_subject,
+    content_digest=operation.content_digest,
+    content=bytes(document.pdf_bytes),
+)
+headers, body = SyntheticSignatureProvider().sign(signed, operation.operation_id)
+with rf._runtime_role():
+    outcome = receive_signature_callback(
+        provider=SYNTHETIC_PROVIDER, headers=headers, body=body
+    )
+    if outcome != "applied":
+        raise SystemExit("signature callback not applied")
+print(json.dumps({"document": str(document.pk), "signature": str(operation.pk)}))
+"""
+
+
+def _signed_prescription(binding: Mapping[str, str]) -> dict[str, str]:
+    environment = {
+        **os.environ,
+        **FIXTURE_SWITCHES,
+        "BILLING_SYNTHETIC_PIX_SECRET": secrets.token_hex(16),
+    }
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and inline script
+        [sys.executable, "-c", _SIGNED_PRESCRIPTION, json.dumps(dict(binding))],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        sys.stderr.write(result.stderr[-4000:])
+        _fail("base prescription signing refused the witness visit")
+    return cast("dict[str, str]", json.loads(result.stdout.strip().splitlines()[-1]))
+
+
+def _open_visit(
+    probe: Mapping[str, str], clinic: UUID, enrollment: UUID
+) -> dict[str, str]:
+    """Book, open and connect a second visit that stays in progress.
+
+    The fixture's own encounter is closed and its teleconsult ended; records
+    that only an open encounter or a live session admits (addenda, capture,
+    device checks) attach to this one, created through base services.
+    """
+    from apps.ehr.services import open_encounter  # noqa: PLC0415
+    from apps.intake.patient_access import (  # noqa: PLC0415
+        issue_invitation,
+        redeem_invitation,
+    )
+    from apps.scheduling.appointment_creation import create_appointment  # noqa: PLC0415
+    from apps.scheduling.appointment_values import (  # noqa: PLC0415
+        AppointmentLocalRange,
+    )
+    from apps.scheduling.availability_creation import (  # noqa: PLC0415
+        create_availability,
+    )
+    from apps.teleconsult.services import create_session  # noqa: PLC0415
+    from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+    organization = UUID(probe["organization_id"])
+    physician = UUID(probe["physician_id"])
+    with _app_role(), tenant_context(UUID(probe["owner_id"]), organization):
+        create_availability(
+            clinic_id=clinic,
+            practitioner_id=physician,
+            start_local="2035-08-10T08:00",
+            end_local="2035-08-10T12:00",
+            idempotency_key=uuid4(),
+        )
+        appointment = create_appointment(
+            clinic_id=clinic,
+            enrollment_id=enrollment,
+            practitioner_id=physician,
+            local_range=AppointmentLocalRange("2035-08-10T09:00", "2035-08-10T10:00"),
+            idempotency_key=uuid4(),
+        )
+        invitation = issue_invitation(clinic_id=clinic, enrollment_id=enrollment)
+    with _app_role(), tenant_context(physician, organization):
+        encounter = open_encounter(clinic_id=clinic, appointment_id=appointment.pk)
+        session = create_session(clinic_id=clinic, encounter_id=encounter.pk)
+    with _app_role():
+        patient_session = redeem_invitation(clinic, invitation.secret)
+    _require(patient_session, "witness patient session was not issued")
+    signed = _signed_prescription(
+        {
+            "organization": str(organization),
+            "clinic": str(clinic),
+            "physician": str(physician),
+            "encounter": str(encounter.pk),
+            "patient": str(encounter.patient_id),
+        }
+    )
+    return {
+        "signed_document_id": signed["document"],
+        "signed_operation_id": signed["signature"],
+        "patient_session_id": str(patient_session),
+        "open_appointment_id": str(appointment.pk),
+        "open_encounter_id": str(encounter.pk),
+        "live_session_id": str(session.pk),
+    }
+
+
 def _companion(probe: Mapping[str, str]) -> dict[str, str]:
     """Register a second synthetic patient through the base service.
 
@@ -552,11 +709,13 @@ def _companion(probe: Mapping[str, str]) -> dict[str, str]:
             birth_date=date(1984, 6, 2),
             idempotency_key=uuid4(),
         )
+    live = _open_visit(probe, clinic, enrollment)
     return {
         **{
             key: probe[key]
             for key in ("organization_id", "clinic_id", "owner_id", "physician_id")
         },
+        **live,
         "patient_id": str(patient),
         "enrollment_id": str(enrollment),
         "companion_patient_id": str(companion.patient.pk),

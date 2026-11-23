@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+import psycopg
 import pytest
 from django.apps import apps
+from django.db import connection
 from django.db.migrations.loader import MigrationLoader
 from ops.testing import migration_upgrade_domains as domains
 from ops.testing import migration_upgrade_stages as stages
+from ops.testing.migration_upgrade_witness import super_dsn
+from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
-
-    from django.db.backends.utils import CursorWrapper
 
 Node = tuple[str, str]
 
@@ -101,77 +102,133 @@ def test_unknown_record_schema_is_refused(tmp_path: Path) -> None:
     ]
 
 
-class _Catalog:
-    """A cursor over one fixed pg_trigger answer; records the DDL it gets."""
-
-    def __init__(self, rows: Sequence[tuple[object, ...]]) -> None:
-        self.rows = list(rows)
-        self.executed: list[str] = []
-
-    def execute(self, statement: object, _params: object = None) -> None:
-        self.executed.append(str(statement))
-
-    def fetchone(self) -> tuple[object, ...] | None:
-        return self.rows[0] if self.rows else None
-
-    def fetchall(self) -> list[tuple[object, ...]]:
-        return self.rows
+# A table every migrated database guards with user triggers; the tests below
+# disable one inside the test transaction only (pytest-django rolls it back).
+POSTURE_TABLE = "scheduling_appointment"
 
 
-def _cursor(rows: Sequence[tuple[object, ...]]) -> CursorWrapper:
-    return cast("CursorWrapper", _Catalog(rows))
+def _first_user_trigger() -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT tgname FROM pg_trigger WHERE tgrelid=%s::regclass "
+            "AND NOT tgisinternal ORDER BY tgname LIMIT 1",
+            ["clinic_app." + POSTURE_TABLE],
+        )
+        row = cursor.fetchone()
+    assert row is not None
+    return str(row[0])
 
 
-BEFORE_ROW_INSERT = 1 | 2 | 4
-AFTER_ROW_INSERT = 1 | 4
+@pytest.mark.django_db
+def test_live_trigger_posture_passes_on_a_migrated_database() -> None:
+    with connection.cursor() as cursor:
+        assert stages.disabled_triggers(cursor) == set()
+        stages._require_live_triggers(cursor)
 
 
-def test_only_a_before_row_insert_guard_can_be_suspended() -> None:
-    fake = _Catalog([(BEFORE_ROW_INSERT, "O", False)])
-    guard = cast("CursorWrapper", fake)
-    stages._suspend_guard(
-        guard, "identity_breakglassgrant", "enterprise_guard", "INSERT"
-    )
-    assert "DISABLE TRIGGER" in fake.executed[-1]
-    for row in (
-        (AFTER_ROW_INSERT, "O", True),  # enterprise_grant_complete
-        (AFTER_ROW_INSERT, "O", False),  # a derived AFTER write
-        (BEFORE_ROW_INSERT, "D", False),  # already off before the stage
-    ):
-        with pytest.raises(RuntimeError):
-            stages._suspend_guard(_cursor([row]), "t", "x", "INSERT")
-    with pytest.raises(RuntimeError, match="does not exist"):
-        stages._suspend_guard(_cursor([]), "t", "x", "INSERT")
+@pytest.mark.django_db
+def test_any_disabled_user_trigger_fails_the_stage() -> None:
+    name = _first_user_trigger()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            sql.SQL("ALTER TABLE clinic_app.{} DISABLE TRIGGER {}").format(
+                sql.Identifier(POSTURE_TABLE), sql.Identifier(name)
+            )
+        )
+        assert stages.disabled_triggers(cursor) == {(POSTURE_TABLE, name)}
+        with pytest.raises(RuntimeError, match=name):
+            stages._require_live_triggers(cursor)
 
 
-def test_any_trigger_off_outside_the_allowlist_fails_the_stage() -> None:
-    allowed = {("identity_breakglassgrant", "enterprise_guard")}
-    stages._require_no_disabled(_cursor(sorted(allowed)), allowed)
-    extra: list[tuple[object, ...]] = [
-        *allowed,
-        ("identity_breakglassgrant", "enterprise_grant_complete"),
-    ]
-    with pytest.raises(RuntimeError, match="enterprise_grant_complete"):
-        stages._require_no_disabled(_cursor(extra), allowed)
+@pytest.mark.django_db
+def test_replica_replication_role_fails_the_stage() -> None:
+    # Only a superuser may switch the replication role (which silences every
+    # ordinary trigger): run the posture check on such a session of the test
+    # database, inside a transaction that is rolled back.
+    target = connection.settings_dict["NAME"]
+    with psycopg.connect(super_dsn(), dbname=target) as raw, raw.cursor() as cursor:
+        cursor.execute("SET LOCAL session_replication_role = replica")
+        with pytest.raises(RuntimeError, match="session_replication_role"):
+            stages._require_live_triggers(cursor)  # type: ignore[arg-type]
+        raw.rollback()
 
 
-def test_registry_allowlists_name_one_guard_per_loaded_model() -> None:
-    loaded = {
-        f"{app}.{name}"
-        for app, entries in domains.DOMAIN_SEEDS.items()
-        for name in entries
+@pytest.mark.django_db
+def test_insert_guard_discovery_reads_the_live_catalog() -> None:
+    with connection.cursor() as cursor:
+        guards = stages._insert_guards(cursor, POSTURE_TABLE)
+    # The appointment lifecycle guard fires BEFORE INSERT FOR EACH ROW; its
+    # AFTER receipt trigger does not guard an insert.
+    assert "scheduling_appointment_guard" in guards
+    assert "scheduling_appointment_lifecycle_receipt" not in guards
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("name", sorted(domains.LEAF_INVARIANTS))
+def test_leaf_invariant_runs_against_the_migrated_schema(name: str) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            domains.LEAF_INVARIANTS[name],
+            {"organization": "10000000-0000-4000-8000-000000000099"},
+        )
+        assert cursor.fetchone() == (0,)
+
+
+def _row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "model": "crm.Lead",
+        "pk": "x",
+        "adopted": False,
+        "history": [{}],
+        "writes": [{"op": "insert", "role": "clinic_owner", "guards": ["crm_binding"]}],
     }
-    loaded |= {
-        support
-        for entries in domains.DOMAIN_SEEDS.values()
-        for seed in entries.values()
-        for support, _helper in seed.support
-    }
-    assert set(domains.GUARDED_TRIGGERS) <= loaded
-    assert all(len(names) == 1 for names in domains.GUARDED_TRIGGERS.values())
-    assert all(
-        "%(organization)s" in query for query in domains.LEAF_INVARIANTS.values()
+    return row | overrides
+
+
+def test_well_formed_write_log_passes() -> None:
+    transition = {"op": "update", "role": "clinic_owner", "columns": ["state"]}
+    row = _row(
+        history=[{}, {}, {}],
+        writes=[*cast("list[object]", _row()["writes"]), transition, {"op": "product"}],
     )
+    assert (
+        stages.provenance_failures(
+            [row, _row(adopted=True, writes=[{"op": "product"}])]
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"history": [{}, {}]}, "2 states but 1 logged writes"),
+        (
+            {"writes": [{"op": "product"}]},
+            "product-written first state without adoption",
+        ),
+        (
+            {"writes": [{"op": "insert", "role": "postgres", "guards": ["g"]}]},
+            "is not a product write",
+        ),
+        (
+            {
+                "history": [{}, {}],
+                "writes": [
+                    {"op": "insert", "role": "clinic_app", "guards": ["g"]},
+                    {"op": "insert", "role": "clinic_app", "guards": ["g"]},
+                ],
+            },
+            "inserted twice",
+        ),
+    ],
+)
+def test_unreachable_history_fails_the_leaf(
+    overrides: dict[str, object], reason: str
+) -> None:
+    failures = stages.provenance_failures([_row(**overrides)])
+    assert len(failures) == 1
+    assert reason in failures[0]
 
 
 def test_secret_columns_are_recorded_only_as_digests() -> None:
@@ -182,9 +239,20 @@ def test_secret_columns_are_recorded_only_as_digests() -> None:
     assert key.hex() not in recorded
 
 
-def test_unclassified_secret_column_fails_closed() -> None:
+@pytest.mark.parametrize(
+    "column",
+    [
+        "client_secret",
+        "otp_seed",
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "signing_key",
+    ],
+)
+def test_unclassified_secret_column_fails_closed(column: str) -> None:
     with pytest.raises(LookupError, match="not classified"):
-        stages._recorded("interop.ApiClient", "client_secret", b"synthetic")
+        stages._recorded("interop.ApiClient", column, "synthetic-value")
     assert stages._recorded("interop.ApiClientSecret", "secret_digest", "a" * 64)
 
 

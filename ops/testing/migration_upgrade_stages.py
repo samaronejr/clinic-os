@@ -8,15 +8,20 @@ state, loads that model's representative synthetic rows through the
 *historical* model of that state. Every remaining migration then runs over
 real rows. No candidate model class is used for a write.
 
-Each stage is one transaction with one savepoint per row. CHECK, UNIQUE,
-FOREIGN KEY, NOT NULL, row-level security, every AFTER trigger and every
-deferred constraint trigger stay active for every load. Only the named
-BEFORE ROW INSERT guards in ``GUARDED_TRIGGERS`` (the ones that authorize
-against a live request session) are suspended, before the stage's first row
-and restored after its deferred constraints fire; the stage refuses to
-commit unless exactly those triggers were the disabled ones. The verifier
-then requires no disabled user trigger at the leaf and runs the domains'
-cross-row invariants over the seeded graph.
+Each stage is one transaction with one savepoint per row. No trigger is
+ever disabled: CHECK, UNIQUE, FOREIGN KEY, NOT NULL, row-level security and
+every BEFORE, AFTER and deferred constraint trigger run for every write, and
+the stage refuses to start or commit if any user trigger is disabled or the
+replication role is not ``origin``. Each row is written as the product writes
+it: in its initial state by its own writer (owner, physician, patient portal
+session or a service principal's own clinic_agent login) with that request's
+settings, then moved through its legal transitions in order; rows the product
+only writes itself come from its triggers and resolvers (``Seed.calls``,
+``adopt``). Each direct insert records the live insert guards it ran. Every
+write is logged per row; the verifier
+replays that log against the row's recorded states (``provenance_failures``),
+requires no disabled user trigger at the leaf and runs the domains' cross-row
+and lifecycle invariants over the seeded graph.
 
 Secret-bearing columns never reach the record: ``SECRET_COLUMNS`` are kept
 as digests, and any unclassified column whose name marks secret material
@@ -43,34 +48,33 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, cast
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Final, Never, cast
+from uuid import UUID, uuid4, uuid5
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.commands import migrate
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, connection, connections, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.recorder import MigrationRecorder
-from django.db.models import BinaryField, Value
+from django.db.models import BinaryField, Max, Value
 from django.utils import timezone
 from psycopg import sql
 
 from ops.testing.migration_upgrade_domains import (
     DOMAIN_SEEDS,
-    GUARDED_TRIGGERS,
     LEAF_INVARIANTS,
     LOAD_ROLES,
     PRESERVATION_EXCEPTIONS,
+    PUBLIC_COLUMNS,
     SECRET_COLUMNS,
-    TRANSITION_GUARDS,
     Row,
     Seed,
     SeedContext,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 
     from django.apps.registry import Apps
     from django.db.backends.utils import CursorWrapper
@@ -84,12 +88,28 @@ DIGEST_TOKENS = ("sha256", "digest", "hash", "fingerprint", "checksum")
 PHYSICIAN_TOKENS = ("physician", "practitioner", "clinician", "author", "prescriber")
 END_TOKENS = ("expire", "until", "valid_to", "ends", "end_at", "due", "deadline")
 START_TOKENS = ("start", "valid_from", "begin", "opened")
-SECRET_TOKENS = ("secret", "password", "private", "wrapped_key", "seed")
+SECRET_TOKENS = (
+    "secret",
+    "password",
+    "private",
+    "wrapped_key",
+    "seed",
+    "api_key",
+    "access_token",
+    "token",
+    "signing_key",
+)
 DIGEST_SUFFIXES = ("_hash", "_digest", "_sha256", "_fingerprint")
-# pg_trigger.tgtype bits: ROW and BEFORE, then the INSERT and UPDATE events.
-ROW_BEFORE = 1 | 2
-EVENT_BITS = {"INSERT": 4, "UPDATE": 16}
-SCHEMA_VERSION = 2
+# The database roles a staged write runs as: the migration owner (under FORCE
+# RLS, the owner CLI's path), the runtime role, the resolver for SECURITY
+# DEFINER-only tables (LOAD_ROLES) and a service principal's clinic_agent login.
+OWNER_ROLE: Final = "clinic_owner"
+RUNTIME_ROLE: Final = "clinic_app"
+AGENT_ROLE: Final = "clinic_agent"
+WRITE_ROLES: Final = frozenset(
+    {OWNER_ROLE, RUNTIME_ROLE, AGENT_ROLE, "clinic_resolver"}
+)
+SCHEMA_VERSION = 3
 
 
 def _fail(reason: str) -> Never:
@@ -223,6 +243,11 @@ class Stager:
         self.enrollment = UUID(tenant["enrollment_id"])
         self.companion_patient = UUID(tenant["companion_patient_id"])
         self.companion_enrollment = UUID(tenant["companion_enrollment_id"])
+        self.open_encounter = UUID(tenant["open_encounter_id"])
+        self.live_session = UUID(tenant["live_session_id"])
+        self.patient_session = UUID(tenant["patient_session_id"])
+        self.signed_document = UUID(tenant["signed_document_id"])
+        self.signed_operation = UUID(tenant["signed_operation_id"])
         self.now = timezone.now()
         self.loader = MigrationLoader(connection)
         applied = set(MigrationRecorder(connection).applied_migrations())
@@ -278,56 +303,52 @@ class Stager:
         }
         errors: list[str] = []
         loaded = len(self.rows)
-        suspended = sorted(
-            {
-                (apps.get_model(label)._meta.db_table, name, event)
-                for label in _stage_labels(models)
-                for name in GUARDED_TRIGGERS.get(label, ())
-                for event in ("INSERT",)
-            }
-            | {
-                (apps.get_model(label)._meta.db_table, name, "UPDATE")
-                for label in _transition_labels(models)
-                for name in TRANSITION_GUARDS.get(label, ())
-            }
-        )
+        order = _dependency_order(models)
+        # A service principal's own session (``Seed.session``) is a separate
+        # login: what it reads (its principal and grant) commits first.
+        for label in order:
+            seed = _seed_for(label)
+            if seed is not None and seed.session:
+                with transaction.atomic():
+                    self._seed_support(stage, seed, errors)
+        if errors:
+            self.failed(errors)
         try:
             with transaction.atomic(), connection.cursor() as cursor:
-                # Suspend before any row exists, restore after every deferred
-                # check has fired: no pending trigger event can block either,
-                # and deferred constraint triggers see the whole stage graph.
-                _require_no_disabled(cursor, set())
-                for table, name, event in suspended:
-                    _suspend_guard(cursor, table, name, event)
-                for label in _dependency_order(models):
+                # No trigger is ever disabled: every row is written through
+                # its live guards, AFTER triggers and deferred constraints.
+                _require_live_triggers(cursor)
+                for label in order:
                     self._seed_model(stage, label, models[label], errors)
                 if errors:
                     self.failed(errors)
                 cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-                _require_no_disabled(cursor, {(t, n) for t, n, _e in suspended})
-                for table, name, _event in suspended:
-                    cursor.execute(
-                        sql.SQL("ALTER TABLE clinic_app.{} ENABLE TRIGGER {}").format(
-                            sql.Identifier(table), sql.Identifier(name)
-                        )
-                    )
-                _require_no_disabled(cursor, set())
-                if errors:
-                    self.failed(errors)
+                _require_live_triggers(cursor)
+                # Product triggers and resolvers this stage ran may have moved
+                # rows (a review task bound to its grant, a completion freeing
+                # a resource): re-record the stage's rows and every earlier row
+                # of a table this transaction updated, so the leaf compares
+                # against what the product wrote.
+                cursor.execute(
+                    "SELECT relname FROM pg_catalog.pg_stat_xact_user_tables"
+                    " WHERE schemaname='clinic_app' AND n_tup_upd>0"
+                )
+                touched = {str(name) for (name,) in cursor.fetchall()}
+                self._refresh(
+                    [
+                        row
+                        for row in self.rows[:loaded]
+                        if self.state.apps.get_model(str(row["model"]))._meta.db_table
+                        in touched
+                    ]
+                    + self.rows[loaded:]
+                )
         except LOAD_ERRORS as error:
             for row in self.rows[loaded:]:
                 self.seeded[str(row["model"])].remove(row["pk"])
             del self.rows[loaded:]
             self.failed([f"{stage}: commit: {type(error).__name__}: {error}"])
-        self.stages.append(
-            {
-                "migration": stage,
-                "models": sorted(models),
-                "suspended_triggers": [
-                    f"{table}.{name} ({event})" for table, name, event in suspended
-                ],
-            }
-        )
+        self.stages.append({"migration": stage, "models": sorted(models)})
 
     def _seed_model(
         self, stage: str, label: str, model: type[Model], errors: list[str]
@@ -348,17 +369,12 @@ class Stager:
             self.seeded.setdefault(str(record["model"]), []).append(record["pk"])
 
         try:
-            for support, helper in seed.support:
-                for values in helper.rows(self._context(self.state.apps)):
-                    keep(
-                        self._load(
-                            self.state.apps.get_model(support),
-                            support,
-                            helper,
-                            values,
-                            stage,
-                        )
-                    )
+            for target, change in seed.prepare:
+                self._transition(target, *change(self._context(self.state.apps)))
+            if not seed.session:
+                self._load_support(stage, seed, keep)
+            for call in seed.calls:
+                call(self._context(self.state.apps))
             if seed.adopt:
                 keep(self._adopt(model, label, seed, stage))
             else:
@@ -371,11 +387,125 @@ class Stager:
             return
         print(f"  stage {stage}: seeded {len(records)} {label} row(s)")  # noqa: T201
 
+    @contextmanager
+    def _principal_session(self, principal: str) -> Iterator[CursorWrapper]:
+        """One transaction on the service principal's own clinic_agent login.
+
+        As ``service_principal_context`` does: the resolver authenticates
+        session_user, the clinic and a current grant, and only then are the
+        principal and tenant GUCs installed; no staff actor exists.
+        """
+        agent = connections["agent"]
+        with transaction.atomic(using="agent"), agent.cursor() as cursor:
+            cursor.execute(
+                "SELECT coalesce(clinic_app.principal_scope(%s, %s), "
+                "clinic_app.retention_principal_scope(%s, %s))",
+                [principal, str(self.clinic), principal, str(self.clinic)],
+            )
+            found = cursor.fetchone()
+            if found is None or found[0] != self.organization:
+                _fail(f"service principal {principal} has no session scope")
+            cursor.execute(
+                "SELECT set_config('app.current_principal', %s, true), "
+                "set_config('app.current_tenant', %s, true)",
+                [principal, str(self.organization)],
+            )
+            yield cursor
+
+    def _principal_insert(
+        self,
+        model: type[Model],
+        values: Mapping[str, object],
+        settings: Mapping[str, str],
+    ) -> tuple[object, list[str]]:
+        """Insert as the service principal; returns the key and live guards."""
+        with self._principal_session(settings["app.current_principal"]) as cursor:
+            guards = _insert_guards(cursor, model._meta.db_table)
+            return model._base_manager.db_manager("agent").create(**values).pk, guards
+
+    def _load_support(
+        self, stage: str, seed: Seed, keep: Callable[[JsonMap], None]
+    ) -> None:
+        for support, helper in seed.support:
+            for call in helper.calls:
+                call(self._context(self.state.apps))
+            for values in helper.rows(self._context(self.state.apps)):
+                keep(
+                    self._load(
+                        self.state.apps.get_model(support),
+                        support,
+                        helper,
+                        values,
+                        stage,
+                    )
+                )
+            for target, change in helper.updates:
+                self._transition(target, *change(self._context(self.state.apps)))
+
+    def _seed_support(self, stage: str, seed: Seed, errors: list[str]) -> None:
+        """Load and record one seed's support rows in their own transaction."""
+        from apps.tenancy.envelope import EnvelopeError  # noqa: PLC0415
+
+        def keep(record: JsonMap) -> None:
+            self.rows.append(record)
+            self.seeded.setdefault(str(record["model"]), []).append(record["pk"])
+
+        try:
+            self._load_support(stage, seed, keep)
+        except (*LOAD_ERRORS, EnvelopeError) as error:
+            errors.append(f"{stage}: support: {type(error).__name__}: {error}")
+
+    def _actor(self, who: str) -> UUID | None:
+        """Return the ``app.current_user_id`` of a named writer (none for a patient)."""
+        # A patient portal session or a service principal carries no staff user.
+        if who.startswith("key:"):
+            # A synthetic support user a seed created under a stable key.
+            return uuid5(self.organization, who.removeprefix("key:"))
+        return {
+            "owner": self.owner,
+            "physician": self.physician,
+            "patient": None,
+            "service": None,
+        }[who]
+
     def _transition(self, label: str, key: object, changes: Row) -> None:
         """Move one seeded row through a product transition and re-record it."""
         model = self.state.apps.get_model(label)
         names = [field.attname for field in model._meta.concrete_fields]
-        with _scope(self.organization, self.owner, LOAD_ROLES.get(label, "")):
+        seed = _seed_for(label)
+        # A transition is made by the row's own writer, unless the product
+        # reserves it for another actor (an appointment's practitioner).
+        changes = dict(changes)
+        named = changes.pop("_actor", None)
+        writer = (
+            str(named)
+            if named
+            else next(
+                (
+                    str(row["actor"])
+                    for row in self.rows
+                    if row["model"] == label and row["pk"] == _plain(key)
+                ),
+                seed.actor if seed else "owner",
+            )
+        )
+        actor = self._actor(writer)
+        with _scope(self.organization, actor, LOAD_ROLES.get(label, "")) as cursor:
+            for name, column in seed.settings if seed else ():
+                if column.startswith("="):
+                    value: object = column[1:]
+                else:
+                    value = changes.get(
+                        column,
+                        model._base_manager.filter(pk=key)
+                        .values_list(column, flat=True)
+                        .get(),
+                    )
+                cursor.execute(
+                    "SELECT pg_catalog.set_config(%s, %s, true)", [name, str(value)]
+                )
+            role = LOAD_ROLES.get(label, "") or OWNER_ROLE
+            columns = sorted(model._meta.get_field(name).column for name in changes)
             if model._base_manager.filter(pk=key).update(**changes) != 1:
                 message = f"{label} transition matched no seeded row"
                 raise LookupError(message)
@@ -388,10 +518,37 @@ class Stager:
                     name: _recorded(label, name, value)
                     for name, value in stored.items()
                 }
-                row["transitions"] = [
-                    *cast("list[Row]", row.get("transitions", [])),
-                    {name: _plain(v) for name, v in changes.items()},
-                ]
+                cast("list[object]", row["history"]).append(row["values"])
+                cast("list[object]", row["writes"]).append(
+                    {"op": "update", "role": role, "columns": columns}
+                )
+
+    def _refresh(self, rows: list[JsonMap]) -> None:
+        """Re-record rows a later write of the same stage changed."""
+        for row in rows:
+            label = str(row["model"])
+            model = self.state.apps.get_model(label)
+            names = [field.attname for field in model._meta.concrete_fields]
+            stored, _raw = _visible(
+                model,
+                row["pk"],
+                self.organization,
+                names,
+                (),
+                _readers(self.owner, str(row["role"]), self),
+            )
+            if not stored:
+                continue
+            values = {
+                name: _recorded(label, name, value) for name, value in stored.items()
+            }
+            if values != row["values"]:
+                row["values"] = values
+                cast("list[object]", row["history"]).append(values)
+                # Written by product code (a trigger or resolver) this stage ran.
+                cast("list[object]", row["writes"]).append(
+                    {"op": "product", "role": ""}
+                )
 
     def failed(self, errors: list[str]) -> None:
         """Stop the upgrade: a stage that cannot load its rows is a defect."""
@@ -407,20 +564,72 @@ class Stager:
             enrollment=self.enrollment,
             companion_patient=self.companion_patient,
             companion_enrollment=self.companion_enrollment,
+            open_encounter=self.open_encounter,
+            live_session=self.live_session,
+            patient_session=self.patient_session,
+            signed_document=self.signed_document,
+            signed_operation=self.signed_operation,
             now=self.now,
             seeded=self.seeded,
             legacy=lambda label, filters: self._legacy(apps, label, filters),
             fetch=lambda label, name, filters: self._fetch(apps, label, name, filters),
+            call=self._call,
         )
+
+    def _call(
+        self,
+        function: str,
+        *args: object,
+        actor: str = "physician",
+        settings: Mapping[str, str] | None = None,
+    ) -> object:
+        """Evaluate one product SQL function as the role its caller holds.
+
+        Staff services and webhook ingest call as the runtime role;
+        ``actor="agent"`` calls over a service principal's own clinic_agent
+        login (``app.current_principal`` in settings), as its worker does.
+        """
+        scope = (
+            self._principal_session((settings or {})["app.current_principal"])
+            if actor == "agent"
+            else _scope(self.organization, self._actor(actor), RUNTIME_ROLE, settings)
+        )
+        with scope as cursor:
+            # Django hands jsonb back as text; read every result as JSON.
+            cursor.execute(
+                sql.SQL("SELECT to_jsonb(clinic_app.{}({}))::text").format(
+                    sql.Identifier(function),
+                    sql.SQL(",").join(sql.Placeholder() * len(args)),
+                ),
+                [None if arg is None else str(arg) for arg in args],
+            )
+            return json.loads(str(cast("tuple[object]", cursor.fetchone())[0]))
 
     def _fetch(
         self, apps: Apps, label: str, name: str, filters: Mapping[str, object]
     ) -> object:
         """One stored value of a base row, through the historical model."""
         model = apps.get_model(label)
+        if name.startswith("max:"):
+            # The current maximum over the tenant's rows, seeded or not.
+            with _scope(self.organization, self.owner, ""):
+                rows = cast("QuerySet[Model]", self._scoped(model, filters))
+                found = rows.aggregate(top=Max(name[4:]))["top"]
+            return 0 if found is None else found
         key = self._legacy(apps, label, filters)
-        with _scope(self.organization, self.owner, ""):
-            return model._base_manager.filter(pk=key).values_list(name, flat=True).get()
+        # Read as the first reader the row's policies admit (a policy may
+        # call a function only the runtime role executes).
+        for actor, role in ((self.owner, ""), (self.owner, RUNTIME_ROLE)):
+            try:
+                with _scope(self.organization, actor, role):
+                    rows = model._base_manager.filter(pk=key).values_list(
+                        name, flat=True
+                    )
+                    return rows.get()
+            except DatabaseError:
+                continue
+        message = f"{label}.{name} of {key} is not readable"
+        raise LookupError(message)
 
     def _legacy(
         self, apps: Apps, label: str, filters: Mapping[str, object] | None = None
@@ -432,10 +641,14 @@ class Stager:
             "identity.User": self.owner,
             "intake.Patient": self.patient,
             "intake.PatientClinicEnrollment": self.enrollment,
+            # The open second visit; the fixture's own encounter is closed.
+            "ehr.Encounter": self.open_encounter,
         }
         if label in fixed and not filters:
             return fixed[label]
-        if label in self.new:
+        if label in self.new and not filters:
+            # A filtered reference may name a row a migration created (a
+            # registry backfill); an unfiltered one must be a seeded row.
             message = f"new model {label} has no seeded row to reference"
             raise LookupError(message)
         cache = (label, json.dumps(_plain(dict(filters or {})), sort_keys=True))
@@ -487,7 +700,10 @@ class Stager:
         if stored is None:
             message = f"{label} has no backfilled row to adopt"
             raise LookupError(message)
-        return self._record(model, label, seed, stage, stored)
+        return {
+            **self._record(model, label, seed, stage, stored),
+            "writes": [{"op": "product", "role": ""}],
+        }
 
     def _relation(self, field: Field[object, object], apps: Apps) -> object:
         target = field.related_model
@@ -514,7 +730,10 @@ class Stager:
                 if not field.null:
                     values[field.attname] = self._relation(field, self.state.apps)
             elif _purpose(field) is not None:
-                values[field.attname] = _encrypted(field, label)
+                # Optional protected content is absent in initial states; a
+                # fixture that needs it names it explicitly.
+                if not field.null:
+                    values[field.attname] = _encrypted(field, label)
             elif not field.has_default() and not field.null:
                 values[field.attname] = _scalar(field, label, self.now)
         return values
@@ -527,9 +746,14 @@ class Stager:
         overrides: Mapping[str, object],
         stage: str,
     ) -> JsonMap:
+        overrides = dict(overrides)
+        # A row may name its own writer when one model's rows come from two
+        # staff members (``_actor``: "owner" or "physician").
+        who = str(overrides.pop("_actor", seed.actor))
+        row_settings = cast("dict[str, str]", overrides.pop("_settings", {}))
         values = self._fill(model, label, overrides)
         names = [field.attname for field in model._meta.concrete_fields]
-        actor = self.physician if seed.actor == "physician" else self.owner
+        actor = self._actor(who)
         role = LOAD_ROLES.get(label, "")
         if role == "clinic_resolver":
             # Resolver-only tables receive envelopes already sealed on the
@@ -546,22 +770,40 @@ class Stager:
             for field in model._meta.concrete_fields
             if field.attname in overrides or field.name in overrides
         )
-        with _scope(self.organization, actor, role):
-            if pinned:
-                # An explicit timestamp the product binds across rows: keep it
-                # instead of letting auto_now restamp this statement.
-                instance = model(**values)
-                instance.save_base(raw=True, force_insert=True)
-                key = instance.pk
-            else:
-                key = model._base_manager.create(**values).pk
+        settings = {
+            name: column[1:] if column.startswith("=") else str(values[column])
+            for name, column in seed.settings
+        } | row_settings
+        if seed.session:
+            key, guards = self._principal_insert(model, values, settings)
+        else:
+            with _scope(self.organization, actor, role, settings) as cursor:
+                guards = _insert_guards(cursor, model._meta.db_table)
+                if pinned:
+                    # An explicit timestamp the product binds across rows: keep
+                    # it instead of letting auto_now restamp this statement.
+                    instance = model(**values)
+                    instance.save_base(raw=True, force_insert=True)
+                    key = instance.pk
+                else:
+                    key = model._base_manager.create(**values).pk
         stored, _raw = _visible(
-            model, key, self.organization, names, (), _readers(actor, role, self)
+            model,
+            key,
+            self.organization,
+            names,
+            (),
+            _readers(self.owner if actor is None else actor, role, self),
         )
         if stored is None:
             message = f"loaded {label} row is not readable by any reader"
             raise LookupError(message)
-        return self._record(model, label, seed, stage, stored)
+        writer = AGENT_ROLE if seed.session else role or OWNER_ROLE
+        return {
+            **self._record(model, label, seed, stage, stored),
+            "actor": who,
+            "writes": [{"op": "insert", "role": writer, "guards": guards}],
+        }
 
     def _record(
         self,
@@ -577,6 +819,7 @@ class Stager:
             if _purpose(field) is not None
         }
         self.protected.setdefault(label, set()).update(encrypted)
+        values = {name: _recorded(label, name, value) for name, value in stored.items()}
         return {
             "model": label,
             "stage": stage,
@@ -584,10 +827,9 @@ class Stager:
             "role": LOAD_ROLES.get(label, ""),
             "actor": seed.actor,
             "adopted": bool(seed.adopt),
-            "suspended_triggers": list(GUARDED_TRIGGERS.get(label, ())),
-            "values": {
-                name: _recorded(label, name, value) for name, value in stored.items()
-            },
+            "values": values,
+            # Every state the row held: its insert, then each transition.
+            "history": [values],
             "encrypted": sorted(encrypted),
         }
 
@@ -619,15 +861,41 @@ class Stager:
         }
 
 
+# Request settings any scope installed so far; each new scope clears them.
+_APPLIED_SETTINGS: set[str] = set()
+
+
 @contextmanager
-def _scope(organization: UUID, actor: UUID, role: str) -> Iterator[CursorWrapper]:
-    """One savepoint with tenant/actor GUCs and an optional role switch."""
+def _scope(
+    organization: UUID,
+    actor: UUID | None,
+    role: str,
+    settings: Mapping[str, str] | None = None,
+) -> Iterator[CursorWrapper]:
+    """One savepoint with tenant/actor GUCs, request settings and a role.
+
+    The GUCs are transaction-local, exactly as ``tenant_context`` and the
+    request middleware set them; ``settings`` adds the request-scoped values
+    a guard reads (a scribe capture token, a verified factor).
+    """
     with transaction.atomic(), connection.cursor() as cursor:
+        # Every request starts clean: a previous row's request settings (a
+        # patient session, a principal, a factor) never carry over to this
+        # writer, as each product request opens its own transaction.
+        for name in sorted(_APPLIED_SETTINGS):
+            cursor.execute("SELECT pg_catalog.set_config(%s, '', true)", [name])
         cursor.execute(
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true), "
             "pg_catalog.set_config('app.current_user_id', %s, true)",
-            [str(organization), str(actor)],
+            # A patient portal write carries no staff user, as
+            # patient_session_context leaves app.current_user_id unset.
+            [str(organization), "" if actor is None else str(actor)],
         )
+        for name, value in (settings or {}).items():
+            _APPLIED_SETTINGS.add(name)
+            cursor.execute(
+                "SELECT pg_catalog.set_config(%s, %s, true)", [name, str(value)]
+            )
         if role:
             cursor.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
         yield cursor
@@ -638,49 +906,6 @@ def _scope(organization: UUID, actor: UUID, role: str) -> Iterator[CursorWrapper
 def _seed_for(label: str) -> Seed | None:
     app, name = label.split(".")
     return DOMAIN_SEEDS.get(app, {}).get(name)
-
-
-def _stage_labels(models: Mapping[str, type[Model]]) -> list[str]:
-    """Return the stage's models plus the base models their seeds load first."""
-    labels = list(models)
-    for label in models:
-        seed = _seed_for(label)
-        if seed is not None:
-            labels.extend(support for support, _helper in seed.support)
-    return sorted(set(labels))
-
-
-def _transition_labels(models: Mapping[str, type[Model]]) -> list[str]:
-    """Earlier rows this stage's seeds move through a product transition."""
-    labels: set[str] = set()
-    for label in models:
-        seed = _seed_for(label)
-        if seed is not None:
-            labels.update(target for target, _change in seed.updates)
-    return sorted(labels)
-
-
-def _suspend_guard(cursor: CursorWrapper, table: str, name: str, event: str) -> None:
-    """Disable one named BEFORE ROW guard of ``event``; refuse anything else."""
-    cursor.execute(
-        "SELECT tgtype, tgenabled, tgconstraint <> 0 FROM pg_trigger "
-        "WHERE tgrelid=%s::regclass AND tgname=%s AND NOT tgisinternal",
-        ["clinic_app." + table, name],
-    )
-    row = cursor.fetchone()
-    if row is None:
-        _fail(f"allowlisted guard {table}.{name} does not exist at this stage")
-    tgtype, enabled, constraint = row
-    wanted = ROW_BEFORE | EVENT_BITS[event]
-    if constraint or int(tgtype) & wanted != wanted:
-        _fail(f"{table}.{name} is not a BEFORE ROW {event} guard; it stays active")
-    if enabled != "O":
-        _fail(f"{table}.{name} was already disabled before the stage")
-    cursor.execute(
-        sql.SQL("ALTER TABLE clinic_app.{} DISABLE TRIGGER {}").format(
-            sql.Identifier(table), sql.Identifier(name)
-        )
-    )
 
 
 def disabled_triggers(cursor: CursorWrapper) -> set[tuple[str, str]]:
@@ -694,11 +919,32 @@ def disabled_triggers(cursor: CursorWrapper) -> set[tuple[str, str]]:
     return {(str(table), str(name)) for table, name in cursor.fetchall()}
 
 
-def _require_no_disabled(cursor: CursorWrapper, allowed: set[tuple[str, str]]) -> None:
-    found = disabled_triggers(cursor)
-    if found != allowed:
-        unexpected = sorted(f"{t}.{n}" for t, n in found ^ allowed)
-        _fail("trigger posture differs from the allowlist: " + ", ".join(unexpected))
+def _insert_guards(cursor: CursorWrapper, table: str) -> list[str]:
+    """Return the live BEFORE INSERT row guards a direct insert into ``table`` runs.
+
+    Recorded with each insert so the leaf can tell which rule set admitted the
+    row; owner-CLI tables (principals, registry approvals) legitimately have
+    none and are written as the migration owner.
+    """
+    cursor.execute(
+        "SELECT coalesce(array_agg(t.tgname::text ORDER BY t.tgname), '{}')"
+        " FROM pg_catalog.pg_trigger t WHERE t.tgrelid=%s::regclass"
+        " AND NOT t.tgisinternal AND t.tgenabled<>'D'"
+        " AND (t.tgtype & 2)<>0 AND (t.tgtype & 4)<>0 AND (t.tgtype & 1)<>0",
+        [f"clinic_app.{table}"],
+    )
+    found = cursor.fetchone()
+    return cast("list[str]", found[0]) if found else []
+
+
+def _require_live_triggers(cursor: CursorWrapper) -> None:
+    """Refuse to load or commit unless every user trigger fires normally."""
+    cursor.execute("SELECT current_setting('session_replication_role')")
+    if cursor.fetchone() != ("origin",):
+        _fail("session_replication_role is not origin: triggers would not fire")
+    found = sorted(f"{table}.{name}" for table, name in disabled_triggers(cursor))
+    if found:
+        _fail("disabled user triggers during seeding: " + ", ".join(found))
 
 
 def _recorded(label: str, name: str, value: object) -> object:
@@ -709,7 +955,8 @@ def _recorded(label: str, name: str, value: object) -> object:
         return "sha256:" + sha256(content).hexdigest()
     lowered = name.lower()
     if (
-        any(token in lowered for token in SECRET_TOKENS)
+        f"{label}.{name}" not in PUBLIC_COLUMNS
+        and any(token in lowered for token in SECRET_TOKENS)
         and not lowered.endswith(DIGEST_SUFFIXES)
         and isinstance(value, (bytes, memoryview, str))
         and value
@@ -896,7 +1143,17 @@ def _read_back(
         if _recorded(label, name, stored[name]) != values[name]
         and f"{label}.{name}" not in PRESERVATION_EXCEPTIONS
     )
+    # A NULL envelope decodes to the field's configured empty value ({} for a
+    # SOAP body): that is an empty protected value, not plaintext.
+    nulls = [
+        name
+        for name in checked
+        if raw[name] is None
+        and values[name] == getattr(fields[name], "_empty_value", lambda: None)()
+    ]
     for name in checked:
+        if name in nulls:
+            continue
         failures.extend(
             envelope_failures(
                 label,
@@ -906,7 +1163,7 @@ def _read_back(
                 leaf_protected=_purpose(fields[name]) is not None,
             )
         )
-    return failures, len(checked), empty
+    return failures, len(checked) - len(nulls), empty + len(nulls)
 
 
 def _plaintext_tokens(value: object) -> Iterator[bytes]:
@@ -944,6 +1201,38 @@ def coverage_failures(record: Mapping[str, object]) -> list[str]:
         for label, app in sorted(new_models(loader, base).items())
         if label not in seeded
     ]
+
+
+def provenance_failures(rows: Sequence[Mapping[str, object]]) -> list[str]:
+    """Every staged row's history is a chain of writes the product can make.
+
+    Each recorded state must come from one logged write: a direct insert or
+    column update by a product write role (checked against that role's
+    privileges when it ran, with every user trigger live), or a write by
+    product code itself (an adopted backfill, a trigger or a resolver).
+    """
+    failures = []
+    for row in rows:
+        label = f"{row['model']} row {row['pk']}"
+        history = cast("list[object]", row.get("history") or [])
+        writes = cast("list[Mapping[str, object]]", row.get("writes") or [])
+        if not history or len(writes) != len(history):
+            failures.append(
+                f"{label}: {len(history)} states but {len(writes)} logged writes"
+            )
+            continue
+        first = writes[0]
+        if first.get("op") == "product" and not row.get("adopted"):
+            failures.append(f"{label}: product-written first state without adoption")
+        for write in writes:
+            op = write.get("op")
+            if op == "product":
+                continue
+            if op not in {"insert", "update"} or write.get("role") not in WRITE_ROLES:
+                failures.append(f"{label}: write {dict(write)} is not a product write")
+        if any(write.get("op") == "insert" for write in writes[1:]):
+            failures.append(f"{label}: inserted twice")
+    return failures
 
 
 def invariant_failures(record: Mapping[str, object]) -> list[str]:
@@ -987,6 +1276,7 @@ def verify_stages(path: Path) -> list[str]:
         failures.extend(found)
         checked += row_checked
         empty += row_empty
+    failures.extend(provenance_failures(rows))
     failures.extend(invariant_failures(record))
     print(  # noqa: T201 - gate transcript
         f"upgrade-domains: read back {len(rows)} staged rows across "

@@ -44,11 +44,19 @@ case "$APP_DATABASE_URL" in
     *\?*) app_query="?${APP_DATABASE_URL#*\?}" ;;
 esac
 app_dsn="${app_dsn%/*}/$upgrade_db$app_query"
+# Service principals authenticate as the clinic_agent login (session_user is
+# their registered identity); the stager writes their records over it, as
+# service_principal_context does. An unset password gets a run-local one.
+if [ -z "${CLINIC_AGENT_PASSWORD:-}" ]; then
+    CLINIC_AGENT_PASSWORD="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+fi
+export CLINIC_AGENT_PASSWORD
+agent_dsn="postgresql://clinic_agent:$CLINIC_AGENT_PASSWORD@${owner_dsn#*@}"
 
 psql_super() {
     docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
-        -e CLINIC_SUPER_PASSWORD \
+        -e CLINIC_SUPER_PASSWORD -e CLINIC_AGENT_PASSWORD \
         "$POSTGRES_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -h localhost -p "$POSTGRES_PORT" \
         -U "$POSTGRES_USER" "$@"
@@ -174,6 +182,7 @@ fi
 
 echo "== migrate forward with the candidate, staging every new domain =="
 (cd "$project_root" && env \
+    AGENT_DATABASE_URL="$agent_dsn" \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
