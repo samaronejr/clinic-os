@@ -7,7 +7,9 @@ import hashlib
 import http.client
 import json
 import os
+import signal
 import socket
+import subprocess
 import sys
 import time
 from http import HTTPStatus
@@ -15,10 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
 if TYPE_CHECKING:
-    import subprocess
-    from collections.abc import Callable, Iterator
-
-    from ops.testing.browser_server_supervisor import SupervisedMaster
+    from collections.abc import Callable
 
 from ops.testing.browser_artifact_publisher import (
     frame_suite_artifacts,
@@ -27,7 +26,6 @@ from ops.testing.browser_artifact_publisher import (
     require_acknowledged,
 )
 from ops.testing.browser_runner_contract import selected_suites
-from ops.testing.browser_server_supervisor import require_released_port, start_master
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
 from ops.testing.browser_suites.scheduling import build_scheduling_suite
@@ -47,8 +45,10 @@ PHYSICIAN_ENVIRONMENT: Final = (
 FIXTURE_DATABASE_VARIABLE: Final = "CLINIC_BROWSER_FIXTURE_DATABASE_URL"
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
+TERMINATION_GRACE_SECONDS: Final = 10
 HOST: Final = "127.0.0.1"
 PROTECTED_DATABASE_PORT: Final = 5432
+PORT_ATTEMPTS: Final = 32
 REQUIRED_ENVIRONMENT: Final = (
     "CLINIC_BROWSER_BASE_URL",
     "CLINIC_BROWSER_CLINIC_ID",
@@ -70,44 +70,27 @@ def _fail(reason: str) -> Never:
     raise BrowserServerError(reason)
 
 
-@contextlib.contextmanager
-def reserve_listener() -> Iterator[socket.socket]:
-    """Own an ephemeral loopback listener until Gunicorn inherits it."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.bind((HOST, 0))
-        if listener.getsockname()[1] == PROTECTED_DATABASE_PORT:
-            _fail("ephemeral listener selected the protected database port")
-        listener.listen()
-        yield listener
+def reserve_port() -> int:
+    """Return one free loopback TCP port that is never the protected 5432."""
+    for _attempt in range(PORT_ATTEMPTS):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((HOST, 0))
+            port = int(probe.getsockname()[1])
+        if port != PROTECTED_DATABASE_PORT:
+            return port
+    _fail("no free loopback port")
 
 
-def _readiness_failure(reason: str, server_log: Path) -> Never:
-    tail = ""
-    if server_log.exists():
-        tail = server_log.read_text(encoding="utf-8", errors="replace")[-2000:]
-    _fail(f"readiness never reached ({reason}); server log tail: {tail}")
-
-
-def _require_running(server: subprocess.Popen[bytes], server_log: Path) -> None:
-    status = server.poll()
-    if status is not None:
-        _readiness_failure(f"server exited with status {status}", server_log)
-
-
-def wait_until_ready(
-    port: int, server_log: Path, server: subprocess.Popen[bytes]
-) -> None:
+def wait_until_ready(port: int, server_log: Path) -> None:
     """Poll the readiness endpoint until the supervised app serves traffic."""
     deadline = time.monotonic() + READY_TIMEOUT_SECONDS
     last = "no attempt"
     while time.monotonic() < deadline:
-        _require_running(server, server_log)
         connection = http.client.HTTPConnection(HOST, port, timeout=2)
         try:
             connection.request("GET", "/readyz")
             status = connection.getresponse().status
             if status == HTTPStatus.OK:
-                _require_running(server, server_log)
                 return
             last = f"status {status}"
         except (OSError, http.client.HTTPException) as error:
@@ -115,45 +98,59 @@ def wait_until_ready(
         finally:
             connection.close()
         time.sleep(READY_POLL_SECONDS)
-    _require_running(server, server_log)
-    _readiness_failure(last, server_log)
+    tail = ""
+    if server_log.exists():
+        tail = server_log.read_text(encoding="utf-8", errors="replace")[-2000:]
+    _fail(f"readiness never reached ({last}); server log tail: {tail}")
 
 
 def start_server(
-    listener: socket.socket,
+    port: int,
     environment: dict[str, str],
     server_log: Path,
-    *,
-    owner: list[SupervisedMaster],
-) -> SupervisedMaster:
+) -> subprocess.Popen[bytes]:
     """Fork and exec one supervised Gunicorn master in its own process group."""
     interpreter = Path(sys.executable)
     if not interpreter.is_absolute() or not os.access(interpreter, os.X_OK):
         _fail("supervised interpreter is not an executable absolute path")
-    listener_fd = listener.fileno()
-    return start_master(
-        [
-            str(interpreter),
-            "-m",
-            "gunicorn",
-            "--bind",
-            f"fd://{listener_fd}",
-            "--workers=2",
-            "--preload",
-            "--access-logfile",
-            environment["CLINIC_BROWSER_ACCESS_LOG"],
-            # ADR-014: method + status + duration only; no request line.
-            "--access-logformat",
-            "%(m)s %(s)s %(D)s",
-            "--error-logfile",
-            "-",
-            "config.wsgi:application",
-        ],
-        environment,
-        server_log,
-        owner=owner,
-        pass_fds=(listener_fd,),
-    )
+    with server_log.open("wb") as stream:
+        return subprocess.Popen(  # noqa: S603 - resolved interpreter, closed argv.
+            [
+                str(interpreter),
+                "-m",
+                "gunicorn",
+                "--bind",
+                f"{HOST}:{port}",
+                "--workers=2",
+                "--preload",
+                "--access-logfile",
+                environment["CLINIC_BROWSER_ACCESS_LOG"],
+                # ADR-014: method + status + duration only; no request line.
+                "--access-logformat",
+                "%(m)s %(s)s %(D)s",
+                "--error-logfile",
+                "-",
+                "config.wsgi:application",
+            ],
+            env=environment,
+            start_new_session=True,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+        )
+
+
+def stop_server(process: subprocess.Popen[bytes]) -> None:
+    """Terminate the supervised process group and reap every descendant."""
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
 
 
 def publish(evidence_root: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
@@ -226,21 +223,17 @@ def run_suite(suite_id: str, required: list[str]) -> int:
             _fail(f"missing {name}")
     evidence_root = Path(os.environ["CLINIC_BROWSER_EVIDENCE_ROOT"])
     evidence_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    port = reserve_port()
     environment = dict(os.environ)
     environment.pop(FIXTURE_DATABASE_VARIABLE, None)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
-    spawned: list[SupervisedMaster] = []
+    server = start_server(port, environment, server_log)
     try:
-        with reserve_listener() as listener:
-            port = int(listener.getsockname()[1])
-            server = start_server(listener, environment, server_log, owner=spawned)
-        wait_until_ready(port, server_log, server.process)
+        wait_until_ready(port, server_log)
         artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
-        if spawned:
-            spawned[0].terminate()
-            require_released_port(port)
+        stop_server(server)
     manifest = {
         "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,
