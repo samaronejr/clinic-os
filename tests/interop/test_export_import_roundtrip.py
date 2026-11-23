@@ -957,3 +957,28 @@ def test_v5_refuses_without_partial_writes(
         )
     assert str(refused.value) == code
     assert _target_counts(target.graph.organization_a) == before
+
+
+@pytest.mark.usefixtures("attachment_root")
+def test_v5_patient_only_selection_ignores_native_attachments(
+    rbac_graph: RbacGraph, target: ImportWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enrollments = _seed_identities(rbac_graph)
+    _seed_clinical(rbac_graph, enrollments)
+    source = _export(rbac_graph, org_admin(rbac_graph))
+    assert len(source.rows("ehr_clinicalattachment")) == 2
+
+    report = _commit(
+        target,
+        _upload(target, source, ("intake_patient",)),
+        monkeypatch,
+        expected=(2, 2),
+    )
+
+    assert report.reconciled
+    assert part(report.report, "datasets", "patients", "committed") == 2
+    assert part(report.report, "datasets", "history", "committed") == 0
+    with owner_context(target.graph.organization_a):
+        assert not ImportFile.objects.filter(
+            job_id=report.job.job_id, role="attachment"
+        ).exists()

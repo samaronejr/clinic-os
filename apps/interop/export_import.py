@@ -253,14 +253,13 @@ def upload_v5_import(
         raise ImportInputError(Code.INVALID_COMMAND)
     import_authority(clinic_id=clinic_id)
     verified_upload_digest(data, declared_sha256)
+    # Prior import facts are always read so that omitting them is refused;
+    # native clinical rows and their bytes are read only when selected.
     lookups = {
         _ENROLLMENTS,
         _HIDDEN,
         _CORRECTIONS,
         IMPORTED_RECORDS,
-        ATTACHMENTS,
-        DOCUMENTS,
-        ENCOUNTERS,
         IMPORT_TRANSITIONS,
     }
     if NOTES in selected:
