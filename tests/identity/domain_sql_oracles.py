@@ -7,6 +7,7 @@ from ai import (
     test_agent_guards,
     test_agent_staff_authority,
     test_guide_consent,
+    test_guide_visibility,
     test_revenue_cycle,
     test_vote_attestation,
 )
@@ -433,6 +434,9 @@ PROTOCOL_ORACLES = {
     "clinic_app.ai_guide_consent": [
         "test_finance_guide_binding_is_one_bit_and_never_rebinds"
     ],
+    "clinic_app.insurance_guide_read_scope": [
+        "test_guide_bit_requires_the_same_staff_scope_as_the_visible_guide"
+    ],
     "clinic_app.ai_revenue_ancestry": [
         *REVENUE_BOUND_ORACLES,
         "test_sql_refuses_revenue_policy_versions_without_publisher_finance_automation",
@@ -692,6 +696,10 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     )
     for module, names in (
         (test_guide_consent, PROTOCOL_ORACLES["clinic_app.ai_guide_consent"]),
+        (
+            test_guide_visibility,
+            PROTOCOL_ORACLES["clinic_app.insurance_guide_read_scope"],
+        ),
         (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_row"]),
         (test_revenue_cycle, PROTOCOL_ORACLES["clinic_app.ai_revenue_ancestry"]),
         (test_vote_attestation, VOTE_ORACLES),

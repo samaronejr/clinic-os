@@ -195,6 +195,17 @@
       "reason": "Current GUC actor, clinic and patient-scoped has_permission; BRIEF and DECISION_SUPPORT also recheck the pinned visit and current acceptance."
     },
     {
+      "symbol": "apps.ai.authorization._clinical_source",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.authorization._clinical_source#cut1"
+      ],
+      "reason": "After staff scope, the dispatcher binds the protected input to the actual visit or source plan and independently rechecks the patient's choices."
+    },
+    {
       "symbol": "apps.ai.authorization.authorize_capability",
       "signals": [
         "denial",
@@ -10827,6 +10838,7 @@
     "apps.ai.attestations.step_up_evidence#cut1",
     "apps.ai.authorization._authorize_message#cut1",
     "apps.ai.authorization._authorize_staff_input#cut1",
+    "apps.ai.authorization._clinical_source#cut1",
     "apps.ai.authorization.authorize_capability#cut1",
     "apps.ai.brief._admit#cut1",
     "apps.ai.brief.display_chart_turn#cut1",
@@ -16459,6 +16471,7 @@
           "clinic_app.insurance_appointment_guard",
           "clinic_app.insurance_booking_coverage",
           "clinic_app.insurance_guard",
+          "clinic_app.insurance_guide_read_scope",
           "clinic_app.insurance_guide_source",
           "clinic_app.insurance_link_registered_payer",
           "clinic_app.intake_duplicate_detection_guard",
@@ -25763,6 +25776,32 @@
       ],
       "reason": "Insurance protocol exercised with real clinic_app roles: exact clinic and patient bindings, immutable source receipts, current physician approval, synthetic payer checks and independent journal money."
     },
+    "clinic_app.insurance_guide_read_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "org uuid, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_guide_read_scope_sql.py"
+        ],
+        "policies": [
+          "clinic_app.insurance_guide:insurance_scope"
+        ],
+        "resolvers": [
+          "clinic_app.ai_guide_consent"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_guide_bit_requires_the_same_staff_scope_as_the_visible_guide"
+      ],
+      "reason": "The live guide USING policy and the Finance consent definer call the same invoker predicate. A real role-context matrix compares the two under Finance authority and each enterprise channel."
+    },
     "clinic_app.insurance_guide_source": {
       "discovery": {
         "migrations": [
@@ -28130,7 +28169,9 @@
           "clinic_app.workflows_workflowstep:workflow_read",
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.insurance_guide_read_scope"
+        ]
       },
       "kind": "domain_protocol",
       "probes": [

@@ -353,6 +353,7 @@ POSTURE_OVERRIDES: Final = {
     "scribe_draft_guard": ("v", False, ["clinic_resolver"]),
     "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_guide_consent": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "insurance_guide_read_scope": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ai_revenue_ancestry": (
         "v",
         True,
@@ -701,6 +702,7 @@ FUNCTION_SIGNATURES: Final = {
     ),
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
     ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"),
+    ("insurance_guide_read_scope", "org uuid, clinic uuid"),
     (
         "ai_guide_consent",
         "requested_clinic uuid, requested_guide uuid, requested_encounter uuid, "
@@ -1077,6 +1079,7 @@ FUNCTION_RESULTS: Final = {
     ("scribe_draft_guard", ""): "trigger",
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
     ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"): "boolean",
+    ("insurance_guide_read_scope", "org uuid, clinic uuid"): "boolean",
     (
         "ai_guide_consent",
         "requested_clinic uuid, requested_guide uuid, requested_encounter uuid, "
@@ -1590,7 +1593,8 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             name
             not in journal_catalog.INVOKERS
             | subscriptions_catalog.INVOKERS
-            | interop_catalog.INVOKERS,
+            | interop_catalog.INVOKERS
+            | {"insurance_guide_read_scope"},
             volatility,
             "u",
             [

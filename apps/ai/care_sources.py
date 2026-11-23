@@ -19,6 +19,8 @@ from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.effects import check_invocation
 from apps.ai.pending_choice import pending_choice_allows
+from apps.consent.services import ai_disclosure_status
+from apps.identity.current_context import CurrentActorError
 from apps.workflows.access import WorkflowAccessDeniedError
 from apps.workflows.care.access import version_scope
 from apps.workflows.care.models import CarePlan
@@ -90,6 +92,25 @@ def plan_is_current(plan: CarePlan) -> bool:
     return state == "finalized"
 
 
+def care_choice_allows(plan: CarePlan, *, generated_at: datetime | None) -> bool:
+    """Bind both choices to the plan, even for a nonclinical staff projection."""
+    if not pending_choice_allows(
+        clinic_id=plan.clinic_id,
+        enrollment_id=plan.enrollment_id,
+        generated_at=generated_at,
+    ):
+        return False
+    try:
+        disclosure = ai_disclosure_status(
+            clinic_id=plan.clinic_id, encounter_id=plan.encounter_id
+        )
+    except CurrentActorError:
+        return False
+    # An absent visit attestation does not block the previously authorized
+    # administrative plan workflow. An explicit refusal on its own visit does.
+    return disclosure is None or (disclosure.informed and not disclosure.refused)
+
+
 def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
     """Reload the plan and the proposal; any drift is a stale source."""
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
@@ -128,11 +149,7 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
         or item.plan_revision != plan.revision
         or item.state != "pending"
         or item.audience != "administrative"
-        or not pending_choice_allows(
-            clinic_id=clinic_id,
-            enrollment_id=item.enrollment_id,
-            generated_at=item.created_at,
-        )
+        or not care_choice_allows(plan, generated_at=item.created_at)
         or cited["care_proposal"] != item_source(item)
         or care_window(data["parameters"])
         != (item.kind, item.window_start, item.window_end)

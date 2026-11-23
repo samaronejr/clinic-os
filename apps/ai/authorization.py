@@ -10,6 +10,8 @@ from django.conf import settings
 from django.db import connection
 
 from apps.ai.brief_contracts import parse_request
+from apps.ai.care_contracts import parse_request as parse_care_request
+from apps.ai.care_sources import care_choice_allows
 from apps.ai.chart_authority import recheck_chart_permission
 from apps.ai.contracts import (
     GatewayAccessDeniedError,
@@ -26,6 +28,7 @@ from apps.analytics.contracts import SCHEMA as ANALYST_SCHEMA
 from apps.core.secrets import secret_store
 from apps.identity.current_context import require_permission
 from apps.tenancy.envelope import KEK_SECRET_NAME
+from apps.workflows.care.models import CarePlan
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -136,25 +139,41 @@ def _authorize_staff_input(purpose: Purpose, subject: StaffInput) -> UUID:
             actor = require_permission(
                 "clinical.read", clinic_id=clinic, patient_enrollment_id=enrollment
             )
-            if purpose is Purpose.BRIEF:
-                recheck_chart_permission(
-                    clinic_id=clinic,
-                    enrollment_id=enrollment,
-                    request=parse_request(subject.content),
-                    display=subject.display,
-                )
-            elif purpose is Purpose.DECISION_SUPPORT:
-                authorize_decision(
-                    clinic_id=clinic,
-                    content=subject.content,
-                    enrollment_id=enrollment,
-                    display=subject.display,
-                )
-            elif purpose in (Purpose.CARE_COORDINATION, Purpose.EXTRACTION):
-                _pending_choice(subject)
+            _clinical_source(purpose, subject)
             return actor
         case unreachable:
             assert_never(unreachable)
+
+
+def _clinical_source(purpose: Purpose, subject: StaffInput) -> None:
+    if purpose is Purpose.BRIEF:
+        recheck_chart_permission(
+            clinic_id=subject.clinic_id,
+            enrollment_id=subject.enrollment_id,
+            request=parse_request(subject.content),
+            display=subject.display,
+        )
+    elif purpose is Purpose.DECISION_SUPPORT:
+        authorize_decision(
+            clinic_id=subject.clinic_id,
+            content=subject.content,
+            enrollment_id=subject.enrollment_id,
+            display=subject.display,
+        )
+    elif purpose is Purpose.CARE_COORDINATION:
+        request = parse_care_request(subject.content)
+        plan = CarePlan.objects.filter(
+            pk=request.plan_id,
+            clinic_id=subject.clinic_id,
+            enrollment_id=subject.enrollment_id,
+            source_version_id=request.source_version_id,
+        ).first()
+        if plan is None:
+            raise GatewayAccessDeniedError
+        if not care_choice_allows(plan, generated_at=subject.generated_at):
+            raise GatewayRefusedError(reason="authority_revoked")
+    elif purpose is Purpose.EXTRACTION:
+        _pending_choice(subject)
 
 
 def _pending_choice(subject: StaffInput, *, patient_optional: bool = False) -> None:

@@ -34,6 +34,7 @@ from apps.ai.artifacts import create_input, input_for, read_artifact
 from apps.ai.care_contracts import CareRequest, parse_request, validate_reply
 from apps.ai.care_models import CareProposal
 from apps.ai.care_sources import (
+    care_choice_allows,
     instant_text,
     item_digest,
     item_source,
@@ -51,7 +52,6 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
-from apps.ai.pending_choice import pending_choice_allows
 from apps.ai.policy import enabled_policy
 from apps.ai.proposals import AgentContext, propose_action
 from apps.ai.services import invoke
@@ -203,10 +203,8 @@ def visible_care_items(items: Iterable[CareProposal]) -> tuple[CareProposal, ...
     for item in items:
         if item.state not in ("accepted", "approved", "rejected"):
             if item.invocation_id not in allowed:
-                allowed[item.invocation_id] = pending_choice_allows(
-                    clinic_id=item.clinic_id,
-                    enrollment_id=item.enrollment_id,
-                    generated_at=item.created_at,
+                allowed[item.invocation_id] = care_choice_allows(
+                    item.plan, generated_at=item.created_at
                 )
             if not allowed[item.invocation_id]:
                 continue

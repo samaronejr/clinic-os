@@ -44,14 +44,16 @@ def _selected_visit(
     # A pre-visit row cannot borrow some *other* open visit's consent.
     scheduled = (
         Encounter.objects.filter(
-            clinic_id=clinic, appointment_id=patient.appointment_id, state="open"
+            clinic_id=clinic, appointment_id=patient.appointment_id
         )
-        .values_list("pk", flat=True)
+        .values_list("pk", "state")
         .first()
     )
-    if visit is not None and scheduled != visit:
+    if visit is not None and (scheduled is None or scheduled[0] != visit):
         raise GatewayAccessDeniedError
-    return scheduled
+    # Closing a visit changes availability, not the identity in the form we
+    # already served. display_chart_turn still binds its invocation and session.
+    return scheduled[0] if scheduled and scheduled[1] == Encounter.State.OPEN else None
 
 
 def _continuation(clinic_id: UUID) -> str:
