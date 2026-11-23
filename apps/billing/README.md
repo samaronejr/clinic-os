@@ -226,6 +226,10 @@ retains the independent lookup before matching lines. Newer or contradictory
 facts also fence `unknown` outgoing observations; they cannot advance a
 reservation. Replaying a fact cannot create a second collection, receipt,
 refund or fee.
+An `unknown` at a provider sequence records uncertainty, not a contrary
+status. An independent concrete result can resolve it at that sequence,
+but not below it. A concrete reversal at the same or a later sequence
+still blocks stale application and completion.
 
 `PspReceipt` is created only after a verified collection is posted and exactly
 allocated. Existing legacy Settlement/Receipt one-to-one contracts remain intact.

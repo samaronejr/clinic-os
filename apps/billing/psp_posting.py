@@ -151,6 +151,9 @@ def apply_psp_evidence(*, clinic_id: UUID, evidence_id: UUID) -> UUID:
                 Q(version__gt=evidence.version)
                 | (
                     Q(version=evidence.version)
+                    # Unknown reserves the sequence, not a concrete status.
+                    # A newer unknown still fences a lower-version fact.
+                    & ~Q(status="unknown")
                     & ~Q(
                         status=evidence.status,
                         amount_minor=evidence.amount_minor,
