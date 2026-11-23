@@ -152,14 +152,14 @@ projection uses JSONL, not the
 spreadsheet-neutralized CSV. It keeps source timestamps with explicit offsets
 and sub-minute precision.
 
-| Dataset | Target projection | Not replayed |
+| Target projection | Dataset | Not replayed |
 |---|---|---|
-| `intake_patient` | Registry name and birth date for patients with a non-hidden enrollment; source patient id, creation time and original registrar label when the first correction receipt exists | Source primary keys, enrollments and registration authority |
-| `intake_patientdemographics` | Current legal/social names and sex at birth on the new patient registration | Other demographics fields, unknown-field reasons, old versions and correction receipts |
-| `intake_patientidentifier` | Latest non-retired CPF/CNS values per patient and kind | Other identifier kinds, issuers, retired/older versions, indexes and source row ids |
-| `ehr_clinicaldocumentversion` | RFC 8785 SOAP content as note text, with source version id, original author id label and finalization time | Draft/discarded versions, template, encounter, amendment links and live SOAP state |
-| `ehr_observation` | Code, value, unit and code-set version with source id, performer id label and effective time | Reference ranges, derivation links, confirmation and live observation state |
-| `ehr_clinicalattachment` | Available filename, type, size and SHA-256 plus exact rescanned bytes, with source id, uploader id label and creation time | Unavailable/rejected files, object keys and source scan state |
+| Registry name and birth date for patients with a non-hidden enrollment; source patient id, creation time and original registrar label when the first correction receipt exists | `intake_patient` | Source primary keys, enrollments and registration authority |
+| Current legal/social names and sex at birth on the new patient registration | `intake_patientdemographics` | Other demographics fields, unknown-field reasons, old versions and correction receipts |
+| Latest non-retired CPF/CNS values per patient and kind | `intake_patientidentifier` | Other identifier kinds, issuers, retired/older versions, indexes and source row ids |
+| RFC 8785 SOAP content as note text, with source version id, original author id label and finalization time | `ehr_clinicaldocumentversion` | Draft/discarded versions, template, encounter, amendment links and live SOAP state |
+| Code, value, unit and code-set version with source id, performer id label and effective time | `ehr_observation` | Reference ranges, derivation links, confirmation and live observation state |
+| Available filename, type, size and SHA-256 plus exact rescanned bytes, with source id, uploader id label and creation time | `ehr_clinicalattachment` | Unavailable/rejected files, object keys and source scan state |
 
 History is limited to a patient's non-hidden source enrollment scopes. The
 target creates fresh patient and enrollment ids, versions and indexes. Clinical
