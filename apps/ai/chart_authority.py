@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from typing import TYPE_CHECKING
 
 from apps.ai.brief_contracts import VisitPermission
@@ -15,11 +16,15 @@ from apps.intake.models import PatientClinicEnrollment
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from apps.ai.brief_contracts import ChartRequest
+    from apps.ai.brief_contracts import ChartDisplay, ChartRequest
 
 
 def visit_permission(
-    *, clinic_id: UUID, enrollment_id: UUID, encounter_id: UUID | None
+    *,
+    clinic_id: UUID,
+    enrollment_id: UUID,
+    encounter_id: UUID | None,
+    expected_encounter: UUID | None = None,
 ) -> VisitPermission:
     """Never search for a favorable disclosure: bind only the actual visit.
 
@@ -40,6 +45,8 @@ def visit_permission(
             record_denial(clinic_id, enrollment_id, "ai_permission_unavailable")
             raise GatewayRefusedError(reason="authority_revoked")
         encounter_id = visits[0]
+    if expected_encounter is not None and encounter_id != expected_encounter:
+        raise GatewayAccessDeniedError
     if (
         chart_enrollment(clinic_id=clinic_id, encounter_id=encounter_id)
         != enrollment_id
@@ -55,17 +62,29 @@ def visit_permission(
 
 
 def recheck_chart_permission(
-    *, clinic_id: UUID, request: ChartRequest, enrollment_id: UUID | None
+    *,
+    clinic_id: UUID,
+    request: ChartRequest,
+    enrollment_id: UUID | None,
+    display: ChartDisplay | None = None,
 ) -> None:
     """Legacy/unbound requests cannot run or reveal retained material."""
     binding = request.permission
-    if binding is None or request.enrollment != enrollment_id:
+    if (
+        binding is None
+        or request.enrollment != enrollment_id
+        or (
+            display is not None
+            and not hmac.compare_digest(request.session, display.session)
+        )
+    ):
         raise GatewayAccessDeniedError
     if (
         visit_permission(
             clinic_id=clinic_id,
             enrollment_id=request.enrollment,
-            encounter_id=binding.encounter,
+            encounter_id=binding.encounter if display is None else display.encounter,
+            expected_encounter=binding.encounter,
         )
         != binding
     ):

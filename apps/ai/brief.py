@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -10,6 +9,7 @@ from django.db import transaction
 
 from apps.ai.artifacts import create_input, input_for, read_artifact
 from apps.ai.brief_contracts import (
+    ChartDisplay,
     ChartRequest,
     parse_request,
     question_topic,
@@ -124,6 +124,7 @@ def display_brief(
         clinic_id=clinic_id,
         user_id=current_actor_id(),
         purpose=Purpose.BRIEF.value,
+        inputs_ref__patient_enrollment_id=enrolled,
     ).first()
     if invocation is None:
         raise GatewayAccessDeniedError
@@ -132,20 +133,12 @@ def display_brief(
             clinic_id=clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose.BRIEF,
+            display=ChartDisplay(encounter_id, session_binding),
         )
         enabled_policy(Purpose.BRIEF)
-        binding = visit_permission(
-            clinic_id=clinic_id, enrollment_id=enrolled, encounter_id=encounter_id
-        )
     except GatewayRefusedError:
         return Brief("unavailable")
     request = parse_request(source.content)
-    if (
-        request.enrollment != enrolled
-        or request.permission != binding
-        or not hmac.compare_digest(request.session, session_binding)
-    ):
-        raise GatewayAccessDeniedError
     if invocation.status == "reserved":
         return Brief("generating", invocation_id)
     if invocation.status != "succeeded":

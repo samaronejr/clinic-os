@@ -121,6 +121,14 @@ class VisitPermission:
 
 
 @dataclass(frozen=True, slots=True)
+class ChartDisplay:
+    """The current surface's selectors, not a grant to the stored chart turn."""
+
+    encounter: UUID | None
+    session: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
 class ChartRequest:
     """Only question text is protected content; sources are opaque exact references."""
 

@@ -27,6 +27,8 @@ from apps.identity.models import Clinic
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.brief_contracts import ChartDisplay
+
 
 def create_input(
     *,
@@ -73,7 +75,13 @@ def create_input(
     return artifact
 
 
-def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtifact:
+def input_for(
+    *,
+    clinic_id: UUID,
+    inputs_ref: UUID,
+    purpose: Purpose,
+    display: ChartDisplay | None = None,
+) -> AIArtifact:
     """Unknown, expired, foreign-clinic, and foreign-user refs all deny equally."""
     artifact = AIArtifact.objects.filter(
         pk=inputs_ref,
@@ -87,7 +95,10 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
     if artifact is None:
         raise GatewayAccessDeniedError
     authorization.authorize_capability(
-        purpose, StaffInput(clinic_id, artifact.patient_enrollment_id, artifact.content)
+        purpose,
+        StaffInput(
+            clinic_id, artifact.patient_enrollment_id, artifact.content, display
+        ),
     )
     if purpose is Purpose.REVENUE_CYCLE:
         enabled_policy(purpose)

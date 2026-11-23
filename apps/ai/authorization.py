@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, assert_never, overload
+from typing import TYPE_CHECKING, Literal, assert_never, overload
 from uuid import UUID
 
 from django.conf import settings
@@ -21,6 +21,9 @@ from apps.core.secrets import secret_store
 from apps.identity.current_context import require_permission
 from apps.tenancy.envelope import KEK_SECRET_NAME
 
+if TYPE_CHECKING:
+    from apps.ai.brief_contracts import ChartDisplay
+
 
 @dataclass(frozen=True, slots=True)
 class StaffInput:
@@ -29,6 +32,7 @@ class StaffInput:
     clinic_id: UUID
     enrollment_id: UUID | None
     content: str = field(repr=False)
+    display: ChartDisplay | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,10 +125,14 @@ def _authorize_staff_input(purpose: Purpose, subject: StaffInput) -> UUID:
                     clinic_id=clinic,
                     enrollment_id=enrollment,
                     request=parse_request(subject.content),
+                    display=subject.display,
                 )
             elif purpose is Purpose.DECISION_SUPPORT:
                 authorize_decision(
-                    clinic_id=clinic, content=subject.content, enrollment_id=enrollment
+                    clinic_id=clinic,
+                    content=subject.content,
+                    enrollment_id=enrollment,
+                    display=subject.display,
                 )
             return actor
         case unreachable:

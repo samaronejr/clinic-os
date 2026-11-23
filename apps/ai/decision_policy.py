@@ -16,6 +16,7 @@ from apps.providers.services import current_version
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.brief_contracts import ChartDisplay
     from apps.ai.decision_contracts import DecisionRequest
     from apps.ai.reference_catalog import CatalogEntry
 
@@ -47,7 +48,11 @@ def authorized_catalog(*, clinic_id: UUID) -> tuple[CatalogEntry, ...]:
 
 
 def authorize_decision(
-    *, clinic_id: UUID, content: str, enrollment_id: UUID | None
+    *,
+    clinic_id: UUID,
+    content: str,
+    enrollment_id: UUID | None,
+    display: ChartDisplay | None = None,
 ) -> DecisionRequest:
     """Recheck authorization at artifact, gateway, dispatch and display boundaries."""
     request = parse_decision_request(content)
@@ -55,7 +60,10 @@ def authorize_decision(
     if binding is None or binding.encounter != request.encounter:
         raise GatewayAccessDeniedError
     recheck_chart_permission(
-        clinic_id=clinic_id, request=request.chart, enrollment_id=enrollment_id
+        clinic_id=clinic_id,
+        request=request.chart,
+        enrollment_id=enrollment_id,
+        display=display,
     )
     resolve_catalog(request, authorized_catalog(clinic_id=clinic_id))
     return request

@@ -43,7 +43,9 @@ class NoteFrame:
     epochs: dict[str, int]
 
 
-def note_frame(*, clinic_id: UUID, version_id: UUID) -> NoteFrame:
+def note_frame(
+    *, clinic_id: UUID, version_id: UUID, transcript_id: UUID | None = None
+) -> NoteFrame:
     """Never create an edit-state row, read audit or session on a refusal."""
     version = (
         ClinicalDocumentVersion.objects.select_related(
@@ -64,6 +66,17 @@ def note_frame(*, clinic_id: UUID, version_id: UUID) -> NoteFrame:
         version.author_id != scope.physician_id
         or scope.encounter.state != "open"
         or version.state != "draft"
+    ):
+        raise DraftAccessDeniedError
+    if (
+        transcript_id is not None
+        and not TranscriptVersion.objects.filter(
+            pk=transcript_id,
+            session__clinic_id=clinic_id,
+            session__encounter_id=scope.encounter.pk,
+            session__enrollment_id=scope.enrollment.pk,
+            session__physician_id=scope.physician_id,
+        ).exists()
     ):
         raise DraftAccessDeniedError
     try:

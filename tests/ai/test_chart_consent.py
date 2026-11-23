@@ -11,7 +11,7 @@ import pytest
 from apps.ai import brief_views
 from apps.ai.artifacts import read_artifact
 from apps.ai.brief import display_brief, request_brief
-from apps.ai.contracts import GatewayRefusedError, Purpose
+from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError, Purpose
 from apps.ai.decision_support import (
     display_decision_support,
     record_decision,
@@ -21,6 +21,7 @@ from apps.ai.models import AIArtifact, AIInvocation
 from apps.ai.tasks import run_operation
 from apps.audit.canonical import AUDIT_PAYLOAD_ALLOWED
 from apps.consent.services import record_ai_disclosure, revoke_consent
+from apps.ehr.finalization import close_encounter
 from apps.ehr.services import record_clinical_note
 from apps.intake.patient_access import patient_session_context
 from apps.workflows.today import TodayAppointment, view_today
@@ -30,7 +31,7 @@ from django.utils import timezone
 from ai.brief_support import BINDING, seeded, without_patient_choice
 from ai.chart_consent_support import ConsentActors, accept_ai, choose_ai
 from ai.decision_support_helpers import counts, enable, generate, world_for
-from ehr.longitudinal_support import second_draft
+from ehr.longitudinal_support import finalized, second_draft
 from ehr.test_addenda import signed_in
 from ehr.test_autosave import SECTIONS, as_actor
 from identity.permission_support import owner_context
@@ -239,6 +240,46 @@ def test_no_purpose_acceptance_or_separate_refusal_blocks_both_chart_consumers(
     assert not world.gateway.publications
 
 
+@pytest.mark.parametrize("purpose", [Purpose.BRIEF, Purpose.DECISION_SUPPORT])
+@pytest.mark.parametrize("wrong", ["encounter", "session"])
+def test_wrong_display_scope_denied_even_after_the_original_receipt_is_revoked(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch, purpose: Purpose, wrong: str
+) -> None:
+    g = rbac_graph
+    world = world_for(g, monkeypatch)
+    enable(world)
+    owner, receipt = accept_ai(g, world.chart.enrollment)
+    encounter = world.chart.version.document.encounter_id
+    with as_actor(g, g.physician):
+        if purpose is Purpose.BRIEF:
+            key = request_brief(
+                clinic_id=g.clinic_a, encounter_id=encounter, session_binding=BINDING
+            ).invocation_id
+        else:
+            key = request_decision_support(
+                clinic_id=g.clinic_a,
+                encounter_id=encounter,
+                session_binding=BINDING,
+                opt_in=True,
+            ).invocation_id
+    assert key is not None
+    if wrong == "encounter":
+        encounter = second_draft(g, world.chart, g.physician).document.encounter_id
+    binding = "2" * 64 if wrong == "session" else BINDING
+    with runtime_role(), patient_session_context(owner):
+        revoke_consent(acceptance_id=receipt)
+    # An out-of-scope caller must not even learn whether the old receipt
+    # remains current. For the right visit/session, withdrawal is "unavailable".
+    display = display_brief if purpose is Purpose.BRIEF else display_decision_support
+    with as_actor(g, g.physician), pytest.raises(GatewayAccessDeniedError):
+        display(
+            clinic_id=g.clinic_a,
+            encounter_id=encounter,
+            invocation_id=key,
+            session_binding=binding,
+        )
+
+
 def test_today_cannot_borrow_an_open_visit_from_a_different_appointment(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -274,6 +315,31 @@ def test_today_cannot_borrow_an_open_visit_from_a_different_appointment(
         assert response.status_code == 200
         assert b'data-today-brief="unavailable"' in response.content
     assert world.gateway.publications == []
+
+
+def test_workspace_visit_switch_denies_before_either_visits_consent(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    g = rbac_graph
+    world = seeded(g, monkeypatch)
+    encounter = world.chart.version.document.encounter_id
+    with as_actor(g, g.physician):
+        key = request_brief(
+            clinic_id=g.clinic_a, encounter_id=encounter, session_binding=BINDING
+        ).invocation_id
+    assert key is not None
+    finalized(g, world.chart.version)
+    with as_actor(g, g.physician):
+        close_encounter(clinic_id=g.clinic_a, encounter_id=encounter)
+    # The only open visit belongs to the same patient but has no disclosure.
+    second_draft(g, world.chart, g.physician)
+    with as_actor(g, g.physician), pytest.raises(GatewayAccessDeniedError):
+        display_brief(
+            clinic_id=g.clinic_a,
+            enrollment_id=world.chart.enrollment,
+            invocation_id=key,
+            session_binding=BINDING,
+        )
 
 
 def test_enrollment_cannot_pick_a_favorable_visit_or_replace_an_explicit_refusal(

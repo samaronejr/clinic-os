@@ -58,6 +58,7 @@ def _consented(
     clinic_id: UUID,
     chunk_id: UUID,
     lock: bool = False,
+    source: AIArtifact | None = None,
 ) -> tuple[AudioChunk, RecordingSession, ConsentAcceptance]:
     try:
         chunk = AudioChunk.objects.filter(pk=chunk_id, state="accepted").first()
@@ -68,6 +69,13 @@ def _consented(
             session_id=chunk.session_id,
             consent_required=False,
         )
+        if recording.discarded or scope.encounter.state != "open":
+            raise TranscriptAccessDeniedError
+        if source is not None and (
+            source.user_id != recording.physician_id
+            or source.patient_enrollment_id != recording.enrollment_id
+        ):
+            raise TranscriptAccessDeniedError
         if lock:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -81,7 +89,7 @@ def _consented(
             enrollment_id=recording.enrollment_id,
             purpose="ai_assistance",
         )
-        if consent is None or recording.discarded or scope.encounter.state != "open":
+        if consent is None:
             raise TranscriptAccessDeniedError
     except (ScribeError, CurrentActorError) as error:
         raise TranscriptAccessDeniedError from error
@@ -92,16 +100,15 @@ def eligible_input(source: AIArtifact) -> bool:
     """Recheck consent, exact audio identity and assignment at the send boundary."""
     try:
         payload = decode_reference(source.content)
-        chunk, recording, consent = _consented(
+        chunk, _recording, consent = _consented(
             clinic_id=source.clinic_id,
             chunk_id=payload.chunk_id,
+            source=source,
         )
     except (TranscriptError, TranscriptAccessDeniedError):
         return False
     return (
-        source.user_id == recording.physician_id
-        and source.patient_enrollment_id == recording.enrollment_id
-        and payload.consent_id == consent.pk
+        payload.consent_id == consent.pk
         and payload.codec == chunk.codec
         and payload.duration_ms == chunk.duration_ms
     )

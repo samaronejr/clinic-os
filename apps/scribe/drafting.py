@@ -72,7 +72,9 @@ def request_draft(
     ):
         raise DraftInputError
     generation_lock(version_id)
-    frame = note_frame(clinic_id=clinic_id, version_id=version_id)
+    frame = note_frame(
+        clinic_id=clinic_id, version_id=version_id, transcript_id=transcript_id
+    )
     previous = AIDraft.objects.filter(
         version_id=version_id, request_key=request_key
     ).first()

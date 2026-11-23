@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hmac
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from django.db import transaction
 
 from apps.ai.artifacts import create_input, input_for, read_artifact
-from apps.ai.brief_contracts import ChartRequest, VisitPermission
+from apps.ai.brief_contracts import ChartDisplay, ChartRequest, VisitPermission
 from apps.ai.chart_authority import visit_permission
 from apps.ai.context import assemble_context
 from apps.ai.contracts import (
@@ -149,12 +148,13 @@ def display_decision_support(
     invocation_id: UUID,
 ) -> DecisionPanel:
     """Re-resolve patient and licensed references under current display authority."""
-    chart_enrollment(clinic_id=clinic_id, encounter_id=encounter_id)
+    enrolled = chart_enrollment(clinic_id=clinic_id, encounter_id=encounter_id)
     invocation = AIInvocation.objects.filter(
         pk=invocation_id,
         clinic_id=clinic_id,
         user_id=current_actor_id(),
         purpose=Purpose.DECISION_SUPPORT.value,
+        inputs_ref__patient_enrollment_id=enrolled,
     ).first()
     if invocation is None:
         raise GatewayAccessDeniedError
@@ -163,12 +163,9 @@ def display_decision_support(
             clinic_id=clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose.DECISION_SUPPORT,
+            display=ChartDisplay(encounter_id, session_binding),
         )
         request = parse_decision_request(artifact.content)
-        if request.encounter != encounter_id or not hmac.compare_digest(
-            request.chart.session, session_binding
-        ):
-            raise GatewayAccessDeniedError
         if invocation.status == "reserved":
             return DecisionPanel(invocation_id=invocation_id)
         if invocation.status != "succeeded":
