@@ -20,7 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
+from uuid import uuid4, uuid5
+
+from django.db.models.expressions import RawSQL
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -47,6 +49,15 @@ class SeedContext:
     now: datetime
     seeded: Mapping[str, Sequence[object]]
     legacy: Callable[[str, Mapping[str, object]], object]
+    fetch: Callable[[str, str, Mapping[str, object]], object]
+
+    def value(self, label: str, name: str, **filters: object) -> object:
+        """One stored column of the base row ``ref(label, **filters)`` names."""
+        return self.fetch(label, name, filters)
+
+    def key(self, name: str) -> UUID:
+        """Return a stable synthetic id, so one row can name another first."""
+        return uuid5(self.organization, name)
 
     @property
     def future(self) -> datetime:
@@ -76,7 +87,14 @@ class Seed:
     already-existing models the graph needs first (an extra staff role, a
     recovery device) through the same historical state; ``after`` names
     same-stage models whose rows a value refers to without a foreign key, so
-    they load first.
+    they load first; ``updates`` then moves an earlier row through a product
+    transition (``TRANSITION_GUARDS`` lists any session guard suspended for
+    it) and re-records the row.
+
+    To seed a model a later migration adds, add one entry under its domain;
+    if its insert guard authorizes against a live session, name that one
+    BEFORE ROW INSERT trigger in ``GUARDED_TRIGGERS`` and, when the guard
+    encodes a cross-row rule, add the rule to ``LEAF_INVARIANTS``.
     """
 
     rows: Callable[[SeedContext], Sequence[Row]] = field(default=_one)
@@ -84,6 +102,7 @@ class Seed:
     adopt: str = ""
     support: tuple[tuple[str, Seed], ...] = ()
     after: tuple[str, ...] = ()
+    updates: tuple[tuple[str, Callable[[SeedContext], tuple[object, Row]]], ...] = ()
 
 
 def _rows(*rows: Row) -> Callable[[SeedContext], Sequence[Row]]:
@@ -94,141 +113,186 @@ def _owner_role(role: str) -> Callable[[SeedContext], Sequence[Row]]:
     return lambda c: ({"user_id": c.owner, "role": role},)
 
 
-# Models whose user triggers are suspended for their owner fixture load: the
-# insert guard authorizes against, or derives columns from, request-time state
-# (step-up or patient session, service command, provider callback, live AI
-# reservation) an owner load cannot present. CHECK/UNIQUE/FK/NOT NULL and RLS
-# stay active for every load, the triggers are restored (and verified) inside
-# the stage transaction, and every later migration and the leaf readback run
-# with all triggers enabled. Every other model loads through its live guards.
-GUARDED_LOADS: Final[frozenset[str]] = frozenset(
+def _reviewer(name: str) -> Callable[[SeedContext], Sequence[Row]]:
+    return lambda c: (
+        {
+            "id": c.key(name),
+            "username": f"upgrade-{name}-{c.key(name).hex[:8]}",
+            "password": "!",
+            "is_active": True,
+        },
+    )
+
+
+def _reviewer_role(name: str) -> Callable[[SeedContext], Sequence[Row]]:
+    return lambda c: ({"user_id": c.key(name), "role": "physician"},)
+
+
+TRANSACTION_TIME: Final = RawSQL("transaction_timestamp()", ())
+
+
+def _finalized(c: SeedContext, name: str) -> object:
+    """Return a column of the witness's finalized SOAP version."""
+    return c.value("ehr.ClinicalDocumentVersion", name, state="finalized")
+
+
+# The first reviewed neutral marketing body (apps/crm/rules.py).
+MARKETING_BODY: Final = (
+    "A clinica tem horarios disponiveis. Consulte a agenda no portal. "
+    "Voce pode desativar mensagens de divulgacao nas preferencias do portal."
+)
+
+
+# The named BEFORE ROW INSERT guards suspended for each model's fixture load.
+# Each one authorizes the insert against live request state (a verified
+# authenticator factor, a patient or delegate session, a provider callback,
+# a reserved AI call, a service command) that an owner load cannot present.
+# Nothing else is suspended: AFTER triggers, deferred constraint triggers,
+# UPDATE-only guards, CHECK/UNIQUE/FK/NOT NULL and RLS all stay active, the
+# stage refuses to commit if any other trigger is disabled, and the leaf
+# verifier runs LEAF_INVARIANTS over the seeded graph. Every other model
+# loads through all of its live triggers.
+GUARDED_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
+    "ai.AIArtifact": ("ai_artifact_guard",),
+    "ai.AICircuit": ("ai_circuit_guard",),
+    "ai.AIInvocation": ("ai_invocation_guard",),
+    "ai.ActionExecution": ("agent_record_guard",),
+    "ai.ActionProposal": ("agent_record_guard",),
+    "ai.AgentRun": ("agent_record_guard",),
+    "ai.Approval": ("agent_record_guard",),
+    "ai.CareProposal": ("care_guard",),
+    "ai.Compensation": ("agent_record_guard",),
+    "ai.EvaluationProtocol": ("evaluation_guard",),
+    "ai.EvaluationRating": ("evaluation_guard",),
+    "ai.EvaluationRun": ("evaluation_guard",),
+    "ai.ExtractionCandidateRecord": ("extraction_guard",),
+    "ai.ExtractionJob": ("extraction_guard",),
+    "ai.FrontDeskThread": ("front_desk_guard",),
+    "ai.FrontDeskTurn": ("front_desk_guard",),
+    "ai.ModelChangeRequest": ("evaluation_guard",),
+    "analytics.AnalystReview": ("analytics_insert",),
+    "billing.Account": ("billing_journal_guard",),
+    "billing.CashSession": ("billing_journal_guard",),
+    "billing.FiscalConfiguration": ("fiscal_guard",),
+    "billing.FiscalDocument": ("fiscal_guard",),
+    "billing.JournalSettlement": ("billing_journal_guard",),
+    "billing.Payout": ("billing_journal_guard",),
+    "billing.PspEvidence": ("billing_psp_guard",),
+    "billing.PspIntent": ("billing_psp_guard",),
+    "billing.PspReceipt": ("billing_psp_guard",),
+    "billing.Refund": ("billing_journal_guard",),
+    "billing.SettlementAllocation": ("billing_journal_guard",),
+    "comms.Message": ("comms_message_guard",),
+    "consent.RefusalRecord": ("consent_binding",),
+    "crm.Campaign": ("crm_binding",),
+    "crm.CampaignSend": ("crm_binding",),
+    "crm.Lead": ("crm_binding",),
+    "crm.MarketingPreference": ("crm_binding",),
+    "crm.PublicBookingProfile": ("crm_binding",),
+    "crm.ReferralSource": ("crm_binding",),
+    "crm.SatisfactionSurvey": ("crm_binding",),
+    "ehr.AddendumSaveReceipt": ("ehr_addendum_binding",),
+    "ehr.DraftEditState": ("ehr_autosave_binding",),
+    "ehr.DraftSaveReceipt": ("ehr_autosave_binding",),
+    "ehr.EncounterAddendum": ("ehr_addendum_binding",),
+    "ehr.MedicationStatement": ("ehr_longitudinal_binding",),
+    "ehr.NoteAccessGrant": ("ehr_note_binding",),
+    "ehr.SpecialtyEntry": ("specialty_binding",),
+    "ehr.SpecialtyPack": ("specialty_binding",),
+    "identity.AuthenticatorRetirement": ("identity_retirement_boundary",),
+    "identity.BreakGlassGrant": ("enterprise_guard",),
+    "identity.RecoveryBatch": ("identity_recoverybatch_boundary",),
+    "identity.ScimMembership": ("enterprise_guard",),
+    "identity.ScimResource": ("enterprise_guard",),
+    "identity.ScimRoleBinding": ("enterprise_guard",),
+    "identity.ScimRoleMapping": ("enterprise_guard",),
+    "identity.ScimToken": ("enterprise_guard",),
+    "identity.SsoConnection": ("enterprise_guard",),
+    "identity.SupportAccessGrant": ("enterprise_guard",),
+    "identity.UnitGovernanceChange": ("enterprise_guard",),
+    "insurance.Batch": ("insurance_guard",),
+    "insurance.BatchGuide": ("insurance_guard",),
+    "insurance.CommandReceipt": ("insurance_guard",),
+    "insurance.Glosa": ("insurance_guard",),
+    "insurance.Guide": ("insurance_guard",),
+    "insurance.PayerRequest": ("insurance_guard",),
+    "insurance.PaymentMatch": ("insurance_guard",),
+    "insurance.Return": ("insurance_guard",),
+    "insurance.Submission": ("insurance_guard",),
+    "insurance.TussTerm": ("insurance_guard",),
+    "intake.DataSubjectRequest": ("data_request_binding",),
+    "intake.DuplicateCandidate": ("intake_duplicatecandidate_binding",),
+    "intake.MergeDecision": ("intake_merge_decision_binding",),
+    "intake.PatientAlias": ("intake_patient_alias_binding",),
+    "interop.HiddenEnrollment": ("interop_guard",),
+    "interop.ImportBatch": ("interop_guard",),
+    "interop.ImportedRecord": ("interop_guard",),
+    "interop.OrganizationExportPart": ("interop_partner_guard",),
+    "interop.WebhookAttempt": ("interop_partner_guard",),
+    "inventory.Calibration": ("inventory_guard",),
+    "inventory.CommandReceipt": ("inventory_guard",),
+    "inventory.Maintenance": ("inventory_guard",),
+    "orders.LabAccount": ("orders_binding",),
+    "orders.Order": ("orders_binding",),
+    "orders.OrderEvent": ("orders_binding",),
+    "orders.OrderItem": ("orders_binding",),
+    "orders.Result": ("orders_binding",),
+    "orders.ResultAcknowledgment": ("orders_binding",),
+    "orders.ResultObservation": ("orders_binding",),
+    "orders.ResultRejection": ("orders_binding",),
+    "orders.ResultRelease": ("orders_binding",),
+    "orders.ResultVersion": ("orders_binding",),
+    "prescription.DocumentDraftContent": ("prescription_content_binding",),
+    "prescription.PrescriptionIssuance": ("prescription_prescriptionissuance_binding",),
+    "providers.CapabilityVersion": ("providers_version_insert",),
+    "retention.ArtifactPurge": ("retention_purge_guard",),
+    "scheduling.AvailabilityTemplate": ("scheduling_definition_guard",),
+    "scheduling.ClinicianDelay": ("reception_guard",),
+    "scheduling.DisplayDevice": ("reception_guard",),
+    "scheduling.QueueEntry": ("reception_guard",),
+    "scheduling.RoomStatus": ("reception_guard",),
+    "scribe.AIDraft": ("draft_binding",),
+    "scribe.AudioChunk": ("scribe_binding",),
+    "scribe.CaptureEpoch": ("scribe_binding",),
+    "scribe.ChunkTranscription": ("transcript_binding",),
+    "scribe.DraftActionProposal": ("draft_binding",),
+    "scribe.DraftSectionSuggestion": ("draft_binding",),
+    "scribe.RecordingCommand": ("scribe_binding",),
+    "scribe.RecordingSession": ("scribe_binding",),
+    "scribe.ReviewDecision": ("draft_binding",),
+    "scribe.TranscriptSegment": ("transcript_binding",),
+    "scribe.TranscriptVersion": ("transcript_binding",),
+    "teleconsult.TeleconsultDeviceCheck": ("teleconsult_binding",),
+    "workflows.CareAction": ("care_guard",),
+    "workflows.CarePlan": ("care_guard",),
+    "workflows.PROAssignment": ("care_guard",),
+    "workflows.PROOccurrence": ("care_guard",),
+    "workflows.Recall": ("care_guard",),
+    "workflows.Referral": ("care_guard",),
+    "workflows.ReleaseDelivery": ("coordination_guard",),
+    "workflows.ReleaseNoticeTemplate": ("coordination_guard",),
+    "workflows.Task": ("workflow_guard",),
+    "workflows.TaskComment": ("workflow_guard",),
+    "workflows.UrgentConcern": ("coordination_guard",),
+    "workflows.UrgentCoveragePolicy": ("coordination_guard",),
+    "workflows.WorkflowDefinitionVersion": ("workflow_guard",),
+    "workflows.WorkflowRun": ("workflow_guard",),
+    "workflows.WorkflowStep": ("workflow_guard",),
+}
+
+# The named BEFORE ROW UPDATE guards suspended while a seed moves an earlier
+# row through a product transition (``Seed.updates``), for the same reason:
+# they authorize the update against a live verified session.
+TRANSITION_GUARDS: Final[dict[str, tuple[str, ...]]] = {
+    "intake.DuplicateCandidate": ("intake_duplicatecandidate_transition",),
+}
+
+# Columns holding secret material: the record keeps only their SHA-256.
+SECRET_COLUMNS: Final[frozenset[str]] = frozenset(
     {
-        "ai.AIArtifact",
-        "ai.AICircuit",
-        "ai.AIInvocation",
-        "ai.ActionExecution",
-        "ai.ActionProposal",
-        "ai.AgentRun",
-        "ai.Approval",
-        "ai.CareProposal",
-        "ai.Compensation",
-        "ai.EvaluationProtocol",
-        "ai.EvaluationRating",
-        "ai.EvaluationRun",
-        "ai.ExtractionCandidateRecord",
-        "ai.ExtractionJob",
-        "ai.FrontDeskThread",
-        "ai.FrontDeskTurn",
-        "ai.ModelChangeRequest",
-        "analytics.AnalystReview",
-        "billing.Account",
-        "billing.CashSession",
-        "billing.FiscalConfiguration",
-        "billing.FiscalDocument",
-        "billing.JournalSettlement",
-        "billing.Payout",
-        "billing.PspEvidence",
-        "billing.PspIntent",
-        "billing.PspReceipt",
-        "billing.Refund",
-        "billing.SettlementAllocation",
-        "comms.Message",
-        "consent.RefusalRecord",
-        "crm.Campaign",
-        "crm.CampaignSend",
-        "crm.Lead",
-        "crm.MarketingPreference",
-        "crm.PublicBookingProfile",
-        "crm.ReferralSource",
-        "crm.SatisfactionSurvey",
-        "ehr.AddendumSaveReceipt",
-        "ehr.CopiedNoteBlock",
-        "ehr.DraftEditState",
-        "ehr.DraftSaveReceipt",
-        "ehr.EncounterAddendum",
-        "ehr.MedicationStatement",
-        "ehr.NoteAccessGrant",
-        "ehr.SpecialtyEntry",
-        "ehr.SpecialtyPack",
-        "identity.AuthenticatorRetirement",
-        "identity.BreakGlassGrant",
-        "identity.RecoveryBatch",
-        "identity.ScimMembership",
-        "identity.ScimResource",
-        "identity.ScimRoleBinding",
-        "identity.ScimRoleMapping",
-        "identity.ScimToken",
-        "identity.SsoConnection",
-        "identity.SupportAccessGrant",
-        "identity.UnitGovernanceChange",
-        "insurance.Batch",
-        "insurance.BatchGuide",
-        "insurance.CommandReceipt",
-        "insurance.Glosa",
-        "insurance.Guide",
-        "insurance.PayerRequest",
-        "insurance.PaymentMatch",
-        "insurance.Return",
-        "insurance.Submission",
-        "insurance.TussTerm",
-        "intake.DataSubjectRequest",
-        "intake.DuplicateCandidate",
-        "intake.MergeDecision",
-        "intake.PatientAlias",
-        "interop.HiddenEnrollment",
-        "interop.ImportBatch",
-        "interop.ImportedRecord",
-        "interop.OrganizationExportPart",
-        "interop.WebhookAttempt",
-        "inventory.Calibration",
-        "inventory.CommandReceipt",
-        "inventory.Maintenance",
-        "orders.LabAccount",
-        "orders.Order",
-        "orders.OrderEvent",
-        "orders.OrderItem",
-        "orders.Result",
-        "orders.ResultAcknowledgment",
-        "orders.ResultObservation",
-        "orders.ResultRejection",
-        "orders.ResultRelease",
-        "orders.ResultVersion",
-        "prescription.DocumentDraftContent",
-        "prescription.PrescriptionIssuance",
-        "providers.CapabilityVersion",
-        "retention.ArtifactPurge",
-        "scheduling.AvailabilityTemplate",
-        "scheduling.ClinicianDelay",
-        "scheduling.DisplayDevice",
-        "scheduling.QueueEntry",
-        "scheduling.RoomStatus",
-        "scribe.AIDraft",
-        "scribe.AudioChunk",
-        "scribe.CaptureEpoch",
-        "scribe.ChunkTranscription",
-        "scribe.DraftActionProposal",
-        "scribe.DraftSectionSuggestion",
-        "scribe.RecordingCommand",
-        "scribe.RecordingSession",
-        "scribe.ReviewDecision",
-        "scribe.TranscriptSegment",
-        "scribe.TranscriptVersion",
-        "teleconsult.TeleconsultDeviceCheck",
-        "workflows.CareAction",
-        "workflows.CarePlan",
-        "workflows.PROAssignment",
-        "workflows.PROOccurrence",
-        "workflows.Recall",
-        "workflows.Referral",
-        "workflows.ReleaseDelivery",
-        "workflows.ReleaseNoticeTemplate",
-        "workflows.Task",
-        "workflows.TaskComment",
-        "workflows.UrgentConcern",
-        "workflows.UrgentCoveragePolicy",
-        "workflows.WorkflowDefinitionVersion",
-        "workflows.WorkflowRun",
-        "workflows.WorkflowStep",
+        "identity.TotpSecret.secret",
+        "identity.User.password",
+        "scribe.AudioChunk.wrapped_key",
     }
 )
 
@@ -289,6 +353,77 @@ LOAD_ROLES: Final[dict[str, str]] = {
     "interop.WebhookAttempt": "clinic_resolver",
     "interop.WebhookDelivery": "clinic_resolver",
     "interop.WebhookSubscription": "clinic_resolver",
+}
+
+# Cross-row invariants the product's guards and deferred constraints enforce,
+# re-checked over the seeded tenant at the leaf (clinic_super, read only).
+# Each query counts violating rows; any non-zero count fails the gate.
+LEAF_INVARIANTS: Final[dict[str, str]] = {
+    "break_glass_review_and_notices": """
+        SELECT count(*) FROM clinic_app.identity_breakglassgrant g
+        WHERE g.organization_id=%(organization)s AND (NOT EXISTS (
+            SELECT 1 FROM clinic_app.workflows_task t
+            WHERE t.id=g.review_task_id AND t.kind='review'
+            AND t.idempotency_key=g.id AND t.priority='high'
+            AND t.due_at=g.expires_at+interval '24 hours'
+            AND t.subject_ref=jsonb_build_object(
+                'kind','clinic','id',g.clinic_id::text))
+        OR (SELECT count(*) FROM clinic_app.identity_governancenotice n
+            WHERE n.break_glass_id=g.id)<>2)""",
+    "note_copy_from_other_finalized_version": """
+        SELECT count(*) FROM clinic_app.ehr_copiednoteblock b
+        JOIN clinic_app.ehr_clinicaldocumentversion s ON s.id=b.source_id
+        JOIN clinic_app.ehr_clinicaldocumentversion t ON t.id=b.target_id
+        JOIN clinic_app.ehr_clinicaldocument sd ON sd.id=s.document_id
+        JOIN clinic_app.ehr_clinicaldocument td ON td.id=t.document_id
+        JOIN clinic_app.ehr_encounter se ON se.id=sd.encounter_id
+        JOIN clinic_app.ehr_encounter te ON te.id=td.encounter_id
+        WHERE b.organization_id=%(organization)s AND (b.source_id=b.target_id
+            OR s.state NOT IN ('finalized','superseded')
+            OR se.patient_id<>te.patient_id OR b.inserted_revision>t.revision)""",
+    "campaign_send_from_sending_marketing_thread": """
+        SELECT count(*) FROM clinic_app.crm_campaignsend cs
+        JOIN clinic_app.crm_campaign c ON c.id=cs.campaign_id
+        JOIN clinic_app.comms_templateversion tv ON tv.id=c.template_id
+        LEFT JOIN clinic_app.comms_message m ON m.id=cs.message_id
+        LEFT JOIN clinic_app.comms_conversation cv ON cv.id=m.conversation_id
+        WHERE cs.organization_id=%(organization)s AND (c.state NOT IN ('sending','sent')
+            OR tv.purpose<>'marketing' OR tv.category<>'marketing'
+            OR tv.approval_status<>'approved' OR m.direction IS DISTINCT FROM 'out'
+            OR m.template_id IS DISTINCT FROM c.template_id
+            OR cv.purpose IS DISTINCT FROM 'marketing'
+            OR cv.enrollment_id IS DISTINCT FROM cs.enrollment_id)""",
+    "evaluation_reviewers_distinct_physicians": """
+        SELECT count(*) FROM clinic_app.ai_evaluationrun r
+        WHERE r.organization_id=%(organization)s AND (r.rater_one_id=r.rater_two_id
+            OR r.rater_one_id=r.adjudicator_id OR r.rater_two_id=r.adjudicator_id
+            OR r.created_by_id IN (r.rater_one_id,r.rater_two_id,r.adjudicator_id)
+            OR 3<>(SELECT count(DISTINCT role.user_id)
+                FROM clinic_app.identity_userclinicrole role
+                WHERE role.user_id IN (r.rater_one_id,r.rater_two_id,r.adjudicator_id)
+                AND role.clinic_id=r.clinic_id AND role.role='physician'
+                AND role.revoked_at IS NULL))""",
+    "merge_decision_receipt": """
+        SELECT count(*) FROM clinic_app.intake_mergedecision d
+        LEFT JOIN clinic_app.intake_duplicatecandidate c ON c.id=d.candidate_id
+        WHERE d.organization_id=%(organization)s AND (c.state IS DISTINCT FROM
+            CASE d.decision WHEN 'merge' THEN 'merged' ELSE 'dismissed' END
+            OR (d.decision='merge' AND NOT EXISTS (SELECT 1
+                FROM clinic_app.intake_patientalias a
+                WHERE a.merge_decision_id=d.id)))""",
+    "duplicate_candidate_ordered_pair": """
+        SELECT count(*) FROM clinic_app.intake_duplicatecandidate c
+        WHERE c.organization_id=%(organization)s
+        AND c.enrollment_a_id>=c.enrollment_b_id""",
+    "demographics_version_has_receipt": """
+        SELECT count(*) FROM clinic_app.intake_patientdemographics v
+        WHERE v.organization_id=%(organization)s AND NOT EXISTS (SELECT 1
+            FROM clinic_app.intake_demographicscorrection r
+            WHERE r.demographics_id=v.id)""",
+    "delegate_grant_two_enrollments": """
+        SELECT count(*) FROM clinic_app.identity_patientdelegategrant g
+        WHERE g.organization_id=%(organization)s
+        AND g.represented_enrollment_id=g.delegate_enrollment_id""",
 }
 
 # Columns a later candidate migration rewrites on purpose, with the reason.
@@ -419,17 +554,41 @@ IDENTITY: Final[dict[str, Seed]] = {
     "TotpSecret": Seed(
         adopt="0050 moves every existing device secret here",
     ),
+    # A grant with its mandatory high-priority review task and both notices
+    # (the deferred enterprise_grant_complete constraint checks all three).
     "BreakGlassGrant": Seed(
         lambda c: (
             {
+                "id": c.key("break-glass"),
                 "clinician_id": c.physician,
                 "reason": "Synthetic review.",
                 "created_at": c.now,
                 "expires_at": c.now + timedelta(hours=2),
+                "review_task_id": c.key("break-glass-review"),
             },
-        )
+        ),
+        support=(
+            (
+                "workflows.Task",
+                Seed(
+                    lambda c: (
+                        {
+                            "id": c.key("break-glass-review"),
+                            "kind": "review",
+                            "subject_ref": {"kind": "clinic", "id": str(c.clinic)},
+                            "due_at": c.now + timedelta(hours=26),
+                            "priority": "high",
+                            "idempotency_key": c.key("break-glass"),
+                            "fingerprint": DIGEST,
+                        },
+                    )
+                ),
+            ),
+        ),
     ),
-    "GovernanceNotice": Seed(_rows({"audience": "manager"}), actor="physician"),
+    "GovernanceNotice": Seed(
+        _rows({"audience": "manager"}, {"audience": "patient"}), actor="physician"
+    ),
     "SsoConnection": Seed(_rows({"provider_key": "synthetic-oidc"})),
     "ScimResource": Seed(
         lambda c: (
@@ -634,8 +793,51 @@ INTAKE: Final[dict[str, Seed]] = {
                 "survivor_patient_id": c.patient,
                 "field_choices": {"legal_name": "survivor"},
                 "reason": "Synthetic duplicate review.",
+                "adjudicator_id": c.owner,
+                # One adjudication instant: the candidate transition and the
+                # receipt both bind to the transaction's timestamp.
+                "created_at": TRANSACTION_TIME,
             },
-        )
+        ),
+        # The merge's receipts: the survivor's resulting demographics version
+        # and its correction by the adjudicator, written in the same commit.
+        support=(
+            (
+                "intake.PatientDemographics",
+                Seed(
+                    lambda c: (
+                        {
+                            "id": c.key("merge-result-demographics"),
+                            "version": 2,
+                            "legal_name": "Synthetic Upgrade Persona",
+                            "source": "staff_recorded",
+                            "created_at": TRANSACTION_TIME,
+                        },
+                    )
+                ),
+            ),
+            (
+                "intake.DemographicsCorrection",
+                Seed(
+                    lambda c: (
+                        {
+                            "actor_id": c.owner,
+                            "actor_label": "Synthetic adjudicator",
+                            "reason": "Synthetic merge result.",
+                            "changed_fields": ["legal_name"],
+                            "demographics_id": c.key("merge-result-demographics"),
+                            "previous_id": c.ref("intake.PatientDemographics"),
+                        },
+                    )
+                ),
+            ),
+        ),
+        updates=(
+            (
+                "intake.DuplicateCandidate",
+                lambda c: (c.ref("intake.DuplicateCandidate"), {"state": "merged"}),
+            ),
+        ),
     ),
     "PatientAlias": Seed(
         lambda c: (
@@ -663,6 +865,8 @@ INTAKE: Final[dict[str, Seed]] = {
                 "kind": "correction",
                 "details": "Synthetic correction request.",
                 "requester_enrollment_id": c.enrollment,
+                # The request's own AFTER trigger opens this review task.
+                "task_id": c.key("data-request-task"),
             },
         )
     ),
@@ -691,7 +895,36 @@ CONSENT: Final[dict[str, Seed]] = {
 EHR: Final[dict[str, Seed]] = {
     "Episode": Seed(_rows({"title": "Synthetic follow-up episode", "state": "open"})),
     "EpisodeEncounter": Seed(),
-    "DraftEditState": Seed(lambda c: ({"author_id": c.physician},), actor="physician"),
+    # An amendment draft of the witness's finalized SOAP (the only draft the
+    # product allows once a version is final), edited by its author; later
+    # copies, receipts and AI drafts target it.
+    "DraftEditState": Seed(
+        lambda c: ({"author_id": c.physician},),
+        actor="physician",
+        support=(
+            (
+                "ehr.ClinicalDocumentVersion",
+                Seed(
+                    lambda c: (
+                        {
+                            "document_id": _finalized(c, "document_id"),
+                            "template_id": _finalized(c, "template_id"),
+                            "author_id": c.physician,
+                            "version": 3,
+                            "state": "draft",
+                            "revision": 1,
+                            "content_digest": "",
+                            "content": _finalized(c, "content"),
+                            "content_sha256": _finalized(c, "content_sha256"),
+                            "amendment_of_id": _finalized(c, "id"),
+                            "amendment_reason": "Synthetic amendment draft.",
+                        },
+                    ),
+                    actor="physician",
+                ),
+            ),
+        ),
+    ),
     "DraftSaveReceipt": Seed(
         _rows({"request_sha256": DIGEST, "base_revision": 1, "revision": 2}),
         actor="physician",
@@ -744,7 +977,7 @@ EHR: Final[dict[str, Seed]] = {
                 "section": "plan",
                 "inserted_revision": 1,
                 "source_id": c.ref("ehr.ClinicalDocumentVersion", state="finalized"),
-                "target_id": c.ref("ehr.ClinicalDocumentVersion", state="finalized"),
+                "target_id": c.ref("ehr.ClinicalDocumentVersion"),
             },
         )
     ),
@@ -945,6 +1178,7 @@ COMMS: Final[dict[str, Seed]] = {
             }
         )
     ),
+    # A portal care thread and a separate WhatsApp marketing thread.
     "Conversation": Seed(
         lambda c: (
             {
@@ -955,7 +1189,17 @@ COMMS: Final[dict[str, Seed]] = {
                 "contact_address": "synthetic.invalid",
                 "last_activity_at": c.now,
             },
-        )
+            {
+                "channel": "whatsapp",
+                "purpose": "marketing",
+                "enrollment_id": c.enrollment,
+                "provider_account_id": c.ref("comms.ProviderAccount"),
+                "contact_fingerprint": DIGEST,
+                "contact_address": "+55 11 0000-0000",
+                "last_activity_at": c.now,
+            },
+        ),
+        after=("comms.ProviderAccount",),
     ),
     "Participant": Seed(
         lambda c: ({"role": "patient", "enrollment_id": c.enrollment},)
@@ -973,6 +1217,15 @@ COMMS: Final[dict[str, Seed]] = {
                 "body": "Synthetic reply.",
                 "command_id": uuid4(),
                 "sent_by_id": c.owner,
+                "template_parameters": None,
+            },
+            {
+                "direction": "out",
+                "conversation_id": c.ref("comms.Conversation", 1),
+                "body": MARKETING_BODY,
+                "command_id": uuid4(),
+                "sent_by_id": c.owner,
+                "template_id": c.ref("comms.TemplateVersion", 1),
                 "template_parameters": None,
             },
         )
@@ -994,7 +1247,18 @@ COMMS: Final[dict[str, Seed]] = {
                 "purpose": "transactional",
                 "body": "Lembrete sintetico.",
                 "content_digest": DIGEST,
-            }
+            },
+            {
+                "channel": "whatsapp",
+                "name": "synthetic_marketing",
+                "version": 1,
+                "category": "marketing",
+                "purpose": "marketing",
+                "body": MARKETING_BODY,
+                "parameter_count": 0,
+                "approval_status": "approved",
+                "content_digest": DIGEST,
+            },
         )
     ),
 }
@@ -1157,19 +1421,43 @@ AI: Final[dict[str, Seed]] = {
             }
         )
     ),
+    # Three distinct physician reviewers; the creator rates nothing.
     "EvaluationRun": Seed(
         lambda c: (
             {
                 "configuration_version": 1,
-                "versions": {"prompt": DIGEST, "retrieval": DIGEST, "schema": DIGEST},
-                "rater_one_id": c.owner,
-                "rater_two_id": c.physician,
-                "adjudicator_id": c.owner,
+                "versions": {
+                    "prompt": DIGEST,
+                    "retrieval": DIGEST,
+                    "schema": DIGEST,
+                    "model": DIGEST,
+                    "version": "1",
+                },
+                "rater_one_id": c.physician,
+                "rater_two_id": c.key("rater-two"),
+                "adjudicator_id": c.key("adjudicator"),
+                "created_by_id": c.owner,
+                "status": "pending",
             },
-        )
+        ),
+        support=tuple(
+            support
+            for name in ("rater-two", "adjudicator")
+            for support in (
+                ("identity.User", Seed(_reviewer(name))),
+                ("identity.UserClinicRole", Seed(_reviewer_role(name))),
+            )
+        ),
     ),
     "EvaluationRating": Seed(
-        _rows({"case_id": "synthetic", "slot": "rater_one", "labels": {"error": 0}})
+        lambda c: (
+            {
+                "case_id": "synthetic",
+                "slot": "rater_one",
+                "user_id": c.physician,
+                "labels": {"error": 0},
+            },
+        )
     ),
     "ModelChangeRequest": Seed(_rows({"approval_ref": "synthetic-upgrade"})),
     "FrontDeskThread": Seed(),
@@ -1378,9 +1666,10 @@ BILLING: Final[dict[str, Seed]] = {
     ),
     "InvoiceTerms": Seed(_rows({"net_minor": 15000})),
     "JournalSettlement": Seed(
-        _rows({"amount_minor": 15000, "kind": "pix", "account": "bank"})
+        _rows({"amount_minor": 5000, "kind": "pix", "account": "bank"})
     ),
-    "SettlementAllocation": Seed(_rows({"amount_minor": 15000})),
+    # A partial payment: the invoice stays open (no legacy settlement pays it).
+    "SettlementAllocation": Seed(_rows({"amount_minor": 5000})),
     "Refund": Seed(lambda c: ({"amount_minor": 1000, "requested_by_id": c.owner},)),
     "Payout": Seed(
         lambda c: (
@@ -1393,15 +1682,7 @@ BILLING: Final[dict[str, Seed]] = {
     ),
     "CashSession": Seed(_rows({"counted_minor": 0})),
     "CashSessionEvent": Seed(
-        lambda c: (
-            {
-                "revision": 1,
-                "state": "open",
-                "counted_minor": 0,
-                "expected_minor": 0,
-                "actor_id": c.owner,
-            },
-        )
+        adopt="the session's AFTER trigger writes its opening event"
     ),
     "PspPolicy": Seed(),
     "PspIntent": Seed(
@@ -1432,7 +1713,7 @@ BILLING: Final[dict[str, Seed]] = {
             }
         )
     ),
-    "PspReceipt": Seed(_rows({"amount_minor": 15000})),
+    "PspReceipt": Seed(_rows({"amount_minor": 5000})),
     "FiscalConfiguration": Seed(
         _rows(
             {
@@ -1613,8 +1894,22 @@ CRM: Final[dict[str, Seed]] = {
     "MarketingPreference": Seed(
         _rows({"channel": "email", "opted_in": False, "revision": 1})
     ),
-    "Campaign": Seed(_rows({"title": "Synthetic neutral campaign"})),
-    "CampaignSend": Seed(lambda c: ({"message_id": c.ref("comms.Message", 1)},)),
+    # A campaign mid-send on the approved neutral marketing template.
+    "Campaign": Seed(
+        lambda c: (
+            {
+                "title": "Synthetic neutral campaign",
+                "template_id": c.ref("comms.TemplateVersion", 1),
+                "state": "sending",
+                "revision": 3,
+            },
+        )
+    ),
+    "CampaignSend": Seed(
+        lambda c: (
+            {"message_id": c.ref("comms.Message", 2), "enrollment_id": c.enrollment},
+        )
+    ),
     "SatisfactionSurvey": Seed(_rows({"score": 5})),
 }
 
