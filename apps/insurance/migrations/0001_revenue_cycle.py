@@ -8,8 +8,8 @@ from django.db import migrations
 
 from apps.ai.migrations._state_batch import CheckpointedStateBatch
 from apps.insurance.migrations._relationship_validation_sql import (
-    relax_force_rls,
-    restore_force_rls,
+    RELAX_FORCE_SQL,
+    RESTORE_FORCE_SQL,
 )
 
 from . import _insurance_sql
@@ -54,12 +54,12 @@ def finish_foreign_keys(
         message = "insurance relationship targets changed their FORCE RLS state"
         raise RuntimeError(message)
     for table in forced_targets:
-        schema_editor.execute(relax_force_rls(table))
+        schema_editor.execute(RELAX_FORCE_SQL.format(table=table))
     for statement in schema_editor.deferred_sql:
         schema_editor.execute(statement)
     schema_editor.deferred_sql.clear()
     for table in forced_targets:
-        schema_editor.execute(restore_force_rls(table))
+        schema_editor.execute(RESTORE_FORCE_SQL.format(table=table))
 
 
 class ProtectedSchema(CheckpointedStateBatch):

@@ -13990,7 +13990,7 @@
         "migrations": [
           "apps/billing/migrations/0007_patient_charge_detail.py",
           "apps/billing/migrations/0009_protected_fields.py",
-          "apps/billing/migrations/0010_delegate_charges.py",
+          "apps/billing/migrations/_delegate_charges_sql.py",
           "apps/billing/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [],
@@ -14019,7 +14019,7 @@
           }
         ],
         "migrations": [
-          "apps/billing/migrations/0010_delegate_charges.py",
+          "apps/billing/migrations/_delegate_charges_sql.py",
           "apps/billing/migrations/_invoice_sql.py",
           "apps/billing/migrations/_patient_alias_read_sql.py"
         ],
@@ -14860,7 +14860,7 @@
     "clinic_app.consent_delegate_guard": {
       "discovery": {
         "migrations": [
-          "apps/consent/migrations/0005_delegate_purposes.py"
+          "apps/consent/migrations/_delegate_purposes_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -15092,7 +15092,7 @@
     "clinic_app.delegate_confidentiality_guard": {
       "discovery": {
         "migrations": [
-          "apps/retention/migrations/0004_delegate_confidentiality.py"
+          "apps/retention/migrations/_delegate_confidentiality_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -15901,7 +15901,7 @@
     "clinic_app.ehr_pack_use_guard": {
       "discovery": {
         "migrations": [
-          "apps/ehr/migrations/0016_later_pack_draft_guard.py",
+          "apps/ehr/migrations/_later_pack_draft_guard_sql.py",
           "apps/ehr/migrations/_pack_sql.py"
         ],
         "policies": [],
@@ -16213,11 +16213,11 @@
     "clinic_app.has_permission": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/0030_workflow_current_membership.py",
           "apps/identity/migrations/_agent_authority_sql.py",
           "apps/identity/migrations/_encounter_permission_sql.py",
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_permission_sql.py",
+          "apps/identity/migrations/_workflow_current_membership_sql.py",
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
@@ -16961,7 +16961,7 @@
     "clinic_app.identity_queue_quotas": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/0012_queue_quotas.py"
+          "apps/identity/migrations/_queue_quotas_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17219,7 +17219,7 @@
     "clinic_app.identity_savedview_transition": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/0015_saved_views.py"
+          "apps/identity/migrations/_saved_views_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17360,8 +17360,8 @@
     "clinic_app.identity_session_revoke_hash": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/0027_session_revoke_scope.py",
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+          "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_session_revoke_scope_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17637,7 +17637,7 @@
     "clinic_app.intake_correction_guard_v1": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/_patient_demographics_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17657,7 +17657,7 @@
     "clinic_app.intake_demographics_receipt_v1": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/_patient_demographics_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17741,7 +17741,7 @@
     "clinic_app.intake_identity_append_only_v1": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/_patient_demographics_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -17908,7 +17908,7 @@
     "clinic_app.intake_patient_mirror_guard_v1": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/_patient_demographics_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -18391,7 +18391,7 @@
       "discovery": {
         "migrations": [
           "apps/identity/migrations/_lifecycle_registry_sql.py",
-          "apps/intake/migrations/0013_patient_demographics.py",
+          "apps/intake/migrations/_patient_demographics_sql.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
@@ -18415,7 +18415,7 @@
       "discovery": {
         "migrations": [
           "apps/identity/migrations/_lifecycle_registry_sql.py",
-          "apps/intake/migrations/0013_patient_demographics.py",
+          "apps/intake/migrations/_patient_demographics_sql.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
@@ -18440,8 +18440,8 @@
         "migrations": [
           "apps/intake/migrations/0003_patient_access.py",
           "apps/intake/migrations/0011_protected_fields.py",
-          "apps/intake/migrations/0013_patient_demographics.py",
-          "apps/intake/migrations/_delegate_session_sql.py"
+          "apps/intake/migrations/_delegate_session_sql.py",
+          "apps/intake/migrations/_patient_demographics_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -18558,7 +18558,7 @@
     "clinic_app.prescription_document_open": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0024_document_decrypt_context.py",
+          "apps/intake/migrations/_document_decrypt_context_sql.py",
           "apps/prescription/migrations/0010_protected_documents.py"
         ],
         "policies": [],
@@ -18692,7 +18692,7 @@
       "discovery": {
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
-          "apps/prescription/migrations/0011_delegate_confidentiality.py",
+          "apps/prescription/migrations/_delegate_confidentiality_sql.py",
           "apps/prescription/migrations/_patient_alias_read_sql.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
@@ -18715,7 +18715,7 @@
       "discovery": {
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
-          "apps/prescription/migrations/0011_delegate_confidentiality.py",
+          "apps/prescription/migrations/_delegate_confidentiality_sql.py",
           "apps/prescription/migrations/_patient_alias_read_sql.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
@@ -18966,9 +18966,9 @@
     "clinic_app.principal_scope": {
       "discovery": {
         "migrations": [
-          "apps/identity/migrations/0041_retention_authority.py",
           "apps/identity/migrations/_agent_authority_sql.py",
-          "apps/identity/migrations/_principal_sql.py"
+          "apps/identity/migrations/_principal_sql.py",
+          "apps/identity/migrations/_retention_authority_sql.py"
         ],
         "policies": [
           "clinic_app.ai_actionexecution:agent_machine",
@@ -19001,7 +19001,7 @@
     "clinic_app.protected_blind_index": {
       "discovery": {
         "migrations": [
-          "apps/tenancy/migrations/0007_blind_indexes.py"
+          "apps/tenancy/migrations/_blind_indexes_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -19429,7 +19429,7 @@
     "clinic_app.questionnaire_template_state_guard": {
       "discovery": {
         "migrations": [
-          "apps/intake/migrations/0015_questionnaire_branching.py"
+          "apps/intake/migrations/_questionnaire_branching_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -19726,7 +19726,7 @@
       "discovery": {
         "migrations": [
           "apps/retention/migrations/0003_protected_fields.py",
-          "apps/retention/migrations/0004_delegate_confidentiality.py",
+          "apps/retention/migrations/_delegate_confidentiality_sql.py",
           "apps/retention/migrations/_patient_alias_read_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
@@ -20737,7 +20737,7 @@
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/tenancy/migrations/0002_rls_and_resolvers.py",
-          "apps/tenancy/migrations/0005_active_tenant_actor.py"
+          "apps/tenancy/migrations/_active_tenant_actor_sql.py"
         ],
         "policies": [
           "clinic_app.identity_passkey:passkey_owner_only",
@@ -20909,8 +20909,8 @@
           "apps/intake/migrations/_data_request_sql.py",
           "apps/orders/migrations/_task_sql.py",
           "apps/retention/migrations/_purge_task_sql.py",
-          "apps/workflows/migrations/0004_task_completion_gate.py",
           "apps/workflows/migrations/_care_sql.py",
+          "apps/workflows/migrations/_task_completion_gate_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -21018,7 +21018,7 @@
     "clinic_app.workflows_predecessor_ready": {
       "discovery": {
         "migrations": [
-          "apps/workflows/migrations/0002_predecessor_eligibility.py"
+          "apps/workflows/migrations/_predecessor_eligibility_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -21109,7 +21109,7 @@
     "clinic_app.workflows_steps_valid": {
       "discovery": {
         "migrations": [
-          "apps/workflows/migrations/0009_metrics_refresh.py",
+          "apps/workflows/migrations/_metrics_refresh_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -25969,7 +25969,7 @@
           }
         ],
         "migrations": [
-          "apps/workflows/migrations/0009_metrics_refresh.py"
+          "apps/workflows/migrations/_metrics_refresh_sql.py"
         ],
         "policies": [],
         "resolvers": []

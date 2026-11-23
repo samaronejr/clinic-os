@@ -10,8 +10,8 @@ from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.billing.migrations._psp_schema import OPERATIONS
 from apps.billing.migrations._psp_sql import SQL
 from apps.billing.migrations._relationship_validation_sql import (
-    relax_force_rls,
-    restore_force_rls,
+    RELAX_FORCE_SQL,
+    RESTORE_FORCE_SQL,
 )
 
 if TYPE_CHECKING:
@@ -31,12 +31,12 @@ def finish_foreign_keys(
         "identity_sessionrecord",
     )
     for table in referenced_tables:
-        schema_editor.execute(relax_force_rls(table))
+        schema_editor.execute(RELAX_FORCE_SQL.format(table=table))
     for statement in schema_editor.deferred_sql:
         schema_editor.execute(statement)
     schema_editor.deferred_sql.clear()
     for table in referenced_tables:
-        schema_editor.execute(restore_force_rls(table))
+        schema_editor.execute(RESTORE_FORCE_SQL.format(table=table))
 
 
 class Migration(migrations.Migration):

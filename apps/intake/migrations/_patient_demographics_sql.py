@@ -1,8 +1,6 @@
 # ruff: noqa: S608, E501 - fixed migration identifiers and frozen SQL bytes
 """Frozen SQL for the protected demographics and registry contract."""
 
-from apps.intake.rls import apply_intake_rls
-
 NEW_RLS_TABLES = (
     "intake_patientdemographics",
     "intake_demographicscorrection",
@@ -11,10 +9,6 @@ NEW_RLS_TABLES = (
     "intake_emergencycontact",
     "intake_insurancemembership",
     "intake_clinicintakepolicy",
-)
-
-RLS_STEPS = tuple(
-    (table, apply_intake_rls(table, "organization_id")) for table in NEW_RLS_TABLES
 )
 
 # The last FK is created in the same transaction as all the other bindings.

@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SENTINEL = "__clock_unresolved_runsql__"
+RESUMABLE_SQL_MODULE = "apps.tenancy.migrations._resumable_schema"
+RESUMABLE_SQL_CONSTRUCTORS = frozenset({"AtomicRunSQL", "ResumableRunSQL"})
 
 
 def _scopes(
@@ -119,6 +121,15 @@ class SQLDecoder:
             for parent in ast.walk(tree)
             for child in ast.iter_child_nodes(parent)
         }
+        protected_constructors = {
+            alias.asname or alias.name
+            for statement in tree.body
+            if isinstance(statement, ast.ImportFrom)
+            and statement.level == 0
+            and statement.module == RESUMABLE_SQL_MODULE
+            for alias in statement.names
+            if alias.name in RESUMABLE_SQL_CONSTRUCTORS
+        }
         result = []
         for node in calls:
             named = (
@@ -129,7 +140,11 @@ class SQLDecoder:
                 == "RunSQL"
             )
             constructor = evaluate(node.func, module.scope)
-            if not named and not (
+            protected = (
+                isinstance(node.func, ast.Name)
+                and node.func.id in protected_constructors
+            )
+            if not (named or protected) and not (
                 isinstance(constructor, External)
                 and constructor.name.endswith(".RunSQL")
             ):
