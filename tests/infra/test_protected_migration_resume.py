@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
@@ -277,3 +278,142 @@ def test_resume_after_each_committed_boundary(
                 ):
                     migration.unapply(before_posture.clone(), editor)
                 assert _catalog(interrupted) == expected
+
+
+@pytest.mark.parametrize(
+    ("cut", "object_name", "drift"),
+    [
+        pytest.param(
+            (INTAKE, 2),
+            "intake_patientdemographics.tenant_isolation",
+            """
+            ALTER TABLE clinic_app.intake_patientdemographics ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE clinic_app.intake_patientdemographics FORCE ROW LEVEL SECURITY;
+            CREATE POLICY tenant_isolation ON clinic_app.intake_patientdemographics
+                AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);
+            """,
+            id="reviewer-deny-only-policy",
+        ),
+        pytest.param(
+            (INTAKE, 3),
+            "intake_policy_org_clinic_fk",
+            """
+            ALTER TABLE clinic_app.intake_clinicintakepolicy
+                DROP CONSTRAINT intake_policy_org_clinic_fk,
+                ADD CONSTRAINT intake_policy_org_clinic_fk CHECK (true);
+            """,
+            id="constraint",
+        ),
+        pytest.param(
+            (INTAKE, 1),
+            "intake_patientaddress_patient_id_e3f08661",
+            """
+            DROP INDEX clinic_app.intake_patientaddress_patient_id_e3f08661;
+            CREATE INDEX intake_patientaddress_patient_id_e3f08661
+                ON clinic_app.intake_patientaddress (organization_id);
+            """,
+            id="index",
+        ),
+        pytest.param(
+            (INTAKE, 11),
+            "intake_patientdemographics_append_only",
+            """
+            ALTER TABLE clinic_app.intake_patientdemographics
+                DISABLE TRIGGER intake_patientdemographics_append_only;
+            """,
+            id="trigger",
+        ),
+        pytest.param(
+            (INTAKE, 11),
+            "intake_identity_append_only_v1",
+            """
+            CREATE OR REPLACE FUNCTION clinic_app.intake_identity_append_only_v1()
+            RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, clinic_app
+            AS $$ BEGIN RETURN NEW; END; $$;
+            """,
+            id="function",
+        ),
+        pytest.param(
+            (INTAKE, 16),
+            "intake_patientdemographics",
+            "GRANT DELETE ON clinic_app.intake_patientdemographics TO clinic_app;",
+            id="grant",
+        ),
+        pytest.param(
+            (AI, 1),
+            "ai_aiartifact.purged_at",
+            """
+            ALTER TABLE clinic_app.ai_aiartifact
+                ALTER COLUMN purged_at SET DEFAULT pg_catalog.now();
+            """,
+            id="column",
+        ),
+        pytest.param(
+            (AI, 1),
+            "ai_artifact_values",
+            """
+            ALTER TABLE clinic_app.ai_aiartifact
+                DROP CONSTRAINT ai_artifact_values,
+                ADD CONSTRAINT ai_artifact_values CHECK (true);
+            """,
+            id="replacement-check",
+        ),
+    ],
+)
+def test_resume_refuses_conflicting_catalog(
+    cut: tuple[Target, int],
+    object_name: str,
+    drift: str,
+    django_db_blocker: DjangoDbBlocker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target, stop = cut
+    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
+    with (
+        django_db_blocker.unblock(),
+        _scratch_database(admin_url) as template,
+        _default_connection(template),
+    ):
+        executor = MigrationExecutor(template)
+        parents = sorted(
+            node.key for node in executor.loader.graph.node_map[target].parents
+        )
+        state = executor.migrate(parents)
+        read_bytes = _seed(template, state, target)
+        protected = read_bytes(template)
+
+        reference = None
+        if stop == 2 and target == INTAKE:
+            with _clone(admin_url, template) as clean:
+                _apply_with_cut(clean, target, monkeypatch)
+                reference = _catalog(clean)
+
+        with _clone(admin_url, template) as interrupted:
+            with pytest.raises(SimulatedInterruptionError):
+                _apply_with_cut(interrupted, target, monkeypatch, stop)
+            interrupted.close()
+            assert target not in (
+                MigrationExecutor(interrupted).loader.applied_migrations
+            )
+            before = _catalog(interrupted)
+            if reference is not None:
+                assert not any(
+                    kind == "policy" and name == object_name for kind, name, _ in before
+                )
+            with interrupted.cursor() as cur:
+                cur.execute(drift)
+            interrupted.close()
+            planted = _catalog(interrupted)
+            assert planted != before
+            if reference is not None:
+                assert planted != reference
+
+            with pytest.raises(RuntimeError, match=re.escape(object_name)):
+                MigrationExecutor(interrupted).migrate([target])
+
+            interrupted.close()
+            assert target not in (
+                MigrationExecutor(interrupted).loader.applied_migrations
+            )
+            assert _catalog(interrupted) == planted
+            assert read_bytes(interrupted) == protected

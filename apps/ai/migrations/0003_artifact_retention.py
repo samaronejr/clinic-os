@@ -9,6 +9,10 @@ from django.db.migrations.state import ProjectState
 from apps.ai.contracts import PURPOSES
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.tenancy.fields import EncryptedTextField
+from apps.tenancy.migrations._resume_catalog import (
+    checkpoint_applied,
+    require_checkpoint,
+)
 
 
 class AddPurgeTimestamp(migrations.AddField):
@@ -57,6 +61,18 @@ class ArtifactSchemaBatch(SchemaStateBatch):
     """Commit the nullable column and checked retention vocabulary together."""
 
     atomic = True
+
+    def database_forwards(
+        self,
+        app_label: str,
+        schema_editor: BaseDatabaseSchemaEditor,
+        from_state: ProjectState,
+        to_state: ProjectState,
+    ) -> None:
+        """Check the column and both versions of the check before any DDL."""
+        if not checkpoint_applied(schema_editor, "artifact-retention:0"):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+            require_checkpoint(schema_editor, "artifact-retention:0")
 
 
 class Migration(migrations.Migration):

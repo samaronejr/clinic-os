@@ -19,6 +19,7 @@ class Migration(migrations.Migration):
     operations: ClassVar = [
         AtomicRunSQL(
             INTAKE_SQL,
+            receipt="membership-payer:0",
             state_operations=[
                 migrations.AddField(
                     model_name="insurancemembership",

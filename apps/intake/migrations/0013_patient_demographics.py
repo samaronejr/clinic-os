@@ -45,19 +45,21 @@ import apps.tenancy.fields
 from apps.intake.migrations._patient_demographics_sql import (
     APPEND_ONLY_SQL,
     EXTENSION_SQL,
-    INTEGRITY_APPLIED_SQL,
     INTEGRITY_SQL,
     NEW_RLS_TABLES,
     OVERVIEW_SQL,
     RECEIPT_GUARD_SQL,
     REGISTRY_SQL,
-    RLS_APPLIED_SQL,
     RUNTIME_ACL_SQL,
     VERSION_GUARD_SQL,
 )
 from apps.intake.rls import apply_intake_rls
 from apps.tenancy.migration_operations import AddConstraint
 from apps.tenancy.migrations._resumable_schema import ResumableSchema
+from apps.tenancy.migrations._resume_catalog import (
+    checkpoint_applied,
+    require_checkpoint,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,44 +69,27 @@ if TYPE_CHECKING:
     from django.db.migrations.operations.base import Operation
 
 
-def _integrity_applied(editor: BaseDatabaseSchemaEditor) -> bool:
-    with editor.connection.cursor() as cursor:
-        cursor.execute(INTEGRITY_APPLIED_SQL)
-        applied = cursor.fetchone()
-    return bool(applied and applied[0])
-
-
-def _rls_applied(table: str) -> Callable[[BaseDatabaseSchemaEditor], bool]:
-    def check(editor: BaseDatabaseSchemaEditor) -> bool:
-        with editor.connection.cursor() as cursor:
-            cursor.execute(RLS_APPLIED_SQL, [f"clinic_app.{table}"])
-            applied = cursor.fetchone()
-        return bool(applied and applied[0])
-
-    return check
-
-
 def _sql_step(
-    sql: str, skip: Callable[[BaseDatabaseSchemaEditor], bool] | None
+    sql: str, ordinal: int
 ) -> Callable[[Apps, BaseDatabaseSchemaEditor], None]:
     """Run one SQL script as a single transaction (SET LOCAL stays scoped)."""
 
     def run(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
         del apps
-        if skip is not None and skip(schema_editor):
+        receipt = f"demographics:{ordinal}"
+        if checkpoint_applied(schema_editor, receipt):
             return
         with schema_editor.connection.cursor() as cursor:
             cursor.execute(sql)
+        require_checkpoint(schema_editor, receipt)
 
     return run
 
 
-def _step(
-    sql: str, skip: Callable[[BaseDatabaseSchemaEditor], bool] | None = None
-) -> migrations.RunPython:
+def _step(sql: str, ordinal: int) -> migrations.RunPython:
     # No reverse code: the operation is irreversible, so Django refuses an
     # unapply before touching the database. Rollback = restore.
-    return migrations.RunPython(_sql_step(sql, skip), atomic=True)
+    return migrations.RunPython(_sql_step(sql, ordinal), atomic=True)
 
 
 class Migration(migrations.Migration):
@@ -802,16 +787,24 @@ class Migration(migrations.Migration):
         ResumableSchema(
             "intake_patientaddress_patient_id_e3f08661", _schema_operations
         ),
-        _step(EXTENSION_SQL),
-        _step(INTEGRITY_SQL, _integrity_applied),
-        *(
-            _step(apply_intake_rls(table, "organization_id"), _rls_applied(table))
-            for table in NEW_RLS_TABLES
-        ),
-        _step(APPEND_ONLY_SQL),
-        _step(VERSION_GUARD_SQL),
-        _step(RECEIPT_GUARD_SQL),
-        _step(REGISTRY_SQL),
-        _step(OVERVIEW_SQL),
-        _step(RUNTIME_ACL_SQL),
+        *[
+            _step(script, ordinal)
+            for ordinal, script in enumerate(
+                (
+                    EXTENSION_SQL,
+                    INTEGRITY_SQL,
+                    *(
+                        apply_intake_rls(table, "organization_id")
+                        for table in NEW_RLS_TABLES
+                    ),
+                    APPEND_ONLY_SQL,
+                    VERSION_GUARD_SQL,
+                    RECEIPT_GUARD_SQL,
+                    REGISTRY_SQL,
+                    OVERVIEW_SQL,
+                    RUNTIME_ACL_SQL,
+                ),
+                start=1,
+            )
+        ],
     ]

@@ -11,26 +11,6 @@ NEW_RLS_TABLES = (
     "intake_clinicintakepolicy",
 )
 
-# The last FK is created in the same transaction as all the other bindings.
-INTEGRITY_APPLIED_SQL = """
-SELECT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_constraint
-    WHERE conrelid = 'clinic_app.intake_clinicintakepolicy'::pg_catalog.regclass
-      AND conname = 'intake_policy_org_clinic_fk' AND convalidated
-)
-"""
-
-# Each script installs its policy and both RLS flags in one transaction.
-RLS_APPLIED_SQL = """
-SELECT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_policy AS policy
-    JOIN pg_catalog.pg_class AS rel ON rel.oid = policy.polrelid
-    WHERE rel.oid = pg_catalog.to_regclass(%s)
-      AND policy.polname = 'tenant_isolation'
-      AND rel.relrowsecurity AND rel.relforcerowsecurity
-)
-"""
-
 EXTENSION_SQL = """
 DO $guard$
 DECLARE

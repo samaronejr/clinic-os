@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 from django.db import migrations
 
 from apps.tenancy.migration_operations import SeparateDatabaseAndState
+from apps.tenancy.migrations._resume_catalog import (
+    checkpoint_applied,
+    require_checkpoint,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -16,21 +20,11 @@ if TYPE_CHECKING:
     from django.db.migrations.state import ProjectState
 
 
-def relation_exists(editor: BaseDatabaseSchemaEditor, name: str) -> bool:
-    """Check a fixed, migration-owned relation in the application schema."""
-    with editor.connection.cursor() as cursor:
-        cursor.execute("SELECT pg_catalog.to_regclass(%s)", [f"clinic_app.{name}"])
-        row = cursor.fetchone()
-    return row is not None and row[0] is not None
-
-
 class CheckpointedSchema(migrations.SeparateDatabaseAndState):
     """Publish the operations and their deferred SQL in one restartable unit.
 
-    ``receipt`` is an index created by Django's deferred DDL in this unit.
-    Checking just for a new table would mistake an older, partially applied
-    schema for a complete unit. The selected index must follow any other
-    deferred DDL needed by earlier operations in the unit.
+    ``receipt`` identifies this unit's frozen catalog contract. Its historical
+    index name is not proof of completion on its own.
     """
 
     atomic = True
@@ -69,19 +63,13 @@ class CheckpointedSchema(migrations.SeparateDatabaseAndState):
         to_state: ProjectState,
     ) -> None:
         """Leave nothing on the outer editor's commit-after-operation queue."""
-        if not schema_editor.collect_sql and relation_exists(
-            schema_editor, self.receipt
-        ):
+        if checkpoint_applied(schema_editor, self.receipt):
             return
         super().database_forwards(app_label, schema_editor, from_state, to_state)
         for statement in schema_editor.deferred_sql:
             schema_editor.execute(statement, None)
         schema_editor.deferred_sql.clear()
-        if not schema_editor.collect_sql and not relation_exists(
-            schema_editor, self.receipt
-        ):
-            msg = f"Protected schema unit did not produce {self.receipt}"
-            raise RuntimeError(msg)
+        require_checkpoint(schema_editor, self.receipt)
 
 
 class ResumableSchema(CheckpointedSchema, SeparateDatabaseAndState):
@@ -131,20 +119,37 @@ class ResumableRunSQL(migrations.RunSQL):
         from_state: ProjectState,
         to_state: ProjectState,
     ) -> None:
-        """Skip only if the script's transaction published its new trigger."""
-        if not schema_editor.collect_sql:
-            with schema_editor.connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT 1 FROM pg_catalog.pg_trigger "
-                    "WHERE tgrelid = pg_catalog.to_regclass(%s) AND tgname = %s",
-                    [f"clinic_app.{self.table}", self.trigger],
-                )
-                if cursor.fetchone() is not None:
-                    return
+        """Skip only if the whole script's catalog matches its contract."""
+        if checkpoint_applied(schema_editor, self.trigger):
+            return
         super().database_forwards(app_label, schema_editor, from_state, to_state)
+        require_checkpoint(schema_editor, self.trigger)
 
 
 class AtomicRunSQL(migrations.RunSQL):
-    """Run a repeatable script as one unit, including its SET LOCAL clauses."""
+    """Publish a script as one unit, refusing conflicting preexisting DDL."""
 
     atomic = True
+
+    def __init__(
+        self, sql: str, *, receipt: str, state_operations: Sequence[Operation]
+    ) -> None:
+        self.receipt = receipt
+        super().__init__(sql, state_operations=list(state_operations))
+
+    def deconstruct(self) -> tuple[str, list[object], dict[str, object]]:
+        """Preserve the catalog contract when serializing the operation."""
+        name, args, kwargs = super().deconstruct()
+        return name, args, {**kwargs, "receipt": self.receipt}
+
+    def database_forwards(
+        self,
+        app_label: str,
+        schema_editor: BaseDatabaseSchemaEditor,
+        from_state: ProjectState,
+        to_state: ProjectState,
+    ) -> None:
+        """Run the script only from the exact predecessor catalog."""
+        if not checkpoint_applied(schema_editor, self.receipt):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+            require_checkpoint(schema_editor, self.receipt)

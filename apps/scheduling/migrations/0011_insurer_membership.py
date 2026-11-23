@@ -20,6 +20,7 @@ class Migration(migrations.Migration):
     operations: ClassVar = [
         AtomicRunSQL(
             SQL,
+            receipt="insurer-membership:0",
             state_operations=[
                 # Only state changes its name; the existing UUID column stays.
                 migrations.RemoveField("appointment", "payer_membership_id"),
