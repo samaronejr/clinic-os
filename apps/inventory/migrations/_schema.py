@@ -8,7 +8,7 @@ from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 
 MODELS: list[Operation] = [
     migrations.CreateModel(
@@ -638,7 +638,7 @@ MODELS: list[Operation] = [
 ]
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """New encrypted fields are irreversible; rollback requires restore."""
 
     atomic = True

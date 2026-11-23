@@ -13,6 +13,7 @@ from django.db.migrations.operations.base import Operation
 import apps.tenancy.fields
 from apps.identity.migrations._lifecycle_sql import FORWARD_SQL
 from apps.tenancy.migration_operations import AddConstraint
+from apps.tenancy.migrations._resumable_schema import ResumableSchema
 
 
 class Migration(migrations.Migration):
@@ -28,7 +29,7 @@ class Migration(migrations.Migration):
         ("otp_totp", "0003_add_timestamps"),
     ]
 
-    operations: ClassVar[Sequence[Operation]] = [
+    _schema_operations: ClassVar[Sequence[Operation]] = [
         migrations.CreateModel(
             name="AuthenticatorReset",
             fields=[
@@ -471,4 +472,9 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunSQL(FORWARD_SQL),
+    ]
+    operations: ClassVar[Sequence[Operation]] = [
+        ResumableSchema(
+            "identity_staffinvitation_pending_user_id_f3f281e6", _schema_operations
+        ),
     ]

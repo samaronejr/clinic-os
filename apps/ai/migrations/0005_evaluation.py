@@ -6,10 +6,10 @@ from django.db import migrations
 
 from apps.ai.migrations import _evaluation_sql
 from apps.ai.migrations._evaluation_tables import OPERATIONS
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """Commit encrypted observations and their independent SQL guards together."""
 
     atomic = True
@@ -29,7 +29,11 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            database_operations=[*OPERATIONS, migrations.RunSQL(_evaluation_sql.SQL)],
+            receipt="ai_modelchangerequest_approved_by_id_7db7814f",
+            database_operations=[
+                *OPERATIONS,
+                migrations.RunSQL(_evaluation_sql.SQL),
+            ],
             state_operations=OPERATIONS,
-        )
+        ),
     ]

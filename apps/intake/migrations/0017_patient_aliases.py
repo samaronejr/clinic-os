@@ -10,38 +10,13 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations
 
-from apps.intake.migrations._alias_bindings_sql import (
-    SQL as BINDINGS_SQL,
-)
-from apps.intake.migrations._alias_bindings_sql import composite_bindings
-from apps.intake.migrations._alias_guard_sql import FINALIZE_SQL
-from apps.intake.migrations._alias_guard_sql import SQL as GUARD_SQL
-from apps.intake.migrations._alias_scope_sql import SQL as SCOPE_SQL
+from apps.intake.migrations._alias_contract_sql import ALIAS_SQL
 from apps.intake.migrations._merge_decision_operation import OPERATION
 from apps.intake.migrations._patient_alias_operations import (
     ALIAS_OPERATION,
     TRANSFER_OPERATION,
 )
-from apps.intake.rls import apply_intake_rls
-from apps.tenancy.migrations_support import revoke_default_dml
-
-TABLES = (
-    "intake_mergedecision",
-    "intake_patientalias",
-    "intake_patientmergetransfer",
-)
-ALIAS_SQL = (
-    "".join(
-        revoke_default_dml(table, ("SELECT", "INSERT"))
-        + apply_intake_rls(table, "organization_id")
-        for table in TABLES
-    )
-    + SCOPE_SQL
-    + GUARD_SQL
-    + BINDINGS_SQL
-    + composite_bindings()
-    + FINALIZE_SQL
-)
+from apps.tenancy.migrations._resumable_schema import ResumableSchema
 
 if TYPE_CHECKING:
     from django.apps.registry import Apps
@@ -64,9 +39,14 @@ class Migration(migrations.Migration):
         ("intake", "0016_duplicate_detection"),
         ("identity", "0024_lifecycle_function_privileges"),
     ]
-    operations: ClassVar[list[Operation]] = [
+    _schema_operations: ClassVar[list[Operation]] = [
         OPERATION,
         ALIAS_OPERATION,
         TRANSFER_OPERATION,
         migrations.RunPython(install_alias_contract, atomic=True),
+    ]
+    operations: ClassVar[list[Operation]] = [
+        ResumableSchema(
+            "intake_patientmergetransfer_merge_decision_id_a673f544", _schema_operations
+        ),
     ]

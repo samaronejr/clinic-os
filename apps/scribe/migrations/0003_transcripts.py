@@ -7,10 +7,11 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 from apps.scribe.migrations._transcript_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.migration_operations import AddConstraint
+from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
 
 _PROTECT = django.db.models.deletion.PROTECT
 _CASCADE = django.db.models.deletion.CASCADE
@@ -217,9 +218,14 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        SchemaStateBatch(
+        CheckpointedStateBatch(
+            receipt="scribe_transcriptsegment_chunk_id_17604823",
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        migrations.RunSQL(SQL),
+        ResumableRunSQL(
+            SQL,
+            table="scribe_chunktranscription",
+            trigger="transcript_no_truncate",
+        ),
     ]

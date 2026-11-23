@@ -5,6 +5,7 @@ from typing import ClassVar
 from django.db import migrations, models
 
 from apps.insurance.migrations._scheduling_sql import SQL
+from apps.tenancy.migrations._resumable_schema import AtomicRunSQL
 
 
 class Migration(migrations.Migration):
@@ -17,7 +18,7 @@ class Migration(migrations.Migration):
         ("insurance", "0001_revenue_cycle"),
     ]
     operations: ClassVar = [
-        migrations.RunSQL(
+        AtomicRunSQL(
             SQL,
             state_operations=[
                 # Only state changes its name; the existing UUID column stays.

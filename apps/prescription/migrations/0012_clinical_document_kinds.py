@@ -9,6 +9,7 @@ from django.db.migrations.operations.base import Operation
 
 from apps.prescription.migrations._clinical_documents_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField
+from apps.tenancy.migrations._resumable_schema import ResumableSchema
 
 
 class Migration(migrations.Migration):
@@ -19,7 +20,7 @@ class Migration(migrations.Migration):
         ("prescription", "0011_delegate_confidentiality"),
         ("orders", "0004_matched_patient_authority"),
     ]
-    operations: ClassVar[list[Operation]] = [
+    _schema_operations: ClassVar[list[Operation]] = [
         migrations.AddField(
             model_name="prescriptiondraft",
             name="kind",
@@ -112,4 +113,9 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.RunSQL(SQL),
+    ]
+    operations: ClassVar[list[Operation]] = [
+        ResumableSchema(
+            "prescription_documentdraftcontent_draft_id_7033f432", _schema_operations
+        ),
     ]

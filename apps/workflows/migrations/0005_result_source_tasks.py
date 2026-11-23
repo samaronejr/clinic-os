@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import migrations, models
 from django.db.models import deletion
 
-from apps.orders.migrations._task_sql import WORKFLOW_BRIDGE
+from apps.workflows.migrations._result_source_tasks_sql import SQL
 
 
 class Migration(migrations.Migration):
@@ -27,7 +27,5 @@ class Migration(migrations.Migration):
                 related_name="+",
             ),
         ),
-        migrations.RunSQL(
-            "SET LOCAL ROLE clinic_resolver;" + WORKFLOW_BRIDGE + "RESET ROLE;"
-        ),
+        migrations.RunSQL(SQL),
     ]

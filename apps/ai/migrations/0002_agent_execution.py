@@ -11,7 +11,8 @@ from apps.ai.migrations import (
     _agent_posture_sql,
 )
 from apps.ai.migrations._agent_tables import OPERATIONS
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
 
 
 class Migration(migrations.Migration):
@@ -25,13 +26,19 @@ class Migration(migrations.Migration):
         ("providers", "0001_initial"),
     ]
     operations: ClassVar = [
-        SchemaStateBatch(database_operations=OPERATIONS, state_operations=OPERATIONS),
-        migrations.RunSQL(
+        CheckpointedStateBatch(
+            receipt="ai_compensation_organization_id_0609c461",
+            database_operations=OPERATIONS,
+            state_operations=OPERATIONS,
+        ),
+        ResumableRunSQL(
             "BEGIN;\n"
             + _agent_access_sql.SQL
             + _agent_posture_sql.SQL
             + _agent_guard_sql.SQL
             + _agent_audit_sql.SQL
             + "\nCOMMIT;",
+            table="ai_agentrun",
+            trigger="agent_record_guard",
         ),
     ]

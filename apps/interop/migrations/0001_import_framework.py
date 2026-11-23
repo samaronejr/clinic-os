@@ -30,7 +30,8 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
+            receipt="interop_importtransition_organization_id_ac1a5fc4",
             database_operations=[*MODELS, migrations.RunSQL(SQL)],
             state_operations=MODELS,
-        )
+        ),
     ]

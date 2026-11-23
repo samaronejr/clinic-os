@@ -6,6 +6,8 @@ from typing import ClassVar
 from django.db import migrations
 from django.db.migrations.operations.base import Operation
 
+from apps.identity.migrations._authenticator_verification_metadata_sql import SQL
+
 
 class Migration(migrations.Migration):
     """Keep OTP seed/key columns inaccessible to the resolver role."""
@@ -14,12 +16,5 @@ class Migration(migrations.Migration):
         ("identity", "0022_lifecycle_surface_scope"),
     ]
     operations: ClassVar[Sequence[Operation]] = [
-        migrations.RunSQL(
-            """
-GRANT SELECT (id, user_id, confirmed, last_t, last_used_at)
-    ON clinic_app.otp_totp_totpdevice TO clinic_resolver;
-GRANT SELECT (id, user_id, confirmed)
-    ON clinic_app.otp_static_staticdevice TO clinic_resolver;
-"""
-        ),
+        migrations.RunSQL(SQL),
     ]

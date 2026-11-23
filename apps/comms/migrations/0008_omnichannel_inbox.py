@@ -8,11 +8,11 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 from apps.comms.migrations import _inbox_sql
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """Publish the encrypted tables and their posture in one transaction.
 
     Bootstrap default privileges give the runtime role full DML on a new table
@@ -821,6 +821,7 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
+            receipt="comms_participant_user_id_d94fd4f3",
             database_operations=[
                 *_schema_operations,
                 migrations.RunSQL(_inbox_sql.SQL),

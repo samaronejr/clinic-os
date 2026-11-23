@@ -14,7 +14,8 @@ from apps.ai.migrations import (
     _platform_sql,
     _policy_sql,
 )
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
 
 _PURPOSES = (
     "scribe_asr",
@@ -344,17 +345,19 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        SchemaStateBatch(
+        CheckpointedStateBatch(
+            receipt="ai_aicircuit_configuration_id_e2a0d546",
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        migrations.RunSQL(
+        ResumableRunSQL(
             "BEGIN;\n"
             + _policy_sql.SQL
             + _ledger_sql.SQL
             + _platform_sql.SQL
             + _configuration_sql.SQL
             + "\nCOMMIT;",
-            reverse_sql=None,
+            table="ai_aiartifact",
+            trigger="ai_artifact_guard",
         ),
     ]

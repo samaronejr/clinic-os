@@ -8,8 +8,9 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 from apps.scribe.migrations._draft_sql import SQL
+from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
 
 
 class Migration(migrations.Migration):
@@ -297,9 +298,14 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        SchemaStateBatch(
+        CheckpointedStateBatch(
+            receipt="scribe_reviewdecision_version_id_2ba56d5c",
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        migrations.RunSQL(SQL),
+        ResumableRunSQL(
+            SQL,
+            table="scribe_aidraft",
+            trigger="draft_no_truncate",
+        ),
     ]

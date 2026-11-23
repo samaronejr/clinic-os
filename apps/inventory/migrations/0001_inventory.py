@@ -18,7 +18,8 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
+            receipt="inventory_commandreceipt_recorded_by_id_8a2e3a71",
             database_operations=[*MODELS, migrations.RunSQL(SQL)],
             state_operations=MODELS,
-        )
+        ),
     ]

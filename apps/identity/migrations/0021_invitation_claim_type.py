@@ -6,7 +6,7 @@ from typing import ClassVar
 from django.db import migrations
 from django.db.migrations.operations.base import Operation
 
-from ._lifecycle_authority_sql import CLAIM_REPAIR
+from apps.identity.migrations._invitation_claim_type_sql import SQL
 
 
 class Migration(migrations.Migration):
@@ -16,7 +16,5 @@ class Migration(migrations.Migration):
         ("identity", "0020_lifecycle_writer_authority"),
     ]
     operations: ClassVar[Sequence[Operation]] = [
-        migrations.RunSQL(
-            "SET LOCAL ROLE clinic_resolver;\n" + CLAIM_REPAIR + "\nRESET ROLE;"
-        ),
+        migrations.RunSQL(SQL),
     ]

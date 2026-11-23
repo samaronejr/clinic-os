@@ -12,6 +12,7 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.consent.migrations._rnds_exchange_purpose_sql import delegate_check
 from apps.tenancy.migration_operations import AddConstraint
 
 PURPOSES = (
@@ -23,18 +24,6 @@ PURPOSES = (
     "research_model_improvement",
     "rnds_exchange",
 )
-
-
-def _delegate_check(purposes: tuple[str, ...]) -> str:
-    names = ",".join(f"'{purpose}'" for purpose in ("care_processing", *purposes))
-    return (
-        "ALTER TABLE clinic_app.identity_patientdelegategrant\n"
-        " DROP CONSTRAINT delegate_purposes_check,\n"
-        " ADD CONSTRAINT delegate_purposes_check CHECK (\n"
-        f"  coalesce(cardinality(purposes) BETWEEN 1 AND {len(purposes) + 1}\n"
-        "  AND array_position(purposes,NULL) IS NULL\n"
-        f"  AND purposes::text[] <@ ARRAY[{names}],false));\n"
-    )
 
 
 class Migration(migrations.Migration):
@@ -80,6 +69,6 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunSQL(
-            _delegate_check(PURPOSES), reverse_sql=_delegate_check(PURPOSES[:-1])
+            delegate_check(PURPOSES), reverse_sql=delegate_check(PURPOSES[:-1])
         ),
     ]

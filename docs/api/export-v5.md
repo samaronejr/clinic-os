@@ -50,7 +50,7 @@ both files, even with zero rows.
 
 | Field | Meaning |
 |-------|---------|
-| `v` | `clinic-organization-export-v4` |
+| `v` | `clinic-organization-export-v5` |
 | `export_id`, `organization_id` | the receipt and the exporting organization |
 | `created_at` | UTC build time, ISO 8601 with `Z` |
 | `dataset_count`, `record_count`, `attachment_count` | totals over the archive |

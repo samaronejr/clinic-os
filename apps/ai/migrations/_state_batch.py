@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from django.db import migrations
 
+from apps.tenancy.migrations._resumable_schema import CheckpointedSchema
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -73,6 +75,10 @@ class SchemaStateBatch(migrations.SeparateDatabaseAndState):
             from_state = to_state
             to_state = to_states[operation]
             operation.database_backwards(app_label, schema_editor, from_state, to_state)
+
+
+class CheckpointedStateBatch(CheckpointedSchema, SchemaStateBatch):
+    """Keep batched state rendering, with a restart boundary for its database half."""
 
 
 def _following_state(

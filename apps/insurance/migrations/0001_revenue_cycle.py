@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations
 
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.insurance.migrations._relationship_validation_sql import (
+    relax_force_rls,
+    restore_force_rls,
+)
 
 from . import _insurance_sql
 from ._schema import MODELS
@@ -50,19 +54,15 @@ def finish_foreign_keys(
         message = "insurance relationship targets changed their FORCE RLS state"
         raise RuntimeError(message)
     for table in forced_targets:
-        schema_editor.execute(
-            f"ALTER TABLE clinic_app.{table} NO FORCE ROW LEVEL SECURITY"
-        )
+        schema_editor.execute(relax_force_rls(table))
     for statement in schema_editor.deferred_sql:
         schema_editor.execute(statement)
     schema_editor.deferred_sql.clear()
     for table in forced_targets:
-        schema_editor.execute(
-            f"ALTER TABLE clinic_app.{table} FORCE ROW LEVEL SECURITY"
-        )
+        schema_editor.execute(restore_force_rls(table))
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """Publish all encrypted tables, state guards and least privileges atomically."""
 
     atomic = True
@@ -84,6 +84,7 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[Sequence[Operation]] = [
         ProtectedSchema(
+            receipt="insurance_commandreceipt_organization_id_af502bd3",
             database_operations=[
                 *MODELS,
                 migrations.RunPython(finish_foreign_keys, reverse_code=None),
@@ -95,5 +96,5 @@ class Migration(migrations.Migration):
                 ),
             ],
             state_operations=MODELS,
-        )
+        ),
     ]

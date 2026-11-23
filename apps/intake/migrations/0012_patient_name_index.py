@@ -11,6 +11,11 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations, models
 
+from apps.intake.migrations._patient_name_index_sql import (
+    DISABLE_RLS_SQL,
+    ENABLE_RLS_SQL,
+    FORCE_RLS_SQL,
+)
 from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import reveal
 
@@ -28,9 +33,7 @@ def backfill(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
         schema_editor.connection.cursor() as cursor,
     ):
         cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        cursor.execute(
-            "ALTER TABLE clinic_app.intake_patient DISABLE ROW LEVEL SECURITY"
-        )
+        cursor.execute(DISABLE_RLS_SQL)
         cursor.execute("SELECT current_setting('app.current_tenant', true)")
         prior = cursor.fetchone()[0]
         scan.execute(
@@ -53,10 +56,8 @@ def backfill(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
         cursor.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [prior or ""]
         )
-        cursor.execute(
-            "ALTER TABLE clinic_app.intake_patient ENABLE ROW LEVEL SECURITY"
-        )
-        cursor.execute("ALTER TABLE clinic_app.intake_patient FORCE ROW LEVEL SECURITY")
+        cursor.execute(ENABLE_RLS_SQL)
+        cursor.execute(FORCE_RLS_SQL)
 
 
 class Migration(migrations.Migration):

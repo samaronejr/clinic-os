@@ -152,7 +152,8 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
+            receipt="ehr_specialtyentry_recorded_by_id_cc984f80",
             database_operations=[*MODELS, migrations.RunSQL(SQL)],
             state_operations=MODELS,
-        )
+        ),
     ]

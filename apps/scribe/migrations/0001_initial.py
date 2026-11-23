@@ -10,6 +10,7 @@ from django.db import migrations, models
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations import _capture_sql
 from apps.tenancy.migration_operations import AddConstraint
+from apps.tenancy.migrations._resumable_schema import ResumableSchema
 
 _PROTECT = django.db.models.deletion.PROTECT
 _CASCADE = django.db.models.deletion.CASCADE
@@ -265,9 +266,14 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        SchemaStateBatch(
-            database_operations=_schema_operations,
-            state_operations=_schema_operations,
+        ResumableSchema(
+            "scribe_audiochunk_session_id_326484d4",
+            [
+                SchemaStateBatch(
+                    database_operations=_schema_operations,
+                    state_operations=_schema_operations,
+                ),
+                migrations.RunSQL(_capture_sql.SQL),
+            ],
         ),
-        migrations.RunSQL(_capture_sql.SQL),
     ]

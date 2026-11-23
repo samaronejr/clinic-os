@@ -8,6 +8,7 @@ from django.db import migrations
 
 from apps.billing.migrations._fiscal_schema import OPERATIONS
 from apps.billing.migrations._fiscal_sql import SQL
+from apps.tenancy.migrations._resumable_schema import CheckpointedSchema
 
 if TYPE_CHECKING:
     from django.db.backends.base.schema import BaseDatabaseSchemaEditor
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from django.db.migrations.state import ProjectState
 
 
-class ProtectedFiscalSchema(migrations.SeparateDatabaseAndState):
+class ProtectedFiscalSchema(CheckpointedSchema):
     """Publish protected fields, FORCE RLS and exact grants in one transaction."""
 
     atomic = True
@@ -48,7 +49,8 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[list[Operation]] = [
         ProtectedFiscalSchema(
+            receipt="billing_fiscaltransition_organization_id_43f3fa4d",
             database_operations=[*OPERATIONS, migrations.RunSQL(SQL)],
             state_operations=OPERATIONS,
-        )
+        ),
     ]

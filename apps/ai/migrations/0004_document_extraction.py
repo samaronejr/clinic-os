@@ -6,10 +6,10 @@ from django.db import migrations
 
 from apps.ai.migrations import _extraction_review_sql, _extraction_sql
 from apps.ai.migrations._extraction_tables import OPERATIONS
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """Publish ciphertext tables and the complete least-privilege contract together."""
 
     atomic = True
@@ -26,6 +26,7 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
+            receipt="ai_extractioncandidate_reviewed_by_id_ddd44112",
             database_operations=[
                 *OPERATIONS,
                 migrations.RunSQL(_extraction_sql.SQL + _extraction_review_sql.SQL),

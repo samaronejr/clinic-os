@@ -1,9 +1,9 @@
 """Publish the longitudinal schema and its authority contract together."""
 
-from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.ai.migrations._state_batch import CheckpointedStateBatch
 
 
-class ProtectedSchema(SchemaStateBatch):
+class ProtectedSchema(CheckpointedStateBatch):
     """Keep the declared database operations atomic and restore-only."""
 
     atomic = True
