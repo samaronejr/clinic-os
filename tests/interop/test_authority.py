@@ -401,8 +401,10 @@ def test_revocation_after_import_preparation_rolls_back_rows_and_audits(
     prepared, resume = threading.Event(), threading.Event()
     reconcile = commit.reconciliation
 
-    def prepared_report(job: ImportJob, normalized: Normalized) -> dict[str, object]:
-        result = reconcile(job, normalized)
+    def prepared_report(
+        job: ImportJob, normalized: Normalized, *, approval: ImportTransition
+    ) -> dict[str, object]:
+        result = reconcile(job, normalized, approval=approval)
         prepared.set()
         assert resume.wait(30)
         return result
@@ -460,8 +462,10 @@ def test_bulk_commit_yields_to_a_busy_chain_and_rolls_back_preparation(
     prepared, resume = threading.Event(), threading.Event()
     reconcile = commit.reconciliation
 
-    def prepared_report(job: ImportJob, normalized: Normalized) -> dict[str, object]:
-        result = reconcile(job, normalized)
+    def prepared_report(
+        job: ImportJob, normalized: Normalized, *, approval: ImportTransition
+    ) -> dict[str, object]:
+        result = reconcile(job, normalized, approval=approval)
         assert ImportedRecord.objects.filter(batch_id=receipt.batch_ids[0]).count() == 1
         prepared.set()
         assert resume.wait(30)
