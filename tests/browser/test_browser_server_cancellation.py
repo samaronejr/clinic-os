@@ -748,9 +748,17 @@ def _end_harness(case: _Harness, tmp_path: Path, expected: dict[str, object]) ->
         assert observed == expected
 
 
+def _foreign_group(pgid: int) -> bool:
+    """Only a known, positive group other than this runner's may be signalled."""
+    return pgid > 0 and pgid != os.getpgrp()
+
+
 def _targets(survivors: list[int]) -> tuple[int, ...]:
     controller_pid, pgid = survivors
-    return (*((controller_pid,) if controller_pid else ()), -pgid)
+    return (
+        *((controller_pid,) if controller_pid else ()),
+        *((-pgid,) if _foreign_group(pgid) else ()),
+    )
 
 
 def _close_all(responses: list[http.client.HTTPResponse]) -> None:
@@ -783,20 +791,32 @@ def _end_survivors(
     if harness.returncode is None:
         harness.kill()
         harness.wait(timeout=HARNESS_SECONDS)
-    targets: list[int] = []
-    if len(survivors) == 2 and not gone.is_set():
-        targets.extend(_targets(survivors))
-    for pid in _children() - set(before) - {harness.pid}:
-        with contextlib.suppress(ProcessLookupError):
-            targets.append(-os.getpgid(pid))
-        targets.append(pid)
-    for target in targets:
-        with contextlib.suppress(ProcessLookupError):
-            if target < 0:
-                os.killpg(-target, signal.SIGKILL)
-            else:
-                os.kill(target, signal.SIGKILL)
-    if targets:
+    pending = list(_targets(survivors)) if len(survivors) == 2 else []
+    if gone.is_set():
+        pending = []
+    handled: set[int] = set()
+    # One pass per tree level (shell supervisor, controller, master,
+    # workers): a grandchild is adopted only once its parent is reaped.
+    for _level in range(4):
+        targets = list(pending)
+        pending = []
+        for pid in _children() - set(before) - {harness.pid} - handled:
+            handled.add(pid)
+            # A child left in this runner's own group (the shell's
+            # controller) is ended by pid; signalling that group would kill
+            # the runner itself.
+            with contextlib.suppress(ProcessLookupError):
+                if _foreign_group(pgid := os.getpgid(pid)):
+                    targets.append(-pgid)
+            targets.append(pid)
+        if not targets:
+            return
+        for target in targets:
+            with contextlib.suppress(ProcessLookupError):
+                if target < 0:
+                    os.killpg(-target, signal.SIGKILL)
+                else:
+                    os.kill(target, signal.SIGKILL)
         reaper = threading.Thread(
             target=_reap, args=(tuple(targets), threading.Event()), daemon=True
         )
@@ -897,6 +917,64 @@ def test_failed_hold_leaves_no_adopted_child(
                 os.killpg(os.getpgid(pid), signal.SIGKILL)
             with contextlib.suppress(ChildProcessError):
                 os.waitpid(pid, 0)
+
+
+def test_failed_preload_report_leaves_runner_alive_and_nothing_unreaped(
+    tmp_path: Path,
+) -> None:
+    # A separate runner process (own session, so nothing it does can reach
+    # this one) starts the real shell supervisor; the held preload exists but
+    # the report fails before the group is known. Its cleanup must not signal
+    # its own group, and must leave no child unreaped.
+    runner_source = (
+        "import signal, sys\n"
+        "from pathlib import Path\n"
+        "from browser import test_browser_server_cancellation as module\n"
+        "real = module._preloading_server\n"
+        "def failing(fifo):\n"
+        "    real(fifo)\n"
+        "    raise RuntimeError('preload report failed before its group')\n"
+        "module._preloading_server = failing\n"
+        "case = module._Harness(module.supervisor.__name__, ('suite', 'patient'),\n"
+        "                       signal.SIGKILL, signal.SIGKILL)\n"
+        "before = module._children()\n"
+        "try:\n"
+        "    module._end_harness(case, Path(sys.argv[1]), {})\n"
+        "except RuntimeError:\n"
+        "    pass\n"
+        "print(len(module._children() - before), flush=True)\n"
+    )
+    with (
+        _child_subreaper(),
+        subprocess.Popen(  # noqa: S603 - this interpreter, fixed probe.
+            [sys.executable, "-c", runner_source, str(tmp_path)],
+            cwd=REPOSITORY,
+            env={
+                **os.environ,
+                "PYTHONPATH": os.pathsep.join(
+                    (str(REPOSITORY), str(REPOSITORY / "tests"))
+                ),
+            },
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        ) as runner_process,
+    ):
+        before = _children()
+        try:
+            output, _ = runner_process.communicate(timeout=HARNESS_SECONDS * 2)
+            observed = {
+                "runner_exit": runner_process.returncode,
+                "children_left_in_runner": output.strip(),
+            }
+            assert observed == {"runner_exit": 0, "children_left_in_runner": "0"}
+        finally:
+            # Anything a failing runner left was adopted here; end it by pid.
+            for pid in _children() - before - {runner_process.pid}:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(pid, signal.SIGKILL)
+                with contextlib.suppress(ChildProcessError):
+                    os.waitpid(pid, 0)
 
 
 def _link(entry: Path) -> str:
