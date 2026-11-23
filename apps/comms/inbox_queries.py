@@ -168,8 +168,12 @@ def list_conversations(
     state: str = "open",
     mine: bool = False,
     clinician_only: bool = False,
+    enrollment_id: UUID | None = None,
 ) -> list[ListRow]:
     """Return the actor's visible threads, newest activity first, bounded.
+
+    ``enrollment_id`` narrows the list to one patient (the patient workspace);
+    it never widens what the actor's purposes and clinical authority allow.
 
     A care thread also needs the actor's patient-scoped clinical authority, the
     same rule the thread page applies, so the list never names a patient the
@@ -183,6 +187,8 @@ def list_conversations(
         purpose__in=purposes,
         state=state if state in STATES else "open",
     ).select_related("enrollment__patient")
+    if enrollment_id is not None:
+        queryset = queryset.filter(enrollment_id=enrollment_id)
     if mine:
         queryset = queryset.filter(assignee_id=current_actor_id())
     if clinician_only:

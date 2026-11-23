@@ -709,7 +709,7 @@ msgid "Refund"
 msgstr "Reembolso"
 
 msgid "Refund and payout sending is a local rehearsal. No real money is moved. PSP and live legs remain BLOCKED-ON-EG."
-msgstr "O envio de reembolsos e repasses é uma simulação local. Nenhum dinheiro real é movimentado. As etapas com PSP e dinheiro real permanecem BLOCKED-ON-EG."
+msgstr "O envio de reembolsos e repasses é uma simulação local. Nenhum dinheiro real é movimentado. As etapas com PSP e dinheiro real continuam bloqueadas até as aprovações externas exigidas."
 
 msgid "Refunds and chargebacks"
 msgstr "Reembolsos e contestações"
@@ -6742,9 +6742,6 @@ msgstr "Planos de cuidado"
 msgid "Forms"
 msgstr "Formulários"
 
-msgid "Disabled sections are unavailable in this release."
-msgstr "As seções desabilitadas não estão disponíveis nesta versão."
-
 msgid "Clinical notes"
 msgstr "Notas clínicas"
 
@@ -9995,7 +9992,7 @@ msgid "Defined metrics, visible denominators and accountable decisions."
 msgstr "Indicadores definidos, denominadores visíveis e decisões com responsável."
 
 msgid "Synthetic analyst only. Real providers remain BLOCKED-ON-EG. Cross-clinic benchmarking is disabled."
-msgstr "Somente analista sintético. Provedores reais permanecem BLOCKED-ON-EG. Comparações entre unidades estão desabilitadas."
+msgstr "Somente analista sintético. Provedores reais continuam bloqueados até as aprovações externas exigidas. Comparações entre unidades estão desabilitadas."
 
 msgid "Dates use the clinic timezone. Balance metrics and staff usage support totals only."
 msgstr "As datas usam o fuso da unidade. Saldos, ocupação e uso da equipe aceitam somente totais."
@@ -10053,9 +10050,6 @@ msgstr "Período"
 
 msgid "Unresolved"
 msgstr "Não resolvidos"
-
-msgid "BRL centavos"
-msgstr "centavos de real"
 
 msgid "No current authorized snapshot. Refresh the selected metric."
 msgstr "Sem dados salvos para a autorização atual. Atualize o indicador selecionado."
@@ -10118,7 +10112,7 @@ msgid "Review discrepancies and administrative appeal drafts against their exact
 msgstr "Revise divergências e rascunhos administrativos de recursos de glosa com suas fontes financeiras exatas."
 
 msgid "Synthetic rehearsal. No real model, payment or submission is authorized. BLOCKED-ON-EG."
-msgstr "Simulação sintética. Nenhum modelo real, pagamento ou envio está autorizado. BLOCKED-ON-EG."
+msgstr "Simulação sintética. Nenhum modelo real, pagamento ou envio está autorizado; o uso real depende de aprovações externas."
 
 msgid "Clinical supporting evidence is not retrieved. Missing evidence means not found in the supplied sources, never absence of care."
 msgstr "Evidências clínicas de apoio não são consultadas. Evidência pendente significa que não foi encontrada nas fontes fornecidas, nunca ausência de atendimento."
@@ -11568,3 +11562,70 @@ msgstr "Curador(a)"
 
 msgid "Patient-authorized adult"
 msgstr "Adulto autorizado pelo paciente"
+
+msgid "Problems and allergies"
+msgstr "Problemas e alergias"
+
+msgid "Attachments"
+msgstr "Anexos"
+
+msgid "Synthetic prescription"
+msgstr "Prescrição sintética"
+
+msgid "Current source versions filed for this patient. Acknowledgment and release happen in Results."
+msgstr "Versões atuais das fontes registradas para este paciente. A revisão e a liberação são feitas em Resultados."
+
+msgid "No result is filed for this patient yet."
+msgstr "Nenhum resultado registrado para este paciente."
+
+msgid "Open Results"
+msgstr "Abrir Resultados"
+
+msgid "Care plans start from a finalized note. Their actions are assigned and closed in care coordination and tasks."
+msgstr "Os planos de cuidado nascem de uma nota finalizada. As ações são atribuídas e concluídas na coordenação do cuidado e nas tarefas."
+
+msgid "Care plan"
+msgstr "Plano de cuidado"
+
+msgid "No action in this plan."
+msgstr "Nenhuma ação neste plano."
+
+msgid "No care plan for this patient. A plan starts from a finalized note."
+msgstr "Nenhum plano de cuidado para este paciente. Um plano nasce de uma nota finalizada."
+
+msgid "Conversations with this patient that you may open. Replies are written in Messages."
+msgstr "Conversas com este paciente que você pode abrir. As respostas são escritas em Mensagens."
+
+msgid "Conversations"
+msgstr "Conversas"
+
+msgid "No conversation with this patient. A conversation starts in Messages with a verified contact."
+msgstr "Nenhuma conversa com este paciente. Uma conversa começa em Mensagens com um contato verificado."
+
+msgctxt "care action state"
+msgid "Open"
+msgstr "Aberta"
+
+msgctxt "care action state"
+msgid "Assigned"
+msgstr "Atribuída"
+
+msgctxt "care action state"
+msgid "Overdue"
+msgstr "Atrasada"
+
+msgctxt "care action state"
+msgid "Done"
+msgstr "Concluída"
+
+msgctxt "care action state"
+msgid "Cancelled"
+msgstr "Cancelada"
+
+msgctxt "care plan state"
+msgid "Active"
+msgstr "Ativo"
+
+msgctxt "care plan state"
+msgid "Superseded"
+msgstr "Substituído"

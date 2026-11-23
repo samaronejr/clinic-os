@@ -52,6 +52,7 @@ from apps.identity.models import Clinic
 from apps.identity.otp import flow_redirect, privileged_totp_required
 from apps.identity.stepup import StepUpRequired, assert_step_up
 from apps.workflows.care.models import CarePlan
+from apps.workflows.care.vocab import ACTION_KIND_LABELS
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -59,13 +60,7 @@ if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse, HttpResponseBase
 
 KIND_LABELS: Final = {
-    "return_window": gettext_noop("Return window"),
-    "staff_coordination": gettext_noop("Staff coordination"),
-    "order": gettext_noop("Order follow-up"),
-    "questionnaire": gettext_noop("Questionnaire"),
-    "monitoring_task": gettext_noop("Monitoring task"),
-    "referral": gettext_noop("Referral"),
-    "patient_instruction": gettext_noop("Patient instruction"),
+    **ACTION_KIND_LABELS,
     "unsupported": gettext_noop("Action type not allowed"),
 }
 STATE_LABELS: Final = {

@@ -16,9 +16,12 @@
   flex: 1 1 36rem;
 }
 
+/* A track holds the longest "Todos/Todas ..." choice plus the select arrow,
+   so no filter value is clipped beside the saved views at 1280px (three
+   tracks there, two from 768px, one on phones). */
 .agenda-filter-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
   gap: var(--space-2) var(--space-3);
 }
 
@@ -32,7 +35,7 @@
 
 .agenda-saved {
   min-width: 0;
-  flex: 0 1 22rem;
+  flex: 0 1 16rem;
 }
 
 .agenda-saved > summary {

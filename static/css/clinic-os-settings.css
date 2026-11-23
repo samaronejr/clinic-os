@@ -1,17 +1,23 @@
-/* Closed branding tokens affect only this decorative clinic banner. */
+/* Closed branding tokens affect only this decorative clinic banner. Both
+   tokens map to semantic colors, so the banner follows the reader's theme
+   (raised paper with navy or Deep Teal ink; raised navy in dark). */
 .clinic-brand {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1.5rem;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
   overflow-wrap: anywhere;
-  background: #fff;
-  color: #0f2d3a;
-  border-block-end: 3px solid currentColor;
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  border-block-end: var(--line-3) solid currentColor;
 }
-.clinic-brand--teal { color: #115e59; }
-.clinic-brand img { width: 48px; height: 48px; object-fit: contain; }
+.clinic-brand--teal { color: var(--color-primary-strong); }
+.clinic-brand img {
+  width: var(--space-8);
+  height: var(--space-8);
+  object-fit: contain;
+}
 .clinic-brand p { margin: 0; }
 @media (forced-colors: active) {
   .clinic-brand { color: CanvasText; background: Canvas; }

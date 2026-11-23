@@ -47,6 +47,15 @@ def brl(value: Decimal) -> str:
     return "R$ " + number_format(value, decimal_pos=2, force_grouping=True)
 
 
+@register.filter
+def metric_value(value: str, unit: str) -> str:
+    """Show an exact governed metric value in pt-BR; money metrics count centavos."""
+    amount = Decimal(value)
+    if unit == "minor":
+        return brl(amount.scaleb(-2))
+    return number_format(amount, force_grouping=True)
+
+
 @register.simple_tag
 def brl_example() -> str:
     """Synthetic format sample; there is no billing workflow in this release."""

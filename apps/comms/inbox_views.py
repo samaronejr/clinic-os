@@ -262,6 +262,8 @@ def inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         {
             "clinic_id": clinic_id,
             "state": state,
+            "mine": mine,
+            "clinician_only": clinician_only,
             "refresh_url": refresh_url,
             "rows": rows,
             "clinician": is_clinician(clinic_id),

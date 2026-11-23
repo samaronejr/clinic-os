@@ -199,6 +199,40 @@ def test_observation_scope_does_not_expose_narrative_or_future_tabs(
             assert denied.status_code == 403
 
 
+def test_results_plans_and_messages_tabs_read_their_owning_features(
+    rbac_graph: RbacGraph,
+) -> None:
+    world = chart_world(rbac_graph)
+    url = reverse("ehr:patient-workspace", kwargs={"clinic_id": rbac_graph.clinic_a})
+    with signed_in(rbac_graph.physician) as client:
+        opened = client.post(url, {"action": "open", "enrollment_id": world.enrollment})
+        assert opened.status_code == 200
+        # Every section the reader may open is a live tab; none is a placeholder.
+        tabs = opened.content.decode().split('class="patient-workspace-tabs"')[1]
+        tabs = tabs.split("</nav>")[0]
+        assert tabs.count('name="tab"') == 11
+        assert "disabled" not in tabs
+        for tab, empty in (
+            ("results", "No result is filed for this patient yet."),
+            (
+                "plans",
+                "No care plan for this patient. A plan starts from a finalized note.",
+            ),
+            (
+                "messages",
+                "No conversation with this patient. A conversation starts in "
+                "Messages with a verified contact.",
+            ),
+        ):
+            response = client.post(
+                url, {"action": "tab", "tab": tab, "enrollment_id": world.enrollment}
+            )
+            assert response.status_code == 200
+            html = response.content.decode()
+            assert f'value="{tab}"' in html
+            assert gettext(empty) in html
+
+
 def test_unknown_and_foreign_patient_selectors_have_identical_refusal(
     rbac_graph: RbacGraph,
 ) -> None:

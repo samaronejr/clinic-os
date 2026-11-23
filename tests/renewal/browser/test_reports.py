@@ -88,7 +88,7 @@ def test_reports_sources_review_boundaries_and_accessibility(
             page.locator('button[value="refresh"]').click()
         expect(page.locator('[data-report-state="fresh"]')).to_be_visible()
         expect(page.locator("[data-report-focus]").first).to_be_focused()
-        expect(page.locator("[data-report-state]")).to_contain_text("0.00")
+        expect(page.locator("[data-report-state]")).to_contain_text("0,00 %")
         with page.expect_response(
             lambda response: response.url == url and response.request.method == "POST"
         ):

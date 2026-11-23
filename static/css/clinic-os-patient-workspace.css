@@ -33,11 +33,24 @@
   white-space: nowrap;
 }
 
+/* Section tabs (DESIGN.md Tabs): quiet Label-weight items; the current tab
+   is navy ink over the 3px Trust Teal bottom rule in both themes, never a
+   fill, so it cannot read like a hovered or disabled control. */
+.patient-workspace-tabs .button {
+  border-width: 0 0 var(--line-3);
+  border-radius: var(--radius-1) var(--radius-1) 0 0;
+}
+
 .patient-workspace-tabs [aria-current="page"] {
-  background: var(--color-selection);
+  border-bottom-color: var(--color-primary);
   color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: var(--space-1);
+}
+
+@media (forced-colors: active) {
+  .patient-workspace-tabs [aria-current="page"] {
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+  }
 }
 
 .patient-workspace-section {
@@ -106,6 +119,11 @@
 }
 
 @media (max-width: 47.99rem) {
+  /* Phones have no g+letter keyboard: the tabs keep only their names. */
+  .patient-workspace-key {
+    display: none;
+  }
+
   .patient-workspace-filter {
     align-items: stretch;
     flex-direction: column;

@@ -26,6 +26,7 @@ COMPONENT_CSS: Final = CSS / "clinic-os-components.css"
 RECEPTION_CSS: Final = CSS / "clinic-os-reception.css"
 INBOX_CSS: Final = CSS / "clinic-os-inbox.css"
 MESSAGES_CSS: Final = CSS / "clinic-os-messages.css"
+SETTINGS_CSS: Final = CSS / "clinic-os-settings.css"
 WEBSITE_CSS: Final = CSS / "clinic-os-website.css"
 AXE: Final = ROOT / "static" / "vendor" / "axe"
 AXE_SHA256: Final = "c24f097bd2f451d4f933e8bc7d8d539f8672a2ebcb5cc9f9f3eec8ca9470a0c1"
@@ -297,6 +298,9 @@ def test_raw_values_live_only_in_the_token_blocks() -> None:
     assert RAW_COLOR.findall(messages) == []
     assert "var(--rule" not in messages
     assert "var(--paper" not in messages
+    # The clinic brand banner is on every branded page, so it follows the theme.
+    settings = _strip_comments(SETTINGS_CSS.read_text(encoding="utf-8"))
+    assert RAW_COLOR.findall(settings) == []
     # The website reads the same semantic tokens; the brand board's swatches
     # reference the brand variables by name, never a raw value.
     website = _strip_comments(WEBSITE_CSS.read_text(encoding="utf-8"))

@@ -20,12 +20,13 @@
   {% if messages %}{% for message in messages %}
   <p class="feedback{% if message.tags == 'error' %} feedback--error" role="alert"{% else %} feedback--success" role="status"{% endif %}>{{ message }}</p>
   {% endfor %}{% endif %}
-  <nav class="actions" aria-label="{% trans 'Filter conversations' %}">
-    <a class="button button--secondary" href="?state=open"{% if state == 'open' %} aria-current="page"{% endif %}>{% trans "Open" context "inbox filter" %}</a>
-    <a class="button button--secondary" href="?state=pending"{% if state == 'pending' %} aria-current="page"{% endif %}>{% trans "Pending" context "inbox filter" %}</a>
-    <a class="button button--secondary" href="?state=closed"{% if state == 'closed' %} aria-current="page"{% endif %}>{% trans "Closed" context "inbox filter" %}</a>
-    <a class="button button--quiet" href="?state={{ state }}&amp;mine=1">{% trans "Mine" context "inbox filter" %}</a>
-    {% if clinician %}<a class="button button--quiet" href="?state={{ state }}&amp;clinician=1">{% trans "Clinical questions" %}</a>{% endif %}
+  {# The listed folder is current; under a narrowing filter it stays marked ("true") while the filter link is the page. #}
+  <nav class="actions messages-filters" aria-label="{% trans 'Filter conversations' %}">
+    <a class="button button--secondary" href="?state=open"{% if state == 'open' %} aria-current="{% if mine or clinician_only %}true{% else %}page{% endif %}"{% endif %}>{% trans "Open" context "inbox filter" %}</a>
+    <a class="button button--secondary" href="?state=pending"{% if state == 'pending' %} aria-current="{% if mine or clinician_only %}true{% else %}page{% endif %}"{% endif %}>{% trans "Pending" context "inbox filter" %}</a>
+    <a class="button button--secondary" href="?state=closed"{% if state == 'closed' %} aria-current="{% if mine or clinician_only %}true{% else %}page{% endif %}"{% endif %}>{% trans "Closed" context "inbox filter" %}</a>
+    <a class="button button--quiet" href="?state={{ state }}&amp;mine=1"{% if mine %} aria-current="page"{% endif %}>{% trans "Mine" context "inbox filter" %}</a>
+    {% if clinician %}<a class="button button--quiet" href="?state={{ state }}&amp;clinician=1"{% if clinician_only %} aria-current="page"{% endif %}>{% trans "Clinical questions" %}</a>{% endif %}
   </nav>
   <div id="conversation-list" class="table-scroll" role="region" aria-labelledby="messages-caption" tabindex="0" hx-get="{{ refresh_url }}" hx-trigger="rt:messages from:body, rt:poll from:body" hx-target="this" hx-select="#conversation-list &gt; *" hx-swap="innerHTML" hx-sync="this:replace">
     <table class="table">

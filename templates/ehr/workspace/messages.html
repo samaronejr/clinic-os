@@ -1,0 +1,20 @@
+{% load i18n %}
+<section class="patient-workspace-section" aria-labelledby="workspace-messages-title">
+  <h2 id="workspace-messages-title">{% trans "Messages" %}</h2>
+  <p class="help-text">{% trans "Conversations with this patient that you may open. Replies are written in Messages." %}</p>
+  {% if section_restricted %}{% include "includes/components/state.html" with state="permission-denied" only %}{% else %}
+  <div class="table-scroll" role="region" aria-labelledby="workspace-messages-caption" tabindex="0">
+    <table class="table">
+      <caption id="workspace-messages-caption">{% trans "Conversations" %}</caption>
+      <thead><tr><th scope="col">{% trans "Channel" %}</th><th scope="col">{% trans "Purpose" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Assignee" context "inbox" %}</th><th scope="col"><span class="visually-hidden">{% trans "Action" %}</span></th></tr></thead>
+      <tbody>{% for row in conversations %}<tr>
+        <th scope="row">{{ row.channel_label }}{% if row.conversation.needs_clinician %} <span class="badge badge--error">{% trans "Clinical question" %}</span>{% endif %}</th>
+        <td>{{ row.purpose_label }}</td>
+        <td>{{ row.state_label }}</td>
+        <td>{% if row.conversation.assignee_id %}{% trans "Assigned" %}{% else %}{% trans "Unassigned" %}{% endif %}</td>
+        <td><form method="post" action="{% url 'comms:inbox' clinic_id %}" hx-boost="false">{% csrf_token %}<input type="hidden" name="action" value="show"><input type="hidden" name="conversation_id" value="{{ row.conversation.pk }}"><button type="submit" class="button button--secondary">{% trans "Open" context "inbox action" %}<span class="visually-hidden"> {{ forloop.counter }}: {{ row.channel_label }} · {{ row.purpose_label }} · {{ row.state_label }}</span></button></form></td>
+      </tr>{% empty %}<tr><td colspan="5" class="table-empty">{% trans "No conversation with this patient. A conversation starts in Messages with a verified contact." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
