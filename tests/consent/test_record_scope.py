@@ -213,6 +213,9 @@ PY_SITES: dict[str, str | tuple[str, str]] = {
     "ai_disclosure_status:AIUseDisclosure.filter:clinic_id": (
         "test_staff_reads_return_exactly_the_named_clinics_records"
     ),
+    "current_ai_acceptance:compare:consent.patient_id == disclosure.patient_id": (
+        "test_current_ai_acceptance_cannot_cross_patient_records"
+    ),
     "acknowledge_participant:ParticipantAcknowledgment.get_or_create:"
     "defaults.organization_id": "test_writes_store_the_exact_scope",
     "acknowledge_participant:ParticipantAcknowledgment.get_or_create:"
@@ -262,6 +265,9 @@ PY_CONTEXTS: dict[str, str] = {
     "services:publish_notice:statement:Assign": _ORGANIZATION_OF_CLINIC,
     "services:publish_notice:call:values_list": _ORGANIZATION_OF_CLINIC,
     "services:_lock:call:execute": "advisory-lock key",
+    "services:_lock:call:hold_subject_mutation_key": (
+        "organization key serializes permission changes with in-flight AI sends"
+    ),
     "services:_patient_lineage:call:execute": (
         "patient_alias_set resolves only the live consent-session identity; "
         "test_survivor_portal_preserves_released_history_and_original_receipts "
@@ -1056,6 +1062,41 @@ def _pks(rows: object) -> set[UUID]:
 
 # ---------------------------------------------------------------------------
 # Python cells.
+
+
+def test_current_ai_acceptance_cannot_cross_patient_records(
+    rbac_graph: RbacGraph,
+) -> None:
+    w = seed_scope_world(rbac_graph)
+    text = _publish(rbac_graph, w.clinic_a, "ai_assistance", "Sintetico IA")
+    receipt = _accept(w.session_a, text, "ai_assistance")
+    other = _session(w.clinic_a, w.other_a, w.reader, w.organization)
+    other_receipt = _accept(other, text, "ai_assistance")
+    with runtime_role(), tenant_context(rbac_graph.physician, w.organization):
+        consent.record_ai_disclosure(
+            clinic_id=w.clinic_a,
+            encounter_id=w.other_encounter_a,
+            informed=True,
+            refused=False,
+        )
+    with runtime_role(), tenant_context(w.reader, w.organization):
+        decisions = {
+            (visit, enrollment): getattr(
+                consent.current_ai_acceptance(
+                    clinic_id=w.clinic_a, encounter_id=visit, enrollment_id=enrollment
+                ),
+                "pk",
+                None,
+            )
+            for visit in (w.encounter_a, w.other_encounter_a)
+            for enrollment in (w.enrollment_a, w.other_a)
+        }
+    assert decisions == {
+        (w.encounter_a, w.enrollment_a): receipt,
+        (w.other_encounter_a, w.other_a): other_receipt,
+        (w.encounter_a, w.other_a): None,
+        (w.other_encounter_a, w.enrollment_a): None,
+    }
 
 
 def test_staff_reads_return_exactly_the_named_clinics_records(
