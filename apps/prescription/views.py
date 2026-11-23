@@ -1273,7 +1273,9 @@ def _signing_page(
         authorize_document_draft(clinic_id=clinic_id, draft_id=document.draft_id)
     view = _operation_view(operation)
     siblings = list(
-        SignatureOperation.objects.filter(document=document).order_by("created_at")
+        SignatureOperation.objects.filter(document=document).order_by(
+            "attempt_sequence"
+        )
     )
     attempts = [_operation_view(sibling) for sibling in siblings]
     # A reopened page for an old attempt must point at the newest one, not

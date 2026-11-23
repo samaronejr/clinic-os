@@ -8,9 +8,10 @@ import hmac
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from datetime import timedelta
 from hashlib import sha256
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event, Thread
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -55,7 +56,13 @@ from apps.prescription.signature_verification import (
 )
 from apps.prescription.verification import release_document
 from apps.tenancy.db import tenant_context
-from django.db import DatabaseError, connection, connections, transaction
+from django.db import (
+    DatabaseError,
+    IntegrityError,
+    connection,
+    connections,
+    transaction,
+)
 from django.test import override_settings
 from django.urls import reverse
 
@@ -67,7 +74,7 @@ from renewal.test_signatures import NOW, SigningSetup, owner_scope
 from renewal.test_signatures import setup as signing_setup
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 __all__ = ("signing_setup",)
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -391,6 +398,116 @@ def test_expired_approval_holds_the_signing_key_until_a_verdict_is_recorded(
     assert (resolved.state, resolved.failure_reason) == ("failed", reason)
     assert bytes(resolved.signed_bytes) == expected.signed_bytes
     assert recorded.base.initiate().pk != operation.pk
+
+
+def _contend(work: Callable[[], str]) -> list[str]:
+    """Release two callers together; each records an outcome or raises."""
+    barrier = Barrier(2)
+    outcomes: list[str] = []
+    failures: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            barrier.wait(timeout=30)
+            outcomes.append(work())
+        except BaseException as error:  # noqa: BLE001 - surfaced by the assertion
+            failures.append(error)
+        finally:
+            connection.close()
+
+    threads = [Thread(target=run) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+    assert not failures
+    return sorted(outcomes)
+
+
+def test_completed_document_refuses_signing_despite_a_later_stamped_failure(
+    recorded: RecordedSetup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph = recorded.base.graph
+    earlier = recorded.base.initiate()
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        signing.abandon_signature(clinic_id=graph.clinic_a, operation_id=earlier.pk)
+    created_at = SignatureOperation._meta.get_field("created_at")
+    behind = earlier.created_at - timedelta(seconds=10)
+    original = created_at.pre_save
+
+    def behind_clock(instance: SignatureOperation, add: bool) -> object:
+        if not add:
+            return original(instance, add)
+        setattr(instance, created_at.attname, behind)
+        return behind
+
+    # The successor's web worker runs ten seconds behind the failed attempt's.
+    with monkeypatch.context() as clock:
+        clock.setattr(created_at, "pre_save", behind_clock)
+        operation, headers, body, expected = recorded.candidate("valid")
+    recorded.provider.verifier = verification_adapter(recorded_api("timeout", expected))
+    assert recorded.receive(headers, body) == "reconcile"
+    assert recorded.base.initiate().pk == operation.pk
+    recorded.provider.verifier = verification_adapter(recorded_api("valid", expected))
+    assert recorded.reconcile(operation) == "completed"
+
+    def repeat() -> str:
+        try:
+            recorded.base.initiate()
+        except ClinicalConflictError as refusal:
+            return refusal.reason_code
+        return "initiated"
+
+    assert _contend(repeat) == ["already_completed", "already_completed"]
+    with owner_scope(graph.organization_a):
+        rows = list(
+            SignatureOperation.objects.order_by("attempt_sequence").values_list(
+                "pk", "state", "attempt_sequence", "created_at"
+            )
+        )
+    assert [(pk, state, number) for pk, state, number, _ in rows] == [
+        (earlier.pk, "failed", 1),
+        (operation.pk, "rehearsal_complete", 2),
+    ]
+    assert rows[1][3] < rows[0][3]
+
+
+def test_completed_document_refuses_concurrent_unlocked_signing_inserts(
+    recorded: RecordedSetup,
+) -> None:
+    operation, headers, body, _ = recorded.candidate("valid")
+    assert recorded.receive(headers, body) == "applied"
+    done = recorded.base.refresh(operation)
+    assert done.state == "rehearsal_complete"
+    graph = recorded.base.graph
+
+    # A direct insert, bypassing the service's document lock and its check.
+    def insert() -> str:
+        try:
+            with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+                SignatureOperation.objects.create(
+                    organization_id=done.organization_id,
+                    document_id=done.document_id,
+                    encounter_id=done.encounter_id,
+                    clinic_id=done.clinic_id,
+                    patient_id=done.patient_id,
+                    issuer_id=done.issuer_id,
+                    provider=done.provider,
+                    category=done.category,
+                    content_digest=done.content_digest,
+                    signer_subject=done.signer_subject,
+                )
+        except IntegrityError as refused:
+            diag = getattr(refused.__cause__, "diag", None)
+            return str(getattr(diag, "constraint_name", None))
+        return "inserted"
+
+    assert _contend(insert) == [
+        "prescription_signature_settled_unique",
+        "prescription_signature_settled_unique",
+    ]
+    with owner_scope(graph.organization_a):
+        assert SignatureOperation.objects.count() == 1
 
 
 @pytest.mark.django_db(transaction=True)

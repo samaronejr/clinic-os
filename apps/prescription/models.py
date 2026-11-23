@@ -247,6 +247,7 @@ LIVE_SIGNATURE_STATES: tuple[str, ...] = (
     "signing",
     "signed_unverified",
 )
+COMPLETED_SIGNATURE_STATES: tuple[str, ...] = ("issued", "rehearsal_complete")
 
 
 class SignatureOperation(TenantScopedModel):
@@ -311,6 +312,9 @@ class SignatureOperation(TenantScopedModel):
         max_length=64, null=True
     )
     failure_reason = models.CharField(max_length=64, default="")
+    # Assigned by the insert trigger per document; the only order that names
+    # the current operation. Application clocks never decide it.
+    attempt_sequence = models.BigIntegerField(db_default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True)
 
@@ -322,7 +326,7 @@ class SignatureOperation(TenantScopedModel):
         )
 
     class Meta:
-        """Bind one live operation per document and one provider reference."""
+        """Bind one settled operation per document and one provider reference."""
 
         constraints: ClassVar = [
             models.CheckConstraint(
@@ -412,10 +416,22 @@ class SignatureOperation(TenantScopedModel):
                 | models.Q(state__in=["draft", "prepared", "failed"]),
                 name="prescription_signature_operation_id_state",
             ),
+            models.UniqueConstraint(
+                fields=("document", "attempt_sequence"),
+                name="prescription_signature_sequence_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(attempt_sequence__gt=0),
+                name="prescription_signature_sequence_assigned",
+            ),
+            models.UniqueConstraint(
+                fields=("document",),
+                condition=models.Q(
+                    state__in=(*LIVE_SIGNATURE_STATES, *COMPLETED_SIGNATURE_STATES)
+                ),
+                name="prescription_signature_settled_unique",
+            ),
         ]
-
-
-COMPLETED_SIGNATURE_STATES: tuple[str, ...] = ("issued", "rehearsal_complete")
 
 
 class PrescriptionDocumentRevocation(TenantScopedModel):

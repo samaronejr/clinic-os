@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.conf import settings
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -667,27 +667,34 @@ def retry_message(
     state = message_states([message]).get(message.pk, "queued")
     if state != "failed":
         raise InboxRefusedError(Reason.NOT_FAILED)
-    with transaction.atomic():
-        enqueue_operation(
-            OperationRequest(
-                channel=conversation.channel,
-                provider=PROVIDER_BY_CHANNEL[conversation.channel],
-                clinic_id=clinic_id,
-                subject_type=SUBJECT_TYPE,
-                subject_id=message.pk,
-                idempotency_key=command_id,
+    try:
+        with transaction.atomic():
+            enqueue_operation(
+                OperationRequest(
+                    channel=conversation.channel,
+                    provider=PROVIDER_BY_CHANNEL[conversation.channel],
+                    clinic_id=clinic_id,
+                    subject_type=SUBJECT_TYPE,
+                    subject_id=message.pk,
+                    idempotency_key=command_id,
+                )
             )
-        )
-        if message.provider_state == "failed":
-            Message.objects.filter(pk=message.pk).update(provider_state="")
-        record_phase1_event(
-            "comms.message.retried", clinic_id=clinic_id, affected_record_id=message.pk
-        )
+            if message.provider_state == "failed":
+                Message.objects.filter(pk=message.pk).update(provider_state="")
+            record_phase1_event(
+                "comms.message.retried",
+                clinic_id=clinic_id,
+                affected_record_id=message.pk,
+            )
+    except IntegrityError as refused:
+        # The attempt guard admits a successor only after the current attempt's
+        # own negative outcome; the database has the last word on that.
+        raise InboxRefusedError(Reason.NOT_FAILED) from refused
     publish_messages_hint(clinic_id)
     return SendReceipt(message.pk, conversation.pk, replayed=False)
 
 
-_OPEN_PROGRESS: Final = ("queued", "unconfirmed", "sent", "delivered", "read")
+_PROOF: Final = ("delivered", "read")
 
 
 def _attempt_state(attempt: IntegrationOperation, progress: str) -> str:
@@ -702,17 +709,17 @@ def _attempt_state(attempt: IntegrationOperation, progress: str) -> str:
 def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
     """Derive each outbound message's display state from outbox and provider facts.
 
-    Attempts are never ordered by their worker-assigned timestamps. A retry is
-    queued only while every earlier attempt carries its own negative evidence,
-    so a message is ``failed`` only when all of its attempts are; otherwise the
-    attempt still open is the current one. A late failure for an earlier
-    attempt therefore never reopens a send once a successor was accepted.
+    The current attempt is the one with the highest database-assigned
+    ``attempt_sequence``; worker timestamps never order attempts. Its own
+    evidence decides the state and retry eligibility, except that delivery or
+    read proof from any attempt wins. A late report about an earlier attempt
+    therefore neither reopens a send nor hides the current attempt's failure.
     """
     outbound = {m.pk: m for m in messages if m.direction == "out"}
     attempts: dict[UUID, list[IntegrationOperation]] = {}
     for attempt in IntegrationOperation.objects.filter(
         subject_type=SUBJECT_TYPE, subject_id__in=outbound
-    ):
+    ).order_by("attempt_sequence"):
         attempts.setdefault(attempt.subject_id, []).append(attempt)
     reported: dict[UUID, str] = {}
     for key, progress in (
@@ -733,7 +740,7 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         # one as evidence about a retried message, even on an upgraded database.
         if len(own) > 1 and legacy not in {"delivered", "read"}:
             legacy = ""
-        candidates = [
+        by_sequence = [
             _attempt_state(
                 attempt,
                 advance_provider_state(
@@ -744,9 +751,9 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         ] or [
             effective_delivery_state(operation_status="pending", provider_state=legacy)
         ]
-        open_attempts = [state for state in candidates if state != "failed"]
+        proven = [state for state in by_sequence if state in _PROOF]
         states[message_id] = (
-            max(open_attempts, key=_OPEN_PROGRESS.index) if open_attempts else "failed"
+            max(proven, key=_PROOF.index) if proven else by_sequence[-1]
         )
     return states
 

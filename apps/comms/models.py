@@ -98,6 +98,9 @@ class IntegrationOperation(TenantScopedModel):
     last_error = models.CharField(max_length=255, blank=True)
     idempotency_key = models.UUIDField()
     not_before = models.DateTimeField(null=True, blank=True)
+    # Per-message attempt order, assigned by the insert trigger for
+    # ``comms.message`` rows only; NULL for every other subject.
+    attempt_sequence = models.BigIntegerField(null=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -130,6 +133,20 @@ class IntegrationOperation(TenantScopedModel):
                     kind="action", channel="", payload_digest__regex=r"^[0-9a-f]{64}$"
                 ),
                 name="comms_operation_kind_contract",
+            ),
+            models.UniqueConstraint(
+                fields=("subject_type", "subject_id", "attempt_sequence"),
+                name="comms_operation_attempt_sequence_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    subject_type="comms.message", attempt_sequence__isnull=False
+                )
+                | (
+                    ~models.Q(subject_type="comms.message")
+                    & models.Q(attempt_sequence__isnull=True)
+                ),
+                name="comms_operation_attempt_sequence_scope",
             ),
         ]
 

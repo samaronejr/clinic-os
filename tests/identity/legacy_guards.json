@@ -14624,6 +14624,26 @@
       "probes": [],
       "reason": "A status receipt binds the authenticated provider account, tenant, clinic, message and exact outbound operation. Runtime may insert receipts but cannot update them."
     },
+    "clinic_app.comms_message_attempt_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_attempt_sequence_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Assigns the per-message attempt sequence and admits a successor only after the current attempt's own negative outcome and no delivery proof. Runtime cannot update the sequence."
+    },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",
       "reason": "Todo 50 portal messages: chains the patient-session reply and escalation events with the session as actor and a clinic_id/object_verb payload only.",
@@ -18868,6 +18888,26 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_signature_sequence": {
+      "discovery": {
+        "migrations": [
+          "apps/prescription/migrations/_signature_sequence_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Assigns the per-document signing attempt sequence on insert; runtime cannot update it. Row binding trigger, not a staff-role grant."
     },
     "clinic_app.prescription_signature_scope": {
       "discovery": {

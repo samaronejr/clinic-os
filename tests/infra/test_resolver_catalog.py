@@ -535,6 +535,7 @@ POSTURE_OVERRIDES: Final = {
     "prescription_revocation_guard": ("v", False, ["clinic_resolver"]),
     "prescription_signature_callback_guard": ("v", False, ["clinic_resolver"]),
     "prescription_signature_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_signature_sequence": ("v", False, ["clinic_resolver"]),
     "prescription_verify_allowance": ("v", True, ["clinic_app", "clinic_resolver"]),
     "prescription_verify_synthetic": ("s", False, ["clinic_resolver"]),
     "protected_tenant": ("s", False, ["clinic_owner", "clinic_resolver"]),
@@ -878,6 +879,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("prescription_signature_guard", ""),
+    ("prescription_signature_sequence", ""),
     ("prescription_signature_scope", "requested_operation uuid"),
     (
         "prescription_verify",
@@ -1350,6 +1352,7 @@ FUNCTION_RESULTS: Final = {
         "actor_id uuid, provider text)"
     ),
     ("prescription_signature_guard", ""): "trigger",
+    ("prescription_signature_sequence", ""): "trigger",
     ("prescription_signature_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid, provider text)"
     ),

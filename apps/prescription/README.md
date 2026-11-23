@@ -143,6 +143,14 @@ again. An unavailable verifier is not a negative verification. A retained
 candidate keeps the document's signing key until its verification verdict is
 recorded: an expired, stale or revoked approval refuses release only after that
 verdict, never in place of it.
+Each operation carries a database-assigned per-document `attempt_sequence`;
+the highest names the document's current operation, never `created_at`. The
+partial unique index `prescription_signature_settled_unique` allows at most one
+unresolved or verified operation per document, so a completed document refuses
+every new signing request and a second verified signature cannot be stored.
+Prescription 0017 numbered existing operations once (failed rows first, then
+the document's single unfailed row); 0018 fails closed on a document that
+already holds two.
 
 ## Issuance command and recorded SNCR allocation
 

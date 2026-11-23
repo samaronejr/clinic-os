@@ -209,12 +209,20 @@ row with the principal as actor. Payload keys are only `clinic_id` and
 `object_verb`; no body, address or label. A replayed or foreign-claim delivery
 appends nothing. New status receipts bind the reported progress to the operation
 resolved by its own provider reference and the proven conversation account.
-Retry is offered only when **every** attempt carries its own negative evidence;
-worker timestamps never decide which attempt is current, so once a successor is
-accepted a late failure for an earlier attempt cannot reopen a send. Delivery/read
-proof from **any** attempt survives in `Message.provider_state` and vetoes a
-queued retry at the send boundary. Historical unbound negative reports are not
-attributed to a successor by recency.
+Each message attempt carries a database-assigned `attempt_sequence`; the highest
+is the current attempt, and worker timestamps never order attempts. The display
+state and retry eligibility come from the current attempt's own evidence, so a
+late failure for an earlier attempt cannot reopen a send once a successor was
+accepted, and an earlier acceptance cannot hide the current attempt's failure.
+The insert trigger `comms_message_attempt_guard` admits a successor only after
+the current attempt's own negative outcome and while no attempt has delivery
+proof, so at most one provider-accepted attempt per message is ever open.
+Delivery/read proof from **any** attempt survives in `Message.provider_state`
+and vetoes a queued retry at the send boundary. A pre-attribution failure
+projected onto the message counts only for a message with a single attempt;
+historical unbound reports are never attributed to a successor. Attempts that
+predate the sequence were numbered once by comms 0013 (non-atomic, resumable,
+irreversible): terminal failures first, then the rest, each by historical order.
 
 ### Contact tokens
 

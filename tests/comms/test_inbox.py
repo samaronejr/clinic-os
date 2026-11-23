@@ -20,7 +20,7 @@ from apps.comms.inbox_inbound import (
     receive_inbound,
     verify_token_name,
 )
-from apps.comms.inbox_services import InboxRefusedError, Reason
+from apps.comms.inbox_services import PROVIDER_BY_CHANNEL, InboxRefusedError, Reason
 from apps.comms.models import (
     Conversation,
     InboundEvent,
@@ -30,10 +30,14 @@ from apps.comms.models import (
     SuggestedReply,
     TemplateVersion,
 )
-from apps.core.integration import execute_operation
+from apps.core.integration import (
+    OperationRequest,
+    enqueue_operation,
+    execute_operation,
+)
 from apps.identity.models import UserClinicRole
 from apps.intake.contacts import save_contact_destination, verify_contact
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -359,6 +363,132 @@ def test_accepted_retry_stays_current_when_its_worker_clock_runs_behind(
         retry()
     with owner_context(graph.organization_a):
         assert IntegrationOperation.objects.filter(subject_id=message_id).count() == 2
+
+
+def _dispatch_pending(graph: RbacGraph, message_id: UUID) -> str:
+    with owner_context(graph.organization_a):
+        operation = IntegrationOperation.objects.get(
+            subject_id=message_id, status="pending"
+        )
+    with runtime_role():
+        assert execute_operation(operation.pk) == "succeeded"
+    with owner_context(graph.organization_a):
+        operation.refresh_from_db()
+    assert operation.provider_reference
+    return operation.provider_reference
+
+
+def _refusal(error: IntegrityError) -> str | None:
+    cause = error.__cause__
+    diag = getattr(cause, "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
+def test_upgraded_failed_message_stays_retryable_after_its_successor_fails(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    _dispatch_pending(graph, message_id)
+    # Before attempt attribution (comms 0012) the provider's failure of the
+    # sole attempt was projected onto the message and named no attempt.
+    with owner_context(graph.organization_a):
+        Message.objects.filter(pk=message_id).update(provider_state="failed")
+
+    def state() -> str:
+        with as_actor(graph, manager_of(graph)):
+            return services.message_states([Message.objects.get(pk=message_id)])[
+                message_id
+            ]
+
+    def retry() -> None:
+        with as_actor(graph, manager_of(graph)):
+            services.retry_message(
+                clinic_id=graph.clinic_a, message_id=message_id, command_id=uuid4()
+            )
+
+    observed = [state()]
+    retry()
+    observed.append(state())
+    second = _dispatch_pending(graph, message_id)
+    failed = world.status_body(provider_message_id=second, status="failed")
+    assert world.receive(failed).accepted == 1
+    observed.append(state())
+    retry()
+    observed.append(state())
+    assert observed == ["failed", "queued", "failed", "queued"]
+    with owner_context(graph.organization_a):
+        assert list(
+            IntegrationOperation.objects.filter(subject_id=message_id)
+            .order_by("attempt_sequence")
+            .values_list("attempt_sequence", "status")
+        ) == [(1, "succeeded"), (2, "succeeded"), (3, "pending")]
+
+
+def test_database_admits_one_successor_only_after_a_negative_outcome(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    first = _dispatch_pending(graph, message_id)
+
+    # Direct outbox writes, without the service's locks or state check.
+    def enqueue() -> None:
+        with as_actor(graph, manager_of(graph)):
+            enqueue_operation(
+                OperationRequest(
+                    channel="whatsapp",
+                    provider=PROVIDER_BY_CHANNEL["whatsapp"],
+                    clinic_id=graph.clinic_a,
+                    subject_type=services.SUBJECT_TYPE,
+                    subject_id=message_id,
+                    idempotency_key=uuid4(),
+                )
+            )
+
+    with pytest.raises(IntegrityError) as accepted:
+        enqueue()
+    assert _refusal(accepted.value) == "comms_message_attempt_open_check"
+    failed = world.status_body(provider_message_id=first, status="failed")
+    assert world.receive(failed).accepted == 1
+
+    barrier = threading.Barrier(2)
+    outcomes: list[str | None] = []
+    failures: list[BaseException] = []
+
+    def contend() -> None:
+        try:
+            barrier.wait(timeout=30)
+            enqueue()
+            outcomes.append("admitted")
+        except IntegrityError as refused:
+            outcomes.append(_refusal(refused))
+        except BaseException as error:  # noqa: BLE001 - surfaced by the assertion
+            failures.append(error)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=contend) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+    assert not failures
+    assert "admitted" in outcomes
+    assert len(outcomes) == 2
+    assert outcomes.count("admitted") == 1
+    assert set(outcomes) - {"admitted"} <= {
+        "comms_operation_attempt_sequence_uniq",
+        "comms_message_attempt_open_check",
+    }
+    with owner_context(graph.organization_a):
+        assert list(
+            IntegrationOperation.objects.filter(subject_id=message_id)
+            .order_by("attempt_sequence")
+            .values_list("attempt_sequence", flat=True)
+        ) == [1, 2]
 
 
 def test_delivery_proof_received_before_retry_dispatch_vetoes_the_new_send(

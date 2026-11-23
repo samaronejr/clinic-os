@@ -159,10 +159,11 @@ def _document_for_signing(clinic_id: UUID, document_id: UUID) -> PrescriptionDoc
 def _current_operation(document: PrescriptionDocument) -> SignatureOperation | None:
     # Read completion and liveness from ONE locked row: a callback may finish
     # between two independent existence checks even under the document request lock.
+    # The database-assigned sequence names that row; worker clocks never do.
     current = (
         SignatureOperation.objects.select_for_update()
         .filter(document=document)
-        .order_by("-created_at", "-id")
+        .order_by("-attempt_sequence")
         .first()
     )
     if current is not None and current.state in ("issued", "rehearsal_complete"):

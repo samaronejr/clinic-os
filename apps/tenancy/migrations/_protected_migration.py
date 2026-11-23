@@ -327,6 +327,30 @@ def encrypt_backfill(
     return run
 
 
+def open_table_backfill(
+    *, table: str, sql: str
+) -> Callable[[Apps, BaseDatabaseSchemaEditor], None]:
+    """Return a RunPython callable running one owner-side backfill statement.
+
+    The same isolation contract as the encryption passes: one transaction,
+    RLS and user triggers suspended only for its own statement, so runtime
+    roles never observe the open table and a failure rolls the toggles back
+    with the data. ``sql`` must touch only rows still pending, so a re-run
+    resumes where an interrupted one stopped.
+    """
+
+    def run(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
+        del apps
+        connection = schema_editor.connection
+        with transaction.atomic(using=connection.alias), connection.cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            _open_table(cursor, table)
+            cursor.execute(sql)
+            _close_table(cursor, table)
+
+    return run
+
+
 def require_backfill_complete(
     *,
     table: str,
