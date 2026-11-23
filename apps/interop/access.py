@@ -62,6 +62,7 @@ class Code(StrEnum):
     SCAN_UNAVAILABLE = "scan_unavailable"
     SOURCE_SIZE = "source_size"
     TOO_MANY_ROWS = "too_many_rows"
+    UNSUPPORTED_DATASET = "unsupported_dataset"
     UNSAFE_SPREADSHEET = "unsafe_spreadsheet"
     UNSUPPORTED_DELIMITER = "unsupported_delimiter"
     UNSUPPORTED_ENCODING = "unsupported_encoding"

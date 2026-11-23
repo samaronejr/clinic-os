@@ -402,6 +402,11 @@ def test_inventory_services_keep_exact_scoped_keyword_only_boundaries(
             {},
         ),
         (
+            interop_services.upload_v5_import,
+            ["clinic_id", "data", "declared_sha256", "relations", "idempotency_key"],
+            {},
+        ),
+        (
             interop_services.profile_import,
             ["clinic_id", "job_id", "expected_sequence"],
             {},

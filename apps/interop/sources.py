@@ -26,7 +26,7 @@ from apps.ehr.attachment_scanner import ACTIVE_MARKERS
 from apps.interop.access import Code, ImportConflictError, ImportInputError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
 MAX_SOURCE_BYTES: Final = 20 * 1024 * 1024
 MAX_ROWS: Final = 50_000
@@ -250,7 +250,14 @@ def _reject_constant(_value: str) -> object:
     raise ImportInputError(Code.MALFORMED_JSON)
 
 
-def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
+def bounded_members(
+    archive: zipfile.ZipFile,
+    *,
+    allowed_file: Callable[[str], bool],
+    required_files: set[str],
+    directory: str | None = None,
+) -> dict[str, zipfile.ZipInfo]:
+    """Check layout and decompression limits before opening an archive member."""
     infos = archive.infolist()
     if len(infos) > MAX_MEMBERS:
         raise ImportInputError(Code.ARCHIVE_LAYOUT)
@@ -258,16 +265,15 @@ def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
     total = 0
     for info in infos:
         name = info.filename
+        if name != info.orig_filename:
+            raise ImportInputError(Code.ARCHIVE_LAYOUT)
         if info.is_dir():
-            if name != "files/":
+            if name != directory:
                 raise ImportInputError(Code.ARCHIVE_LAYOUT)
             continue
         if (
             name in members
-            or not (
-                name in (MANIFEST, *DATASET_FILES.values())
-                or ATTACHMENT_NAME.fullmatch(name)
-            )
+            or not allowed_file(name)
             or ".." in name
             or info.flag_bits & ENCRYPTED_FLAG
             or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
@@ -283,12 +289,13 @@ def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
         if total > MAX_ARCHIVE_BYTES:
             raise ImportInputError(Code.ARCHIVE_LAYOUT)
         members[name] = info
-    if MANIFEST not in members or DATASET_FILES["patients"] not in members:
+    if not members.keys() >= required_files:
         raise ImportInputError(Code.ARCHIVE_LAYOUT)
     return members
 
 
-def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+def read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    """Read one bounded member and require its full uncompressed length."""
     with archive.open(info) as stream:
         data = stream.read(MAX_MEMBER_BYTES + 1)
     if len(data) != info.file_size:
@@ -323,9 +330,17 @@ def open_archive(data: bytes) -> dict[str, bytes]:
     """Return verified member bytes; every member must match the manifest."""
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            members = _members(archive)
+            members = bounded_members(
+                archive,
+                allowed_file=lambda name: (
+                    name in (MANIFEST, *DATASET_FILES.values())
+                    or ATTACHMENT_NAME.fullmatch(name) is not None
+                ),
+                required_files={MANIFEST, DATASET_FILES["patients"]},
+                directory="files/",
+            )
             contents = {
-                name: _read_member(archive, info) for name, info in members.items()
+                name: read_member(archive, info) for name, info in members.items()
             }
     except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError):
         raise ImportInputError(Code.MALFORMED_ARCHIVE) from None

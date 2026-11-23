@@ -47,7 +47,8 @@
         "datetime_format": {
           "enum": [
             "DD/MM/YYYY HH:MM",
-            "YYYY-MM-DDTHH:MM"
+            "YYYY-MM-DDTHH:MM",
+            "ISO-8601-offset"
           ]
         },
         "csv": {

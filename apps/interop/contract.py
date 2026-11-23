@@ -63,7 +63,8 @@ HISTORY_REQUIRED: Final = (
 SEX_VALUES: Final = ("declined", "female", "intersex", "male", "not_informed")
 HISTORY_KINDS: Final = ("note", "observation", "attachment")
 DATE_FORMATS: Final = ("DD/MM/YYYY", "YYYY-MM-DD", "excel_serial")
-DATETIME_FORMATS: Final = ("DD/MM/YYYY HH:MM", "YYYY-MM-DDTHH:MM")
+OFFSET_DATETIME: Final = "ISO-8601-offset"
+DATETIME_FORMATS: Final = ("DD/MM/YYYY HH:MM", "YYYY-MM-DDTHH:MM", OFFSET_DATETIME)
 
 
 def _columns(fields: tuple[str, ...], required: list[str]) -> dict[str, object]:

@@ -23,6 +23,11 @@ open.
   `files/<name>` attachments. The manifest lists every other member with its
   `sha256` and `bytes`; any missing, extra or mismatched member fails the
   upload (`manifest_mismatch` / `checksum_mismatch`).
+- Synthetic organization exports can enter the same governed flow through
+  `upload_v5_import` and `v5_import_mapping`. The bounded adapter verifies the
+  complete v5 ZIP and stages only the selected projections documented in
+  `docs/api/export-v5.md#import-compatibility`. It creates no new import states
+  and cannot replay export-only datasets or source authority.
 
 ## Sources and limits
 
@@ -70,7 +75,8 @@ codes (`access.Code`), never source values.
 Validators are deterministic: CPF check digits and CNS length (intake's
 `normalize_identifier`), dates in the declared format (`DD/MM/YYYY`,
 `YYYY-MM-DD` or `excel_serial`; no future birth dates), clinic-local
-`DD/MM/YYYY HH:MM` or ISO minutes (never in the future), closed vocabularies
+`DD/MM/YYYY HH:MM` or ISO minutes, or `ISO-8601-offset` with seconds and up
+to six fractional digits (never in the future), closed vocabularies
 (sex at birth, history kinds), the local observation code set with its exact
 UCUM-like unit (`ehr.longitudinal_values`), clinic-required demographics,
 in-file duplicate source ids and identifiers, and patient names that would be

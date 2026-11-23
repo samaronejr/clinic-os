@@ -11,6 +11,7 @@ the approved one.
 from __future__ import annotations
 
 import hashlib
+import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -25,7 +26,7 @@ from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.ehr.longitudinal_values import CODES, observation_value
 from apps.intake.demographics import DemographicsInputError, normalize_identifier
 from apps.intake.patient_creation import PatientBirthDateError, validate_birth_date
-from apps.interop.contract import HISTORY_KINDS, SEX_VALUES
+from apps.interop.contract import HISTORY_KINDS, OFFSET_DATETIME, SEX_VALUES
 from apps.interop.spreadsheet import is_formula_like
 
 if TYPE_CHECKING:
@@ -45,6 +46,10 @@ BR_DATE_PARTS: Final = (2, 2, 4)
 ISO_DATE_LENGTH: Final = len("2000-01-01")
 IDENTIFIER_FIELDS: Final = ("cpf", "cns")
 CONTROL: Final = frozenset({"Cc", "Cs"})
+_OFFSET_TIME: Final = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,19 +239,25 @@ def parse_date(value: str, date_format: str, *, field: str) -> date:
 def parse_datetime(
     value: str, datetime_format: str, *, field: str, zone: ZoneInfo
 ) -> datetime:
-    """Parse one clinic-local minute and refuse future or implausible times."""
+    """Parse a clinic-local minute or an exact explicitly offset timestamp."""
     pattern = (
         "%Y-%m-%dT%H:%M" if datetime_format == "YYYY-MM-DDTHH:MM" else "%d/%m/%Y %H:%M"
     )
     try:
-        parsed = datetime.strptime(value.strip(), pattern)  # noqa: DTZ007
-    except ValueError:
+        value = value.strip()
+        if datetime_format == OFFSET_DATETIME:
+            if not _OFFSET_TIME.fullmatch(value):
+                _reject(field, "invalid_date")
+            aware = datetime.fromisoformat(value)
+        else:
+            parsed = datetime.strptime(value, pattern)  # noqa: DTZ007
+            aware = parsed.replace(tzinfo=zone)
+        if aware.date() < EARLIEST:
+            _reject(field, "implausible_date")
+        if aware > timezone.now().astimezone(UTC):
+            _reject(field, "future_date")
+    except (OverflowError, ValueError):
         _reject(field, "invalid_date")
-    aware = parsed.replace(tzinfo=zone)
-    if aware.date() < EARLIEST:
-        _reject(field, "implausible_date")
-    if aware > timezone.now().astimezone(UTC):
-        _reject(field, "future_date")
     return aware
 
 

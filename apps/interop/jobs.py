@@ -293,6 +293,18 @@ def _fingerprint(source_kind: str, digest: str, size: int) -> str:
     ).hexdigest()
 
 
+def verified_upload_digest(data: bytes, declared_sha256: str) -> str:
+    """Bind a bounded upload to the checksum supplied independently of its bytes."""
+    if type(data) is not bytes or not 1 <= len(data) <= sources.MAX_SOURCE_BYTES:
+        raise ImportInputError(Code.SOURCE_SIZE)
+    if not isinstance(declared_sha256, str) or not SHA256.fullmatch(declared_sha256):
+        raise ImportInputError(Code.INVALID_CHECKSUM)
+    actual = sources.sha256_hex(data)
+    if actual != declared_sha256:
+        raise ImportConflictError(Code.CHECKSUM_MISMATCH)
+    return actual
+
+
 def upload_import(
     *,
     clinic_id: UUID,
@@ -304,15 +316,9 @@ def upload_import(
     """Store one source after its checksum and structure verify; never parse twice."""
     if source_kind not in contract.SOURCE_KINDS:
         raise ImportInputError(Code.UNSUPPORTED_SOURCE)
-    if type(data) is not bytes or not 1 <= len(data) <= sources.MAX_SOURCE_BYTES:
-        raise ImportInputError(Code.SOURCE_SIZE)
     if type(idempotency_key) is not UUID:
         raise ImportInputError(Code.INVALID_COMMAND)
-    if not isinstance(declared_sha256, str) or not SHA256.fullmatch(declared_sha256):
-        raise ImportInputError(Code.INVALID_CHECKSUM)
-    actual = sources.sha256_hex(data)
-    if actual != declared_sha256:
-        raise ImportConflictError(Code.CHECKSUM_MISMATCH)
+    actual = verified_upload_digest(data, declared_sha256)
     sources.read_datasets(source_kind, data)
     attachments = sources.archive_attachments(data) if source_kind == "zip" else ()
     fingerprint = _fingerprint(source_kind, actual, len(data))
