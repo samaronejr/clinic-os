@@ -29,7 +29,7 @@ from apps.core.idempotency import (
     PatientNameValueError,
     normalize_patient_name,
 )
-from apps.tenancy.envelope import EnvelopeUnavailableError, _kek, protect, reveal
+from apps.tenancy.envelope import EnvelopeUnavailableError, protect, reveal
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -135,13 +135,18 @@ class EncryptedTextField(EncryptedField):
     def reveal_column(self, *, column: str) -> models.Case:
         """Reveal only an ORM column in an already authorized row projection.
 
-        Never bind envelopes here: PostgreSQL prints a failed statement before
-        Django maps its error. Resolve the column in SQL, not from input values.
+        The caller stages the KEK on the same transaction before evaluating
+        this expression. Neither the KEK nor an envelope is a projection bind.
         """
         return models.Case(
             models.When(IsNull(models.F(column), rhs=True), then=models.Value(None)),
             default=models.Func(
-                models.Value(_kek()),
+                models.Func(
+                    template=(
+                        "pg_catalog.current_setting('app.column_reveal_kek', true)"
+                    ),
+                    output_field=models.TextField(),
+                ),
                 models.Value(self.envelope_purpose),
                 models.F(column),
                 template="clinic_app.protected_decrypt(%(expressions)s)",

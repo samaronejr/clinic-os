@@ -18,6 +18,7 @@ from apps.core.secrets import (
 )
 from apps.identity.models import Clinic, Organization, UserClinicRole
 from apps.intake.models import Patient
+from apps.tenancy.column_key import stage_column_key
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import (
     EnvelopeContextError,
@@ -196,7 +197,8 @@ def _patient_text_projection(
     patients: QuerySet[Patient], *, purpose: str, column: str = "full_name"
 ) -> tuple[str, ...]:
     field = EncryptedTextField(purpose=purpose)
-    with map_envelope_errors():
+    with transaction.atomic(), map_envelope_errors():
+        stage_column_key()
         return tuple(
             field.decode_revealed(value)
             for value in patients.annotate(
@@ -304,6 +306,27 @@ def test_column_reveal_reloads_key_material_after_a_successful_read(
             pytest.raises(SecretUnavailableError),
         ):
             _patient_text_projection(patients, purpose=purpose)
+
+
+def test_column_key_rejects_unsafe_logging_and_is_transaction_local() -> None:
+    def key_staged() -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.column_reveal_kek', true), '') "
+                "IS NOT NULL"
+            )
+            row = cursor.fetchone()
+            return isinstance(row, tuple) and row == (True,)
+
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL log_parameter_max_length_on_error = -1")
+        with pytest.raises(EnvelopeUnavailableError):
+            stage_column_key()
+        assert not key_staged()
+    with runtime_role(), transaction.atomic():
+        stage_column_key()
+        assert key_staged()
+    assert not key_staged()
 
 
 def test_key_rotation_retires_and_reencrypts(

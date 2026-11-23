@@ -22,14 +22,17 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
+from django.contrib.postgres.expressions import ArraySubquery
+from django.contrib.postgres.fields import ArrayField
 from django.db import transaction
-from django.db.models import BinaryField, Case, F, Q, Value, When, Window
-from django.db.models.functions import RowNumber
+from django.db.models import BinaryField, Case, F, Q, UUIDField, Value, When, Window
+from django.db.models.functions import JSONArray, RowNumber
 from django.db.models.lookups import IsNull, LessThanOrEqual
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import SecretUnavailableError
+from apps.identity.models import Clinic
 from apps.intake.models import Patient
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
@@ -53,6 +56,7 @@ from apps.scheduling.models import (
     ServiceType,
 )
 from apps.scheduling.timezones import civil_day_bounds, format_local_minute
+from apps.tenancy.column_key import stage_column_key
 from apps.tenancy.envelope import map_envelope_errors
 
 if TYPE_CHECKING:
@@ -308,23 +312,53 @@ def _slots(starts: list[str], ends: list[str]) -> tuple[str, ...]:
 
 
 def _catalog(
-    scope: AvailabilityViewScope, clinic_id: UUID, booked: set[UUID]
+    scope: AvailabilityViewScope,
+    clinic_id: UUID,
+    bookings: QuerySet[Appointment] | None,
 ) -> tuple[tuple[BoardLane, ...], tuple[BoardLane, ...], tuple[ServiceOption, ...]]:
+    # Keep each catalog's order and RLS predicates in independent subqueries.
+    resource_options = Resource.objects.filter(
+        clinic_id=clinic_id, kind__in=_RESOURCE_KINDS, active=True
+    ).order_by("kind", "name", "pk")
+    service_options = ServiceType.objects.filter(
+        clinic_id=clinic_id, active=True
+    ).order_by("name", "pk")
+    try:
+        booked, resource_rows, service_rows = (
+            Clinic.objects.filter(pk=clinic_id)
+            .annotate(
+                booked_ids=(
+                    Value([], output_field=ArrayField(UUIDField()))
+                    if bookings is None
+                    else ArraySubquery(
+                        bookings.order_by().values("practitioner_id").distinct()
+                    )
+                ),
+                resource_rows=ArraySubquery(
+                    resource_options.annotate(
+                        item=JSONArray("kind", "pk", "name")
+                    ).values("item")
+                ),
+                service_rows=ArraySubquery(
+                    service_options.annotate(
+                        item=JSONArray("pk", "name", "duration_min")
+                    ).values("item")
+                ),
+            )
+            .values_list("booked_ids", "resource_rows", "service_rows")
+            .get()
+        )
+    except Clinic.DoesNotExist as error:
+        raise AvailabilityAccessDeniedError from error
     professionals = tuple(
         BoardLane("practitioner", pk, label)
-        for pk, label in _columns(scope, booked).items()
+        for pk, label in _columns(scope, set(booked)).items()
     )
     resources = tuple(
-        BoardLane(str(row.kind), row.pk, row.name)
-        for row in Resource.objects.filter(
-            clinic_id=clinic_id, kind__in=_RESOURCE_KINDS, active=True
-        ).order_by("kind", "name", "pk")
+        BoardLane(kind, UUID(pk), name) for kind, pk, name in resource_rows
     )
     services = tuple(
-        ServiceOption(row.pk, row.name, row.duration_min)
-        for row in ServiceType.objects.filter(
-            clinic_id=clinic_id, active=True
-        ).order_by("name", "pk")
+        ServiceOption(UUID(pk), name, duration) for pk, name, duration in service_rows
     )
     return professionals, resources, services
 
@@ -529,7 +563,7 @@ def _appointment_rows(
         "hold_expires_at",
     ).order_by(*_BOOKING_ORDER)[: MAX_BOARD_APPOINTMENTS + 1]
     try:
-        reveal = field.reveal_column(column=_NAME_COLUMN)
+        stage_column_key()
     except SecretUnavailableError:
         # Preserve an empty/all-null board during a KEK outage. Keep the same
         # RLS patient join and do not select ciphertext even on this path.
@@ -545,7 +579,7 @@ def _appointment_rows(
         )
     # The window ranks filtered, joined rows by metadata only. CASE keeps
     # the extra truncation witness out of protected_decrypt. Both the
-    # statement and its parameters are free of patient envelope values.
+    # statement and its parameters are free of both the KEK and envelopes.
     visible_rank = LessThanOrEqual(
         Window(expression=RowNumber(), order_by=_BOOKING_ORDER),
         Value(MAX_BOARD_APPOINTMENTS),
@@ -554,7 +588,7 @@ def _appointment_rows(
         rows = tuple(
             ordered.annotate(
                 revealed_name=Case(
-                    When(visible_rank, then=reveal),
+                    When(visible_rank, then=field.reveal_column(column=_NAME_COLUMN)),
                     output_field=BinaryField(),
                 )
             )
@@ -607,8 +641,7 @@ def view_agenda_board(
         ).exclude(due_hold())
         if scope.practitioner_id is not None:
             rows = rows.filter(practitioner_id=scope.practitioner_id)
-        booked = set(rows.values_list("practitioner_id", flat=True).distinct())
-        professionals, resources, services = _catalog(scope, clinic_id, booked)
+        professionals, resources, services = _catalog(scope, clinic_id, rows)
         if not BoardCatalog(professionals, resources, services).admits(selected):
             raise AgendaInputError
         rules = _move_rules(clinic_id)
@@ -688,7 +721,7 @@ def board_catalog(*, clinic_id: UUID) -> BoardCatalog:
         raise AvailabilityAccessDeniedError
     with transaction.atomic():
         scope = authorized_agenda_scope(clinic_id)
-        return BoardCatalog(*_catalog(scope, clinic_id, set()))
+        return BoardCatalog(*_catalog(scope, clinic_id, None))
 
 
 def free_move_slots(*, clinic_id: UUID, appointment_id: UUID, date: str) -> FreeSlots:

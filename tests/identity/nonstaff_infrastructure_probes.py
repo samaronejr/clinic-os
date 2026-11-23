@@ -19,6 +19,7 @@ from apps.identity.management.bootstrap import BootstrapRequest, bootstrap_clini
 from apps.identity.phase1a_identity_acl_migration import remove_runtime_identity_acl
 from apps.intake.models import Patient
 from apps.tenancy import envelope
+from apps.tenancy.column_key import stage_column_key
 from django.db import connection
 from django.db.migrations.state import ProjectState
 from django.utils import timezone
@@ -66,6 +67,7 @@ def _versioned_blind_indexes() -> bool:
 
 
 def _reveal_patient_name(data: NonstaffSubjects) -> bool:
+    stage_column_key()
     field = Patient.full_name.field
     revealed = (
         Patient.objects.filter(organization_id=data.legacy.graph.organization_a)

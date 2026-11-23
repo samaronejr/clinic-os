@@ -13,16 +13,26 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Never
+from typing import TYPE_CHECKING, Never
 
+import psycopg
+from apps.core.secrets import secret_store
 from apps.tenancy.db import tenant_context
-from apps.tenancy.envelope import EnvelopeFormatError, protect
-from django.db import connection, transaction
+from apps.tenancy.envelope import (
+    KEK_SECRET_NAME,
+    EnvelopeError,
+    EnvelopeFormatError,
+    protect,
+)
+from django.db import OperationalError, connection, transaction
 from django.test import Client
 from ops.perf.dataset import AGENDA_DAY, Tenant, seed_agenda, seed_patients, seed_tenant
 from ops.perf.profiles import profile_named
 from ops.perf.runtime import bootstrap_django, runtime_role
 from ops.perf.staff_http import provision_logins, sign_in
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _fail(reason: str) -> Never:
@@ -118,6 +128,72 @@ def _error_log(container: str, since: str, pid: int) -> bytes:
     return log
 
 
+def _board_join(sql: str) -> bool:
+    text = sql.lower()
+    return all(
+        word in text for word in ("scheduling_appointment", "intake_patient", " join ")
+    )
+
+
+def _lock_request(client: Client, url: str) -> None:
+    def hold_patient_relation(
+        execute: Callable[..., object],
+        sql: str,
+        params: object,
+        many: bool,
+        context: dict[str, object],
+    ) -> object:
+        if not _board_join(sql):
+            return execute(sql, params, many, context)
+        with psycopg.connect(os.environ["MIGRATION_DATABASE_URL"]) as locker:
+            if (
+                locker.info.host != connection.settings_dict["HOST"]
+                or locker.info.port != int(connection.settings_dict["PORT"])
+                or locker.info.dbname != connection.settings_dict["NAME"]
+            ):
+                _fail("lock witness DSN is not the owned fixture database")
+            locker.execute(
+                "LOCK TABLE clinic_app.intake_patient IN ACCESS EXCLUSIVE MODE NOWAIT"
+            )
+            # Bypass our injection wrapper, not PostgreSQL or its real logging.
+            execute("SET LOCAL lock_timeout = '75ms'", None, many, context)
+            return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(hold_patient_relation):
+        response = client.get(url)
+    exc_info = getattr(response, "exc_info", None)
+    if (
+        response.status_code != 500
+        or not isinstance(exc_info, tuple)
+        or exc_info[0] not in {EnvelopeError, OperationalError}
+    ):
+        _fail("expected board lock failure")
+
+
+def _verify_lock(container: str, client: Client, url: str, tenant: Tenant) -> bool:
+    with runtime_role():
+        pid = connection.connection.info.backend_pid
+        since = datetime.now(UTC).isoformat()
+        _lock_request(client, url)
+    if _count_reads(tenant) != 1:
+        _fail("locked board committed a read audit")
+    log = asyncio.run(_docker_capture("logs", "--since", since, container)).lower()
+    backend = [line for line in log.splitlines() if f"[{pid}]".encode() in line]
+    if not any(
+        b"error:" in line and b"canceling statement due to lock timeout" in line
+        for line in backend
+    ) or not any(
+        b"statement:" in line and _board_join(line.decode()) for line in backend
+    ):
+        _fail("no authentic failed joined SELECT and lock timeout")
+    kek = secret_store().get_secret(KEK_SECRET_NAME).encode()
+    leaked = kek in log or kek.hex().encode() in log
+    sys.stdout.write(
+        f"M1: genuine board lock timeout, HTTP 500, audit delta 0; kek={int(leaked)}\n"
+    )
+    return not leaked
+
+
 def _owned_postgres() -> str:
     """Validate the disposable database and its logging before any writes."""
     container = os.environ.get("OPTION_C_PG", "")
@@ -143,7 +219,7 @@ def _owned_postgres() -> str:
     return container
 
 
-def verify() -> bool:
+def verify(*, lock_timeout: bool = False) -> bool:
     """Compare the real failure log to synthetic fixture values in memory only."""
     container = _owned_postgres()
     # Seed three names in one lane of the small profile's three practitioners,
@@ -163,6 +239,10 @@ def verify() -> bool:
         name.encode() in warm.content for name in tenant.sample_names
     ):
         _fail("warm board did not render the seeded names")
+    if lock_timeout:
+        if _count_reads(tenant) != 1:
+            _fail("warm board did not commit exactly one read audit")
+        return _verify_lock(container, client, url, tenant)
     wrong, neighbors, patient_ids = _fault_batch(tenant)
     before = _count_reads(tenant)
     if before != 1:
@@ -205,6 +285,8 @@ if __name__ == "__main__":
     runtime_root = os.environ.get("OPTION_C_ROOT")
     if not runtime_root:
         _fail("expected a private runtime root")
+    if sys.argv[1:] not in ([], ["--lock-timeout"]):
+        _fail("unsupported probe arguments")
     with bootstrap_django(Path(runtime_root)):
-        passed = verify()
+        passed = verify(lock_timeout=bool(sys.argv[1:]))
     raise SystemExit(0 if passed else 1)

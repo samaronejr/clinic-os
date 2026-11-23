@@ -6,7 +6,8 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import pytest
-from apps.tenancy.envelope import EnvelopeFormatError, protect
+from apps.core.secrets import secret_store
+from apps.tenancy.envelope import KEK_SECRET_NAME, EnvelopeFormatError, protect
 from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext
 
@@ -59,6 +60,7 @@ def test_board_statements_never_carry_patient_name_envelopes(
     assert len(stored) == 3
     envelopes = (*(bytes(envelope) for _, envelope in stored), wrong)
     assert len(set(envelopes)) == 4
+    sensitive = (*envelopes, bytes.fromhex(secret_store().get_secret(KEK_SECRET_NAME)))
 
     bound_envelope = False
 
@@ -70,7 +72,7 @@ def test_board_statements_never_carry_patient_name_envelopes(
         context: dict[str, object],
     ) -> object:
         nonlocal bound_envelope
-        if _contains_envelope(sql, envelopes) or _contains_envelope(params, envelopes):
+        if _contains_envelope(sql, sensitive) or _contains_envelope(params, sensitive):
             bound_envelope = True
         return execute(sql, params, many, context)
 
@@ -84,7 +86,7 @@ def test_board_statements_never_carry_patient_name_envelopes(
     for name in ("Synthetic Booking Persona", *LATER_NAMES):
         assert name.encode() in page.content
     assert any("clinic_app.protected_decrypt(" in query["sql"] for query in success)
-    success_text = any(_contains_envelope(query["sql"], envelopes) for query in success)
+    success_text = any(_contains_envelope(query["sql"], sensitive) for query in success)
     success_binds = bound_envelope
     bound_envelope = False
 
@@ -115,11 +117,11 @@ def test_board_statements_never_carry_patient_name_envelopes(
     ):
         client.get(url)
     assert any("clinic_app.protected_decrypt(" in query["sql"] for query in failure)
-    failure_text = any(_contains_envelope(query["sql"], envelopes) for query in failure)
+    failure_text = any(_contains_envelope(query["sql"], sensitive) for query in failure)
     if success_text or success_binds or failure_text or bound_envelope:
         # Never let pytest's assertion introspection print any captured SQL.
         pytest.fail(
-            "Board SQL carried seeded envelopes: "
+            "Board SQL carried protected material: "
             f"success text/binds={success_text}/{success_binds}, "
             f"failure text/binds={failure_text}/{bound_envelope}",
             pytrace=False,

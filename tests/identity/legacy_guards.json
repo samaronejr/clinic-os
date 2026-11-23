@@ -7555,6 +7555,19 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.agenda_board._catalog",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.resource_booking.service_practitioners",
+        "apps.identity.current_context.practitioner_display_label"
+      ],
+      "reason": "After agenda authorization, one RLS-protected clinic row projects the ordered room and service catalogs and, for the board only, the already-scoped booked practitioners. A now-invisible clinic fails closed; no new grants or selectors are accepted."
+    },
+    {
       "symbol": "apps.scheduling.agenda_board.board_catalog",
       "signals": [
         "denial"
