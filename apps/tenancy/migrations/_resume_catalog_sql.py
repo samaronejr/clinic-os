@@ -47,6 +47,9 @@ VOLATILE: dict[str, tuple[str, ...]] = {
     "pg_extension": ("oid",),
     "pg_rewrite": ("oid",),
     "pg_attribute": ("attnum",),  # captured as dense visible ordinal, not a slot
+    # Snapshot-horizon hint for broken HOT chains. REINDEX may clear it on
+    # an already valid, usable index; valid/ready/live remain schema evidence.
+    "pg_index": ("indcheckxmin",),
 }
 
 

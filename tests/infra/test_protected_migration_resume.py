@@ -100,9 +100,9 @@ def _clone(admin_url: str, source: DatabaseWrapper) -> Iterator[DatabaseWrapper]
                 sql.Identifier(name), sql.Identifier(source.settings_dict["NAME"])
             )
         )
-        clone = DatabaseWrapper(
-            {**source.settings_dict, "NAME": name}, alias="migration_resume"
-        )
+        # A cut can itself be a template for multiple independent retries.
+        # Do not replace the outer clone's connection registration.
+        clone = DatabaseWrapper({**source.settings_dict, "NAME": name}, alias=name)
         connections[clone.alias] = clone
         try:
             with _default_connection(clone):

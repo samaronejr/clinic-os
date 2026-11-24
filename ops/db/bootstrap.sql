@@ -126,6 +126,11 @@ CREATE TABLE IF NOT EXISTS clinic_app.migration_default_witness_key (
     FOREIGN KEY (migration, relation_name, column_name)
         REFERENCES clinic_app.migration_default_witness
 );
+-- Bootstrap is reapplied to existing installations. Old evidence remains
+-- local to its migration until a protected transaction actually verifies it.
+ALTER TABLE clinic_app.migration_default_witness
+    ADD COLUMN IF NOT EXISTS verified_relid oid,
+    ADD COLUMN IF NOT EXISTS verified_attnum smallint;
 REVOKE ALL ON clinic_app.migration_default_witness, clinic_app.migration_default_witness_key
     FROM PUBLIC, clinic_app, clinic_agent, clinic_resolver;
 GRANT SELECT ON clinic_app.migration_default_witness, clinic_app.migration_default_witness_key

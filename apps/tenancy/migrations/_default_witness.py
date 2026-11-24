@@ -23,6 +23,7 @@ class ResumeCatalogError(RuntimeError):
 
 class Column(NamedTuple):
     table: str
+    relid: int
     name: str
     slot: int
     type_name: str
@@ -83,7 +84,7 @@ def _columns(
     with db.cursor() as cur:
         cur.execute(
             """
-            SELECT c.relname,a.attname,a.attnum,
+            SELECT c.relname,c.oid,a.attname,a.attnum,
                 quote_ident(tn.nspname)||'.'||quote_ident(t.typname),t.oid,
                 a.atttypmod,pn.nspname,p.proname,
                 ARRAY(SELECT k.attname FROM pg_catalog.pg_index i
@@ -198,30 +199,53 @@ def capture(db: BaseDatabaseWrapper, migration: str, scope: Collection[str]) -> 
 def verify(
     db: BaseDatabaseWrapper, migration: str, table: str, column: str, expected: str
 ) -> None:
-    """Prove every witnessed key exists and has the exact binary value of V."""
+    """Prove all cohorts for this physical column before publishing its fact."""
     _require_store(db, table, column)
-    identity = (migration, table, column)
-    with db.cursor() as cur:
-        cur.execute(
-            "SELECT column_type,type_modifier,side_value,key_count "
-            "FROM clinic_app.migration_default_witness "
-            "WHERE (migration,relation_name,column_name)=(%s,%s,%s)",
-            identity,
-        )
-        header = cur.fetchone()
-    if header is None:
-        raise missing(table, column)
     (col,) = _columns(db, [table], column)
     _supported(col)
-    kind, typmod, side, count = header
-    # The only non-string frozen payload is the reader's finite OTP literal
-    # marker. Its actual install-specific instant is still pinned by the witness.
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT migration,column_type,type_modifier,side_value,key_count,"
+            "verified_relid,verified_attnum "
+            "FROM clinic_app.migration_default_witness "
+            "WHERE (relation_name,column_name)=(%s,%s) AND "
+            "(migration=%s OR (verified_relid,verified_attnum)=(%s,%s)) "
+            "ORDER BY migration",
+            [table, column, migration, col.relid, col.slot],
+        )
+        sources = cur.fetchall()
+    if not sources:
+        raise missing(table, column)
+    # The OTP marker allows installation-specific instants in the reference,
+    # not disagreements between two trusted witnesses on this installation.
     literal = json.loads(expected)
-    if (kind, typmod) != (col.type_name, col.typmod) or (
-        isinstance(literal, str) and bytes(side).hex() != literal
-    ):
+    side = bytes(sources[0][3])
+    if isinstance(literal, str) and side.hex() != literal:
         raise _refuse(table, column, "witness default differs from the frozen column")
-    element = _element(col, bytes(side))
+    element = _element(col, side)
+    for origin, kind, typmod, value, count, relid, slot in sources:
+        if (
+            (kind, typmod) != (col.type_name, col.typmod)
+            or bytes(value) != side
+            or (relid, slot) not in {(None, None), (col.relid, col.slot)}
+        ):
+            raise _refuse(table, column, "witness does not identify this typed column")
+        _verify_keys(db, col, origin, count, element)
+    # No empty replacement cohort: subsequent migrations must reread the
+    # original keys. This update rolls back with the containing protected DDL.
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE clinic_app.migration_default_witness "
+            "SET verified_relid=%s,verified_attnum=%s "
+            "WHERE (migration,relation_name,column_name)=(%s,%s,%s) "
+            "AND verified_relid IS NULL AND verified_attnum IS NULL",
+            [col.relid, col.slot, migration, table, column],
+        )
+
+
+def _verify_keys(
+    db: BaseDatabaseWrapper, col: Column, origin: str, count: int, element: bytes
+) -> None:
     with _resolver_read(db, col) as cur:
         cur.execute(
             sql.SQL(
@@ -232,15 +256,15 @@ def verify(
                 "WHERE (k.migration,k.relation_name,k.column_name)=(%s,%s,%s)"
             ).format(
                 sql.Identifier(col.send_schema, col.send_name),
-                sql.Identifier(column),
+                sql.Identifier(col.name),
                 col.relation,
                 col.key,
             ),
-            [count, element, *identity],
+            [count, element, origin, col.table, col.name],
         )
         if not cur.fetchone()[0]:
             raise _refuse(
-                table, column, "witnessed row is missing or no longer holds V"
+                col.table, col.name, "witnessed row is missing or no longer holds V"
             )
 
 

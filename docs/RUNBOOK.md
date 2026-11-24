@@ -560,6 +560,15 @@ contents or tuple data to the runtime role. Retry checks every saved key
 against its exact value. Later inserts that already carried the column are
 not part of the proof and can legitimately hold different values.
 
+A successful proof stays with **the original witness and its keys**. The
+protected transaction marks that header with the table OID and physical
+attribute number. A later migration checks the live column identity, type,
+typmod and binary default and rereads the original keys. Recording the first
+migration does not discard the proof, nor does an empty cohort created later
+replace a populated one. The clean-run write set includes tables whose
+internal foreign-key triggers were recreated even if their deparsed definitions
+are unchanged. The reference stores table names, not local catalog-row OIDs.
+
 When a cleared pair has no trusted witness (including a cut on an older
 installation), or a witnessed key or value is missing or wrong, **automatic
 recovery is impossible; restore or rebuild is required**. Do not create a
@@ -574,6 +583,12 @@ JSON-number round trip: numeric scale and digits, along with array dimensions
 and lower bounds, survive comparison. Column type, typmod, declared defaults,
 and reverse missing-flag transitions still compare exactly. The two OTP
 literal exceptions above do not relax the value stored in a witness.
+
+`pg_index.indcheckxmin` is a snapshot-horizon hint about HOT chains. PostgreSQL
+can already use a valid index in a sufficiently new snapshot, and `REINDEX`
+can clear the hint without changing the index definition. The verifier does
+not compare that bit. `indisvalid`, `indisready`, `indislive`, and the declared
+clustering designation (`indisclustered`) are still compared.
 
 ### Authentication or tenant access returns 403
 

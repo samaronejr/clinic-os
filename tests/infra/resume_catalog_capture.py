@@ -29,6 +29,8 @@ from apps.tenancy.migrations._resume_catalog import (
 from django.db.migrations import SeparateDatabaseAndState
 from django.db.migrations.executor import MigrationExecutor
 
+from infra.resume_catalog_writes import changed_relations, local_rows
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -42,6 +44,7 @@ type Forward = Callable[
     [str, "BaseDatabaseSchemaEditor", "ProjectState", "ProjectState"], None
 ]
 type Fingerprints = dict[str, dict[str, str]]
+type Observation = tuple[str | None, Catalog, set[str]]
 
 
 class Capture(TypedDict):
@@ -88,17 +91,17 @@ def _step(migration: str, op: Operation, index: int) -> str | None:
     return None
 
 
-def _observe(
-    forward: Forward, step: str, records: list[tuple[str | None, Catalog]]
-) -> Forward:
+def _observe(forward: Forward, step: str, records: list[Observation]) -> Forward:
     def wrapped(
         app: str,
         editor: BaseDatabaseSchemaEditor,
         before: ProjectState,
         after: ProjectState,
     ) -> None:
+        db = editor.connection
+        pre = local_rows(db)
         forward(app, editor, before, after)
-        records.append((step, snapshot(editor.connection)))
+        records.append((step, snapshot(db), changed_relations(pre, local_rows(db))))
 
     return wrapped
 
@@ -107,7 +110,7 @@ def _instrument(
     stack: ExitStack,
     migration: Migration,
     name: str,
-    records: list[tuple[str | None, Catalog]],
+    records: list[Observation],
 ) -> None:
     if name == "ai.0003_artifact_retention":
         batch = migration.operations[0]
@@ -166,21 +169,25 @@ def _observe_plan(
     for key in ordered:
         migration = executor.loader.get_migration(*key)
         name = f"{migration.app_label}.{migration.name}"
-        records: list[tuple[str | None, Catalog]] = []
+        records: list[Observation] = []
         with ExitStack() as stack:
             _instrument(stack, migration, name, records)
             state = executor.apply_migration(state, migration)
-        records.append((None, snapshot(db)))
+        records.append((None, snapshot(db), set()))
         changes: list[tuple[str | None, Delta]] = []
         migration_scope: set[str] = set()
-        for step, observed in records:
+        for step, observed, touched in records:
             delta = _delta(previous, observed)
+            # An empty patch means the relation was written but its logical
+            # definition did not change. It still needs full guard coverage.
+            for name_in_scope in sorted(touched):
+                delta.setdefault(name_in_scope, {})
             previous = observed
             if step is not None or delta:
                 changes.append((step, delta))
             if step is not None:
                 migration_scope.update(delta)
-        for step, observed in records:
+        for step, observed, _ in records:
             if step is not None:
                 hashes[step] = {
                     object_name: fingerprint(observed.get(object_name, {}))
