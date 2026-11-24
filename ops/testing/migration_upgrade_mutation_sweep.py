@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
     from psycopg import Connection, Cursor
 
+    from ops.testing.migration_upgrade_rows import Row
+
 
 def _oracle_rejects(
     admin: Connection[tuple[object, ...]], required: Collection[str]
@@ -87,6 +89,10 @@ def _try_mutate(
     return True
 
 
+def _sweep_row(table: str, row: Row) -> bool:
+    return table != "audit_event" or row["affected_record_type"] == "upgrade.seed"
+
+
 def run_sweep(seeded: set[str], required: Collection[str]) -> set[str]:
     """Require the verdict oracle to reject a real mutation in each table."""
     rewritten = {
@@ -115,7 +121,11 @@ def run_sweep(seeded: set[str], required: Collection[str]) -> set[str]:
             raise RuntimeError(message)
         swept: set[str] = set()
         for table in sorted(seeded):
-            rows = expected[table]
+            rows = {
+                key: row
+                for key, row in expected[table].items()
+                if _sweep_row(table, row)
+            }
             columns: dict[str, str] = {}
             for key, row in sorted(rows.items()):
                 for column, value in sorted(row.items()):
