@@ -719,6 +719,37 @@ def _r7_rejected(world: _World, ids: dict[str, str], failures: list[str]) -> Non
     _one_more_send(world, message, failures, before=0)
 
 
+def _r8_legacy_inflight(
+    world: _World, ids: dict[str, str], failures: list[str]
+) -> None:
+    """Forge outcomes on a send the base left in flight; nothing may resend it."""
+    message, attempt = UUID(ids["message"]), UUID(ids["a"])
+    update = "UPDATE clinic_app.comms_integrationoperation SET {} WHERE id = %s"
+    forged = [
+        _raw(world, update.format(change), [str(attempt)], keep=True)
+        for change in ("status = 'pending'", "status = 'failed'")
+    ]
+    if forged != ["comms_message_attempt_claim_check"] * 2:
+        failures.append(f"forged writes on a legacy in-flight send were {forged}")
+    with world.owner():
+        provider = IntegrationOperation.objects.get(pk=attempt).provider
+    adapter = integration._SEND_ADAPTERS[provider]  # noqa: SLF001
+    original, calls = adapter.send, []
+
+    def counted(*args: object, **kwargs: object) -> object:
+        calls.append(1)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    with patch.object(adapter, "send", counted):
+        world.dispatch(attempt)
+        for pending in world.pending(message):
+            world.dispatch(UUID(pending))
+    if calls:
+        failures.append(f"{len(calls)} further provider calls for a legacy send")
+    if world.state(message) != "unconfirmed" or world.retry(message) != REFUSED:
+        failures.append("the legacy in-flight send is not visibly held")
+
+
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     **dict.fromkeys(PARITY, _parity),
     "skew": _accepted_retry,
@@ -739,6 +770,7 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "r6_raw_sql": _r6_raw_sql,
     "r7_inflight": _r7_inflight,
     "r7_rejected": _r7_rejected,
+    "r8_legacy_inflight": _r8_legacy_inflight,
     "s_retry_failed": _projection_failed,
 }
 

@@ -251,13 +251,16 @@ runtime role cannot write `send_permit`, rewrite an accepted attempt's
 reference, or cancel a claimed send. An accepted attempt is closed only by a
 bound failed status receipt, which the receipt guard admits only with the
 inbound proof of the provider secret; an operation status never closes it.
-A claim taken under the worker's session lock stores only a digest of a token
-returned to that worker (comms 0017); while it is open the runtime role cannot
-change the attempt's status, provider reference or permit at all, and the
-outcome (accepted, rejected, transient retry, or withdrawn before any call) is
-recorded only by `comms_record_send_outcome`, which needs the token and needs
-the caller's own session to hold the subject lock. A claim a dead session left
-behind is never closed by default. While any accepted attempt lacks that outcome the message admits no further
+A claim is taken on the worker's lock connection by the session holding the
+subject lock and is bound to it (comms 0018): the database keeps a nonce only in
+that session's own setting and stores `sha256(pid:nonce)`, so no other session,
+even one that later holds the lock, can match it. While it is open the runtime
+role cannot change the attempt's status, provider reference or permit at all;
+the outcome (accepted, rejected, transient retry, or withdrawn before any call)
+is recorded only by `comms_record_send_outcome` from that live session, in one
+transaction with its audit event. A claim whose session died, and a send a
+pre-claim revision left in flight, stay visibly in flight and are closed only by
+provider evidence or the staff hold. While any accepted attempt lacks that outcome the message admits no further
 attempt and shows `awaiting` ("awaiting provider outcome for N attempts").
 Legacy originals whose failure the base recorded are released by comms
 0015/0016 on every channel. Clocks and UUIDs

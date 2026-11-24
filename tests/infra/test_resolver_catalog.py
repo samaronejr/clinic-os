@@ -824,7 +824,7 @@ FUNCTION_SIGNATURES: Final = {
     ("comms_claim_send_permit", "requested uuid"),
     (
         "comms_record_send_outcome",
-        "requested uuid, token uuid, outcome text, reference text",
+        "requested uuid, outcome text, reference text",
     ),
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
@@ -1270,7 +1270,7 @@ FUNCTION_RESULTS: Final = {
     ("comms_claim_send_permit", "requested uuid"): "text",
     (
         "comms_record_send_outcome",
-        "requested uuid, token uuid, outcome text, reference text",
+        "requested uuid, outcome text, reference text",
     ): "boolean",
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
         "void"

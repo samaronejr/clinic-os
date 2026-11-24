@@ -14630,7 +14630,8 @@
           "apps/comms/migrations/_attempt_sequence_sql.py",
           "apps/comms/migrations/_inflight_claim_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
-          "apps/comms/migrations/_send_permit_sql.py"
+          "apps/comms/migrations/_send_permit_sql.py",
+          "apps/comms/migrations/_session_claim_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14701,7 +14702,8 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_inflight_claim_sql.py",
-          "apps/comms/migrations/_permit_evidence_sql.py"
+          "apps/comms/migrations/_permit_evidence_sql.py",
+          "apps/comms/migrations/_session_claim_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14723,13 +14725,14 @@
     "clinic_app.comms_record_send_outcome": {
       "discovery": {
         "migrations": [
-          "apps/comms/migrations/_inflight_claim_sql.py"
+          "apps/comms/migrations/_inflight_claim_sql.py",
+          "apps/comms/migrations/_session_claim_sql.py"
         ],
         "policies": [],
         "resolvers": [],
         "signatures": [
           {
-            "arguments": "requested uuid, token uuid, outcome text, reference text",
+            "arguments": "requested uuid, outcome text, reference text",
             "returns": "bool",
             "security_definer": true,
             "set_returning": false
@@ -14764,6 +14767,29 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Derives the message subject's advisory lock key for the claim resolvers; no staff role decision."
+    },
+    "clinic_app.comms_session_claim": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_session_claim_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_claim_send_permit",
+          "clinic_app.comms_record_send_outcome"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid, fresh boolean",
+            "returns": "bytea",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Derives the calling session's claim digest from its pid and a nonce held only in its own setting; no staff role decision."
     },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",

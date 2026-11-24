@@ -13,8 +13,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import uuid4
 
+import psycopg
 import pytest
-from apps.comms import inbox_adapters, inbox_inbound, inbox_queries, suggestions
+from apps.audit.models import AuditEvent
+from apps.comms import inbox_inbound, inbox_queries, suggestions
 from apps.comms import inbox_services as services
 from apps.comms.adapters import PermanentSendError, TransientSendError
 from apps.comms.inbox_inbound import (
@@ -43,7 +45,13 @@ from apps.core.integration import (
 )
 from apps.identity.models import UserClinicRole
 from apps.intake.contacts import save_contact_destination, verify_contact
-from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db import (
+    DatabaseError,
+    IntegrityError,
+    connection,
+    connections,
+    transaction,
+)
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -1446,6 +1454,10 @@ def _forge(tenant: UUID, sql: str, params: list[str]) -> str:
 
 
 _SET = "UPDATE clinic_app.comms_integrationoperation SET {} WHERE id = %s"
+_TAKE_LOCK = (
+    "SELECT 1 / pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended("
+    "'clinic-lock-v1:comms-subject:comms.message:' || %s, 0))::int; "
+)
 
 
 def _in_flight(
@@ -1489,18 +1501,9 @@ def test_a_claimed_send_is_written_only_by_its_claim(world: InboxWorld) -> None:
             seen[name] = _forge(graph.organization_a, _SET.format(change), [attempt])
         # A further attempt is not admitted while this one is in flight.
         seen["successor"] = _admit(graph, message_id)
-        token = inbox_adapters._CLAIMS[operation_id]
-        record = (
-            "SELECT clinic_app.comms_record_send_outcome(%s, %s, 'rejected', NULL)"
-            " FROM (SELECT %s) AS ignored"
-        )
-        # A wrong token, and the right one from a session without the lock.
-        seen["wrong_token"] = _forge(
-            graph.organization_a, record, [attempt, str(uuid4()), attempt]
-        )
-        seen["no_lock"] = _forge(
-            graph.organization_a, record, [attempt, str(token), attempt]
-        )
+        record = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL)"
+        # Another session may not record it while the claimant lives.
+        seen["other_session"] = _forge(graph.organization_a, record, [attempt])
 
     assert _in_flight(graph, message_id, forge) == ("succeeded", 1)
     assert seen == {
@@ -1510,8 +1513,7 @@ def test_a_claimed_send_is_written_only_by_its_claim(world: InboxWorld) -> None:
         "reference": "comms_message_attempt_claim_check",
         "permit": "42501",
         "successor": "comms_message_attempt_open_check",
-        "wrong_token": "42501",
-        "no_lock": "42501",
+        "other_session": "42501",
     }
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
@@ -1592,11 +1594,6 @@ def test_synchronous_rejection_and_transient_refusal_are_recorded_by_the_claim(
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
     assert (attempt.status, attempt.send_permit_claim) == ("pending", None)
-    # The released-for-retry attempt is no claimed send: the runtime role's
-    # cancel of a held, unaccepted attempt still needs provider evidence.
-    assert _forge(
-        graph.organization_a, _SET.format("status = 'cancelled'"), [str(attempt.pk)]
-    ) == ("comms_message_attempt_outcome_check")
     rejected = _in_flight(graph, message_id, lambda _: None, error=PermanentSendError())
     assert rejected == ("failed", 1)
     # A genuine rejection admits exactly one retry, which is sent.
@@ -1627,3 +1624,90 @@ def test_synchronous_rejection_and_transient_refusal_are_recorded_by_the_claim(
         owner_context(graph.organization_a),
     ):
         IntegrationOperation.objects.filter(pk=attempt.pk).update(attempt_sequence=9)
+
+
+def test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor(
+    world: InboxWorld, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    seen: dict[str, str] = {}
+
+    def take_over(operation_id: UUID) -> None:
+        # Nothing secret is visible in another session's activity.
+        with connections["locks"].cursor() as cursor:
+            cursor.execute("SELECT pg_catalog.pg_backend_pid()")
+            claimant = cursor.fetchone()[0]
+        with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+            query = admin.execute(
+                "SELECT query FROM pg_catalog.pg_stat_activity WHERE pid = %s",
+                [claimant],
+            ).fetchone()
+            seen["visible"] = "nonce" if "claim_" in str(query) else "nothing"
+            # Returns once the claimant's session is gone (or the bound passes).
+            admin.execute(
+                "SELECT pg_catalog.pg_terminate_backend(%s, 60000)", [claimant]
+            )
+        record = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL)"
+        # The freed lock and any replay give a successor session nothing.
+        seen["lock_taker"] = _forge(
+            graph.organization_a,
+            _TAKE_LOCK + record,
+            [str(message_id), str(operation_id)],
+        )
+        seen["status"] = _forge(
+            graph.organization_a, _SET.format("status = 'pending'"), [str(operation_id)]
+        )
+
+    try:
+        with pytest.raises(DatabaseError):
+            _in_flight(graph, message_id, take_over)
+    finally:
+        connections["locks"].close()
+    assert seen == {
+        "visible": "nothing",
+        "lock_taker": "42501",
+        "status": "comms_message_attempt_claim_check",
+    }
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    # Abandoned, not failed: it stays visibly in flight and sends no more.
+    assert (attempt.status, attempt.provider_reference) == ("in_progress", None)
+    with runtime_role():
+        assert execute_operation(attempt.pk) != "succeeded"
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "unconfirmed"
+        }
+
+
+def test_a_claimed_outcome_and_its_audit_event_commit_together(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    original = integration._record_integration_event
+
+    def failing(event_type: str, *args: object, **kwargs: object) -> int:
+        if event_type == "comms.operation.succeeded":
+            raise DatabaseError
+        return original(event_type, *args, **kwargs)  # type: ignore[arg-type]
+
+    with (
+        patch.object(integration, "_record_integration_event", failing),
+        pytest.raises(DatabaseError),
+    ):
+        _in_flight(graph, message_id, lambda _: None)
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+        events = AuditEvent.objects.filter(
+            event_type="comms.operation.succeeded", affected_record_id=str(attempt.pk)
+        ).count()
+    # Neither the acceptance nor its event survived the rollback.
+    assert (attempt.status, attempt.provider_reference, events) == (
+        "in_progress",
+        None,
+        0,
+    )

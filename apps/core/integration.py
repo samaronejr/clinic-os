@@ -393,6 +393,7 @@ def _record_integration_event(
     scope: OperationScope,
     *,
     reason_code: str | None = None,
+    using: str = "default",
 ) -> int:
     """Append one fixed-vocabulary integration event in the current context."""
     append = build_integration_audit_event(
@@ -402,7 +403,7 @@ def _record_integration_event(
         operation_id=scope.operation_id,
         reason_code=reason_code,
     )
-    return record_event(append.event, payload=append.payload)
+    return record_event(append.event, payload=append.payload, using=using)
 
 
 def _request_operation(
@@ -699,33 +700,61 @@ _CLAIMED_OUTCOME_RECORDERS: list[Callable[[UUID, str, str | None], bool | None]]
 def register_claimed_outcome_recorder(
     recorder: Callable[[UUID, str, str | None], bool | None],
 ) -> None:
-    """Route the outcome of a send claimed through a database token.
+    """Route the outcome of a send claimed by this worker's lock session.
 
     ``recorder(operation_id, outcome, reference)`` returns ``None`` when this
     process holds no claim for the operation; otherwise it records
     ``accepted``/``rejected``/``retry``/``withdrawn`` through the subject's
-    own resolver, on the connection that holds the subject's session lock.
+    own resolver on the ``locks`` connection, the claimant session, inside
+    the transaction this module opens there.
     """
     _CLAIMED_OUTCOME_RECORDERS.append(recorder)
 
 
 def _claimed_outcome(
-    scope: OperationScope, outcome: str, reference: str | None = None
+    scope: OperationScope,
+    outcome: str,
+    reference: str | None = None,
+    *,
+    event_type: str | None,
+    reason_code: str | None = None,
 ) -> bool | None:
-    for recorder in _CLAIMED_OUTCOME_RECORDERS:
-        recorded = recorder(scope.operation_id, outcome, reference)
-        if recorded is not None:
+    """Record a claimed outcome and its audit event in one transaction.
+
+    Both run on the claimant's lock connection under the stored scope, so a
+    failure of either leaves neither the status change nor the event.
+    """
+    if not _CLAIMED_OUTCOME_RECORDERS:
+        return None
+    locks = connections["locks"]
+    with transaction.atomic(using="locks"), locks.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(scope.actor_id), str(scope.organization_id)],
+        )
+        cursor.execute("SET LOCAL ROLE clinic_app")
+        for recorder in _CLAIMED_OUTCOME_RECORDERS:
+            recorded = recorder(scope.operation_id, outcome, reference)
+            if recorded is None:
+                continue
+            if recorded and event_type is not None:
+                _record_integration_event(
+                    event_type, scope, reason_code=reason_code, using="locks"
+                )
             return recorded
     return None
 
 
 def _succeed(scope: OperationScope, provider_reference: str) -> bool:
     """Record provider acceptance once, guarded by the claimed status."""
-    recorded = _claimed_outcome(scope, "accepted", provider_reference)
+    recorded = _claimed_outcome(
+        scope,
+        "accepted",
+        provider_reference,
+        event_type="comms.operation.succeeded",
+    )
     if recorded is not None:
-        if recorded:
-            with _stored_scope_context(scope):
-                _record_integration_event("comms.operation.succeeded", scope)
         return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
@@ -745,7 +774,8 @@ def _succeed(scope: OperationScope, provider_reference: str) -> bool:
 
 def _release_for_retry(scope: OperationScope) -> bool:
     """Return one claimed row to pending after a transient send failure."""
-    recorded = _claimed_outcome(scope, "retry")
+    # A transient refusal is audited by no event, as on the unclaimed path.
+    recorded = _claimed_outcome(scope, "retry", event_type=None)
     if recorded is not None:
         return recorded
     with _stored_scope_context(scope):
@@ -762,13 +792,13 @@ def _release_for_retry(scope: OperationScope) -> bool:
 
 def _fail_operation(scope: OperationScope, *, reason_code: str) -> bool:
     """Fail one claimable operation once and audit the terminal transition."""
-    recorded = _claimed_outcome(scope, "rejected")
+    recorded = _claimed_outcome(
+        scope,
+        "rejected",
+        event_type="comms.operation.failed",
+        reason_code="provider_rejected",
+    )
     if recorded is not None:
-        if recorded:
-            with _stored_scope_context(scope):
-                _record_integration_event(
-                    "comms.operation.failed", scope, reason_code="provider_rejected"
-                )
         return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
@@ -809,7 +839,12 @@ def _cancel_ineligible(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _subject_eligible(scope):
             return False
-        recorded = _claimed_outcome(scope, "withdrawn")
+        recorded = _claimed_outcome(
+            scope,
+            "withdrawn",
+            event_type="comms.operation.cancelled",
+            reason_code="subject_ineligible",
+        )
         if recorded is not None:
             return recorded
         updated = IntegrationOperation.objects.filter(
@@ -840,7 +875,12 @@ def _cancel_revoked(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _actor_has_clinic_authority(scope):
             return False
-        recorded = _claimed_outcome(scope, "withdrawn")
+        recorded = _claimed_outcome(
+            scope,
+            "withdrawn",
+            event_type="comms.operation.cancelled",
+            reason_code="authority_revoked",
+        )
         if recorded is not None:
             return recorded
         updated = IntegrationOperation.objects.filter(
