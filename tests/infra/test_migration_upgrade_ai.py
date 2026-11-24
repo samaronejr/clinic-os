@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 from django.apps import apps
 from django.db import migrations, models
-from ops.testing import migration_upgrade_ai_seed as seed
+from ops.testing import migration_upgrade_ai_recipe as seed
 from ops.testing import migration_upgrade_ai_verify as upgrade
 from ops.testing import migration_upgrade_verdict as publisher
 from ops.testing.migration_upgrade_verdict import completed_seeds
