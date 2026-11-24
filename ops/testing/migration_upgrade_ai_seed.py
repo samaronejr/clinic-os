@@ -20,12 +20,13 @@ from uuid import UUID, uuid4
 
 from django.apps import apps
 from django.db import connection, transaction
+from django.db.migrations.recorder import MigrationRecorder
 from django.db.migrations.state import ModelState
 from django.utils import timezone
 from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from typing import ClassVar
 
     from django.db.models import Manager, Model
@@ -732,16 +733,20 @@ def _front_desk(
     return turns
 
 
-def _baseline_approvals() -> None:
-    """Prove the restored base guards regard the old approvals as usable."""
+def _baseline_approvals(approvals: Sequence[str], *, rollout_installed: bool) -> None:
+    """Check each legacy approval against the activation guard on this base."""
     with connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
         cursor.execute(
-            "SELECT bool_and(clinic_app.ai_eval_activation_allowed("
-            "configuration_id,clinic_id)) FROM clinic_app.ai_modelchangerequest"
+            "SELECT count(*), bool_and(clinic_app.ai_eval_activation_allowed("
+            "configuration_id,clinic_id) = %s) "
+            "FROM clinic_app.ai_modelchangerequest WHERE id = ANY(%s::uuid[])",
+            [not rollout_installed, list(approvals)],
         )
-        if cursor.fetchone() != (True,):
-            message = "historical approvals do not authorize the base configuration"
+        if cursor.fetchone() != (len(approvals), True):
+            message = (
+                "historical approvals disagree with the installed activation guard"
+            )
             raise RuntimeError(message)
         cursor.execute("RESET ROLE")
 
@@ -939,7 +944,9 @@ def _execution(
     return execution
 
 
-def _baseline_retained(retained: Mapping[str, str]) -> dict[str, bool]:
+def _baseline_retained(
+    retained: Mapping[str, str], *, retained_fence_installed: bool
+) -> dict[str, bool]:
     helper = run_path(
         str(
             Path(os.environ["UPGRADE_HELPER_ROOT"])
@@ -947,11 +954,12 @@ def _baseline_retained(retained: Mapping[str, str]) -> dict[str, bool]:
         )
     )
     checks = cast("_RetainedChecks", helper["retained_checks"])(
-        retained, upgraded=False
+        retained, upgraded=retained_fence_installed
     )
     if not all(checks.values()):
-        message = "historical retained paths are not usable: " + ", ".join(
-            name for name, passed in checks.items() if not passed
+        message = (
+            "historical retained paths disagree with the installed guards: "
+            + ", ".join(name for name, passed in checks.items() if not passed)
         )
         raise RuntimeError(message)
     return checks
@@ -966,6 +974,11 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
     digest = "a" * 64
     fixtures = LegacyRows(organization, UUID(str(markers["clinic_id"])))
     with transaction.atomic(), connection.cursor() as cursor:
+        # These guards landed independently. Read the base database's migration
+        # ledger, not the candidate's models or the caller's revision name.
+        applied = MigrationRecorder(connection).applied_migrations()
+        rollout_installed = ("ai", "0014_staged_rollout") in applied
+        retained_fence_installed = ("ai", "0016_retained_effects") in applied
         cursor.execute(
             "SELECT set_config('app.current_tenant',%s,true),"
             "set_config('app.current_user_id',%s,true)",
@@ -1071,8 +1084,10 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
             fixtures, markers, transcription, enrollment_id, invocations
         )
         snapshots = fixtures.finish()
-        _baseline_approvals()
-        checks = _baseline_retained(retained)
+        _baseline_approvals(approvals, rollout_installed=rollout_installed)
+        checks = _baseline_retained(
+            retained, retained_fence_installed=retained_fence_installed
+        )
     return {
         "tables": snapshots,
         "approvals": approvals,
@@ -1082,6 +1097,8 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
         "turns": turns,
         "executions": executions,
         "retained": retained,
+        "base_legacy_activation_allowed": not rollout_installed,
+        "base_retained_fence_installed": retained_fence_installed,
         "base_retained_assertions": checks,
         **transcription,
         "invocations": {key: str(value.pk) for key, value in invocations.items()},

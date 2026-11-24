@@ -9,6 +9,7 @@ from django.apps import apps
 from django.db import migrations, models
 from ops.testing import migration_upgrade_ai_seed as seed
 from ops.testing import migration_upgrade_ai_verify as upgrade
+from ops.testing.migration_upgrade_verdict import completed_seeds
 
 
 def test_upgrade_requires_every_changed_model_and_sql_trigger_table() -> None:
@@ -149,3 +150,23 @@ def test_present_historical_ai_schema_requires_seed_markers() -> None:
 
 def test_pre_ai_foundation_is_not_claimed_as_populated_ai_history() -> None:
     assert upgrade.verify_ai({"ai_present": False}) == []
+
+
+@pytest.mark.parametrize(
+    ("histories", "seeds"),
+    [
+        ({}, ["core"]),
+        ({"ai": {"tables": {}}}, ["core", "ai"]),
+        ({"inbox": {"cases": {}}, "ai": {"tables": {}}}, ["core", "inbox", "ai"]),
+    ],
+)
+def test_verdict_records_completed_histories(
+    histories: dict[str, object], seeds: list[str]
+) -> None:
+    assert completed_seeds(histories) == seeds
+    assert completed_seeds({**histories, "seeds": seeds}) == seeds
+
+
+def test_verdict_rejects_declared_history_that_did_not_run() -> None:
+    with pytest.raises(ValueError, match="disagree with completed histories"):
+        completed_seeds({"seeds": ["core", "ai"]})

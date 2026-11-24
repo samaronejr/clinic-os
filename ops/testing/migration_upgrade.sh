@@ -21,6 +21,8 @@ readonly upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
 
 mkdir -p "$work_root"
+# Do not publish a previous run's receipts if this rehearsal fails.
+rm -f "$seed_file" "$work_root/verdict.json" "$work_root/ai-assertions.json"
 
 # Derive upgrade-DB DSNs from the claimed environment: same role
 # credentials, host, port and TLS parameters, different database name.
@@ -184,6 +186,6 @@ echo "== confirm no migration drift =="
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
-printf '{"schema_version":1,"result":"PASS","base_sha":"%s","upgrade_db":"%s"}\n' \
-    "$base_sha" "$upgrade_db" > "$work_root/verdict.json"
+python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
+    "$seed_file" "$base_sha" "$upgrade_db"
 echo "migration-upgrade: PASS"

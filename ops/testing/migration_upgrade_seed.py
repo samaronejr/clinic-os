@@ -33,6 +33,22 @@ from django.db import connection, transaction
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+seed_path = Path(os.environ["UPGRADE_SEED_FILE"])
+with connection.cursor() as cursor:
+    cursor.execute(
+        "SELECT current_database(), oid FROM pg_database "
+        "WHERE datname=current_database()"
+    )
+    seed_database = list(cursor.fetchone())
+if seed_path.exists():
+    # Replay a completed seed for this database without duplicating histories.
+    # A fresh rehearsal always starts without markers; a foreign receipt must
+    # never stand in for data loaded into the current database.
+    if json.loads(seed_path.read_text(encoding="utf-8"))["database"] != seed_database:
+        message = "completed upgrade seed belongs to a different database"
+        raise RuntimeError(message)
+    raise SystemExit(0)
+
 ORGANIZATION_ID = uuid4()
 CLINIC_ID = uuid4()
 OWNER_ID = uuid4()
@@ -132,6 +148,7 @@ markers = {
     "appointment_id": str(appointment.pk),
     "audit_events": 2,
     "clinic_id": str(CLINIC_ID),
+    "database": seed_database,
     "organization_id": str(ORGANIZATION_ID),
     "owner_id": str(OWNER_ID),
     "patient_birth_date": PATIENT_BIRTH_DATE.isoformat(),
@@ -152,10 +169,10 @@ if markers["ai_present"]:
         run_path(str(helper))["seed_ai"],
     )
     markers["ai"] = seed_ai(markers)
-seed_path = os.environ.get("UPGRADE_SEED_FILE", "")
-if seed_path:
-    Path(seed_path).write_text(
-        json.dumps(markers, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+pending_seed = seed_path.with_suffix(".pending")
+pending_seed.write_text(
+    json.dumps(markers, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+pending_seed.replace(seed_path)
 print(f"seeded: {json.dumps(markers, sort_keys=True)}")  # noqa: T201 - piped stdout
