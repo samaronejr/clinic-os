@@ -12,6 +12,7 @@ from ops.testing.migration_upgrade_inbox_fixture_verify import (
     InboxFixtureResult,
     verify_inbox_fixture,
 )
+from ops.testing.migration_upgrade_native_effects import verify_native_effects
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -32,6 +33,8 @@ def check_fixtures(
 ) -> FixtureResult:
     """Check the fixture before any behavior probes modify it."""
     failures = verify_core_fixture(database=database)
+    if not failures:
+        failures.extend(verify_native_effects(required, database=database))
     ai_keys: dict[str, object] = {}
     if "ai" in required:
         failures.extend(
