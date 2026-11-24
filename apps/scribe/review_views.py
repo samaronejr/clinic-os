@@ -35,7 +35,7 @@ from apps.scribe.draft_sources import note_frame
 from apps.scribe.drafting import request_draft
 from apps.scribe.presenter import browser_binding
 from apps.scribe.review_forms import ReviewCommand, ReviewValues
-from apps.scribe.reviews import ReviewPanel, read_review, review_suggestion
+from apps.scribe.reviews import ReviewPanel, render_review, review_suggestion
 from apps.scribe.views import continuation
 
 if TYPE_CHECKING:
@@ -161,9 +161,15 @@ def note_review(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         with transaction.atomic():
             values = _command(request, clinic_id)
             _apply(values, clinic_id=clinic_id)
-            panel = read_review(clinic_id=clinic_id, version_id=values.version_id)
-            context = _context(panel, values, clinic_id=clinic_id)
-            return render(request, "scribe/review.html", context)
+            return render_review(
+                clinic_id=clinic_id,
+                version_id=values.version_id,
+                emit=lambda panel: render(
+                    request,
+                    "scribe/review.html",
+                    _context(panel, values, clinic_id=clinic_id),
+                ),
+            )
     except (DraftAccessDeniedError, ClinicalAccessDeniedError, ScribeError):
         context = {"clinic_id": clinic_id, "denied": True}
         status = 403

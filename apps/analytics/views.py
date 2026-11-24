@@ -14,10 +14,11 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.ai.artifacts import ArtifactProjection, render_artifact
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError
 from apps.analytics.analyst import (
     Proposal,
-    display_proposal,
+    prepare_proposal,
     request_analyst,
     review_proposal,
 )
@@ -70,7 +71,7 @@ def _reference_command(
         }
     if action == "proposal":
         return {
-            "proposal": display_proposal(clinic_id=clinic_id, invocation_id=identifier)
+            "proposal": prepare_proposal(clinic_id=clinic_id, invocation_id=identifier)
         }
     result = review_proposal(
         clinic_id=clinic_id,
@@ -127,6 +128,21 @@ def _render(
     clinic_id: UUID,
     form: ReportForm,
     context: dict[str, object],
+) -> HttpResponse:
+    prepared = context.get("proposal")
+    if isinstance(prepared, ArtifactProjection):
+        return render_artifact(
+            prepared,
+            clinic_id=clinic_id,
+            emit=lambda proposal: _reports_page(
+                request, clinic_id, form, {**context, "proposal": proposal}
+            ),
+        )
+    return _reports_page(request, clinic_id, form, context)
+
+
+def _reports_page(
+    request: HttpRequest, clinic_id: UUID, form: ReportForm, context: dict[str, object]
 ) -> HttpResponse:
     actor, _version = authorize(clinic_id=clinic_id)
     clinic = Clinic.objects.get(pk=clinic_id)

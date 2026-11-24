@@ -356,6 +356,16 @@ Python check because its key never enters PostgreSQL. Votes and proposals
 recorded before 0012 lack this evidence and cannot advance; reject them and
 propose again. Reversing is supported on an empty synthetic database only.
 
+Reading or approving a proposal is not permission to act on it later. The
+review response rereads its pending rows in one scoped batch. Before a vote,
+rejection, or execution, the acting transaction checks the original row through
+`ai_pending_visible` again. It holds a shared clinic decision lock until
+commit. If a patient withdrawal or visit refusal already holds the writer
+lock, the action is refused rather than waiting with source locks held. A
+choice change that starts later waits for the admitted decision to finish.
+`0024_pending_decision_fence` enforces this ordering at the existing database
+vote, transition, and review writers without granting any new privilege.
+
 ## Care coordination (todo 53, AI-05)
 
 `care_coordination` is a clinical gateway purpose (patient-scoped

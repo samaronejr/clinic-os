@@ -15,6 +15,7 @@ from django.utils.translation import gettext
 
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import AuditTrustedContext, _content_hash, record_phase1_event
+from apps.consent.decision_fence import hold_choice_change
 from apps.consent.models import (
     AIUseDisclosure,
     ConsentAcceptance,
@@ -71,6 +72,7 @@ def patient_authority() -> ConsentAuthority:
 
 def _lock(clinic_id: UUID, purpose: str, organization_id: UUID) -> None:
     if purpose in {ConsentPurpose.AI_ASSISTANCE, ConsentPurpose.CONSULTATION_RECORDING}:
+        hold_choice_change(clinic_id=clinic_id)
         # The gateway holds the matching session lock across final recheck and
         # send. No model call may overtake a committed patient withdrawal.
         hold_subject_mutation_key(f"ai-organization:{organization_id}")
@@ -481,6 +483,7 @@ def record_ai_disclosure(
         msg = gettext("Invalid AI-use disclosure.")
         raise ValidationError(msg)
     with transaction.atomic():
+        hold_choice_change(clinic_id=clinic_id)
         result, created = AIUseDisclosure.objects.get_or_create(
             encounter=encounter,
             defaults={

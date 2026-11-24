@@ -3,21 +3,35 @@
 The default/base managers and the privileged export projection apply the same
 PostgreSQL predicate before pagination or serialization. Ordinary row access
 is still subject to the table's original FORCE RLS and audience restrictions.
+
+A query result is not a permit to render. Presenters, views, partials,
+exports and downloads keep only ``PendingKey`` selectors from earlier reads;
+``ai_pending_visible`` re-selects every requested row in one statement inside
+the response transaction and passes ``VisiblePending`` handles to a callback
+that renders synchronously. A withheld row is simply absent, and a handle
+kept past its callback re-checks, rather than reusing, its row.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
+from contextlib import nullcontext
+from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, final
 
 from django.apps import apps
-from django.db import connection, models
+from django.db import connection, connections, models, transaction
+from django.db.models.functions import Cast
 
 from apps.ai.contracts import GatewayAccessDeniedError
+from apps.consent.decision_fence import try_hold_decision
 from apps.core.secrets import secret_store
 from apps.tenancy.envelope import KEK_SECRET_NAME
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
     from uuid import UUID
 
     from apps.ai.brief_contracts import ChartDisplay
@@ -34,6 +48,238 @@ class OutputProvenance:
 
 class SealedOutput:
     """Previously serialized pending rows: release only after rechecking origins."""
+
+
+@dataclass(frozen=True, slots=True)
+class PendingKey[M: models.Model]:
+    """An untrusted selector. It carries no row, payload, actor or permission."""
+
+    model: type[M]
+    pk: UUID
+
+
+def key[M: models.Model](row: M) -> PendingKey[M]:
+    """Discard all previously loaded fields and select_related caches."""
+    return PendingKey(type(row), row.pk)
+
+
+_ISSUER = object()
+
+
+class _VisibleOutput:
+    """Marker for projection permits; never instantiate these at a caller."""
+
+    __slots__ = ()
+
+
+@final
+class VisiblePending[M: models.Model](_VisibleOutput):
+    """A typed, non-transferable projection handle, not a cached authorization."""
+
+    __slots__ = ("_clinic", "_key")
+
+    def __init__(
+        self, selector: PendingKey[M], clinic: UUID | None, issuer: object
+    ) -> None:
+        """Accept only an issuance made in this module's scoped decision."""
+        if issuer is not _ISSUER:
+            raise GatewayAccessDeniedError
+        self._key = selector
+        self._clinic = clinic
+
+    @property
+    def record(self) -> M:
+        """Only the issuing, currently projecting frame may materialize fields."""
+        frame = _CURRENT.get()
+        if frame is None or frame.get(self._key) is not self:
+            raise GatewayAccessDeniedError
+        return cast("M", frame._records[self._key])  # noqa: SLF001 - same boundary
+
+    def project[R](self, build: Callable[[VisiblePending[M]], R]) -> R | None:
+        """Recheck a retained handle; reuse only the active projection frame."""
+        frame = _CURRENT.get()
+        if frame is not None and frame.get(self._key) is self:
+            return build(self)
+
+        def single(batch: RenderSelection) -> R | None:
+            fresh = batch.get(self._key)
+            return None if fresh is None else build(fresh)
+
+        return ai_pending_visible((self._key,), single, clinic_id=self._clinic)
+
+
+@dataclass(frozen=True, slots=True)
+class ExportPage:
+    """Untrusted selectors for the separately authorized organization export."""
+
+    export_id: UUID
+    relation: str
+    after: str | None
+    size: int
+
+
+@final
+class VisibleExportRow(_VisibleOutput):
+    """A consent-filtered row for the current export page, not for staff views."""
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: int, issuer: object) -> None:
+        """Bind to the issuing frame, which alone holds the exported fields."""
+        if issuer is not _ISSUER:
+            raise GatewayAccessDeniedError
+        self._index = index
+
+    @property
+    def record(self) -> tuple[str, str | dict[str, object]]:
+        """Expose the record only during synchronous projection of its page."""
+        frame = _CURRENT.get()
+        if frame is None or not frame.owns_export(self, self._index):
+            raise GatewayAccessDeniedError
+        return frame._export_data[self._index]  # noqa: SLF001 - same boundary
+
+
+@dataclass(frozen=True, slots=True)
+class RenderSelection(_VisibleOutput):
+    """The output of one SQL snapshot. Callers cannot issue handles from it."""
+
+    _records: dict[PendingKey[models.Model], models.Model]
+    _handles: dict[PendingKey[models.Model], VisiblePending[models.Model]]
+    _export_data: list[tuple[str, str | dict[str, object]]]
+    _export_rows: tuple[VisibleExportRow, ...]
+    _issuer: object
+
+    def __post_init__(self) -> None:
+        """Reject construction outside the issuing boundary."""
+        if self._issuer is not _ISSUER:
+            raise GatewayAccessDeniedError
+
+    def get[M: models.Model](self, selector: PendingKey[M]) -> VisiblePending[M] | None:
+        """Return the checked handle or omit a missing or withheld selector."""
+        if _CURRENT.get() is not self:
+            raise GatewayAccessDeniedError
+        return cast("VisiblePending[M] | None", self._handles.get(selector))
+
+    def many[M: models.Model](
+        self, selectors: Iterable[PendingKey[M]]
+    ) -> tuple[VisiblePending[M], ...]:
+        """Preserve caller order, omitting only selectors withheld by RLS."""
+        return tuple(row for k in selectors if (row := self.get(k)) is not None)
+
+    def export_rows(self) -> tuple[VisibleExportRow, ...]:
+        """Return the filtered page in the export resolver's cursor order."""
+        if _CURRENT.get() is not self:
+            raise GatewayAccessDeniedError
+        return self._export_rows
+
+    def owns_export(self, row: VisibleExportRow, index: int) -> bool:
+        """Test the identity of an export permit, not the caller's page keys."""
+        return (
+            _CURRENT.get() is self
+            and 0 <= index < len(self._export_rows)
+            and self._export_rows[index] is row
+        )
+
+
+_CURRENT: ContextVar[RenderSelection | None] = ContextVar(
+    "pending_projection", default=None
+)
+
+
+def _read_batch(
+    groups: dict[type[models.Model], set[UUID]], clinic_id: UUID | None
+) -> list[tuple[object, ...]]:
+    """UNION ALL scoped ORM reads; each model owns distinct typed output slots."""
+    columns = [
+        (f"pending_c{group}_{index}", model, field)
+        for group, model in enumerate(groups)
+        for index, field in enumerate(model._meta.concrete_fields)  # noqa: SLF001
+    ]
+    arms = []
+    for index, (model, ids) in enumerate(groups.items()):
+        source = rows(model).filter(pk__in=ids).order_by()
+        if clinic_id is not None:
+            source = source.filter(clinic_id=clinic_id)
+        # A typed NULL in every other arm preserves each field's native database
+        # type and normal Django converter, including its own encryption purpose.
+        slots = {
+            alias: models.F(field.attname)
+            if owner is model
+            else Cast(models.Value(None), field)
+            for alias, owner, field in columns
+        }
+        arms.append(
+            source.annotate(
+                pending_render_group=models.Value(index), **slots
+            ).values_list("pending_render_group", *slots)
+        )
+    return list(arms[0].union(*arms[1:], all=True))
+
+
+def _fresh_records(
+    selectors: Iterable[PendingKey[models.Model]], clinic_id: UUID | None
+) -> dict[PendingKey[models.Model], models.Model]:
+    """Fetch and convert all marked models in one ordinary RLS SELECT."""
+    groups: dict[type[models.Model], set[UUID]] = defaultdict(set)
+    for selector in selectors:
+        if selector.model not in _registered():
+            raise GatewayAccessDeniedError
+        groups[selector.model].add(selector.pk)
+    if not groups:
+        return {}
+    layout = []
+    offset = 1  # column zero identifies the branch of the union
+    for model in groups:
+        names = [field.attname for field in model._meta.concrete_fields]  # noqa: SLF001
+        layout.append((model, names, slice(offset, offset + len(names))))
+        offset += len(names)
+    result = {}
+    for row in _read_batch(groups, clinic_id):
+        model, names, span = layout[cast("int", row[0])]
+        current = model.from_db(connection.alias, names, list(row[span]))
+        result[key(current)] = current
+    return result
+
+
+def ai_pending_visible[R](
+    selectors: Iterable[PendingKey[models.Model]] | ExportPage,
+    project: Callable[[RenderSelection], R],
+    *,
+    clinic_id: UUID | None = None,
+) -> R:
+    """Reselect under live RLS and synchronously project inside the transaction."""
+    with nullcontext() if connection.in_atomic_block else transaction.atomic():
+        if isinstance(selectors, ExportPage):
+            export_data = _export_page(selectors)
+            records: dict[PendingKey[models.Model], models.Model] = {}
+        else:
+            export_data = []
+            records = _fresh_records(selectors, clinic_id)
+        handles = {k: VisiblePending(k, clinic_id, _ISSUER) for k in records}
+        selection = RenderSelection(
+            records,
+            handles,
+            export_data,
+            tuple(VisibleExportRow(i, _ISSUER) for i in range(len(export_data))),
+            _ISSUER,
+        )
+        token = _CURRENT.set(selection)
+        try:
+            return project(selection)
+        finally:
+            _CURRENT.reset(token)
+            records.clear()
+            handles.clear()
+            export_data.clear()
+
+
+@cache
+def _registered() -> frozenset[type[models.Model]]:
+    return frozenset(
+        model
+        for model in apps.get_models()
+        if issubclass(model, (PendingOutput, SealedOutput))
+    )
 
 
 @cache
@@ -56,21 +302,51 @@ def rows[M: models.Model](model: type[M]) -> models.QuerySet[M]:
 
 
 def reselect[M: models.Model](instance: M) -> M:
-    """Reauthorize a retained instance immediately before serializing its fields."""
+    """Reauthorize a retained instance for a workflow command, not rendering."""
     visible = rows(type(instance)).filter(pk=instance.pk).first()
     if visible is None:
         raise GatewayAccessDeniedError
     return visible
 
 
-def export_page(
-    *, export_id: UUID, relation: str, after: str | None, size: int
-) -> list[tuple[str, str | dict[str, object]]]:
-    """Fetch one filtered page after the resolver authenticates its owner."""
+def decisions_visible(
+    selectors: Iterable[PendingKey[models.Model]],
+    *,
+    clinic_id: UUID,
+    using: str = "default",
+) -> bool:
+    """Reauthorize all effects after a clinic-scoped lookup, not from a display permit.
+
+    Check on the actor's actual connection, in a new statement *after* taking
+    the fence. It lasts through the commit that writes the vote or decision.
+    No model bytes or field permissions are conveyed by this Boolean.
+    """
+    selected = tuple(selectors)
+    if not selected or any(k.model not in _registered() for k in selected):
+        return False
+    if not try_hold_decision(clinic_id=clinic_id, using=using):
+        return False
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.enterprise_staff_context() AND "
+            "bool_and(clinic_app.ai_pending_visible(relation,key) IS TRUE) "
+            "FROM unnest(%s::text[],%s::uuid[]) AS selected(relation,key)",
+            [
+                [rows(k.model).query.get_meta().db_table for k in selected],
+                [k.pk for k in selected],
+            ],
+        )
+        result = cursor.fetchone()
+        return result is not None and result[0] is True
+
+
+def _export_page(page: ExportPage) -> list[tuple[str, str | dict[str, object]]]:
+    # The resolver authenticates the requester and applies the same underlying
+    # choice as staff RLS, but under the distinct organization export audience.
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT row_key,row_data FROM clinic_app.interop_export_rows(%s,%s,%s,%s)",
-            [export_id, relation, after, size],
+            [page.export_id, page.relation, page.after, page.size],
         )
         return cast("list[tuple[str, str | dict[str, object]]]", cursor.fetchall())
 

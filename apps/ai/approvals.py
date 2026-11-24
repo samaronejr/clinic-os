@@ -20,6 +20,7 @@ from apps.ai.action_validation import (
 )
 from apps.ai.attestations import KEY_ID, StepUpEvidence, attest, verify
 from apps.ai.models import ActionProposal, Approval
+from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import transition
 from apps.audit.services import record_phase1_event
@@ -157,7 +158,7 @@ def approve_action(
         )
         .first()
     )
-    if proposal is None:
+    if proposal is None or not decisions_visible((key(proposal),), clinic_id=clinic_id):
         raise ActionAccessDeniedError
     payload = parse_payload(proposal.payload)
     if expected_digest != proposal.digest or payload.digest != expected_digest:
@@ -243,7 +244,7 @@ def reject_action(*, clinic_id: UUID, proposal_id: UUID, expected_digest: str) -
         .filter(pk=proposal_id, clinic_id=clinic_id)
         .first()
     )
-    if proposal is None:
+    if proposal is None or not decisions_visible((key(proposal),), clinic_id=clinic_id):
         raise ActionAccessDeniedError
     if expected_digest != proposal.digest:
         raise ActionRefusedError(Refusal.DIGEST)

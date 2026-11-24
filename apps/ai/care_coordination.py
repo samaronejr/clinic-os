@@ -35,8 +35,8 @@ from apps.ai.care_contracts import CareRequest, parse_request, validate_reply
 from apps.ai.care_models import CareProposal
 from apps.ai.care_sources import (
     care_choice_allows,
+    checked_item_source,
     instant_text,
-    item_digest,
     item_source,
     plan_is_current,
     plan_source,
@@ -52,7 +52,13 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
-from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import (
+    RenderSelection,
+    ai_pending_visible,
+    decisions_visible,
+    key,
+    reselect,
+)
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy
 from apps.ai.proposals import AgentContext, propose_action
@@ -73,6 +79,7 @@ if TYPE_CHECKING:
 
     from apps.ai.action_payload import JSON
     from apps.ai.attestations import StepUpEvidence
+    from apps.ai.pending_outputs import PendingKey
 
 __all__ = (
     "CareAccessDeniedError",
@@ -81,6 +88,7 @@ __all__ = (
     "ItemOutcome",
     "approve_care_bundle",
     "bundle_digest",
+    "bundle_fingerprint",
     "care_bundle",
     "collect_care_coordination",
     "decide_care_item",
@@ -355,16 +363,35 @@ def care_bundle(*, clinic_id: UUID, invocation_id: UUID) -> CareBundle:
 
 
 def bundle_digest(
-    *, clinic_id: UUID, invocation_id: UUID, items: Iterable[CareProposal]
+    *, clinic_id: UUID, invocation_id: UUID, items: Iterable[PendingKey[CareProposal]]
 ) -> str:
-    """Bind the exact previewed administrative effects, in position order."""
+    """Recheck the complete pending set independently at approval time."""
+    selectors = tuple(items)
+
+    def project(batch: RenderSelection) -> str:
+        checked = batch.many(selectors)
+        if len(checked) != len(selectors):
+            raise CareConflictError
+        return bundle_fingerprint(
+            clinic_id=clinic_id,
+            invocation_id=invocation_id,
+            hashes=(checked_item_source(item)["content_sha256"] for item in checked),
+        )
+
+    return ai_pending_visible(selectors, project, clinic_id=clinic_id)
+
+
+def bundle_fingerprint(
+    *, clinic_id: UUID, invocation_id: UUID, hashes: Iterable[JSON]
+) -> str:
+    """Bind the checked effects in position order without re-reading the rows."""
     return hashlib.sha256(
         rfc8785.dumps(
             {
                 "schema": "care-bundle-v1",
                 "clinic": str(clinic_id),
                 "invocation": str(invocation_id),
-                "items": [item_digest(item) for item in items],
+                "items": list(hashes),
             }
         )
     ).hexdigest()
@@ -447,7 +474,9 @@ def _payload(*, item: CareProposal, policy: AgentPolicyVersion, attempt: UUID) -
     if provider is None or item.window_start is None or item.window_end is None:
         raise ActionRefusedError(Refusal.POLICY)
     now = database_time()
-    sources = sorted((plan_source(item.plan), item_source(item)), key=rfc8785.dumps)
+    sources = sorted(
+        (plan_source(item.plan), item_source(key(item))), key=rfc8785.dumps
+    )
     data: dict[str, JSON] = {
         "schema_version": 1,
         "action_id": str(uuid4()),
@@ -504,16 +533,16 @@ def _approve_item(
     policy: AgentPolicyVersion,
     attempt: UUID,
     step_up: Callable[[str], StepUpEvidence],
-) -> ItemOutcome:
+) -> tuple[Literal["approved", "stale", "refused"], str]:
     if item.plan.revision != item.plan_revision or not plan_is_current(item.plan):
         _stale(item)
-        return ItemOutcome(item.pk, "stale", Refusal.SOURCE.value)
+        return "stale", Refusal.SOURCE.value
     payload = parse_payload(_payload(item=item, policy=policy, attempt=attempt))
     proposal = propose_action(
         clinic_id=item.clinic_id, payload=payload, context=AgentContext()
     )
     if proposal.state != "validated":
-        return ItemOutcome(item.pk, "refused", proposal.reason_code)
+        return "refused", proposal.reason_code
     approve_action(
         clinic_id=item.clinic_id,
         proposal_id=proposal.pk,
@@ -525,13 +554,13 @@ def _approve_item(
         reason = result.reason.value if result.reason else Refusal.STATE.value
         if result.reason is Refusal.SOURCE:
             _stale(item)
-            return ItemOutcome(item.pk, "stale", reason)
-        return ItemOutcome(item.pk, "refused", reason)
+            return "stale", reason
+        return "refused", reason
     action = CareAction.objects.get(
         clinic_id=item.clinic_id, idempotency_key=uuid5(item.pk, "care-action")
     )
     _decide(item, "approved", action_proposal=proposal, care_action=action)
-    return ItemOutcome(item.pk, "approved")
+    return "approved", ""
 
 
 @transaction.atomic
@@ -551,8 +580,10 @@ def approve_care_bundle(
     or refused item never blocks the valid ones.
     """
     items = pending_bundle(clinic_id=clinic_id, invocation_id=invocation_id)
-    if not items or digest != bundle_digest(
-        clinic_id=clinic_id, invocation_id=invocation_id, items=items
+    if not decisions_visible(
+        map(key, items), clinic_id=clinic_id
+    ) or digest != bundle_digest(
+        clinic_id=clinic_id, invocation_id=invocation_id, items=map(key, items)
     ):
         raise CareConflictError
     policy = _care_policy(clinic_id)
@@ -561,11 +592,10 @@ def approve_care_bundle(
     for item in items:
         try:
             with transaction.atomic():
-                outcomes.append(
-                    _approve_item(
-                        item=item, policy=policy, attempt=attempt, step_up=step_up
-                    )
+                state, reason = _approve_item(
+                    item=item, policy=policy, attempt=attempt, step_up=step_up
                 )
+                outcomes.append(ItemOutcome(item.pk, state, reason))
         except ActionRefusedError as error:
             outcomes.append(ItemOutcome(item.pk, "refused", error.reason.value))
         except (ActionAccessDeniedError, ActionInputError):
@@ -634,7 +664,7 @@ def decide_care_item(
         .select_related("plan")
         .first()
     )
-    if item is None:
+    if item is None or not decisions_visible((key(item),), clinic_id=clinic_id):
         raise _deny()
     _decider(clinic_id=clinic_id, item=item, decision=decision)
     if item.revision != expected_revision or item.state != "pending":

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from apps.ai.contracts import GatewayAccessDeniedError
 from apps.ai.extraction import candidate_data, collect_extraction, start_extraction
+from apps.ai.pending_outputs import key
 from apps.consent.services import record_ai_disclosure
 from apps.core.integration import execute_operation
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
@@ -72,10 +73,21 @@ def test_held_extraction_candidate_is_reselected_before_projection(
     job = extracted_job(g, monkeypatch, world=source)
     with as_actor(g, g.physician):
         candidate = job.candidates.select_related("job").get(position=0)
-        assert candidate_data(candidate).parsed_value == "123.40"
+        assert (
+            candidate_data(
+                key(candidate),
+                clinic_id=g.clinic_a,
+                job_id=job.pk,
+            ).parsed_value
+            == "123.40"
+        )
     withdraw(patient, receipt)
     with as_actor(g, g.physician), pytest.raises(GatewayAccessDeniedError):
-        candidate_data(candidate)
+        candidate_data(
+            key(candidate),
+            clinic_id=g.clinic_a,
+            job_id=job.pk,
+        )
 
 
 @pytest.mark.parametrize("fmt", ["jsonl", "csv"])

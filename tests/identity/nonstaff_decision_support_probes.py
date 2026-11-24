@@ -83,7 +83,8 @@ def decision_calls(world: BriefWorld, actor: UUID) -> dict[str, Callable[[], boo
             ).invocation_id
             is not None
         ),
-        "apps.ai.decision_support.display_decision_support": lambda: (
+        # The public display service; its checked render enters the census row.
+        "apps.ai.decision_support.prepare_decision_support": lambda: (
             display_decision_support(
                 clinic_id=g.clinic_a,
                 encounter_id=encounter,

@@ -20,6 +20,7 @@ from apps.ai.models import (
     ActionReceipt,
     AgentPolicyVersion,
 )
+from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import secret_store
@@ -43,7 +44,9 @@ def load_action(
         )
         .first()
     )
-    if proposal is None:
+    if proposal is None or not decisions_visible(
+        (key(proposal),), clinic_id=clinic_id, using=using
+    ):
         raise ActionAccessDeniedError
     if using == "agent":
         with connections[using].cursor() as cursor:

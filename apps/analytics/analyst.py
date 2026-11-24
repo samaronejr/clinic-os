@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 
 from django.db import transaction
 
-from apps.ai.artifacts import create_input, input_for, read_artifact
+from apps.ai.artifacts import (
+    ArtifactProjection,
+    artifact_content,
+    artifact_selector,
+    create_input,
+    input_for,
+    render_artifact,
+)
 from apps.ai.contracts import (
     Budget,
     GatewayRefusedError,
@@ -38,6 +45,9 @@ from apps.audit.services import record_phase1_event
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from apps.ai.models import AIArtifact
+    from apps.ai.pending_outputs import VisiblePending
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +94,17 @@ def request_analyst(*, clinic_id: UUID, question: str, query: Query) -> Proposal
 
 def display_proposal(*, clinic_id: UUID, invocation_id: UUID) -> Proposal:
     """Revalidate requester, expiry, provider policy and authorization version."""
+    return render_artifact(
+        prepare_proposal(clinic_id=clinic_id, invocation_id=invocation_id),
+        clinic_id=clinic_id,
+        emit=lambda proposal: proposal,
+    )
+
+
+def prepare_proposal(
+    *, clinic_id: UUID, invocation_id: UUID
+) -> Proposal | ArtifactProjection[Proposal]:
+    """Defer the ready report descriptor until after the final scoped SELECT."""
     actor, version = authorize(clinic_id=clinic_id)
     invocation = AIInvocation.objects.filter(
         pk=invocation_id,
@@ -113,9 +134,17 @@ def display_proposal(*, clinic_id: UUID, invocation_id: UUID) -> Proposal:
         return Proposal("generating", invocation_id)
     if invocation.status != "succeeded":
         return Proposal("unavailable", invocation_id)
-    output = read_artifact(clinic_id=clinic_id, artifact_id=invocation.output.pk)
-    query = validate_reply(output, requested)
-    return Proposal("review", invocation_id, query, version)
+    selector = artifact_selector(clinic_id=clinic_id, artifact_id=invocation.output.pk)
+
+    def build(checked: VisiblePending[AIArtifact]) -> Proposal:
+        return Proposal(
+            "review",
+            invocation_id,
+            validate_reply(artifact_content(checked), requested),
+            version,
+        )
+
+    return ArtifactProjection(selector, build, Proposal("unavailable", invocation_id))
 
 
 @transaction.atomic

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from django import forms
@@ -20,6 +21,7 @@ from apps.ai.action_contracts import (
 from apps.ai.action_payload import closed, identifier, parse_payload
 from apps.ai.agent_presenter import present_proposal
 from apps.ai.approvals import approve_action, reject_action
+from apps.ai.artifacts import ArtifactProjection
 from apps.ai.attestations import step_up_evidence
 from apps.ai.contracts import (
     GatewayAccessDeniedError,
@@ -28,10 +30,11 @@ from apps.ai.contracts import (
 )
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AIArtifact
+from apps.ai.pending_outputs import PendingKey, RenderSelection, ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.revenue_cycle import (
     RevenueReview,
-    collect_revenue_cycle,
+    prepare_revenue_review,
     propose_revenue_action,
     request_revenue_cycle,
 )
@@ -47,7 +50,7 @@ from apps.insurance.models import Guide
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from django.http import HttpRequest, HttpResponseBase
+    from django.http import HttpRequest, HttpResponse, HttpResponseBase
 
 
 class RevenueForm(forms.Form):
@@ -98,7 +101,17 @@ def _can_approve(clinic_id: UUID) -> bool:
     return True
 
 
-def _review_for_proposal(clinic_id: UUID, proposal: ActionProposal) -> RevenueReview:
+type PreparedReview = RevenueReview | ArtifactProjection[RevenueReview]
+
+
+@dataclass(frozen=True, slots=True)
+class _Feedback:
+    error: str
+    notice: str
+    status: int
+
+
+def _review_for_proposal(clinic_id: UUID, proposal: ActionProposal) -> PreparedReview:
     data = parse_payload(proposal.payload).data()
     if proposal.run.policy.capability != "revenue_cycle":
         raise GatewayAccessDeniedError
@@ -114,14 +127,14 @@ def _review_for_proposal(clinic_id: UUID, proposal: ActionProposal) -> RevenueRe
     )
     if output is None or output.invocation_id is None:
         raise GatewayAccessDeniedError
-    return collect_revenue_cycle(
+    return prepare_revenue_review(
         clinic_id=clinic_id, invocation_id=output.invocation_id
     )
 
 
 def _command(
     request: HttpRequest, clinic_id: UUID, form: RevenueForm
-) -> tuple[RevenueReview, ActionProposal | None, str]:
+) -> tuple[PreparedReview, PendingKey[ActionProposal] | None, str]:
     data = form.cleaned_data
     if data["command"] == "request":
         return (
@@ -131,7 +144,7 @@ def _command(
         )
     if data["command"] == "refresh":
         return (
-            collect_revenue_cycle(
+            prepare_revenue_review(
                 clinic_id=clinic_id, invocation_id=data["invocation_id"]
             ),
             None,
@@ -141,7 +154,7 @@ def _command(
         proposal = propose_revenue_action(
             clinic_id=clinic_id, output_id=data["output_id"], position=data["position"]
         )
-        return _review_for_proposal(clinic_id, proposal), proposal, ""
+        return _review_for_proposal(clinic_id, proposal), key(proposal), ""
     require_permission("automation.finance", clinic_id=clinic_id)
     selected = (
         pending_rows(ActionProposal)
@@ -177,8 +190,8 @@ def _command(
             "Review recorded. An appeal remains a draft and needs separate "
             "human submission approval."
         )
-    proposal.refresh_from_db()
-    return _review_for_proposal(clinic_id, proposal), proposal, notice
+    # The rendered state comes from the response's fresh visibility batch.
+    return _review_for_proposal(clinic_id, proposal), key(proposal), notice
 
 
 @privileged_totp_required(_url)
@@ -198,13 +211,13 @@ def revenue_cycle_page(request: HttpRequest, clinic_id: UUID) -> HttpResponseBas
         return render(request, "400.html", status=400)
     review = None
     proposal = None
-    error = ""
-    notice = ""
-    status = 200
+    feedback = _Feedback("", "", 200)
     if request.method == "POST":
         form = RevenueForm(request.POST)
         if not form.is_valid():
-            error, status = _("Choose the source and review the current proposal."), 400
+            feedback = _Feedback(
+                _("Choose the source and review the current proposal."), "", 400
+            )
         else:
             try:
                 review, proposal, notice = _command(request, clinic_id, form)
@@ -217,33 +230,82 @@ def revenue_cycle_page(request: HttpRequest, clinic_id: UUID) -> HttpResponseBas
             except StepUpRequired:
                 return flow_redirect(request, "identity:step-up", _url(clinic_id))
             except (ActionRefusedError, ActionInputError, GatewayInputError):
-                error, status = (
-                    _("The source or proposal changed. Refresh and review it again."),
-                    409,
-                )
+                feedback = _changed()
             except (GatewayRefusedError, SecretUnavailableError):
-                error, status = (
+                feedback = _Feedback(
                     _(
                         "The assistant is unavailable. "
                         "Continue the financial workflow manually."
                     ),
+                    "",
                     503,
                 )
-    response = render(
-        request,
-        "ai/revenue_cycle.html",
-        {
-            "clinic_id": clinic_id,
-            "review": review,
-            "proposal": present_proposal(proposal) if proposal else None,
-            "can_approve": _can_approve(clinic_id),
-            "error": error,
-            "notice": notice,
-            "guides": Guide.objects.filter(clinic_id=clinic_id).order_by(
-                "-created_at", "-id"
-            )[:100],
-        },
-        status=status,
+            else:
+                feedback = _Feedback("", notice, 200)
+    return _render_page(request, clinic_id, review, proposal, feedback)
+
+
+def _changed() -> _Feedback:
+    return _Feedback(
+        _("The source or proposal changed. Refresh and review it again."), "", 409
+    )
+
+
+def _render_page(
+    request: HttpRequest,
+    clinic_id: UUID,
+    review: PreparedReview | None,
+    proposal: PendingKey[ActionProposal] | None,
+    feedback: _Feedback,
+) -> HttpResponse:
+    can_approve = _can_approve(clinic_id)
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        checked = batch.get(proposal) if proposal is not None else None
+        shown = feedback
+        try:
+            visible_review = _visible_review(review, batch)
+        except (ActionInputError, GatewayInputError):
+            # Same refusal as a command that found the source changed.
+            visible_review, checked, shown = None, None, _changed()
+        return render(
+            request,
+            "ai/revenue_cycle.html",
+            {
+                "clinic_id": clinic_id,
+                "review": visible_review,
+                "proposal": present_proposal(checked) if checked is not None else None,
+                "can_approve": can_approve,
+                "error": shown.error,
+                "notice": shown.notice,
+                "guides": Guide.objects.filter(clinic_id=clinic_id).order_by(
+                    "-created_at", "-id"
+                )[:100],
+            },
+            status=shown.status,
+        )
+
+    response = ai_pending_visible(
+        _selectors(review, proposal), project, clinic_id=clinic_id
     )
     response["Cache-Control"] = "no-store, private"
     return response
+
+
+def _selectors(
+    review: PreparedReview | None, proposal: PendingKey[ActionProposal] | None
+) -> tuple[PendingKey[AIArtifact | ActionProposal], ...]:
+    artifact = review.selector if isinstance(review, ArtifactProjection) else None
+    return tuple(k for k in (proposal, artifact) if k is not None)
+
+
+def _visible_review(
+    review: PreparedReview | None, batch: RenderSelection
+) -> RevenueReview | None:
+    if not isinstance(review, ArtifactProjection):
+        return review
+    output = batch.get(review.selector)
+    try:
+        return review.build(output) if output is not None else review.unavailable
+    except GatewayAccessDeniedError:
+        return review.unavailable

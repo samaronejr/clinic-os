@@ -27,16 +27,16 @@ from apps.ai.contracts import (
 )
 from apps.ai.extraction import (
     authorized_job,
-    candidate_data,
     collect_extraction,
     job_source,
+    project_candidate,
     review_extraction,
     start_extraction,
 )
 from apps.ai.extraction_contracts import MAX_UNIT_LENGTH, ExtractionInputError
 from apps.ai.extraction_documents import render_page
-from apps.ai.models import AIInvocation, ExtractionCandidateRecord
-from apps.ai.pending_outputs import reselect
+from apps.ai.models import AIInvocation, ExtractionCandidateRecord, ExtractionJob
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ehr.attachment_storage import AttachmentStorageError
 from apps.ehr.services import ClinicalAccessDeniedError
@@ -48,7 +48,7 @@ from apps.orders.values import OrdersAccessDeniedError, OrdersConflictError
 if TYPE_CHECKING:
     from django.http import HttpRequest
 
-    from apps.ai.models import ExtractionJob
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
 
 ZOOMS = (100, 200, 400)
 
@@ -149,20 +149,39 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         elif action != "refresh":
             return HttpResponse(status=400)
         job = collect_extraction(clinic_id=clinic_id, job_id=job.pk)
-    context.update(
-        _document_context(
-            job,
-            page=int(request.POST.get("page", "1")),
-            zoom=int(request.POST.get("zoom", "100")),
-        )
+    job_key = key(job)
+    selectors = tuple(
+        PendingKey(ExtractionCandidateRecord, pk)
+        for pk in pending_rows(ExtractionCandidateRecord)
+        .filter(job_id=job_key.pk, clinic_id=clinic_id)
+        .order_by("position")
+        .values_list("pk", flat=True)
     )
-    response = render(request, "ai/extraction.html", context)
+    page = int(request.POST.get("page", "1"))
+    zoom = int(request.POST.get("zoom", "100"))
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        checked = batch.get(job_key)
+        if checked is None:
+            raise GatewayAccessDeniedError
+        context.update(
+            _document_context(checked, batch.many(selectors), page=page, zoom=zoom)
+        )
+        return render(request, "ai/extraction.html", context)
+
+    response = ai_pending_visible((job_key, *selectors), project, clinic_id=clinic_id)
     response["Cache-Control"] = "private, no-store"
     return response
 
 
-def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, object]:
-    job = reselect(job)
+def _document_context(
+    checked: VisiblePending[ExtractionJob],
+    candidates: tuple[VisiblePending[ExtractionCandidateRecord], ...],
+    *,
+    page: int,
+    zoom: int,
+) -> dict[str, object]:
+    job = checked.record
     if zoom not in ZOOMS:
         raise ExtractionInputError
     source = job_source(job=job, include_bytes=True)
@@ -170,19 +189,28 @@ def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, 
     with Image.open(BytesIO(raster)) as image:
         width, height = image.size
     rows: list[dict[str, object]] = []
-    regions = source.regions(rotations=tuple(job.rotations))
-    for record in job.candidates.select_related("job").order_by("position"):
+    rotations = tuple(job.rotations)
+    regions = source.regions(rotations=rotations)
+    for candidate_row in candidates:
+        record = candidate_row.record
         if (
             record.status in ("candidate", "ambiguous")
             and record.expires_at <= timezone.now()
         ):
             continue
-        candidate = candidate_data(record, regions=regions)
+        candidate = project_candidate(
+            candidate_row, rotations=rotations, regions=regions
+        )
         box = candidate.region.display_bbox(job.rotations[candidate.region.page - 1])
         left, top, right, bottom = box
         rows.append(
             {
-                "record": record,
+                "record": {
+                    "id": record.pk,
+                    "position": record.position,
+                    "reviewed_at": record.reviewed_at,
+                    "status": record.status,
+                },
                 "candidate": candidate,
                 "on_page": candidate.region.page == page,
                 "x": round(left / 10000 * width),
@@ -199,7 +227,7 @@ def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, 
     ).select_related("version")
     invocation = AIInvocation.objects.filter(pk=job.invocation_id).first()
     return {
-        "job": job,
+        "job": {"id": job.pk, "result_version_id": job.result_version_id},
         "rows": rows,
         "page": page,
         "zoom": zoom,

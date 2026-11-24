@@ -16,6 +16,7 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
 
+from apps.ai.pending_outputs import ai_pending_visible
 from apps.comms import inbox_services as services
 from apps.comms import suggestions
 from apps.comms.inbox_queries import (
@@ -47,6 +48,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from django.http import HttpRequest, HttpResponse, QueryDict
+
+    from apps.ai.pending_outputs import RenderSelection
 
 REFUSALS: Final = {
     "window_expired_template_required": _(
@@ -418,30 +421,33 @@ def _page(
     view: ConversationView,
     extra: dict[str, object] | None = None,
 ) -> HttpResponse:
-    """Render a thread whose access check the caller has already passed."""
+    """Render the checked pending reply alongside the ordinary thread."""
     conversation = view.conversation
     clinician = is_clinician(clinic_id)
-    return render(
-        request,
-        "comms/conversation.html",
-        {
-            "clinic_id": clinic_id,
-            "view": view,
-            "command_id": uuid4(),
-            "clinician": clinician,
-            "can_link": conversation.enrollment_id is None
-            and conversation.purpose != "marketing"
-            and conversation.channel != "portal",
-            "choices": (),
-            "choice_notice": "",
-            "searched": False,
-            "prefill": "",
-            "contacts_url": reverse("intake:patient-contacts", args=(clinic_id,)),
-            "realtime_enabled": settings.REALTIME_ENABLED,
-            "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
-            **(extra or {}),
-        },
-    )
+    selector = view.suggestion_key
+    context = {
+        "clinic_id": clinic_id,
+        "view": view,
+        "command_id": uuid4(),
+        "clinician": clinician,
+        "can_link": conversation.enrollment_id is None
+        and conversation.purpose != "marketing"
+        and conversation.channel != "portal",
+        "choices": (),
+        "choice_notice": "",
+        "searched": False,
+        "prefill": "",
+        "contacts_url": reverse("intake:patient-contacts", args=(clinic_id,)),
+        "realtime_enabled": settings.REALTIME_ENABLED,
+        "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
+        **(extra or {}),
+    }
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        context["suggested_reply"] = view.project_reply(batch)
+        return render(request, "comms/conversation.html", context)
+
+    return ai_pending_visible((selector,) if selector is not None else (), project)
 
 
 def _quick_reply_text(request: HttpRequest, clinic_id: UUID, purpose: str) -> str:

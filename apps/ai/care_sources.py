@@ -19,7 +19,7 @@ from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.effects import check_invocation
 from apps.ai.pending_choice import pending_choice_allows
-from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.consent.services import ai_disclosure_status
 from apps.identity.current_context import CurrentActorError
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from apps.ai.action_payload import JSON
+    from apps.ai.pending_outputs import PendingKey, RenderSelection, VisiblePending
 
 
 def instant_text(value: datetime) -> str:
@@ -39,12 +40,12 @@ def instant_text(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def item_digest(item: CareProposal) -> str:
-    """Bind the item's identity, plan revision and exact proposed effect."""
-    item = reselect(item)
+def checked_item_source(checked: VisiblePending[CareProposal]) -> dict[str, JSON]:
+    """Bind a checked item's identity, plan revision and exact proposed effect."""
+    item = checked.record
     if item.window_start is None or item.window_end is None:
         raise ActionRefusedError(Refusal.SOURCE)
-    return hashlib.sha256(
+    digest = hashlib.sha256(
         rfc8785.dumps(
             {
                 "id": str(item.pk),
@@ -58,6 +59,13 @@ def item_digest(item: CareProposal) -> str:
             }
         )
     ).hexdigest()
+    return {
+        "kind": "care_proposal",
+        "id": str(item.pk),
+        "version": 1,
+        "revision": item.revision,
+        "content_sha256": digest,
+    }
 
 
 def plan_source(plan: CarePlan) -> dict[str, JSON]:
@@ -71,16 +79,16 @@ def plan_source(plan: CarePlan) -> dict[str, JSON]:
     }
 
 
-def item_source(item: CareProposal) -> dict[str, JSON]:
-    """Cite the exact reviewed proposal row and its current revision."""
-    item = reselect(item)
-    return {
-        "kind": "care_proposal",
-        "id": str(item.pk),
-        "version": 1,
-        "revision": item.revision,
-        "content_sha256": item_digest(item),
-    }
+def item_source(selector: PendingKey[CareProposal]) -> dict[str, JSON]:
+    """Action-time recheck, independent of the reviewer's earlier response."""
+
+    def source(batch: RenderSelection) -> dict[str, JSON]:
+        checked = batch.get(selector)
+        if checked is None:
+            raise ActionRefusedError(Refusal.SOURCE)
+        return checked_item_source(checked)
+
+    return ai_pending_visible((selector,), source)
 
 
 def plan_is_current(plan: CarePlan) -> bool:
@@ -156,7 +164,7 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
         or item.state != "pending"
         or item.audience != "administrative"
         or not care_choice_allows(plan, generated_at=item.created_at)
-        or cited["care_proposal"] != item_source(item)
+        or cited["care_proposal"] != item_source(key(item))
         or care_window(data["parameters"])
         != (item.kind, item.window_start, item.window_end)
     ):

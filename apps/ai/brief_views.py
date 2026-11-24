@@ -13,7 +13,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
-from apps.ai.brief import Brief, display_chart_turn, request_brief
+from apps.ai.artifacts import render_artifact
+from apps.ai.brief import Brief, prepare_chart_turn, request_brief
 from apps.ai.brief_contracts import ChartDisplay
 from apps.ai.brief_forms import ChartQuestionForm
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError
@@ -92,7 +93,7 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         subject = None if visit is not None else enrolled
         with transaction.atomic():
             if data["command"] == "display":
-                brief = display_chart_turn(
+                brief = prepare_chart_turn(
                     clinic_id=clinic_id,
                     enrollment_id=subject,
                     invocation_id=data["invocation_id"],
@@ -117,7 +118,6 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 )
         context: dict[str, object] = {
             "clinic_id": clinic_id,
-            "chart_brief": brief,
             "chart_enrollment_id": enrolled,
             "chart_encounter_id": visit,
             "chart_surface": data["surface"],
@@ -138,7 +138,13 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             template = "workflows/today.html"
         else:
             template = "ai/brief.html"
-        return render(request, template, context)
+        return render_artifact(
+            brief,
+            clinic_id=clinic_id,
+            emit=lambda checked: render(
+                request, template, {**context, "chart_brief": checked}
+            ),
+        )
     except (CurrentActorError, ClinicalAccessDeniedError, GatewayAccessDeniedError):
         return render(request, "403.html", status=403)
     except GatewayInputError:

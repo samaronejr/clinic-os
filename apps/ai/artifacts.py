@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -23,8 +24,8 @@ from apps.ai.contracts import (
 from apps.ai.decision_contracts import parse_decision_request
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible, withheld_artifact
 from apps.ai.pending_outputs import rows as pending_rows
-from apps.ai.pending_outputs import withheld_artifact
 from apps.ai.policy import enabled_policy
 from apps.ai.retained_readers import check_retained_input
 from apps.ai.revenue_sources import parse_context
@@ -33,9 +34,11 @@ from apps.identity.current_context import current_actor_id
 from apps.identity.models import Clinic
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from uuid import UUID
 
     from apps.ai.brief_contracts import ChartDisplay
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
 
 
 def create_input(
@@ -149,8 +152,8 @@ def input_for(
     return artifact
 
 
-def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
-    """Reveal content only to its still-authorized requester, before expiry."""
+def artifact_selector(*, clinic_id: UUID, artifact_id: UUID) -> PendingKey[AIArtifact]:
+    """Check purpose and source without retaining the display payload."""
     artifact = (
         pending_rows(AIArtifact)
         .filter(
@@ -160,6 +163,7 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
             expires_at__gt=timezone.now(),
             purged_at__isnull=True,
         )
+        .defer("content")
         .first()
     )
     if artifact is None:
@@ -171,7 +175,16 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         if invocation is None:
             raise GatewayAccessDeniedError
         check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
-        source = invocation.inputs_ref
+        # The input can be withheld after the output was selected; that is a
+        # revoked authority, not an ORM error.
+        retained = (
+            pending_rows(AIArtifact)
+            .filter(pk=invocation.inputs_ref_id, clinic_id=clinic_id)
+            .first()
+        )
+        if retained is None:
+            raise GatewayRefusedError(reason="authority_revoked")
+        source = retained
     else:
         source = artifact
     authorization.authorize_capability(
@@ -187,5 +200,58 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
     check_retained_input(source)
     if artifact.purpose == Purpose.REVENUE_CYCLE.value:
         enabled_policy(Purpose.REVENUE_CYCLE)
-    content: str = artifact.content
+    return PendingKey(AIArtifact, artifact.pk)
+
+
+def artifact_content(checked: VisiblePending[AIArtifact]) -> str:
+    """Read only the fresh ciphertext projection, never the initial instance."""
+    current = checked.record
+    if current.expires_at <= timezone.now() or current.purged_at is not None:
+        raise GatewayAccessDeniedError
+    content: str = current.content
     return content
+
+
+def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
+    """Reveal content only to its still-authorized requester, before expiry."""
+    selector = artifact_selector(clinic_id=clinic_id, artifact_id=artifact_id)
+
+    def project(batch: RenderSelection) -> str:
+        checked = batch.get(selector)
+        if checked is None:
+            raise GatewayRefusedError(reason="authority_revoked")
+        return artifact_content(checked)
+
+    return ai_pending_visible((selector,), project, clinic_id=clinic_id)
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactProjection[V]:
+    """Defer building a ready DTO until its artifact is selected for this response."""
+
+    selector: PendingKey[AIArtifact]
+    build: Callable[[VisiblePending[AIArtifact]], V]
+    unavailable: V
+
+
+def render_artifact[V, R](
+    prepared: V | ArtifactProjection[V],
+    *,
+    clinic_id: UUID,
+    emit: Callable[[V], R],
+) -> R:
+    """Render a ready DTO in the issuing frame or use its manual fallback."""
+    if not isinstance(prepared, ArtifactProjection):
+        return emit(prepared)
+
+    def project(batch: RenderSelection) -> R:
+        checked = batch.get(prepared.selector)
+        if checked is None:
+            return emit(prepared.unavailable)
+        try:
+            dto = prepared.build(checked)
+        except GatewayRefusedError:
+            dto = prepared.unavailable
+        return emit(dto)
+
+    return ai_pending_visible((prepared.selector,), project, clinic_id=clinic_id)

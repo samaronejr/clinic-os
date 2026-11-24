@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING, Literal
 
 from django.db import transaction
 
-from apps.ai.artifacts import create_input, input_for, read_artifact
+from apps.ai.artifacts import (
+    ArtifactProjection,
+    artifact_content,
+    artifact_selector,
+    create_input,
+    input_for,
+    render_artifact,
+)
 from apps.ai.brief_contracts import (
     ChartDisplay,
     ChartRequest,
@@ -36,6 +43,8 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from apps.ai.contracts import InvocationResult
+    from apps.ai.models import AIArtifact
+    from apps.ai.pending_outputs import VisiblePending
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +141,26 @@ def display_chart_turn(
     display: ChartDisplay,
 ) -> Brief:
     """Bind a workspace or scheduled surface before disclosing a chart turn."""
+    return render_artifact(
+        prepare_chart_turn(
+            clinic_id=clinic_id,
+            enrollment_id=enrollment_id,
+            invocation_id=invocation_id,
+            display=display,
+        ),
+        clinic_id=clinic_id,
+        emit=lambda brief: brief,
+    )
+
+
+def prepare_chart_turn(
+    *,
+    clinic_id: UUID,
+    enrollment_id: UUID | None,
+    invocation_id: UUID,
+    display: ChartDisplay,
+) -> Brief | ArtifactProjection[Brief]:
+    """Resolve the exact scope and defer citation projection to the render read."""
     enrolled = chart_enrollment(
         clinic_id=clinic_id, enrollment_id=enrollment_id, encounter_id=display.encounter
     )
@@ -161,26 +190,33 @@ def display_chart_turn(
     if invocation.status != "succeeded":
         return Brief("unavailable")
     try:
-        citations = validate_reply(
-            read_artifact(clinic_id=clinic_id, artifact_id=invocation.output.pk),
-            request,
+        selector = artifact_selector(
+            clinic_id=clinic_id, artifact_id=invocation.output.pk
         )
     except (GatewayInputError, GatewayRefusedError):
         return Brief("unavailable")
     current = assemble_context(clinic_id=clinic_id, enrollment_id=enrolled)
-    sources: tuple[ChartSource, ...] = tuple(
-        item for item in current.sources if item.reference() in citations
-    )
-    return Brief(
-        "ready",
-        invocation_id,
-        "sources" if sources else "not_found",
-        ChartBatch(
-            sources,
-            tuple(
-                (section, state)
-                for section, state in current.chart.coverage
-                if request.topic in {"brief", section}
+
+    def build(checked: VisiblePending[AIArtifact]) -> Brief:
+        try:
+            citations = validate_reply(artifact_content(checked), request)
+        except GatewayInputError:
+            return Brief("unavailable")
+        sources: tuple[ChartSource, ...] = tuple(
+            item for item in current.sources if item.reference() in citations
+        )
+        return Brief(
+            "ready",
+            invocation_id,
+            "sources" if sources else "not_found",
+            ChartBatch(
+                sources,
+                tuple(
+                    (section, state)
+                    for section, state in current.chart.coverage
+                    if request.topic in {"brief", section}
+                ),
             ),
-        ),
-    )
+        )
+
+    return ArtifactProjection(selector, build, Brief("unavailable"))

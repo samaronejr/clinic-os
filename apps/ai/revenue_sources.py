@@ -68,7 +68,21 @@ def retained_output(
     if output is None or output.invocation is None:
         raise GatewayAccessDeniedError
     check_invocation(clinic_id=clinic_id, invocation_id=output.invocation.pk)
-    source = output.invocation.inputs_ref
+    # The input may disappear under restrictive RLS between the output SELECT
+    # and source validation. Treat that as a scoped denial, not an ORM error.
+    source = (
+        pending_rows(AIArtifact)
+        .filter(
+            pk=output.invocation.inputs_ref_id,
+            clinic_id=clinic_id,
+            user_id=current_actor_id(),
+            kind="input",
+            purpose=Purpose.REVENUE_CYCLE.value,
+        )
+        .first()
+    )
+    if source is None:
+        raise GatewayAccessDeniedError
     context = recheck_pending_context(
         clinic_id=clinic_id, content=source.content, retained_input=source.pk
     )

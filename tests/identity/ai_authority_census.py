@@ -5,15 +5,21 @@ from __future__ import annotations
 import time
 from contextlib import contextmanager
 from functools import partial
+from hashlib import sha256
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import psycopg
-from apps.ai.contracts import Purpose
+import pytest
+from apps.ai.action_contracts import ActionAccessDeniedError
+from apps.ai.approvals import reject_action
+from apps.ai.contracts import GatewayAccessDeniedError, Purpose
+from apps.ai.models import ActionProposal, AIArtifact
+from apps.ai.revenue_cycle import _reference
 from apps.identity import stepup
 from django.conf import settings
-from django.db import connections
+from django.db import connections, transaction
 from psycopg import sql
 
 from ai import (
@@ -40,21 +46,58 @@ from ai import (
 )
 from ai.agent_support import agent_world
 from ai.brief_support import seeded
+from ai.chart_consent_support import accept_ai
 from ai.decision_support_helpers import enable, world_for
-from ai.revenue_support import revenue_world
-from billing.journal_support import finance_setup
+from ai.pending_display_support import withdraw
+from ai.revenue_support import request_and_collect, revenue_world
+from ai.test_revenue_cycle import proposal_for
+from billing.journal_support import finance_scope, finance_setup
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
-    import pytest
-
+    from ai.revenue_support import RevenueWorld
     from rbac_fixtures import RbacGraph
 
 
 class _ProofRecorder(Protocol):
     def run(self, label: str, oracle: Callable[[], None]) -> None: ...
+
+
+def _retained_finance_reference(world: RevenueWorld) -> None:
+    """The command cannot cite bytes it held before a committed withdrawal."""
+    setup = world.setup
+    patient, receipt = accept_ai(setup.graph, setup.appointment.enrollment_id)
+    review = request_and_collect(world)
+    assert review.output_id is not None
+    with finance_scope(setup):
+        held = AIArtifact.objects.get(pk=review.output_id)
+        citation = _reference(held)
+        assert citation["id"] == str(held.pk)
+        assert citation["content_sha256"] == sha256(held.content.encode()).hexdigest()
+        proposal = proposal_for(world, review)
+        with transaction.atomic():
+            reject_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=proposal.pk,
+                expected_digest=proposal.digest,
+            )
+            assert ActionProposal.objects.filter(
+                pk=proposal.pk, state="rejected"
+            ).exists()
+            transaction.set_rollback(True)
+    withdraw(patient, receipt)
+    with finance_scope(setup):
+        assert not AIArtifact.objects.filter(pk=held.pk).exists()
+        with pytest.raises(GatewayAccessDeniedError):
+            _reference(held)
+        with pytest.raises(ActionAccessDeniedError):
+            reject_action(
+                clinic_id=setup.clinic_id,
+                proposal_id=proposal.pk,
+                expected_digest=proposal.digest,
+            )
 
 
 def exercise_pending_read_authority(
@@ -63,7 +106,16 @@ def exercise_pending_read_authority(
     patch: pytest.MonkeyPatch,
     secret_root: Path,
 ) -> None:
-    """Exercise reselect, refused-turn fallback and staff preview with real reads."""
+    """Exercise the checked display and the independent command-side reselect."""
+    with patch.context() as local:
+        local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
+        finance = finance_setup._get_wrapped_function()(graph())
+        proofs.run(
+            "Finance command cannot cite a withdrawn retained source",
+            partial(
+                _retained_finance_reference, revenue_world(finance, local, secret_root)
+            ),
+        )
     with patch.context() as local:
         proofs.run(
             "Held extraction candidate cannot be projected after withdrawal",

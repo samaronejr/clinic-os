@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4, uuid5
 
@@ -16,7 +17,12 @@ from apps.ai.action_contracts import ActionRefusedError, Refusal
 from apps.ai.action_payload import JSON, closed, identifier, integer, parse_payload
 from apps.ai.action_validation import authority_snapshot, database_time
 from apps.ai.agent_policies import REVENUE_TOOLS
-from apps.ai.artifacts import create_input
+from apps.ai.artifacts import (
+    ArtifactProjection,
+    artifact_content,
+    create_input,
+    render_artifact,
+)
 from apps.ai.care_sources import instant_text
 from apps.ai.contracts import (
     Budget,
@@ -33,7 +39,7 @@ from apps.ai.models import (
     AIArtifact,
     AIInvocation,
 )
-from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import PendingKey, reselect
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import propose_action
 from apps.ai.revenue_contracts import KINDS, validate_reply
@@ -55,6 +61,7 @@ from apps.providers.services import current_version
 
 if TYPE_CHECKING:
     from apps.ai.action_payload import ActionPayload
+    from apps.ai.pending_outputs import VisiblePending
 
 BUDGET = Budget(Usage(tokens_in=20_000, tokens_out=8_000), maximum_micros=1_000_000)
 
@@ -180,6 +187,17 @@ def _ready(
 @transaction.atomic
 def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueReview:
     """Display only the requester's still-authorized current facts and citations."""
+    return render_artifact(
+        prepare_revenue_review(clinic_id=clinic_id, invocation_id=invocation_id),
+        clinic_id=clinic_id,
+        emit=lambda review: review,
+    )
+
+
+def prepare_revenue_review(
+    *, clinic_id: UUID, invocation_id: UUID
+) -> RevenueReview | ArtifactProjection[RevenueReview]:
+    """Validate live source facts, and leave rendering to the checked artifact."""
     require_finance(clinic_id=clinic_id)
     invocation = AIInvocation.objects.filter(
         pk=invocation_id,
@@ -194,19 +212,33 @@ def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueRev
             "generating" if invocation.status == "reserved" else "unavailable",
             invocation_id,
         )
-    output = (
+    output_id = (
         pending_rows(AIArtifact)
         .filter(clinic_id=clinic_id, invocation=invocation, kind="output")
+        .values_list("pk", flat=True)
         .first()
     )
-    if output is None:
+    stale = RevenueReview("stale", invocation_id)
+    if output_id is None:
         # This requester's successful run has no longer-readable draft. Keep
         # the manual stale review without querying around the read policy.
-        return RevenueReview("stale", invocation_id)
+        return stale
     try:
-        output, context, items = _ready(clinic_id=clinic_id, output_id=output.pk)
+        _, context = retained_output(clinic_id=clinic_id, output_id=output_id)
     except GatewayAccessDeniedError:
-        return RevenueReview("stale", invocation_id)
+        return stale
+
+    return ArtifactProjection(
+        PendingKey(AIArtifact, output_id),
+        partial(_project_review, invocation_id=invocation_id, context=context),
+        stale,
+    )
+
+
+def _project_review(
+    checked: VisiblePending[AIArtifact], *, invocation_id: UUID, context: RevenueContext
+) -> RevenueReview:
+    items = validate_reply(artifact_content(checked), context.facts)
     displayed: list[RevenueItem] = []
     for position, item in enumerate(items):
         aliases = item["citations"]
@@ -222,7 +254,7 @@ def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueRev
                 ),
             )
         )
-    return RevenueReview("ready", invocation_id, output.pk, tuple(displayed))
+    return RevenueReview("ready", invocation_id, checked.record.pk, tuple(displayed))
 
 
 def _reference(output: AIArtifact) -> dict[str, JSON]:

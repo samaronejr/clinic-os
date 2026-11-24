@@ -16,6 +16,7 @@ from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
 from apps.ai.contracts import GatewayRefusedError, Purpose
+from apps.ai.pending_outputs import ai_pending_visible
 from apps.ai.policy import enabled_policy, select_configuration
 from apps.comms.adapters import OperationScope
 from apps.identity.otp import privileged_totp_required
@@ -23,7 +24,7 @@ from apps.scribe.authority import encounter_scope
 from apps.scribe.contracts import ScribeError
 from apps.scribe.models import AudioChunk, RecordingSession
 from apps.scribe.presenter import browser_binding
-from apps.scribe.services import finalize_transcript, read_transcript, review_segment
+from apps.scribe.services import finalize_transcript, review_segment
 from apps.scribe.tasks import dispatch_transcription
 from apps.scribe.transcript_contracts import (
     SegmentReview,
@@ -40,12 +41,15 @@ from apps.scribe.transcripts import (
     TranscriptAccessDeniedError,
     authorized_recording,
     coverage_for,
+    project_transcript,
+    select_snapshot,
 )
 from apps.scribe.views import continuation
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
 
+    from apps.ai.pending_outputs import RenderSelection
     from apps.scribe.transcript_contracts import Segment
 
 
@@ -195,9 +199,8 @@ def transcript_review(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         context["encounter_id"] = encounter_id
         if recording is not None:
             context["recording"] = recording
-            available = _available(recording)
-            context["available"] = available
-            if values["action"] == "queue" and available:
+            context["available"] = _available(recording)
+            if values["action"] == "queue" and context["available"]:
                 context["queued"] = _queue(recording) > 0
             elif values["action"] not in {"open", "refresh", "queue"}:
                 try:
@@ -219,25 +222,7 @@ def transcript_review(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                         )
                     )
                     status = HTTPStatus.CONFLICT
-            current = read_transcript(clinic_id=clinic_id, session_id=recording.pk)
-            context["transcript"] = current
-            context["missing"] = tuple(
-                slot
-                for slot in coverage_for(recording)
-                if current is None
-                or slot.chunk_id is None
-                or slot.chunk_id not in current.completed_chunks
-            )
-            context["revision"] = current.revision if current is not None else 0
-            context["can_finalize"] = recording.state in {"stopped", "stopped_revoked"}
-            context["speaker_choices"] = SPEAKER_CHOICES
-            if current is not None:
-                context["segments"] = [
-                    {"item": value, "runs": _runs(value)} for value in current.segments
-                ]
-            # Recheck at the end: a switch turned off during this request must
-            # not leave a stale offer to queue transcription in the response.
-            context["available"] = _available(recording)
+            return _render_snapshot(request, recording, context, status)
     except (ScribeError, TranscriptAccessDeniedError):
         context = {"clinic_id": clinic_id, "denied": True}
         status = HTTPStatus.FORBIDDEN
@@ -245,3 +230,39 @@ def transcript_review(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         context = {"clinic_id": clinic_id, "invalid": True}
         status = HTTPStatus.BAD_REQUEST
     return render(request, "scribe/transcript.html", context, status=status)
+
+
+def _render_snapshot(
+    request: HttpRequest,
+    recording: RecordingSession,
+    context: dict[str, object],
+    status: HTTPStatus,
+) -> HttpResponse:
+    snapshot = select_snapshot(recording)
+    slots = coverage_for(recording)
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        current = project_transcript(recording, snapshot, batch)
+        context.update(
+            transcript=current,
+            missing=tuple(
+                slot
+                for slot in slots
+                if current is None
+                or slot.chunk_id is None
+                or slot.chunk_id not in current.completed_chunks
+            ),
+            revision=current.revision if current is not None else 0,
+            can_finalize=recording.state in {"stopped", "stopped_revoked"},
+            speaker_choices=SPEAKER_CHOICES,
+            segments=[
+                {"item": value, "runs": _runs(value)}
+                for value in (current.segments if current is not None else ())
+            ],
+        )
+        # Projection can outlast the first availability decision. Do not offer
+        # the queue control if its switch went off while we read the transcript.
+        context["available"] = _available(recording)
+        return render(request, "scribe/transcript.html", context, status=status)
+
+    return ai_pending_visible(snapshot.keys, project)

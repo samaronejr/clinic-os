@@ -7,8 +7,8 @@ items; clinical items and validator refusals belong to the patient's clinician.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -33,7 +33,7 @@ from apps.ai.care_coordination import (
     CareConflictError,
     ItemOutcome,
     approve_care_bundle,
-    bundle_digest,
+    bundle_fingerprint,
     care_bundle,
     collect_care_coordination,
     decide_care_item,
@@ -42,7 +42,15 @@ from apps.ai.care_coordination import (
     visible_care_items,
 )
 from apps.ai.care_models import CareProposal
+from apps.ai.care_sources import checked_item_source
 from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.pending_outputs import (
+    PendingKey,
+    RenderSelection,
+    VisiblePending,
+    ai_pending_visible,
+    key,
+)
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.core.secrets import SecretUnavailableError
 from apps.identity.current_context import (
@@ -171,7 +179,19 @@ def _clinician(clinic_id: UUID) -> bool:
     return True
 
 
-def _rows(clinic_id: UUID, items: tuple[CareProposal, ...]) -> tuple[ItemRow, ...]:
+@dataclass(frozen=True, slots=True)
+class CareSelection:
+    """Only opaque selectors cross from an action or initial queue read to rendering."""
+
+    keys: tuple[PendingKey[CareProposal], ...] = ()
+    bundle: CareBundle | None = None
+    preview: UUID | None = None
+    outcomes: tuple[ItemOutcome, ...] = ()
+
+
+def _rows(
+    clinic_id: UUID, items: tuple[VisiblePending[CareProposal], ...]
+) -> tuple[ItemRow, ...]:
     zone = _zone(clinic_id)
     return tuple(
         ItemRow(
@@ -188,28 +208,44 @@ def _rows(clinic_id: UUID, items: tuple[CareProposal, ...]) -> tuple[ItemRow, ..
             # Row security already limits staff to administrative items.
             item.state == "pending",
         )
-        for item in items
+        for checked in items
+        for item in (checked.record,)
     )
 
 
-def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
-    plans = (
+def _plans(
+    clinic_id: UUID,
+) -> tuple[tuple[CarePlan, ...], tuple[PendingKey[CareProposal], ...]]:
+    """Select the clinician's plans and the keys of their source-eligible items."""
+    plans = tuple(
         CarePlan.objects.filter(
             clinic_id=clinic_id, clinician_id=current_actor_id(), state="active"
         )
         .select_related("enrollment__patient")
         .order_by("-created_at")[:20]
     )
+    if not plans:
+        return (), ()
+    items = pending_rows(CareProposal).filter(
+        clinic_id=clinic_id, plan_id__in=[p.pk for p in plans]
+    )
+    return plans, tuple(
+        key(row) for row in visible_care_items(items.order_by("-created_at"))
+    )
+
+
+def _plan_rows(
+    plans: tuple[CarePlan, ...],
+    items: tuple[VisiblePending[CareProposal], ...],
+    zone: ZoneInfo,
+) -> tuple[PlanRow, ...]:
     rows = []
     for plan in plans:
         bundles = tuple(
             dict.fromkeys(
-                item.invocation_id
-                for item in visible_care_items(
-                    pending_rows(CareProposal)
-                    .filter(clinic_id=clinic_id, plan=plan)
-                    .order_by("-created_at")
-                )
+                item.record.invocation_id
+                for item in items
+                if item.record.plan_id == plan.pk
             )
         )
         rows.append(
@@ -223,16 +259,15 @@ def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
     return tuple(rows)
 
 
-def _bundles(clinic_id: UUID, zone: ZoneInfo) -> tuple[BundleRow, ...]:
-    pending: dict[UUID, list[CareProposal]] = {}
-    for item in visible_care_items(
-        pending_rows(CareProposal)
-        .filter(clinic_id=clinic_id, audience="administrative", state="pending")
-        .order_by("created_at")
-    ):
-        pending.setdefault(item.invocation_id, []).append(item)
+def _bundles(
+    visible: tuple[VisiblePending[CareProposal], ...], zone: ZoneInfo
+) -> tuple[BundleRow, ...]:
+    pending: dict[UUID, list[VisiblePending[CareProposal]]] = {}
+    for item in visible:
+        if item.record.state == "pending" and item.record.audience == "administrative":
+            pending.setdefault(item.record.invocation_id, []).append(item)
     return tuple(
-        BundleRow(invocation, _minute(items[0].created_at, zone), len(items))
+        BundleRow(invocation, _minute(items[0].record.created_at, zone), len(items))
         for invocation, items in pending.items()
     )
 
@@ -244,7 +279,13 @@ def _automation(clinic_id: UUID) -> bool:
     return row is not None and row[0] is True
 
 
-def _context(clinic_id: UUID, **extra: object) -> dict[str, object]:
+def _context(
+    request: HttpRequest,
+    clinic_id: UUID,
+    status: int,
+    selection: CareSelection,
+    **extra: object,
+) -> HttpResponse:
     automation = _automation(clinic_id)
     clinician = _clinician(clinic_id)
     if not automation and not clinician:
@@ -253,20 +294,66 @@ def _context(clinic_id: UUID, **extra: object) -> dict[str, object]:
     # the page and why they cannot approve, never another person's rows.
     staff = automation and _care_staff(clinic_id)
     zone = _zone(clinic_id)
-    context: dict[str, object] = {
-        "clinic_id": clinic_id,
-        "staff": staff,
-        "automation": automation,
-        "clinician": clinician,
-        "plans": _plans(clinic_id, zone) if clinician else (),
-        "bundles": _bundles(clinic_id, zone) if staff else (),
+    plans, plan_keys = _plans(clinic_id) if clinician else ((), ())
+    candidates = pending_rows(CareProposal).filter(clinic_id=clinic_id)
+    admin_keys = (
+        tuple(
+            key(row)
+            for row in visible_care_items(
+                candidates.filter(audience="administrative", state="pending").order_by(
+                    "created_at"
+                )
+            )
+        )
+        if staff
+        else ()
+    )
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        selected = batch.many(selection.keys)
+        context: dict[str, object] = {
+            **extra,
+            "clinic_id": clinic_id,
+            "staff": staff,
+            "automation": automation,
+            "clinician": clinician,
+            "plans": _plan_rows(plans, batch.many(plan_keys), zone),
+            "bundles": _bundles(batch.many(admin_keys), zone),
+        }
+        if selection.bundle is not None and (not selection.keys or selected):
+            context.update(bundle=selection.bundle, items=_rows(clinic_id, selected))
+        if selection.preview is not None and selected:
+            eligible = tuple(row for row in selected if row.record.state == "pending")
+            # A withheld item is dropped; the digest binds exactly what is shown,
+            # and approval recomputes it over the same visible set.
+            if eligible:
+                context.update(
+                    preview=selection.preview,
+                    preview_items=_rows(clinic_id, eligible),
+                    digest=bundle_fingerprint(
+                        clinic_id=clinic_id,
+                        invocation_id=selection.preview,
+                        hashes=(
+                            checked_item_source(row)["content_sha256"]
+                            for row in eligible
+                        ),
+                    ),
+                )
+        if selection.outcomes:
+            context["outcomes"] = _outcomes(selection.outcomes, selected)
+        return render(request, "ai/care_coordination.html", context, status=status)
+
+    return ai_pending_visible(
+        (*plan_keys, *admin_keys, *selection.keys), project, clinic_id=clinic_id
+    )
+
+
+def _bundle_context(bundle: CareBundle) -> dict[str, object]:
+    return {
+        "selection": CareSelection(
+            tuple(map(key, bundle.items)), replace(bundle, items=())
+        )
     }
-    context.update(extra)
-    return context
-
-
-def _bundle_context(clinic_id: UUID, bundle: CareBundle) -> dict[str, object]:
-    return {"bundle": bundle, "items": _rows(clinic_id, bundle.items)}
 
 
 @privileged_totp_required(_url)
@@ -316,13 +403,21 @@ def care_coordination(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
 
 
 def _render(
-    request: HttpRequest, clinic_id: UUID, *, status: int = 200, **extra: object
+    request: HttpRequest,
+    clinic_id: UUID,
+    *,
+    status: int = 200,
+    extra_context: dict[str, object] | None = None,
+    **extra: object,
 ) -> HttpResponse:
+    if extra_context:
+        extra.update(extra_context)
+    # Only this module's action handlers supply the selection.
+    selection = cast("CareSelection", extra.pop("selection", CareSelection()))
     try:
-        context = _context(clinic_id, **extra)
+        return _context(request, clinic_id, status, selection, **extra)
     except (CareAccessDeniedError, CurrentActorError):
         return render(request, "403.html", status=403)
-    return render(request, "ai/care_coordination.html", context, status=status)
 
 
 def _uuid(request: HttpRequest, name: str) -> UUID:
@@ -333,21 +428,21 @@ def _request(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
     bundle = request_care_coordination(
         clinic_id=clinic_id, plan_id=_uuid(request, "plan_id")
     )
-    return _bundle_context(clinic_id, bundle)
+    return _bundle_context(bundle)
 
 
 def _refresh(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
     bundle = collect_care_coordination(
         clinic_id=clinic_id, invocation_id=_uuid(request, "invocation_id")
     )
-    return _bundle_context(clinic_id, bundle)
+    return _bundle_context(bundle)
 
 
 def _open(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
     bundle = care_bundle(
         clinic_id=clinic_id, invocation_id=_uuid(request, "invocation_id")
     )
-    return _bundle_context(clinic_id, bundle)
+    return _bundle_context(bundle)
 
 
 def _preview(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
@@ -356,13 +451,7 @@ def _preview(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
     if not items:
         # An absent, hidden or unrelated bundle has no preview authority.
         raise CareAccessDeniedError
-    return {
-        "preview": invocation,
-        "preview_items": _rows(clinic_id, items),
-        "digest": bundle_digest(
-            clinic_id=clinic_id, invocation_id=invocation, items=items
-        ),
-    }
+    return {"selection": CareSelection(tuple(map(key, items)), preview=invocation)}
 
 
 def _approve(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
@@ -375,7 +464,12 @@ def _approve(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
             request, clinic_id=clinic_id, digest=digest
         ),
     )
-    return {"outcomes": _outcomes(outcomes)}
+    return {
+        "selection": CareSelection(
+            tuple(PendingKey(CareProposal, row.item_id) for row in outcomes),
+            outcomes=outcomes,
+        )
+    }
 
 
 def _decide(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
@@ -389,7 +483,7 @@ def _decide(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
         expected_revision=int(request.POST.get("revision", "")),
     )
     bundle = care_bundle(clinic_id=clinic_id, invocation_id=item.invocation_id)
-    return {**_bundle_context(clinic_id, bundle), "saved": True}
+    return {**_bundle_context(bundle), "saved": True}
 
 
 ACTIONS: Final = {
@@ -405,7 +499,7 @@ ACTIONS: Final = {
 @transaction.atomic
 def _page(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     if request.method == "GET":
-        return render(request, "ai/care_coordination.html", _context(clinic_id))
+        return _render(request, clinic_id)
     handler = ACTIONS.get(request.POST.get("action", ""))
     if (
         handler is None
@@ -415,21 +509,19 @@ def _page(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     ):
         return render(request, "400.html", status=400)
     extra = handler(request, clinic_id)
-    return render(request, "ai/care_coordination.html", _context(clinic_id, **extra))
+    return _render(request, clinic_id, extra_context=extra)
 
 
-def _outcomes(outcomes: tuple[ItemOutcome, ...]) -> tuple[dict[str, object], ...]:
-    items = {
-        item.pk: item
-        for item in pending_rows(CareProposal).filter(
-            pk__in=[outcome.item_id for outcome in outcomes]
-        )
-    }
+def _outcomes(
+    outcomes: tuple[ItemOutcome, ...],
+    selected: tuple[VisiblePending[CareProposal], ...],
+) -> tuple[dict[str, object], ...]:
+    items = {row.record.pk: row for row in selected}
     return tuple(
         {
             "item_id": outcome.item_id,
             "state": outcome.state,
-            "kind_label": _(KIND_LABELS[items[outcome.item_id].kind]),
+            "kind_label": _(KIND_LABELS[items[outcome.item_id].record.kind]),
             "message": _(STATE_LABELS[outcome.state])
             if outcome.state in STATE_LABELS
             else _(REFUSAL_LABEL),

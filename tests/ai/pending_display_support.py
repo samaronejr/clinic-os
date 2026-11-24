@@ -121,6 +121,7 @@ def front_desk(
             clinic_id=g.clinic_a, conversation_id=conversation.pk, now=timezone.now()
         )
         assert after.suggestion is None
+        assert before.suggestion is None
         assert after.messages
         assert after.free_text
 

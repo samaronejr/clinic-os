@@ -1,7 +1,11 @@
 """The typed trigger split must preserve every released rollout predicate."""
 
 import pytest
-from apps.ai.migrations import _retained_proposal_sql, _rollout_evaluation_sql
+from apps.ai.migrations import (
+    _pending_decision_sql,
+    _retained_proposal_sql,
+    _rollout_evaluation_sql,
+)
 from apps.ai.migrations._front_desk_authority_sql import _function
 from django.db import connection, transaction
 
@@ -26,7 +30,15 @@ def test_guard_split_reverse_and_forward_restore_the_exact_definition() -> None:
         cursor.execute(
             "SELECT pg_get_functiondef('clinic_app.ai_rollout_guard()'::regprocedure)"
         )
+        current = cursor.fetchone()
+        # 0024 extends this same guard with the consent check. Test the 0019
+        # pair at its own boundary, then restore the actually installed writer.
+        cursor.execute(_pending_decision_sql.REVERSE_SQL)
+        cursor.execute(
+            "SELECT pg_get_functiondef('clinic_app.ai_rollout_guard()'::regprocedure)"
+        )
         original = cursor.fetchone()
+        assert original != current
         cursor.execute(_rollout_evaluation_sql.REVERSE_SQL)
         cursor.execute(
             "SELECT pg_get_functiondef('clinic_app.ai_rollout_guard()'::regprocedure)"
@@ -45,4 +57,9 @@ def test_guard_split_reverse_and_forward_restore_the_exact_definition() -> None:
             "AND NOT t.tgisinternal"
         )
         assert cursor.fetchall() == [("ai_evaluationrun",)]
+        cursor.execute(_pending_decision_sql.SQL)
+        cursor.execute(
+            "SELECT pg_get_functiondef('clinic_app.ai_rollout_guard()'::regprocedure)"
+        )
+        assert cursor.fetchone() == current
         transaction.set_rollback(True)

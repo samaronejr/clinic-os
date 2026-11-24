@@ -12,9 +12,20 @@ import rfc8785
 from django.db import transaction
 
 from apps.ai.contracts import GatewayRefusedError
+from apps.ai.pending_outputs import (
+    PendingKey,
+    ai_pending_visible,
+    decisions_visible,
+    key,
+)
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
-from apps.ehr.services import ClinicalConflictError, record_clinical_note
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    record_clinical_note,
+)
+from apps.identity.current_context import CurrentActorError
 from apps.scribe.draft_contracts import (
     MAX_TEXT,
     SECTIONS,
@@ -25,9 +36,10 @@ from apps.scribe.draft_contracts import (
     ReviewInput,
 )
 from apps.scribe.draft_sources import (
+    compose_sources,
     drafting_consent,
     note_frame,
-    resolve_sources,
+    source_recording,
 )
 from apps.scribe.drafting import (
     current_generation,
@@ -41,12 +53,22 @@ from apps.scribe.models import (
     DraftSectionSuggestion,
     ReviewDecision,
 )
+from apps.scribe.transcripts import (
+    SnapshotRead,
+    TranscriptAccessDeniedError,
+    authorized_recording,
+    project_transcript,
+    select_snapshot,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from uuid import UUID
 
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
     from apps.ehr.models import ClinicalDocumentVersion
     from apps.scribe.draft_contracts import DraftSource
+    from apps.scribe.draft_sources import NoteFrame
     from apps.scribe.transcript_contracts import TranscriptVersionDTO
 
 
@@ -93,6 +115,7 @@ def review_suggestion(
     if previous is not None:
         if previous.request_digest != digest:
             raise DraftConflictError(DraftReason.REPLAY)
+        # A recorded human decision is not a new decision on pending output.
         return previous
     suggestion = (
         pending_rows(DraftSectionSuggestion)
@@ -100,7 +123,9 @@ def review_suggestion(
         .filter(pk=suggestion_id, version_id=version_id)
         .first()
     )
-    if suggestion is None:
+    if suggestion is None or not decisions_visible(
+        (key(suggestion),), clinic_id=clinic_id
+    ):
         raise DraftAccessDeniedError
     if (
         ReviewDecision.objects.filter(suggestion=suggestion).exists()
@@ -173,10 +198,46 @@ def review_suggestion(
 
 
 @dataclass(frozen=True, slots=True)
+class DraftRevision:
+    """Immutable generation metadata needed beside a checked suggestion."""
+
+    base_revision: int
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class SectionPreview:
+    """Approved-for-display fields, with no deferred model relations."""
+
+    pk: UUID
+    section: str
+    text: str
+    citations: tuple[dict[str, object], ...]
+    assertion_class: str
+    draft: DraftRevision
+
+
+@dataclass(frozen=True, slots=True)
+class ProposalPreview:
+    """The display-only fields of a separate A0 suggestion."""
+
+    kind: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewSources:
+    """A source binding shared by every section in this projection."""
+
+    version_id: UUID | None
+    references: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SuggestionRow:
     """Review state is distinct from the authored document state."""
 
-    suggestion: DraftSectionSuggestion
+    suggestion: SectionPreview
     base: str
     current: str
     state: str
@@ -192,87 +253,182 @@ class ReviewPanel:
     transcript: TranscriptVersionDTO | None
     sources: tuple[DraftSource, ...]
     rows: tuple[SuggestionRow, ...]
-    proposals: tuple[DraftActionProposal, ...]
+    proposals: tuple[ProposalPreview, ...]
     available: bool
-    latest: AIDraft | None
+    latest: DraftRevision | None
 
 
 @transaction.atomic
 def read_review(*, clinic_id: UUID, version_id: UUID) -> ReviewPanel:
     """Resolve sources once; an unavailable feature never blocks manual care."""
+    return render_review(clinic_id=clinic_id, version_id=version_id, emit=lambda p: p)
+
+
+def render_review[R](
+    *, clinic_id: UUID, version_id: UUID, emit: Callable[[ReviewPanel], R]
+) -> R:
+    """Render a note and its permitted AI overlay in one projection frame."""
     frame = note_frame(clinic_id=clinic_id, version_id=version_id)
     try:
         consent = drafting_consent(frame)
     except (GatewayRefusedError, DraftAccessDeniedError):
-        # The note and its clinician decisions belong to the clinical record.
-        # No draft model, suggestion, prefill or source text crosses this return.
-        return ReviewPanel(
-            frame.version, None, (), (), (), available=False, latest=None
-        )
-    transcript = None
-    sources: tuple[DraftSource, ...] = ()
+        return emit(_manual_panel(frame))
+    recording = None
+    snapshot = SnapshotRead(None)
     with suppress(DraftConflictError):
-        transcript, sources = resolve_sources(frame)
-    available = transcript is not None and transcript.state == "final" and bool(sources)
-    drafts = tuple(
+        try:
+            recording = authorized_recording(
+                clinic_id=clinic_id, session_id=source_recording(frame).pk
+            )
+        except TranscriptAccessDeniedError as error:
+            raise DraftAccessDeniedError from error
+        snapshot = select_snapshot(recording)
+    draft_ids = tuple(
         pending_rows(AIDraft)
         .filter(version_id=version_id, consent_id=consent.pk)
-        .order_by("-generation")[:50]
+        .order_by("-generation")
+        .values_list("pk", flat=True)[:50]
     )
-    rows: list[SuggestionRow] = []
-    references = sorted(
-        json.dumps(source.reference, sort_keys=True) for source in sources
-    )
-    for suggestion in (
-        pending_rows(DraftSectionSuggestion)
-        .filter(draft__in=drafts)
-        .select_related("draft", "reviewdecision")
+    drafts = tuple(PendingKey(AIDraft, pk) for pk in draft_ids)
+    suggestions = tuple(
+        (PendingKey(DraftSectionSuggestion, pk), PendingKey(AIDraft, draft_id))
+        for pk, draft_id in pending_rows(DraftSectionSuggestion)
+        .filter(draft_id__in=draft_ids)
         .order_by("section", "-draft__generation")
         .distinct("section")
-    ):
-        draft = suggestion.draft
-        try:
-            decision = suggestion.reviewdecision
-        except ReviewDecision.DoesNotExist:
-            decision = None
-        current = frame.version.soap[suggestion.section]
-        fresh = (
-            transcript is not None
-            and draft.transcript_id == transcript.version_id
-            and current_generation(draft, suggestion.section)
-            and references
-            == sorted(
-                json.dumps(reference, sort_keys=True) for reference in draft.source_refs
-            )
-        )
-        comparison = merge_section(
-            base=draft.base_content[suggestion.section],
-            model=suggestion.text,
-            current=current,
-            edit_epochs=(
-                draft.base_epochs[suggestion.section],
-                frame.epochs[suggestion.section],
-            ),
-            dependencies_current=fresh,
-        )
-        rows.append(
-            SuggestionRow(
-                suggestion,
-                draft.base_content[suggestion.section],
-                current,
-                decision.action if decision else "pending" if fresh else "stale",
-                comparison,
-                decision,
-            )
-        )
-    latest = drafts[0] if drafts else None
+        .values_list("pk", "draft_id")
+    )
     proposals = (
         tuple(
-            pending_rows(DraftActionProposal).filter(draft=latest).order_by("ordinal")
+            PendingKey(DraftActionProposal, pk)
+            for pk in pending_rows(DraftActionProposal)
+            .filter(draft_id=draft_ids[0])
+            .order_by("ordinal")
+            .values_list("pk", flat=True)
         )
-        if latest is not None
+        if draft_ids
         else ()
     )
-    return ReviewPanel(
-        frame.version, transcript, sources, tuple(rows), proposals, available, latest
+    decisions = {
+        decision.suggestion_id: decision
+        for decision in ReviewDecision.objects.filter(
+            suggestion_id__in=[suggestion.pk for suggestion, _ in suggestions]
+        )
+    }
+
+    def project(batch: RenderSelection) -> R:
+        try:
+            if drafting_consent(frame).pk != consent.pk:
+                return emit(_manual_panel(frame))
+        except (GatewayRefusedError, DraftAccessDeniedError):
+            return emit(_manual_panel(frame))
+        transcript = None
+        sources: tuple[DraftSource, ...] = ()
+        if recording is not None:
+            try:
+                projected = project_transcript(recording, snapshot, batch)
+            except (
+                CurrentActorError,
+                ClinicalAccessDeniedError,
+                TranscriptAccessDeniedError,
+            ) as error:
+                # The same denial resolve_sources gives the drafting path.
+                raise DraftAccessDeniedError from error
+            with suppress(DraftConflictError):
+                transcript, sources = compose_sources(frame, projected)
+        binding = ReviewSources(
+            transcript.version_id if transcript else None,
+            tuple(sorted(json.dumps(s.reference, sort_keys=True) for s in sources)),
+        )
+        rows = tuple(
+            _suggestion_row(
+                frame,
+                suggestion,
+                draft,
+                decisions.get(suggestion_key.pk),
+                binding,
+            )
+            for suggestion_key, draft_key in suggestions
+            if (suggestion := batch.get(suggestion_key)) is not None
+            and (draft := batch.get(draft_key)) is not None
+        )
+        latest = batch.get(drafts[0]) if drafts else None
+        return emit(
+            ReviewPanel(
+                frame.version,
+                transcript,
+                sources,
+                rows,
+                tuple(_proposal_preview(checked) for checked in batch.many(proposals))
+                if latest
+                else (),
+                transcript is not None
+                and transcript.state == "final"
+                and bool(sources),
+                _draft_revision(latest) if latest else None,
+            )
+        )
+
+    return ai_pending_visible(
+        (
+            *snapshot.keys,
+            *drafts,
+            *(suggestion for suggestion, _ in suggestions),
+            *proposals,
+        ),
+        project,
+    )
+
+
+def _manual_panel(frame: NoteFrame) -> ReviewPanel:
+    return ReviewPanel(frame.version, None, (), (), (), available=False, latest=None)
+
+
+def _draft_revision(checked: VisiblePending[AIDraft]) -> DraftRevision:
+    return DraftRevision(checked.record.base_revision, checked.record.generation)
+
+
+def _proposal_preview(checked: VisiblePending[DraftActionProposal]) -> ProposalPreview:
+    return ProposalPreview(checked.record.kind, checked.record.text)
+
+
+def _suggestion_row(
+    frame: NoteFrame,
+    checked: VisiblePending[DraftSectionSuggestion],
+    parent: VisiblePending[AIDraft],
+    decision: ReviewDecision | None,
+    binding: ReviewSources,
+) -> SuggestionRow:
+    suggestion, draft = checked.record, parent.record
+    section = suggestion.section
+    base = draft.base_content[section]
+    current = frame.version.soap[section]
+    fresh = (
+        binding.version_id is not None
+        and draft.transcript_id == binding.version_id
+        and current_generation(draft, section)
+        and binding.references
+        == tuple(sorted(json.dumps(r, sort_keys=True) for r in draft.source_refs))
+    )
+    comparison = merge_section(
+        base=base,
+        model=suggestion.text,
+        current=current,
+        edit_epochs=(draft.base_epochs[section], frame.epochs[section]),
+        dependencies_current=fresh,
+    )
+    return SuggestionRow(
+        SectionPreview(
+            suggestion.pk,
+            section,
+            suggestion.text,
+            tuple(suggestion.citations),
+            suggestion.assertion_class,
+            _draft_revision(parent),
+        ),
+        base,
+        current,
+        decision.action if decision else "pending" if fresh else "stale",
+        comparison,
+        decision,
     )

@@ -37,6 +37,7 @@ from apps.tenancy.envelope import EnvelopeError, reveal
 
 if TYPE_CHECKING:
     from apps.ai.models import AIArtifact
+    from apps.ai.pending_outputs import VisiblePending
     from apps.consent.models import ConsentAcceptance
     from apps.ehr.attachment_storage import AttachmentStorage
 
@@ -132,8 +133,9 @@ def _unseal_audio(*, clinic_id: UUID, chunk_id: UUID, ciphertext: bytes) -> byte
     return audio
 
 
-def materialize_input(source: AIArtifact) -> str:
+def materialize_input(checked: VisiblePending[AIArtifact]) -> str:
     """Raw audio exists only in the ephemeral, repr-hidden provider request."""
+    source = checked.record
     if not eligible_input(source):
         raise TranscriptAccessDeniedError
     payload = decode_reference(source.content)

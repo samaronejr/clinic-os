@@ -229,14 +229,14 @@
       ]
     },
     {
-      "symbol": "apps.ai.artifacts.read_artifact",
+      "symbol": "apps.ai.artifacts.artifact_selector",
       "signals": [
         "actor",
         "denial"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.artifacts.read_artifact#cut1"
+        "apps.ai.artifacts.artifact_selector#cut1"
       ]
     },
     {
@@ -262,14 +262,14 @@
       "reason": "Owner-connection benchmark lifecycle record, not a staff-role grant. The entry directly checks the executable database-role guard before any write; the owner-only refusal and that selection records never approve are covered by tests/ai/test_benchmark_report.py."
     },
     {
-      "symbol": "apps.ai.brief.display_chart_turn",
+      "symbol": "apps.ai.brief.prepare_chart_turn",
       "signals": [
         "actor",
         "denial"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.brief.display_chart_turn#cut1"
+        "apps.ai.brief.prepare_chart_turn#cut1"
       ]
     },
     {
@@ -447,7 +447,7 @@
       "enforced_by": [
         "clinic_app.has_permission"
       ],
-      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; rows stay bounded by the care proposal policy."
+      "reason": "Admits Automations staff or physicians (automation.propose_clinical) through has_permission; pending items are rendered only from the response's visibility batch."
     },
     {
       "symbol": "apps.ai.care_views._plans",
@@ -459,7 +459,7 @@
         "apps.identity.current_context.current_actor_id",
         "clinic_app.has_permission"
       ],
-      "reason": "Lists the actor's active plans. Pending bundle visibility now also calls the current patient-choice reader, whose staff permission gate delegates to has_permission; the requesting actor alone is not authority to return a pending bundle."
+      "reason": "Lists the actor's active plans. Pending bundle visibility also calls the current patient-choice reader, whose staff permission gate delegates to has_permission. This stage returns only selectors, not pending fields."
     },
     {
       "symbol": "apps.ai.care_views.care_coordination",
@@ -528,7 +528,7 @@
       ]
     },
     {
-      "symbol": "apps.ai.decision_support.display_decision_support",
+      "symbol": "apps.ai.decision_support.prepare_decision_support",
       "signals": [
         "actor",
         "denial"
@@ -536,7 +536,7 @@
       "kind": "direct",
       "observe": true,
       "probes": [
-        "apps.ai.decision_support.display_decision_support#cut1"
+        "apps.ai.decision_support.prepare_decision_support#cut1"
       ]
     },
     {
@@ -751,7 +751,7 @@
         "clinic_app.has_permission",
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.ai.artifacts.read_artifact"
+        "apps.ai.artifacts.artifact_selector"
       ],
       "reason": "Collection requires current source authority and the gateway artifact reader. Parser, expiry and duplicate collection constraints never supply staff authority."
     },
@@ -811,7 +811,7 @@
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
         "apps.ai.authorization.authorize_capability",
-        "apps.ai.artifacts.read_artifact",
+        "apps.ai.artifacts.artifact_selector",
         "apps.ai.services.invoke"
       ],
       "reason": "Native actions invoke the same patient-scoped extraction commands. Posted job/candidate linkage is a domain binding and never grants staff access."
@@ -828,7 +828,7 @@
         "apps.orders.access.require_version",
         "apps.ehr.attachments.authorize_attachment_encounter",
         "apps.ai.authorization.authorize_capability",
-        "apps.ai.artifacts.read_artifact",
+        "apps.ai.artifacts.artifact_selector",
         "apps.ai.services.invoke"
       ],
       "reason": "The existing TOTP decorator and the reachable clinic-scoped native command boundary enforce staff access."
@@ -1234,7 +1234,7 @@
       "reason": "AI-06 admission, approval and execution recheck the caller's exact-clinic automation.finance through require_permission; ai.0011 enforces the same rule in PostgreSQL."
     },
     {
-      "symbol": "apps.ai.revenue_cycle.collect_revenue_cycle",
+      "symbol": "apps.ai.revenue_cycle.prepare_revenue_review",
       "signals": [
         "actor",
         "denial"
@@ -1244,7 +1244,7 @@
         "apps.insurance.access.authority",
         "apps.ai.revenue_sources._guide_context"
       ],
-      "reason": "The review resolves only the Finance requester's own invocation. Its completed items require the currently authorized guide and original protected input; there is no separate direct-artifact read."
+      "reason": "The review resolves only the Finance requester's own invocation and requires the currently authorized guide and original protected input. The reply itself is projected only from the response's checked artifact."
     },
     {
       "symbol": "apps.ai.revenue_cycle.request_revenue_cycle",
@@ -1314,7 +1314,7 @@
       "enforced_by": [
         "apps.ai.revenue_sources._guide_context"
       ],
-      "reason": "After selecting a revenue proposal's output this preview delegates to collect_revenue_cycle; the guide and original-input scope gate precedes rendering the reply."
+      "reason": "After selecting a revenue proposal's output this preview delegates to prepare_revenue_review; the guide and original-input scope gate precedes rendering the reply."
     },
     {
       "symbol": "apps.ai.revenue_views.revenue_cycle_page",
@@ -1361,7 +1361,7 @@
       ]
     },
     {
-      "symbol": "apps.analytics.analyst.display_proposal",
+      "symbol": "apps.analytics.analyst.prepare_proposal",
       "signals": [
         "denial"
       ],
@@ -10375,13 +10375,13 @@
       ]
     },
     {
-      "symbol": "apps.interop.export_builder._page",
+      "symbol": "apps.interop.export_builder._write_pages",
       "signals": [
         "tenant_boundary"
       ],
       "kind": "direct",
       "probes": [
-        "apps.interop.export_builder._page#cut1"
+        "apps.interop.export_builder._write_pages#cut1"
       ]
     },
     {
@@ -10837,15 +10837,26 @@
       "reason": "The ordinary part download verifies the immutable archive dependency receipt through the manager-scoped SQL resolver."
     },
     {
-      "symbol": "apps.ai.pending_outputs.export_page",
+      "symbol": "apps.ai.pending_outputs._export_page",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "A fresh authorized archive exercises the set-returning function and the closed per-row consent decision before any bytes are serialized.",
+      "probes": [
+        "apps.ai.pending_outputs._export_page#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.decisions_visible",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ai.pending_outputs.export_page#cut1"
+        "apps.ai.pending_outputs.decisions_visible#cut1"
       ],
-      "reason": "A fresh authorized archive exercises the set-returning function and the closed per-row consent decision before any bytes are serialized."
+      "reason": "A real decision takes the shared clinic choice fence and rechecks the original table and row through ai_pending_visible on the acting connection before committing a vote, review or effect."
     },
     {
       "symbol": "apps.ai.pending_outputs.reselect",
@@ -10868,6 +10879,120 @@
         "apps.ai.pending_outputs.withheld_artifact#cut1"
       ],
       "reason": "An owned, refused turn is distinguished from a foreign key only after purpose, actor, current professional, visit and session checks."
+    },
+    {
+      "symbol": "apps.ai.agent_presenter.present_proposal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "presentation",
+      "reason": "Rejects anything but a VisiblePending handle. Fields are read only inside the issuing frame, or after a fresh re-check under the caller's own RLS scope."
+    },
+    {
+      "symbol": "apps.ai.artifacts.artifact_content",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Rejects an expired or purged artifact issued by the current visibility frame; selection authority is artifact_selector and the frame's FORCE RLS SELECT."
+    },
+    {
+      "symbol": "apps.ai.extraction.candidate_data",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter"
+      ],
+      "reason": "Resolves the job's exact source through the existing result or attachment authority, then reparses only a candidate issued by the response's visibility batch for the filing command."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.RenderSelection.__post_init__",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Refuses construction outside ai_pending_visible; it confers no authority of its own."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.RenderSelection.export_rows",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Returns the export resolver's filtered page only inside the frame that fetched it."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.RenderSelection.get",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Returns a handle only inside the frame that issued it; each row came from the frame's single FORCE RLS SELECT."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.VisibleExportRow.__init__",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Refuses construction outside ai_pending_visible; it confers no authority of its own."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.VisibleExportRow.record",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Releases an export row only while its issuing frame projects; authority is the export resolver's requester check."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.VisiblePending.__init__",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Refuses construction outside ai_pending_visible; it confers no authority of its own."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.VisiblePending.record",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Releases fields only to the issuing frame; a retained handle cannot read them."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs._fresh_records",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Refuses unregistered models; every selected row comes from one ordinary SELECT under the caller's role and FORCE RLS."
+    },
+    {
+      "symbol": "apps.scribe.draft_sources.compose_sources",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.chart_sources.read_chart"
+      ],
+      "reason": "Joins a transcript already projected by the caller's checked batch to chart sources whose clinical read authority is the executable chart boundary."
+    },
+    {
+      "symbol": "apps.scribe.reviews.render_review",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.draft_sources.note_frame"
+      ],
+      "reason": "Rechecks the note frame and drafting consent before the response's single visibility batch; a recording denial becomes the draft review denial."
     }
   ],
   "probes": [
@@ -10888,15 +11013,15 @@
     "apps.ai.approvals.approve_action#cut1",
     "apps.ai.approvals.reject_action#cut1",
     "apps.ai.approvals.verify_approvals#cut1",
+    "apps.ai.artifacts.artifact_selector#cut1",
     "apps.ai.artifacts.input_for#cut1",
-    "apps.ai.artifacts.read_artifact#cut1",
     "apps.ai.attestations.step_up_evidence#cut1",
     "apps.ai.authorization._authorize_message#cut1",
     "apps.ai.authorization._authorize_staff_input#cut1",
     "apps.ai.authorization._clinical_source#cut1",
     "apps.ai.authorization.authorize_capability#cut1",
     "apps.ai.brief._admit#cut1",
-    "apps.ai.brief.display_chart_turn#cut1",
+    "apps.ai.brief.prepare_chart_turn#cut1",
     "apps.ai.brief_views._selected_visit#cut1",
     "apps.ai.brief_views.chart_assistant#cut1",
     "apps.ai.care_views._preview#cut1",
@@ -10909,8 +11034,8 @@
     "apps.ai.decision_policy.authorize_decision#observed",
     "apps.ai.decision_policy.authorized_catalog#cut1",
     "apps.ai.decision_policy.authorized_catalog#observed",
-    "apps.ai.decision_support.display_decision_support#cut1",
-    "apps.ai.decision_support.display_decision_support#observed",
+    "apps.ai.decision_support.prepare_decision_support#cut1",
+    "apps.ai.decision_support.prepare_decision_support#observed",
     "apps.ai.decision_support.request_decision_support#cut1",
     "apps.ai.decision_support.request_decision_support#observed",
     "apps.ai.decision_views.decision_support#cut1",
@@ -10968,8 +11093,9 @@
     "apps.ai.owner.reset_circuit#cut1",
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
+    "apps.ai.pending_outputs._export_page#cut1",
     "apps.ai.pending_outputs.archive_current#cut1",
-    "apps.ai.pending_outputs.export_page#cut1",
+    "apps.ai.pending_outputs.decisions_visible#cut1",
     "apps.ai.pending_outputs.reselect#cut1",
     "apps.ai.pending_outputs.withheld_artifact#cut1",
     "apps.ai.policy.check_configuration#cut1",
@@ -11307,8 +11433,8 @@
     "apps.interop.export_builder._attachments#cut1",
     "apps.interop.export_builder._claim#cut1",
     "apps.interop.export_builder._fail#cut1",
-    "apps.interop.export_builder._page#cut1",
     "apps.interop.export_builder._store#cut1",
+    "apps.interop.export_builder._write_pages#cut1",
     "apps.interop.management._command#cut1",
     "apps.interop.management._scope#cut1",
     "apps.interop.management.download_export_part#cut1",
@@ -28290,13 +28416,19 @@
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [
+          "clinic_app.agent_record_approval",
           "clinic_app.ai_archive_current",
+          "clinic_app.ai_care_guard",
           "clinic_app.ai_pending_refusal",
           "clinic_app.ai_pending_visible",
+          "clinic_app.ai_retained_proposal_guard",
+          "clinic_app.ai_review_extraction",
+          "clinic_app.ai_rollout_guard",
           "clinic_app.insurance_guide_read_scope",
           "clinic_app.interop_export_rows",
           "clinic_app.interop_finalize_export",
-          "clinic_app.interop_partner_guard"
+          "clinic_app.interop_partner_guard",
+          "clinic_app.scribe_draft_guard"
         ]
       },
       "kind": "domain_protocol",
@@ -29121,7 +29253,14 @@
           "clinic_app.scribe_transcriptsegment:pending_output_read",
           "clinic_app.scribe_transcriptversion:pending_output_read"
         ],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.agent_record_approval",
+          "clinic_app.ai_care_guard",
+          "clinic_app.ai_retained_proposal_guard",
+          "clinic_app.ai_review_extraction",
+          "clinic_app.ai_rollout_guard",
+          "clinic_app.scribe_draft_guard"
+        ]
       },
       "kind": "domain_protocol",
       "probes": [

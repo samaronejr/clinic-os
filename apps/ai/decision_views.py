@@ -12,6 +12,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
+from apps.ai.artifacts import ArtifactProjection, render_artifact
 from apps.ai.contracts import (
     GatewayAccessDeniedError,
     GatewayInputError,
@@ -20,9 +21,9 @@ from apps.ai.contracts import (
 from apps.ai.decision_forms import DecisionSupportForm
 from apps.ai.decision_support import (
     DecisionPanel,
-    display_decision_support,
     open_decision_support,
-    record_decision,
+    prepare_decision_record,
+    prepare_decision_support,
     request_decision_support,
 )
 from apps.core.patient_context import BOUND_ATTRIBUTE, bind_patient_context
@@ -64,6 +65,7 @@ def decision_support(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     binding = salted_hmac(
         "ai.decision-session.v1", request.session.session_key, algorithm="sha256"
     ).hexdigest()
+    panel: DecisionPanel | ArtifactProjection[DecisionPanel]
     try:
         with transaction.atomic():
             if data["command"] == "open":
@@ -78,7 +80,7 @@ def decision_support(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                     opt_in=data["opt_in"],
                 )
             elif data["command"] == "display":
-                panel = display_decision_support(
+                panel = prepare_decision_support(
                     clinic_id=clinic_id,
                     encounter_id=data["encounter_id"],
                     session_binding=binding,
@@ -86,7 +88,7 @@ def decision_support(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 )
             else:
                 try:
-                    panel = record_decision(
+                    panel = prepare_decision_record(
                         clinic_id=clinic_id,
                         encounter_id=data["encounter_id"],
                         session_binding=binding,
@@ -104,17 +106,25 @@ def decision_support(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                 enrollment_id=enrolled,
                 record_view=False,
             )
-            response = render(
-                request,
+            template = (
                 "ai/decision_fragment.html"
                 if request.headers.get("HX-Request") == "true"
-                else "ai/decision.html",
-                {
-                    "clinic_id": clinic_id,
-                    "encounter_id": data["encounter_id"],
-                    "cds": panel,
-                    "clinic_timezone": Clinic.objects.get(pk=clinic_id).timezone,
-                },
+                else "ai/decision.html"
+            )
+            zone = Clinic.objects.get(pk=clinic_id).timezone
+            response = render_artifact(
+                panel,
+                clinic_id=clinic_id,
+                emit=lambda checked: render(
+                    request,
+                    template,
+                    {
+                        "clinic_id": clinic_id,
+                        "encounter_id": data["encounter_id"],
+                        "cds": checked,
+                        "clinic_timezone": zone,
+                    },
+                ),
             )
             # Bind the rendered banner, not the persistent workspace selection.
             if hasattr(request, BOUND_ATTRIBUTE):

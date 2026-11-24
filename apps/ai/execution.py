@@ -57,7 +57,7 @@ def _existing(
         .first()
     )
     return ExecutionResult(
-        proposal.pk,
+        execution.proposal_id,
         execution.state,
         execution.pk,
         receipt.pk if receipt else None,

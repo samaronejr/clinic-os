@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 from apps.ai import care_coordination, care_views
 from apps.ai.care_coordination import CareAccessDeniedError
 from apps.identity.current_context import CurrentActorError
 from django.db import DatabaseError
+from django.test import RequestFactory
 
 from identity.nonstaff_differential import DifferentialProbe
 
@@ -34,7 +34,11 @@ def care_calls(graph: RbacGraph) -> dict[str, Callable[[], bool]]:
     clinic = graph.clinic_a
 
     def context() -> bool:
-        care_views._context(clinic)
+        # The page's own response builder, which also lists the actor's plans
+        # and their pending bundle references.
+        care_views._context(
+            RequestFactory().get("/"), clinic, 200, care_views.CareSelection()
+        )
         return True
 
     return {
@@ -45,11 +49,9 @@ def care_calls(graph: RbacGraph) -> dict[str, Callable[[], bool]]:
         "apps.ai.care_views._care_staff": lambda: care_views._care_staff(clinic),
         "apps.ai.care_views._clinician": lambda: care_views._clinician(clinic),
         "apps.ai.care_views._context": context,
-        # An active plan is still a human record. Probe the pending bundle
-        # references, not just the presence of an authorized plan row.
-        "apps.ai.care_views._plans": lambda: any(
-            row.bundles for row in care_views._plans(clinic, ZoneInfo("UTC"))
-        ),
+        # A human plan alone is not a pending bundle. Exercise the real
+        # source-eligible item selection, not just the existence of a plan.
+        "apps.ai.care_views._plans": lambda: bool(care_views._plans(clinic)[1]),
     }
 
 

@@ -19,7 +19,7 @@ import rfc8785
 from django.db import DatabaseError, connection, transaction
 from django.db.models.functions import Now
 
-from apps.ai.pending_outputs import archive_current
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible, archive_current
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.comms.models import IntegrationOperation
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
+    from apps.ai.pending_outputs import RenderSelection
     from apps.interop.webhooks import JsonValue
 
 __all__ = (
@@ -573,18 +574,35 @@ def download_export_part(
     ).first()
     if job is None or part > job.part_count or not archive_current(selected):
         raise InteropAccessDeniedError
-    row = (
+    part_id = (
         pending_rows(OrganizationExportPart)
         .filter(organization_id=organization_id, export_id=job.pk, part=part)
+        .values_list("pk", flat=True)
         .first()
     )
-    if row is None or row.data is None:
+    if part_id is None:
         raise InteropAccessDeniedError
     record_phase1_event(
         "interop.organization_export.downloaded",
         clinic_id=job.clinic_id,
         affected_record_id=job.pk,
     )
-    return ExportPartDownload(
-        job.pk, part, job.part_count, bytes(row.data), row.sha256, job.archive_sha256
-    )
+    selector = PendingKey(OrganizationExportPart, part_id)
+
+    def project(batch: RenderSelection) -> ExportPartDownload:
+        checked = batch.get(selector)
+        if checked is None:
+            raise InteropAccessDeniedError
+        row = checked.record
+        if row.data is None:
+            raise InteropAccessDeniedError
+        return ExportPartDownload(
+            job.pk,
+            part,
+            job.part_count,
+            bytes(row.data),
+            row.sha256,
+            job.archive_sha256,
+        )
+
+    return ai_pending_visible((selector,), project)

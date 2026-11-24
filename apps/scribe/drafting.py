@@ -31,6 +31,7 @@ from apps.scribe.models import AIDraft, DraftActionProposal, DraftSectionSuggest
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.pending_outputs import VisiblePending
     from apps.scribe.draft_contracts import DraftSource
 
 
@@ -211,9 +212,9 @@ def retained_draft_allowed(artifact: AIArtifact) -> bool:
         return False
 
 
-def materialize_draft(artifact: AIArtifact) -> str | None:
+def materialize_draft(checked: VisiblePending[AIArtifact]) -> str | None:
     """Plaintext is ephemeral and repr-hidden in the shared provider request."""
-    draft = draft_for_input(artifact)
+    draft = draft_for_input(checked.record)
     if draft is None:
         return None
     sources = sources_for_draft(draft)

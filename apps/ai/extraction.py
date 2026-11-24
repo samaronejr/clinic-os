@@ -32,7 +32,12 @@ from apps.ai.models import (
     ExtractionJob,
 )
 from apps.ai.pending_choice import pending_choice_allows
-from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import (
+    PendingKey,
+    ai_pending_visible,
+    decisions_visible,
+    key,
+)
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
@@ -49,6 +54,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from apps.ai.extraction_contracts import SourceEvidence
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -247,10 +253,35 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
 
 
 def candidate_data(
-    row: ExtractionCandidateRecord, *, regions: SourceEvidence | None = None
+    selector: PendingKey[ExtractionCandidateRecord],
+    *,
+    clinic_id: UUID,
+    job_id: UUID,
 ) -> ExtractionCandidate:
-    """Reparse the encrypted draft instead of trusting its stored parsed value."""
-    row = reselect(row)
+    """Resolve a candidate for the filing command using the same checked scope."""
+    job_key = PendingKey(ExtractionJob, job_id)
+
+    def project(batch: RenderSelection) -> ExtractionCandidate:
+        job, candidate = batch.get(job_key), batch.get(selector)
+        if job is None or candidate is None or candidate.record.job_id != job_id:
+            raise GatewayAccessDeniedError
+        rotations = tuple(job.record.rotations)
+        regions = job_source(job=job.record, include_bytes=True).regions(
+            rotations=rotations
+        )
+        return project_candidate(candidate, rotations=rotations, regions=regions)
+
+    return ai_pending_visible((selector, job_key), project, clinic_id=clinic_id)
+
+
+def project_candidate(
+    checked: VisiblePending[ExtractionCandidateRecord],
+    *,
+    rotations: tuple[int, ...],
+    regions: SourceEvidence,
+) -> ExtractionCandidate:
+    """Reparse checked ciphertext instead of trusting the stored parsed value."""
+    row = checked.record
     payload = row.payload
     proposal = {
         key: payload[key]
@@ -261,11 +292,6 @@ def candidate_data(
         bbox=payload["region"]["bbox"],
         legible=payload["reason"] != "unreadable",
     )
-    rotations = tuple(row.job.rotations)
-    if regions is None:
-        regions = job_source(job=row.job, include_bytes=True).regions(
-            rotations=rotations
-        )
     candidate = parse_proposals(
         json.dumps({"candidates": [proposal]}), rotations=rotations, regions=regions
     )[0]
@@ -299,7 +325,7 @@ def review_extraction(
         .filter(pk=candidate_id, clinic_id=clinic_id)
         .first()
     )
-    if row is None:
+    if row is None or not decisions_visible((key(row),), clinic_id=clinic_id):
         raise GatewayAccessDeniedError
     job = authorized_job(clinic_id=clinic_id, job_id=row.job_id)
     actor = require_permission(
@@ -327,7 +353,7 @@ def review_extraction(
             or matched.order.enrollment_id != job.patient_enrollment_id
         ):
             raise GatewayAccessDeniedError
-        candidate = candidate_data(row)
+        candidate = candidate_data(key(row), clinic_id=clinic_id, job_id=job.pk)
         payload = filing_payload(
             candidate, confirmer=str(actor), manual_unit=manual_unit
         )

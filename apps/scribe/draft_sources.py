@@ -110,6 +110,20 @@ def resolve_sources(
     """Preserve acknowledged gaps without reconstructing any missing source."""
     clinic = frame.scope.encounter.clinic_id
     frame = note_frame(clinic_id=clinic, version_id=frame.version.pk)
+    recording = source_recording(frame)
+    try:
+        transcript = read_transcript(clinic_id=clinic, session_id=recording.pk)
+    except (
+        CurrentActorError,
+        ClinicalAccessDeniedError,
+        TranscriptAccessDeniedError,
+    ) as error:
+        raise DraftAccessDeniedError from error
+    return compose_sources(frame, transcript, transcript_id=transcript_id)
+
+
+def source_recording(frame: NoteFrame) -> RecordingSession:
+    """Select the exact recording that can be used as a draft source."""
     recording = (
         RecordingSession.objects.filter(
             encounter_id=frame.scope.encounter.pk, discarded=False
@@ -119,8 +133,18 @@ def resolve_sources(
     )
     if recording is None:
         raise DraftConflictError(DraftReason.PENDING)
+    return recording
+
+
+def compose_sources(
+    frame: NoteFrame,
+    transcript: TranscriptVersionDTO | None,
+    *,
+    transcript_id: UUID | None = None,
+) -> tuple[TranscriptVersionDTO, tuple[DraftSource, ...]]:
+    """Join already projected transcript text to currently visible chart facts."""
+    clinic = frame.scope.encounter.clinic_id
     try:
-        transcript = read_transcript(clinic_id=clinic, session_id=recording.pk)
         if transcript is None or transcript.state != "final":
             raise DraftConflictError(DraftReason.PENDING)
         if transcript_id is not None and transcript.version_id != transcript_id:

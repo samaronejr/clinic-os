@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from django.db import connection
 from django.shortcuts import redirect, render
@@ -29,10 +30,13 @@ from apps.ai.attestations import step_up_evidence
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.models import ActionProposal, AgentPolicyVersion
+from apps.ai.pending_outputs import RenderSelection, ai_pending_visible
+from apps.ai.pending_outputs import key as pending_key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.revenue_cycle import check_revenue_sources
 from apps.core.secrets import SecretUnavailableError
 from apps.identity.current_context import CurrentActorError
+from apps.identity.models import Clinic
 from apps.identity.otp import flow_redirect, privileged_totp_required
 from apps.identity.stepup import StepUpRequired
 
@@ -92,16 +96,27 @@ def agent_queue(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
         .select_related("run__policy", "clinic")
         .order_by("-created_at")[:100]
     )
-    response = render(
-        request,
-        "ai/automations.html",
-        {
-            "clinic_id": clinic_id,
-            "rows": [present_proposal(row) for row in proposals if _visible(row)],
-            "error": error,
-        },
-        status=status,
-    )
+    selectors = tuple(pending_key(row) for row in proposals if _visible(row))
+
+    def project(batch: RenderSelection) -> HttpResponse:
+        visible = batch.many(selectors)
+        zone = (
+            ZoneInfo(str(Clinic.objects.get(pk=clinic_id).timezone))
+            if visible
+            else None
+        )
+        return render(
+            request,
+            "ai/automations.html",
+            {
+                "clinic_id": clinic_id,
+                "rows": tuple(present_proposal(row, zone=zone) for row in visible),
+                "error": error,
+            },
+            status=status,
+        )
+
+    response = ai_pending_visible(selectors, project, clinic_id=clinic_id)
     response["Cache-Control"] = "no-store, private"
     return response
 

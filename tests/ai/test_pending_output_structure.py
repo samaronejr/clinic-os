@@ -8,7 +8,16 @@ from pathlib import Path
 import pytest
 from django.db import connection
 
-from ai.pending_boundary_inventory import inventory, unclassified, violations
+from ai.pending_boundary_inventory import (
+    INTERNAL,
+    ISSUED,
+    RAW,
+    checked_presenter_mutations,
+    inventory,
+    permit_issuance,
+    unclassified,
+    violations,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 BOUNDARY = "apps.ai.pending_outputs"
@@ -21,6 +30,7 @@ def test_pending_models_have_only_one_data_access_boundary() -> None:
     declared = inventory()
     assert declared.fields
     assert not unclassified()
+    assert not permit_issuance(Path(spec.origin).read_text(), declared, boundary=True)
     found = {
         str(p.relative_to(ROOT)): issues
         for p in (ROOT / "apps").rglob("*.py")
@@ -28,6 +38,74 @@ def test_pending_models_have_only_one_data_access_boundary() -> None:
         if (issues := violations(p.read_text(), declared))
     }
     assert found == {}
+    assert declared.permits
+
+
+def test_raw_presenter_and_out_of_scope_permit_mutations_fail() -> None:
+    from inspect import getsource  # noqa: PLC0415
+
+    from apps.ai.agent_presenter import present_proposal  # noqa: PLC0415
+
+    declared = inventory()
+    presenter = getsource(present_proposal)
+    assert not violations(presenter, declared)
+    mutation = presenter.replace("VisiblePending[ActionProposal]", "ActionProposal", 1)
+    assert mutation != presenter
+    assert {reason for _, reason in violations(mutation, declared)} == {RAW}
+    # The round-four presenter shape: fields of a model loaded earlier.
+    retained = """
+from apps.ai.models import ActionProposal
+def present_proposal(proposal: ActionProposal) -> ProposalRow:
+    data = parse_payload(proposal.payload).data()
+    return ProposalRow(proposal.pk, proposal.digest, data["expires_at"])
+"""
+    assert {reason for _, reason in violations(retained, declared)} == {RAW}
+    forged = """
+from apps.ai.pending_outputs import VisiblePending as Permit
+def counterfeit(selector, issuer):
+    return Permit(selector, None, issuer)
+"""
+    assert {reason for _, reason in violations(forged, declared)} == {ISSUED}
+    internals = """
+from apps.ai.pending_outputs import _ISSUER, RenderSelection
+def replay(selector):
+    return selector, _ISSUER
+def stash(batch: RenderSelection):
+    return batch._records
+"""
+    lines = {
+        line for line, reason in violations(internals, declared) if reason == INTERNAL
+    }
+    assert lines == {2, 4, 6}
+
+
+def test_every_checked_presenter_fails_the_guard_when_given_its_raw_model() -> None:
+    # Derived from annotations: each function outside the boundary taking a
+    # VisiblePending[...] argument, mutated one at a time to take the model.
+    declared = inventory()
+    mutations = list(checked_presenter_mutations(ROOT))
+    assert mutations
+    missed = [
+        (path, line)
+        for path, line, mutated in mutations
+        if (line, RAW) not in violations(mutated, declared)
+    ]
+    assert missed == []
+
+
+def test_raw_queryset_alias_into_dto_constructor_is_detected() -> None:
+    mutant = """
+from apps.ai.models import CareProposal as Care
+from django.db.models import QuerySet
+type Pending = QuerySet[Care]
+def summary(items: Pending | None) -> BundleRow | None:
+    if not items:
+        return None
+    return BundleRow(tuple(ItemRow(item.pk, item.state) for item in items))
+"""
+    assert "raw pending model at presentation boundary" in {
+        reason for _, reason in violations(mutant, inventory())
+    }
 
 
 def test_direct_export_projection_is_rejected_by_the_guard() -> None:
@@ -60,10 +138,10 @@ def keyword_record(row: Proposal):
 """
     )
     fields = violations(field_only, declared)
-    assert len(fields) == 3
-    assert {reason for _, reason in fields} == {
-        "pending field serialized without reselection"
-    }
+    field_reason = "pending field serialized without reselection"
+    assert len({line for line, reason in fields if reason == field_reason}) == 3
+    # The raw-argument rule also reaches the two returned projections.
+    assert {reason for _, reason in fields} == {field_reason, RAW}
     serializer = (
         export
         + """
@@ -74,7 +152,8 @@ def direct_serializer(row: Proposal):
 """
     )
     assert {reason for _, reason in violations(serializer, declared)} == {
-        "direct pending serialization"
+        "direct pending serialization",
+        RAW,
     }
 
 

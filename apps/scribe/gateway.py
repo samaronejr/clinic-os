@@ -21,13 +21,14 @@ from apps.ai.contracts import (
     Purpose,
     Usage,
 )
-from apps.ai.models import AIInvocation
+from apps.ai.models import AIArtifact, AIInvocation
 from apps.ai.outbox import (
     GatewayActionAdapter,
 )
 from apps.ai.outbox import (
     eligible as gateway_eligible,
 )
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible
 from apps.comms.adapters import TransientSendError
 from apps.comms.models import IntegrationOperation
 from apps.scribe.asr import decode_audio, parse_batch, recorded_gateway_result
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
 
     from apps.ai.contracts import ProviderRequest
     from apps.ai.outbox import PreparedInference
+    from apps.ai.pending_outputs import RenderSelection
     from apps.comms.adapters import OperationScope
 
 
@@ -154,33 +156,43 @@ class ScribeGatewayActionAdapter(GatewayActionAdapter):
         invocation = AIInvocation.objects.select_related("inputs_ref").get(
             pk=prepared.invocation_id
         )
-        if invocation.purpose == Purpose.SCRIBE_DRAFT:
-            try:
-                content = materialize_draft(invocation.inputs_ref)
-            except (
-                DraftAccessDeniedError,
-                DraftConflictError,
-                DraftInputError,
-                GatewayRefusedError,
-            ):
-                finish_failure(invocation, reason="authority_revoked")
-                return prepared
+        if invocation.purpose not in {Purpose.SCRIBE_DRAFT, Purpose.SCRIBE_ASR}:
+            return prepared
+
+        selector = PendingKey(AIArtifact, invocation.inputs_ref_id)
+
+        def project(batch: RenderSelection) -> PreparedInference:
+            checked = batch.get(selector)
+            if checked is None:
+                raise GatewayRefusedError(reason="authority_revoked")
+            content = (
+                materialize_draft(checked)
+                if invocation.purpose == Purpose.SCRIBE_DRAFT
+                else materialize_input(checked)
+            )
             return (
                 replace(prepared, request=replace(prepared.request, content=content))
                 if content is not None
                 else prepared
             )
-        if invocation.purpose != Purpose.SCRIBE_ASR:
-            return prepared
+
         try:
-            content = materialize_input(invocation.inputs_ref)
-        except (TranscriptError, TranscriptAccessDeniedError):
+            return ai_pending_visible(
+                (selector,), project, clinic_id=invocation.clinic_id
+            )
+        except (
+            DraftAccessDeniedError,
+            DraftConflictError,
+            DraftInputError,
+            GatewayRefusedError,
+            TranscriptError,
+            TranscriptAccessDeniedError,
+        ):
             # Returning commits this failure. Raising inside core's preparation
             # transaction would roll it back. The final recheck refuses the
             # failed invocation before the provider can receive this object.
             finish_failure(invocation, reason="authority_revoked")
             return prepared
-        return replace(prepared, request=replace(prepared.request, content=content))
 
     def settle_success(
         self, *, invocation_id: UUID, result: ProviderResult, latency_ms: int

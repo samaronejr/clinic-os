@@ -16,6 +16,7 @@ from django.utils.translation import gettext, pgettext_lazy
 from django.utils.translation import gettext_lazy as _
 
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.comms.inbox_rules import window_closes_at, window_open
 from apps.comms.inbox_services import (
@@ -46,6 +47,8 @@ from apps.intake.patient_search import search_patients_exact
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
+
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
 
 MAX_LIST: Final = 100
 MAX_MESSAGES: Final = 200
@@ -122,9 +125,39 @@ class ConversationView:
     channel_label: str
     purpose_label: str
     timezone: str
-    suggestion: SuggestedReply | None
+    suggestion_key: PendingKey[SuggestedReply] | None
     window_open: bool
     window_closes_at: datetime | None
+
+    @property
+    def suggestion(self) -> ReplyPreview | None:
+        """Recheck a retained conversation even for a direct service caller."""
+        return ai_pending_visible(
+            (self.suggestion_key,) if self.suggestion_key else (), self.project_reply
+        )
+
+    def project_reply(self, batch: RenderSelection) -> ReplyPreview | None:
+        """Bind the checked, currently proposed reply to this visible thread."""
+        checked = batch.get(self.suggestion_key) if self.suggestion_key else None
+        if checked is None or checked.record.conversation_id != self.conversation.pk:
+            return None
+        return reply_preview(checked)
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyPreview:
+    """Only the two fields needed by the suggestion form."""
+
+    pk: UUID
+    body: str
+
+
+def reply_preview(checked: VisiblePending[SuggestedReply]) -> ReplyPreview | None:
+    """Build a form only for the still-proposed revision of the checked reply."""
+    reply = checked.record
+    if reply.state != "proposed":
+        return None
+    return ReplyPreview(reply.pk, reply.body)
 
 
 def mask_address(channel: str, address: str) -> str:
@@ -262,7 +295,7 @@ def conversation_view(
     suggestion = (
         pending_rows(SuggestedReply)
         .filter(conversation=conversation, state="proposed")
-        .defer("body")
+        .values_list("pk", "created_at")
         .first()
     )
     if (
@@ -271,7 +304,7 @@ def conversation_view(
         and not pending_choice_allows(
             clinic_id=clinic_id,
             enrollment_id=conversation.enrollment_id,
-            generated_at=suggestion.created_at,
+            generated_at=suggestion[1],
         )
     ):
         suggestion = None
@@ -297,7 +330,9 @@ def conversation_view(
         channel_label=str(CHANNEL_LABELS[conversation.channel]),
         purpose_label=str(PURPOSE_LABELS[conversation.purpose]),
         timezone=_clinic_timezone(clinic_id),
-        suggestion=suggestion,
+        suggestion_key=PendingKey(SuggestedReply, suggestion[0])
+        if suggestion
+        else None,
         window_open=window_open(last_inbound_at=conversation.last_inbound_at, now=now),
         window_closes_at=window_closes_at(last_inbound_at=conversation.last_inbound_at),
     )

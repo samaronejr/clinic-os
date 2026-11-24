@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, replace
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from django.db import IntegrityError, connection, transaction
 
+from apps.ai.pending_outputs import PendingKey, ai_pending_visible
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.scribe.authority import recording_scope, transcription_consent
@@ -31,6 +32,9 @@ from apps.scribe.transcript_contracts import (
     finalize,
     revise,
 )
+
+if TYPE_CHECKING:
+    from apps.ai.pending_outputs import RenderSelection, VisiblePending
 
 type Mutation = Literal["recognized", "finalized", "speaker_relabeled", "corrected"]
 
@@ -81,33 +85,53 @@ def coverage_for(recording: RecordingSession) -> tuple[CoverageSlot, ...]:
     )
 
 
-def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
-    """Read one immutable snapshot; the caller owns the surrounding tenant txn."""
+@dataclass(frozen=True, slots=True)
+class SnapshotRead:
+    """Selectors for one snapshot; nothing here authorizes a text projection."""
+
+    version: PendingKey[TranscriptVersion] | None
+    segments: tuple[PendingKey[TranscriptSegment], ...] = ()
+
+    @property
+    def keys(self) -> tuple[PendingKey[TranscriptVersion | TranscriptSegment], ...]:
+        """Provide all snapshot dependencies to the response batch."""
+        return () if self.version is None else (self.version, *self.segments)
+
+
+def select_snapshot(recording: RecordingSession) -> SnapshotRead:
+    """Select the current revision and its exact immutable segment revisions."""
     current = (
         pending_rows(TranscriptVersion)
         .filter(session=recording)
         .order_by("-revision")
+        .values_list("pk", "revision", "coverage")
         .first()
     )
     if current is None:
-        return TranscriptVersionDTO(
-            0,
-            "partial",
-            (),
-            coverage_for(recording),
-            frozenset(),
-            recording.state in {"stopped", "stopped_revoked"},
-        )
-    source_rows = (
+        return SnapshotRead(None)
+    version_id, revision, coverage = current
+    segment_ids = (
         pending_rows(TranscriptSegment)
         .filter(
             session=recording,
-            source_id__in=current.coverage["sources"],
-            version__revision__lte=current.revision,
+            source_id__in=coverage["sources"],
+            version__revision__lte=revision,
         )
         .order_by("source_id", "-version__revision")
         .distinct("source_id")
+        .values_list("pk", flat=True)
     )
+    return SnapshotRead(
+        PendingKey(TranscriptVersion, version_id),
+        tuple(PendingKey(TranscriptSegment, pk) for pk in segment_ids),
+    )
+
+
+def _snapshot(
+    version: VisiblePending[TranscriptVersion],
+    segments: tuple[VisiblePending[TranscriptSegment], ...],
+) -> TranscriptVersionDTO:
+    current = version.record
     values = tuple(
         sorted(
             (
@@ -124,7 +148,8 @@ def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
                     row.speaker_reviewed,
                     row.text_reviewed,
                 )
-                for row in source_rows
+                for checked in segments
+                for row in (checked.record,)
             ),
             key=lambda value: (
                 value.start_ms,
@@ -134,6 +159,7 @@ def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
             ),
         )
     )
+
     return TranscriptVersionDTO(
         current.revision,
         "final" if current.state == "final" else "partial",
@@ -152,6 +178,26 @@ def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
         current.incomplete_acknowledged,
         current.pk,
     )
+
+
+def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
+    """Project the current revision for the revision-fenced write workflows."""
+    selection = select_snapshot(recording)
+
+    def project(batch: RenderSelection) -> TranscriptVersionDTO:
+        checked = batch.get(selection.version) if selection.version else None
+        if checked is not None:
+            return _snapshot(checked, batch.many(selection.segments))
+        return TranscriptVersionDTO(
+            0,
+            "partial",
+            (),
+            coverage_for(recording),
+            frozenset(),
+            recording.state in {"stopped", "stopped_revoked"},
+        )
+
+    return ai_pending_visible(selection.keys, project)
 
 
 def refresh_coverage(
@@ -287,9 +333,20 @@ def read_transcript(
 ) -> TranscriptVersionDTO | None:
     """Return no source until the caller's own assigned encounter is resolved."""
     recording = authorized_recording(clinic_id=clinic_id, session_id=session_id)
-    value = current_snapshot(recording)
-    if not value.revision:
+    snapshot = select_snapshot(recording)
+    return ai_pending_visible(
+        snapshot.keys, lambda batch: project_transcript(recording, snapshot, batch)
+    )
+
+
+def project_transcript(
+    recording: RecordingSession, snapshot: SnapshotRead, batch: RenderSelection
+) -> TranscriptVersionDTO | None:
+    """Build transcript text only from the issuing visibility frame."""
+    checked = batch.get(snapshot.version) if snapshot.version else None
+    if checked is None:
         return None
+    value = _snapshot(checked, batch.many(snapshot.segments))
     return _display_snapshot(refresh_coverage(value, recording), recording)
 
 

@@ -20,6 +20,7 @@ from apps.ai.extraction import (
 )
 from apps.ai.extraction_contracts import ExtractionInputError, filing_payload
 from apps.ai.extraction_documents import recorded_document_extraction
+from apps.ai.pending_outputs import key
 from apps.core.integration import execute_operation
 from apps.core.secrets import secret_store
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
@@ -91,7 +92,9 @@ def raw_confirmation(
         purpose=Purpose.EXTRACTION,
     )
     payload = filing_payload(
-        candidate_data(row), confirmer=str(row.job.user_id), manual_unit="mg/dL"
+        candidate_data(key(row), clinic_id=row.clinic_id, job_id=row.job_id),
+        confirmer=str(row.job.user_id),
+        manual_unit="mg/dL",
     )
     payload["extraction_candidate"] = str(row.pk)
     source = protect(

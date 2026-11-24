@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 import inspect
+from contextlib import contextmanager
 from dataclasses import replace
 from html.parser import HTMLParser
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+from apps.ai import pending_outputs
 from apps.ai.contracts import ProviderRequest, Usage
 from apps.ai.output_validation import call_provider
 from apps.ai.policy import OrganizationPolicy
 from apps.scribe import transcript_views, transcripts
 from apps.scribe.asr import AudioInput, parse_batch
 from apps.scribe.gateway import ScribeRecordedProvider, ScribeSyntheticProvider
-from apps.scribe.models import TranscriptSegment
+from apps.scribe.models import TranscriptSegment, TranscriptVersion
 from apps.scribe.transcript_contracts import (
     CoverageSlot,
     Segment,
@@ -39,6 +42,32 @@ from django.urls import reverse
 from django.utils.translation import gettext, override
 
 from scribe.test_transcripts import visit
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from apps.ai.pending_outputs import RenderSelection
+    from apps.scribe.models import RecordingSession
+
+
+@contextmanager
+def _stored_snapshot(value: TranscriptVersionDTO) -> Iterator[None]:
+    """Stand in for stored data; the real boundary issues its own handles."""
+    version = TranscriptVersion(pk=UUID(int=41))
+    selector = pending_outputs.key(version)
+    read = transcripts.SnapshotRead(selector)
+    with (
+        patch.object(transcripts, "select_snapshot", return_value=read),
+        patch.object(transcript_views, "select_snapshot", return_value=read),
+        patch.object(pending_outputs, "connection", in_atomic_block=True),
+        patch.object(
+            pending_outputs,
+            "_fresh_records",
+            side_effect=lambda *_: {selector: version},
+        ),
+        patch.object(transcripts, "_snapshot", return_value=value),
+    ):
+        yield
 
 
 class Controls(HTMLParser):
@@ -200,7 +229,7 @@ def test_refresh_exposes_two_new_missing_slots_without_another_recognition(
     )
     with (
         patch("apps.scribe.transcripts.authorized_recording", return_value=recording),
-        patch("apps.scribe.transcripts.current_snapshot", return_value=snapshot),
+        _stored_snapshot(snapshot),
         patch(
             "apps.scribe.transcripts._current_chunk_ids",
             return_value={slot.chunk_id for slot in snapshot.coverage},
@@ -272,17 +301,21 @@ def _review(switches: _Switches, *, flip: str | None) -> str:
             "session_id": str(recording.pk),
         },
     )
-    real_read = transcripts.read_transcript
 
-    def read_then_flip(*, clinic_id: UUID, session_id: UUID) -> object:
+    def read_then_flip(
+        session: RecordingSession,
+        read: transcripts.SnapshotRead,
+        batch: RenderSelection,
+    ) -> TranscriptVersionDTO | None:
+        result = transcripts.project_transcript(session, read, batch)
         if flip is not None:
             switches.on[flip] = False
-        return real_read(clinic_id=clinic_id, session_id=session_id)
+        return result
 
     chunk = SimpleNamespace(pk=UUID(int=5))
     with (
         patch("apps.scribe.transcripts.authorized_recording", return_value=recording),
-        patch("apps.scribe.transcripts.current_snapshot", return_value=snapshot),
+        _stored_snapshot(snapshot),
         patch(
             "apps.scribe.transcripts._current_chunk_ids",
             return_value={slot.chunk_id for slot in snapshot.coverage},
@@ -300,7 +333,7 @@ def _review(switches: _Switches, *, flip: str | None) -> str:
         patch("apps.scribe.transcript_views.select_configuration"),
         patch("apps.ai.policy.GatewaySwitch.objects.filter", switches.control),
         patch("apps.ai.policy.organization_policy", switches.policy),
-        patch("apps.scribe.transcript_views.read_transcript", read_then_flip),
+        patch.object(transcript_views, "project_transcript", read_then_flip),
         override_settings(CLINIC_DATA_MODE="synthetic"),
         override("en"),
     ):

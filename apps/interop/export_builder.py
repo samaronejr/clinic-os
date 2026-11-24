@@ -30,7 +30,7 @@ from django.db import DatabaseError, connection
 from django.db.models import F
 from django.utils import timezone
 
-from apps.ai.pending_outputs import export_page, record_export_origin
+from apps.ai.pending_outputs import ExportPage, ai_pending_visible, record_export_origin
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.ehr.attachment_storage import AttachmentStorageError, default_storage
@@ -48,8 +48,9 @@ from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from apps.tenancy.envelope import EnvelopeError, reveal
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable
 
+    from apps.ai.pending_outputs import RenderSelection, VisibleExportRow
     from apps.interop.webhooks import JsonValue
 
 PAGE_SIZE: Final = 500
@@ -135,27 +136,28 @@ def _readable(dataset: Dataset, row: dict[str, object]) -> dict[str, object]:
     return result
 
 
-def _page(
-    scope: _Scope, dataset: Dataset, after: str | None
-) -> list[tuple[str, dict[str, object]]]:
+def _write_pages(
+    scope: _Scope,
+    dataset: Dataset,
+    emit: Callable[[VisibleExportRow], None],
+) -> None:
     try:
-        with tenant_context(scope.requested_by_id, scope.organization_id):
-            rows = export_page(
-                export_id=scope.export_id,
-                relation=dataset.relation,
-                after=after,
-                size=PAGE_SIZE,
-            )
-            return [
-                (
-                    str(key),
-                    _readable(
-                        dataset,
-                        json.loads(data) if isinstance(data, str) else dict(data),
-                    ),
+
+        def project(batch: RenderSelection) -> str | None:
+            page = batch.export_rows()
+            for row in page:
+                emit(row)
+            return page[-1].record[0] if len(page) == PAGE_SIZE else None
+
+        after: str | None = None
+        while True:
+            with tenant_context(scope.requested_by_id, scope.organization_id):
+                after = ai_pending_visible(
+                    ExportPage(scope.export_id, dataset.relation, after, PAGE_SIZE),
+                    project,
                 )
-                for key, data in rows
-            ]
+            if after is None:
+                return
     except TenantAccessDeniedError as error:
         raise ExportFailureError(AUTHORITY_REVOKED) from error
     except EnvelopeError as error:
@@ -164,17 +166,6 @@ def _page(
         if getattr(error.__cause__, "sqlstate", None) == "42501":
             raise ExportFailureError(AUTHORITY_REVOKED) from error
         raise
-
-
-def _rows(scope: _Scope, dataset: Dataset) -> Iterator[dict[str, object]]:
-    after: str | None = None
-    while True:
-        page = _page(scope, dataset, after)
-        for _key, row in page:
-            yield row
-        if len(page) < PAGE_SIZE:
-            return
-        after = page[-1][0]
 
 
 def _cell(column_type: str, value: object) -> str:
@@ -221,7 +212,13 @@ def _dataset(
         writer = csv.writer(table, lineterminator="\r\n")
         header: list[str] | None = None
         types = {column.name: column.type for column in dataset.columns}
-        for row in _rows(scope, dataset):
+
+        def emit(visible: VisibleExportRow) -> None:
+            nonlocal count, header
+            _, data = visible.record
+            row = _readable(
+                dataset, json.loads(data) if isinstance(data, str) else dict(data)
+            )
             record_export_origin(facts.pending_origins, dataset.relation, row)
             if header is None:
                 # Model columns plus any column the live relation also carries.
@@ -249,6 +246,8 @@ def _dataset(
                     )
                 )
             count += 1
+
+        _write_pages(scope, dataset, emit)
         if header is None:
             writer.writerow(sorted(column.name for column in dataset.columns))
     base = f"data/{dataset.relation}"

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
 from django.utils.translation import gettext, gettext_noop, pgettext
 
-from apps.ai.action_payload import care_window, closed, instant, parse_payload
+from apps.ai.action_payload import care_window, closed, instant, integer, parse_payload
+from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.pending_outputs import VisiblePending
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -60,8 +63,23 @@ class ProposalRow:
     due_at: str | None
 
 
-def present_proposal(proposal: ActionProposal) -> ProposalRow:
+def present_proposal(
+    checked: VisiblePending[ActionProposal], *, zone: ZoneInfo | None = None
+) -> ProposalRow | None:
+    """Retained handles have no standing authority, including for direct callers.
+
+    A list view passes its clinic's zone once instead of one lookup per row.
+    """
+    if not isinstance(checked, VisiblePending):
+        raise GatewayAccessDeniedError
+    return checked.project(partial(_proposal_row, zone=zone))
+
+
+def _proposal_row(
+    checked: VisiblePending[ActionProposal], *, zone: ZoneInfo | None = None
+) -> ProposalRow:
     """Disclose one effect, no money, no real recipient, version and expiry."""
+    proposal = checked.record
     data = parse_payload(proposal.payload).data()
     operation = closed(data["operation"], {"name", "version"})
     terms = closed(
@@ -69,7 +87,7 @@ def present_proposal(proposal: ActionProposal) -> ProposalRow:
     )
     compensation = closed(data["compensation_policy"], {"mode", "version"})
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
-    zone = ZoneInfo(str(proposal.clinic.timezone))
+    local = zone or ZoneInfo(str(proposal.clinic.timezone))
     name = operation["name"]
     effect = EFFECT_LABELS.get(str(name), EFFECT_LABELS["comms.synthetic_reminder"])
     due = None
@@ -89,13 +107,13 @@ def present_proposal(proposal: ActionProposal) -> ProposalRow:
         if proposal.state == "reconciled"
         else gettext(STATE_LABELS[proposal.state]),
         gettext(effect),
-        proposal.run.policy.version,
-        instant(data["expires_at"]).astimezone(zone).strftime("%Y-%m-%dT%H:%M"),
+        integer(terms["version"]),
+        instant(data["expires_at"]).astimezone(local).strftime("%Y-%m-%dT%H:%M"),
         str(terms["autonomy"]),
         gettext("Simulate the approved cancellation")
         if compensation["mode"] == "synthetic_cancel"
         else gettext("Require manual follow-up"),
         proposal.state == "validated",
         str(subject["revision"]),
-        due.astimezone(zone).strftime("%Y-%m-%dT%H:%M") if due is not None else None,
+        due.astimezone(local).strftime("%Y-%m-%dT%H:%M") if due is not None else None,
     )

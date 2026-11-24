@@ -21,6 +21,7 @@ from apps.ai.care_coordination import (
 from apps.ai.contracts import Purpose
 from apps.ai.controls import set_organization_policy
 from apps.ai.models import AIInvocation
+from apps.ai.pending_outputs import key
 from apps.ai.policy import OrganizationPolicy
 from apps.core.integration import execute_operation
 from apps.ehr.finalization import finalize_version
@@ -212,7 +213,7 @@ def approve_bundle(world: CareWorld, invocation_id: UUID) -> tuple[ItemOutcome, 
     with acting(graph, world.manager):
         items = pending_bundle(clinic_id=graph.clinic_a, invocation_id=invocation_id)
         digest = bundle_digest(
-            clinic_id=graph.clinic_a, invocation_id=invocation_id, items=items
+            clinic_id=graph.clinic_a, invocation_id=invocation_id, items=map(key, items)
         )
         return approve_care_bundle(
             clinic_id=graph.clinic_a,

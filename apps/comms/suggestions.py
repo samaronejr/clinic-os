@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Final
 from django.db import transaction
 
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.comms.inbox_rules import MAX_BODY_CHARS
@@ -132,7 +133,9 @@ def _suggestion(clinic_id: UUID, suggestion_id: UUID) -> SuggestedReply:
         )
         .first()
     )
-    if suggestion is None:
+    if suggestion is None or not decisions_visible(
+        (key(suggestion),), clinic_id=clinic_id
+    ):
         raise InboxAccessDeniedError
     return suggestion
 
