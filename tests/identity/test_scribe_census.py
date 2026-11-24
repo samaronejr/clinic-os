@@ -34,7 +34,7 @@ def test_draft_adapters_allow_the_clinician_and_refuse_the_nonstaff_actor(
     denied = User.objects.create(username="synthetic-draft-census-nonstaff")
     for actor, expected in ((rbac_graph.physician, True), (denied.pk, False)):
         calls = draft_calls(subject, actor)
-        assert len(calls) == 8
+        assert len(calls) == 10
         for symbol, invoke in calls.items():
             with permission_context(rbac_graph, actor):
                 assert draft_probe(symbol, invoke).invoke() is expected, symbol
@@ -63,5 +63,6 @@ def test_real_nonstaff_census_observes_the_note_reader(
             )
         )
     }
-    assert len(symbols) == 8
+    assert len(symbols) == 10
     assert symbols <= report.executed
+    assert all(report.observations[s.removesuffix("#observed")] for s in symbols)

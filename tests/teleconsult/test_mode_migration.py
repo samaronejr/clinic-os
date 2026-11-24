@@ -16,6 +16,7 @@ from django.db.migrations.executor import MigrationExecutor
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 from renewal.test_teleconsult_sessions import synthetic_provider
+from teleconsult.migration_replay import before_enterprise_fence
 from teleconsult.test_mode_audit import second_patient_session
 from teleconsult.test_mode_transition import mode_history
 from teleconsult.test_participants import seed_world
@@ -28,13 +29,10 @@ if TYPE_CHECKING:
 __all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 OLD = [("teleconsult", "0005_event_authority")]
-# Identity 0051 fences every policy that exists when it runs: as the reversible
-# descendant of these migrations it is unapplied before them and re-applied
-# after them, so the re-created capture policy never comes back unfenced.
+# The outer replay accounts for the complete installed enterprise fence graph.
 MODE_CHAIN = (
     ("teleconsult", "0006_mode_audit"),
     ("teleconsult", "0007_consented_capture"),
-    ("identity", "0051_enterprise_governance"),
 )
 
 
@@ -103,16 +101,13 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
         MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
     assert catalog_hash() == new_catalog
     assert history_hash(w.organization) == original
-    reversed_modes = False
-    try:
+    with before_enterprise_fence():
         mode_migrations(backwards=True)
-        reversed_modes = True
         old_catalog = catalog_hash()
         assert history_hash(w.organization) == original
         with setup_context(w.organization):
             verify_chain(w.organization)
         mode_migrations(backwards=False)
-        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
         with connection.cursor() as cursor:
@@ -122,16 +117,13 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
             )
             assert cursor.fetchone() == (True,)
         mode_migrations(backwards=True)
-        reversed_modes = True
         assert catalog_hash() == old_catalog
         assert history_hash(w.organization) == original
         mode_migrations(backwards=False)
-        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
-    finally:
-        if reversed_modes:
-            mode_migrations(backwards=False)
+    assert catalog_hash() == new_catalog
+    assert history_hash(w.organization) == original
     assert (
         frozenset(MigrationExecutor(connection).loader.applied_migrations) == installed
     )

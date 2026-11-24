@@ -10984,7 +10984,11 @@
       "enforced_by": [
         "apps.ehr.chart_sources.read_chart"
       ],
-      "reason": "Joins a transcript already projected by the caller's checked batch to chart sources whose clinical read authority is the executable chart boundary."
+      "reason": "Joins a transcript already projected by the caller's checked batch to chart sources whose clinical read authority is the executable chart boundary.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.draft_sources.compose_sources#observed"
+      ]
     },
     {
       "symbol": "apps.scribe.reviews.render_review",
@@ -10995,7 +10999,11 @@
       "enforced_by": [
         "apps.scribe.draft_sources.note_frame"
       ],
-      "reason": "Rechecks the note frame and drafting consent before the response's single visibility batch; a recording denial becomes the draft review denial."
+      "reason": "Rechecks the note frame and drafting consent before the response's single visibility batch; a recording denial becomes the draft review denial.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.reviews.render_review#observed"
+      ]
     }
   ],
   "probes": [
@@ -11610,6 +11618,7 @@
     "apps.scribe.authority.encounter_scope#cut1",
     "apps.scribe.authority.recording_scope#cut1",
     "apps.scribe.authority.token_scope#cut1",
+    "apps.scribe.draft_sources.compose_sources#observed",
     "apps.scribe.draft_sources.drafting_consent#observed",
     "apps.scribe.draft_sources.note_frame#observed",
     "apps.scribe.draft_sources.resolve_sources#observed",
@@ -11619,6 +11628,7 @@
     "apps.scribe.outbox.MediaActionAdapter.send#cut1",
     "apps.scribe.review_views._command#observed",
     "apps.scribe.review_views.note_review#observed",
+    "apps.scribe.reviews.render_review#observed",
     "apps.scribe.reviews.review_suggestion#observed",
     "apps.scribe.storage.open_audio#cut1",
     "apps.scribe.storage.seal_audio#cut1",

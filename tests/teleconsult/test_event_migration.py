@@ -17,6 +17,7 @@ from consent.test_authority import as_owner
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 from renewal.test_teleconsult_sessions import synthetic_provider
+from teleconsult.migration_replay import before_enterprise_fence
 from teleconsult.test_mode_migration import catalog_hash, history_hash
 from teleconsult.test_participants import seed_world
 
@@ -66,24 +67,19 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
         assert guard_definition()[0] == before
         assert catalog_hash() == original_catalog
         assert history_hash(w.organization) == original_history
-        reversed_names: list[tuple[str, str]] = []
-        try:
+        with before_enterprise_fence():
             # Exercise only the reversible teleconsult operations in dependency
-            # order, leaving all protected descendants and recorder rows intact.
-            # Identity 0051 fences every policy that exists when it runs, so its
-            # reversible descendant goes first and returns last: otherwise the
-            # re-created capture policy would come back without the fence.
-            for node in (
-                ("identity", "0051_enterprise_governance"),
+            # order. The outer transaction restores every installed policy.
+            nodes = (
                 ("teleconsult", "0007_consented_capture"),
                 ("teleconsult", "0006_mode_audit"),
                 ("teleconsult", "0005_event_authority"),
-            ):
+            )
+            for node in nodes:
                 migration = executor.loader.get_migration(*node)
                 state = executor.loader.project_state(migration.dependencies)
                 with connection.schema_editor() as editor:
                     migration.unapply(state, editor)
-                reversed_names.append(node)
             _, restored_body = guard_definition()
             assert restored_body == BINDING_GUARD_V2.split("$f$")[1]
             assert history_hash(w.organization) == original_history
@@ -94,8 +90,7 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
                     ).count()
                     == 1
                 )
-        finally:
-            for node in reversed(reversed_names):
+            for node in reversed(nodes):
                 migration = executor.loader.get_migration(*node)
                 state = executor.loader.project_state(migration.dependencies)
                 with connection.schema_editor() as editor:

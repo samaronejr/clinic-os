@@ -29,6 +29,7 @@ from apps.scribe.draft_contracts import (
 )
 from apps.scribe.draft_sources import (
     NoteFrame,
+    compose_sources,
     drafting_consent,
     note_frame,
     resolve_sources,
@@ -41,7 +42,7 @@ from apps.scribe.drafting import (
 from apps.scribe.models import AIDraft, DraftSectionSuggestion, RecordingSession
 from apps.scribe.outbox import register_gateway
 from apps.scribe.review_views import _command, note_review
-from apps.scribe.reviews import review_suggestion
+from apps.scribe.reviews import render_review, review_suggestion
 from apps.scribe.transcripts import read_transcript
 from apps.tenancy.db import tenant_context
 from django.conf import settings
@@ -59,6 +60,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from uuid import UUID
 
+    from apps.scribe.transcript_contracts import TranscriptVersionDTO
+
     from identity.nonstaff_subjects import NonstaffSubjects
     from rbac_fixtures import RbacGraph
 
@@ -71,6 +74,7 @@ class DraftSubjects:
     artifact: AIArtifact
     suggestion: DraftSectionSuggestion
     content: dict[str, str] = field(repr=False)
+    transcript: TranscriptVersionDTO = field(repr=False)
 
 
 def draft_subjects(
@@ -94,8 +98,9 @@ def draft_subjects(
         suggestion = DraftSectionSuggestion.objects.filter(draft=draft).first()
         assert suggestion is not None
         artifact = AIArtifact.objects.get(pk=draft.invocation.inputs_ref_id)
+        projected, _ = resolve_sources(frame, transcript_id=transcript)
         return DraftSubjects(
-            graph, frame, draft, artifact, suggestion, frame.version.soap
+            graph, frame, draft, artifact, suggestion, frame.version.soap, projected
         )
 
 
@@ -129,6 +134,11 @@ def draft_calls(subject: DraftSubjects, actor: UUID) -> dict[str, Callable[[], b
         subject.content,
     )
     return {
+        "apps.scribe.draft_sources.compose_sources": lambda: bool(
+            compose_sources(
+                frame, subject.transcript, transcript_id=subject.draft.transcript_id
+            )[1]
+        ),
         "apps.scribe.draft_sources.drafting_consent": lambda: (
             drafting_consent(frame).pk == subject.draft.consent_id
         ),
@@ -149,6 +159,11 @@ def draft_calls(subject: DraftSubjects, actor: UUID) -> dict[str, Callable[[], b
         ),
         "apps.scribe.review_views.note_review": lambda: (
             note_review(request, clinic).status_code == 200
+        ),
+        "apps.scribe.reviews.render_review": lambda: render_review(
+            clinic_id=clinic,
+            version_id=version,
+            emit=lambda panel: panel.version.pk == version and bool(panel.rows),
         ),
         "apps.scribe.reviews.review_suggestion": lambda: (
             review_suggestion(
@@ -236,6 +251,6 @@ def census_draft(data: NonstaffSubjects, graph: RbacGraph) -> DraftSubjects:
 
 
 def draft_probes(data: NonstaffSubjects, graph: RbacGraph) -> list[DifferentialProbe]:
-    """Observe all eight candidates on valid, shared records and a nonstaff actor."""
+    """Observe each reader on valid, shared records and a nonstaff actor."""
     calls = draft_calls(census_draft(data, graph), data.actor.pk)
     return [draft_probe(symbol, invoke) for symbol, invoke in sorted(calls.items())]

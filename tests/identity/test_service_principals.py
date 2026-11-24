@@ -136,7 +136,7 @@ READ_ONLY_VOLATILITY = frozenset({"i", "s"})
 # while its own closure passes the write, setting and volatile-callee rules,
 # with only other admitted gates exempt (_admitted_gates). The executed
 # snapshot check runs both. The set is exactly the refusal helper plus the
-# functions the clinic_agent RLS policies call
+# VOLATILE functions the clinic_agent RLS policies call
 # (test_volatile_gate_exception_is_exact). Either gate VOLATILE is enough for
 # the revocation tests: principal_has calls principal_scope, and both read the
 # same principal and grant rows (the grant CHECK allows appointment.read only),
@@ -148,6 +148,19 @@ VOLATILE_GATES: dict[str, tuple[str, str]] = {
     "clinic_app.principal_has": (
         "clinic_app.principal_has(text,uuid)",
         "60aa50c81ffd438d6075eee2b592bafcab0ef8bfade6d211b80eaf96902744d8",
+    ),
+}
+# R4's pending SELECT policies also call two STABLE predicates. Pin their
+# reviewed definitions, owners and ACLs without making either a volatility
+# exception for a principal member or its closure.
+PENDING_SELECT_GATES = {
+    "clinic_app.ai_pending_visible": (
+        "clinic_app.ai_pending_visible(text,uuid)",
+        "802443f63df6cb846aefc13be9f8709f66ae205a43353504ae5eeb8e1340baf5",
+    ),
+    "clinic_app.enterprise_staff_context": (
+        "clinic_app.enterprise_staff_context()",
+        "9e190bed7d669b549792082579302ca9d0deec1d060db223da6a515af9a0f2ee",
     ),
 }
 # Builtins labelled STABLE that still assign a transaction id.
@@ -1450,9 +1463,7 @@ def test_refusal_helper_pin_is_the_live_definition() -> None:
 
 
 def test_volatile_gate_exception_is_exact() -> None:
-    """The VOLATILE exception is exactly the refusal helper plus every function
-    a clinic_agent RLS policy calls (they need a fresh snapshot per row), and
-    every one of them is admitted on the live catalog."""
+    """Classify every agent policy call; only the principal gates may be VOLATILE."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)"
@@ -1464,12 +1475,21 @@ def test_volatile_gate_exception_is_exact() -> None:
     calls = {call for text in expressions for call in references(text).calls}
     # Resolved as the census resolves names; an unresolved call fails closed.
     assert all(catalog.function_names.get(call) for call in calls), calls
-    policy_calls = {
-        catalog.functions[oid].name
-        for call in calls
-        for oid in catalog.function_names[call]
-    }
-    assert set(VOLATILE_GATES) == {REFUSAL_HELPER} | policy_calls
+    functions = [
+        catalog.functions[oid] for call in calls for oid in catalog.function_names[call]
+    ]
+    assert len(functions) == len({f.name for f in functions}), "overloaded policy gate"
+    assert {f.name for f in functions} | {REFUSAL_HELPER} == (
+        VOLATILE_GATES.keys() | PENDING_SELECT_GATES.keys()
+    )
+    assert {
+        f.name for f in functions if f.volatility == "s"
+    } == PENDING_SELECT_GATES.keys()
+    assert {f.name for f in functions if f.volatility == "v"} | {
+        REFUSAL_HELPER
+    } == VOLATILE_GATES.keys()
+    for signature, digest in PENDING_SELECT_GATES.values():
+        assert function_digest(signature) == digest
     assert catalog.admitted == set(VOLATILE_GATES)
 
 

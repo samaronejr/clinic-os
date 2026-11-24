@@ -452,6 +452,20 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | INSURANCE_ACTOR_PROTOCOL_ORACLES
         | ANALYTICS_ACTOR_PROTOCOL_ORACLES
         | ENTERPRISE_ACTOR_PROTOCOL_ORACLES
+        | {
+            "clinic_app.ai_guide_consent(uuid,uuid,uuid,uuid,text)": (
+                "ai.test_inactive_pending_readers."
+                "test_finance_guide_and_pending_output_refuse_the_inactive_sql_actor",
+            ),
+            "clinic_app.ai_pending_visible(text,uuid)": (
+                "ai.test_inactive_pending_readers."
+                "test_finance_guide_and_pending_output_refuse_the_inactive_sql_actor",
+            ),
+            "clinic_app.ai_pending_refusal(uuid,uuid,text,uuid,uuid,uuid,text,text)": (
+                "ai.test_inactive_pending_readers."
+                "test_content_free_withdrawal_notice_refuses_the_inactive_sql_actor",
+            ),
+        }
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
