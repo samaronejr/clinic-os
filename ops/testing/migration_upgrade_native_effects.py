@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING
 from ops.testing.migration_upgrade_core_fixture import (
     CLINIC_NAME,
     ORGANIZATION_CNPJ,
+    OWNER_USERNAME,
     PATIENT_BIRTH_DATE,
     PATIENT_NAME,
+    PRACTITIONER_USERNAME,
 )
 from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
@@ -37,7 +39,7 @@ _QUOTAS = {
 
 
 def _subscriptions(
-    cursor: Cursor[tuple[object, ...]], required: Collection[str]
+    cursor: Cursor[tuple[object, ...]], required: Collection[str], tenant: str
 ) -> list[str]:
     failures = []
     cursor.execute(
@@ -65,14 +67,7 @@ def _subscriptions(
         JOIN clinic_app.subscriptions_plan p ON p.id=s.plan_id"""
     )
     rows = cursor.fetchall()
-    if len(rows) != 1 or rows[0][:6] != (
-        "intelligence_usage",
-        "trial",
-        1,
-        None,
-        None,
-        True,
-    ):
+    if rows != [("intelligence_usage", "trial", 1, None, None, True, tenant)]:
         failures.append("native fixture: subscriptions_subscription")
     cursor.execute(
         """SELECT e.action,e.plan_code,e.from_state,e.to_state,e.revision,
@@ -86,20 +81,24 @@ def _subscriptions(
     ]:
         failures.append("native fixture: subscriptions_subscriptionevent")
     cursor.execute(
-        """SELECT m.role,u.username,s.organization_id=m.organization_id
-           AND s.organization_id=sub.organization_id AND s.created_at>=sub.created_at
+        """SELECT m.role,
+           CASE WHEN m.role='clinic_admin'
+                AND u.username='upgrade-inbox-' || left(u.id::text,8)
+                THEN 'upgrade-inbox' ELSE u.username END,
+           s.organization_id=m.organization_id AND s.organization_id=sub.organization_id
+               AND s.created_at>=sub.created_at
         FROM clinic_app.subscriptions_seat s
         JOIN clinic_app.subscriptions_subscription sub ON sub.id=s.subscription_id
         JOIN clinic_app.identity_userclinicrole m ON m.id=s.membership_id
         JOIN clinic_app.identity_user u ON u.id=m.user_id"""
     )
-    seats = cursor.fetchall()
-    expected_roles = ["owner", "physician"]
+    expected_seats = [
+        ("owner", OWNER_USERNAME, True),
+        ("physician", PRACTITIONER_USERNAME, True),
+    ]
     if "inbox" in required:
-        expected_roles.append("clinic_admin")
-    if sorted(str(row[0]) for row in seats) != sorted(expected_roles) or not all(
-        row[2] is True for row in seats
-    ):
+        expected_seats.append(("clinic_admin", "upgrade-inbox", True))
+    if Counter(cursor.fetchall()) != Counter(expected_seats):
         failures.append("native fixture: subscriptions_seat")
     return failures
 
@@ -165,7 +164,7 @@ def verify_native_effects(
             return ["native fixture: tenant and clinic identity"]
         tenant, clinic, _ = map(str, keys[0])
         failures = _enrollment(cursor, tenant, clinic)
-        failures.extend(_subscriptions(cursor, required))
+        failures.extend(_subscriptions(cursor, required, tenant))
         cursor.execute(
             """SELECT e.event_type,e.component_id,e.component_ip,
                       e.payload->>'reason_code',e.payload->>'clinic_id'

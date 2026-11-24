@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter
 from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from uuid import UUID
@@ -49,6 +51,7 @@ def _check_projection(
     cursor: Cursor[tuple[object, ...]],
     cases: dict[str, dict[str, str]],
     accounts: dict[str, str],
+    manager: str,
 ) -> list[str]:
     cursor.execute("SELECT current_setting('app.current_tenant')")
     tenant_row = cursor.fetchone()
@@ -69,12 +72,26 @@ def _check_projection(
             failures.append(f"inbox fixture: {case} provider state")
         for label, row in attempts.items():
             cursor.execute(
-                """SELECT status,provider_reference,attempt_sequence,send_permit,
-                          CASE WHEN send_permit_claim IS NOT NULL
-                               THEN '\\x' || encode(send_permit_claim,'hex') END,
-                          max_attempts IS NOT DISTINCT FROM 5::smallint
-                   FROM clinic_app.comms_integrationoperation WHERE id=%s""",
-                [row["id"]],
+                """SELECT o.status,o.provider_reference,o.attempt_sequence,
+                          o.send_permit,
+                          CASE WHEN o.send_permit_claim IS NOT NULL
+                               THEN '\\x' || encode(o.send_permit_claim,'hex') END,
+                          o.max_attempts IS NOT DISTINCT FROM 5::smallint
+                            AND o.kind IS NOT DISTINCT FROM 'communication'
+                            AND o.payload_digest IS NOT DISTINCT FROM ''
+                            AND o.provider IS NOT DISTINCT FROM %s
+                            AND o.actor_id::text IS NOT DISTINCT FROM %s
+                            AND (o.organization_id,o.clinic_id,o.channel) =
+                                (c.organization_id,c.clinic_id,c.channel)
+                   FROM clinic_app.comms_integrationoperation o
+                   JOIN clinic_app.comms_conversation c ON c.id=%s
+                   WHERE o.id=%s""",
+                [
+                    f"inbox-{keys['channel']}-v1",
+                    manager,
+                    keys["conversation"],
+                    row["id"],
+                ],
             )
             expected = tuple(
                 row[column]
@@ -106,8 +123,21 @@ def _check_projection(
              AND e.organization_id=%s""",
         [tenant],
     )
-    if set(cursor.fetchall()) != expected_receipts:
+    if Counter(cursor.fetchall()) != Counter(expected_receipts):
         failures.append("inbox fixture: WhatsApp receipt attribution")
+    cursor.execute(
+        """SELECT count(*)
+           FROM clinic_app.comms_inboundevent e
+           JOIN clinic_app.comms_provideraccount p ON p.id=e.provider_account_id
+           WHERE e.organization_id=%s
+             AND (e.kind='message' OR p.channel IN ('email','sms'))
+             AND (e.operation_id IS NOT NULL OR e.delivery_state IS DISTINCT FROM ''
+                  OR (e.kind='status' AND e.event_id !~
+                    '^upgrade-status-[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$'))""",
+        [tenant],
+    )
+    if cursor.fetchone() != (0,):
+        failures.append("inbox fixture: unattributed receipt values")
     return failures
 
 
@@ -188,7 +218,7 @@ def _effects(
         (cases[case]["message"], "provider", "utility", True, "regular", True)
         for case in PROVIDER_METER_CASES & cases.keys()
     )
-    if set(cursor.fetchall()) != expected_meters:
+    if Counter(cursor.fetchall()) != Counter(expected_meters):
         failures.append("inbox fixture: declared expected and provider meter facts")
     cursor.execute(
         """SELECT u.source_ref::text,u.meter,u.quantity,u.occurred_at=m.created_at
@@ -197,11 +227,11 @@ def _effects(
           ON m.id=u.source_ref AND m.organization_id=u.organization_id
         WHERE u.meter='messages'"""
     )
-    if set(cursor.fetchall()) != {
+    if Counter(cursor.fetchall()) != Counter(
         (keys["message"], "messages", 1, True)
         for case, keys in cases.items()
         if case in METERED_DELIVERY_CASES
-    }:
+    ):
         failures.append("inbox fixture: declared outbound usage sources")
     cursor.execute(
         """WITH expected AS (
@@ -258,9 +288,10 @@ def _inbox_rows(
                 AND mi.provider_state IS NOT DISTINCT FROM ''
                 AND mi.template_parameters IS NULL
                 AND mo.template_id IS NULL AND mo.template_parameters IS NULL,
-            c.state,
+            c.state,c.revision,
             c.enrollment_id IS NULL AND c.assignee_id IS NULL
-                AND c.contact_label IS NULL AND c.needs_clinician IS FALSE,
+                AND c.contact_label IS NULL AND c.needs_clinician IS FALSE
+                AND c.triage_category IS NOT DISTINCT FROM 'unclassified',
             c.created_at <= mi.created_at AND c.last_inbound_at = mi.created_at
                 AND c.updated_at >= mo.created_at,
             EXISTS (
@@ -311,10 +342,32 @@ def verify_inbox_fixture(
                 ["inbox fixture: organization natural key"], {}, {}, ""
             )
         cursor.execute(
-            "SELECT channel,id FROM clinic_app.comms_provideraccount "
-            "WHERE organization_id=current_setting('app.current_tenant')::uuid"
+            """SELECT a.channel,a.id,a.signing_key_digest,
+                      a.active IS TRUE AND a.verify_token_digest IS NOT DISTINCT FROM ''
+                        AND p.active IS TRUE AND p.grant_set_version = 1
+                        AND p.name ~
+                            '^inbox-[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$'
+                        AND p.db_identity ~
+                            '^clinic_agent_msg_[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$'
+            FROM clinic_app.comms_provideraccount a
+            JOIN clinic_app.identity_serviceprincipal p ON p.id=a.principal_id
+            WHERE a.organization_id=current_setting('app.current_tenant')::uuid"""
         )
-        accounts = {str(channel): str(key) for channel, key in cursor.fetchall()}
+        accounts = {}
+        for channel, account, digest, defaults in cursor.fetchall():
+            if not isinstance(account, UUID) or account.version != _UUID_VERSION:
+                failures.append("inbox fixture: provider account identity")
+                continue
+            accounts[str(channel)] = str(account)
+            secret = Path(os.environ["CLINIC_SECRET_DIR"]) / (
+                f"comms-inbox-{account.hex}.secret"
+            )
+            if (
+                defaults is not True
+                or not secret.is_file()
+                or digest != sha256(secret.read_bytes()).hexdigest()
+            ):
+                failures.append(f"inbox fixture: {channel} provider account values")
         cursor.execute(
             "SELECT id FROM clinic_app.identity_user "
             "WHERE username ~ '^upgrade-inbox-[0-9a-f]{8}$' "
@@ -347,6 +400,7 @@ def verify_inbox_fixture(
                 sender,
                 message_defaults,
                 state,
+                revision,
                 conversation_defaults,
                 conversation_chronology,
                 inbound_receipt,
@@ -357,7 +411,8 @@ def verify_inbox_fixture(
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
-            expected_state = "closed" if ("close",) in CASE_STEPS[case][1] else "open"
+            closes = CASE_STEPS[case][1].count(("close",))
+            expected_state = "closed" if closes else "open"
             plaintext_key = (
                 str(channel).encode() + b"\0" + contact_address(str(channel), ordinal)
             )
@@ -388,7 +443,10 @@ def verify_inbox_fixture(
                     ),
                     ("contact fingerprint", expected_fingerprint == (fingerprint,)),
                     ("purpose", purpose == "transactional"),
-                    ("conversation state", state == expected_state),
+                    (
+                        "conversation state and revision",
+                        (state, revision) == (expected_state, 3 + closes),
+                    ),
                     ("conversation defaults", conversation_defaults is True),
                     ("conversation chronology", conversation_chronology is True),
                     ("inbound receipt target and timing", inbound_receipt is True),
@@ -433,14 +491,19 @@ def verify_inbox_fixture(
             "(SELECT count(*) FROM clinic_app.comms_integrationoperation "
             " WHERE subject_type='comms.message')"
         )
-        if seen != declared.keys() or cursor.fetchone() != (
-            len(CASES),
-            2 * len(CASES),
-            len(ACCOUNTS),
-            sum(attempts for _, _, attempts in CASES),
+        if (
+            seen != declared.keys()
+            or accounts.keys() != ACCOUNTS.keys()
+            or cursor.fetchone()
+            != (
+                len(CASES),
+                2 * len(CASES),
+                len(ACCOUNTS),
+                sum(attempts for _, _, attempts in CASES),
+            )
         ):
             failures.append("inbox fixture: exact natural keys and row counts")
         failures.extend(_effects(cursor, cases))
         if not failures:
-            failures.extend(_check_projection(cursor, cases, accounts))
+            failures.extend(_check_projection(cursor, cases, accounts, manager))
     return InboxFixtureResult(failures, cases, accounts, manager)
