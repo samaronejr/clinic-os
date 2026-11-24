@@ -114,9 +114,52 @@ def test_agent_definer_execute_surface_is_exact() -> None:
             # Task 80: validate_current re-checks the run's rollout stage on the
             # agent connection (apps/ai/action_validation.py).
             ("ai_rollout_agent_allowed", "subject uuid"),
+            # run_agent reads both proposal and run as its registered machine
+            # login. Their FORCE-RLS SELECT plans require this predicate.
+            ("ai_pending_visible", "relation_name text, requested uuid"),
             ("principal_has", "perm text, clinic uuid"),
             ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
         }
+
+
+def test_pending_function_execute_is_limited_to_its_callers() -> None:
+    # The resolver owns every routine. Its internal helpers have no external
+    # caller; neither an omitted ACL (default PUBLIC) nor a grant option is OK.
+    external = {
+        "ai_pending_visible": ["clinic_agent", "clinic_app"],
+        "ai_pending_choice": [],
+        "ai_pending_subject": [],
+        "ai_pending_refusal": ["clinic_app"],
+        "ai_archive_current": ["clinic_app"],
+        "interop_finalize_export": ["clinic_app"],
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.proname, p.proowner::regrole::text, p.prosecdef, p.proconfig,
+                   ARRAY(SELECT coalesce(r.rolname, 'PUBLIC')::text
+                         FROM aclexplode(
+                           coalesce(p.proacl, acldefault('f',p.proowner))) a
+                         LEFT JOIN pg_roles r ON r.oid=a.grantee
+                         WHERE a.privilege_type='EXECUTE' AND a.grantee<>p.proowner
+                         ORDER BY 1),
+                   EXISTS(SELECT FROM aclexplode(p.proacl) a WHERE a.is_grantable)
+            FROM pg_proc p WHERE p.pronamespace='clinic_app'::regnamespace
+              AND p.proname=ANY(%s)
+            """,
+            [list(external)],
+        )
+        rows = cursor.fetchall()
+    assert len(rows) == len(external)
+    assert {r[0] for r in rows} == set(external)
+    for name, owner, definer, path, grantees, grant_option in rows:
+        assert (owner, definer, path, grant_option) == (
+            "clinic_resolver",
+            True,
+            ["search_path=pg_catalog, clinic_app, pg_temp"],
+            False,
+        )
+        assert grantees == external[name]
 
 
 @pytest.mark.parametrize(

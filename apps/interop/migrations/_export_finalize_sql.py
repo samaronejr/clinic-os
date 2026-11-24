@@ -147,7 +147,8 @@ BEGIN
  WHERE id=job.id AND state='building';
  IF NOT FOUND THEN __DENY__ END IF;
 END $f$;
-REVOKE ALL ON FUNCTION __SIGNATURE__ FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION __SIGNATURE__
+ FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 GRANT EXECUTE ON FUNCTION __SIGNATURE__ TO clinic_app;
 """.replace("__SIGNATURE__", _SIGNATURE)
     .replace("__DENY__", _DENY)

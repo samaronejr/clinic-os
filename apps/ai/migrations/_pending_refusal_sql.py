@@ -43,9 +43,9 @@ BEGIN
    OR SQLSTATE 'TEN02' OR SQLSTATE 'TEN03' THEN RETURN false;
  END;
 END $f$;
-REVOKE ALL ON FUNCTION clinic_app.ai_pending_refusal(
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_pending_refusal(
  uuid,uuid,text,uuid,uuid,uuid,text,text)
- FROM PUBLIC;
+ FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 GRANT EXECUTE ON FUNCTION clinic_app.ai_pending_refusal(
  uuid,uuid,text,uuid,uuid,uuid,text,text)
  TO clinic_app;

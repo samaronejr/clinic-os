@@ -11,7 +11,7 @@ from apps.interop.migrations._interop_sql import SQL as INTEROP
 
 _NAMES = ",".join(f"'{name}'" for name in RELATIONS)
 _PRIVATE = """
-REVOKE ALL ON FUNCTION clinic_app.ai_pending_choice(text,uuid),
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_pending_choice(text,uuid),
  clinic_app.ai_pending_subject(uuid,uuid,uuid,uuid,uuid,timestamptz,boolean,text)
  FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 """
@@ -67,7 +67,10 @@ $body$;
   requested uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
   SET search_path=pg_catalog,clinic_app,pg_temp AS %L',body);
 END $install$;
-REVOKE ALL ON FUNCTION clinic_app.ai_pending_visible(text,uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_pending_visible(text,uuid)
+ FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
+-- run_agent reads ActionProposal and AgentRun on the authenticated agent
+-- connection. Their restrictive SELECT policies call this scalar decision.
 GRANT EXECUTE ON FUNCTION clinic_app.ai_pending_visible(text,uuid)
  TO clinic_app,clinic_agent;
 """.replace("__NAMES__", _NAMES)
@@ -143,7 +146,8 @@ BEGIN
  END LOOP;
  RETURN true;
 END $f$;
-REVOKE ALL ON FUNCTION clinic_app.ai_archive_current(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_archive_current(uuid)
+ FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 GRANT EXECUTE ON FUNCTION clinic_app.ai_archive_current(uuid) TO clinic_app;
 """
 _PRIOR_GUARD = _function(INTEROP, "interop_partner_guard")
