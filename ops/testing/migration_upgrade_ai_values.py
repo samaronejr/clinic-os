@@ -33,6 +33,8 @@ from ops.testing.migration_upgrade_core_fixture import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from psycopg import Cursor
 
 _UUID_VERSION = 4
@@ -440,7 +442,20 @@ def _core(cursor: Cursor[tuple[object, ...]], graph: DeclaredGraph) -> dict[UUID
     }
 
 
-def verify_ai_literal_values() -> list[str]:
+def _resolve_probe(value: object, keys: Mapping[str, str]) -> object:
+    if isinstance(value, str):
+        return keys[value]
+    if isinstance(value, list):
+        return [_resolve_probe(item, keys) for item in value]
+    if isinstance(value, dict):
+        return {key: _resolve_probe(item, keys) for key, item in value.items()}
+    message = "unexpected AI probe declaration"
+    raise RuntimeError(message)
+
+
+def verify_ai_literal_values(
+    *, probe_keys: dict[str, object] | None = None
+) -> list[str]:
     """Validate defined fields using one-to-one matching, without captured values."""
     graph = compile_ai_graph()
     symbols = {text: value for value in graph.uuids for text in (str(value), value.hex)}
@@ -483,4 +498,10 @@ def verify_ai_literal_values() -> list[str]:
             choices.extend((table, row) for row in candidates)
     if not failures and not _connect(choices, core):
         failures.append("AI literal fixture: generated foreign-key graph mismatch")
+    if not failures and probe_keys is not None:
+        bindings = {str(symbol): str(value) for symbol, value in core.items()}
+        probe_keys.update(
+            (name, _resolve_probe(value, bindings))
+            for name, value in graph.probe_keys.items()
+        )
     return failures

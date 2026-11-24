@@ -38,7 +38,6 @@ from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
 from ops.testing.migration_upgrade_inbox_fixture_verify import verify_inbox_fixture
-from ops.testing.migration_upgrade_rows import verify_rows
 from ops.testing.migration_upgrade_seed_state import (
     database_identity,
     require_completed_seed,
@@ -55,16 +54,16 @@ def check(condition: bool, name: str) -> None:
 
 seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
 required_seeds = require_completed_seed(seed_contents)
-failures.extend(verify_rows())
+markers = json.loads(seed_contents)
 failures.extend(verify_core_fixture())
+ai_keys: dict[str, object] = {}
 if "ai" in required_seeds:
     failures.extend(verify_ai_counts(with_inbox="inbox" in required_seeds))
     failures.extend(verify_invocation_fixture())
-    failures.extend(verify_ai_literal_values())
+    failures.extend(verify_ai_literal_values(probe_keys=ai_keys))
 if "inbox" in required_seeds:
     inbox_fixture = verify_inbox_fixture()
     failures.extend(inbox_fixture.failures)
-markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
 appointment_id = UUID(markers["appointment_id"])
@@ -200,7 +199,9 @@ else:
         "audit chain lost rows after upgrade",
     )
 
-failures.extend(verify_ai(markers, required="ai" in required_seeds))
+if ai_keys:
+    markers["ai"] = ai_keys
+    failures.extend(verify_ai(markers, required=True))
 if "inbox" in required_seeds and not inbox_fixture.failures:
     inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
     markers["inbox"] = {

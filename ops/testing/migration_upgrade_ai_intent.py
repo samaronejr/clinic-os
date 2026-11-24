@@ -41,6 +41,7 @@ class DeclaredGraph:
     uuids: set[UUID]
     anchors: list[datetime]
     core_keys: dict[str, UUID]
+    probe_keys: dict[str, object]
 
 
 class _Intents:
@@ -95,7 +96,7 @@ def compile_ai_graph() -> DeclaredGraph:
     """Return the defined values and relationships of all direct AI writes."""
     backend = _Intents()
     appointment = backend.uuid()
-    declare_ai_rows(
+    handles = declare_ai_rows(
         backend,
         {
             "owner_id": str(backend.owner),
@@ -118,6 +119,7 @@ def compile_ai_graph() -> DeclaredGraph:
             "appointment": appointment,
             "enrollment": backend.enrollment,
         },
+        handles,
     )
 
 

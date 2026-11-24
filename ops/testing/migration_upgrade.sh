@@ -87,7 +87,6 @@ chmod 600 "$secret_dir/tenant-kek.secret"
 readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
 export UPGRADE_BASE_SHA="$base_sha"
 export UPGRADE_BASE_OBSERVATION="$secret_dir/base.json"
-export UPGRADE_SEED_ROWS="$secret_dir/rows.json"
 export UPGRADE_SEED_COUNTS="$secret_dir/base-counts.json"
 export UPGRADE_SEED_WRITES="$secret_dir/seed-writes.json"
 export UPGRADE_ROWS_HELPER="$project_root/ops/testing/migration_upgrade_rows.py"
@@ -143,7 +142,7 @@ else
     create_and_migrate_base
     seed_base
 fi
-base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["capture_rows"]()'
+base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["verify_seed_inventory"]()'
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
 # Bases that already ship tenancy.0003 install the boundary during the

@@ -416,9 +416,8 @@ def capture_base_counts() -> None:
         json.dump(counts, stream, sort_keys=True)
 
 
-def capture_rows() -> None:
-    """Keep the freshly seeded rows outside the published evidence directory."""
-    rows, applied = snapshot()
+def verify_seed_inventory() -> None:
+    """Compare independent table inventories without capturing seeded values."""
     before = json.loads(
         Path(os.environ["UPGRADE_SEED_COUNTS"]).read_text(encoding="utf-8")
     )
@@ -429,13 +428,12 @@ def capture_rows() -> None:
         cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         cursor.execute("SET LOCAL row_security=off")
         after = catalog_counts(cursor)
+        populated = set(read_rows(cursor))
     written = {table for table, count in after.items() if count != before.get(table)}
-    if failure := fixture_coverage_failure(written, set(rows)):
+    if failure := fixture_coverage_failure(written, populated):
         raise RuntimeError(failure)
     with Path(os.environ["UPGRADE_SEED_WRITES"]).open("x", encoding="utf-8") as stream:
         json.dump(sorted(written), stream)
-    with Path(os.environ["UPGRADE_SEED_ROWS"]).open("x", encoding="utf-8") as stream:
-        json.dump({"rows": rows, "applied": sorted(applied)}, stream, sort_keys=True)
 
 
 def differences(expected: Tables, actual: Tables) -> list[str]:
@@ -463,31 +461,3 @@ def differences(expected: Tables, actual: Tables) -> list[str]:
                 )
             )
     return failures
-
-
-def verify_rows() -> list[str]:
-    """Compare live rows before any forward behavioral probe can touch them."""
-    saved = json.loads(
-        Path(os.environ["UPGRADE_SEED_ROWS"]).read_text(encoding="utf-8")
-    )
-    actual, applied = snapshot()
-    plan = applied - {tuple(x) for x in saved["applied"]}
-    expected = expected_rows(saved["rows"], plan)
-    # Fresh migration-generated rows in newly created tables were not
-    # base fixture writes. Already-seeded rows are never excluded.
-    generated = {
-        ("subscriptions", "0001_initial"): (
-            "subscriptions_plan",
-            "subscriptions_entitlement",
-            "subscriptions_subscription",
-            "subscriptions_subscriptionevent",
-            "subscriptions_seat",
-        ),
-        ("intake", "0016_duplicate_detection"): ("intake_patientduplicateindex",),
-    }
-    for migration, tables in generated.items():
-        if migration in plan:
-            for table in tables:
-                if table not in expected:
-                    actual.pop(table, None)
-    return differences(expected, actual)
