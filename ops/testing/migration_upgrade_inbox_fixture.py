@@ -122,6 +122,7 @@ CASE_STEPS: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
         ),
     ),
     # Round 8: the base left a send in flight (ambiguous provider answer).
+    "r10_rewrite": ("whatsapp", (("send",), ("dispatch", "a"))),
     "r8_legacy_inflight": ("whatsapp", (("send",), ("fault", "a", "unknown"))),
     # Round 7: a single queued attempt the candidate's worker sends.
     **dict.fromkeys(("r7_inflight", "r7_rejected"), ("whatsapp", (("send",),))),
