@@ -489,6 +489,7 @@ POSTURE_OVERRIDES: Final = {
     "billing_revision_snapshot": ("v", False, ["clinic_resolver"]),
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
+    "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
     "configuration_guard": ("v", False, ["clinic_resolver"]),
@@ -817,6 +818,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_claim_send_permit", "requested uuid"),
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
@@ -1258,6 +1260,7 @@ FUNCTION_RESULTS: Final = {
         "TABLE(status text, operation_count bigint, "
         "oldest_created_at timestamp with time zone)"
     ),
+    ("comms_claim_send_permit", "requested uuid"): "boolean",
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
         "void"
     ),

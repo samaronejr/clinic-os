@@ -24,10 +24,12 @@ from apps.comms.inbox_services import (
     InboxAccessDeniedError,
     _actor,
     _conversation,
+    awaiting_outcome,
     message_states,
 )
 from apps.comms.models import (
     Conversation,
+    InboundEvent,
     IntegrationOperation,
     InternalNote,
     Message,
@@ -93,6 +95,8 @@ class MessageRow:
     # Only for ``reconciliation``: the provider-accepted attempts staff choose
     # from; empty means the only decision is that none was accepted.
     attempts: tuple[IntegrationOperation, ...] = ()
+    # Only for ``awaiting``: accepted attempts still without a provider outcome.
+    awaiting: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +246,18 @@ def conversation_view(
     )
     states = message_states(messages)
     held = [m.pk for m in messages if states.get(m.pk) == "reconciliation"]
+    waiting = [m.pk for m in messages if states.get(m.pk) == "awaiting"]
+    open_attempts: dict[UUID, list[IntegrationOperation]] = {}
+    for attempt in IntegrationOperation.objects.filter(
+        subject_type=SUBJECT_TYPE, subject_id__in=waiting
+    ):
+        open_attempts.setdefault(attempt.subject_id, []).append(attempt)
+    failed = set(
+        InboundEvent.objects.filter(
+            operation_id__in=[a.pk for ops in open_attempts.values() for a in ops],
+            delivery_state="failed",
+        ).values_list("operation_id", flat=True)
+    )
     accepted: dict[UUID, list[tuple[bool, IntegrationOperation]]] = {}
     for attempt in (
         IntegrationOperation.objects.filter(
@@ -275,6 +291,7 @@ def conversation_view(
             state=states.get(m.pk, ""),
             template_name=m.template.name if m.template else "",
             attempts=tuple(choices.get(m.pk, ())),
+            awaiting=awaiting_outcome(open_attempts.get(m.pk, []), failed),
         )
         for m in messages
     )

@@ -11589,3 +11589,6 @@ msgstr "Registrar tentativa atual"
 
 msgid "Current attempt recorded. Nothing was sent."
 msgstr "Tentativa atual registrada. Nada foi enviado."
+
+msgid "Awaiting provider outcome for %(attempts)s attempts"
+msgstr "Aguardando o resultado do provedor para %(attempts)s tentativas"

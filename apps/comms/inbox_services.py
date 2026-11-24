@@ -763,6 +763,7 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
     ).order_by("attempt_sequence"):
         attempts.setdefault(attempt.subject_id, []).append(attempt)
     reported: dict[UUID, str] = {}
+    failed: set[UUID] = set()
     for key, progress in (
         InboundEvent.objects.filter(
             operation_id__in=[op.pk for ops in attempts.values() for op in ops]
@@ -773,6 +774,8 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         reported[key] = advance_provider_state(
             current=reported.get(key, ""), incoming=progress
         )
+        if progress == "failed":
+            failed.add(key)
     states: dict[UUID, str] = {}
     for message_id, message in outbound.items():
         own = attempts.get(message_id, [])
@@ -810,7 +813,25 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
                 if a.send_permit == "held"
             ]
             states[message_id] = held[0] if held else "failed"
+        if states[message_id] == "failed" and awaiting_outcome(own, failed):
+            states[message_id] = "awaiting"
     return states
+
+
+def awaiting_outcome(attempts: list[IntegrationOperation], failed: set[UUID]) -> int:
+    """Count accepted attempts that still lack their own provider outcome.
+
+    Only a bound failed receipt (or a permit the database released on such
+    evidence) closes an accepted attempt; while any stays open the message
+    admits no further send, and staff see this count instead of a retry.
+    """
+    return sum(
+        1
+        for attempt in attempts
+        if attempt.provider_reference
+        and attempt.send_permit != "released"
+        and attempt.pk not in failed
+    )
 
 
 def create_template_version(  # noqa: PLR0913 - one field per stored template term

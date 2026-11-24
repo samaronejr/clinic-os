@@ -235,25 +235,26 @@ are refused. Only
 `reconcile_message_attempts(*, clinic_id, message_id, current_operation_id)`
 by a staff member who may handle the thread releases it
 (`comms_reconcile_attempts`, audited as `comms.message.reconciled`). That
-decision never writes an attempt sequence. Under the message lock it cancels
-every queued attempt and every claim that never held a permit (provably unsent,
-including one a dead worker left behind), names an attempt that holds a
-provider reference, or `None` ("none accepted") when none does, and releases
-every other attempt. Naming a refuted attempt is refused while another
-accepted attempt is unrefuted.
+decision never writes an attempt sequence or a provider outcome. Under the
+message lock it cancels every queued attempt and every claim that never held a
+permit (provably unsent, including one a dead worker left behind), and records
+only which accepted attempt is current: that one keeps the permit and every
+other accepted attempt without its own failure stays `open`. "None accepted"
+is allowed only when no attempt holds a reference; naming a refuted attempt is
+refused while another accepted attempt is unrefuted.
 
-Every send first takes the message's single send permit (comms 0015,
-`send_permit = 'held'`), claimed by the worker's final recheck under the
-subject and boundary session locks and committed before the provider call;
-`comms_operation_send_permit_uniq` admits one held permit per message, so a
-second send cannot start while an accepted or unresolved attempt is open. A
-permit is released only by its holder's own recorded outcome. Open or refuted
-comes only from an attempt's own record (`comms_attempt_refuted`): terminal
-failure or cancellation, a bound failed receipt, a released permit, or a
-failure projected onto the message for the `command_id` original only. A
-legacy original that the base retried is released by 0015 for every channel,
-because the base admitted that retry only after showing it failed. A successor
-is admitted only while every attempt is closed by its own outcome. Clocks and UUIDs
+Every send first takes the message's single send permit, claimed by the
+worker's final recheck through `comms_claim_send_permit` under the subject and
+boundary session locks and committed before the provider call;
+`comms_operation_send_permit_uniq` admits one held permit per message. The
+runtime role cannot write `send_permit`, rewrite an accepted attempt's
+reference, or cancel a claimed send. An accepted attempt is closed only by a
+bound failed status receipt, which the receipt guard admits only with the
+inbound proof of the provider secret; an operation status never closes it.
+While any accepted attempt lacks that outcome the message admits no further
+attempt and shows `awaiting` ("awaiting provider outcome for N attempts").
+Legacy originals whose failure the base recorded are released by comms
+0015/0016 on every channel. Clocks and UUIDs
 never order attempts.
 
 ### Contact tokens

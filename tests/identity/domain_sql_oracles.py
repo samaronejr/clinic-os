@@ -521,6 +521,9 @@ PROTOCOL_ORACLES = {
     **{name: list(DELEGATE_CASES) for name in DELEGATE_PROTOCOLS},
     **{name: sorted(DATA_REQUEST_CASES) for name in DATA_REQUEST_PROTOCOLS},
     **PORTAL_PROTOCOLS,
+    "clinic_app.comms_claim_send_permit": [
+        "test_send_permit_is_claimed_only_through_its_resolver"
+    ],
     "clinic_app.comms_reconcile_attempts": [
         "test_attempt_reconciliation_refuses_outsiders_and_ordered_messages"
     ],

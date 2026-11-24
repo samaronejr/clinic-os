@@ -464,7 +464,6 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),
         ("comms_integrationoperation", "provider_reference"),
-        ("comms_integrationoperation", "send_permit"),
         ("comms_integrationoperation", "status"),
         ("comms_integrationoperation", "updated_at"),
         ("comms_conversation", "assignee_id"),

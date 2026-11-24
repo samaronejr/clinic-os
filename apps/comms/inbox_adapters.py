@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 from django.conf import settings
-from django.db import IntegrityError, connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 from apps.comms.adapters import (
@@ -268,39 +268,15 @@ def _claim_send_permit(operation: IntegrationOperation) -> bool:
     """Take the message's single send permit for ``operation``, or refuse.
 
     Runs last in the recheck, which the worker repeats under the subject and
-    boundary session locks and commits before the provider call. A holder is
-    released only when its own record refutes it; any other holder refuses
-    the send, and ``comms_operation_send_permit_uniq`` refuses a concurrent
-    claim. A released attempt never holds the permit again.
+    boundary session locks and commits before the provider call. Only
+    ``comms_claim_send_permit`` writes the permit: it releases a holder only on
+    that holder's own provider evidence and refuses while any other attempt is
+    open, in flight or accepted without an outcome.
     """
-    scope: list[str | UUID] = [SUBJECT_TYPE, operation.subject_id, operation.pk]
-    try:
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                "UPDATE clinic_app.comms_integrationoperation AS o"
-                " SET send_permit = 'released'"
-                " WHERE o.subject_type = %s AND o.subject_id = %s AND o.id <> %s"
-                " AND o.send_permit = 'held'"
-                " AND clinic_app.comms_attempt_refuted(o)",
-                scope,
-            )
-            cursor.execute(
-                "UPDATE clinic_app.comms_integrationoperation SET send_permit = 'held'"
-                " WHERE id = %s AND send_permit IS NULL AND NOT EXISTS ("
-                " SELECT 1 FROM clinic_app.comms_integrationoperation o"
-                " WHERE o.subject_type = %s AND o.subject_id = %s AND o.id <> %s"
-                " AND o.send_permit = 'held')",
-                [operation.pk, *scope],
-            )
-            cursor.execute(
-                "SELECT send_permit FROM clinic_app.comms_integrationoperation"
-                " WHERE id = %s",
-                [operation.pk],
-            )
-            row = cursor.fetchone()
-    except IntegrityError:
-        return False
-    return row is not None and row[0] == "held"
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk])
+        row = cursor.fetchone()
+    return bool(row and row[0])
 
 
 def message_lock_key(scope: OperationScope, subject_id: UUID) -> str | None:

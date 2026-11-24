@@ -14628,6 +14628,7 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
@@ -14649,10 +14650,12 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.comms_claim_send_permit",
           "clinic_app.comms_message_attempt_guard",
           "clinic_app.comms_reconcile_attempts"
         ],
@@ -14673,6 +14676,7 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
@@ -14691,6 +14695,28 @@
         "test_attempt_reconciliation_refuses_outsiders_and_ordered_messages"
       ],
       "reason": "Records the staff-confirmed current attempt of an unordered legacy inbox message. Requires the tenant GUC, the attempt in that tenant and an inbox staff role in its clinic; refuses an ordered message. Unknown, foreign and unauthorized calls share one denial."
+    },
+    "clinic_app.comms_claim_send_permit": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_permit_evidence_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_send_permit_is_claimed_only_through_its_resolver"
+      ],
+      "reason": "Claims a message's single send permit for the worker's final recheck in the current tenant; releases a holder only on its own provider evidence and refuses while another attempt is open."
     },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",

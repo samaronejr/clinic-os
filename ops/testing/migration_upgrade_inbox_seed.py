@@ -177,6 +177,21 @@ CASES: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
             ("status", "a", "failed", LATE),
         ),
     ),
+    # Round 6: the base itself left two accepted attempts (B and C) open.
+    **dict.fromkeys(
+        ("r6_two_open", "r6_raw_sql"),
+        (
+            "whatsapp",
+            (
+                *_A_FAILED,
+                ("retry",),
+                ("dispatch", "b"),
+                ("status", "a", "failed", LATE),
+                ("retry",),
+                ("dispatch", "c"),
+            ),
+        ),
+    ),
     # Round 4: B accepted under a skewed clock, a late failure for A makes the
     # base itself show failed and queue C.
     **dict.fromkeys(

@@ -21,6 +21,9 @@ from apps.comms.inbox_inbound import (
     verify_token_name,
 )
 from apps.comms.inbox_services import PROVIDER_BY_CHANNEL, InboxRefusedError, Reason
+from apps.comms.migrations._permit_evidence_sql import (
+    BACKFILL_SQL as PERMIT_EVIDENCE_BACKFILL,
+)
 from apps.comms.models import (
     Conversation,
     InboundEvent,
@@ -384,6 +387,42 @@ def _refusal(error: IntegrityError) -> str | None:
     return getattr(diag, "constraint_name", None)
 
 
+def test_send_permit_is_claimed_only_through_its_resolver(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    _dispatch_pending(graph, message_id)
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.send_permit == "held"
+
+    def claim(operation_id: UUID) -> bool:
+        with as_actor(graph, manager_of(graph)), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.comms_claim_send_permit(%s)", [operation_id]
+            )
+            return bool(cursor.fetchone()[0])
+
+    # The holder keeps its permit; an unknown attempt claims nothing.
+    assert claim(attempt.pk) is True
+    assert claim(uuid4()) is False
+    # The runtime role cannot release a permit or erase an acceptance itself.
+    with (
+        pytest.raises(DatabaseError, match="permission denied"),
+        as_actor(graph, manager_of(graph)),
+    ):
+        IntegrationOperation.objects.filter(pk=attempt.pk).update(
+            send_permit="released"
+        )
+    with (
+        pytest.raises(IntegrityError, match="needs provider evidence"),
+        as_actor(graph, manager_of(graph)),
+    ):
+        IntegrationOperation.objects.filter(pk=attempt.pk).update(
+            provider_reference=None
+        )
+
+
 def test_upgraded_failed_message_stays_retryable_after_its_successor_fails(
     world: InboxWorld,
 ) -> None:
@@ -393,8 +432,10 @@ def test_upgraded_failed_message_stays_retryable_after_its_successor_fails(
     _dispatch_pending(graph, message_id)
     # Before attempt attribution (comms 0012) the provider's failure of the
     # sole attempt was projected onto the message and named no attempt.
-    with owner_context(graph.organization_a):
+    with owner_context(graph.organization_a), connection.cursor() as cursor:
         Message.objects.filter(pk=message_id).update(provider_state="failed")
+        # Comms 0016 records that base evidence as the original's release.
+        cursor.execute(PERMIT_EVIDENCE_BACKFILL)
 
     def state() -> str:
         with as_actor(graph, manager_of(graph)):

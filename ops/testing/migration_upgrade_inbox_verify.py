@@ -47,7 +47,7 @@ from apps.core.integration import (
 )
 from apps.tenancy.db import tenant_context
 from django.conf import settings
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import override_settings
 from django.utils import timezone
 
@@ -584,6 +584,62 @@ def _crash(world: _World, ids: dict[str, str], failures: list[str]) -> None:
         failures.append("a duplicate send occurred after the crash")
 
 
+def _r6_two_open(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message = UUID(ids["message"])
+    _held(world, message, failures)
+    if world.offered(UUID(ids["conversation"]), message) != {ids["b"], ids["c"]}:
+        failures.append("the page does not offer both open accepted attempts")
+    if world.reconcile(message, UUID(ids["c"])) != "recorded":
+        failures.append("staff could not record C as current")
+    world.late_failure("whatsapp", UUID(ids["c"]))
+    if world.state(message) != "awaiting":
+        failures.append("the message does not show it awaits B's provider outcome")
+    if world.retry(message) != REFUSED:
+        failures.append("a retry was admitted while B has no provider outcome")
+    if world.direct(message) != "comms_message_attempt_open_check":
+        failures.append("a direct outbox write was admitted while B is open")
+    world.late_failure("whatsapp", UUID(ids["b"]))
+    _one_more_send(world, message, failures, before=3)
+
+
+def _raw(world: _World, sql: str, params: list[str], *, keep: bool) -> str:
+    """Run one statement as the runtime role; report its refusal, if any."""
+    try:
+        with world.owner(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL ROLE clinic_app")
+            cursor.execute(sql, params)
+            transaction.set_rollback(not keep)
+    except DatabaseError as refused:
+        diag = getattr(refused.__cause__, "diag", None)
+        return str(
+            getattr(diag, "constraint_name", None) or getattr(diag, "sqlstate", None)
+        )
+    return "ok"
+
+
+def _r6_raw_sql(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message, b = UUID(ids["message"]), ids["b"]
+    if world.reconcile(message, UUID(ids["c"])) != "recorded":
+        failures.append("staff could not record C as current")
+    world.late_failure("whatsapp", UUID(ids["c"]))
+    update = "UPDATE clinic_app.comms_integrationoperation SET {} WHERE id = %s"
+    if _raw(world, update.format("send_permit = 'released'"), [b], keep=False) != (
+        "42501"
+    ):
+        failures.append("the runtime role could release B's permit")
+    if _raw(world, update.format("provider_reference = NULL"), [b], keep=False) != (
+        "comms_message_attempt_outcome_check"
+    ):
+        failures.append("the runtime role could erase B's acceptance")
+    forged = "status = 'failed', last_error = 'provider_rejected'"
+    if _raw(world, update.format(forged), [b], keep=True) != "ok":
+        failures.append("the forged status write did not run")
+    if world.retry(message) != REFUSED or world.state(message) != "awaiting":
+        failures.append("a forged status unlocked a second send")
+    if world.direct(message) != "comms_message_attempt_open_check":
+        failures.append("a forged status admitted a direct outbox write")
+
+
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     **dict.fromkeys(PARITY, _parity),
     "skew": _accepted_retry,
@@ -600,6 +656,8 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "s_stuck": _stuck,
     "e_two_dispatch": _two_dispatch,
     "crash": _crash,
+    "r6_two_open": _r6_two_open,
+    "r6_raw_sql": _r6_raw_sql,
     "s_retry_failed": _projection_failed,
 }
 
