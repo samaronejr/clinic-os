@@ -31,7 +31,7 @@ set +a
 ```
 
 Keep each `CLINIC_*_PASSWORD` synchronized with the matching password component
-in `APP_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and
+in `APP_DATABASE_URL`, `MIGRATION_DATABASE_URL`, `LOCKS_DATABASE_URL`, and
 `TEST_SUPERUSER_DATABASE_URL`. Use shell-safe local values when sourcing the
 file. Compose reads `.env` itself, but Make and direct `uv` commands need the
 variables exported into the current shell as shown above.
@@ -52,10 +52,20 @@ development and pre-created test databases. `make migrate` intentionally
 substitutes `MIGRATION_DATABASE_URL` for the Django connection; never migrate
 with the `clinic_app` runtime role.
 
+`LOCKS_DATABASE_URL` is required by every settings module that runs the
+application: the outbox lock session that holds the comms send permit logs in
+as `clinic_lock`, a role `clinic_app` neither is nor may signal, so no runtime
+session can terminate or cancel a live claim. A missing or non-`clinic_lock`
+value fails startup with `LOCKS_DATABASE_URL must be set and log in as
+clinic_lock`; it never falls back to `APP_DATABASE_URL`. `db-bootstrap`
+creates the role and sets its password from `CLINIC_LOCK_PASSWORD`. The lock
+DSN must be a direct/session connection, never a transaction-pooling proxy.
+
 Start the web process as the runtime role:
 
 ```sh
-APP_DATABASE_URL="$APP_DATABASE_URL" uv run python manage.py runserver 127.0.0.1:8000
+APP_DATABASE_URL="$APP_DATABASE_URL" LOCKS_DATABASE_URL="$LOCKS_DATABASE_URL" \
+  uv run python manage.py runserver 127.0.0.1:8000
 ```
 
 From a second shell:

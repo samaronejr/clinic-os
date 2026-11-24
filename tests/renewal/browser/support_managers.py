@@ -12,7 +12,7 @@ from uuid import uuid4
 import psycopg
 from django.contrib.auth.hashers import make_password
 
-from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._fixture_secrets import lock_dsn, new_totp_key
 from renewal.browser._totp_devices import seed_totp_device
 
 
@@ -102,6 +102,7 @@ def set_ai_switches(
     environment = {
         **os.environ,
         "APP_DATABASE_URL": staff["dsn"],
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "CELERY_BROKER_URL": "memory://",

@@ -21,7 +21,7 @@ from ops.testing.process_helpers import run_process
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
-from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._fixture_secrets import lock_dsn, new_totp_key
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
@@ -238,6 +238,7 @@ def cds_fixture(
     with patch.context() as local:
         for name, value in {
             "APP_DATABASE_URL": dsn,
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
             "CELERY_BROKER_URL": "memory://",

@@ -409,13 +409,15 @@ def test_send_permit_is_claimed_only_through_its_resolver(world: InboxWorld) -> 
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
     assert attempt.send_permit == "held"
 
-    def claim(operation_id: UUID) -> str:
-        with as_actor(graph, manager_of(graph)), connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT clinic_app.comms_claim_send_permit(%s)", [operation_id]
-            )
-            return str(cursor.fetchone()[0])
+    claim_sql = "SELECT clinic_app.comms_claim_send_permit(%s)"
 
+    def claim(operation_id: UUID) -> str:
+        return str(
+            _value(graph.organization_a, claim_sql, [str(operation_id)], lock=True)
+        )
+
+    # Only the lock session may ask at all.
+    assert _forge(graph.organization_a, claim_sql, [str(attempt.pk)]) == "42501"
     # Outside the worker's session lock nothing is claimed; an unknown attempt
     # is refused like any other.
     # An accepted attempt is settled: it can never be claimed again.
@@ -1437,15 +1439,17 @@ def test_webhook_endpoint_needs_no_session_and_answers_the_handshake(
     )
 
 
-def _forge(tenant: UUID, sql: str, params: list[str]) -> str:
-    """Run one write as the runtime role on this session; name its refusal."""
+def _forge(tenant: UUID, sql: str, params: list[str], *, lock: bool = False) -> str:
+    """Run one write as the runtime role (or the lock session); name its refusal."""
+    alias = "locks" if lock else "default"
     try:
-        with transaction.atomic(), connection.cursor() as cursor:
+        with transaction.atomic(using=alias), connections[alias].cursor() as cursor:
             cursor.execute(
                 "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
                 [str(tenant)],
             )
-            cursor.execute("SET LOCAL ROLE clinic_app")
+            if not lock:
+                cursor.execute("SET LOCAL ROLE clinic_app")
             cursor.execute(sql, params)
     except DatabaseError as refused:
         diag = getattr(refused.__cause__, "diag", None)
@@ -1700,14 +1704,16 @@ def test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor(
         }
 
 
-def _value(tenant: UUID, sql: str, params: list[str]) -> object:
-    """Run one statement as the runtime role and return its single value."""
-    with transaction.atomic(), connection.cursor() as cursor:
+def _value(tenant: UUID, sql: str, params: list[str], *, lock: bool = False) -> object:
+    """Run one statement as the runtime role (or lock session); return its value."""
+    alias = "locks" if lock else "default"
+    with transaction.atomic(using=alias), connections[alias].cursor() as cursor:
         cursor.execute(
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(tenant)],
         )
-        cursor.execute("SET LOCAL ROLE clinic_app")
+        if not lock:
+            cursor.execute("SET LOCAL ROLE clinic_app")
         cursor.execute(sql, params)
         return cursor.fetchone()[0]
 
@@ -1751,8 +1757,12 @@ def test_a_squatting_claimant_cannot_record_a_forged_acceptance(
         foreign = IntegrationOperation.objects.get(subject_id=other)
     tenant, op = graph.organization_a, str(attempt.pk)
     claim = "SELECT clinic_app.comms_claim_send_permit(%s)"
-    # A queued attempt cannot be squatted at all.
-    assert _value(tenant, claim, [op]) == "refused"
+    # The runtime role may neither claim nor record, in any state.
+    record = "SELECT clinic_app.comms_record_send_outcome(%s, 'accepted', %s, %s)"
+    assert _forge(tenant, claim, [op]) == "42501"
+    assert _forge(tenant, record, [op, "forged", "0" * 64]) == "42501"
+    # Even the lock session cannot claim a queued attempt.
+    assert _value(tenant, claim, [op], lock=True) == "refused"
     # Once the outbox claimed it, a squatter holding the lock may claim, but
     # a guessed MAC, a MAC for another attempt and one for another reference
     # are all refused.
@@ -1771,9 +1781,9 @@ def test_a_squatting_claimant_cannot_record_a_forged_acceptance(
         ),
         inbox_adapters.outcome_proof(world.account, attempt.pk, "accepted", "other"),
     ):
-        assert _forge(tenant, squat, [str(message_id), op, op, reference, proof]) == (
-            "42501"
-        )
+        assert _forge(
+            tenant, squat, [str(message_id), op, op, reference, proof], lock=True
+        ) == ("42501")
     with owner_context(graph.organization_a):
         attempt.refresh_from_db()
     assert (attempt.status, attempt.provider_reference) == ("in_progress", None)
@@ -1825,9 +1835,12 @@ def test_an_abandoned_or_withdrawn_claim_never_strands_the_message(
         op = str(attempt.pk)
         assert _forge(tenant, _SET.format("status = 'in_progress'"), [op]) == "ok"
         if leave_claim:
-            # A squatter claims and walks away: the claim is abandoned and the
+            # A lock session claims and dies: the claim is abandoned and the
             # message is held for staff, who close it; one retry then sends.
-            assert _forge(tenant, _TAKE_LOCK + claim, [str(message_id), op]) == "ok"
+            assert (
+                _forge(tenant, _TAKE_LOCK + claim, [str(message_id), op], lock=True)
+                == "ok"
+            )
             with as_actor(graph, manager_of(graph)):
                 states = services.message_states([Message.objects.get(pk=message_id)])
                 assert states == {message_id: "reconciliation"}
@@ -1837,9 +1850,9 @@ def test_an_abandoned_or_withdrawn_claim_never_strands_the_message(
                     current_operation_id=None,
                 )
         else:
-            # A squatter's own withdrawal closes the attempt unsent.
+            # A claimant's own withdrawal closes the attempt unsent.
             sql = _TAKE_LOCK + claim + withdraw
-            assert _forge(tenant, sql, [str(message_id), op, op]) == "ok"
+            assert _forge(tenant, sql, [str(message_id), op, op], lock=True) == "ok"
         with owner_context(graph.organization_a):
             attempt.refresh_from_db()
         assert attempt.send_permit_claim is None
@@ -1889,6 +1902,200 @@ def test_no_query_text_carries_the_provider_secret(
     assert not [query for query in seen if world.key in query]
 
 
+def test_no_runtime_session_can_signal_a_live_lock_session(
+    world: InboxWorld, app_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    seen: dict[str, object] = {}
+
+    def attack(operation_id: UUID) -> None:
+        del operation_id
+        with connections["locks"].cursor() as cursor:
+            cursor.execute("SELECT current_user, pg_catalog.pg_backend_pid()")
+            seen["role"], pid = cursor.fetchone()
+        with psycopg.connect(app_database_url, autocommit=True) as app:
+            for signal in ("pg_terminate_backend", "pg_cancel_backend"):
+                try:
+                    app.execute(f"SELECT pg_catalog.{signal}(%s)", [pid])
+                    seen[signal] = "ran"
+                except psycopg.errors.InsufficientPrivilege:
+                    seen[signal] = "42501"
+            # The claim stays live, so the staff hold never opens on it.
+            row = app.execute(
+                "SELECT clinic_app.comms_claim_abandoned(%s)", [message_id]
+            ).fetchone()
+            seen["abandoned"] = row[0] if row else None
+
+    assert _in_flight(graph, message_id, attack) == ("succeeded", 1)
+    assert seen == {
+        "role": "clinic_lock",
+        "pg_terminate_backend": "42501",
+        "pg_cancel_backend": "42501",
+        "abandoned": False,
+    }
+
+
+def _lock_session(superuser_database_url: str, tenant: UUID) -> psycopg.Connection:
+    """Open a session as the role the lock path uses, in one open transaction."""
+    session = psycopg.connect(superuser_database_url)
+    role = (
+        "clinic_lock"
+        if session.execute(
+            "SELECT pg_catalog.has_function_privilege('clinic_lock',"
+            " 'clinic_app.comms_claim_send_permit(uuid)', 'EXECUTE')"
+        ).fetchone()
+        == (True,)
+        else "clinic_app"
+    )
+    session.execute(f"SET ROLE {role}")
+    session.execute(
+        "SELECT pg_catalog.set_config('app.current_tenant', %s, true)", [str(tenant)]
+    )
+    return session
+
+
+def _lock_sql(
+    superuser_database_url: str, tenant: UUID, statements: list[tuple[str, list[str]]]
+) -> str:
+    """Run statements in one lock-path transaction; name its refusal or "ok"."""
+    session = _lock_session(superuser_database_url, tenant)
+    try:
+        for sql, params in statements:
+            session.execute(sql, params)
+        session.commit()
+    except psycopg.Error as refused:
+        return str(refused.sqlstate)
+    finally:
+        session.close()
+    return "ok"
+
+
+def test_a_close_racing_a_claim_leaves_no_stale_claim(
+    world: InboxWorld, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    op = str(attempt.pk)
+    assert _forge(
+        graph.organization_a, _SET.format("status = 'in_progress'"), [op]
+    ) == ("ok")
+    closer = _lock_session(superuser_database_url, graph.organization_a)
+    claimant = _lock_session(superuser_database_url, graph.organization_a)
+    claimed: list[str] = []
+    started = threading.Barrier(2)
+    try:
+        # The close holds the attempt's row lock, uncommitted.
+        closed = closer.execute(
+            "SELECT clinic_app.comms_close_unsent_attempt(%s, 'cancelled',"
+            " 'subject_ineligible')",
+            [op],
+        ).fetchone()
+        assert closed == (True,)
+        claimant.execute(_TAKE_LOCK.rstrip("; "), [str(message_id)])
+        pid = claimant.info.backend_pid
+
+        def claim() -> None:
+            started.wait()
+            row = claimant.execute(
+                "SELECT clinic_app.comms_claim_send_permit(%s)", [op]
+            ).fetchone()
+            claimed.append(str(row[0]) if row else "")
+            claimant.commit()
+
+        racer = threading.Thread(target=claim)
+        racer.start()
+        started.wait()
+        # Commit the close only once the claim's final write waits on it.
+        with psycopg.connect(superuser_database_url, autocommit=True) as watch:
+            blocked = (closer.info.backend_pid,)
+            for _ in range(1_000_000):
+                row = watch.execute(
+                    "SELECT pg_catalog.pg_blocking_pids(%s)", [pid]
+                ).fetchone()
+                if row and tuple(row[0]) == blocked:
+                    break
+            else:
+                pytest.fail("the claim never waited on the close")
+        closer.commit()
+        racer.join()
+    finally:
+        closer.close()
+        claimant.close()
+    assert claimed == ["refused"]
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert (attempt.status, attempt.send_permit_claim) == ("cancelled", None)
+
+
+def test_the_unsent_close_is_tenant_scoped_with_one_denial(
+    world: InboxWorld, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    op = str(attempt.pk)
+    assert _forge(
+        graph.organization_a, _SET.format("status = 'in_progress'"), [op]
+    ) == ("ok")
+    close = "SELECT clinic_app.comms_close_unsent_attempt(%s, 'cancelled', %s)"
+    # Another tenant's session, an unknown attempt and a free-form reason all
+    # get the same denial; nothing moves.
+    url = superuser_database_url
+    assert [
+        _lock_sql(url, graph.organization_b, [(close, [op, "subject_ineligible"])]),
+        _lock_sql(
+            url, graph.organization_a, [(close, [str(uuid4()), "subject_ineligible"])]
+        ),
+        _lock_sql(url, graph.organization_a, [(close, [op, "made_up_reason"])]),
+    ] == ["42501"] * 3
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert attempt.status == "in_progress"
+
+
+def test_a_receipt_after_a_staff_close_shows_a_possible_duplicate(
+    world: InboxWorld, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    op, tenant = str(attempt.pk), graph.organization_a
+    claim = "SELECT clinic_app.comms_claim_send_permit(%s)"
+    assert _forge(tenant, _SET.format("status = 'in_progress'"), [op]) == "ok"
+    # The claimant sends and dies before recording; staff close it as having
+    # no recorded acceptance.
+    taken = _lock_sql(
+        superuser_database_url,
+        tenant,
+        [(_TAKE_LOCK.rstrip("; "), [str(message_id)]), (claim, [op])],
+    )
+    assert taken == "ok"
+    with as_actor(graph, manager_of(graph)):
+        services.reconcile_message_attempts(
+            clinic_id=graph.clinic_a, message_id=message_id, current_operation_id=None
+        )
+    # The provider did accept it: the receipt is kept, not dropped.
+    reference = f"synthetic:whatsapp:{attempt.pk}"
+    world.receive(world.status_body(provider_message_id=reference, status="delivered"))
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+        assert InboundEvent.objects.filter(operation_id=attempt.pk).exists()
+    assert (attempt.status, attempt.last_error) == ("failed", "outcome_unknown")
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "duplicate"
+        }
+
+
 def test_a_recorded_outcome_replays_as_a_no_op(world: InboxWorld) -> None:
     graph = world.graph
     world.receive(world.message_body(text="Oi"))
@@ -1897,7 +2104,7 @@ def test_a_recorded_outcome_replays_as_a_no_op(world: InboxWorld) -> None:
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
     replay = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL, NULL)"
-    assert _value(graph.organization_a, replay, [str(attempt.pk)]) is False
+    assert _value(graph.organization_a, replay, [str(attempt.pk)], lock=True) is False
     with owner_context(graph.organization_a):
         attempt.refresh_from_db()
     assert (attempt.status, attempt.provider_reference) == ("succeeded", reference)

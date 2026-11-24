@@ -735,7 +735,8 @@ def _claimed_outcome(
             "pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(scope.actor_id), str(scope.organization_id)],
         )
-        cursor.execute("SET LOCAL ROLE clinic_app")
+        # The lock session logs in as clinic_lock (no SET ROLE): only that
+        # role may record, and no clinic_app session may signal it.
         for recorder in _CLAIMED_OUTCOME_RECORDERS:
             recorded = recorder(scope.operation_id, outcome, reference, reason_code)
             if recorded is None:

@@ -33,13 +33,14 @@ ENVIRONMENT_KEYS: Final = frozenset(
         "DJANGO_SETTINGS_MODULE",
         "HOME",
         "LANG",
+        "LOCKS_DATABASE_URL",
         "PYTHONTZPATH",
         "SECRET_KEY",
         "TMPDIR",
     }
 )
 ABSENT_KEYS: Final = ("FORWARDED_ALLOW_IPS", "GUNICORN_CMD_ARGS")
-SECRET_KEYS: Final = ("APP_DATABASE_URL", "SECRET_KEY")
+SECRET_KEYS: Final = ("APP_DATABASE_URL", "LOCKS_DATABASE_URL", "SECRET_KEY")
 FORBIDDEN_BROWSER_SECRETS: Final = frozenset(
     {
         "browser-secret",
@@ -81,6 +82,13 @@ def validate_browser_environment(environment: dict[str, str]) -> JsonObject:
         parse_database_url(
             environment["APP_DATABASE_URL"],
             required_role="clinic_app",
+            required_host=BROWSER_DATABASE_HOST,
+            required_hostaddr="127.0.0.1",
+            database_prefix=f"{project}_",
+        )
+        parse_database_url(
+            environment["LOCKS_DATABASE_URL"],
+            required_role="clinic_lock",
             required_host=BROWSER_DATABASE_HOST,
             required_hostaddr="127.0.0.1",
             database_prefix=f"{project}_",

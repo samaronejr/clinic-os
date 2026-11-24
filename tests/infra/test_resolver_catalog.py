@@ -495,9 +495,10 @@ POSTURE_OVERRIDES: Final = {
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
     "comms_adopt_late_reference": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "comms_close_unsent_attempt": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "comms_record_send_outcome": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_attempt_scope": ("s", False, ["clinic_lock", "clinic_resolver"]),
+    "comms_claim_send_permit": ("v", False, ["clinic_lock", "clinic_resolver"]),
+    "comms_close_unsent_attempt": ("v", False, ["clinic_lock", "clinic_resolver"]),
+    "comms_record_send_outcome": ("v", False, ["clinic_lock", "clinic_resolver"]),
     "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
     "configuration_guard": ("v", False, ["clinic_resolver"]),
@@ -827,6 +828,7 @@ FUNCTION_SIGNATURES: Final = {
     ),
     ("comms_operation_scope", "requested_operation uuid"),
     ("comms_adopt_late_reference", "reference text"),
+    ("comms_attempt_scope", "requested uuid, OUT status text, OUT account uuid"),
     ("comms_claim_send_permit", "requested uuid"),
     ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"),
     (
@@ -1275,6 +1277,9 @@ FUNCTION_RESULTS: Final = {
         "oldest_created_at timestamp with time zone)"
     ),
     ("comms_adopt_late_reference", "reference text"): "uuid",
+    ("comms_attempt_scope", "requested uuid, OUT status text, OUT account uuid"): (
+        "record"
+    ),
     ("comms_claim_send_permit", "requested uuid"): "text",
     ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"): (
         "boolean"

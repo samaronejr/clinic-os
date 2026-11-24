@@ -88,7 +88,8 @@ def test_production_pooling_requires_an_explicit_session_connection(
     tmp_path: Path,
     explicit: bool,
 ) -> None:
-    database_url = _url(_ca(tmp_path))
+    ca = _ca(tmp_path)
+    database_url = _url(ca)
     environment = {
         **os.environ,
         "APP_DATABASE_URL": database_url,
@@ -105,7 +106,7 @@ def test_production_pooling_requires_an_explicit_session_connection(
     environment.pop("LOCKS_DATABASE_URL", None)
     environment.pop("REALTIME_TOPIC_SECRET", None)
     if explicit:
-        environment["LOCKS_DATABASE_URL"] = database_url
+        environment["LOCKS_DATABASE_URL"] = _url(ca, {"role": "clinic_lock"})
     result = subprocess.run(
         [sys.executable, "-c", "import config.settings.prod"],
         env=environment,

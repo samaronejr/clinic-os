@@ -15,9 +15,11 @@ from urllib.parse import urlsplit
 
 import pytest
 from config.celery import app as celery_app
+from psycopg.conninfo import conninfo_to_dict
 from redis import Redis
 
 from billing.psp_broker_support import event_process
+from database_urls import database_url_for_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -126,6 +128,11 @@ class Worker:
         environment = {
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
             "MIGRATION_DATABASE_URL": self.app_database_url,
+            # The worker's lock session: the clinic_lock login on this database.
+            "LOCKS_DATABASE_URL": database_url_for_name(
+                os.environ["LOCKS_DATABASE_URL"],
+                str(conninfo_to_dict(self.app_database_url)["dbname"]),
+            ),
             "CELERY_BROKER_URL": self.broker_url,
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(self.secret_dir),

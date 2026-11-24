@@ -155,6 +155,7 @@ def _bootstrap_database(lease: CiDatabaseLease) -> None:
     environment.update(
         {
             "CLINIC_APP_PASSWORD": lease.app_password,
+            "CLINIC_LOCK_PASSWORD": lease.lock_password,
             "CLINIC_OWNER_PASSWORD": lease.owner_password,
             "CLINIC_SUPER_PASSWORD": lease.super_password,
             "POSTGRES_CONTAINER": lease.container_id,
@@ -174,6 +175,9 @@ def _migrate(lease: CiDatabaseLease) -> None:
     environment.update(
         {
             "APP_DATABASE_URL": owner_url,
+            "LOCKS_DATABASE_URL": database_url(
+                "clinic_lock", lease.lock_password, lease
+            ),
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
             "MIGRATION_DATABASE_URL": owner_url,
         }
@@ -192,6 +196,9 @@ def _seed(
         {
             "MIGRATION_DATABASE_URL": database_url(
                 "clinic_owner", lease.owner_password, lease
+            ),
+            "LOCKS_DATABASE_URL": database_url(
+                "clinic_lock", lease.lock_password, lease
             ),
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
         }
@@ -223,6 +230,9 @@ def _seed(
             "MIGRATION_DATABASE_URL": database_url(
                 "clinic_app", lease.app_password, lease
             ),
+            "LOCKS_DATABASE_URL": database_url(
+                "clinic_lock", lease.lock_password, lease
+            ),
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
         }
     )
@@ -239,6 +249,9 @@ def _seed(
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(secret_dir),
             "COMMS_SYNTHETIC_CHANNELS": "email",
+            "LOCKS_DATABASE_URL": database_url(
+                "clinic_lock", lease.lock_password, lease
+            ),
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
             "EHR_ATTACHMENT_ROOT": str(attachment_root),
             "MIGRATION_DATABASE_URL": database_url(
@@ -270,6 +283,9 @@ def _rotate(lease: CiDatabaseLease, secret_dir: Path) -> JsonObject:
         {
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(secret_dir),
+            "LOCKS_DATABASE_URL": database_url(
+                "clinic_lock", lease.lock_password, lease
+            ),
             "DJANGO_SETTINGS_MODULE": "config.settings.test",
             "MIGRATION_DATABASE_URL": database_url(
                 "clinic_owner", lease.owner_password, lease

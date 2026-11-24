@@ -421,6 +421,18 @@ or abandoned send is a staff decision that may deliver twice if the provider did
 accept it; the page warns of that, the decision is audited, and the residual
 risk is documented.
 
+The outbox lock session logs in as `clinic_lock` (comms 0021,
+`LOCKS_DATABASE_URL`, required with no fallback): a role `clinic_app` neither
+is nor belongs to, so no runtime session can terminate or cancel a live
+claim, and only it may claim, record or close a message attempt. It reads no
+table; `comms_attempt_scope` tells it an attempt's status and account in its
+tenant. A claim's final write re-checks the attempt under its row lock, so a
+close racing a claim leaves no stale claim. `comms_close_unsent_attempt` is
+tenant scoped (a foreign or unknown attempt gets one denial) and takes only the
+outbox's fixed reasons. A verified receipt for an attempt staff closed as having
+no recorded provider acceptance is recorded against it and shown as a possible
+duplicate.
+
 Pooled lock connections are unsupported: the claim, its session nonce and the
 subject's advisory lock must stay on one database session from claim to
 record, which a transaction-pooling proxy would not guarantee.

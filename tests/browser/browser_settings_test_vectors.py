@@ -47,6 +47,10 @@ def browser_environment(tmp_path: Path, socket_path: Path) -> dict[str, str]:
         "DJANGO_SETTINGS_MODULE": "config.settings.browser",
         "HOME": str(tmp_path),
         "LANG": "C.UTF-8",
+        "LOCKS_DATABASE_URL": (
+            f"postgresql://clinic_lock:synthetic@{BROWSER_DB_HOST}:15432/"
+            f"{PROJECT}_clinic?{query}"
+        ),
         "PYTHONTZPATH": "",
         "SECRET_KEY": _browser_runtime_token(),
         "TMPDIR": str(tmp_path),

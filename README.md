@@ -63,6 +63,11 @@ make db-bootstrap migrate db-posture
 uv run pytest --reuse-db tests
 ```
 
+The sourced environment includes `LOCKS_DATABASE_URL` (the `clinic_lock` login
+of the outbox lock session). Every settings module that runs the application
+refuses to start without it and never falls back to `APP_DATABASE_URL`; see
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 The full local gate is `make ci` (ruff, ruff format, mypy --strict, pytest with
 coverage, pip-audit, image/browser/TLS contract checks). Pre-commit runs ruff
 and mypy on every commit. See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for

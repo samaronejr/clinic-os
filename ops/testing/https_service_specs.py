@@ -37,6 +37,7 @@ class HttpsCredentials:
     owner: str
     postgres: str
     runtime: str
+    lock: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,7 @@ def credentials_for(claim_id: str) -> HttpsCredentials:
         f"Bb2owner{digest}",
         f"Cc3postgres{digest}",
         f"Aa1!Zz9?Qq7#{digest}",
+        f"Dd4lock{digest}",
     )
 
 
@@ -96,6 +98,15 @@ def application_environment(
         "CLINIC_SECRET_DIR": PurePosixPath("/", "tmp").as_posix(),
         "DJANGO_SETTINGS_MODULE": settings,
         key: _database_url(role, password, database, database_host),
+        **(
+            {
+                "LOCKS_DATABASE_URL": _database_url(
+                    "clinic_lock", credentials.lock, database, database_host
+                )
+            }
+            if purpose == "web"
+            else {}
+        ),
         "PYTHONTZPATH": "",
         "SECRET_KEY": credentials.runtime,
         "SECURE_SSL_HOST": f"{WEB_HOST}:8443",
@@ -183,7 +194,12 @@ def application_service(value: ApplicationServiceInput) -> JsonObject:
         "command": json_strings(value.command),
         "environment_contract": environment_contract(
             value.environment,
-            {"APP_DATABASE_URL", "MIGRATION_DATABASE_URL", "SECRET_KEY"},
+            {
+                "APP_DATABASE_URL",
+                "LOCKS_DATABASE_URL",
+                "MIGRATION_DATABASE_URL",
+                "SECRET_KEY",
+            },
         ),
         "extra_hosts": [],
         "filesystem_contract": application_filesystem_contract(),

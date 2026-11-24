@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 
-from renewal.browser._fixture_secrets import FixtureSecret, worker_dsn
+from renewal.browser._fixture_secrets import FixtureSecret, lock_dsn, worker_dsn
 from renewal.browser._protected import encrypt
 
 if TYPE_CHECKING:
@@ -254,6 +254,7 @@ def run_worker(
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),
@@ -311,6 +312,7 @@ def grant_messages(
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "REALTIME_ENABLED": "true",

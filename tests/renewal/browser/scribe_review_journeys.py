@@ -15,6 +15,7 @@ from django_otp.oath import TOTP
 from ops.testing.process_helpers import run_process
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import lock_dsn
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -48,6 +49,7 @@ def worker(staff: dict[str, str], mode: str, identifier: str) -> dict[str, str |
     with pytest.MonkeyPatch.context() as patch:
         for name, value in {
             "APP_DATABASE_URL": staff["dsn"],
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
             "SCRIBE_SYNTHETIC_CAPTURE": "1",

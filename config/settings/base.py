@@ -7,6 +7,7 @@ from config.runtime import enforce_wheel_timezone
 
 from .contracts import (
     require_data_mode,
+    require_locks_database_url,
     resolve_attachment_root,
     resolve_csp_report_only,
     resolve_synthetic_faults,
@@ -198,12 +199,8 @@ if "OPTIONS" not in DATABASES["default"]:
 DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=clinic_app,public"
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
-DATABASES["locks"] = env.db_url_config(
-    env.str(
-        "LOCKS_DATABASE_URL",
-        default=env.str("APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL),
-    )
-)
+# The outbox lock session logs in as clinic_lock; there is no fallback.
+DATABASES["locks"] = env.db_url_config(require_locks_database_url(os.environ))
 DATABASES["locks"]["ATOMIC_REQUESTS"] = False
 DATABASES["locks"].setdefault("OPTIONS", {}).update(
     options="-c search_path=clinic_app,public", prepare_threshold=None

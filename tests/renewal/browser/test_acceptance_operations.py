@@ -33,7 +33,7 @@ import renewal.browser.test_prescribing as prescribing
 import renewal.browser.test_results as results
 import renewal.browser.test_retention as retention
 import renewal.browser.test_scribe_capture as scribe
-from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._fixture_secrets import lock_dsn, new_totp_key
 from renewal.browser._guardian_support import seed_evidence
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import wait_for_js
@@ -619,6 +619,7 @@ def _subscription_event(
         env={
             **os.environ,
             "APP_DATABASE_URL": reference.dsn,
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
         },

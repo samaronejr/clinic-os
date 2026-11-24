@@ -38,12 +38,11 @@ def test_https_application_environment_imports_production_settings(
         ca = directory / "db-ca.pem"
         _ = ca.write_text("synthetic CA fixture\n", encoding="ascii")
         ca.chmod(0o444)
-        database_url = urlsplit(environment["APP_DATABASE_URL"])
-        query = dict(parse_qsl(database_url.query))
-        query["sslrootcert"] = str(ca)
-        environment["APP_DATABASE_URL"] = database_url._replace(
-            query=urlencode(query)
-        ).geturl()
+        for key in ("APP_DATABASE_URL", "LOCKS_DATABASE_URL"):
+            database_url = urlsplit(environment[key])
+            query = dict(parse_qsl(database_url.query))
+            query["sslrootcert"] = str(ca)
+            environment[key] = database_url._replace(query=urlencode(query)).geturl()
 
         # When production settings load without inheriting the caller's env.
         result = _run_process(

@@ -37,6 +37,8 @@ def _resolved(extra: dict[str, str]) -> dict[str, object]:
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONPATH": str(REPOSITORY),
+        # Required by every settings module; the child never connects.
+        "LOCKS_DATABASE_URL": "postgresql://clinic_lock:x@localhost:5432/clinic",
         **extra,
     }
     completed = subprocess.run(  # noqa: S603 - fixed interpreter, closed argv

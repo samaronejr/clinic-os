@@ -44,6 +44,7 @@ from ops.testing.sentinel_scan import SENTINEL_PREFIX
 from renewal.browser._fixture_secrets import (
     FixtureSecret,
     fixture_dsn,
+    lock_dsn,
     new_password,
     new_totp_key,
 )
@@ -422,6 +423,7 @@ def run_fixture(
         env={
             **os.environ,
             "APP_DATABASE_URL": dsn,
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
             "BILLING_SYNTHETIC_PSP": "true",

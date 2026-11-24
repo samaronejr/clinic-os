@@ -25,7 +25,7 @@ from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._fixture_secrets import lock_dsn, new_totp_key
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -67,6 +67,7 @@ def fixture(staff: dict[str, str], action: str, **extra: str) -> dict[str, objec
     environment = {
         **os.environ,
         "APP_DATABASE_URL": staff["dsn"],
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": ".:tests",

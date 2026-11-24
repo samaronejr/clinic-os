@@ -42,6 +42,9 @@ def test_base_database_preserves_transport_when_building_backend_parameters(
             "postgresql://clinic_app:synthetic@db.qa.clinic-os.dev:5432/clinic?"
             + urlencode(query)
         ),
+        "LOCKS_DATABASE_URL": (
+            "postgresql://clinic_lock:synthetic@db.qa.clinic-os.dev:5432/clinic"
+        ),
     }
     code = """
 import sys
@@ -105,6 +108,17 @@ def test_production_rejects_invalid_transport_when_base_preserves_options(
             + query
         ),
         "DJANGO_SETTINGS_MODULE": "config.settings.prod",
+        # A valid lock DSN, so only the runtime transport is under test.
+        "LOCKS_DATABASE_URL": (
+            "postgresql://clinic_lock:synthetic@db.qa.clinic-os.dev:5432/clinic?"
+            + urlencode(
+                {
+                    "sslrootcert": str(ca),
+                    "sslmode": "verify-full",
+                    "connect_timeout": "2",
+                }
+            )
+        ),
         "SECRET_KEY": VALID_RUNTIME_TOKEN,
         "SECURE_SSL_HOST": "app.qa.clinic-os.dev",
     }

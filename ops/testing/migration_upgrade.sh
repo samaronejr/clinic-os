@@ -9,7 +9,8 @@
 #
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
-#   MIGRATION_DATABASE_URL APP_DATABASE_URL GITHUB_WORKSPACE RUNNER_TEMP
+#   MIGRATION_DATABASE_URL APP_DATABASE_URL LOCKS_DATABASE_URL GITHUB_WORKSPACE
+#   RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 set -euo pipefail
 
@@ -36,11 +37,20 @@ case "$APP_DATABASE_URL" in
     *\?*) app_query="?${APP_DATABASE_URL#*\?}" ;;
 esac
 app_dsn="${app_dsn%/*}/$upgrade_db$app_query"
+# Every Django process needs its clinic_lock session DSN (no fallback);
+# children inherit it for the upgrade database.
+lock_dsn="${LOCKS_DATABASE_URL:?LOCKS_DATABASE_URL required}"
+lock_dsn="${lock_dsn%%\?*}"
+lock_query=""
+case "$LOCKS_DATABASE_URL" in
+    *\?*) lock_query="?${LOCKS_DATABASE_URL#*\?}" ;;
+esac
+export LOCKS_DATABASE_URL="${lock_dsn%/*}/$upgrade_db$lock_query"
 
 psql_super() {
     docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
-        -e CLINIC_SUPER_PASSWORD \
+        -e CLINIC_SUPER_PASSWORD -e CLINIC_LOCK_PASSWORD \
         "$POSTGRES_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -h localhost -p "$POSTGRES_PORT" \
         -U "$POSTGRES_USER" "$@"

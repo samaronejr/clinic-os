@@ -27,6 +27,7 @@ from apps.core.integration import execute_operation, register_send_adapter
 from apps.prescription import signing
 from apps.prescription.models import SignatureCallback, SignatureOperation
 from apps.prescription.signature_provider import SyntheticSignatureProvider
+from psycopg.conninfo import conninfo_to_dict
 
 from billing.journal_support import (
     FinanceSetup,
@@ -35,6 +36,7 @@ from billing.journal_support import (
     invoice_terms,
 )
 from billing.test_psp_reconciliation import sandbox
+from database_urls import database_url_for_name
 from patient_service_support import runtime_role
 from renewal.test_reminders import _book, _due, _operation
 from renewal.test_reminders import setup as reminder_setup
@@ -86,6 +88,10 @@ def die_after_effect(
         "HOME": "/nonexistent",
         "LANG": "C.UTF-8",
         "MIGRATION_DATABASE_URL": database_url,
+        "LOCKS_DATABASE_URL": database_url_for_name(
+            os.environ["LOCKS_DATABASE_URL"],
+            str(conninfo_to_dict(database_url)["dbname"]),
+        ),
         "PATH": "/usr/bin:/bin",
         "PHYSICIAN_SYNTHETIC_REGISTRY": "1",
         "PRESCRIPTION_SYNTHETIC_SIGNING": "1",

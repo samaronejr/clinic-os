@@ -5,6 +5,9 @@
 -- Optional machine credential: absent means password authentication is disabled.
 \set clinic_agent_password ''
 \getenv clinic_agent_password CLINIC_AGENT_PASSWORD
+-- The outbox lock session's credential: absent means no password login.
+\set clinic_lock_password ''
+\getenv clinic_lock_password CLINIC_LOCK_PASSWORD
 
 SELECT format(
     'CREATE ROLE clinic_owner LOGIN PASSWORD %L',
@@ -34,6 +37,18 @@ SELECT 'CREATE ROLE clinic_resolver'
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'clinic_resolver')
 \gexec
 
+-- The outbox lock session: a separate login the runtime role neither is nor
+-- may signal, so no clinic_app session can terminate or cancel a live claim.
+SELECT 'CREATE ROLE clinic_lock LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT'
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'clinic_lock')
+\gexec
+
+SELECT format(
+    'ALTER ROLE clinic_lock WITH LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT',
+    NULLIF(:'clinic_lock_password', '')
+)
+\gexec
+
 SELECT format(
     'CREATE ROLE clinic_super LOGIN PASSWORD %L',
     :'clinic_super_password'
@@ -48,12 +63,12 @@ ALTER ROLE clinic_super WITH LOGIN PASSWORD :'clinic_super_password' SUPERUSER;
 
 ALTER DATABASE :"database_name" OWNER TO clinic_owner;
 REVOKE ALL ON DATABASE :"database_name" FROM PUBLIC;
-GRANT CONNECT ON DATABASE :"database_name" TO clinic_owner, clinic_app, clinic_agent, clinic_super;
+GRANT CONNECT ON DATABASE :"database_name" TO clinic_owner, clinic_app, clinic_agent, clinic_super, clinic_lock;
 
 CREATE SCHEMA IF NOT EXISTS :"app_schema" AUTHORIZATION clinic_owner;
 ALTER SCHEMA :"app_schema" OWNER TO clinic_owner;
-REVOKE ALL ON SCHEMA :"app_schema" FROM PUBLIC, clinic_app, clinic_agent, clinic_resolver;
-GRANT USAGE ON SCHEMA :"app_schema" TO clinic_owner, clinic_app, clinic_agent;
+REVOKE ALL ON SCHEMA :"app_schema" FROM PUBLIC, clinic_app, clinic_agent, clinic_resolver, clinic_lock;
+GRANT USAGE ON SCHEMA :"app_schema" TO clinic_owner, clinic_app, clinic_agent, clinic_lock;
 GRANT USAGE, CREATE ON SCHEMA :"app_schema" TO clinic_resolver;
 
 GRANT clinic_app TO clinic_owner WITH INHERIT FALSE, SET TRUE;

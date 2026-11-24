@@ -28,6 +28,7 @@ def test_signing_worker_receives_only_runtime_credentials(
     for key, value in privileged_inputs.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("CLINIC_RENEWAL_WORKER_DATABASE_URL", "fake-runtime-app")
+    monkeypatch.setenv("CLINIC_RENEWAL_LOCKS_DATABASE_URL", "fake-runtime-lock")
     backend, key_directory = "synthetic-file", "/synthetic-fixture/keys"
     monkeypatch.setenv("CLINIC_SECRET_BACKEND", backend)
     monkeypatch.setenv("CLINIC_SECRET_DIR", key_directory)
@@ -53,8 +54,10 @@ def test_signing_worker_receives_only_runtime_credentials(
     assert args[0][-1] == operation
     env = kwargs["env"]
     assert env["APP_DATABASE_URL"] == "fake-runtime-app"
+    # The lock DSN is the runner's clinic_lock login, never an ambient value.
+    assert env["LOCKS_DATABASE_URL"] == "fake-runtime-lock"
     inherited_keys = privileged_inputs.keys() & env.keys()
-    assert inherited_keys == set()
+    assert inherited_keys == {"LOCKS_DATABASE_URL"}
     assert set(privileged_inputs.values()).isdisjoint(env.values())
     assert "CLINIC_RENEWAL_WORKER_DATABASE_URL" not in env
     assert env["CLINIC_SECRET_BACKEND"] == backend

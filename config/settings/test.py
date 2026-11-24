@@ -1,8 +1,10 @@
+import os
 from copy import deepcopy
 
 import environ
 
 from .base import *  # noqa: F403
+from .contracts import require_locks_database_url
 
 test_env = environ.Env()
 DATABASES = {
@@ -17,7 +19,11 @@ DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
 )
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
-DATABASES["locks"] = deepcopy(DATABASES["default"])
+# The outbox lock session logs in as clinic_lock (required, no fallback), a
+# role the runtime role neither is nor may signal; it mirrors the test database.
+DATABASES["locks"] = test_env.db_url_config(require_locks_database_url(os.environ))
+DATABASES["locks"]["ATOMIC_REQUESTS"] = False
+DATABASES["locks"]["OPTIONS"] = deepcopy(DATABASES["default"]["OPTIONS"])
 DATABASES["locks"]["TEST"] = {"MIRROR": "default"}
 # Tests authenticate a real clinic_agent connection to the already-migrated
 # default test database. The principal test fixture installs an ephemeral secret;

@@ -58,6 +58,7 @@ class CiDatabaseLease:
     owner_password: str
     postgres_password: str
     super_password: str
+    lock_password: str
     database_host: str = SOURCE_DATABASE_HOST
 
 
@@ -144,6 +145,7 @@ def ci_database_lease(
             credentials.owner,
             credentials.postgres,
             credentials.runtime,
+            credentials.lock,
             database_host,
         )
     finally:
@@ -159,6 +161,8 @@ def write_environment(path: Path, lease: CiDatabaseLease) -> None:
     values = {
         "APP_DATABASE_URL": database_url("clinic_app", lease.app_password, lease),
         "CLINIC_APP_PASSWORD": lease.app_password,
+        "CLINIC_LOCK_PASSWORD": lease.lock_password,
+        "LOCKS_DATABASE_URL": database_url("clinic_lock", lease.lock_password, lease),
         "CLINIC_OWNER_PASSWORD": lease.owner_password,
         "CLINIC_SUPER_PASSWORD": lease.super_password,
         "MIGRATION_DATABASE_URL": database_url(

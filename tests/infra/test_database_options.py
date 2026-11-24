@@ -132,6 +132,7 @@ def test_production_database_has_runtime_and_session_lock_aliases(
         {
             "ALLOWED_HOSTS": VALID_HOSTS,
             "APP_DATABASE_URL": database_url,
+            "LOCKS_DATABASE_URL": _url(ca, {"role": "clinic_lock"}),
             "CLINIC_DATA_MODE": "synthetic",
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(tmp_path / "secrets"),
@@ -143,7 +144,7 @@ def test_production_database_has_runtime_and_session_lock_aliases(
     code = (
         "import config.settings.prod as s; "
         "d=s.DATABASES; assert list(d)==['default', 'locks']; "
-        "assert d['locks']['USER']=='clinic_app'; "
+        "assert d['locks']['USER']=='clinic_lock'; "
         "assert d['locks']['OPTIONS']['prepare_threshold'] is None; "
         "x=d['default']; assert x['USER']=='clinic_app'; "
         "assert x['OPTIONS']['sslmode']=='verify-full'; "

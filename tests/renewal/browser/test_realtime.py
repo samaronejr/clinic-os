@@ -17,7 +17,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._fixture_secrets import new_totp_key, worker_dsn
+from renewal.browser._fixture_secrets import lock_dsn, new_totp_key, worker_dsn
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -656,6 +656,7 @@ def _grant_inbox(staff: dict[str, str], root: Path) -> None:
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "REALTIME_ENABLED": "true",

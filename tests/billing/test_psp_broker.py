@@ -15,6 +15,7 @@ from apps.billing.psp_services import prepare_psp_charge
 from apps.comms.models import IntegrationOperation
 from apps.core import integration
 from celery import Celery, current_app
+from django.db import connection
 
 from billing.journal_support import (
     FinanceSetup,
@@ -24,6 +25,7 @@ from billing.journal_support import (
 )
 from billing.psp_broker_support import GateBroker, broker, event_process
 from billing.test_psp_reconciliation import sandbox
+from database_urls import database_url_for_name
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -76,6 +78,10 @@ def test_required_broker_redelivers_after_remote_effect_sigkill_without_duplicat
     environment = {
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
         "MIGRATION_DATABASE_URL": app_database_url,
+        # The worker's lock session is the clinic_lock login on this database.
+        "LOCKS_DATABASE_URL": database_url_for_name(
+            os.environ["LOCKS_DATABASE_URL"], str(connection.settings_dict["NAME"])
+        ),
         "CELERY_BROKER_URL": broker.url,
         "CELERY_RESULT_BACKEND": broker.url,
         "CLINIC_SECRET_BACKEND": "synthetic-file",

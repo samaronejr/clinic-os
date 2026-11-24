@@ -795,22 +795,11 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         ] or [
             effective_delivery_state(operation_status="pending", provider_state=legacy)
         ]
-        proven = [state for state in by_sequence if state in _PROOF]
         numbered = [a.attempt_sequence is not None for a in own]
-        if proven:
-            states[message_id] = max(proven, key=_PROOF.index)
-        elif any(
-            (a.attempt_sequence is None and a.send_permit is None)
-            or (
-                a.status == "in_progress"
-                and a.send_permit_claim is not None
-                and (
-                    bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
-                    or _claim_abandoned(a.subject_id)
-                )
-            )
-            for a in own
-        ):
+        decided = _decided_state(own, by_sequence, reported)
+        if decided is not None:
+            states[message_id] = decided
+        elif _needs_reconciliation(own):
             states[message_id] = "reconciliation"
         elif any(numbered) or not own:
             # The highest-numbered attempt is current (NULLs sort last).
@@ -827,6 +816,41 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         if states[message_id] == "failed" and awaiting_outcome(own, failed):
             states[message_id] = "awaiting"
     return states
+
+
+def _needs_reconciliation(own: list[IntegrationOperation]) -> bool:
+    """Whether staff must decide: unordered legacy, or a claim nobody holds."""
+    return any(
+        (a.attempt_sequence is None and a.send_permit is None)
+        or (
+            a.status == "in_progress"
+            and a.send_permit_claim is not None
+            and (
+                bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
+                or _claim_abandoned(a.subject_id)
+            )
+        )
+        for a in own
+    )
+
+
+def _decided_state(
+    own: list[IntegrationOperation], by_sequence: list[str], reported: dict[UUID, str]
+) -> str | None:
+    """Return the state provider evidence alone decides, if any.
+
+    A receipt for an attempt staff closed as unaccepted is a possible
+    duplicate; otherwise delivery or read proof from any attempt wins.
+    """
+    if any(
+        a.status == "failed"
+        and a.last_error == "outcome_unknown"
+        and reported.get(a.pk, "") in {"sent", "delivered", "read"}
+        for a in own
+    ):
+        return "duplicate"
+    proven = [state for state in by_sequence if state in _PROOF]
+    return max(proven, key=_PROOF.index) if proven else None
 
 
 def _claim_abandoned(message_id: UUID) -> bool:

@@ -282,14 +282,9 @@ def _claim_send_permit(operation: IntegrationOperation) -> bool:
     if operation.pk in _CLAIMS:
         return True
     with connections["locks"].cursor() as cursor:
-        cursor.execute("SET ROLE clinic_app")
-        try:
-            cursor.execute(
-                "SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk]
-            )
-            row = cursor.fetchone()
-        finally:
-            cursor.execute("RESET ROLE")
+        # The lock session is the clinic_lock login itself, never clinic_app.
+        cursor.execute("SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk])
+        row = cursor.fetchone()
     decision = row[0] if row else "refused"
     if decision == "claimed":
         _CLAIMS.add(operation.pk)
@@ -336,11 +331,7 @@ def record_claimed_outcome(
     try:
         with transaction.atomic(using="locks"), connections["locks"].cursor() as cursor:
             cursor.execute(
-                "SELECT c.provider_account_id"
-                " FROM clinic_app.comms_integrationoperation o"
-                " JOIN clinic_app.comms_message m ON m.id = o.subject_id"
-                " JOIN clinic_app.comms_conversation c ON c.id = m.conversation_id"
-                " WHERE o.id = %s",
+                "SELECT account FROM clinic_app.comms_attempt_scope(%s)",
                 [operation_id],
             )
             account = cursor.fetchone()
@@ -362,9 +353,7 @@ def record_claimed_outcome(
 def _close_unsent(operation_id: UUID, outcome: str, reason: str | None) -> bool | None:
     with connections["locks"].cursor() as cursor:
         cursor.execute(
-            "SELECT status FROM clinic_app.comms_integrationoperation"
-            " WHERE id = %s AND subject_type = %s",
-            [operation_id, SUBJECT_TYPE],
+            "SELECT status FROM clinic_app.comms_attempt_scope(%s)", [operation_id]
         )
         row = cursor.fetchone()
         if row is None or row[0] != "in_progress" or outcome not in _UNSENT_CLOSE:

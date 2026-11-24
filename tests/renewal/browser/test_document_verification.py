@@ -21,7 +21,7 @@ from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import new_access_code, worker_dsn
+from renewal.browser._fixture_secrets import lock_dsn, new_access_code, worker_dsn
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.a11y_support import check_page
@@ -254,6 +254,7 @@ def drive_signature(
         ],
         env={
             "APP_DATABASE_URL": worker_dsn(),
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "CELERY_BROKER_URL": "memory://",
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
@@ -289,6 +290,7 @@ def _worker(operation: str, root: Path) -> dict[str, object]:
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "COMMS_SYNTHETIC_CHANNELS": "email",

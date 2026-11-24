@@ -48,6 +48,27 @@ SELECT
         SELECT 1 FROM pg_database WHERE datdba = 'clinic_agent'::regrole
     )
     AND EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'clinic_lock' AND rolcanlogin
+          AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit
+          AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+    )
+    -- The lock session's role is in no role (so it cannot SET ROLE back to
+    -- clinic_app) and no role is in it (so no runtime session can signal it).
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_auth_members
+        WHERE member = 'clinic_lock'::regrole OR roleid = 'clinic_lock'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_class WHERE relowner = 'clinic_lock'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_namespace WHERE nspowner = 'clinic_lock'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_database WHERE datdba = 'clinic_lock'::regrole
+    )
+    AND EXISTS (
         SELECT 1
         FROM pg_database
         WHERE datname = current_database()
@@ -68,7 +89,7 @@ SELECT
 """
 # Roles POSTURE_QUERY pins by name. The settings pin covers them and every role
 # they can assume (pg_auth_members, followed transitively in the live catalog).
-PINNED_ROLES: Final = ("clinic_app", "clinic_owner")
+PINNED_ROLES: Final = ("clinic_app", "clinic_lock", "clinic_owner")
 RUNTIME_ROLE_SETTINGS: Final = (
     "idle_in_transaction_session_timeout=15s",
     "search_path=clinic_app, public",
@@ -153,6 +174,7 @@ def _main() -> int:
         return 1
     sys.stdout.write(
         "database posture: clinic_app runtime; clinic_agent NOINHERIT NOBYPASSRLS; "
+        "clinic_lock NOINHERIT, no memberships; "
         f"clinic_owner NOCREATEDB; {test_database_name} precreated\n"
     )
     return 0
