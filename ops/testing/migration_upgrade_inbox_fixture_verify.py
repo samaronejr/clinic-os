@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -251,7 +252,11 @@ def _inbox_rows(
             (SELECT count(*) FROM clinic_app.comms_integrationoperation o
              WHERE o.subject_type='comms.message' AND o.subject_id=mo.id
                AND o.idempotency_key=mo.command_id),
-            c.contact_fingerprint, c.purpose, mo.sent_by_id::text
+            c.contact_fingerprint, c.purpose, mo.sent_by_id::text,
+            mi.supported IS TRUE AND mo.supported IS TRUE
+                AND mi.provider_state IS NOT DISTINCT FROM ''
+                AND mi.template_parameters IS NULL
+                AND mo.template_id IS NULL AND mo.template_parameters IS NULL
         FROM clinic_app.comms_conversation c
         JOIN clinic_app.identity_clinic cc ON cc.id=c.clinic_id
         JOIN clinic_app.comms_provideraccount pa ON pa.id=c.provider_account_id
@@ -328,6 +333,7 @@ def verify_inbox_fixture(
                 fingerprint,
                 purpose,
                 sender,
+                message_defaults,
             ) = row
             key = (channel, contact)
             if key in seen or key not in declared:
@@ -335,14 +341,14 @@ def verify_inbox_fixture(
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
-            plaintext_key = f"{channel}\0{contact_address(str(channel), ordinal)}"
+            plaintext_key = str(channel).encode() + b"\0" + key[1]
             cursor.execute(
                 """SELECT encode(clinic_app.hmac(
                     %s,clinic_app.tenant_dek_unwrap(%s,key_version),'sha256'),'hex')
                 FROM clinic_app.tenancy_tenantdatakey
                 WHERE organization_id=current_setting('app.current_tenant')::uuid
                 ORDER BY key_version DESC LIMIT 1""",
-                [b"comms.conversation.contact\0" + plaintext_key.encode(), kek],
+                [b"comms.conversation.contact\0" + plaintext_key, kek],
             )
             expected_fingerprint = cursor.fetchone()
             labels = _attempts(cursor, case, str(outbound), attempts)
@@ -371,7 +377,16 @@ def verify_inbox_fixture(
                         and outbound_body is True
                         and plaintext is False,
                     ),
-                    ("inbound source", str(event).startswith(f"upgrade.{ordinal}.")),
+                    ("message defaults", message_defaults is True),
+                    (
+                        "inbound source",
+                        re.fullmatch(
+                            rf"upgrade\.{ordinal}\.[0-9a-f]{{12}}4[0-9a-f]{{3}}"
+                            r"[89ab][0-9a-f]{15}",
+                            str(event),
+                        )
+                        is not None,
+                    ),
                     (
                         "generated UUIDs",
                         len(keys) == _IDENTITIES_PER_CASE
