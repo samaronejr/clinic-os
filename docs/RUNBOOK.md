@@ -590,6 +590,14 @@ can clear the hint without changing the index definition. The verifier does
 not compare that bit. `indisvalid`, `indisready`, `indislive`, and the declared
 clustering designation (`indisclustered`) are still compared.
 
+A first `CLUSTER table_name USING index_name` also designates that index for
+future clustering. If the designation was previously unset, a **bare** retry
+correctly refuses that schema change. For a physical reorder only, record the
+prior designation before maintenance and restore it before retrying. Use
+`ALTER TABLE table_name SET WITHOUT CLUSTER` for a previously unset designation,
+not as an unconditional reset. This keeps the rewritten heap and restores the
+schema represented by `pg_dump`; the verifier does not discard `CLUSTER ON`.
+
 ### Authentication or tenant access returns 403
 
 - Confirm the user is active and has a `UserClinicRole` for the selected

@@ -107,25 +107,63 @@ def maintain(db: DatabaseWrapper, scope: list[str], operation: str) -> list[str]
     return applied
 
 
+def cluster_state(
+    db: DatabaseWrapper, names: list[str]
+) -> dict[str, tuple[int, str | None]]:
+    """Heap file and persistent index designation, independent of the verifier."""
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            SELECT c.relname, pg_relation_filenode(c.oid), idx.relname
+            FROM pg_class c
+            LEFT JOIN pg_index i ON i.indrelid=c.oid AND i.indisclustered
+            LEFT JOIN pg_class idx ON idx.oid=i.indexrelid
+            WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s)
+            """,
+            [names],
+        )
+        return {name: (file, index) for name, file, index in cur.fetchall()}
+
+
+def restore_designation(db: DatabaseWrapper, table: str, index: str | None) -> None:
+    with db.cursor() as cur:
+        designation = (
+            sql.SQL("SET WITHOUT CLUSTER")
+            if index is None
+            else sql.SQL("CLUSTER ON {}").format(sql.Identifier(index))
+        )
+        cur.execute(
+            sql.SQL("ALTER TABLE {} {}").format(
+                sql.Identifier("clinic_app", table), designation
+            )
+        )
+
+
 def _change_default(db: DatabaseWrapper, names: list[str]) -> str:
     with db.cursor() as cur:
         cur.execute(
             """
-            SELECT c.relname,a.attname FROM pg_attribute a
+            SELECT c.relname,a.attname,a.atthasdef FROM pg_attribute a
             JOIN pg_class c ON c.oid=a.attrelid
             WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s)
-              AND a.attnum>0 AND NOT a.attisdropped AND a.atthasdef
+              AND a.attnum>0 AND NOT a.attisdropped
+              AND (a.atthasdef OR a.atttypid='uuid'::regtype)
               AND a.attidentity='' AND a.attgenerated=''
-            ORDER BY c.relname COLLATE "C",a.attnum LIMIT 1
+            ORDER BY a.atthasdef DESC,c.relname COLLATE "C",a.attnum LIMIT 1
         """,
             [names],
         )
         row = cur.fetchone()
-        assert row, f"No declared default in {names}"
-        table, col = row
+        assert row, f"No mutable default in {names}"
+        table, col, present = row
+        change = (
+            sql.SQL("DROP DEFAULT")
+            if present
+            else sql.SQL("SET DEFAULT gen_random_uuid()")
+        )
         cur.execute(
-            sql.SQL("ALTER TABLE {} ALTER {} DROP DEFAULT").format(
-                sql.Identifier("clinic_app", table), sql.Identifier(col)
+            sql.SQL("ALTER TABLE {} ALTER {} {}").format(
+                sql.Identifier("clinic_app", table), sql.Identifier(col), change
             )
         )
         return f"{table}.{col}"
@@ -226,83 +264,62 @@ def _invalidate_index(db: DatabaseWrapper, names: list[str]) -> str:
 
 
 def _plant_side_value(db: DatabaseWrapper, names: list[str]) -> str:
-    # Recreate an existing, last, unconstrained column with the same declared
-    # type and SQL default. Only its historical substitution should differ.
-    choices = {
-        "bool": ("false", "true"),
-        "int2": ("17", "18"),
-        "int4": ("17", "18"),
-        "int8": ("17", "18"),
-        "text": ("a", "b"),
-        "varchar": ("a", "b"),
-        "bytea": ("\\x61", "\\x62"),
-        "jsonb": ("17", "18"),
-        "timestamptz": ("2001-01-01 00:00:00+00", "infinity"),
-    }
-    with db.cursor() as cur:
-        cur.execute(
+    # Fault injection, not a maintenance or runtime privilege: only touch a
+    # disposable mutant clone. PostgreSQL builds the typed datum via real DDL.
+    # Copying only the missing-value pair avoids also changing slots, grants,
+    # foreign keys, or defaults, including on tightly constrained tables.
+    database = db.settings_dict["NAME"]
+    assert re.fullmatch(r"mig_resume_[0-9a-f]{12}", database)
+    admin = database_url_for_name(os.environ["TEST_SUPERUSER_DATABASE_URL"], database)
+    with psycopg.connect(admin) as conn:
+        row = conn.execute(
             """
-            SELECT c.relname,a.attname,t.typname,format_type(t.oid,a.atttypmod),
-                   a.attnotnull,pg_get_expr(d.adbin,d.adrelid),array_send(a.attmissingval)
+            SELECT c.relname, a.attname, a.attrelid, a.attnum,
+                   a.atttypid::regtype::text, array_send(a.attmissingval)
             FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
-            JOIN pg_type t ON t.oid=a.atttypid
-            LEFT JOIN pg_attrdef d ON (d.adrelid,d.adnum)=(a.attrelid,a.attnum)
             WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s)
               AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
-              AND a.attidentity='' AND a.attgenerated='' AND a.attacl IS NULL
-              AND t.typnamespace='pg_catalog'::regnamespace AND t.typname=ANY(%s)
-              AND a.attcollation=t.typcollation AND a.attstorage=t.typstorage
-              AND NOT EXISTS (
-                  SELECT FROM pg_inherits WHERE c.oid IN (inhparent,inhrelid))
-              AND NOT EXISTS (SELECT FROM pg_attribute b WHERE b.attrelid=c.oid
-                              AND b.attnum>a.attnum AND NOT b.attisdropped)
-              AND NOT EXISTS (SELECT FROM pg_depend p
-                  WHERE p.refclassid='pg_class'::regclass
-                  AND p.refobjid=c.oid AND p.refobjsubid=a.attnum
-                  AND NOT (p.classid='pg_attrdef'::regclass AND p.objid=d.oid IS TRUE))
-            ORDER BY a.atthasmissing DESC,c.relname COLLATE "C" LIMIT 1
-        """,
-            [names, list(choices)],
-        )
-        row = cur.fetchone()
-        assert row, f"No independent last column for a fast-default mutation in {names}"
-        name, col, typ, kind, notnull, declared, side = row
-        table = sql.Identifier("clinic_app", name)
-        column = sql.Identifier(col)
-        value = choices[typ][0]
-        cur.execute(
-            sql.SQL("SELECT array_send(ARRAY[%s::{}])").format(sql.SQL(kind)), [value]
-        )
-        if cur.fetchone() == (side,):
-            value = choices[typ][1]
-        cur.execute(sql.SQL("ALTER TABLE {} DROP COLUMN {}").format(table, column))
-        cur.execute(
-            sql.SQL("ALTER TABLE {} ADD COLUMN {} {} {} DEFAULT {}").format(
-                table,
-                column,
+              AND a.atttypid IN ('uuid'::regtype, 'bigint'::regtype, 'integer'::regtype)
+            ORDER BY (a.atttypid='uuid'::regtype) DESC, a.atthasmissing DESC,
+                     c.relname COLLATE "C", a.attnum LIMIT 1
+            """,
+            [names],
+        ).fetchone()
+        assert row, f"No comparable column in {names}"
+        name, col, relid, slot, kind, old = row
+        donors = {
+            "uuid": "23e579b3-54ff-4cf7-a75a-8d124ee89d73",
+            "bigint": "-2147483629",
+            "integer": "-2147483629",
+        }
+        value = donors[kind]
+        conn.execute("CREATE TEMP TABLE matrix_donor () ON COMMIT DROP")
+        conn.execute(
+            sql.SQL("ALTER TABLE pg_temp.matrix_donor ADD v {} DEFAULT {}").format(
                 sql.SQL(kind),
-                sql.SQL("NOT NULL" if notnull else ""),
                 sql.Literal(value),
             )
         )
-        default = (
-            sql.SQL("SET DEFAULT {}").format(sql.SQL(declared))
-            if declared is not None
-            else sql.SQL("DROP DEFAULT")
-        )
-        cur.execute(
-            sql.SQL("ALTER TABLE {} ALTER COLUMN {} {}").format(table, column, default)
-        )
-        cur.execute(
-            "SELECT atthasmissing,array_send(attmissingval) FROM pg_attribute "
-            "WHERE attrelid=%s::regclass AND attname=%s",
-            [table.as_string(), col],
-        )
-        present, planted = cur.fetchone()
-        assert present
-        assert planted is not None
-        assert planted != side
-        return f"{name}.{col}"
+        readback = conn.execute(
+            """
+            UPDATE pg_catalog.pg_attribute AS target
+               SET atthasmissing=source.atthasmissing,
+                   attmissingval=source.attmissingval
+              FROM pg_catalog.pg_attribute AS source
+             WHERE source.attrelid='pg_temp.matrix_donor'::regclass
+               AND source.attname='v'
+               AND source.atthasmissing AND source.atttypid=target.atttypid
+               AND source.atttypmod=target.atttypmod
+               AND target.attrelid=%s AND target.attnum=%s
+            RETURNING target.atthasmissing, array_send(target.attmissingval)
+            """,
+            (relid, slot),
+        ).fetchone()
+        assert readback is not None
+        assert readback[0]
+        assert readback[1] is not None
+        assert readback[1] != old
+    return f"{name}.{col}"
 
 
 TAMPERS = {
