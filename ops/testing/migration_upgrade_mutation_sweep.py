@@ -71,6 +71,22 @@ def _mutate(
         raise RuntimeError(message)
 
 
+def _try_mutate(
+    cursor: Cursor[tuple[object, ...]],
+    table: str,
+    keys: list[str],
+    key: str,
+    column: str,
+) -> bool:
+    try:
+        with cursor.connection.transaction():
+            _mutate(cursor, table, keys, key, column)
+    except psycopg.IntegrityError:
+        # A mutation blocked by PostgreSQL is not an oracle witness.
+        return False
+    return True
+
+
 def run_sweep(seeded: set[str], required: Collection[str]) -> set[str]:
     """Require the verdict oracle to reject a real mutation in each table."""
     rewritten = {
@@ -111,8 +127,9 @@ def run_sweep(seeded: set[str], required: Collection[str]) -> set[str]:
                         columns.setdefault(column, key)
             for column, key in columns.items():
                 with admin.transaction() as mutation:
-                    _mutate(cursor, table, available[table], key, column)
-                    rejected = _oracle_rejects(admin, required)
+                    rejected = _try_mutate(
+                        cursor, table, available[table], key, column
+                    ) and _oracle_rejects(admin, required)
                     raise Rollback(mutation)
                 if rejected:
                     swept.add(table)
