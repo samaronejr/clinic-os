@@ -12,8 +12,10 @@ from uuid import UUID, uuid4
 
 from apps.comms.inbound_providers import sign
 from apps.comms.inbox_inbound import InboundReceipt, receive_inbound, secret_name
+from apps.comms.mac_secrets import provision_mac_secrets
 from apps.comms.models import ProviderAccount
 from apps.identity.models import ServicePrincipal, UserClinicRole
+from django.conf import settings
 
 from auth.stepup_test_support import create_role_actor
 from identity.permission_support import owner_context
@@ -162,8 +164,14 @@ def inbox_account(
             principal=principal,
             signing_key_digest=hashlib.sha256(key.encode()).hexdigest(),
         )
+    provision_account_secret(account.pk, key)
+    return InboxWorld(graph, account.pk, key, principal.pk, phone_number_id)
+
+
+def provision_account_secret(account_id: UUID, key: str) -> None:
+    """Store the account key where the adapter reads it, then copy it in."""
     root = Path(str(settings.CLINIC_SECRET_DIR))
-    path = root / f"{secret_name(account.pk)}.secret"
+    path = root / f"{secret_name(account_id)}.secret"
     path.write_text(key)
     path.chmod(0o600)
-    return InboxWorld(graph, account.pk, key, principal.pk, phone_number_id)
+    provision_mac_secrets()

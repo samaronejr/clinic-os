@@ -387,3 +387,30 @@ Each item is known and not scheduled; none is needed for the acceptance or QA pa
   receipt for portal messages, a thread cannot be restricted from representatives,
   and browser notifications stay unavailable (`PUSH_NOTICE` in
   `apps/intake/portal.py`, BLOCKED-ON-EG).
+
+### Provider proofs (comms 0019)
+
+Provider answers are proved by MACs the database verifies itself; the bearer
+key never leaves Python. Each account's MAC secret is held in
+`comms_providermacsecret`, readable only by `clinic_resolver` and the owner-side
+definers (the runtime role has no privilege on it), and provisioned only by
+`COPY` from the adapter's secret store (`manage.py provision_comms_mac_secrets`,
+synthetic only). An account without a secret fails closed. This is plain
+storage protected by role ACL, a deliberate trade-off until server-side binding
+lets the secret move into the tenant KEK envelope.
+
+- Inbound: after the provider signature over the raw body is verified (tagged
+  `clinic-comms-webhook-v1`), the handler proves its own transaction with
+  `HMAC(secret, "clinic-comms-inbound-v1:<account>:<xid>")`; a MAC read from
+  query text authorizes nothing outside that transaction.
+- Outcomes: an accepted or rejected answer needs
+  `HMAC(secret, "clinic-comms-outcome-v1:<attempt>:<outcome>:<reference>")`;
+  a replayed record changes nothing.
+- The runtime role never writes an acceptance, a reference, an attempt delivery
+  or a message's delivery projection directly. A receipt for an in-flight
+  attempt whose acceptance was never recorded is matched by its synthetic
+  reference and records it.
+
+Pooled lock connections are unsupported: the claim, its session nonce and the
+subject's advisory lock must stay on one database session from claim to
+record, which a transaction-pooling proxy would not guarantee.

@@ -12,6 +12,8 @@ cancelled rather than sent.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
@@ -39,6 +41,7 @@ from apps.comms.inbox_services import (
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
 from apps.core.fault_injection import injected_fault
+from apps.core.secrets import SecretUnavailableError, secret_store
 from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
@@ -293,6 +296,22 @@ def _claim_send_permit(operation: IntegrationOperation) -> bool:
     return decision in {"claimed", "eligible"}
 
 
+def outcome_proof(
+    account_id: UUID, operation_id: UUID, outcome: str, reference: str | None
+) -> str:
+    """Sign a synchronous provider answer with the account's provider secret.
+
+    The secret comes from the adapter's own configuration; the database checks
+    the MAC against its resolver-only copy and binds it to this attempt,
+    outcome and reference.
+    """
+    from apps.comms.inbox_inbound import secret_name  # noqa: PLC0415
+
+    key = bytes.fromhex(secret_store().get_secret(secret_name(account_id)))
+    message = f"clinic-comms-outcome-v1:{operation_id}:{outcome}:{reference or ''}"
+    return hmac.digest(key, message.encode(), hashlib.sha256).hex()
+
+
 def record_claimed_outcome(
     operation_id: UUID, outcome: str, reference: str | None
 ) -> bool | None:
@@ -308,11 +327,25 @@ def record_claimed_outcome(
     try:
         with transaction.atomic(using="locks"), connections["locks"].cursor() as cursor:
             cursor.execute(
-                "SELECT clinic_app.comms_record_send_outcome(%s, %s, %s)",
-                [operation_id, outcome, reference],
+                "SELECT c.provider_account_id"
+                " FROM clinic_app.comms_integrationoperation o"
+                " JOIN clinic_app.comms_message m ON m.id = o.subject_id"
+                " JOIN clinic_app.comms_conversation c ON c.id = m.conversation_id"
+                " WHERE o.id = %s",
+                [operation_id],
+            )
+            account = cursor.fetchone()
+            proof = (
+                outcome_proof(account[0], operation_id, outcome, reference)
+                if account and account[0] and outcome in {"accepted", "rejected"}
+                else None
+            )
+            cursor.execute(
+                "SELECT clinic_app.comms_record_send_outcome(%s, %s, %s, %s)",
+                [operation_id, outcome, reference, proof],
             )
             row = cursor.fetchone()
-    except DatabaseError:
+    except (DatabaseError, SecretUnavailableError):
         return False
     return bool(row and row[0])
 

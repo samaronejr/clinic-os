@@ -91,6 +91,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("comms_appointmentreminder", "SELECT"),
     ("comms_integrationoperation", "INSERT"),
     ("comms_integrationoperation", "SELECT"),
+    ("comms_providermacsecret", "INSERT"),
+    ("comms_providermacsecret", "SELECT"),
     ("consent_consentacceptance", "SELECT"),
     ("consent_consentrevocation", "SELECT"),
     ("consent_consenttext", "SELECT"),
@@ -249,6 +251,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
     ("comms_inboundevent", "delivery_state", "SELECT"),
+    ("comms_provideraccount", "id", "SELECT"),
     ("comms_inboundevent", "operation_id", "SELECT"),
     ("comms_integrationoperation", "attempt_sequence", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
@@ -491,6 +494,7 @@ POSTURE_OVERRIDES: Final = {
     "billing_revision_snapshot": ("v", False, ["clinic_resolver"]),
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
+    "comms_adopt_late_reference": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_record_send_outcome": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
@@ -821,10 +825,11 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_adopt_late_reference", "reference text"),
     ("comms_claim_send_permit", "requested uuid"),
     (
         "comms_record_send_outcome",
-        "requested uuid, outcome text, reference text",
+        "requested uuid, outcome text, reference text, proof text",
     ),
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
@@ -1267,10 +1272,11 @@ FUNCTION_RESULTS: Final = {
         "TABLE(status text, operation_count bigint, "
         "oldest_created_at timestamp with time zone)"
     ),
+    ("comms_adopt_late_reference", "reference text"): "uuid",
     ("comms_claim_send_permit", "requested uuid"): "text",
     (
         "comms_record_send_outcome",
-        "requested uuid, outcome text, reference text",
+        "requested uuid, outcome text, reference text, proof text",
     ): "boolean",
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
         "void"

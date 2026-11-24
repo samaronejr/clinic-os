@@ -11,6 +11,8 @@ without a second message, status change or meter row.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -106,7 +108,11 @@ def verify_token_name(account_id: UUID) -> str:
 
 
 def authenticate(*, account_id: UUID, headers: Mapping[str, str], body: bytes) -> str:
-    """Verify the signature over the raw bytes; return the proof for the resolver."""
+    """Verify the signature over the raw bytes; return the account key.
+
+    The key stays in this process: ``inbound_context`` proves each
+    transaction to the database with a MAC derived from it, never the key.
+    """
     if len(body) > MAX_BODY_BYTES:
         raise InboundRejectedError
     try:
@@ -127,12 +133,23 @@ def _channel_enabled(channel: str) -> bool:
     return synthetic or channel_capability(channel).real_enabled
 
 
+def transaction_proof(*, key: str, account_id: UUID, xact: str) -> str:
+    """Return the MAC proving one inbound transaction of one account."""
+    message = f"clinic-comms-inbound-v1:{account_id}:{xact}".encode()
+    return hmac.digest(bytes.fromhex(key), message, hashlib.sha256).hex()
+
+
 @contextmanager
 def inbound_context(*, account_id: UUID, proof: str) -> Iterator[ResolvedAccount]:
     """Resolve stored scope in one durable transaction; never borrow a staff actor."""
     if connection.in_atomic_block:
         raise InboundRejectedError
     with transaction.atomic(durable=True), connection.cursor() as cursor:
+        cursor.execute("SELECT pg_catalog.pg_current_xact_id()::text")
+        xact = cursor.fetchone()
+        # Bound to this account and this transaction only: a MAC read from
+        # this session's query text authorizes nothing anywhere else.
+        proof = transaction_proof(key=proof, account_id=account_id, xact=str(xact[0]))
         cursor.execute(
             "SELECT * FROM clinic_app.comms_resolve_inbound(%s, %s)",
             [account_id, proof],
@@ -398,6 +415,18 @@ def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:
         provider_reference=event.provider_message_id,
         subject_type=SUBJECT_TYPE,
     ).first()
+    if operation is None:
+        # An accepted send whose acceptance was never recorded: the verified
+        # receipt is the provider's evidence, matched by the attempt's own
+        # synthetic reference.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.comms_adopt_late_reference(%s)",
+                [event.provider_message_id],
+            )
+            adopted = cursor.fetchone()
+        if adopted is not None and adopted[0] is not None:
+            operation = IntegrationOperation.objects.get(pk=adopted[0])
     if operation is None:
         if IntegrationOperation.objects.filter(
             clinic_id=account.clinic_id,

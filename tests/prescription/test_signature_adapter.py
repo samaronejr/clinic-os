@@ -438,7 +438,7 @@ def test_completed_document_refuses_signing_despite_a_later_stamped_failure(
     def behind_clock(instance: SignatureOperation, add: bool) -> object:
         if not add:
             return original(instance, add)
-        setattr(instance, created_at.attname, behind)
+        instance.created_at = behind
         return behind
 
     # The successor's web worker runs ten seconds behind the failed attempt's.

@@ -86,14 +86,12 @@ PARITY = (
     "e_failed",
     "e_retry_sent",
     "e_delivered",
-    "e_unknown",
     "s_sent",
     "s_delivered",
     "s_failed",
     "s_retry_sent",
     "s_rejected",
     "o_rejected",
-    "o_unknown",
     "o_rejected_retry_sent",
 )
 # Bounded waits for the two-thread race; the threads never sleep.
@@ -746,8 +744,25 @@ def _r8_legacy_inflight(
             world.dispatch(UUID(pending))
     if calls:
         failures.append(f"{len(calls)} further provider calls for a legacy send")
-    if world.state(message) != "unconfirmed" or world.retry(message) != REFUSED:
+    if world.state(message) != "reconciliation" or world.retry(message) != REFUSED:
         failures.append("the legacy in-flight send is not visibly held")
+    # Staff checked with the provider: the hold closes it, then one retry.
+    if world.reconcile(message, None) != "recorded":
+        failures.append("the staff hold could not close the legacy send")
+    _one_more_send(world, message, failures, before=0)
+
+
+def _unknown_outcome(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    """Check a base send of unknown outcome is held for staff, retry refused.
+
+    The base showed it ``queued``; the candidate shows the hold instead, since
+    the provider may have accepted it, and offers no retry, as the base did not.
+    """
+    message = UUID(ids["message"])
+    if world.state(message) != "reconciliation":
+        failures.append("a send of unknown outcome is not held for staff")
+    if world.retry(message) != REFUSED:
+        failures.append("a retry was admitted for a send of unknown outcome")
 
 
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
@@ -771,6 +786,8 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "r7_inflight": _r7_inflight,
     "r7_rejected": _r7_rejected,
     "r8_legacy_inflight": _r8_legacy_inflight,
+    "e_unknown": _unknown_outcome,
+    "o_unknown": _unknown_outcome,
     "s_retry_failed": _projection_failed,
 }
 

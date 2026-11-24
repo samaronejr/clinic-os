@@ -16,7 +16,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 from apps.audit.models import AuditEvent
-from apps.comms import inbox_inbound, inbox_queries, suggestions
+from apps.comms import inbox_adapters, inbox_inbound, inbox_queries, suggestions
 from apps.comms import inbox_services as services
 from apps.comms.adapters import PermanentSendError, TransientSendError
 from apps.comms.inbox_inbound import (
@@ -34,6 +34,7 @@ from apps.comms.models import (
     IntegrationOperation,
     Message,
     MessageMeter,
+    ProviderAccount,
     SuggestedReply,
     TemplateVersion,
 )
@@ -351,7 +352,7 @@ def test_accepted_retry_stays_current_when_its_worker_clock_runs_behind(
 
     def behind_clock(instance: IntegrationOperation, *, add: bool) -> datetime:
         assert add
-        setattr(instance, created_at.attname, behind)
+        instance.created_at = behind
         return behind
 
     with monkeypatch.context() as clock:
@@ -1501,7 +1502,9 @@ def test_a_claimed_send_is_written_only_by_its_claim(world: InboxWorld) -> None:
             seen[name] = _forge(graph.organization_a, _SET.format(change), [attempt])
         # A further attempt is not admitted while this one is in flight.
         seen["successor"] = _admit(graph, message_id)
-        record = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL)"
+        record = (
+            "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL, NULL)"
+        )
         # Another session may not record it while the claimant lives.
         seen["other_session"] = _forge(graph.organization_a, record, [attempt])
 
@@ -1649,7 +1652,9 @@ def test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor(
             admin.execute(
                 "SELECT pg_catalog.pg_terminate_backend(%s, 60000)", [claimant]
             )
-        record = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL)"
+        record = (
+            "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL, NULL)"
+        )
         # The freed lock and any replay give a successor session nothing.
         seen["lock_taker"] = _forge(
             graph.organization_a,
@@ -1680,6 +1685,140 @@ def test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor(
         assert services.message_states([Message.objects.get(pk=message_id)]) == {
             message_id: "unconfirmed"
         }
+    # A verified receipt for the attempt's own synthetic reference still
+    # matches it, so the acceptance and its reference are not lost.
+    reference = f"synthetic:whatsapp:{attempt.pk}"
+    delivered = world.status_body(provider_message_id=reference, status="delivered")
+    assert world.receive(delivered).accepted == 1
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert (attempt.status, attempt.provider_reference) == ("succeeded", reference)
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "delivered"
+        }
+
+
+def _value(tenant: UUID, sql: str, params: list[str]) -> object:
+    """Run one statement as the runtime role and return its single value."""
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(tenant)],
+        )
+        cursor.execute("SET LOCAL ROLE clinic_app")
+        cursor.execute(sql, params)
+        return cursor.fetchone()[0]
+
+
+def test_the_runtime_role_cannot_forge_an_unclaimed_outcome(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    tenant, op = graph.organization_a, str(attempt.pk)
+    accepted = "status = 'succeeded', provider_reference = 'forged'"
+    assert _forge(tenant, _SET.format(accepted), [op]) == (
+        "comms_message_attempt_outcome_check"
+    )
+    projection = "UPDATE clinic_app.comms_message SET provider_state = %s WHERE id = %s"
+    assert _forge(tenant, projection, ["delivered", str(message_id)]) == "42501"
+    # The provider secret is unreadable, and its read-only digest opens nothing.
+    assert _forge(
+        tenant, "SELECT secret FROM clinic_app.comms_providermacsecret", []
+    ) == ("42501")
+    with owner_context(graph.organization_a):
+        digest = ProviderAccount.objects.get(pk=world.account).signing_key_digest
+    resolved = "SELECT count(*) FROM clinic_app.comms_resolve_inbound(%s, %s)"
+    assert _value(tenant, resolved, [str(world.account), digest]) == 0
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "queued"
+        }
+
+
+def test_a_squatting_claimant_cannot_record_a_forged_acceptance(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    other = _send(graph, _only_conversation(graph).pk, body="Outra").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+        foreign = IntegrationOperation.objects.get(subject_id=other)
+    squat = _TAKE_LOCK + (
+        "SELECT clinic_app.comms_claim_send_permit(%s); "
+        "SELECT clinic_app.comms_record_send_outcome(%s, 'accepted', %s, %s)"
+    )
+    op, reference = str(attempt.pk), f"synthetic:whatsapp:{attempt.pk}"
+    # A guessed MAC, and a valid MAC for another attempt, are both refused.
+    for proof in (
+        "0" * 64,
+        inbox_adapters.outcome_proof(
+            world.account, foreign.pk, "accepted", f"synthetic:whatsapp:{foreign.pk}"
+        ),
+        inbox_adapters.outcome_proof(world.account, attempt.pk, "accepted", "other"),
+    ):
+        assert _forge(
+            graph.organization_a, squat, [str(message_id), op, op, reference, proof]
+        ) == ("42501")
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert (attempt.status, attempt.provider_reference) == ("pending", None)
+
+
+def test_no_query_text_carries_the_provider_secret(
+    world: InboxWorld, superuser_database_url: str
+) -> None:
+    """Snapshot every session's query text after each statement we run."""
+    graph = world.graph
+    seen: list[str] = []
+    with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+
+        def snapshot(
+            execute: Callable[..., object], sql: str, params: object, *rest: object
+        ) -> object:
+            result = execute(sql, params, *rest)
+            seen.extend(
+                str(row[0])
+                for row in admin.execute(
+                    "SELECT query FROM pg_catalog.pg_stat_activity"
+                    " WHERE datname = pg_catalog.current_database()"
+                ).fetchall()
+            )
+            return result
+
+        with (
+            connections["default"].execute_wrapper(snapshot),
+            connections["locks"].execute_wrapper(snapshot),
+        ):
+            world.receive(world.message_body(text="Oi"))
+            message_id = _send(
+                graph, _only_conversation(graph).pk, body="Olá"
+            ).message_id
+            reference = _dispatch_pending(graph, message_id)
+            world.receive(
+                world.status_body(provider_message_id=reference, status="sent")
+            )
+    assert any("comms_resolve_inbound" in query for query in seen)
+    assert any("comms_record_send_outcome" in query for query in seen)
+    assert not [query for query in seen if world.key in query]
+
+
+def test_a_recorded_outcome_replays_as_a_no_op(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    reference = _dispatch_pending(graph, message_id)
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    replay = "SELECT clinic_app.comms_record_send_outcome(%s, 'rejected', NULL, NULL)"
+    assert _value(graph.organization_a, replay, [str(attempt.pk)]) is False
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert (attempt.status, attempt.provider_reference) == ("succeeded", reference)
 
 
 def test_a_claimed_outcome_and_its_audit_event_commit_together(

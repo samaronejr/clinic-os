@@ -799,7 +799,14 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         numbered = [a.attempt_sequence is not None for a in own]
         if proven:
             states[message_id] = max(proven, key=_PROOF.index)
-        elif any(a.attempt_sequence is None and a.send_permit is None for a in own):
+        elif any(
+            (a.attempt_sequence is None and a.send_permit is None)
+            or (
+                a.send_permit_claim is not None
+                and bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
+            )
+            for a in own
+        ):
             states[message_id] = "reconciliation"
         elif any(numbered) or not own:
             # The highest-numbered attempt is current (NULLs sort last).
@@ -816,6 +823,11 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         if states[message_id] == "failed" and awaiting_outcome(own, failed):
             states[message_id] = "awaiting"
     return states
+
+
+# The claim digest comms 0018 gives a send a pre-claim revision left in
+# flight; only staff reconciliation or provider evidence closes it.
+LEGACY_IN_FLIGHT: Final = hashlib.sha256(b"legacy-in-flight").digest()
 
 
 def awaiting_outcome(attempts: list[IntegrationOperation], failed: set[UUID]) -> int:

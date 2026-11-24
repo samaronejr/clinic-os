@@ -43,7 +43,8 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     # enterprise relation is derived from source.
     # tests/infra/test_recovery_manifest.py independently proves completeness
     # against the live migrated catalog.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 301
+    # 302: comms 0019 adds the resolver-only provider MAC secret store.
+    assert len(restore_contract.DOMAIN_RELATIONS) == 302
     assert set(ENTERPRISE_TABLES) <= set(restore_contract.DOMAIN_RELATIONS)
     assert "clinic_app.identity_totpsecret" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA

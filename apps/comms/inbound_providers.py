@@ -93,9 +93,14 @@ class TemplateStatus:
 type InboundEvent = InboundMessage | StatusUpdate | TemplateStatus
 
 
+# Domain separation: a webhook MAC can never stand in for another proof.
+WEBHOOK_TAG: Final = b"clinic-comms-webhook-v1\x00"
+
+
 def sign(*, secret: bytes, body: bytes) -> str:
-    """Return the ``sha256=<hex>`` header value a provider would send."""
-    return SIGNATURE_PREFIX + hmac.digest(secret, body, hashlib.sha256).hex()
+    """Return the ``sha256=<hex>`` header a synthetic provider sends for ``body``."""
+    digest = hmac.digest(secret, WEBHOOK_TAG + body, hashlib.sha256)
+    return SIGNATURE_PREFIX + digest.hex()
 
 
 def verify_signature(*, secret: bytes, body: bytes, header: str) -> None:

@@ -10739,6 +10739,53 @@
         "apps.insurance.access.authority"
       ],
       "reason": "Requester-bound exact-clinic output selection retains existing RLS and Finance authority, then delegates original permission and current governed-source authentication to check_invocation before new or idempotent proposal admission."
+    },
+    {
+      "symbol": "apps.comms.inbox_adapters._claim_send_permit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "The worker's final send recheck on its lock connection; clinic_app.comms_claim_send_permit claims only for the session that itself holds the subject's advisory lock and binds the claim to it. No staff authority is read or borrowed; tests/comms/test_inbox.py covers other sessions and squatters."
+    },
+    {
+      "symbol": "apps.comms.inbox_adapters.record_claimed_outcome",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Records the provider's synchronous answer through clinic_app.comms_record_send_outcome, which requires the claimant's own live session, the subject lock and the provider MAC over attempt, outcome and reference. No staff authority is involved."
+    },
+    {
+      "symbol": "apps.comms.inbox_inbound._apply_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Runs only inside inbound_context after the provider signature is verified and the transaction's MAC is accepted; clinic_app.comms_adopt_late_reference again requires that verified inbound context. It never borrows a staff actor."
+    },
+    {
+      "symbol": "apps.comms.inbox_queries.conversation_view",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Authority comes from _conversation on the requested thread; the resolver call only marks which held attempts the provider refuted, inside that scope.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
+    },
+    {
+      "symbol": "apps.comms.inbox_services.reconcile_message_attempts",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Finds the outbound message in the clinic, then authority comes from _conversation on its thread under the message lock; clinic_app.comms_reconcile_attempts re-checks staff roles and refuses unknown or foreign messages with the shared denial.",
+      "enforced_by": [
+        "apps.comms.inbox_services._actor"
+      ]
     }
   ],
   "probes": [
@@ -14359,7 +14406,9 @@
     },
     "clinic_app.comms_ingest_account": {
       "discovery": {
-        "migrations": [],
+        "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py"
+        ],
         "policies": [],
         "resolvers": [
           "clinic_app.ai_front_desk_articles",
@@ -14372,7 +14421,9 @@
           "clinic_app.ai_front_desk_state",
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
+          "clinic_app.comms_adopt_late_reference",
           "clinic_app.comms_message_guard_v1",
+          "clinic_app.comms_message_projection_guard",
           "clinic_app.comms_open_window",
           "clinic_app.comms_status_attempt_guard"
         ],
@@ -14411,7 +14462,9 @@
     },
     "clinic_app.comms_resolve_inbound": {
       "discovery": {
-        "migrations": [],
+        "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py"
+        ],
         "policies": [],
         "resolvers": [],
         "signatures": [
@@ -14629,6 +14682,7 @@
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
           "apps/comms/migrations/_inflight_claim_sql.py",
+          "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py",
           "apps/comms/migrations/_session_claim_sql.py"
@@ -14678,6 +14732,7 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py"
         ],
@@ -14726,13 +14781,14 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_inflight_claim_sql.py",
+          "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_session_claim_sql.py"
         ],
         "policies": [],
         "resolvers": [],
         "signatures": [
           {
-            "arguments": "requested uuid, outcome text, reference text",
+            "arguments": "requested uuid, outcome text, reference text, proof text",
             "returns": "bool",
             "security_definer": true,
             "set_returning": false
@@ -14771,6 +14827,7 @@
     "clinic_app.comms_session_claim": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_session_claim_sql.py"
         ],
         "policies": [],
@@ -15559,10 +15616,8 @@
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
-          "clinic_app.comms_ingest_account",
           "clinic_app.comms_ingest_audit",
           "clinic_app.comms_patient_audit",
-          "clinic_app.comms_resolve_inbound",
           "clinic_app.consent_audit",
           "clinic_app.crm_patient_audit",
           "clinic_app.data_request_audit",
@@ -15599,14 +15654,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "text, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ]
       },
@@ -16642,6 +16697,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.comms_mac_ok",
           "clinic_app.identity_totp_verify",
           "clinic_app.prescription_verify_synthetic",
           "clinic_app.protected_blind_index"
@@ -28945,6 +29001,72 @@
         "test_retained_proposal_source_receipt_is_not_runtime_writable"
       ],
       "reason": "Authenticated current-transaction receipts bind the immutable encrypted proposal digest and cited retained source to its exact original invocation. Real Finance and care tests prove positive validation, successor/drift refusal, no omitted origin, no payload cross-wiring and no runtime receipt write."
+    },
+    "clinic_app.comms_adopt_late_reference": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "reference text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor"
+      ],
+      "reason": "Inside a MAC-verified inbound transaction, binds a receipt to the in-flight attempt whose synthetic reference it names and records that acceptance; no staff authority."
+    },
+    "clinic_app.comms_mac_ok": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_ingest_account",
+          "clinic_app.comms_record_send_outcome",
+          "clinic_app.comms_resolve_inbound"
+        ],
+        "signatures": [
+          {
+            "arguments": "account uuid, message text, proof text",
+            "returns": "bool",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Constant-time check of a provider MAC against the account's resolver-only secret for the comms resolvers; no staff role decision."
+    },
+    "clinic_app.comms_message_projection_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_mac_proof_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Lets the runtime role change a message's delivery projection only inside a MAC-verified inbound transaction for its own provider account."
     }
   },
   "sql_method": [
