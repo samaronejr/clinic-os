@@ -140,7 +140,7 @@ def _enrollment(
         FROM clinic_app.intake_patientduplicateindex d
         JOIN clinic_app.intake_patientclinicenrollment e ON e.patient_id=d.patient_id
         WHERE d.organization_id=%s AND d.clinic_id=e.clinic_id AND e.clinic_id=%s""",
-        [b"intake.duplicate.name_birth.v1\01988-04-17:synthe", kek, tenant, clinic],
+        [b"intake.duplicate.name_birth.v1\x001988-04-17:synthe", kek, tenant, clinic],
     )
     if cursor.fetchall() != [(1, 1, True, True)]:
         failures.append("native fixture: intake_patientduplicateindex")
