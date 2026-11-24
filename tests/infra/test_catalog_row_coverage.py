@@ -308,6 +308,8 @@ def _exercise_relation_field(
     db: DatabaseWrapper, schema: tuple[Field, ...], field: Field
 ) -> set[tuple[str, str]]:
     key = field.catalog, field.name
+    # pg_index has no oid column; the index relation identifies its row.
+    row_key = sql.Identifier("indexrelid" if field.catalog == "pg_index" else "oid")
     # confrelid has no relation for non-FKs. Don't inner-join away an
     # applicable row if its target can't be resolved: name it and fail below.
     applicable = sql.SQL(
@@ -317,13 +319,14 @@ def _exercise_relation_field(
         cur.execute(
             sql.SQL(CTES)
             + sql.SQL(
-                "SELECT r.oid, owner.relname, {member}, n.nspname, c.relname "
+                "SELECT r.{row_key}, owner.relname, {member}, n.nspname, c.relname "
                 "FROM pg_catalog.{catalog} r {scope} "
                 "LEFT JOIN pg_catalog.pg_class c ON c.oid=r.{field} "
                 "LEFT JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
                 '{applicable} ORDER BY owner.relname COLLATE "C", '
-                '{member} COLLATE "C", r.oid'
+                '{member} COLLATE "C", r.{row_key}'
             ).format(
+                row_key=row_key,
                 member=sql.SQL(_RELATION_MEMBERS[key]),
                 catalog=sql.Identifier(field.catalog),
                 scope=sql.SQL(SOURCES[field.catalog].joins),
@@ -343,8 +346,8 @@ def _exercise_relation_field(
                 db,
                 schema,
                 field,
-                seed=sql.SQL("SELECT * FROM pg_catalog.{} WHERE oid={}").format(
-                    sql.Identifier(field.catalog), sql.Literal(oid)
+                seed=sql.SQL("SELECT * FROM pg_catalog.{} WHERE {}={}").format(
+                    sql.Identifier(field.catalog), row_key, sql.Literal(oid)
                 ),
                 variant=sql.SQL("{}::regclass::oid").format(
                     sql.Literal(peer.as_string())
