@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -586,6 +587,16 @@ def _scratch_database(
                 "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO clinic_app; "
                 "ALTER DEFAULT PRIVILEGES FOR ROLE clinic_owner "
                 "IN SCHEMA clinic_app GRANT USAGE ON SEQUENCES TO clinic_app"
+            )
+            # This factory bypasses make db-bootstrap. Install exactly the
+            # same administrator-owned header reader and migration-only store.
+            bootstrap = (Path(__file__).parents[2] / "ops/db/bootstrap.sql").read_text(
+                encoding="utf-8"
+            )
+            admin.execute(
+                bootstrap.split("-- BEGIN migration witness bootstrap", 1)[1]
+                .split("\n", 1)[1]
+                .split("-- END migration witness bootstrap", 1)[0]
             )
         settings_dict = connections["default"].settings_dict.copy()
         settings_dict["NAME"] = name

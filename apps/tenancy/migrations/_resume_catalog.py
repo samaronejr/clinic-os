@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 from django.db.migrations.recorder import MigrationRecorder
 
+from apps.tenancy.migrations import _default_witness
 from apps.tenancy.migrations._resume_catalog_sql import catalog_sql, fields
 
 if TYPE_CHECKING:
@@ -25,10 +26,7 @@ type History = dict[str, list[tuple[str | None, Delta]]]
 
 FIXTURE = Path(__file__).with_name("_resume_catalog_pg16.json")
 ARTIFACT_STEP = "artifact-retention:0"
-
-
-class ResumeCatalogError(RuntimeError):
-    """The schema does not match any committed prefix of the migration."""
+ResumeCatalogError = _default_witness.ResumeCatalogError
 
 
 class Checkpoint(NamedTuple):
@@ -128,7 +126,9 @@ _MEMBER_GROUPS = frozenset(
 )
 
 
-def _differences(actual: Definition, expected: Definition) -> set[str]:
+def _differences(
+    actual: Definition, expected: Definition, materialized: dict[str, str]
+) -> set[str]:
     if actual == expected:
         return set()
     conflicts = {
@@ -147,6 +147,8 @@ def _differences(actual: Definition, expected: Definition) -> set[str]:
                 and actual.get(flag) == "false"
                 and actual.get(value) == "null"
             ):
+                column = flag.removeprefix("columns.").removesuffix(".atthasmissing")
+                materialized[column] = expected[value]
                 conflicts.difference_update((flag, value))
     return conflicts
 
@@ -157,6 +159,7 @@ def _first_difference(keys: set[str], actual: Definition, expected: Definition) 
         key=lambda k: (
             k.partition(".")[0] not in _MEMBER_GROUPS,
             k not in actual or k not in expected,
+            not k.endswith(".atttypid"),
             k,
         ),
     )
@@ -183,28 +186,43 @@ def checkpoint_applied(editor: BaseDatabaseSchemaEditor, step: str) -> bool:
     """Accept only an exact whole-object catalog at a clean captured boundary."""
     if editor.collect_sql:
         return False
+    db = editor.connection
     checkpoint = _checkpoints()[step]
-    recorder = MigrationRecorder(editor.connection)
+    _default_witness.lock_scope(db, checkpoint.scope)
+    recorder = MigrationRecorder(db)
     applied = {f"{app}.{name}" for app, name in recorder.applied_migrations()}
-    live = snapshot(editor.connection)
+    live = snapshot(db)
     actual = {name: live.get(name, {}) for name in checkpoint.scope}
-    return match_boundary(
-        checkpoint, actual, _boundaries(checkpoint, applied, checkpoint.scope)
+    already = match_boundary(
+        checkpoint, actual, _boundaries(checkpoint, applied, checkpoint.scope), db=db
     )
+    if not already:
+        # No mismatched predecessor, including an already cleared, unwitnessed
+        # default, may produce its own proof. These inserts commit with the DDL.
+        _default_witness.capture(db, checkpoint.migration, checkpoint.scope)
+    return already
 
 
 def match_boundary(
-    checkpoint: Checkpoint, actual: Catalog, states: list[tuple[int, Catalog]]
+    checkpoint: Checkpoint,
+    actual: Catalog,
+    states: list[tuple[int, Catalog]],
+    *,
+    db: BaseDatabaseWrapper | None = None,
 ) -> bool:
     """Use this same decision for DB reads and PostgreSQL catalog-row witnesses."""
     closest: tuple[int, Catalog, dict[str, set[str]]] | None = None
     for prefix, expected in reversed(states):
-        conflicts = {
-            name: keys
-            for name in sorted(expected)
-            if (keys := _differences(actual[name], expected[name]))
-        }
+        conflicts = {}
+        proofs: dict[str, dict[str, str]] = {}
+        for name in sorted(expected):
+            columns: dict[str, str] = {}
+            if keys := _differences(actual[name], expected[name], columns):
+                conflicts[name] = keys
+            if columns:
+                proofs[name] = columns
         if not conflicts:
+            _prove_materializations(db, checkpoint.migration, proofs)
             return prefix >= checkpoint.prefix
         # Distance selects the diagnostic only; never combine different prefixes.
         fields = sum(map(len, conflicts.values()))
@@ -222,8 +240,30 @@ def match_boundary(
     raise ResumeCatalogError(msg)
 
 
+def _prove_materializations(
+    db: BaseDatabaseWrapper | None, migration: str, proofs: dict[str, dict[str, str]]
+) -> None:
+    refused = []
+    for name, columns in proofs.items():
+        table = name.removeprefix("relation ")
+        for column, value in sorted(columns.items()):
+            try:
+                if db is None:
+                    raise _default_witness.missing(table, column)
+                _default_witness.verify(db, migration, table, column, value)
+            except ResumeCatalogError as exc:
+                refused.append(str(exc))
+    if refused:
+        raise ResumeCatalogError("; ".join(refused))
+
+
 def require_checkpoint(editor: BaseDatabaseSchemaEditor, step: str) -> None:
     """Refuse to record a unit unless it published its expected definitions."""
-    if not editor.collect_sql and not checkpoint_applied(editor, step):
+    if editor.collect_sql:
+        return
+    if not checkpoint_applied(editor, step):
         msg = f"Protected schema unit did not produce the catalog for {step}"
         raise ResumeCatalogError(msg)
+    # Include defaults added by this batch, before its first transaction ends.
+    checkpoint = _checkpoints()[step]
+    _default_witness.capture(editor.connection, checkpoint.migration, checkpoint.scope)

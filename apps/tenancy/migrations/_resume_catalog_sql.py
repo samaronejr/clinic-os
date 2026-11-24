@@ -188,7 +188,8 @@ _SPECIAL = {
               AND jsonb_typeof(to_jsonb(r.attmissingval)->0)='string'
               AND to_jsonb(r.attmissingval)->>0 NOT IN ('infinity','-infinity')
         THEN jsonb_build_object('literal','finite timestamptz','elements',1)
-        ELSE to_jsonb(r.attmissingval) END
+        ELSE to_jsonb(pg_catalog.encode(
+            pg_catalog.array_send(r.attmissingval), 'hex')) END
     """,
     ("pg_class", "relpartbound"): "pg_catalog.pg_get_expr(r.relpartbound,r.oid)",
     ("pg_class", "reltoastrelid"): (

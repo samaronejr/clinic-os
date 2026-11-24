@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from django.db import migrations
+from django.db import migrations, router, transaction
 
 from apps.tenancy.migration_operations import SeparateDatabaseAndState
 from apps.tenancy.migrations._resume_catalog import (
@@ -120,10 +120,26 @@ class ResumableRunSQL(migrations.RunSQL):
         to_state: ProjectState,
     ) -> None:
         """Skip only if the whole script's catalog matches its contract."""
-        if checkpoint_applied(schema_editor, self.trigger):
+        if schema_editor.collect_sql:
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
             return
-        super().database_forwards(app_label, schema_editor, from_state, to_state)
-        require_checkpoint(schema_editor, self.trigger)
+        if not router.allow_migrate(
+            schema_editor.connection.alias, app_label, **self.hints
+        ):
+            return
+        # The four frozen scripts have a single outer BEGIN/COMMIT. Keep
+        # their SQL bytes for serialization; move only the transaction edges
+        # so locks, the witness, the script and its check commit together.
+        script = self.script.strip()
+        if not script.startswith("BEGIN;") or not script.endswith("COMMIT;"):
+            msg = "Expected a single transaction in protected migration SQL"
+            raise ValueError(msg)
+        with transaction.atomic(using=schema_editor.connection.alias):
+            if not checkpoint_applied(schema_editor, self.trigger):
+                schema_editor.execute(
+                    script[len("BEGIN;") : -len("COMMIT;")], params=None
+                )
+                require_checkpoint(schema_editor, self.trigger)
 
 
 class AtomicRunSQL(migrations.RunSQL):

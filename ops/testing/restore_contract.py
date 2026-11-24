@@ -411,6 +411,13 @@ TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
     "django_admin_log": "framework admin log; never recovery scope",
     "django_content_type": "framework state recreated by target migrations",
     "django_migrations": "target migration leaf set must equal the source",
+    "migration_default_witness": (
+        "target migration provenance; a logical restore must never import "
+        "a source-side proof of a target heap's physical history"
+    ),
+    "migration_default_witness_key": (
+        "target-owned historical row keys for the target migration witness"
+    ),
     "django_session": "sessions are never restored; users sign in again",
     **dict.fromkeys(
         TARGET_SEEDED_RELATIONS,

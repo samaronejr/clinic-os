@@ -59,6 +59,43 @@ SELECT
         WHERE nspname = 'clinic_app'
           AND pg_get_userbyid(nspowner) = 'clinic_owner'
     )
+    AND (SELECT count(*)=2 AND bool_and(
+        c.relkind='r' AND c.relowner='clinic_owner'::regrole AND
+        NOT has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') AND
+        NOT has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER') AND
+        has_table_privilege('clinic_resolver',c.oid,'SELECT') AND
+        NOT has_any_column_privilege('clinic_resolver',c.oid,'INSERT,UPDATE') AND
+        NOT has_table_privilege('clinic_resolver',c.oid,'DELETE,TRUNCATE,TRIGGER'))
+        FROM pg_class c WHERE c.relnamespace='clinic_app'::regnamespace
+        AND c.relname IN ('migration_default_witness','migration_default_witness_key'))
+    AND EXISTS (
+        SELECT FROM pg_namespace n JOIN pg_extension e ON e.extnamespace=n.oid
+        JOIN pg_roles owner ON owner.oid=n.nspowner
+        WHERE n.nspname='clinic_heap_inspect' AND e.extname='pageinspect'
+        AND owner.rolsuper
+        AND NOT has_schema_privilege(current_user,n.oid,'USAGE,CREATE')
+        AND NOT has_schema_privilege('clinic_resolver',n.oid,'CREATE')
+        AND NOT has_schema_privilege('clinic_owner',n.oid,'CREATE')
+    )
+    AND (SELECT count(*)=1 AND bool_and(
+        p.proname='short_tuples' AND p.proargtypes='26 20 20'::oidvector
+        AND p.prosecdef AND p.proisstrict AND owner.rolsuper
+        AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+        AND has_function_privilege('clinic_owner',p.oid,'EXECUTE')
+        AND has_function_privilege('clinic_resolver',p.oid,'EXECUTE'))
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        JOIN pg_roles owner ON owner.oid=p.proowner
+        WHERE n.nspname='clinic_heap_inspect' AND NOT EXISTS (
+            SELECT FROM pg_depend d WHERE d.classid='pg_proc'::regclass
+              AND d.objid=p.oid AND d.deptype='e'))
+    AND NOT EXISTS (
+        SELECT FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='clinic_heap_inspect' AND (
+            has_function_privilege(current_user,p.oid,'EXECUTE')
+            OR has_function_privilege('clinic_agent',p.oid,'EXECUTE')
+            OR (p.proname<>'short_tuples' AND
+                (has_function_privilege('clinic_owner',p.oid,'EXECUTE')
+                 OR has_function_privilege('clinic_resolver',p.oid,'EXECUTE')))))
     AND EXISTS (
         SELECT 1
         FROM pg_database

@@ -33,6 +33,8 @@ RECORD_APPROVAL_ARGUMENTS: Final = (
     "evidence_ref uuid, evidence jsonb, attestation text, session_digest bytea"
 )
 RESOLVER_TABLE_GRANTS: Final = {
+    ("migration_default_witness", "SELECT"),
+    ("migration_default_witness_key", "SELECT"),
     *crm_catalog.TABLE_GRANTS,
     *interop_catalog.TABLE_GRANTS,
     *analytics_catalog.TABLE_GRANTS,

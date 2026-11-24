@@ -549,14 +549,31 @@ compares the shape (one finite `timestamptz` literal, no declared default), not
 the instant. While a missing value is present, this literal exception applies
 to those two columns only.
 
-Separately, for **any column**, a table rewrite such as `VACUUM FULL` can
-materialize a fast default: a clean boundary's `(atthasmissing=true,
-attmissingval=V)` matches live `(false, NULL)`. PostgreSQL now reads the value
-from each tuple instead of substituting `V` for an absent field. Later inserts
-and updates can legitimately store other values; retry does not scan rows or
-require them all to equal `V`. The reverse transition, a changed still-present
-value or type, and every other attribute remain exact, including the current
-`pg_attrdef` expression. No changes to migration recording or settings are needed.
+Separately, for **any column**, a rewrite such as `VACUUM FULL` can clear
+`(atthasmissing=true, attmissingval=V)` to `(false, NULL)`. The cleared pair
+is **not** proof of what was stored. In the protected DDL transaction the
+migration owner saves the exact typed value and primary keys of the visible
+tuples whose physical attribute count stops before that column. The bootstrap
+installs a restricted PostgreSQL 16 `pageinspect` wrapper: it exposes only
+tuple locations and attribute counts to the migration roles, never heap-page
+contents or tuple data to the runtime role. Retry checks every saved key
+against its exact value. Later inserts that already carried the column are
+not part of the proof and can legitimately hold different values.
+
+When a cleared pair has no trusted witness (including a cut on an older
+installation), or a witnessed key or value is missing or wrong, **automatic
+recovery is impossible; restore or rebuild is required**. Do not create a
+witness from the current rows, fake a Django record, or infer the default
+from the current `pg_attrdef` or a schema dump. The workflow depends on the
+existing deployment gate preventing application writes between interruption
+and resume; there is no application change tracking, recorder hook, or clock
+trust. A logical restore does not import another heap's migration witnesses.
+
+Retained side values use the typed PostgreSQL binary representation, not a
+JSON-number round trip: numeric scale and digits, along with array dimensions
+and lower bounds, survive comparison. Column type, typmod, declared defaults,
+and reverse missing-flag transitions still compare exactly. The two OTP
+literal exceptions above do not relax the value stored in a witness.
 
 ### Authentication or tenant access returns 403
 

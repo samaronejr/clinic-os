@@ -63,3 +63,72 @@ ALTER DEFAULT PRIVILEGES FOR ROLE clinic_owner IN SCHEMA :"app_schema"
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO clinic_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE clinic_owner IN SCHEMA :"app_schema"
     GRANT USAGE ON SEQUENCES TO clinic_app;
+
+-- BEGIN migration witness bootstrap (also installed by the scratch DB factory)
+BEGIN;
+CREATE SCHEMA IF NOT EXISTS clinic_heap_inspect;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_roles r
+          ON r.oid = n.nspowner
+        WHERE n.nspname = 'clinic_heap_inspect' AND r.rolsuper
+    ) THEN
+        RAISE EXCEPTION 'migration heap inspection requires an administrator-owned schema';
+    END IF;
+END $$;
+REVOKE ALL ON SCHEMA clinic_heap_inspect FROM PUBLIC, clinic_app, clinic_agent,
+    clinic_resolver, clinic_owner;
+CREATE EXTENSION IF NOT EXISTS pageinspect WITH SCHEMA clinic_heap_inspect;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA clinic_heap_inspect FROM PUBLIC, clinic_app,
+    clinic_agent, clinic_owner, clinic_resolver;
+
+-- pageinspect itself is superuser-only. Export *only* line pointers and
+-- physical attribute counts, never tuple data. No caller-provided SQL, table
+-- callbacks or user-defined types execute in the privileged function.
+CREATE OR REPLACE FUNCTION clinic_heap_inspect.short_tuples(target oid, first_block bigint, after_block bigint)
+RETURNS TABLE (location tid, natts integer)
+LANGUAGE sql STRICT VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT format('(%s,%s)', b.nr, h.lp)::tid, h.t_infomask2 & 2047
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_am am ON am.oid = c.relam
+    CROSS JOIN LATERAL (
+        SELECT max(attnum) AS last_missing FROM pg_attribute
+        WHERE attrelid = c.oid AND atthasmissing AND NOT attisdropped
+    ) a
+    CROSS JOIN LATERAL generate_series(greatest(first_block, 0::bigint),
+        least(after_block, pg_relation_size(c.oid::regclass) / current_setting('block_size')::bigint) - 1
+    ) b(nr)
+    CROSS JOIN LATERAL clinic_heap_inspect.heap_page_items(
+        clinic_heap_inspect.get_raw_page(format('%I.%I', n.nspname, c.relname), b.nr)
+    ) h
+    WHERE c.oid = target AND n.nspname = 'clinic_app' AND c.relkind = 'r'
+      AND c.relowner = 'clinic_owner'::regrole AND am.amname = 'heap'
+      AND h.lp_flags = 1 AND (h.t_infomask2 & 2047) < a.last_missing
+$$;
+REVOKE ALL ON FUNCTION clinic_heap_inspect.short_tuples(oid,bigint,bigint) FROM PUBLIC, clinic_app,
+    clinic_agent;
+GRANT USAGE ON SCHEMA clinic_heap_inspect TO clinic_owner, clinic_resolver;
+GRANT EXECUTE ON FUNCTION clinic_heap_inspect.short_tuples(oid,bigint,bigint) TO clinic_owner, clinic_resolver;
+
+SET LOCAL ROLE clinic_owner;
+CREATE TABLE IF NOT EXISTS clinic_app.migration_default_witness (
+    migration text NOT NULL, relation_name name NOT NULL, column_name name NOT NULL,
+    column_type text NOT NULL, type_modifier integer NOT NULL, side_value bytea NOT NULL,
+    key_count bigint NOT NULL CHECK (key_count >= 0),
+    PRIMARY KEY (migration, relation_name, column_name)
+);
+CREATE TABLE IF NOT EXISTS clinic_app.migration_default_witness_key (
+    migration text NOT NULL, relation_name name NOT NULL, column_name name NOT NULL,
+    row_key bytea NOT NULL,
+    PRIMARY KEY (migration, relation_name, column_name, row_key),
+    FOREIGN KEY (migration, relation_name, column_name)
+        REFERENCES clinic_app.migration_default_witness
+);
+REVOKE ALL ON clinic_app.migration_default_witness, clinic_app.migration_default_witness_key
+    FROM PUBLIC, clinic_app, clinic_agent, clinic_resolver;
+GRANT SELECT ON clinic_app.migration_default_witness, clinic_app.migration_default_witness_key
+    TO clinic_resolver;
+COMMIT;
+-- END migration witness bootstrap

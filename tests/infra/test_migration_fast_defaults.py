@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.tenancy.migrations import _default_witness
 from apps.tenancy.migrations._resume_catalog import (
     Checkpoint,
     ResumeCatalogError,
@@ -15,6 +16,7 @@ from apps.tenancy.migrations._resume_catalog import (
     snapshot,
 )
 from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.db.migrations.executor import MigrationExecutor
 from psycopg import sql
 
@@ -118,7 +120,7 @@ def test_non_otp_fast_default_transition(
         _default_connection(db),
         db.cursor() as cur,
     ):
-        cur.execute("CREATE TABLE rewrite_probe (id int)")
+        cur.execute("CREATE TABLE rewrite_probe (id int PRIMARY KEY)")
         cur.execute("INSERT INTO rewrite_probe VALUES (1)")
         cur.execute("ALTER TABLE rewrite_probe ADD a_count integer DEFAULT 3")
         if case == "reverse":
@@ -128,6 +130,14 @@ def test_non_otp_fast_default_transition(
         cur.execute("ALTER TABLE rewrite_probe ALTER z SET DEFAULT '7'")
         cur.execute("INSERT INTO rewrite_probe VALUES (2, 11, '17')")
         expected = {name: snapshot(db)[name]}
+        with transaction.atomic(using=db.alias):
+            _default_witness.lock_scope(db, checkpoint.scope)
+            _default_witness.capture(db, checkpoint.migration, checkpoint.scope)
+        cur.execute(
+            "SELECT to_jsonb(attmissingval)::text FROM pg_attribute "
+            "WHERE attrelid='rewrite_probe'::regclass AND attname='z'"
+        )
+        original_payload = cur.fetchone()[0]
         cur.execute("SELECT id, a_count, z::text FROM rewrite_probe ORDER BY id")
         rows = cur.fetchall()
         assert [r[1] for r in rows] == [3, 11]
@@ -151,10 +161,18 @@ def test_non_otp_fast_default_transition(
             )
             cur.execute("ALTER TABLE rewrite_probe ALTER z SET DEFAULT '7'")
         live = {name: snapshot(db)[name]}
-        assert expected[name]["columns.a_count.attmissingval"] == "[3]"
+        cur.execute(
+            "SELECT key_count, encode(side_value,'hex') "
+            "FROM migration_default_witness WHERE migration='rewrite' "
+            "AND relation_name='rewrite_probe' AND column_name='a_count'"
+        )
+        cohort, side = cur.fetchone()
+        assert cohort == 1
+        assert expected[name]["columns.a_count.attmissingval"] == json.dumps(side)
         assert live[name]["columns.a_count.attmissingval"] == "null"
         if case == "materialized":
-            assert match_boundary(checkpoint, live, [(1, expected)])
+            with transaction.atomic(using=db.alias):
+                assert match_boundary(checkpoint, live, [(1, expected)], db=db)
         else:
             assert expected[name]["columns.z.atthasmissing"] == (
                 "false" if case == "reverse" else "true"
@@ -163,12 +181,13 @@ def test_non_otp_fast_default_transition(
                 "false" if case == "declared-default" else "true"
             )
             if case == "changed-column-type":
-                # JSON and JSONB give the projector the same JSON payload, but
-                # the typed PostgreSQL fast default is no longer the same.
-                assert (
-                    live[name]["columns.z.attmissingval"]
-                    == expected[name]["columns.z.attmissingval"]
+                # The SQL values still have the same JSON projection, even
+                # though the wire values and PostgreSQL types now differ.
+                cur.execute(
+                    "SELECT to_jsonb(attmissingval)::text FROM pg_attribute "
+                    "WHERE attrelid='rewrite_probe'::regclass AND attname='z'"
                 )
+                assert cur.fetchone()[0] == original_payload
             with pytest.raises(
                 ResumeCatalogError, match=rf"rewrite_probe\.z\.{attribute} "
             ):
