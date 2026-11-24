@@ -243,6 +243,10 @@ _ORGANIZATION_OF_CLINIC = (
     "organization_id read from the named clinic row (the Clinic.get:pk site)"
 )
 PY_CONTEXTS: dict[str, str] = {
+    "decision_fence:_key:statement:Return": (
+        "Names the clinic's decision/choice advisory lock. This is concurrency "
+        "metadata only: the clinic key neither selects records nor grants access."
+    ),
     **{
         f"models:{model}:statement:Assign": _DECLARATION
         for model in (
@@ -466,6 +470,10 @@ NON_BINDING = {
     ),
     r"has_permission\('[a-z_.]+',\s*NEW\.clinic_id": "authority argument",
     r"'consent:'\|\|(?:NEW|t)\.clinic_id": "advisory-lock key",
+    (
+        r"pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\("
+        r"'ai-pending-decision:'\|\|NEW\.clinic_id::text,0\)\)"
+    ): "clinic choice/decision serialization key, not a row binding",
     r"SELECT s\.id,s\.organization_id,s\.clinic_id,s\.patient_id": "session projection",
     r"SELECT s\.session_id,s\.organization_id,s\.clinic_id,s\.patient_id": (
         "effective session projection from current_patient_authority()"
@@ -783,6 +791,8 @@ def test_derivation_fails_closed_on_hidden_bindings(
         sql_sites({"planted": "SELECT 1 WHERE coalesce(x.clinic_id, y) IS NULL"})
     with pytest.raises(AssertionError, match="unclassified scope token"):
         sql_sites({"planted": "(x.clinic_id IN ( SELECT s.clinic_id FROM t s))"})
+    with pytest.raises(AssertionError, match="unclassified scope token"):
+        sql_sites({"planted": "SELECT 'ai-pending-decision:'||NEW.clinic_id::text"})
     assert sql_sites(
         {
             "planted": "SELECT 1 WHERE a.clinic_id = b.clinic_id",

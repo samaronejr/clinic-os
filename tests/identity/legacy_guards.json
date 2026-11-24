@@ -2382,8 +2382,11 @@
       "signals": [
         "denial"
       ],
-      "kind": "data_operation",
-      "reason": "Locks a proposed suggestion in the clinic; unknown, foreign and already-decided suggestions raise the shared inbox denial. Every caller then decides authority through _conversation before any write (use_suggestion through send_message, discard_suggestion directly), inside the same transaction, so the lookup grants nothing."
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ai.pending_outputs.decisions_visible"
+      ],
+      "reason": "A locked, proposed suggestion must pass the executable original-choice decision in the caller's clinic and transaction; its use or discard still requires ordinary conversation authority."
     },
     {
       "symbol": "apps.comms.views.reminders_view",

@@ -199,16 +199,24 @@ def forged_values(subject: Subject, vote: UUID, current: str) -> list[UUID | str
 
 @contextmanager
 def unguarded(subject: Subject, table: str) -> Iterator[CursorWrapper]:
-    """Owner corruption bypasses the vote guard with genuine source provenance."""
+    """Prepare pre-0012 vote state, retaining current source and consent checks."""
     disable, enable = GUARD_TOGGLES[table]
     with owner_context(subject.organization_id), connection.cursor() as cursor:
-        if subject.kind == "revenue":
-            # Keep source and rollout guards active: only the vote state is fake.
+        if subject.kind == "revenue" and table == "ai_approval":
             with acting(subject):
                 pass
         cursor.execute(disable)
         try:
-            yield cursor
+            # The legacy vote row itself predates the runtime writer. For
+            # proposal/intent setup the owner is not a reviewer: perform that
+            # write as the real entitled actor, with every consent guard active.
+            # A failed fixture write rolls back before the owner restores DDL.
+            with transaction.atomic():
+                if table == "ai_approval":
+                    yield cursor
+                else:
+                    with acting(subject) as reviewer:
+                        yield reviewer
         finally:
             # Deferred key checks run now, so the guard can be switched back on.
             cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
