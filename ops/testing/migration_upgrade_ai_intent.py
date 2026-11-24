@@ -84,7 +84,9 @@ class _Intents:
     def now(self) -> datetime:
         # Different anchors remain distinguishable even after the declared
         # day offsets. They are not values to match in the live database.
-        value = _EPOCH + timedelta(days=366 * (len(self.anchors) + 1))
+        value = _EPOCH + timedelta(
+            days=366 * (len(self.anchors) + 1), microseconds=123456
+        )
         self.anchors.append(value)
         return value
 

@@ -15,6 +15,7 @@ from apps.intake import patient_creation, patient_name_index
 from django.db import connection
 from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
+from ops.testing.migration_upgrade_ai_values import verify_ai_literal_values
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_rows import (
     differences,
@@ -356,4 +357,20 @@ def test_blind_index_oracle_rejects_shared_writer_bug(
     assert differences(expected, actual) == [
         f"seeded value mismatch: intake_patient.full_name_index {key}"
         for key in actual["intake_patient"]
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_declared_ai_value_oracle_denies_bad_literal(
+    seed_receipt: Path, superuser_database_url: str
+) -> None:
+    _run_seed()
+    assert verify_ai_literal_values() == []
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute("SET LOCAL session_replication_role = replica")
+        admin.execute(
+            "UPDATE clinic_app.ai_knowledgearticle SET title='unexpected fixture title'"
+        )
+    assert verify_ai_literal_values() == [
+        "AI literal fixture: no one-to-one match in ai_knowledgearticle"
     ]

@@ -33,6 +33,7 @@ from django.db import connection
 
 from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
+from ops.testing.migration_upgrade_ai_values import verify_ai_literal_values
 from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
@@ -59,6 +60,7 @@ failures.extend(verify_core_fixture())
 if "ai" in required_seeds:
     failures.extend(verify_ai_counts(with_inbox="inbox" in required_seeds))
     failures.extend(verify_invocation_fixture())
+    failures.extend(verify_ai_literal_values())
 if "inbox" in required_seeds:
     inbox_fixture = verify_inbox_fixture()
     failures.extend(inbox_fixture.failures)
