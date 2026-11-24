@@ -34,6 +34,7 @@ from django.db import connection
 from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_fixture_oracle import check_fixtures
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
+from ops.testing.migration_upgrade_mutation_sweep import verify_sweep_coverage
 from ops.testing.migration_upgrade_seed_state import (
     database_identity,
     require_completed_seed,
@@ -53,6 +54,8 @@ required_seeds = require_completed_seed(seed_contents)
 markers = json.loads(seed_contents)
 fixture = check_fixtures(required_seeds)
 failures.extend(fixture.failures)
+if not failures and os.environ.get("UPGRADE_FIXTURE_SWEEP") == "1":
+    verify_sweep_coverage(required_seeds)
 ai_keys = fixture.ai_keys
 inbox_fixture = fixture.inbox
 organization_id = UUID(markers["organization_id"])

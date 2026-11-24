@@ -69,11 +69,12 @@ def _check_projection(
             cursor.execute(
                 """SELECT status,provider_reference,attempt_sequence,send_permit,
                           CASE WHEN send_permit_claim IS NOT NULL
-                               THEN '\\x' || encode(send_permit_claim,'hex') END
+                               THEN '\\x' || encode(send_permit_claim,'hex') END,
+                          max_attempts IS NOT DISTINCT FROM 5::smallint
                    FROM clinic_app.comms_integrationoperation WHERE id=%s""",
                 [row["id"]],
             )
-            if cursor.fetchone() != tuple(
+            expected = tuple(
                 row[column]
                 for column in (
                     "status",
@@ -82,7 +83,8 @@ def _check_projection(
                     "send_permit",
                     "send_permit_claim",
                 )
-            ):
+            )
+            if cursor.fetchone() != (*expected, True):
                 failures.append(f"inbox fixture: {case} attempt {label} projection")
         expected_receipts.update(
             (
@@ -248,7 +250,8 @@ def _inbox_rows(
                    (c.organization_id,c.clinic_id,c.channel)),
             (SELECT count(*) FROM clinic_app.comms_integrationoperation o
              WHERE o.subject_type='comms.message' AND o.subject_id=mo.id
-               AND o.idempotency_key=mo.command_id)
+               AND o.idempotency_key=mo.command_id),
+            c.contact_fingerprint, c.purpose, mo.sent_by_id::text
         FROM clinic_app.comms_conversation c
         JOIN clinic_app.identity_clinic cc ON cc.id=c.clinic_id
         JOIN clinic_app.comms_provideraccount pa ON pa.id=c.provider_account_id
@@ -322,6 +325,9 @@ def verify_inbox_fixture(
                 relationships,
                 count,
                 original,
+                fingerprint,
+                purpose,
+                sender,
             ) = row
             key = (channel, contact)
             if key in seen or key not in declared:
@@ -329,6 +335,16 @@ def verify_inbox_fixture(
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
+            plaintext_key = f"{channel}\0{contact_address(str(channel), ordinal)}"
+            cursor.execute(
+                """SELECT encode(clinic_app.hmac(
+                    %s,clinic_app.tenant_dek_unwrap(%s,key_version),'sha256'),'hex')
+                FROM clinic_app.tenancy_tenantdatakey
+                WHERE organization_id=current_setting('app.current_tenant')::uuid
+                ORDER BY key_version DESC LIMIT 1""",
+                [b"comms.conversation.contact\0" + plaintext_key.encode(), kek],
+            )
+            expected_fingerprint = cursor.fetchone()
             labels = _attempts(cursor, case, str(outbound), attempts)
             cases[case] = {
                 "message": str(outbound),
@@ -341,7 +357,12 @@ def verify_inbox_fixture(
                 f"inbox fixture: {case} {reason}"
                 for reason, valid in (
                     ("account", ACCOUNTS[str(channel)] == (provider, external)),
-                    ("foreign-key target", relationships is True and original == 1),
+                    (
+                        "foreign-key target",
+                        relationships is True and original == 1 and sender == manager,
+                    ),
+                    ("contact fingerprint", expected_fingerprint == (fingerprint,)),
+                    ("purpose", purpose == "transactional"),
                     ("attempt count and sequence", count == attempts and bool(labels)),
                     ("ordered messages", chronology is True),
                     (

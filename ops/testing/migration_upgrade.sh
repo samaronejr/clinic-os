@@ -12,6 +12,7 @@
 #   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
 #   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
+# Set UPGRADE_FIXTURE_SWEEP=1 to require per-table mutation coverage before PASS.
 set -euo pipefail
 
 readonly base_sha="${1:?base SHA required}"

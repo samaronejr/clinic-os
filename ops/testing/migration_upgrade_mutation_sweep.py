@@ -149,22 +149,14 @@ def run_sweep(seeded: set[str], required: Collection[str]) -> set[str]:
     return swept
 
 
-def main() -> None:
-    """Use the separately observed writes from one real migrated fixture."""
+def verify_sweep_coverage(required: Collection[str]) -> None:
+    """Exercise the independently observed writes before publishing a verdict."""
     inventory = json.loads(
         Path(os.environ["UPGRADE_SEED_WRITES"]).read_text(encoding="utf-8")
     )
-    receipt = json.loads(
-        Path(os.environ["UPGRADE_SEED_FILE"]).read_text(encoding="utf-8")
-    )
-    required = {"core", *(name for name in ("ai", "inbox") if name in receipt)}
     covered = run_sweep(set(inventory), required)
     for omitted in sorted(covered):
         if fixture_coverage_failure(set(inventory), covered - {omitted}) is None:
             message = f"sweep removal was not rejected: {omitted}"
             raise RuntimeError(message)
     print(f"upgrade mutation sweep: {len(covered)} tables verified")  # noqa: T201
-
-
-if __name__ == "__main__":
-    main()
