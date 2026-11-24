@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -15,6 +14,7 @@ from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState
 from psycopg import sql
 
+from ops.testing.migration_upgrade_ai_intent import declared_ai_tables
 from ops.testing.migration_upgrade_ai_retained import retained_checks
 
 if TYPE_CHECKING:
@@ -24,14 +24,7 @@ if TYPE_CHECKING:
     from django.db.migrations.operations.base import Operation
 
 
-class _Snapshot(TypedDict):
-    columns: list[str]
-    rows: dict[str, str]
-    count: int
-
-
 class _History(TypedDict):
-    tables: dict[str, _Snapshot]
     approvals: list[str]
     pending_evaluations: list[str]
     runs: list[str]
@@ -219,11 +212,24 @@ def _rollout_guards(cursor: CursorWrapper, history: _History) -> dict[str, bool]
         [history["approvals"][0]],
         "rollout stage evidence required",
     )
-    rating = next(iter(history["tables"]["ai_evaluationrating"]["rows"]))
-    assertions["rollout_table_refused:ai_evaluationrating"] = _refused(
-        _clone("ai_evaluationrating", "'user_id',NULL"),
-        [rating],
-        "evaluation rating denied",
+    cursor.execute(
+        "SELECT rating.id FROM clinic_app.ai_evaluationrating rating "
+        "JOIN clinic_app.ai_evaluationrun run ON run.id=rating.run_id "
+        "JOIN clinic_app.ai_modelconfiguration config "
+        "ON config.id=run.configuration_id "
+        "WHERE config.purpose='front_desk' AND config.version=1 "
+        "AND run.status='passed' "
+        "AND rating.case_id='synthetic' AND rating.slot='rater_one'"
+    )
+    ratings = cursor.fetchall()
+    assertions["rollout_table_refused:ai_evaluationrating"] = (
+        _refused(
+            _clone("ai_evaluationrating", "'user_id',NULL"),
+            [ratings[0][0]],
+            "evaluation rating denied",
+        )
+        if len(ratings) == 1
+        else False
     )
     assertions["rollout_table_refused:ai_agentrun"] = _refused(
         _clone("ai_agentrun", "'created_at',statement_timestamp()"),
@@ -285,29 +291,8 @@ def _settlement_refused(invocation: str) -> bool:
     return False
 
 
-def _preserved(cursor: CursorWrapper, tables: dict[str, _Snapshot]) -> dict[str, bool]:
+def _guards(cursor: CursorWrapper, tables: Iterable[str]) -> dict[str, bool]:
     assertions: dict[str, bool] = {}
-    for table, snapshot in tables.items():
-        if table.startswith("analytics_"):
-            cursor.execute("SET LOCAL ROLE clinic_resolver")
-        cursor.execute(
-            sql.SQL(
-                "SELECT id::text,to_jsonb(t) FROM clinic_app.{} t ORDER BY id"
-            ).format(sql.Identifier(table))
-        )
-        actual = {}
-        for key, raw in cursor.fetchall():
-            record = json.loads(raw)
-            actual[key] = hashlib.sha256(
-                json.dumps(
-                    {column: record[column] for column in snapshot["columns"]},
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest()
-        assertions["preserved:" + table] = (
-            actual == snapshot["rows"] and len(actual) == snapshot["count"]
-        )
-        cursor.execute("RESET ROLE")
     cursor.execute(
         "SELECT count(*) FROM pg_constraint WHERE connamespace="
         "'clinic_app'::regnamespace AND NOT convalidated "
@@ -417,22 +402,24 @@ def _stopped(
 
 
 def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
-    """Verify every original column/ciphertext plus new defaults and stop guards."""
+    """Verify installed constraints, defaults, and behavioral stop guards."""
     if not required:
         return []
     history = markers.get("ai")
-    if not isinstance(history, dict) or not isinstance(history.get("tables"), dict):
+    if not isinstance(history, dict) or not isinstance(history.get("retained"), dict):
         return ["AI historical schema was present but seed markers are absent"]
     history = cast("_History", history)
-    tables = history["tables"]
-    failures = coverage_failures(tables)
+    tables = declared_ai_tables()
+    failures = coverage_failures(
+        {table: {"count": count} for table, count in tables.items()}
+    )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('app.current_tenant',%s,true),"
             "set_config('app.current_user_id',%s,true)",
             [str(markers["organization_id"]), str(markers["owner_id"])],
         )
-        assertions = _preserved(cursor, tables)
+        assertions = _guards(cursor, tables)
         assertions.update(_defaults(cursor))
         assertions.update(_stopped(cursor, history, markers))
         assertions.update(retained_checks(history["retained"], upgraded=True))

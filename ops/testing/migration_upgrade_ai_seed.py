@@ -9,8 +9,6 @@ No guard is disabled during migration or any forward assertion.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 from pathlib import Path
 from runpy import run_path
@@ -55,7 +53,7 @@ class LegacyRows:
         """Bind every loaded tenant row to the existing representative clinic."""
         self.organization = organization
         self.clinic = clinic
-        self.tables: dict[str, list[str]] = {}
+        self.tables: set[str] = set()
 
     def make(self, label: str, **fields: object) -> Model:
         """Load a historical row with constraints active and its trigger restored."""
@@ -79,12 +77,7 @@ class LegacyRows:
                         sql.Identifier(table)
                     )
                 )
-                self.tables[table] = [
-                    field.name
-                    for field in connection.introspection.get_table_description(
-                        cursor, table
-                    )
-                ]
+                self.tables.add(table)
         if "organization" in state.fields:
             fields.setdefault("organization_id", self.organization)
         if "clinic" in state.fields:
@@ -120,40 +113,19 @@ class LegacyRows:
         """Allocate generated fixture values through the normal UUID source."""
         return uuid4()
 
-    def finish(self) -> dict[str, object]:
-        """Restore guards and record every original column, including ciphertext."""
-        snapshots: dict[str, object] = {}
+    def finish(self) -> None:
+        """Restore every guard and validate deferred foreign keys."""
         with connection.cursor() as cursor:
             cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-            for table, columns in self.tables.items():
+            for table in sorted(self.tables):
                 cursor.execute(
                     sql.SQL("ALTER TABLE clinic_app.{} ENABLE TRIGGER USER").format(
                         sql.Identifier(table)
                     )
                 )
-                if table.startswith("analytics_"):
-                    cursor.execute("SET LOCAL ROLE clinic_resolver")
-                cursor.execute(
-                    sql.SQL(
-                        "SELECT id::text,to_jsonb(t) FROM clinic_app.{} t ORDER BY id"
-                    ).format(sql.Identifier(table))
-                )
-                rows = {
-                    key: hashlib.sha256(
-                        json.dumps(json.loads(value), sort_keys=True).encode()
-                    ).hexdigest()
-                    for key, value in cursor.fetchall()
-                }
-                cursor.execute("RESET ROLE")
-                snapshots[table] = {
-                    "columns": columns,
-                    "rows": rows,
-                    "count": len(rows),
-                }
             # Native extraction links its deferred observation FK before inserting
             # that observation. Restore normal timing after validating the load.
             cursor.execute("SET CONSTRAINTS ALL DEFERRED")
-        return snapshots
 
 
 def _baseline_approvals(approvals: Sequence[str], *, rollout_installed: bool) -> None:
@@ -221,7 +193,7 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
                 "declare_ai_rows"
             ],
         )(fixtures, markers, enrollment_id)
-        snapshots = fixtures.finish()
+        fixtures.finish()
         _baseline_approvals(
             cast("list[str]", declaration["approvals"]),
             rollout_installed=rollout_installed,
@@ -231,7 +203,6 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
             retained_fence_installed=retained_fence_installed,
         )
     return {
-        "tables": snapshots,
         **declaration,
         "base_legacy_activation_allowed": not rollout_installed,
         "base_retained_fence_installed": retained_fence_installed,

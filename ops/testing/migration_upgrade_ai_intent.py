@@ -126,14 +126,21 @@ def compile_ai_intent() -> list[DeclaredRow]:
     return compile_ai_graph().rows
 
 
-def verify_ai_counts(*, with_inbox: bool) -> list[str]:
-    """Check direct AI writes and declared shared-table fixture additions."""
-    counts = Counter(
-        ModelState.from_model(apps.get_model(row.label)).options.get(
-            "db_table", row.label.replace(".", "_").lower()
+def declared_ai_tables() -> Counter[str]:
+    """Count direct writes by physical table, without consulting the receipt."""
+    return Counter(
+        str(
+            ModelState.from_model(apps.get_model(row.label)).options.get(
+                "db_table", row.label.replace(".", "_").lower()
+            )
         )
         for row in compile_ai_intent()
     )
+
+
+def verify_ai_counts(*, with_inbox: bool) -> list[str]:
+    """Check direct AI writes and declared shared-table fixture additions."""
+    counts = declared_ai_tables()
     counts.update({"identity_user": 2, "identity_userclinicrole": 2})
     if with_inbox:
         counts.update(
