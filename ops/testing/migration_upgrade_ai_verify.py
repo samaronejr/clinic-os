@@ -423,7 +423,7 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
     floor = history.get("tables")
     if not isinstance(floor, dict) or set(floor) != set(tables):
         return ["Wave H preservation floor is missing seeded tables"]
-    snapshots = cast("dict[str, Snapshot]", floor)
+    snapshots = floor
     required_tables = json.loads(
         Path(os.environ["UPGRADE_AI_COVERAGE"]).read_text(encoding="utf-8")
     )
