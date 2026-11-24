@@ -31,6 +31,7 @@ from apps.audit.verification import AuditChainVerificationError
 from apps.intake.models import Patient
 from django.db import connection
 
+from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
@@ -56,6 +57,7 @@ required_seeds = require_completed_seed(seed_contents)
 failures.extend(verify_rows())
 failures.extend(verify_core_fixture())
 if "ai" in required_seeds:
+    failures.extend(verify_ai_counts(with_inbox="inbox" in required_seeds))
     failures.extend(verify_invocation_fixture())
 if "inbox" in required_seeds:
     inbox_fixture = verify_inbox_fixture()

@@ -13,6 +13,7 @@ import psycopg
 import pytest
 from apps.intake import patient_creation, patient_name_index
 from django.db import connection
+from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_rows import (
@@ -316,6 +317,7 @@ def test_ai_invocation_oracle_detects_wrong_generated_values(
     seed_receipt: Path, superuser_database_url: str, statement: str, failure: str
 ) -> None:
     _run_seed()
+    assert verify_ai_counts(with_inbox=False) == []
     assert verify_invocation_fixture() == []
     with psycopg.connect(superuser_database_url) as admin:
         admin.execute("SET LOCAL session_replication_role = replica")
