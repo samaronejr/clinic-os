@@ -771,20 +771,7 @@ def _configuration(
         "ai.ModelConfiguration",
         purpose=purpose,
         capability_key="asr" if purpose == "scribe_asr" else "llm_inference",
-        provider="synthetic",
-        model_id="upgrade-synthetic",
-        region="br-synthetic",
-        jurisdiction_class="BR",
-        endpoint="https://ai.synthetic.invalid/",
-        retention_terms="synthetic",
-        training_terms="synthetic",
-        version=1,
-        route="primary",
-        state="active",
-        approval_ref="synthetic",
-        prompt_sha256=digest,
-        retrieval_sha256=digest,
-        schema_sha256=digest,
+        **_CONTRACT["CONFIGURATION"],
     )
     protocol = (
         fixtures.make(

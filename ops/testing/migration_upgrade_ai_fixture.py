@@ -21,3 +21,20 @@ OUTPUT_TEMPLATE: Final = "Synthetic retained output [{purpose}/{status}]."
 DIGEST: Final = "a" * 64
 INVOCATION_LIMIT: Final = 10
 RESERVED_MICROS: Final = 100
+
+CONFIGURATION: Final = {
+    "provider": "synthetic",
+    "model_id": "upgrade-synthetic",
+    "region": "br-synthetic",
+    "jurisdiction_class": "BR",
+    "endpoint": "https://ai.synthetic.invalid/",
+    "retention_terms": "synthetic",
+    "training_terms": "synthetic",
+    "version": 1,
+    "route": "primary",
+    "state": "active",
+    "approval_ref": "synthetic",
+    "prompt_sha256": DIGEST,
+    "retrieval_sha256": DIGEST,
+    "schema_sha256": DIGEST,
+}

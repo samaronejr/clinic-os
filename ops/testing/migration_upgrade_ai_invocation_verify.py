@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import psycopg
-from psycopg import errors
+from psycopg import errors, sql
 
 from ops.testing.migration_upgrade_ai_fixture import (
     ARTIFACT_PURPOSE,
+    CONFIGURATION,
     DIGEST,
     HISTORIES,
     INPUT_TEMPLATE,
@@ -89,6 +90,48 @@ def _new_ids(keys: list[object], prior: set[object]) -> bool:
     )
 
 
+def _configuration_failures(cursor: Cursor[tuple[object, ...]]) -> list[str]:
+    expected = {
+        **CONFIGURATION,
+        "input_micros": 0,
+        "output_micros": 0,
+        "cached_micros": 0,
+        "audio_micros": 0,
+        "timeout_seconds": 30,
+    }
+    cursor.execute(
+        sql.SQL(
+            "SELECT purpose,id,created_at,capability_key,{} "
+            "FROM clinic_app.ai_modelconfiguration"
+        ).format(
+            sql.SQL(", ").join(
+                sql.SQL("{} IS NOT DISTINCT FROM %s").format(sql.Identifier(column))
+                for column in expected
+            )
+        ),
+        list(expected.values()),
+    )
+    rows = cursor.fetchall()
+    failures = [
+        f"AI configuration fixture: {purpose}.{column}"
+        for purpose, _, _, _, *checks in rows
+        for column, valid in zip(expected, checks, strict=True)
+        if valid is not True
+    ]
+    failures.extend(
+        f"AI configuration fixture: identity or capability {purpose}"
+        for purpose, identity, created, capability, *_ in rows
+        if not _uuid4(identity)
+        or created is None
+        or capability != ("asr" if purpose == "scribe_asr" else "llm_inference")
+    )
+    if len(rows) != len(HISTORIES) or {row[0] for row in rows} != {
+        purpose for _, purpose in HISTORIES
+    }:
+        failures.append("AI configuration fixture: exact natural keys")
+    return failures
+
+
 def verify_invocation_fixture() -> list[str]:
     """Check declared invocations, artifact values, and operation relationships."""
     kek = (
@@ -108,12 +151,16 @@ def verify_invocation_fixture() -> list[str]:
         cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         if not _context(cursor):
             return ["AI invocation fixture: organization natural key"]
+        failures.extend(_configuration_failures(cursor))
         cursor.execute(
             """SELECT i.purpose,i.status,i.id,s.id,t.id,o.id,o.idempotency_key,
                 u.username,c.purpose,i0.name=%s
                     AND i0.organization_id=i.organization_id,
                 (i.config_version,i.prompt_sha256,i.limit_tokens_in,i.limit_tokens_out,
-                 i.limit_audio_seconds,i.reserved_micros) = (1,%s,%s,%s,%s,%s),
+                 i.limit_audio_seconds,i.reserved_micros) = (1,%s,%s,%s,%s,%s)
+                    AND (i.tokens_in,i.tokens_out,i.tokens_cached,i.audio_seconds,
+                         i.cost_micros,i.cost_minor,i.latency_ms,i.reason_code,i.effect_xid)
+                         = (0,0,0,0,0,0,0,'','') AND i.rollout_approval_id IS NULL,
                 (o.kind,o.channel,o.payload_digest,o.provider,o.subject_type)
                     = ('action','',%s,'ai-gateway','ai.invocation')
                     AND o.subject_id=i.id AND o.actor_id=i.user_id
@@ -122,19 +169,23 @@ def verify_invocation_fixture() -> list[str]:
                 (s.kind,s.retention_class,s.purpose)
                     = ('input','transient_input',i.purpose)
                     AND s.user_id=i.user_id AND s.organization_id=i.organization_id
-                    AND s.clinic_id=i.clinic_id AND s.invocation_id IS NULL,
+                    AND s.clinic_id=i.clinic_id AND s.invocation_id IS NULL
+                    AND s.purged_at IS NULL,
                 (t.kind,t.retention_class,t.purpose,t.method)
                     = ('output','review_draft',i.purpose,s.method)
                     AND t.user_id=i.user_id AND t.organization_id=i.organization_id
-                    AND t.clinic_id=i.clinic_id
+                    AND t.clinic_id=i.clinic_id AND t.purged_at IS NULL
                     AND t.patient_enrollment_id
                         IS NOT DISTINCT FROM s.patient_enrollment_id,
                 s.patient_enrollment_id IS NOT NULL AND
                     (e.organization_id,e.clinic_id)=(i.organization_id,i.clinic_id),
-                s.created_at <= i.created_at AND s.expires_at > i.created_at
+                c.created_at <= s.created_at
+                    AND s.created_at <= o.created_at AND o.created_at <= i.created_at
+                    AND s.expires_at > i.created_at
                     AND (t.id IS NULL OR
                          (i.created_at <= t.created_at AND t.expires_at=s.expires_at)),
                 i.settled_at IS NOT NULL
+                    AND c.created_at <= i.settled_at AND i.settled_at <= s.created_at
             FROM clinic_app.ai_aiinvocation i
             JOIN clinic_app.ai_aiartifact s ON s.id=i.inputs_ref_id
             LEFT JOIN clinic_app.ai_aiartifact t ON t.invocation_id=i.id
