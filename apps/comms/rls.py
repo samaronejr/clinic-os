@@ -61,6 +61,7 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("comms_integrationoperation", "last_callback_event_id", "UPDATE"),
         ("comms_integrationoperation", "last_error", "UPDATE"),
         ("comms_integrationoperation", "provider_reference", "UPDATE"),
+        ("comms_integrationoperation", "send_permit", "UPDATE"),
         ("comms_integrationoperation", "status", "UPDATE"),
         ("comms_integrationoperation", "updated_at", "UPDATE"),
         ("comms_templateversion", "approval_status", "UPDATE"),

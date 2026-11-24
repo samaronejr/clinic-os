@@ -160,9 +160,25 @@ def _present(table: str) -> bool:
     return bool(row and row[0])
 
 
+def _has_column(table: str, column: str) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns"
+            " WHERE table_schema = 'clinic_app' AND table_name = %s"
+            " AND column_name = %s)",
+            [table, column],
+        )
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
 # The inbox histories come first: the AI seed snapshots whole tables when it
 # finishes, so every row written before that snapshot is preserved with it.
-if _present("comms_message"):
+# They are pre-sequence histories: a base that already orders attempts
+# (comms 0013 applied) has none to write, so ``inbox`` is then left out.
+if _present("comms_message") and not _has_column(
+    "comms_integrationoperation", "attempt_sequence"
+):
     markers["inbox"] = _helper("migration_upgrade_inbox_seed.py", "seed_inbox")(markers)
     seeds.append("inbox")
 markers["ai_present"] = _present("ai_aiinvocation")

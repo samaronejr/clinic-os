@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
+from django.db.models.expressions import RawSQL
 from django.utils import timezone
 from django.utils.translation import gettext, pgettext_lazy
 from django.utils.translation import gettext_lazy as _
@@ -241,13 +242,33 @@ def conversation_view(
     )
     states = message_states(messages)
     held = [m.pk for m in messages if states.get(m.pk) == "reconciliation"]
-    choices: dict[UUID, list[IntegrationOperation]] = {}
-    for attempt in IntegrationOperation.objects.filter(
-        subject_type=SUBJECT_TYPE,
-        subject_id__in=held,
-        provider_reference__isnull=False,
-    ).order_by("id"):
-        choices.setdefault(attempt.subject_id, []).append(attempt)
+    accepted: dict[UUID, list[tuple[bool, IntegrationOperation]]] = {}
+    for attempt in (
+        IntegrationOperation.objects.filter(
+            subject_type=SUBJECT_TYPE,
+            subject_id__in=held,
+            provider_reference__isnull=False,
+        )
+        .annotate(
+            refuted=RawSQL(
+                'clinic_app.comms_attempt_refuted("comms_integrationoperation")', ()
+            )
+        )
+        .order_by("id")
+    ):
+        accepted.setdefault(attempt.subject_id, []).append(
+            (bool(attempt.refuted), attempt)
+        )
+    # A refuted attempt is a valid choice only while no accepted attempt is
+    # still open, exactly as comms_reconcile_attempts decides.
+    choices = {
+        message_id: [
+            op
+            for refuted, op in pairs
+            if not refuted or all(other for other, _ in pairs)
+        ]
+        for message_id, pairs in accepted.items()
+    }
     rows = tuple(
         MessageRow(
             message=m,

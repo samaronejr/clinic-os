@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
+from apps.comms.adapters import AmbiguousSendError, PermanentSendError
 from apps.comms.inbound_providers import sign
 from apps.comms.inbox_inbound import receive_inbound, secret_name
 from apps.comms.inbox_services import (
@@ -42,6 +43,7 @@ from apps.comms.models import (
     Message,
     ProviderAccount,
 )
+from apps.core import integration
 from apps.core.integration import execute_operation
 from apps.identity.models import ServicePrincipal, User, UserClinicRole
 from apps.tenancy.db import tenant_context
@@ -55,7 +57,7 @@ if TYPE_CHECKING:
     from django.db.models import Model
 
 PHONE_NUMBER_ID = "100000000000901"
-EMAIL_ACCOUNT = "upgrade-caixa-1"
+ENVELOPE_ACCOUNTS = {"email": "upgrade-caixa-1", "sms": "upgrade-sms-1"}
 TIMESTAMP = "1790000000"
 LATE = "1790000050"
 
@@ -130,10 +132,55 @@ CASES: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
             ("retry",),
         ),
     ),
+    # SMS: the same envelope receipts as email, which name no attempt.
+    "s_sent": ("sms", (("send",), ("dispatch", "a"))),
+    "s_delivered": (
+        "sms",
+        (("send",), ("dispatch", "a"), ("status", "a", "delivered")),
+    ),
+    "s_failed": ("sms", _A_FAILED),
+    "e_delivered": (
+        "email",
+        (("send",), ("dispatch", "a"), ("status", "a", "delivered")),
+    ),
+    "s_retry_sent": ("sms", (*_A_FAILED, ("retry",), ("dispatch", "b"))),
+    "s_retry_failed": (
+        "sms",
+        (*_A_FAILED, ("retry",), ("dispatch", "b"), ("status", "b", "failed")),
+    ),
+    # Outbox-level outcomes: rejected (terminal failed) and ambiguous (unknown).
+    "o_rejected": ("whatsapp", (("send",), ("fault", "a", "rejected"))),
+    "o_unknown": ("whatsapp", (("send",), ("fault", "a", "unknown"))),
+    "o_rejected_retry_sent": (
+        "whatsapp",
+        (("send",), ("fault", "a", "rejected"), ("retry",), ("dispatch", "b")),
+    ),
+    "s_rejected": ("sms", (("send",), ("fault", "a", "rejected"))),
+    "e_unknown": ("email", (("send",), ("fault", "a", "unknown"))),
+    # Round 5: a later failure of a base-retried email/SMS message, and two
+    # workers dispatching the next retry at once.
+    **dict.fromkeys(
+        ("e_stuck", "e_two_dispatch"),
+        ("email", (*_A_FAILED, ("retry",), ("dispatch", "b"))),
+    ),
+    "s_stuck": ("sms", (*_A_FAILED, ("retry",), ("dispatch", "b"))),
+    # Round 5 (b): B fails too, C (lowest UUID) is accepted, then A fails late.
+    "r5_b": (
+        "whatsapp",
+        (
+            *_A_FAILED,
+            ("retry",),
+            ("dispatch", "b"),
+            ("status", "b", "failed"),
+            ("retry_tie",),
+            ("dispatch", "c"),
+            ("status", "a", "failed", LATE),
+        ),
+    ),
     # Round 4: B accepted under a skewed clock, a late failure for A makes the
     # base itself show failed and queue C.
     **dict.fromkeys(
-        ("accepted_then_queued", "queued_cancelled_first", "race"),
+        ("accepted_then_queued", "queued_cancelled_first", "race", "r5_a", "crash"),
         (
             "whatsapp",
             (
@@ -174,10 +221,10 @@ def whatsapp_body(**value: object) -> bytes:
 
 def status_body(channel: str, reference: str, status: str, stamp: str) -> bytes:
     """One provider status report for one provider reference."""
-    if channel == "email":
+    if channel in ENVELOPE_ACCOUNTS:
         return json.dumps(
             {
-                "account": EMAIL_ACCOUNT,
+                "account": ENVELOPE_ACCOUNTS[channel],
                 "events": [
                     {
                         "kind": "status",
@@ -208,10 +255,10 @@ def status_body(channel: str, reference: str, status: str, stamp: str) -> bytes:
 
 
 def _inbound_message(channel: str, sender: str, event: str) -> bytes:
-    if channel == "email":
+    if channel in ENVELOPE_ACCOUNTS:
         return json.dumps(
             {
-                "account": EMAIL_ACCOUNT,
+                "account": ENVELOPE_ACCOUNTS[channel],
                 "events": [
                     {
                         "kind": "message",
@@ -253,7 +300,7 @@ class _Seed:
         self.organization_id = organization_id
         self.clinic_id = clinic_id
         self.manager_id = uuid4()
-        self.keys = {"whatsapp": secrets.token_hex(32), "email": secrets.token_hex(32)}
+        self.keys = {c: secrets.token_hex(32) for c in ("whatsapp", "email", "sms")}
         self.accounts: dict[str, UUID] = {}
 
     @contextmanager
@@ -279,7 +326,8 @@ class _Seed:
             )
             for channel, provider, external in (
                 ("whatsapp", "whatsapp-cloud-v1", PHONE_NUMBER_ID),
-                ("email", "inbox-email-v1", EMAIL_ACCOUNT),
+                ("email", "inbox-email-v1", ENVELOPE_ACCOUNTS["email"]),
+                ("sms", "inbox-sms-v1", ENVELOPE_ACCOUNTS["sms"]),
             ):
                 principal = ServicePrincipal.objects.create(
                     organization_id=self.organization_id,
@@ -397,6 +445,22 @@ class _History:
         elif verb == "dispatch":
             attempt = self.labels[step[1]]
             with runtime():
+                execute_operation(attempt.pk)
+            with seed.owner():
+                attempt.refresh_from_db()
+        elif verb == "fault":
+            # Outbox-level outcome: the provider rejects, or answers ambiguously.
+            attempt = self.labels[step[1]]
+            error = {
+                "rejected": PermanentSendError,
+                "unknown": AmbiguousSendError,
+            }[step[2]]
+
+            def refuse(*_args: object, **_kwargs: object) -> object:
+                raise error
+
+            adapter = integration._SEND_ADAPTERS[attempt.provider]  # noqa: SLF001
+            with runtime(), patch.object(adapter, "send", refuse):
                 execute_operation(attempt.pk)
             with seed.owner():
                 attempt.refresh_from_db()

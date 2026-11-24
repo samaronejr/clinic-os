@@ -102,6 +102,12 @@ class IntegrationOperation(TenantScopedModel):
     # ``comms.message`` rows; NULL for every other subject, and for a legacy
     # message whose order awaits staff reconciliation.
     attempt_sequence = models.BigIntegerField(null=True, editable=False)
+    # The message's single send permit: ``held`` by the one attempt that may
+    # reach or has reached the provider, ``released`` once that attempt's own
+    # outcome refutes it. Claimed by the worker before the provider call.
+    send_permit = models.CharField(  # noqa: DJ001 - NULL means no permit, as the SQL check
+        max_length=8, null=True, editable=False
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -143,6 +149,18 @@ class IntegrationOperation(TenantScopedModel):
                 condition=models.Q(subject_type="comms.message")
                 | models.Q(attempt_sequence__isnull=True),
                 name="comms_operation_attempt_sequence_scope",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    send_permit__in=("held", "released"), subject_type="comms.message"
+                )
+                | models.Q(send_permit__isnull=True),
+                name="comms_operation_send_permit_check",
+            ),
+            models.UniqueConstraint(
+                fields=("subject_type", "subject_id"),
+                condition=models.Q(send_permit="held"),
+                name="comms_operation_send_permit_uniq",
             ),
         ]
 

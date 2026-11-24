@@ -21,6 +21,10 @@ named failures on its own:
 
 from __future__ import annotations
 
+import os
+import select
+import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Barrier, Event, Thread
@@ -80,6 +84,16 @@ PARITY = (
     "r_cancelled",
     "e_failed",
     "e_retry_sent",
+    "e_delivered",
+    "e_unknown",
+    "s_sent",
+    "s_delivered",
+    "s_failed",
+    "s_retry_sent",
+    "s_rejected",
+    "o_rejected",
+    "o_unknown",
+    "o_rejected_retry_sent",
 )
 # Bounded waits for the two-thread race; the threads never sleep.
 RACE_TIMEOUT = 60
@@ -273,8 +287,9 @@ def _accepted_then_queued(
 ) -> None:
     message = UUID(ids["message"])
     _held(world, message, failures)
-    if world.offered(UUID(ids["conversation"]), message) != {ids["a"], ids["b"]}:
-        failures.append("the page offers an attempt the provider never accepted")
+    # A's failures are bound, so only the open B is a valid choice.
+    if world.offered(UUID(ids["conversation"]), message) != {ids["b"]}:
+        failures.append("the page offers a choice the database refuses")
     if world.reconcile(message, UUID(ids["b"])) != "recorded":
         failures.append("staff could not record the accepted attempt")
     if world.pending(message):
@@ -363,12 +378,14 @@ def _race(world: _World, ids: dict[str, str], failures: list[str]) -> None:
     message, queued = UUID(ids["message"]), UUID(ids["c"])
     decisions, errors = _run_race(world, message, queued, UUID(ids["b"]))
     failures.extend(errors)
-    if decisions != [INVALID]:
-        failures.append(f"decision during the claim was {decisions}, not refused")
+    # A claim on a held message never holds a permit, so it is provably
+    # unsent: the decision cancels it and the released worker sends nothing.
+    if decisions != ["recorded"]:
+        failures.append(f"decision during the claim was {decisions}")
     if world.attempts(message)[str(queued)][1:] != ("cancelled", False):
         failures.append("the claimed queued attempt reached the provider")
-    if world.reconcile(message, UUID(ids["b"])) != "recorded":
-        failures.append("staff could not record the accepted attempt afterwards")
+    if world.state(message) != "sent" or world.retry(message) != REFUSED:
+        failures.append("the accepted attempt is not current and open")
     if world.references(message) != 2:  # noqa: PLR2004 - A and B only
         failures.append("a third provider reference appeared")
 
@@ -396,8 +413,10 @@ def _two_failed(world: _World, ids: dict[str, str], failures: list[str]) -> None
 def _projection_failed(world: _World, ids: dict[str, str], failures: list[str]) -> None:
     message = UUID(ids["message"])
     _held(world, message, failures)
-    if world.offered(UUID(ids["conversation"]), message) != {ids["a"], ids["b"]}:
-        failures.append("the page does not offer both accepted attempts")
+    # The superseded original is released; the unattributed failure is B's
+    # own only by inference, so B stays the open choice.
+    if world.offered(UUID(ids["conversation"]), message) != {ids["b"]}:
+        failures.append("the page offers a choice the database refuses")
     if world.reconcile(message, UUID(ids["b"])) != "recorded":
         failures.append("staff could not record the accepted attempt")
     if world.retry(message) != REFUSED or world.references(message) != 2:  # noqa: PLR2004
@@ -419,6 +438,152 @@ def _none_accepted(world: _World, ids: dict[str, str], failures: list[str]) -> N
         failures.append("none-accepted did not permit exactly one new send")
 
 
+def _r5_a(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message = UUID(ids["message"])
+    _held(world, message, failures)
+    if world.reconcile(message, UUID(ids["a"])) != INVALID:
+        failures.append("staff could name the failed A while B is still open")
+    if world.reconcile(message, UUID(ids["b"])) != "recorded":
+        failures.append("staff could not record the open B")
+    if world.retry(message) != REFUSED:
+        failures.append("a retry was admitted while B is open")
+    if world.direct(message) != "comms_message_attempt_open_check":
+        failures.append("a direct outbox write was admitted while B is open")
+    world.dispatch(UUID(ids["c"]))
+    if world.references(message) != 2:  # noqa: PLR2004 - A and B only
+        failures.append("a further attempt reached the provider")
+
+
+def _r5_b(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message = UUID(ids["message"])
+    _held(world, message, failures)
+    if world.offered(UUID(ids["conversation"]), message) != {ids["c"]}:
+        failures.append("the page offers a choice the database refuses")
+    if world.reconcile(message, UUID(ids["b"])) != INVALID:
+        failures.append("staff could name the failed B while C is still open")
+    if world.reconcile(message, UUID(ids["c"])) != "recorded":
+        failures.append("staff could not record the open C")
+    if world.state(message) != "sent" or world.retry(message) != REFUSED:
+        failures.append("a retry was admitted while C is open")
+    if world.late_failure("whatsapp", UUID(ids["c"])) != 1:
+        failures.append("C's own failure was not accepted")
+    _one_more_send(world, message, failures, before=3)
+
+
+def _one_more_send(
+    world: _World, message: UUID, failures: list[str], *, before: int
+) -> None:
+    """Check that a failed current attempt admits one retry, recorded as sent."""
+    if world.state(message) != "failed" or world.retry(message) != "queued":
+        failures.append("the failed current attempt did not admit a retry")
+    if world.retry(message) != REFUSED:
+        failures.append("a second retry was admitted")
+    for pending in world.pending(message):
+        world.dispatch(UUID(pending))
+    if world.references(message) != before + 1 or world.state(message) != "sent":
+        failures.append("the admitted retry was not recorded as sent")
+
+
+def _stuck(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message = UUID(ids["message"])
+    if world.state(message) != "sent":
+        failures.append("the base-retried message does not show sent")
+    if world.late_failure(ids["channel"], UUID(ids["b"])) != 1:
+        failures.append("B's own failure was not accepted")
+    _one_more_send(world, message, failures, before=2)
+
+
+def _two_dispatch(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    message = UUID(ids["message"])
+    world.late_failure("email", UUID(ids["b"]))
+    if world.retry(message) != "queued":
+        failures.append("the failed retry did not admit one more")
+        return
+    queued = UUID(world.pending(message)[0])
+    with world.owner():
+        provider = IntegrationOperation.objects.get(pk=queued).provider
+    adapter = integration._SEND_ADAPTERS[provider]  # noqa: SLF001
+    original, start, calls = adapter.send, Barrier(2), []
+    errors: list[str] = []
+
+    def counted(*args: object, **kwargs: object) -> object:
+        calls.append(1)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    def worker() -> None:
+        try:
+            start.wait(RACE_TIMEOUT)
+            world.dispatch(queued)
+        except Exception as error:  # noqa: BLE001 - reported as a named failure
+            errors.append(type(error).__name__)
+        finally:
+            connection.close()
+
+    with patch.object(adapter, "send", counted):
+        threads = [Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(RACE_TIMEOUT)
+    failures.extend(errors)
+    if len(calls) != 1:
+        failures.append(f"{len(calls)} provider calls for one permit")
+    if world.attempts(message)[str(queued)][1:] != ("succeeded", True):
+        failures.append("the one send was not recorded")
+    if world.state(message) != "sent" or world.references(message) != 3:  # noqa: PLR2004
+        failures.append("the message does not show the recorded send")
+
+
+_CHILD = """
+import os
+import sys
+from unittest.mock import patch
+from uuid import UUID
+from django.db import connection
+from django.test import override_settings
+from apps.core import integration
+def hold(*args, **kwargs):
+    print("claimed", flush=True)
+    sys.stdin.read()
+with connection.cursor() as cursor:
+    cursor.execute("SET ROLE clinic_app")
+with override_settings(COMMS_SYNTHETIC_CHANNELS=("email", "sms", "whatsapp")):
+    with patch.object(integration, "_send_claimed", hold):
+        integration.execute_operation(UUID(os.environ["CRASH_OPERATION"]))
+"""
+
+
+def _crash(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    """Kill a worker holding C's claim; the message must stay resolvable."""
+    message, queued = UUID(ids["message"]), UUID(ids["c"])
+    child = subprocess.Popen(  # noqa: S603 - this interpreter and manage.py
+        [sys.executable, "manage.py", "shell", "--no-imports", "-c", _CHILD],
+        env={**os.environ, "CRASH_OPERATION": str(queued)},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    stdout = child.stdout
+    if stdout is None:
+        detail = "the worker child has no stdout"
+        raise RuntimeError(detail)
+    try:
+        ready, _, _ = select.select([stdout], [], [], RACE_TIMEOUT)
+        claimed = bool(ready) and stdout.readline().strip() == "claimed"
+    finally:
+        child.kill()
+        child.wait(RACE_TIMEOUT)
+    if not claimed or world.attempts(message)[str(queued)][1] != "in_progress":
+        failures.append("the worker died without holding the claim")
+    if world.reconcile(message, UUID(ids["b"])) != "recorded":
+        failures.append("the dead worker's claim froze the message")
+    world.dispatch(queued)
+    if world.attempts(message)[str(queued)][1:] != ("cancelled", False):
+        failures.append("the dead worker's attempt was not cancelled unsent")
+    if world.references(message) != 2:  # noqa: PLR2004 - A and B only
+        failures.append("a duplicate send occurred after the crash")
+
+
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     **dict.fromkeys(PARITY, _parity),
     "skew": _accepted_retry,
@@ -429,6 +594,13 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "accepted_then_queued": _accepted_then_queued,
     "queued_cancelled_first": _queued_cancelled_first,
     "race": _race,
+    "r5_a": _r5_a,
+    "r5_b": _r5_b,
+    "e_stuck": _stuck,
+    "s_stuck": _stuck,
+    "e_two_dispatch": _two_dispatch,
+    "crash": _crash,
+    "s_retry_failed": _projection_failed,
 }
 
 

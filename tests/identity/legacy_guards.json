@@ -14627,7 +14627,8 @@
     "clinic_app.comms_message_attempt_guard": {
       "discovery": {
         "migrations": [
-          "apps/comms/migrations/_attempt_sequence_sql.py"
+          "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14647,11 +14648,13 @@
     "clinic_app.comms_attempt_refuted": {
       "discovery": {
         "migrations": [
-          "apps/comms/migrations/_attempt_sequence_sql.py"
+          "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.comms_message_attempt_guard"
+          "clinic_app.comms_message_attempt_guard",
+          "clinic_app.comms_reconcile_attempts"
         ],
         "signatures": [
           {
@@ -14669,7 +14672,8 @@
     "clinic_app.comms_reconcile_attempts": {
       "discovery": {
         "migrations": [
-          "apps/comms/migrations/_attempt_sequence_sql.py"
+          "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_send_permit_sql.py"
         ],
         "policies": [],
         "resolvers": [],

@@ -793,12 +793,23 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
             effective_delivery_state(operation_status="pending", provider_state=legacy)
         ]
         proven = [state for state in by_sequence if state in _PROOF]
+        numbered = [a.attempt_sequence is not None for a in own]
         if proven:
             states[message_id] = max(proven, key=_PROOF.index)
-        elif any(attempt.attempt_sequence is None for attempt in own):
+        elif any(a.attempt_sequence is None and a.send_permit is None for a in own):
             states[message_id] = "reconciliation"
+        elif any(numbered) or not own:
+            # The highest-numbered attempt is current (NULLs sort last).
+            states[message_id] = by_sequence[sum(numbered) - 1 if own else 0]
         else:
-            states[message_id] = by_sequence[-1]
+            # A decided legacy message: the attempt staff kept holds the
+            # permit; with none kept, every attempt was refuted or closed.
+            held = [
+                s
+                for a, s in zip(own, by_sequence, strict=True)
+                if a.send_permit == "held"
+            ]
+            states[message_id] = held[0] if held else "failed"
     return states
 
 
