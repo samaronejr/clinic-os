@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
         migrations.RunSQL(COLUMN_SQL),
         migrations.RunPython(
             open_table_backfill(
-                table="prescription_signatureoperation", sql=BACKFILL_SQL
+                tables=("prescription_signatureoperation",), sql=BACKFILL_SQL
             ),
             irreversible,
         ),

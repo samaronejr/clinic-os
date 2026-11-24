@@ -248,6 +248,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("intake_patientsession", "acting_for_enrollment_id", "UPDATE"),
     ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
+    ("comms_integrationoperation", "attempt_sequence", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
@@ -485,6 +486,7 @@ POSTURE_OVERRIDES: Final = {
     "billing_revision_snapshot": ("v", False, ["clinic_resolver"]),
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
+    "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
     "configuration_guard": ("v", False, ["clinic_resolver"]),
     "consent_audit_scope": ("s", False, ["clinic_owner", "clinic_resolver"]),
@@ -812,6 +814,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
@@ -1251,6 +1254,9 @@ FUNCTION_RESULTS: Final = {
     ("comms_operation_state_counts_v1", ""): (
         "TABLE(status text, operation_count bigint, "
         "oldest_created_at timestamp with time zone)"
+    ),
+    ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
+        "void"
     ),
     ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",

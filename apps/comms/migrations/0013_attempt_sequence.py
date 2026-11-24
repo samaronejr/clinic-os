@@ -1,4 +1,4 @@
-"""Number every existing message attempt, resumably, once."""
+"""Number existing message attempts by their recorded send link, once."""
 
 from typing import ClassVar
 
@@ -29,7 +29,10 @@ class Migration(migrations.Migration):
         SchemaStateBatch(database_operations=[], state_operations=_STATE),
         migrations.RunSQL(COLUMN_SQL),
         migrations.RunPython(
-            open_table_backfill(table="comms_integrationoperation", sql=BACKFILL_SQL),
+            open_table_backfill(
+                tables=("comms_integrationoperation", "comms_message"),
+                sql=BACKFILL_SQL,
+            ),
             irreversible,
         ),
     ]

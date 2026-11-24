@@ -214,6 +214,12 @@ def message_send_eligible(scope: OperationScope) -> bool:
         return False
     if message.provider_state in {"delivered", "read"}:
         return False
+    # A legacy message whose attempt order awaits staff reconciliation sends
+    # nothing: which attempt the provider accepted is not known yet.
+    if IntegrationOperation.objects.filter(
+        subject_type=SUBJECT_TYPE, subject_id=message.pk, attempt_sequence__isnull=True
+    ).exists():
+        return False
     conversation, template = message.conversation, message.template
     if conversation.purpose == "marketing":
         from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415

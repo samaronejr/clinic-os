@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.conf import settings
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -694,6 +694,40 @@ def retry_message(
     return SendReceipt(message.pk, conversation.pk, replayed=False)
 
 
+def reconcile_message_attempts(
+    *, clinic_id: UUID, message_id: UUID, current_operation_id: UUID
+) -> SendReceipt:
+    """Record which attempt of an unordered legacy message is current.
+
+    Attempts that predate the attempt sequence without a recorded order hold
+    the message: nothing sends and no retry is admitted until a staff member
+    who may handle the thread names the attempt the provider confirms. The
+    database records that decision; nothing is sent here.
+    """
+    message = Message.objects.filter(
+        pk=message_id, conversation__clinic_id=clinic_id, direction="out"
+    ).first()
+    if message is None or type(current_operation_id) is not UUID:
+        raise InboxAccessDeniedError
+    conversation, _ = _conversation(clinic_id, message.conversation_id, lock=True)
+    hold_subject_mutation_lock(SUBJECT_TYPE, message_id)
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.comms_reconcile_attempts(%s, %s)",
+                [message.pk, current_operation_id],
+            )
+            record_phase1_event(
+                "comms.message.reconciled",
+                clinic_id=clinic_id,
+                affected_record_id=message.pk,
+            )
+    except DatabaseError as refused:
+        raise InboxRefusedError(Reason.INVALID_STATE) from refused
+    publish_messages_hint(clinic_id)
+    return SendReceipt(message.pk, conversation.pk, replayed=False)
+
+
 _PROOF: Final = ("delivered", "read")
 
 
@@ -714,6 +748,8 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
     evidence decides the state and retry eligibility, except that delivery or
     read proof from any attempt wins. A late report about an earlier attempt
     therefore neither reopens a send nor hides the current attempt's failure.
+    A legacy message whose attempts have no recorded order is
+    ``reconciliation`` until staff name its current attempt.
     """
     outbound = {m.pk: m for m in messages if m.direction == "out"}
     attempts: dict[UUID, list[IntegrationOperation]] = {}
@@ -752,9 +788,12 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
             effective_delivery_state(operation_status="pending", provider_state=legacy)
         ]
         proven = [state for state in by_sequence if state in _PROOF]
-        states[message_id] = (
-            max(proven, key=_PROOF.index) if proven else by_sequence[-1]
-        )
+        if proven:
+            states[message_id] = max(proven, key=_PROOF.index)
+        elif any(attempt.attempt_sequence is None for attempt in own):
+            states[message_id] = "reconciliation"
+        else:
+            states[message_id] = by_sequence[-1]
     return states
 
 

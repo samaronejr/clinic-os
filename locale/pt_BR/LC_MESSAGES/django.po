@@ -11568,3 +11568,21 @@ msgstr "Curador(a)"
 
 msgid "Patient-authorized adult"
 msgstr "Adulto autorizado pelo paciente"
+
+msgid "Delivery order needs review"
+msgstr "Ordem de envio precisa de revisão"
+
+msgid "Nothing is sent while this is open. Check with the provider which attempt it accepted, then record it."
+msgstr "Nada é enviado enquanto isto estiver aberto. Confirme com o provedor qual tentativa ele aceitou e registre-a."
+
+msgid "Provider reference %(reference)s"
+msgstr "Referência do provedor %(reference)s"
+
+msgid "No provider reference"
+msgstr "Sem referência do provedor"
+
+msgid "Record current attempt"
+msgstr "Registrar tentativa atual"
+
+msgid "Current attempt recorded. Nothing was sent."
+msgstr "Tentativa atual registrada. Nada foi enviado."

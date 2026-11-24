@@ -12,6 +12,8 @@ upgraded database. Reads ``UPGRADE_SEED_FILE`` markers written by
   cross-tenant row;
 * the two seeded audit events still verify as a hash chain;
 * grants on the new comms tables remain narrow;
+* seeded inbox histories keep their causal attempt order, and unordered ones
+  hold every send until staff reconcile them;
 * ``makemigrations --check --dry-run`` reports no drift (run separately).
 
 The script exits non-zero with named failures when any check fails.
@@ -31,6 +33,7 @@ from apps.intake.models import Patient
 from django.db import connection
 
 from ops.testing.migration_upgrade_ai_verify import verify_ai
+from ops.testing.migration_upgrade_inbox_verify import verify_inbox
 
 failures: list[str] = []
 
@@ -163,7 +166,11 @@ else:
         "audit chain lost rows after upgrade",
     )
 
-failures.extend(verify_ai(markers))
+if markers.get("seed_scope") == "inbox":
+    check("inbox" in markers, "inbox-scoped upgrade seeded no inbox histories")
+else:
+    failures.extend(verify_ai(markers))
+failures.extend(verify_inbox(markers))
 
 if failures:
     for name in failures:

@@ -222,7 +222,16 @@ and vetoes a queued retry at the send boundary. A pre-attribution failure
 projected onto the message counts only for a message with a single attempt;
 historical unbound reports are never attributed to a successor. Attempts that
 predate the sequence were numbered once by comms 0013 (non-atomic, resumable,
-irreversible): terminal failures first, then the rest, each by historical order.
+irreversible) only from the link the send recorded: the attempt enqueued under
+the message's own `command_id` is the original, every other one a later retry.
+A message with one attempt, or that original and one retry, is ordered; any
+other legacy message keeps its attempts unnumbered and shows `reconciliation`:
+the worker's recheck cancels its queued attempts without sending, staff retry
+and direct outbox writes are refused, and only
+`reconcile_message_attempts(*, clinic_id, message_id, current_operation_id)`
+by a staff member who may handle the thread names the current attempt
+(`comms_reconcile_attempts`, audited as `comms.message.reconciled`). Clocks and
+UUIDs never order attempts.
 
 ### Contact tokens
 

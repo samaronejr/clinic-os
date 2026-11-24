@@ -18,13 +18,8 @@ _STATE = [
     migrations.AddConstraint(
         model_name="integrationoperation",
         constraint=models.CheckConstraint(
-            condition=models.Q(
-                subject_type="comms.message", attempt_sequence__isnull=False
-            )
-            | (
-                ~models.Q(subject_type="comms.message")
-                & models.Q(attempt_sequence__isnull=True)
-            ),
+            condition=models.Q(subject_type="comms.message")
+            | models.Q(attempt_sequence__isnull=True),
             name="comms_operation_attempt_sequence_scope",
         ),
     ),

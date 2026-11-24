@@ -6,6 +6,8 @@ that exist there. It writes one organization with a clinic, an owner user
 and clinic role, one patient + enrollment, one availability block, one
 appointment, and two hash-chained audit events — the representative
 patient/scheduling/role/audit state the candidate upgrade must preserve.
+A base that ships the staff inbox also writes its retry histories through
+``migration_upgrade_inbox_seed.py``.
 
 Marker values are exported to ``$UPGRADE_SEED_FILE`` as JSON so the
 post-migration verifier can bind to exactly these rows.
@@ -139,10 +141,14 @@ markers = {
     "practitioner_id": str(PRACTITIONER_ID),
     "patient_name": PATIENT_NAME,
 }
+# ``inbox`` scopes a rehearsal from a base whose AI history this seed cannot
+# write (its guards already postdate that history); the verifier then
+# requires the inbox histories instead of silently passing.
+markers["seed_scope"] = os.environ.get("UPGRADE_SEED_SCOPE", "all")
 with connection.cursor() as cursor:
     cursor.execute("SELECT to_regclass('clinic_app.ai_aiinvocation') IS NOT NULL")
     markers["ai_present"] = cursor.fetchone()[0]
-if markers["ai_present"]:
+if markers["ai_present"] and markers["seed_scope"] != "inbox":
     helper = (
         Path(os.environ["UPGRADE_HELPER_ROOT"])
         / "ops/testing/migration_upgrade_ai_seed.py"
@@ -152,6 +158,19 @@ if markers["ai_present"]:
         run_path(str(helper))["seed_ai"],
     )
     markers["ai"] = seed_ai(markers)
+with connection.cursor() as cursor:
+    cursor.execute("SELECT to_regclass('clinic_app.comms_message') IS NOT NULL")
+    inbox_present = cursor.fetchone()[0]
+if inbox_present:
+    helper = (
+        Path(os.environ["UPGRADE_HELPER_ROOT"])
+        / "ops/testing/migration_upgrade_inbox_seed.py"
+    )
+    seed_inbox = cast(
+        "Callable[[dict[str, object]], dict[str, object]]",
+        run_path(str(helper))["seed_inbox"],
+    )
+    markers["inbox"] = seed_inbox(markers)
 seed_path = os.environ.get("UPGRADE_SEED_FILE", "")
 if seed_path:
     Path(seed_path).write_text(

@@ -311,6 +311,16 @@ def _retry(request: HttpRequest, clinic_id: UUID, conversation_id: UUID) -> str:
     return gettext("Resend queued.")
 
 
+def _reconcile(request: HttpRequest, clinic_id: UUID, conversation_id: UUID) -> str:
+    del conversation_id
+    services.reconcile_message_attempts(
+        clinic_id=clinic_id,
+        message_id=parse_uuid(request.POST.get("message_id")) or uuid4(),
+        current_operation_id=parse_uuid(request.POST.get("operation_id")) or uuid4(),
+    )
+    return gettext("Current attempt recorded. Nothing was sent.")
+
+
 def _assign(request: HttpRequest, clinic_id: UUID, conversation_id: UUID) -> str:
     services.assign_conversation(
         clinic_id=clinic_id,
@@ -391,6 +401,7 @@ def _discard(request: HttpRequest, clinic_id: UUID, conversation_id: UUID) -> st
 ACTIONS: Final[dict[str, Callable[[HttpRequest, UUID, UUID], str]]] = {
     "send": _send,
     "retry": _retry,
+    "reconcile": _reconcile,
     "assign": _assign,
     "state": _state,
     "note": _note,

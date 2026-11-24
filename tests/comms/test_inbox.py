@@ -491,6 +491,54 @@ def test_database_admits_one_successor_only_after_a_negative_outcome(
         ) == [1, 2]
 
 
+def test_attempt_reconciliation_refuses_outsiders_and_ordered_messages(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+
+    def reconcile(actor: UUID, operation_id: UUID) -> str | None:
+        try:
+            with as_actor(graph, actor), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT clinic_app.comms_reconcile_attempts(%s, %s)",
+                    [message_id, operation_id],
+                )
+        except DatabaseError as refused:
+            diag = getattr(refused.__cause__, "diag", None)
+            return getattr(diag, "constraint_name", None) or getattr(
+                diag, "sqlstate", None
+            )
+        return None
+
+    outsider = create_role_actor(graph, UserClinicRole.Role.FINANCE).pk
+    # Unknown and foreign attempts, and actors without an inbox role, look alike.
+    assert reconcile(manager_of(graph), uuid4()) == "42501"
+    assert reconcile(outsider, attempt.pk) == "42501"
+    # An ordered message never awaits reconciliation.
+    assert reconcile(manager_of(graph), attempt.pk) == (
+        "comms_message_attempt_reconciliation_check"
+    )
+    with (
+        as_actor(graph, manager_of(graph)),
+        pytest.raises(InboxRefusedError, match=Reason.INVALID_STATE),
+    ):
+        services.reconcile_message_attempts(
+            clinic_id=graph.clinic_a,
+            message_id=message_id,
+            current_operation_id=attempt.pk,
+        )
+    with owner_context(graph.organization_a):
+        assert list(
+            IntegrationOperation.objects.filter(subject_id=message_id).values_list(
+                "attempt_sequence", flat=True
+            )
+        ) == [1]
+
+
 def test_delivery_proof_received_before_retry_dispatch_vetoes_the_new_send(
     world: InboxWorld,
 ) -> None:

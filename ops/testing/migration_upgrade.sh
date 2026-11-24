@@ -10,6 +10,8 @@
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
 #   MIGRATION_DATABASE_URL APP_DATABASE_URL GITHUB_WORKSPACE RUNNER_TEMP
+# Optional: UPGRADE_SEED_SCOPE=inbox skips the AI history for a base whose AI
+#   guards already postdate it; the verifier then requires the inbox histories.
 # Usage: migration_upgrade.sh <base_sha>
 set -euo pipefail
 
@@ -109,6 +111,7 @@ echo "== seed representative data at base revision =="
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_SEED_SCOPE="${UPGRADE_SEED_SCOPE:-all}" \
     UPGRADE_HELPER_ROOT="$project_root" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_seed.py")

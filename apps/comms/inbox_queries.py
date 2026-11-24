@@ -19,6 +19,7 @@ from apps.comms.inbox_rules import window_closes_at, window_open
 from apps.comms.inbox_services import (
     CLINICIAN_ROLES,
     ROLES_BY_PURPOSE,
+    SUBJECT_TYPE,
     InboxAccessDeniedError,
     _actor,
     _conversation,
@@ -26,6 +27,7 @@ from apps.comms.inbox_services import (
 )
 from apps.comms.models import (
     Conversation,
+    IntegrationOperation,
     InternalNote,
     Message,
     QuickReply,
@@ -87,6 +89,8 @@ class MessageRow:
     message: Message
     state: str
     template_name: str
+    # Only for ``reconciliation``: the attempts staff choose the current one from.
+    attempts: tuple[IntegrationOperation, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,11 +239,18 @@ def conversation_view(
         .order_by("created_at", "id")[:MAX_MESSAGES]
     )
     states = message_states(messages)
+    held = [m.pk for m in messages if states.get(m.pk) == "reconciliation"]
+    choices: dict[UUID, list[IntegrationOperation]] = {}
+    for attempt in IntegrationOperation.objects.filter(
+        subject_type=SUBJECT_TYPE, subject_id__in=held
+    ).order_by("id"):
+        choices.setdefault(attempt.subject_id, []).append(attempt)
     rows = tuple(
         MessageRow(
             message=m,
             state=states.get(m.pk, ""),
             template_name=m.template.name if m.template else "",
+            attempts=tuple(choices.get(m.pk, ())),
         )
         for m in messages
     )

@@ -14644,6 +14644,28 @@
       "probes": [],
       "reason": "Assigns the per-message attempt sequence and admits a successor only after the current attempt's own negative outcome and no delivery proof. Runtime cannot update the sequence."
     },
+    "clinic_app.comms_reconcile_attempts": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_attempt_sequence_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_message uuid, requested_current uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_attempt_reconciliation_refuses_outsiders_and_ordered_messages"
+      ],
+      "reason": "Records the staff-confirmed current attempt of an unordered legacy inbox message. Requires the tenant GUC, the attempt in that tenant and an inbox staff role in its clinic; refuses an ordered message. Unknown, foreign and unauthorized calls share one denial."
+    },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",
       "reason": "Todo 50 portal messages: chains the patient-session reply and escalation events with the session as actor and a clinic_id/object_verb payload only.",
@@ -19459,6 +19481,7 @@
           "clinic_app.ai_eval_staff",
           "clinic_app.billing_charge_authorized",
           "clinic_app.billing_collection_authorized",
+          "clinic_app.comms_reconcile_attempts",
           "clinic_app.configuration_guard",
           "clinic_app.ehr_assigned",
           "clinic_app.ehr_care",
