@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import psycopg
 import pytest
 from apps.intake import patient_creation, patient_name_index
-from django.db import connection
+from django.db import connection, transaction
 from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_ai_values import verify_ai_literal_values
@@ -145,6 +145,62 @@ def test_wave_h_preservation_floor_differential(
                     swapped[index] = (row_id, other_raw)
                     swapped[other] = (other_id, raw)
                     check(swapped)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("statement", "table", "affected"),
+    [
+        (
+            "UPDATE clinic_app.ai_knowledgearticle SET revision=revision+1",
+            "ai_knowledgearticle",
+            1,
+        ),
+        (
+            "UPDATE clinic_app.ai_knowledgearticle "
+            "SET created_at=created_at-interval '365 days'",
+            "ai_knowledgearticle",
+            1,
+        ),
+        (
+            "UPDATE clinic_app.identity_user SET first_name='Altered' "
+            "WHERE username LIKE 'upgrade-ai-%'",
+            "identity_user",
+            1,
+        ),
+        (
+            "WITH bodies AS MATERIALIZED ("
+            "SELECT m.id,m.body,t.state FROM clinic_app.ai_frontdeskturn t "
+            "JOIN clinic_app.comms_message m ON m.id=t.inbound_id"
+            ") UPDATE clinic_app.comms_message m SET body=other.body "
+            "FROM bodies own JOIN bodies other ON own.state<>other.state "
+            "WHERE m.id=own.id AND own.body<>other.body",
+            "comms_message",
+            2,
+        ),
+    ],
+)
+def test_wave_h_floor_rejects_real_reviewer_mutations(
+    seed_receipt: Path, statement: str, table: str, affected: int
+) -> None:
+    _run_seed()
+    seed = json.loads(seed_receipt.read_text(encoding="utf-8"))
+    snapshots = {table: seed["ai"]["tables"][table]}
+
+    def check() -> dict[str, bool]:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_tenant',%s,true),"
+                "set_config('app.current_user_id',%s,true)",
+                [seed["organization_id"], seed["owner_id"]],
+            )
+            return preserved(cursor, snapshots)
+
+    assert check() == {f"preserved:{table}": True}
+    with psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin:
+        admin.execute("SET LOCAL session_replication_role=replica")
+        assert admin.execute(statement).rowcount == affected
+    assert check() == {f"preserved:{table}": False}
 
 
 def _counts(admin_dsn: str) -> tuple[int, int, int]:
