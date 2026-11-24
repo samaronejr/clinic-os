@@ -201,18 +201,21 @@ else:
     )
 
 failures.extend(verify_ai(markers, required="ai" in required_seeds))
-if "inbox" in required_seeds:
+if "inbox" in required_seeds and not inbox_fixture.failures:
     inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
-    # The historical behavior probe must not take its expected projection
-    # from the base message_states implementation it is meant to check.
-    histories = markers["inbox"]["cases"]
-    for case, keys in inbox_fixture.cases.items():
-        if case in histories:
-            histories[case].update(keys)
-    for case, expected in PARITY_STATES.items():
-        history = histories.get(case)
-        if history is not None:
-            history["base_state"] = expected
+    markers["inbox"] = {
+        "accounts": inbox_fixture.accounts,
+        "manager_id": inbox_fixture.manager_id,
+        "cases": {
+            case: {
+                **keys,
+                **(
+                    {"base_state": PARITY_STATES[case]} if case in PARITY_STATES else {}
+                ),
+            }
+            for case, keys in inbox_fixture.cases.items()
+        },
+    }
     failures.extend(inbox.verify_inbox(markers))
 
 if failures:

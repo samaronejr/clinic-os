@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from uuid import UUID
@@ -33,6 +34,54 @@ class InboxFixtureResult(NamedTuple):
 
     failures: list[str]
     cases: dict[str, dict[str, str]]
+    accounts: dict[str, str]
+    manager_id: str
+
+
+_SKEW = frozenset(
+    {"skew", "accepted_then_queued", "queued_cancelled_first", "race", "r5_a", "crash"}
+)
+
+
+def _attempts(
+    cursor: Cursor[tuple[object, ...]], case: str, message: str, count: int
+) -> dict[str, str]:
+    cursor.execute(
+        """SELECT o.id,o.created_at,o.idempotency_key=m.command_id
+        FROM clinic_app.comms_integrationoperation o
+        JOIN clinic_app.comms_message m ON m.id=o.subject_id
+        WHERE m.id=%s AND o.subject_type='comms.message'
+        ORDER BY o.created_at,o.id""",
+        [message],
+    )
+    rows = cursor.fetchall()
+    originals = [row for row in rows if row[2] is True]
+    retries = [row for row in rows if row[2] is False]
+    if len(rows) != count or len(originals) != 1:
+        return {}
+    original = originals[0]
+    identity, stamp, _ = original
+    if not isinstance(identity, UUID) or not isinstance(stamp, datetime):
+        return {}
+    if case == "r5_b":
+        retries.reverse()
+    for index, (key, time, _) in enumerate(retries):
+        if not isinstance(key, UUID) or not isinstance(time, datetime):
+            return {}
+        is_tie = case == "tie" or (case == "r5_b" and index == 1)
+        if is_tie:
+            if time != stamp or key.int != identity.int - 1:
+                return {}
+        elif key.version != _UUID_VERSION or (
+            time != stamp - timedelta(seconds=10)
+            if index == 0 and case in _SKEW
+            else time <= stamp
+        ):
+            return {}
+    return {
+        label: str(row[0])
+        for label, row in zip("abc"[:count], [original, *retries], strict=True)
+    }
 
 
 def _effects(
@@ -176,7 +225,23 @@ def verify_inbox_fixture() -> InboxFixtureResult:
             [ORGANIZATION_CNPJ],
         )
         if len(cursor.fetchall()) != 1:
-            return InboxFixtureResult(["inbox fixture: organization natural key"], {})
+            return InboxFixtureResult(
+                ["inbox fixture: organization natural key"], {}, {}, ""
+            )
+        cursor.execute(
+            "SELECT channel,id FROM clinic_app.comms_provideraccount "
+            "WHERE organization_id=current_setting('app.current_tenant')::uuid"
+        )
+        accounts = {str(channel): str(key) for channel, key in cursor.fetchall()}
+        cursor.execute(
+            "SELECT id FROM clinic_app.identity_user "
+            "WHERE username ~ '^upgrade-inbox-[0-9a-f]{8}$' "
+            "AND username='upgrade-inbox-' || left(id::text,8)"
+        )
+        managers = cursor.fetchall()
+        manager = str(managers[0][0]) if len(managers) == 1 else ""
+        if not manager:
+            failures.append("inbox fixture: manager natural key")
         for row in _inbox_rows(cursor, kek):
             (
                 channel,
@@ -202,10 +267,12 @@ def verify_inbox_fixture() -> InboxFixtureResult:
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
+            labels = _attempts(cursor, case, str(outbound), attempts)
             cases[case] = {
                 "message": str(outbound),
                 "conversation": str(conversation),
                 "channel": str(channel),
+                **labels,
             }
             keys = {conversation, inbound, outbound, command}
             failures.extend(
@@ -213,7 +280,7 @@ def verify_inbox_fixture() -> InboxFixtureResult:
                 for reason, valid in (
                     ("account", ACCOUNTS[str(channel)] == (provider, external)),
                     ("foreign-key target", relationships is True and original == 1),
-                    ("attempt count", count == attempts),
+                    ("attempt count and sequence", count == attempts and bool(labels)),
                     ("ordered messages", chronology is True),
                     (
                         "message ciphertext",
@@ -253,4 +320,4 @@ def verify_inbox_fixture() -> InboxFixtureResult:
         ):
             failures.append("inbox fixture: exact natural keys and row counts")
         failures.extend(_effects(cursor, cases))
-    return InboxFixtureResult(failures, cases)
+    return InboxFixtureResult(failures, cases, accounts, manager)
