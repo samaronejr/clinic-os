@@ -49,6 +49,8 @@ def project_case(
         if verb == "close":
             closed = True
         elif verb == "send" or verb.startswith("retry"):
+            if verb != "send" and state == "failed":
+                state = ""
             label = "abc"[len(attempts)]
             attempts[label] = {
                 "id": ids[label],
