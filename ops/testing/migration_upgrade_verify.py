@@ -31,6 +31,7 @@ from apps.audit.verification import AuditChainVerificationError
 from apps.intake.models import Patient
 from django.db import connection
 
+from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_rows import verify_rows
@@ -52,6 +53,8 @@ seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
 required_seeds = require_completed_seed(seed_contents)
 failures.extend(verify_rows())
 failures.extend(verify_core_fixture())
+if "ai" in required_seeds:
+    failures.extend(verify_invocation_fixture())
 markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])

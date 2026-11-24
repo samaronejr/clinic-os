@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import json
 import os
+from importlib import import_module
 from pathlib import Path
 from runpy import run_path
 from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
+from apps.intake import patient_creation, patient_name_index
 from django.db import connection
+from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
-from ops.testing.migration_upgrade_rows import differences, read_rows, table_keys
+from ops.testing.migration_upgrade_rows import (
+    differences,
+    expected_rows,
+    read_rows,
+    table_keys,
+)
 from ops.testing.migration_upgrade_seed_state import (
     observe_base,
     require_completed_seed,
@@ -274,3 +282,76 @@ def test_core_oracle_rejects_wrong_values_without_a_capture(
         assert verify_core_fixture() == [
             "core fixture mismatch: identity_organization.name"
         ]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("statement", "failure"),
+    [
+        (
+            "UPDATE clinic_app.ai_aiinvocation SET configuration_id="
+            "(SELECT id FROM clinic_app.ai_modelconfiguration WHERE purpose='analyst') "
+            "WHERE purpose='front_desk' AND status='reserved'",
+            "AI invocation fixture: foreign-key target ('front_desk', 'reserved')",
+        ),
+        (
+            "UPDATE clinic_app.ai_aiartifact a SET content=( "
+            " SELECT b.content FROM clinic_app.ai_aiartifact b "
+            " JOIN clinic_app.ai_aiinvocation j ON j.inputs_ref_id=b.id "
+            " WHERE j.purpose='front_desk' AND j.status<>i.status) "
+            "FROM clinic_app.ai_aiinvocation i "
+            "WHERE i.purpose='front_desk' AND i.inputs_ref_id=a.id",
+            "AI invocation fixture: ciphertext ('front_desk', 'reserved')",
+        ),
+        (
+            "UPDATE clinic_app.ai_aiartifact a SET created_at=i.created_at "
+            "+ interval '1 second' FROM clinic_app.ai_aiinvocation i "
+            "WHERE i.purpose='front_desk' AND i.status='reserved' "
+            "AND i.inputs_ref_id=a.id",
+            "AI invocation fixture: timestamp order ('front_desk', 'reserved')",
+        ),
+    ],
+)
+def test_ai_invocation_oracle_detects_wrong_generated_values(
+    seed_receipt: Path, superuser_database_url: str, statement: str, failure: str
+) -> None:
+    _run_seed()
+    assert verify_invocation_fixture() == []
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute("SET LOCAL session_replication_role = replica")
+        result = admin.execute(statement)
+        assert result.rowcount in (1, 2)
+    assert failure in verify_invocation_fixture()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_blind_index_oracle_rejects_shared_writer_bug(
+    seed_receipt: Path, superuser_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = patient_name_index.name_indexes
+
+    def reverse_digests(name: str) -> tuple[bytes, ...]:
+        return tuple(digest[::-1] for digest in original(name))
+
+    backfill = import_module("apps.intake.migrations.0012_patient_name_index")
+    monkeypatch.setattr(patient_name_index, "name_indexes", reverse_digests)
+    monkeypatch.setattr(patient_creation, "name_indexes", reverse_digests)
+    monkeypatch.setattr(backfill, "name_indexes", reverse_digests)
+    _run_seed()
+    with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
+        actual = {"intake_patient": read_rows(cursor)["intake_patient"]}
+    base_rows = {
+        "intake_patient": {
+            key: {
+                column: value
+                for column, value in row.items()
+                if column != "full_name_index"
+            }
+            for key, row in actual["intake_patient"].items()
+        }
+    }
+    expected = expected_rows(base_rows, {("intake", "0012_patient_name_index")})
+    assert differences(expected, actual) == [
+        f"seeded value mismatch: intake_patient.full_name_index {key}"
+        for key in actual["intake_patient"]
+    ]

@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from django.db.models import Manager, Model
 
 
+_CONTRACT = run_path(str(Path(__file__).with_name("migration_upgrade_ai_fixture.py")))
+
+
 class _HistoricalModel(Protocol):
     objects: ClassVar[Manager[Model]]
 
@@ -145,7 +148,7 @@ def _invocations(
     future = now + timedelta(days=30)
     digest = "a" * 64
     result: dict[str, Model] = {}
-    for status in ("reserved", "succeeded"):
+    for status in _CONTRACT["STATUSES"]:
         source = fixtures.make(
             "ai.AIArtifact",
             user_id=user,
@@ -161,7 +164,7 @@ def _invocations(
                 if purpose == "extraction"
                 else "complete"
             ),
-            content="Synthetic upgrade input; no clinical data.",
+            content=_CONTRACT["INPUT_TEMPLATE"].format(purpose=purpose, status=status),
             retention_class="transient_input",
             expires_at=future,
         )
@@ -216,7 +219,9 @@ def _invocations(
                     else "complete"
                 ),
                 invocation=invocation,
-                content="Synthetic retained output.",
+                content=_CONTRACT["OUTPUT_TEMPLATE"].format(
+                    purpose=purpose, status=status
+                ),
                 retention_class="review_draft",
                 expires_at=future,
             )
@@ -1001,15 +1006,7 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
         runs: list[str] = []
         proposals: list[str] = []
         executions: list[str] = []
-        for capability, purpose in (
-            ("AI-04", "front_desk"),
-            ("AI-05", "care_coordination"),
-            ("AI-06", "revenue_cycle"),
-            ("AI-01", "scribe_asr"),
-            ("AI-01", "scribe_draft"),
-            ("AI-03", "extraction"),
-            ("AI-07", "analyst"),
-        ):
+        for capability, purpose in _CONTRACT["HISTORIES"]:
             config, approval, pending = _configuration(
                 fixtures, capability, purpose, markers, approver
             )
