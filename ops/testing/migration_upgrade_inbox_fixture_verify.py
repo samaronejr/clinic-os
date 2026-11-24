@@ -12,6 +12,7 @@ from uuid import UUID
 from ops.testing.migration_upgrade_core_fixture import CLINIC_NAME, ORGANIZATION_CNPJ
 from ops.testing.migration_upgrade_inbox_fixture import (
     ACCOUNTS,
+    CASE_STEPS,
     CASES,
     INBOUND_BODY,
     METERED_DELIVERY_CASES,
@@ -256,7 +257,18 @@ def _inbox_rows(
             mi.supported IS TRUE AND mo.supported IS TRUE
                 AND mi.provider_state IS NOT DISTINCT FROM ''
                 AND mi.template_parameters IS NULL
-                AND mo.template_id IS NULL AND mo.template_parameters IS NULL
+                AND mo.template_id IS NULL AND mo.template_parameters IS NULL,
+            c.state,
+            c.enrollment_id IS NULL AND c.assignee_id IS NULL
+                AND c.contact_label IS NULL AND c.needs_clinician IS FALSE,
+            c.created_at <= mi.created_at AND c.last_inbound_at = mi.created_at
+                AND c.updated_at >= mo.created_at,
+            EXISTS (
+                SELECT 1 FROM clinic_app.comms_inboundevent e
+                WHERE e.kind='message' AND e.event_id=mi.event_id
+                  AND e.organization_id=c.organization_id
+                  AND e.provider_account_id=c.provider_account_id
+                  AND e.created_at <= mi.created_at)
         FROM clinic_app.comms_conversation c
         JOIN clinic_app.identity_clinic cc ON cc.id=c.clinic_id
         JOIN clinic_app.comms_provideraccount pa ON pa.id=c.provider_account_id
@@ -334,6 +346,10 @@ def verify_inbox_fixture(
                 purpose,
                 sender,
                 message_defaults,
+                state,
+                conversation_defaults,
+                conversation_chronology,
+                inbound_receipt,
             ) = row
             key = (channel, contact)
             if key in seen or key not in declared:
@@ -341,7 +357,10 @@ def verify_inbox_fixture(
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
-            plaintext_key = str(channel).encode() + b"\0" + key[1]
+            expected_state = "closed" if ("close",) in CASE_STEPS[case][1] else "open"
+            plaintext_key = (
+                str(channel).encode() + b"\0" + contact_address(str(channel), ordinal)
+            )
             cursor.execute(
                 """SELECT encode(clinic_app.hmac(
                     %s,clinic_app.tenant_dek_unwrap(%s,key_version),'sha256'),'hex')
@@ -369,6 +388,10 @@ def verify_inbox_fixture(
                     ),
                     ("contact fingerprint", expected_fingerprint == (fingerprint,)),
                     ("purpose", purpose == "transactional"),
+                    ("conversation state", state == expected_state),
+                    ("conversation defaults", conversation_defaults is True),
+                    ("conversation chronology", conversation_chronology is True),
+                    ("inbound receipt target and timing", inbound_receipt is True),
                     ("attempt count and sequence", count == attempts and bool(labels)),
                     ("ordered messages", chronology is True),
                     (
