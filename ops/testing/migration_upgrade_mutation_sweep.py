@@ -32,10 +32,9 @@ def _oracle_rejects(
         with admin.transaction():
             return bool(check_fixtures(required, database=admin).failures)
     except (psycopg.DatabaseError, RuntimeError) as error:
-        if (
-            getattr(error, "sqlstate", None) in {"TEN01", "TEN02", "TEN03"}
-            or str(error).startswith("core fixture mismatch:")
-        ):
+        if getattr(error, "sqlstate", None) in {"TEN01", "TEN02", "TEN03"} or str(
+            error
+        ).startswith("core fixture mismatch:"):
             return True
         raise
 
@@ -47,19 +46,13 @@ def _mutate(
     key: str,
     column: str,
 ) -> None:
-    # Shadow constraints only inside a rollback-only savepoint; this tests
-    # the reader rather than whether a production guard blocks the mutation.
+    # Keep relation identity and grants intact so envelope functions can
+    # still read their original tables. Everything rolls back with the mutation.
     original = sql.Identifier("clinic_app", table)
-    shadow = sql.Identifier("fixture_sweep_original")
-    cursor.execute(sql.SQL("ALTER TABLE {} RENAME TO {}").format(original, shadow))
+    cursor.execute(sql.SQL("ALTER TABLE {} DISABLE TRIGGER USER").format(original))
     cursor.execute(
-        sql.SQL("CREATE TABLE {} AS SELECT * FROM clinic_app.{}").format(
-            original, shadow
-        )
-    )
-    cursor.execute(
-        sql.SQL("ALTER TABLE {} ADD PRIMARY KEY ({})").format(
-            original, sql.SQL(", ").join(map(sql.Identifier, keys))
+        sql.SQL("ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL").format(
+            original, sql.Identifier(column)
         )
     )
     cursor.execute(
