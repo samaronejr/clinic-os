@@ -6,16 +6,22 @@ import json
 import os
 from pathlib import Path
 from runpy import run_path
+from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
 from django.db import connection
+from ops.testing.migration_upgrade_rows import differences, read_rows, table_keys
 from ops.testing.migration_upgrade_seed_state import (
     observe_base,
     require_completed_seed,
 )
+from psycopg import Rollback, sql
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @pytest.fixture
@@ -24,7 +30,7 @@ def seed_receipt(
     tmp_path: Path,
     superuser_database_url: str,
     synthetic_secret_backend: Path,
-) -> Path:
+) -> Iterator[Path]:
     receipt = tmp_path / "seed.json"
     monkeypatch.setenv("UPGRADE_SEED_FILE", str(receipt))
     monkeypatch.setenv("UPGRADE_HELPER_ROOT", str(PROJECT_ROOT))
@@ -32,7 +38,11 @@ def seed_receipt(
     monkeypatch.setenv("UPGRADE_BASE_SHA", "synthetic-base")
     monkeypatch.setenv("UPGRADE_ADMIN_DATABASE_URL", superuser_database_url)
     observe_base()
-    return receipt
+    try:
+        yield receipt
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("DROP SCHEMA IF EXISTS upgrade_rehearsal")
 
 
 def _run_seed() -> None:
@@ -76,6 +86,9 @@ def test_publication_failure_requires_fresh_database(
         _run_seed()
     assert not seed_receipt.exists()
     assert _counts(superuser_database_url) == committed
+    Path(os.environ["UPGRADE_BASE_OBSERVATION"]).unlink()
+    with pytest.raises(RuntimeError, match="partial seed: rebuild database"):
+        observe_base()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -104,7 +117,6 @@ def test_changed_or_partial_fixture_cannot_seed_even_without_file_markers(
     with pytest.raises(RuntimeError, match="upgrade seed coverage mismatch"):
         require_completed_seed(json.dumps(markers))
     seed_receipt.unlink()
-    Path(os.environ["UPGRADE_BASE_OBSERVATION"]).with_suffix(".used").unlink()
     with psycopg.connect(superuser_database_url, autocommit=True) as admin:
         admin.execute(
             "UPDATE clinic_app.scheduling_availabilityblock "
@@ -129,3 +141,58 @@ def test_changed_or_partial_fixture_cannot_seed_even_without_file_markers(
                 "ALTER TABLE clinic_app.original_invocation RENAME TO ai_aiinvocation"
             )
     assert not seed_receipt.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_every_seeded_table_rejects_a_forward_row_mutation(
+    seed_receipt: Path, superuser_database_url: str
+) -> None:
+    _run_seed()
+    with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
+        expected = read_rows(cursor)
+        keys = dict(table_keys(cursor))
+        for table, rows in expected.items():
+            key = next(iter(rows))
+            column = next(
+                col
+                for col, value in sorted(rows[key].items())
+                if col not in keys[table] and value is not None
+            )
+            original = sql.Identifier("clinic_app", table)
+            copy_name = sql.Identifier("fixture_sweep_original")
+            # Real SQL values, with a rollback-only shadow table so fixture
+            # constraints do not mask the comparator's independent rejection.
+            with admin.transaction() as mutation:
+                cursor.execute(
+                    sql.SQL("ALTER TABLE {} RENAME TO {}").format(original, copy_name)
+                )
+                cursor.execute(
+                    sql.SQL("CREATE TABLE {} AS SELECT * FROM clinic_app.{}").format(
+                        original, copy_name
+                    )
+                )
+                cursor.execute(
+                    sql.SQL("ALTER TABLE {} ADD PRIMARY KEY ({})").format(
+                        original, sql.SQL(", ").join(map(sql.Identifier, keys[table]))
+                    )
+                )
+                cursor.execute(
+                    sql.SQL("UPDATE {} AS t SET {}=NULL WHERE {}").format(
+                        original,
+                        sql.Identifier(column),
+                        sql.SQL(" AND ").join(
+                            sql.SQL("to_jsonb(t)->{} = %s::jsonb").format(
+                                sql.Literal(name)
+                            )
+                            for name in keys[table]
+                        ),
+                    ),
+                    list(map(json.dumps, json.loads(key))),
+                )
+                assert cursor.rowcount == 1
+                actual = read_rows(cursor)
+                actual.pop("fixture_sweep_original")
+                assert differences(expected, actual) == [
+                    f"seeded value mismatch: {table}.{column} {key}"
+                ]
+                raise Rollback(mutation)

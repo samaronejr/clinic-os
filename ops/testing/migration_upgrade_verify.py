@@ -32,6 +32,7 @@ from apps.intake.models import Patient
 from django.db import connection
 
 from ops.testing.migration_upgrade_ai_verify import verify_ai
+from ops.testing.migration_upgrade_rows import verify_rows
 from ops.testing.migration_upgrade_seed_state import (
     database_identity,
     require_completed_seed,
@@ -48,6 +49,7 @@ def check(condition: bool, name: str) -> None:
 
 seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
 required_seeds = require_completed_seed(seed_contents)
+failures.extend(verify_rows())
 markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])

@@ -1,0 +1,400 @@
+"""Capture the seed's actual write set and verify every value after migration."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from copy import deepcopy
+from hashlib import sha256
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
+
+import psycopg
+from psycopg import sql
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from psycopg import Cursor
+
+type Row = dict[str, object]
+type Tables = dict[str, dict[str, Row]]
+_ORIGINAL_AND_ONE_RETRY = 2
+
+# Metadata and reference rows are created by migrations, not by the seed.
+# Every other product table is checked, including indirect service writes;
+# a new fixture model cannot accidentally escape a hand-maintained seed list.
+_REFERENCE = (
+    "django_migrations",
+    "django_content_type",
+    "auth_permission",
+    "providers_providercapability",
+    "providers_capabilityversion",
+    "prescription_prescriptionclasspolicy",
+)
+
+_DEFAULT_COLUMNS: dict[tuple[str, str], dict[str, Row]] = {
+    ("identity", "0016_task_workflows"): {
+        "identity_userclinicrole": {"workflow_bundle_version": 1},
+    },
+    ("identity", "0018_signup"): {"identity_organization": {"status": "active"}},
+    ("identity", "0019_identity_lifecycle"): {
+        "identity_userclinicrole": {"revoked_at": None},
+    },
+    ("identity", "0036_passkey_sessions"): {
+        "identity_organization": {"passkey_step_up_enabled": False},
+    },
+    ("scheduling", "0005_resources_templates"): {
+        "scheduling_appointment": {
+            "buffer_after": 0,
+            "buffer_before": 0,
+            "resource_ids": [],
+            "service_type_id": None,
+        },
+        "scheduling_availabilityblock": {
+            "generated_date": None,
+            "resource_id": None,
+            "template_id": None,
+        },
+    },
+    ("scheduling", "0007_appointment_lifecycle_v2"): {
+        "scheduling_appointment": {
+            "authorization_reference": "",
+            "hold_expires_at": None,
+            "last_command_id": None,
+            "payer_membership_id": None,
+            "revision": 1,
+            "series_index": None,
+            "series_id": None,
+            "transitioned_at": None,
+        },
+    },
+    ("scheduling", "0011_insurer_membership"): {
+        "scheduling_appointment": {
+            "payer_contract_id": None,
+            "eligibility_check_id": None,
+            "authorization_check_id": None,
+        },
+    },
+    ("ai", "0014_staged_rollout"): {
+        "ai_gatewayswitch": {"generation": 0},
+        "ai_evaluationrun": {"stage": "offline", "rollout_approval_id": None},
+        "ai_modelchangerequest": {
+            "stage": "shadow",
+            "exposure": "none",
+            "switch_generation": 0,
+            "authority_sha256": "",
+        },
+        "ai_aiinvocation": {"rollout_approval_id": None},
+        "ai_agentrun": {"rollout_approval_id": None},
+    },
+    ("ai", "0015_front_desk_rollout"): {
+        "ai_frontdeskturn": {"rollout_approval_id": None, "source_xid": ""},
+    },
+    ("ai", "0016_retained_effects"): {"ai_aiinvocation": {"effect_xid": ""}},
+    ("ai", "0017_retained_proposal_sources"): {"ai_actionproposal": {"source_xid": ""}},
+    ("comms", "0012_attempt_delivery"): {
+        "comms_inboundevent": {"operation_id": None, "delivery_state": ""},
+    },
+    ("comms", "0013_attempt_sequence"): {
+        "comms_integrationoperation": {"attempt_sequence": None},
+    },
+    ("comms", "0015_send_permit"): {
+        "comms_integrationoperation": {"send_permit": None}
+    },
+    ("comms", "0017_inflight_claim"): {
+        "comms_integrationoperation": {"send_permit_claim": None},
+    },
+}
+
+
+def _message_attempts(rows: Tables) -> list[Row]:
+    return [
+        row
+        for row in rows.get("comms_integrationoperation", {}).values()
+        if row["subject_type"] == "comms.message"
+    ]
+
+
+def _by_id(rows: Tables, table: str, identity: object) -> Row:
+    return rows[table][json.dumps([identity], separators=(",", ":"))]
+
+
+def _attempt_sequence(rows: Tables) -> None:
+    attempts = _message_attempts(rows)
+    for event in rows.get("comms_inboundevent", {}).values():
+        if event["kind"] != "status" or event["operation_id"] is not None:
+            continue
+        match = re.fullmatch(
+            r"(.+):(sent|delivered|read|failed):[^:]*", str(event["event_id"])
+        )
+        if match is None:
+            continue
+        for attempt in attempts:
+            if (
+                attempt["channel"] != "whatsapp"
+                or attempt["organization_id"] != event["organization_id"]
+                or attempt["provider_reference"] != match[1]
+            ):
+                continue
+            message = _by_id(rows, "comms_message", attempt["subject_id"])
+            conversation = _by_id(
+                rows, "comms_conversation", message["conversation_id"]
+            )
+            if conversation["provider_account_id"] == event["provider_account_id"]:
+                event.update(operation_id=attempt["id"], delivery_state=match[2])
+                break
+    for attempt in attempts:
+        message = _by_id(rows, "comms_message", attempt["subject_id"])
+        group = [a for a in attempts if a["subject_id"] == attempt["subject_id"]]
+        originals = sum(a["idempotency_key"] == message["command_id"] for a in group)
+        unattributed = any(a["channel"] != "whatsapp" for a in group)
+        if len(group) == 1 or (
+            len(group) == _ORIGINAL_AND_ONE_RETRY
+            and originals == 1
+            and not (unattributed and message["provider_state"] == "failed")
+        ):
+            attempt["attempt_sequence"] = (
+                1
+                if len(group) == 1
+                or attempt["idempotency_key"] == message["command_id"]
+                else 2
+            )
+
+
+def _has_failed_receipt(rows: Tables, attempt: Row) -> bool:
+    return any(
+        event["operation_id"] == attempt["id"] and event["delivery_state"] == "failed"
+        for event in rows.get("comms_inboundevent", {}).values()
+    )
+
+
+def _send_permit(rows: Tables) -> None:
+    attempts = _message_attempts(rows)
+    for attempt in attempts:
+        message = _by_id(rows, "comms_message", attempt["subject_id"])
+        original = attempt["idempotency_key"] == message["command_id"]
+        in_flight = attempt["status"] == "in_progress"
+        if original and any(
+            a["subject_id"] == attempt["subject_id"] and a["id"] != attempt["id"]
+            for a in attempts
+        ):
+            attempt["send_permit"] = "released"
+        elif attempt["attempt_sequence"] is None:
+            if in_flight:
+                attempt["send_permit"] = "held"
+        elif (attempt["provider_reference"] is not None or in_flight) and not (
+            attempt["status"] in ("failed", "cancelled")
+            or _has_failed_receipt(rows, attempt)
+            or (original and message["provider_state"] == "failed")
+        ):
+            attempt["send_permit"] = "held"
+
+
+def _permit_evidence(rows: Tables) -> None:
+    for attempt in _message_attempts(rows):
+        message = _by_id(rows, "comms_message", attempt["subject_id"])
+        if attempt["idempotency_key"] == message["command_id"]:
+            if message["provider_state"] == "failed":
+                attempt["send_permit"] = "released"
+        elif (
+            attempt["send_permit"] == "released"
+            and attempt["provider_reference"] is not None
+            and not _has_failed_receipt(rows, attempt)
+        ):
+            attempt["send_permit"] = "open"
+
+
+def _session_claim(rows: Tables) -> None:
+    for attempt in _message_attempts(rows):
+        if (
+            attempt["status"] == "in_progress"
+            and attempt["send_permit"] == "held"
+            and attempt["provider_reference"] is None
+        ):
+            attempt["send_permit_claim"] = (
+                "\\x" + sha256(b"legacy-in-flight").hexdigest()
+            )
+
+
+def _patient_name_index(rows: Tables) -> None:
+    from apps.intake.patient_name_index import name_indexes  # noqa: PLC0415
+    from apps.tenancy.envelope import reveal  # noqa: PLC0415
+    from django.db import connection, transaction  # noqa: PLC0415
+
+    for patient in rows.get("intake_patient", {}).values():
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_tenant', %s, true)",
+                [str(patient["organization_id"])],
+            )
+            name = reveal(
+                purpose="intake.patient.full_name",
+                envelope=bytes.fromhex(str(patient["full_name"])[2:]),
+            ).decode("utf-8")
+            patient["full_name_index"] = "\\x" + name_indexes(name)[-1].hex()
+
+
+# The only data rewrites in the supported base paths, in migration order.
+# Unlisted columns remain byte/value-identical, including encrypted fields.
+_REWRITES: dict[tuple[str, str], tuple[tuple[str, ...], Callable[[Tables], None]]] = {
+    ("intake", "0012_patient_name_index"): (
+        ("intake_patient.full_name_index",),
+        _patient_name_index,
+    ),
+    ("comms", "0013_attempt_sequence"): (
+        (
+            "comms_inboundevent.operation_id",
+            "comms_inboundevent.delivery_state",
+            "comms_integrationoperation.attempt_sequence",
+        ),
+        _attempt_sequence,
+    ),
+    ("comms", "0015_send_permit"): (
+        ("comms_integrationoperation.send_permit",),
+        _send_permit,
+    ),
+    ("comms", "0016_permit_evidence"): (
+        ("comms_integrationoperation.send_permit",),
+        _permit_evidence,
+    ),
+    ("comms", "0018_session_claim"): (
+        ("comms_integrationoperation.send_permit_claim",),
+        _session_claim,
+    ),
+}
+
+
+def expected_rows(rows: Tables, applied: set[tuple[str, str]]) -> Tables:
+    """Apply reviewed defaults and transforms to the base fixture values."""
+    for migration in sorted(_DEFAULT_COLUMNS.keys() | _REWRITES.keys()):
+        if migration not in applied:
+            continue
+        for table, values in _DEFAULT_COLUMNS.get(migration, {}).items():
+            for row in rows.get(table, {}).values():
+                row.update(values)
+        if migration in _REWRITES:
+            columns, transform = _REWRITES[migration]
+            before = deepcopy(rows)
+            transform(rows)
+            changed = differences(before, rows)
+            if any(failure.split(" ", 4)[3] not in columns for failure in changed):
+                message = f"undeclared fixture rewrite in {migration}"
+                raise RuntimeError(message)
+    return rows
+
+
+def table_keys(cursor: Cursor[tuple[object, ...]]) -> list[tuple[str, list[str]]]:
+    """Discover potential seed tables and stable ordered primary keys."""
+    cursor.execute(
+        """
+        SELECT c.relname, ARRAY(
+            SELECT a.attname FROM pg_index i
+            CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, n)
+            JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=k.attnum
+            WHERE i.indrelid=c.oid AND i.indisprimary ORDER BY k.n
+        )
+        FROM pg_class c WHERE c.relnamespace='clinic_app'::regnamespace
+        AND c.relkind IN ('r','p') AND NOT c.relname=ANY(%s) ORDER BY c.relname
+        """,
+        [list(_REFERENCE)],
+    )
+    return [
+        (str(name), list(cast("Sequence[str]", keys)))
+        for name, keys in cursor.fetchall()
+    ]
+
+
+def read_rows(cursor: Cursor[tuple[object, ...]]) -> Tables:
+    """Read all fixture-eligible rows through the scratch admin audit connection."""
+    result: Tables = {}
+    for table, keys in table_keys(cursor):
+        cursor.execute(
+            sql.SQL("SELECT to_jsonb(t)::text FROM clinic_app.{} t").format(
+                sql.Identifier(table)
+            )
+        )
+        rows: dict[str, Row] = {}
+        for (raw,) in cursor:
+            if not keys:
+                message = f"seeded table {table} has no stable primary key"
+                raise RuntimeError(message)
+            value = json.loads(str(raw))
+            key = json.dumps([value[k] for k in keys], separators=(",", ":"))
+            rows[key] = value
+        if rows:
+            result[table] = rows
+    return result
+
+
+def snapshot() -> tuple[Tables, set[tuple[str, str]]]:
+    """Read a consistent, privileged snapshot without changing product state."""
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SET LOCAL row_security=off")
+        rows = read_rows(cursor)
+        cursor.execute("SELECT app,name FROM clinic_app.django_migrations")
+        applied = {(str(app), str(name)) for app, name in cursor.fetchall()}
+    return rows, applied
+
+
+def capture_rows() -> None:
+    """Keep the freshly seeded rows outside the published evidence directory."""
+    rows, applied = snapshot()
+    with Path(os.environ["UPGRADE_SEED_ROWS"]).open("x", encoding="utf-8") as stream:
+        json.dump({"rows": rows, "applied": sorted(applied)}, stream, sort_keys=True)
+
+
+def differences(expected: Tables, actual: Tables) -> list[str]:
+    """Report keys and columns only; never print mismatched values."""
+    failures = []
+    for table in sorted(expected.keys() | actual.keys()):
+        rows = expected.get(table, {})
+        observed = actual.get(table, {})
+        for key in sorted(rows.keys() | observed.keys()):
+            if key not in rows or key not in observed:
+                failures.append(f"seeded value mismatch: {table}.<row> {key}")
+                continue
+            failures.extend(
+                f"seeded value mismatch: {table}.{col} {key}"
+                for col in sorted(rows[key].keys() | observed[key].keys())
+                if (
+                    col not in rows[key]
+                    or col not in observed[key]
+                    or json.dumps(rows[key][col], sort_keys=True)
+                    != json.dumps(observed[key][col], sort_keys=True)
+                )
+            )
+    return failures
+
+
+def verify_rows() -> list[str]:
+    """Compare live rows before any forward behavioral probe can touch them."""
+    saved = json.loads(
+        Path(os.environ["UPGRADE_SEED_ROWS"]).read_text(encoding="utf-8")
+    )
+    actual, applied = snapshot()
+    plan = applied - {tuple(x) for x in saved["applied"]}
+    expected = expected_rows(saved["rows"], plan)
+    # Fresh migration-generated rows in newly created tables were not
+    # base fixture writes. Already-seeded rows are never excluded.
+    generated = {
+        ("subscriptions", "0001_initial"): (
+            "subscriptions_plan",
+            "subscriptions_entitlement",
+            "subscriptions_subscription",
+            "subscriptions_subscriptionevent",
+            "subscriptions_seat",
+        ),
+        ("intake", "0016_duplicate_detection"): ("intake_patientduplicateindex",),
+    }
+    for migration, tables in generated.items():
+        if migration in plan:
+            for table in tables:
+                if table not in expected:
+                    actual.pop(table, None)
+    return differences(expected, actual)

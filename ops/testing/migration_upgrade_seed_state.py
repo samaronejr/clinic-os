@@ -1,25 +1,25 @@
 """Authorize one seed against a freshly migrated disposable database."""
 
-import hashlib
 import json
 import os
 import sys
 from pathlib import Path
+from runpy import run_path
 from typing import TYPE_CHECKING, Never, TypedDict, cast
 
 import psycopg
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
+
+    from psycopg import Cursor
 
 
 class _BaseObservation(TypedDict):
     database: list[str | int]
     base_sha: str
-    digest: str
     required: list[str]
 
 
@@ -64,16 +64,13 @@ def _required_histories() -> list[str]:
     return required
 
 
-def _base_digest() -> str:
-    """Compare all product tables, including trigger/service side effects."""
-    digest = hashlib.sha256()
-    # A separately scoped read-only admin connection sees FORCE RLS tables;
-    # the fixture itself continues to write through the owner/runtime roles.
+def _pristine(*, claim: bool) -> None:
+    """Check the live database, serializing inspection and the irrevocable claim."""
     with (
         psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
         admin.cursor() as cursor,
     ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SELECT pg_advisory_xact_lock(1037641436)")
         cursor.execute("SET LOCAL row_security=off")
         cursor.execute(
             "SELECT current_database(), oid FROM pg_database "
@@ -85,22 +82,16 @@ def _base_digest() -> str:
         cursor.execute("SELECT to_regnamespace('upgrade_rehearsal') IS NULL")
         if cursor.fetchone() != (True,):
             _partial()
-        cursor.execute(
-            "SELECT c.relname, c.oid FROM pg_class c "
-            "WHERE c.relnamespace='clinic_app'::regnamespace "
-            "AND c.relkind IN ('r','p') ORDER BY c.relname COLLATE \"C\""
+        read_rows = cast(
+            "Callable[[Cursor[tuple[object, ...]]], object]",
+            run_path(str(Path(__file__).with_name("migration_upgrade_rows.py")))[
+                "read_rows"
+            ],
         )
-        for name, oid in cursor.fetchall():
-            digest.update(json.dumps([name, oid]).encode() + b"\n")
-            cursor.execute(
-                sql.SQL(
-                    'SELECT to_jsonb(r)::text COLLATE "C" '
-                    "FROM clinic_app.{} AS r ORDER BY 1"
-                ).format(sql.Identifier(name))
-            )
-            for (row,) in cursor:
-                digest.update(row.encode() + b"\n")
-    return digest.hexdigest()
+        if read_rows(cursor):
+            _partial()
+        if claim:
+            cursor.execute("CREATE SCHEMA upgrade_rehearsal AUTHORIZATION clinic_owner")
 
 
 def _observation_path() -> Path:
@@ -117,10 +108,10 @@ def observe_base() -> None:
     ):
         message = "upgrade database does not match the expected base migration graph"
         raise RuntimeError(message)
+    _pristine(claim=False)
     observed: _BaseObservation = {
         "database": database_identity(),
         "base_sha": os.environ["UPGRADE_BASE_SHA"],
-        "digest": _base_digest(),
         "required": _required_histories(),
     }
     with _observation_path().open("x", encoding="utf-8") as output:
@@ -148,13 +139,7 @@ def begin_seed(path: Path) -> list[str]:
     ):
         _partial()
     base = _observed_base()
-    used = _observation_path().with_suffix(".used")
-    if used.exists() or _base_digest() != base["digest"]:
-        _partial()
-    try:
-        used.touch(mode=0o600, exist_ok=False)
-    except FileExistsError:
-        _partial()
+    _pristine(claim=True)
     return base["required"]
 
 
@@ -194,10 +179,10 @@ def require_completed_seed(contents: str) -> list[str]:
     """Bind fixture markers to the current run's independent base observation."""
     markers = json.loads(contents)
     base = _observed_base()
-    if (
-        not _observation_path().with_suffix(".used").is_file()
-        or markers["database"] != base["database"]
-    ):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regnamespace('upgrade_rehearsal') IS NOT NULL")
+        started = cursor.fetchone() == (True,)
+    if not started or markers["database"] != base["database"]:
         _partial()
     check_histories(markers, base["required"])
     return base["required"]
