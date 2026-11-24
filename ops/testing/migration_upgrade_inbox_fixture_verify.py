@@ -14,7 +14,7 @@ from ops.testing.migration_upgrade_inbox_fixture import (
     ACCOUNTS,
     CASES,
     INBOUND_BODY,
-    NO_ACCEPTED_SEND_CASES,
+    METERED_DELIVERY_CASES,
     OUTBOUND_BODY,
     PROVIDER_METER_CASES,
     STATUS_RECEIPTS,
@@ -83,7 +83,7 @@ def _effects(
     if set(cursor.fetchall()) != {
         (keys["message"], "messages", 1, True)
         for case, keys in cases.items()
-        if case not in NO_ACCEPTED_SEND_CASES
+        if case in METERED_DELIVERY_CASES
     }:
         failures.append("inbox fixture: declared outbound usage sources")
     cursor.execute(

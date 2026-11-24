@@ -62,18 +62,15 @@ STATUS_RECEIPTS: Final = {"whatsapp": 34, "email": 7, "sms": 6}
 PROVIDER_METER_CASES: Final = frozenset(
     {"p_sent_receipt", "p_delivered", "p_failed_delivered", "r_delivered"}
 )
-NO_ACCEPTED_SEND_CASES: Final = frozenset(
+METERED_DELIVERY_CASES: Final = frozenset(
     {
-        "p_queued",
-        "p_cancelled",
-        "none_accepted",
-        "o_rejected",
-        "o_unknown",
-        "s_rejected",
-        "e_unknown",
-        "r8_legacy_inflight",
-        "r7_inflight",
-        "r7_rejected",
+        "p_sent_receipt",
+        "p_delivered",
+        "p_read",
+        "p_failed_delivered",
+        "r_delivered",
+        "s_delivered",
+        "e_delivered",
     }
 )
 
