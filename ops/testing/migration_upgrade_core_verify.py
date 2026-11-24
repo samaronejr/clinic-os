@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import psycopg
 from psycopg import errors
 
 from ops.testing.migration_upgrade_core_fixture import (
@@ -24,9 +23,10 @@ from ops.testing.migration_upgrade_core_fixture import (
     PATIENT_NAME,
     PRACTITIONER_USERNAME,
 )
+from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
 if TYPE_CHECKING:
-    from psycopg import Cursor
+    from psycopg import Connection, Cursor
 
 
 def _organization(cursor: Cursor[tuple[object, ...]]) -> object:
@@ -110,14 +110,12 @@ def _patient_index(cursor: Cursor[tuple[object, ...]], organization: object) -> 
     return cursor.fetchall() == [(True,)]
 
 
-def verify_core_fixture() -> list[str]:
+def verify_core_fixture(
+    *, database: Connection[tuple[object, ...]] | None = None
+) -> list[str]:
     """Use seed literals and natural keys, not observed names or receipt IDs."""
     failures = []
-    with (
-        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
-        admin.cursor() as cursor,
-    ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    with oracle_cursor(database) as (_, cursor):
         cursor.execute("SELECT count(*) FROM clinic_app.identity_organization")
         if cursor.fetchone() != (1,):
             failures.append("core fixture mismatch: identity_organization row count")

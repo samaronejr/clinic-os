@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
-import os
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
-import psycopg
 from django.apps import apps
 from django.db.migrations.state import ModelState
 from psycopg import sql
 
 from ops.testing.migration_upgrade_ai_recipe import declare_ai_rows
 from ops.testing.migration_upgrade_inbox_fixture import CASES
+from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
 if TYPE_CHECKING:
     from django.db.models import Model
+    from psycopg import Connection
 
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 _UUID_VERSION = 4
@@ -140,7 +140,9 @@ def declared_ai_tables() -> Counter[str]:
     )
 
 
-def verify_ai_counts(*, with_inbox: bool) -> list[str]:
+def verify_ai_counts(
+    *, with_inbox: bool, database: Connection[tuple[object, ...]] | None = None
+) -> list[str]:
     """Check direct AI writes and declared shared-table fixture additions."""
     counts = declared_ai_tables()
     counts.update({"identity_user": 2, "identity_userclinicrole": 2})
@@ -155,11 +157,7 @@ def verify_ai_counts(*, with_inbox: bool) -> list[str]:
             }
         )
     failures = []
-    with (
-        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
-        admin.cursor() as cursor,
-    ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    with oracle_cursor(database) as (_, cursor):
         for table, expected in sorted(counts.items()):
             cursor.execute(
                 sql.SQL("SELECT count(*) FROM {}").format(

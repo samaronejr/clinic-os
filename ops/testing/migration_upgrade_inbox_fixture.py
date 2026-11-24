@@ -172,20 +172,28 @@ ACCOUNTS: Final = {
 }
 INBOUND_BODY: Final = b"Oi"
 OUTBOUND_BODY: Final = b"Mensagem sintetica"
-STATUS_RECEIPTS: Final = {"whatsapp": 34, "email": 7, "sms": 6}
+STATUS_RECEIPTS: Final = {
+    channel: sum(
+        step[0] == "status"
+        for declared_channel, steps in CASE_STEPS.values()
+        if declared_channel == channel
+        for step in steps
+    )
+    for channel in ACCOUNTS
+}
 PROVIDER_METER_CASES: Final = frozenset(
-    {"p_sent_receipt", "p_delivered", "p_failed_delivered", "r_delivered"}
+    case
+    for case, (channel, steps) in CASE_STEPS.items()
+    if channel == "whatsapp"
+    and any(step[0] == "status" and step[2] in {"sent", "delivered"} for step in steps)
 )
 METERED_DELIVERY_CASES: Final = frozenset(
-    {
-        "p_sent_receipt",
-        "p_delivered",
-        "p_read",
-        "p_failed_delivered",
-        "r_delivered",
-        "s_delivered",
-        "e_delivered",
-    }
+    case
+    for case, (_, steps) in CASE_STEPS.items()
+    if any(
+        step[0] == "status" and step[2] in {"sent", "delivered", "read"}
+        for step in steps
+    )
 )
 
 # Visible states after the declared steps. In particular a cancelled attempt

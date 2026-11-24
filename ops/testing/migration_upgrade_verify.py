@@ -31,13 +31,9 @@ from apps.audit.verification import AuditChainVerificationError
 from apps.intake.models import Patient
 from django.db import connection
 
-from ops.testing.migration_upgrade_ai_intent import verify_ai_counts
-from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
-from ops.testing.migration_upgrade_ai_values import verify_ai_literal_values
 from ops.testing.migration_upgrade_ai_verify import verify_ai
-from ops.testing.migration_upgrade_core_verify import verify_core_fixture
+from ops.testing.migration_upgrade_fixture_oracle import check_fixtures
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
-from ops.testing.migration_upgrade_inbox_fixture_verify import verify_inbox_fixture
 from ops.testing.migration_upgrade_seed_state import (
     database_identity,
     require_completed_seed,
@@ -55,15 +51,10 @@ def check(condition: bool, name: str) -> None:
 seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
 required_seeds = require_completed_seed(seed_contents)
 markers = json.loads(seed_contents)
-failures.extend(verify_core_fixture())
-ai_keys: dict[str, object] = {}
-if "ai" in required_seeds:
-    failures.extend(verify_ai_counts(with_inbox="inbox" in required_seeds))
-    failures.extend(verify_invocation_fixture())
-    failures.extend(verify_ai_literal_values(probe_keys=ai_keys))
-if "inbox" in required_seeds:
-    inbox_fixture = verify_inbox_fixture()
-    failures.extend(inbox_fixture.failures)
+fixture = check_fixtures(required_seeds)
+failures.extend(fixture.failures)
+ai_keys = fixture.ai_keys
+inbox_fixture = fixture.inbox
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
 appointment_id = UUID(markers["appointment_id"])
@@ -202,7 +193,7 @@ else:
 if ai_keys:
     markers["ai"] = ai_keys
     failures.extend(verify_ai(markers, required=True))
-if "inbox" in required_seeds and not inbox_fixture.failures:
+if inbox_fixture is not None and not inbox_fixture.failures:
     inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
     markers["inbox"] = {
         "accounts": inbox_fixture.accounts,

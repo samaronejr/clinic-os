@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import psycopg
 import rfc8785
 from django.apps import apps
 from django.db.migrations.state import ModelState
@@ -31,11 +30,12 @@ from ops.testing.migration_upgrade_core_fixture import (
     OWNER_USERNAME,
     PRACTITIONER_USERNAME,
 )
+from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from psycopg import Cursor
+    from psycopg import Connection, Cursor
 
 _UUID_VERSION = 4
 _SUBSECOND = timedelta(microseconds=999_999)
@@ -454,7 +454,9 @@ def _resolve_probe(value: object, keys: Mapping[str, str]) -> object:
 
 
 def verify_ai_literal_values(
-    *, probe_keys: dict[str, object] | None = None
+    *,
+    probe_keys: dict[str, object] | None = None,
+    database: Connection[tuple[object, ...]] | None = None,
 ) -> list[str]:
     """Validate defined fields using one-to-one matching, without captured values."""
     graph = compile_ai_graph()
@@ -473,11 +475,7 @@ def verify_ai_literal_values(
         by_label[row.label].append(row)
     failures = []
     choices: list[tuple[str, list[_Match]]] = []
-    with (
-        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
-        admin.cursor() as cursor,
-    ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    with oracle_cursor(database) as (_, cursor):
         cursor.execute(
             "SELECT set_config('app.current_tenant',id::text,true) "
             "FROM clinic_app.identity_organization WHERE cnpj=%s",

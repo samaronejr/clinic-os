@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from uuid import UUID
 
-import psycopg
-
 from ops.testing.migration_upgrade_core_fixture import CLINIC_NAME, ORGANIZATION_CNPJ
 from ops.testing.migration_upgrade_inbox_fixture import (
     ACCOUNTS,
@@ -22,9 +20,10 @@ from ops.testing.migration_upgrade_inbox_fixture import (
     contact_address,
 )
 from ops.testing.migration_upgrade_inbox_intent import project_case
+from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
 if TYPE_CHECKING:
-    from psycopg import Cursor
+    from psycopg import Connection, Cursor
 
 _UUID_VERSION = 4
 _IDENTITIES_PER_CASE = 4
@@ -264,7 +263,9 @@ def _inbox_rows(
     return cursor.fetchall()
 
 
-def verify_inbox_fixture() -> InboxFixtureResult:
+def verify_inbox_fixture(
+    *, database: Connection[tuple[object, ...]] | None = None
+) -> InboxFixtureResult:
     """Resolve histories from decrypted fixture contacts and verify their shape."""
     kek = (
         (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
@@ -279,11 +280,7 @@ def verify_inbox_fixture() -> InboxFixtureResult:
     cases = {}
     seen = set()
     identities: set[object] = set()
-    with (
-        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
-        admin.cursor() as cursor,
-    ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    with oracle_cursor(database) as (_, cursor):
         cursor.execute(
             "SELECT set_config('app.current_tenant',id::text,true) "
             "FROM clinic_app.identity_organization WHERE cnpj=%s",

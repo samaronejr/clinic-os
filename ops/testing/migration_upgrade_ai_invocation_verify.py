@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
 from psycopg import errors, sql
 
 from ops.testing.migration_upgrade_ai_fixture import (
@@ -35,6 +34,7 @@ from ops.testing.migration_upgrade_core_fixture import (
     OWNER_USERNAME,
     PRACTITIONER_USERNAME,
 )
+from ops.testing.migration_upgrade_oracle_db import oracle_cursor
 
 if TYPE_CHECKING:
     from psycopg import Connection, Cursor
@@ -216,7 +216,9 @@ def _portal_failures(cursor: Cursor[tuple[object, ...]], kek: str) -> list[str]:
     return failures
 
 
-def verify_invocation_fixture() -> list[str]:
+def verify_invocation_fixture(
+    *, database: Connection[tuple[object, ...]] | None = None
+) -> list[str]:
     """Check declared invocations, artifact values, and operation relationships."""
     kek = (
         (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
@@ -228,11 +230,7 @@ def verify_invocation_fixture() -> list[str]:
     ids: set[object] = set()
     ciphertexts: set[object] = set()
     failures = []
-    with (
-        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
-        admin.cursor() as cursor,
-    ):
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    with oracle_cursor(database) as (admin, cursor):
         if not _context(cursor):
             return ["AI invocation fixture: organization natural key"]
         failures.extend(_configuration_failures(cursor))
