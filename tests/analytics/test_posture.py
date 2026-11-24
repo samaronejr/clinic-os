@@ -17,6 +17,7 @@ from psycopg import sql
 from psycopg.errors import InsufficientPrivilege
 from psycopg.types.json import Jsonb
 
+from ai.pending_boundary_inventory import inventory as pending_inventory
 from analytics.test_metrics import metric_query
 from billing.journal_support import finance_scope, finance_setup, invoice_terms
 from identity.permission_support import (
@@ -68,6 +69,9 @@ def test_every_reporting_table_and_view_has_exact_posture() -> None:
         )
         assert {(row[0], row[1], tuple(row[2])) for row in cursor.fetchall()} == {
             (table, "analytics_scope", ("clinic_app",)) for table in TABLES
+        } | {
+            (table, "pending_output_read", ("clinic_agent", "clinic_app"))
+            for table in pending_inventory().tables.intersection(TABLES)
         }
         cursor.execute(
             "SELECT c.relname,c.relowner::regrole::text,c.reloptions, "

@@ -353,6 +353,15 @@ POSTURE_OVERRIDES: Final = {
     "scribe_draft_guard": ("v", False, ["clinic_resolver"]),
     "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_guide_consent": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "ai_archive_current": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "ai_pending_refusal": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "ai_pending_choice": ("s", False, ["clinic_resolver"]),
+    "ai_pending_subject": ("s", False, ["clinic_resolver"]),
+    "ai_pending_visible": (
+        "s",
+        True,
+        ["clinic_agent", "clinic_app", "clinic_resolver"],
+    ),
     "insurance_guide_read_scope": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ai_revenue_ancestry": (
         "v",
@@ -703,6 +712,19 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
     ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"),
     ("insurance_guide_read_scope", "org uuid, clinic uuid"),
+    ("ai_archive_current", "requested uuid"),
+    ("ai_pending_choice", "relation_name text, requested uuid"),
+    ("ai_pending_visible", "relation_name text, requested uuid"),
+    (
+        "ai_pending_subject",
+        "org uuid, clinic uuid, enrolled uuid, visit uuid, pinned uuid, "
+        "issued timestamp with time zone, required boolean, scope_purpose text",
+    ),
+    (
+        "ai_pending_refusal",
+        "clinic uuid, requested uuid, purpose_name text, enrolled uuid, "
+        "visit uuid, appointment uuid, session_binding text, kek text",
+    ),
     (
         "ai_guide_consent",
         "requested_clinic uuid, requested_guide uuid, requested_encounter uuid, "
@@ -1080,6 +1102,19 @@ FUNCTION_RESULTS: Final = {
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
     ("ai_revenue_ancestry", "clinic uuid, kind text, requested uuid"): "boolean",
     ("insurance_guide_read_scope", "org uuid, clinic uuid"): "boolean",
+    ("ai_archive_current", "requested uuid"): "boolean",
+    ("ai_pending_choice", "relation_name text, requested uuid"): "boolean",
+    ("ai_pending_visible", "relation_name text, requested uuid"): "boolean",
+    (
+        "ai_pending_subject",
+        "org uuid, clinic uuid, enrolled uuid, visit uuid, pinned uuid, "
+        "issued timestamp with time zone, required boolean, scope_purpose text",
+    ): "boolean",
+    (
+        "ai_pending_refusal",
+        "clinic uuid, requested uuid, purpose_name text, enrolled uuid, "
+        "visit uuid, appointment uuid, session_binding text, kek text",
+    ): "boolean",
     (
         "ai_guide_consent",
         "requested_clinic uuid, requested_guide uuid, requested_encounter uuid, "

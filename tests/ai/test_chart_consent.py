@@ -154,9 +154,12 @@ def test_revocation_fences_queued_work_and_retained_output(
         assert invocation_id is not None
         operation = AIInvocation.objects.get(pk=invocation_id).operation_id
     assert operation is not None
+    output_ref = None
     if boundary != "queued":
         with runtime_role():
             assert run_operation(operation_id=str(operation)) == "succeeded"
+        with as_actor(g, g.physician):
+            output_ref = AIInvocation.objects.get(pk=invocation_id).output.pk
     with runtime_role(), patient_session_context(patient):
         revoke_consent(acceptance_id=receipt)
     if boundary == "reconsented":
@@ -185,8 +188,11 @@ def test_revocation_fences_queued_work_and_retained_output(
     with as_actor(g, g.physician):
         invocation = AIInvocation.objects.get(pk=invocation_id)
         refs = [invocation.inputs_ref_id]
-        if boundary != "queued":
-            refs.append(invocation.output.pk)
+        if output_ref is not None:
+            # Retain the pre-withdrawal handle. The ordinary relation now
+            # withholds even the pending row's identifier on a fresh read.
+            assert not AIArtifact.objects.filter(pk=output_ref).exists()
+            refs.append(output_ref)
         for ref in refs:
             with pytest.raises(GatewayRefusedError):
                 read_artifact(clinic_id=g.clinic_a, artifact_id=ref)

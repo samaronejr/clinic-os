@@ -15,6 +15,7 @@ from apps.ai.action_validation import database_time
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError, Purpose
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy
 from apps.ai.revenue_contracts import MAX_ROWS, RevenueFacts, decode, parse_model_input
 from apps.billing.errors import BillingAccessDeniedError
@@ -51,7 +52,8 @@ def retained_output(
     """Resolve the requester's exact current output before admitting any proposal."""
     require_finance(clinic_id=clinic_id)
     output = (
-        AIArtifact.objects.select_related("invocation")
+        pending_rows(AIArtifact)
+        .select_related("invocation")
         .filter(
             pk=output_id,
             clinic_id=clinic_id,

@@ -18,6 +18,7 @@ from apps.ai.action_validation import validate_current
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import check_configuration, rollout_approval, select_configuration
 from apps.ai.prompt_registry import load_prompt
 from apps.ai.revenue_sources import proposal_invocation, require_finance
@@ -48,7 +49,7 @@ def transition(
     """Advance one DB-enforced edge and append its fixed audit events."""
     proposal.state, proposal.reason_code = state, reason
     proposal.save(using=using, update_fields=("state", "reason_code"))
-    AgentRun.objects.using(using).filter(pk=proposal.run_id).update(
+    pending_rows(AgentRun).using(using).filter(pk=proposal.run_id).update(
         outcome=state,
         reason_code=reason,
     )
@@ -96,10 +97,14 @@ def propose_action(
     source_invocation_id = proposal_invocation(
         clinic_id=clinic_id, data=data, capability=policy.capability
     )
-    previous = ActionProposal.objects.filter(
-        clinic_id=clinic_id,
-        idempotency_key=identifier(data["idempotency_key"]),
-    ).first()
+    previous = (
+        pending_rows(ActionProposal)
+        .filter(
+            clinic_id=clinic_id,
+            idempotency_key=identifier(data["idempotency_key"]),
+        )
+        .first()
+    )
     if previous is not None:
         if previous.digest != payload.digest:
             raise ActionRefusedError(Refusal.DIGEST)
@@ -151,7 +156,7 @@ def propose_action(
             for source in context.sources
         ],
     }
-    run = AgentRun.objects.create(
+    run = pending_rows(AgentRun).create(
         organization_id=policy.organization_id,
         clinic_id=clinic_id,
         policy=policy,
@@ -169,7 +174,7 @@ def propose_action(
         contract=contract,
         evaluation_set=context.evaluation_set,
     )
-    proposal = ActionProposal.objects.create(
+    proposal = pending_rows(ActionProposal).create(
         id=identifier(data["action_id"]),
         organization_id=policy.organization_id,
         clinic_id=clinic_id,

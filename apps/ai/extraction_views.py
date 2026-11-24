@@ -36,6 +36,8 @@ from apps.ai.extraction import (
 from apps.ai.extraction_contracts import MAX_UNIT_LENGTH, ExtractionInputError
 from apps.ai.extraction_documents import render_page
 from apps.ai.models import AIInvocation, ExtractionCandidateRecord
+from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ehr.attachment_storage import AttachmentStorageError
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError, require_permission
@@ -128,9 +130,11 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         )
         if action in ("confirmed", "rejected"):
             candidate_id = UUID(request.POST.get("candidate_id", ""))
-            if not ExtractionCandidateRecord.objects.filter(
-                pk=candidate_id, job=job
-            ).exists():
+            if (
+                not pending_rows(ExtractionCandidateRecord)
+                .filter(pk=candidate_id, job=job)
+                .exists()
+            ):
                 raise GatewayAccessDeniedError
             review_extraction(
                 clinic_id=clinic_id,
@@ -158,6 +162,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
 
 
 def _document_context(job: ExtractionJob, *, page: int, zoom: int) -> dict[str, object]:
+    job = reselect(job)
     if zoom not in ZOOMS:
         raise ExtractionInputError
     source = job_source(job=job, include_bytes=True)

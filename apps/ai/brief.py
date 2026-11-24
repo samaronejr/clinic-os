@@ -140,7 +140,6 @@ def display_chart_turn(
         clinic_id=clinic_id,
         user_id=current_actor_id(),
         purpose=Purpose.BRIEF.value,
-        inputs_ref__patient_enrollment_id=enrolled,
     ).first()
     if invocation is None:
         raise GatewayAccessDeniedError
@@ -149,7 +148,9 @@ def display_chart_turn(
             clinic_id=clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose.BRIEF,
-            display=display,
+            display=ChartDisplay(
+                display.encounter, display.session, display.appointment, enrolled
+            ),
         )
         enabled_policy(Purpose.BRIEF)
     except GatewayRefusedError:

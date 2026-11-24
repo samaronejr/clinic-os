@@ -10,17 +10,24 @@ from django.utils import timezone
 
 from apps.ai import authorization
 from apps.ai.authorization import StaffInput
+from apps.ai.brief_contracts import parse_request
+from apps.ai.care_contracts import parse_request as parse_care
 from apps.ai.contracts import (
     MAX_CONTENT_BYTES,
     GatewayAccessDeniedError,
     GatewayInputError,
+    GatewayRefusedError,
     Method,
     Purpose,
 )
+from apps.ai.decision_contracts import parse_decision_request
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.pending_outputs import rows as pending_rows
+from apps.ai.pending_outputs import withheld_artifact
 from apps.ai.policy import enabled_policy
 from apps.ai.retained_readers import check_retained_input
+from apps.ai.revenue_sources import parse_context
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id
 from apps.identity.models import Clinic
@@ -58,13 +65,16 @@ def create_input(
     )
     enabled_policy(purpose)
     clinic = Clinic.objects.get(pk=clinic_id)
+    source_ref, source_acceptance = _read_origin(purpose, content)
     with transaction.atomic():
-        artifact = AIArtifact.objects.create(
+        artifact = pending_rows(AIArtifact).create(
             organization_id=clinic.organization_id,
             clinic_id=clinic_id,
             user_id=user_id,
             purpose=purpose.value,
             patient_enrollment_id=patient_enrollment_id,
+            source_ref=source_ref,
+            source_acceptance=source_acceptance,
             method=method,
             content=content,
             retention_class="transient_input",
@@ -76,6 +86,22 @@ def create_input(
     return artifact
 
 
+def _read_origin(purpose: Purpose, content: str) -> tuple[UUID | None, UUID | None]:
+    if purpose is Purpose.CARE_COORDINATION:
+        return parse_care(content).plan_id, None
+    if purpose is Purpose.REVENUE_CYCLE:
+        return parse_context(content).guide_id, None
+    if purpose in (Purpose.BRIEF, Purpose.DECISION_SUPPORT):
+        chart = (
+            parse_request(content)
+            if purpose is Purpose.BRIEF
+            else parse_decision_request(content).chart
+        )
+        if chart.permission is not None:
+            return chart.permission.encounter, chart.permission.acceptance
+    return None, None
+
+
 def input_for(
     *,
     clinic_id: UUID,
@@ -84,16 +110,28 @@ def input_for(
     display: ChartDisplay | None = None,
 ) -> AIArtifact:
     """Unknown, expired, foreign-clinic, and foreign-user refs all deny equally."""
-    artifact = AIArtifact.objects.filter(
-        pk=inputs_ref,
-        clinic_id=clinic_id,
-        user_id=current_actor_id(),
-        kind="input",
-        purpose=purpose.value,
-        expires_at__gt=timezone.now(),
-        purged_at__isnull=True,
-    ).first()
+    artifact = (
+        pending_rows(AIArtifact)
+        .filter(
+            pk=inputs_ref,
+            clinic_id=clinic_id,
+            user_id=current_actor_id(),
+            kind="input",
+            purpose=purpose.value,
+            expires_at__gt=timezone.now(),
+            purged_at__isnull=True,
+        )
+        .first()
+    )
     if artifact is None:
+        if withheld_artifact(clinic_id, inputs_ref, purpose, display):
+            raise GatewayRefusedError(reason="authority_revoked")
+        raise GatewayAccessDeniedError
+    if (
+        display is not None
+        and display.enrollment is not None
+        and (display.enrollment != artifact.patient_enrollment_id)
+    ):
         raise GatewayAccessDeniedError
     authorization.authorize_capability(
         purpose,
@@ -113,14 +151,20 @@ def input_for(
 
 def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
     """Reveal content only to its still-authorized requester, before expiry."""
-    artifact = AIArtifact.objects.filter(
-        pk=artifact_id,
-        clinic_id=clinic_id,
-        user_id=current_actor_id(),
-        expires_at__gt=timezone.now(),
-        purged_at__isnull=True,
-    ).first()
+    artifact = (
+        pending_rows(AIArtifact)
+        .filter(
+            pk=artifact_id,
+            clinic_id=clinic_id,
+            user_id=current_actor_id(),
+            expires_at__gt=timezone.now(),
+            purged_at__isnull=True,
+        )
+        .first()
+    )
     if artifact is None:
+        if withheld_artifact(clinic_id, artifact_id):
+            raise GatewayRefusedError(reason="authority_revoked")
         raise GatewayAccessDeniedError
     if artifact.kind == "output":
         invocation = artifact.invocation

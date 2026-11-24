@@ -7,11 +7,12 @@ from typing import ClassVar
 
 from django.db import models
 
+from apps.ai.pending_outputs import OutputProvenance, PendingOutput
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
 
-class AIDraft(TenantScopedModel):
+class AIDraft(PendingOutput, TenantScopedModel):
     """One admitted generation retains its exact note, sources and model version."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -45,7 +46,7 @@ class AIDraft(TenantScopedModel):
         ]
 
 
-class DraftSectionSuggestion(TenantScopedModel):
+class DraftSectionSuggestion(PendingOutput, TenantScopedModel):
     """Suggestions never share the authored note's storage or writer."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -68,7 +69,7 @@ class DraftSectionSuggestion(TenantScopedModel):
         ]
 
 
-class DraftActionProposal(TenantScopedModel):
+class DraftActionProposal(PendingOutput, TenantScopedModel):
     """Source-linked A0 order/task proposals cannot enter the note apply path."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -91,7 +92,7 @@ class DraftActionProposal(TenantScopedModel):
         ]
 
 
-class ReviewDecision(TenantScopedModel):
+class ReviewDecision(OutputProvenance, TenantScopedModel):
     """An appended encounter AI-use record; acceptance never hides AI origin."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

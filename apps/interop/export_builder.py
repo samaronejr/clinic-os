@@ -30,6 +30,8 @@ from django.db import DatabaseError, connection
 from django.db.models import F
 from django.utils import timezone
 
+from apps.ai.pending_outputs import export_page, record_export_origin
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.ehr.attachment_storage import AttachmentStorageError, default_storage
 from apps.ehr.attachments import EXTENSIONS
@@ -88,6 +90,7 @@ class _Facts:
     files: list[dict[str, JsonValue]] = field(default_factory=list)
     datasets: list[dict[str, JsonValue]] = field(default_factory=list)
     attachments: list[tuple[UUID, str, str, str]] = field(default_factory=list)
+    pending_origins: list[tuple[str, str]] = field(default_factory=list)
     records: int = 0
 
 
@@ -137,13 +140,12 @@ def _page(
 ) -> list[tuple[str, dict[str, object]]]:
     try:
         with tenant_context(scope.requested_by_id, scope.organization_id):
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT row_key,row_data FROM clinic_app.interop_export_rows"
-                    "(%s,%s,%s,%s)",
-                    [scope.export_id, dataset.relation, after, PAGE_SIZE],
-                )
-                rows = cursor.fetchall()
+            rows = export_page(
+                export_id=scope.export_id,
+                relation=dataset.relation,
+                after=after,
+                size=PAGE_SIZE,
+            )
             return [
                 (
                     str(key),
@@ -220,6 +222,7 @@ def _dataset(
         header: list[str] | None = None
         types = {column.name: column.type for column in dataset.columns}
         for row in _rows(scope, dataset):
+            record_export_origin(facts.pending_origins, dataset.relation, row)
             if header is None:
                 # Model columns plus any column the live relation also carries.
                 header = sorted({column.name for column in dataset.columns} | set(row))
@@ -358,7 +361,7 @@ def _store(scope: _Scope, path: Path, facts: _Facts, manifest_sha256: str) -> No
             part += 1
             archive_digest.update(chunk)
             with tenant_context(scope.requested_by_id, scope.organization_id):
-                OrganizationExportPart.objects.create(
+                pending_rows(OrganizationExportPart).create(
                     organization_id=scope.organization_id,
                     export_id=scope.export_id,
                     part=part,
@@ -368,9 +371,14 @@ def _store(scope: _Scope, path: Path, facts: _Facts, manifest_sha256: str) -> No
                     created_at=timezone.now(),
                 )
     with tenant_context(scope.requested_by_id, scope.organization_id):
-        OrganizationExport.objects.filter(pk=scope.export_id, state="building").update(
-            state="ready",
-            revision=F("revision") + 1,
+        # The worker attests to the actual bytes' source keys, not to a
+        # caller-authored origin list. PostgreSQL kept the independent receipt.
+        issued = hashlib.sha256()
+        for relation, key in sorted(facts.pending_origins):
+            issued.update(f"{relation}/{key}\n".encode("ascii"))
+        OrganizationExport.objects.filter(
+            pk=scope.export_id, clinic_id=scope.clinic_id, state="building"
+        ).update(
             part_count=part,
             archive_bytes=size,
             archive_sha256=archive_digest.hexdigest(),
@@ -379,6 +387,16 @@ def _store(scope: _Scope, path: Path, facts: _Facts, manifest_sha256: str) -> No
             record_count=facts.records,
             attachment_count=len(facts.attachments),
         )
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT clinic_app.interop_finalize_export(%s,%s,%s)",
+                    [scope.export_id, scope.clinic_id, issued.hexdigest()],
+                )
+        except DatabaseError as error:
+            if getattr(error.__cause__, "sqlstate", None) == "42501":
+                raise ExportFailureError(AUTHORITY_REVOKED) from error
+            raise
         record_phase1_event(
             "interop.organization_export.ready",
             clinic_id=scope.clinic_id,

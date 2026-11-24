@@ -17,6 +17,7 @@ from apps.ai.contracts import (
     Reason,
 )
 from apps.ai.models import AIArtifact, AICircuit, AIInvocation
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import (
     check_configuration,
     check_rollout_binding,
@@ -112,7 +113,7 @@ def finish_success(
         finish_failure(invocation, reason=error.reason, latency_ms=latency_ms)
         return
     source = invocation.inputs_ref
-    artifact = AIArtifact.objects.create(
+    artifact = pending_rows(AIArtifact).create(
         organization_id=invocation.organization_id,
         clinic_id=invocation.clinic_id,
         user_id=invocation.user_id,

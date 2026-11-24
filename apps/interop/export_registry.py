@@ -117,6 +117,13 @@ def datasets() -> tuple[Dataset, ...]:
                         _column(field)
                         for field in model._meta.concrete_fields  # noqa: SLF001
                         if field.column not in omitted
+                        and field.column
+                        not in {
+                            "source_ref",
+                            "source_acceptance",
+                            "pending_origins",
+                            "build_origins",
+                        }
                     ),
                     key=lambda column: column.name,
                 )

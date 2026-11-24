@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models.constraints import BaseConstraint
 
+from apps.ai.pending_outputs import PendingOutput
 from apps.tenancy.fields import EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
@@ -405,7 +406,7 @@ class MessageMeter(TenantScopedModel):
         ]
 
 
-class SuggestedReply(TenantScopedModel):
+class SuggestedReply(PendingOutput, TenantScopedModel):
     """An AI draft shown for review; nothing here is ever sent automatically."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

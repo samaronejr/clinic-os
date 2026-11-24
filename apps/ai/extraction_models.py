@@ -6,11 +6,12 @@ from typing import ClassVar
 from django.conf import settings
 from django.db import models
 
+from apps.ai.pending_outputs import PendingOutput
 from apps.tenancy.fields import EncryptedJSONField
 from apps.tenancy.models import TenantScopedModel
 
 
-class ExtractionJob(TenantScopedModel):
+class ExtractionJob(PendingOutput, TenantScopedModel):
     """One governed invocation of exact immutable source bytes."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -44,7 +45,7 @@ class ExtractionJob(TenantScopedModel):
         ]
 
 
-class ExtractionCandidateRecord(TenantScopedModel):
+class ExtractionCandidateRecord(PendingOutput, TenantScopedModel):
     """Immutable encrypted proposal plus one terminal human review decision."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

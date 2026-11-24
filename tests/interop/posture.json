@@ -608,6 +608,22 @@
       true
     ],
     [
+      "interop_finalize_export",
+      "requested_export uuid, requested_clinic uuid, issued_hash text",
+      "void",
+      "v",
+      true,
+      "clinic_resolver",
+      [
+        "search_path=pg_catalog, clinic_app, pg_temp"
+      ],
+      [
+        "clinic_app",
+        "clinic_resolver"
+      ],
+      true
+    ],
+    [
       "interop_guard",
       "",
       "trigger",
@@ -1124,6 +1140,17 @@
       null
     ],
     [
+      "interop_organizationexport",
+      "interop_ready_via_finalizer",
+      "RESTRICTIVE",
+      [
+        "clinic_app"
+      ],
+      "UPDATE",
+      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND enterprise_staff_context())",
+      "(((state)::text <> 'ready'::text) AND enterprise_staff_context())"
+    ],
+    [
       "interop_organizationexportpart",
       "interop_manage_read",
       "PERMISSIVE",
@@ -1144,6 +1171,17 @@
       "INSERT",
       null,
       "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND ( SELECT interop_manager((NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AS interop_manager) AND enterprise_staff_context())"
+    ],
+    [
+      "interop_organizationexportpart",
+      "pending_archive_read",
+      "RESTRICTIVE",
+      [
+        "clinic_app"
+      ],
+      "SELECT",
+      "(ai_archive_current(export_id) AND enterprise_staff_context())",
+      null
     ],
     [
       "interop_rndssubmission",

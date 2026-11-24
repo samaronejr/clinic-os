@@ -31,6 +31,7 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
+from ai.pending_boundary_inventory import inventory as pending_inventory
 from ai.support import DEFAULT_BUDGET, SENTINEL, enqueue, seed
 from ai.test_gateway import TimeoutProvider
 from auth.stepup_test_support import create_role_actor
@@ -111,7 +112,9 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         (table, table in CUSTOM_RLS_TABLES, table in CUSTOM_RLS_TABLES, "clinic_owner")
         for table in tables
     }
+    guarded = pending_inventory().tables.intersection(tables)
     assert policies == {
+        *((table, "pending_output_read") for table in guarded),
         ("ai_aiartifact", "ai_owner"),
         ("ai_aiartifact", "ai_artifact_user"),
         ("ai_aiinvocation", "ai_owner"),
@@ -157,7 +160,7 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
     # revenue ancestry, so agent staff alone never open those rows.
     assert restrictive == {
         (table, "agent_finance_bound", "clinic_app") for table in AGENT_TABLES
-    }
+    } | {(table, "pending_output_read", "clinic_agent,clinic_app") for table in guarded}
     assert grants == {
         (table, privilege)
         for table, privileges in RUNTIME_GRANTS.items()

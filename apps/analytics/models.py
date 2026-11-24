@@ -6,6 +6,7 @@ from typing import ClassVar
 from django.db import models
 from django.utils import timezone
 
+from apps.ai.pending_outputs import PendingOutput
 from apps.tenancy.models import TenantScopedModel
 
 
@@ -76,7 +77,7 @@ class SavedReport(TenantScopedModel):
     created_at = models.DateTimeField(default=timezone.now)
 
 
-class AnalystReview(TenantScopedModel):
+class AnalystReview(PendingOutput, TenantScopedModel):
     """A human decision binds immutable model output and permission version."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

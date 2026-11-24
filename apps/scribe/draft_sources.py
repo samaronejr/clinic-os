@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from apps.ai.context import assemble_context
 from apps.ai.contracts import Purpose
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy, select_configuration
 from apps.consent.services import current_ai_acceptance
 from apps.ehr.models import ClinicalDocumentVersion, DraftEditState
@@ -70,13 +71,15 @@ def note_frame(
         raise DraftAccessDeniedError
     if (
         transcript_id is not None
-        and not TranscriptVersion.objects.filter(
+        and not pending_rows(TranscriptVersion)
+        .filter(
             pk=transcript_id,
             session__clinic_id=clinic_id,
             session__encounter_id=scope.encounter.pk,
             session__enrollment_id=scope.enrollment.pk,
             session__physician_id=scope.physician_id,
-        ).exists()
+        )
+        .exists()
     ):
         raise DraftAccessDeniedError
     try:
@@ -167,7 +170,8 @@ def resolve_sources(
 def current_transcript_id(frame: NoteFrame) -> UUID | None:
     """Find the latest final without reading clinical text or writing an audit."""
     return (
-        TranscriptVersion.objects.filter(
+        pending_rows(TranscriptVersion)
+        .filter(
             session__encounter_id=frame.scope.encounter.pk,
             session__discarded=False,
         )

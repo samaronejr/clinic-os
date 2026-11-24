@@ -7,11 +7,12 @@ from django.conf import settings
 from django.db import models
 
 from apps.ai.contracts import PURPOSES
+from apps.ai.pending_outputs import OutputProvenance, PendingOutput
 from apps.tenancy.fields import EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
 
-class AIArtifact(TenantScopedModel):
+class AIArtifact(PendingOutput, TenantScopedModel):
     """Content exists only in a purpose-bound envelope, never in metering."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -22,6 +23,10 @@ class AIArtifact(TenantScopedModel):
     )
     purpose = models.CharField(max_length=24)
     method = models.CharField(max_length=12, default="complete")
+    # Only opaque immutable source identities, never model output. These allow
+    # the read policy to bind chart/guide artifacts without decrypting them.
+    source_ref = models.UUIDField(null=True, editable=False)
+    source_acceptance = models.UUIDField(null=True, editable=False)
     kind = models.CharField(max_length=8, default="input")
     content = EncryptedTextField(purpose="ai.artifact.content.v1", null=True)
     purged_at = models.DateTimeField(null=True)
@@ -59,7 +64,7 @@ class AIArtifact(TenantScopedModel):
         ]
 
 
-class AIInvocation(TenantScopedModel):
+class AIInvocation(OutputProvenance, TenantScopedModel):
     """A content-free metering ledger; one reservation per immutable input."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

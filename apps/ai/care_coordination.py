@@ -52,6 +52,8 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
+from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy
 from apps.ai.proposals import AgentContext, propose_action
 from apps.ai.services import invoke
@@ -214,7 +216,8 @@ def visible_care_items(items: Iterable[CareProposal]) -> tuple[CareProposal, ...
 
 def _visible_items(clinic_id: UUID, invocation_id: UUID) -> tuple[CareProposal, ...]:
     return visible_care_items(
-        CareProposal.objects.filter(clinic_id=clinic_id, invocation_id=invocation_id)
+        pending_rows(CareProposal)
+        .filter(clinic_id=clinic_id, invocation_id=invocation_id)
         .select_related("plan")
         .order_by("position")
     )
@@ -288,7 +291,7 @@ def _store(
         for item in refused
     ]
     for position, terms in sorted(rows, key=lambda row: row[0]):
-        proposal = CareProposal.objects.create(
+        proposal = pending_rows(CareProposal).create(
             organization_id=plan.organization_id,
             clinic_id=plan.clinic_id,
             invocation=invocation,
@@ -372,7 +375,8 @@ def pending_bundle(*, clinic_id: UUID, invocation_id: UUID) -> tuple[CareProposa
     if not _care_staff(clinic_id):
         raise _deny()
     items = tuple(
-        CareProposal.objects.select_for_update()
+        pending_rows(CareProposal)
+        .select_for_update()
         .filter(
             clinic_id=clinic_id,
             invocation_id=invocation_id,
@@ -438,6 +442,7 @@ def _care_policy(clinic_id: UUID) -> AgentPolicyVersion:
 
 def _payload(*, item: CareProposal, policy: AgentPolicyVersion, attempt: UUID) -> str:
     """Build the closed action envelope for one exact administrative effect."""
+    item = reselect(item)
     provider = current_version("email", clinic_id=item.clinic_id)
     if provider is None or item.window_start is None or item.window_end is None:
         raise ActionRefusedError(Refusal.POLICY)
@@ -623,7 +628,8 @@ def decide_care_item(
     if decision not in ("accept", "reject") or type(expected_revision) is not int:
         raise CareConflictError
     item = (
-        CareProposal.objects.select_for_update()
+        pending_rows(CareProposal)
+        .select_for_update()
         .filter(pk=item_id, clinic_id=clinic_id)
         .select_related("plan")
         .first()

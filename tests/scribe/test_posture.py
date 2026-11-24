@@ -7,6 +7,7 @@ from apps.scribe.rls import CUSTOM_RLS_TABLES
 from django.apps import apps
 from django.db import connection, transaction
 
+from ai.pending_boundary_inventory import inventory as pending_inventory
 from enterprise_fence_support import fenced
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -74,7 +75,9 @@ def test_every_scribe_table_has_exact_enable_force_and_owner_posture() -> None:
 
 def test_scribe_policy_roles_commands_and_predicates_are_exact() -> None:
     # Given: independent expected predicates and a stable deparsing namespace.
-    expected = set()
+    expected: set[
+        tuple[str, str, str, tuple[str, ...], str, str | None, str | None]
+    ] = set()
     for table in TABLES:
         reference = "id" if table == "scribe_recordingsession" else "session_id"
         assigned = f"clinic_app.scribe_assigned({reference})"
@@ -216,6 +219,20 @@ def test_scribe_policy_roles_commands_and_predicates_are_exact() -> None:
     def fence(text: str | None) -> str | None:
         return None if text is None else fenced(text, qualified=True)
 
+    expected.update(
+        (
+            table,
+            "pending_output_read",
+            "RESTRICTIVE",
+            ("clinic_agent", "clinic_app"),
+            "SELECT",
+            f"clinic_app.ai_pending_visible('{table}'::text, id)",
+            None,
+        )
+        for table in pending_inventory().tables.intersection(
+            TABLES | TRANSCRIPT_TABLES | DRAFT_TABLES
+        )
+    )
     expected = {
         (table, name, mode, roles, command, fence(using), fence(check))
         if "clinic_app" in roles or "public" in roles

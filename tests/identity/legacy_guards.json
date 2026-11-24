@@ -10377,7 +10377,6 @@
     {
       "symbol": "apps.interop.export_builder._page",
       "signals": [
-        "resolver",
         "tenant_boundary"
       ],
       "kind": "direct",
@@ -10388,6 +10387,7 @@
     {
       "symbol": "apps.interop.export_builder._store",
       "signals": [
+        "resolver",
         "tenant_boundary"
       ],
       "kind": "direct",
@@ -10813,6 +10813,61 @@
         "apps.insurance.access.authority"
       ],
       "reason": "Requester-bound exact-clinic output selection retains existing RLS and Finance authority, then delegates original permission and current governed-source authentication to check_invocation before new or idempotent proposal admission."
+    },
+    {
+      "symbol": "apps.ai.care_views._preview",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.care_views._preview#cut1"
+      ],
+      "reason": "A named proof drives real staff preview: once the pending set is hidden, neither a withheld nor an unknown key yields an actionable preview."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.archive_current",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.pending_outputs.archive_current#cut1"
+      ],
+      "reason": "The ordinary part download verifies the immutable archive dependency receipt through the manager-scoped SQL resolver."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.export_page",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.pending_outputs.export_page#cut1"
+      ],
+      "reason": "A fresh authorized archive exercises the set-returning function and the closed per-row consent decision before any bytes are serialized."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.reselect",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.pending_outputs.reselect#cut1"
+      ],
+      "reason": "An authorized Finance or care caller must re-read a retained instance under FORCE RLS before serializing its fields."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.withheld_artifact",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.pending_outputs.withheld_artifact#cut1"
+      ],
+      "reason": "An owned, refused turn is distinguished from a foreign key only after purpose, actor, current professional, visit and session checks."
     }
   ],
   "probes": [
@@ -10844,6 +10899,7 @@
     "apps.ai.brief.display_chart_turn#cut1",
     "apps.ai.brief_views._selected_visit#cut1",
     "apps.ai.brief_views.chart_assistant#cut1",
+    "apps.ai.care_views._preview#cut1",
     "apps.ai.chart_authority.recheck_chart_permission#cut1",
     "apps.ai.chart_authority.visit_permission#cut1",
     "apps.ai.context.recheck_context#cut1",
@@ -10912,6 +10968,10 @@
     "apps.ai.owner.reset_circuit#cut1",
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
+    "apps.ai.pending_outputs.archive_current#cut1",
+    "apps.ai.pending_outputs.export_page#cut1",
+    "apps.ai.pending_outputs.reselect#cut1",
+    "apps.ai.pending_outputs.withheld_artifact#cut1",
     "apps.ai.policy.check_configuration#cut1",
     "apps.ai.policy.check_configuration#observed",
     "apps.ai.policy.check_rollout_binding#cut1",
@@ -12270,6 +12330,14 @@
         "test_note_scope_and_sql_readers_keep_assigned_and_current_authority"
       ],
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/scribe/migrations/_draft_sql.py"
         ],
@@ -12283,16 +12351,9 @@
           "clinic_app.scribe_reviewdecision:draft_insert"
         ],
         "resolvers": [
+          "clinic_app.ai_pending_visible",
           "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_draft_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_version uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       }
     },
@@ -12778,20 +12839,22 @@
     },
     "clinic_app.ai_care_visible": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, enrollment uuid, audience text, state text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_care_sql.py"
         ],
         "policies": [
           "clinic_app.ai_careproposal:care_staff"
         ],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, enrollment uuid, audience text, state text",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+        "resolvers": [
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "domain_protocol",
@@ -12807,6 +12870,14 @@
     },
     "clinic_app.ai_extraction_job_allowed": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "job uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_extraction_sql.py"
         ],
@@ -12816,15 +12887,8 @@
         "resolvers": [
           "clinic_app.ai_extraction_guard",
           "clinic_app.ai_imported_observation",
+          "clinic_app.ai_pending_visible",
           "clinic_app.ai_review_extraction"
-        ],
-        "signatures": [
-          {
-            "arguments": "job uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -12841,6 +12905,14 @@
     },
     "clinic_app.ai_extraction_source_allowed": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, enrollment uuid, version uuid, attachment uuid, digest text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_extraction_sql.py"
         ],
@@ -12849,15 +12921,8 @@
         ],
         "resolvers": [
           "clinic_app.ai_extraction_guard",
-          "clinic_app.ai_extraction_job_allowed"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, enrollment uuid, version uuid, attachment uuid, digest text",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+          "clinic_app.ai_extraction_job_allowed",
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "domain_protocol",
@@ -13779,6 +13844,14 @@
     },
     "clinic_app.ai_staff": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, purpose text, enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_policy_sql.py"
         ],
@@ -13790,16 +13863,9 @@
           "clinic_app.ai_effect_allowed",
           "clinic_app.ai_effect_source",
           "clinic_app.ai_ledger_guard",
+          "clinic_app.ai_pending_visible",
           "clinic_app.ai_revenue_row",
           "clinic_app.retention_purge_visible"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, purpose text, enrollment uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -16292,6 +16358,14 @@
     },
     "clinic_app.has_permission": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/0030_workflow_current_membership.py",
           "apps/identity/migrations/_agent_authority_sql.py",
@@ -16434,6 +16508,8 @@
           "clinic_app.ai_front_desk_guard",
           "clinic_app.ai_guide_consent",
           "clinic_app.ai_imported_observation",
+          "clinic_app.ai_pending_refusal",
+          "clinic_app.ai_pending_visible",
           "clinic_app.ai_revenue_row",
           "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
@@ -16513,14 +16589,6 @@
           "clinic_app.workflows_predecessor_ready",
           "clinic_app.workflows_staff_catalog",
           "clinic_app.workflows_urgent_responsible"
-        ],
-        "signatures": [
-          {
-            "arguments": "perm text, clinic uuid, enrollment uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_guard",
@@ -18061,9 +18129,11 @@
         "policies": [],
         "resolvers": [
           "clinic_app.interop_export_rows",
+          "clinic_app.interop_finalize_export",
           "clinic_app.interop_guard",
           "clinic_app.interop_manage",
           "clinic_app.interop_manager",
+          "clinic_app.interop_partner_guard",
           "clinic_app.interop_rnds_request"
         ],
         "signatures": [
@@ -19012,6 +19082,14 @@
     },
     "clinic_app.principal_has": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_principal_sql.py"
         ],
@@ -19027,15 +19105,8 @@
         ],
         "resolvers": [
           "clinic_app.agent_audit_scope",
-          "clinic_app.agent_proposal_scope"
-        ],
-        "signatures": [
-          {
-            "arguments": "perm text, clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+          "clinic_app.agent_proposal_scope",
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "machine_principal",
@@ -19047,6 +19118,14 @@
     },
     "clinic_app.principal_scope": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_principal uuid, requested_clinic uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/0041_retention_authority.py",
           "apps/identity/migrations/_agent_authority_sql.py",
@@ -19062,15 +19141,8 @@
           "clinic_app.ai_compensation:agent_machine"
         ],
         "resolvers": [
+          "clinic_app.ai_pending_visible",
           "clinic_app.principal_has"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_principal uuid, requested_clinic uuid",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "machine_principal",
@@ -19102,6 +19174,14 @@
     },
     "clinic_app.protected_decrypt": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
@@ -19115,6 +19195,7 @@
           "clinic_app.ai_front_desk_turn",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_guide_consent",
+          "clinic_app.ai_pending_refusal",
           "clinic_app.comms_patient_messages",
           "clinic_app.comms_patient_reply",
           "clinic_app.insurance_link_registered_payer",
@@ -19124,14 +19205,6 @@
           "clinic_app.patient_registry_count",
           "clinic_app.patient_registry_page",
           "clinic_app.patient_session_overview"
-        ],
-        "signatures": [
-          {
-            "arguments": "kek text, purpose text, envelope bytea",
-            "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
-          }
         ]
       },
       "kind": "crypto_protocol",
@@ -22498,6 +22571,14 @@
     },
     "clinic_app.agent_staff": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_agent_access_sql.py",
           "apps/ai/migrations/_agent_staff_authority_sql.py"
@@ -22516,15 +22597,8 @@
           "clinic_app.agent_controls",
           "clinic_app.agent_record_approval",
           "clinic_app.ai_authorize_retained_proposal",
-          "clinic_app.ai_care_staff"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
+          "clinic_app.ai_care_staff",
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "domain_protocol",
@@ -22634,6 +22708,14 @@
         "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority"
       ],
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/scribe/migrations/_capture_sql.py"
         ],
@@ -22656,19 +22738,12 @@
           "clinic_app.scribe_transcriptversion:transcript_read"
         ],
         "resolvers": [
+          "clinic_app.ai_pending_visible",
           "clinic_app.retention_purge_visible",
           "clinic_app.scribe_asr_allowed",
           "clinic_app.scribe_guard",
           "clinic_app.scribe_transcript_coverage",
           "clinic_app.scribe_transcript_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_session uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       }
     },
@@ -25958,6 +26033,7 @@
           "clinic_app.analytics_savedreport:analytics_scope"
         ],
         "resolvers": [
+          "clinic_app.ai_pending_visible",
           "clinic_app.analytics_authorization",
           "clinic_app.analytics_validate"
         ]
@@ -26113,6 +26189,14 @@
     },
     "clinic_app.ai_revenue_ancestry": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, kind text, requested uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/ai/migrations/_revenue_bound_sql.py"
         ],
@@ -26128,15 +26212,8 @@
         "resolvers": [
           "clinic_app.agent_approval_current",
           "clinic_app.agent_record_approval",
-          "clinic_app.agent_record_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, kind text, requested uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+          "clinic_app.agent_record_guard",
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "domain_protocol",
@@ -26184,7 +26261,8 @@
           "clinic_app.agent_approval_current",
           "clinic_app.agent_controls",
           "clinic_app.agent_record_approval",
-          "clinic_app.ai_authorize_retained_proposal"
+          "clinic_app.ai_authorize_retained_proposal",
+          "clinic_app.ai_pending_visible"
         ]
       },
       "kind": "domain_protocol",
@@ -26911,6 +26989,29 @@
         ]
       }
     },
+    "clinic_app.interop_finalize_export": {
+      "kind": "domain_protocol",
+      "reason": "Only the requester can seal its own building export once with the complete live-validated origin set; refusals reveal no selector.",
+      "probes": [
+        "test_finalizer_has_identical_wrong_clinic_unknown_and_repeat_denials",
+        "test_finalizer_refuses_excluded_or_subsequently_withdrawn_origin"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/interop/migrations/_export_finalize_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_export uuid, requested_clinic uuid, issued_hash text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
     "clinic_app.interop_partner_guard": {
       "kind": "row_integrity",
       "reason": "Todo 67 retained-row trigger: refuses DELETE and TRUNCATE and admits only the closed client, secret, token, subscription and export transitions with exact revision increments.",
@@ -26961,6 +27062,14 @@
         "test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows"
       ],
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/interop/migrations/_interop_sql.py"
         ],
@@ -26976,16 +27085,11 @@
           "clinic_app.interop_webhooksubscription:interop_manage_read"
         ],
         "resolvers": [
+          "clinic_app.ai_archive_current",
           "clinic_app.interop_export_rows",
-          "clinic_app.interop_manage"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_org uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
+          "clinic_app.interop_finalize_export",
+          "clinic_app.interop_manage",
+          "clinic_app.interop_partner_guard"
         ]
       }
     },
@@ -27678,6 +27782,7 @@
           "clinic_app.ai_actionproposal:agent_finance",
           "clinic_app.ai_actionproposal:agent_finance_bound",
           "clinic_app.ai_actionproposal:agent_staff",
+          "clinic_app.ai_actionproposal:pending_output_read",
           "clinic_app.ai_actionreceipt:agent_finance",
           "clinic_app.ai_actionreceipt:agent_finance_bound",
           "clinic_app.ai_actionreceipt:agent_staff",
@@ -27687,13 +27792,16 @@
           "clinic_app.ai_agentrun:agent_finance",
           "clinic_app.ai_agentrun:agent_finance_bound",
           "clinic_app.ai_agentrun:agent_staff",
+          "clinic_app.ai_agentrun:pending_output_read",
           "clinic_app.ai_aiartifact:ai_artifact_user",
+          "clinic_app.ai_aiartifact:pending_output_read",
           "clinic_app.ai_aicircuit:ai_circuit_tenant",
           "clinic_app.ai_aiinvocation:ai_invocation_user",
           "clinic_app.ai_approval:agent_finance",
           "clinic_app.ai_approval:agent_finance_bound",
           "clinic_app.ai_approval:agent_staff",
           "clinic_app.ai_careproposal:care_staff",
+          "clinic_app.ai_careproposal:pending_output_read",
           "clinic_app.ai_compensation:agent_finance",
           "clinic_app.ai_compensation:agent_finance_bound",
           "clinic_app.ai_compensation:agent_staff",
@@ -27701,15 +27809,19 @@
           "clinic_app.ai_evaluationrating:evaluation_staff",
           "clinic_app.ai_evaluationrun:evaluation_staff",
           "clinic_app.ai_extractioncandidate:extraction_staff",
+          "clinic_app.ai_extractioncandidate:pending_output_read",
           "clinic_app.ai_extractionjob:extraction_staff",
+          "clinic_app.ai_extractionjob:pending_output_read",
           "clinic_app.ai_frontdeskthread:front_desk_read",
           "clinic_app.ai_frontdeskthread:front_desk_update",
           "clinic_app.ai_frontdeskturn:front_desk_read",
+          "clinic_app.ai_frontdeskturn:pending_output_read",
           "clinic_app.ai_knowledgearticle:front_desk_insert",
           "clinic_app.ai_knowledgearticle:front_desk_read",
           "clinic_app.ai_knowledgearticle:front_desk_update",
           "clinic_app.ai_modelchangerequest:evaluation_staff",
           "clinic_app.analytics_analystreview:analytics_scope",
+          "clinic_app.analytics_analystreview:pending_output_read",
           "clinic_app.analytics_metricdefinitionversion:analytics_scope",
           "clinic_app.analytics_readmodelrefresh:analytics_scope",
           "clinic_app.analytics_savedreport:analytics_scope",
@@ -27758,6 +27870,7 @@
           "clinic_app.comms_participant:tenant_isolation",
           "clinic_app.comms_provideraccount:tenant_isolation",
           "clinic_app.comms_quickreply:tenant_isolation",
+          "clinic_app.comms_suggestedreply:pending_output_read",
           "clinic_app.comms_suggestedreply:tenant_isolation",
           "clinic_app.comms_templateversion:tenant_isolation",
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
@@ -27945,8 +28058,10 @@
           "clinic_app.interop_importtransition:interop_read",
           "clinic_app.interop_organizationexport:interop_export_update",
           "clinic_app.interop_organizationexport:interop_manage_read",
+          "clinic_app.interop_organizationexport:interop_ready_via_finalizer",
           "clinic_app.interop_organizationexportpart:interop_manage_read",
           "clinic_app.interop_organizationexportpart:interop_part_insert",
+          "clinic_app.interop_organizationexportpart:pending_archive_read",
           "clinic_app.interop_rndssubmission:interop_rnds_read",
           "clinic_app.interop_webhookattempt:interop_manage_read",
           "clinic_app.interop_webhookdelivery:interop_manage_read",
@@ -28082,6 +28197,7 @@
           "clinic_app.scheduling_waitlistoffer:waitlist_update",
           "clinic_app.scribe_aidraft:draft_insert",
           "clinic_app.scribe_aidraft:draft_read",
+          "clinic_app.scribe_aidraft:pending_output_read",
           "clinic_app.scribe_audiochunk:capture_insert",
           "clinic_app.scribe_audiochunk:capture_read",
           "clinic_app.scribe_audiochunk:capture_update",
@@ -28092,8 +28208,10 @@
           "clinic_app.scribe_chunktranscription:transcript_read",
           "clinic_app.scribe_draftactionproposal:draft_insert",
           "clinic_app.scribe_draftactionproposal:draft_read",
+          "clinic_app.scribe_draftactionproposal:pending_output_read",
           "clinic_app.scribe_draftsectionsuggestion:draft_insert",
           "clinic_app.scribe_draftsectionsuggestion:draft_read",
+          "clinic_app.scribe_draftsectionsuggestion:pending_output_read",
           "clinic_app.scribe_recordingcommand:capture_insert",
           "clinic_app.scribe_recordingcommand:capture_read",
           "clinic_app.scribe_recordingsession:capture_insert",
@@ -28101,8 +28219,10 @@
           "clinic_app.scribe_recordingsession:capture_update",
           "clinic_app.scribe_reviewdecision:draft_insert",
           "clinic_app.scribe_reviewdecision:draft_read",
+          "clinic_app.scribe_transcriptsegment:pending_output_read",
           "clinic_app.scribe_transcriptsegment:transcript_insert",
           "clinic_app.scribe_transcriptsegment:transcript_read",
+          "clinic_app.scribe_transcriptversion:pending_output_read",
           "clinic_app.scribe_transcriptversion:transcript_insert",
           "clinic_app.scribe_transcriptversion:transcript_read",
           "clinic_app.subscriptions_entitlement:subscription_read",
@@ -28170,7 +28290,13 @@
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [
-          "clinic_app.insurance_guide_read_scope"
+          "clinic_app.ai_archive_current",
+          "clinic_app.ai_pending_refusal",
+          "clinic_app.ai_pending_visible",
+          "clinic_app.insurance_guide_read_scope",
+          "clinic_app.interop_export_rows",
+          "clinic_app.interop_finalize_export",
+          "clinic_app.interop_partner_guard"
         ]
       },
       "kind": "domain_protocol",
@@ -28866,6 +28992,143 @@
         "test_retained_proposal_source_receipt_is_not_runtime_writable"
       ],
       "reason": "Authenticated current-transaction receipts bind the immutable encrypted proposal digest and cited retained source to its exact original invocation. Real Finance and care tests prove positive validation, successor/drift refusal, no omitted origin, no payload cross-wiring and no runtime receipt write."
+    },
+    "clinic_app.ai_archive_current": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_pending_read_sql.py"
+        ],
+        "policies": [
+          "clinic_app.interop_organizationexportpart:pending_archive_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_pending_output_reader_matrix"
+      ],
+      "reason": "Each exported row is registered on its immutable ready archive. At part download the active organization manager must still be entitled to every pending source; there is no content or row count in this decision."
+    },
+    "clinic_app.ai_pending_choice": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "relation_name text, requested uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_pending_choice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_archive_current",
+          "clinic_app.ai_pending_refusal",
+          "clinic_app.ai_pending_visible",
+          "clinic_app.interop_export_rows",
+          "clinic_app.interop_finalize_export",
+          "clinic_app.interop_partner_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_pending_output_reader_matrix"
+      ],
+      "reason": "The private original-scope decision resolves a persisted model key under a trusted audience. All gateway purposes have native, HTMX and part-download oracles, including the two previously missed sources."
+    },
+    "clinic_app.ai_pending_refusal": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested uuid, purpose_name text, enrolled uuid, visit uuid, appointment uuid, session_binding text, kek text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_pending_refusal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_revocation_fences_queued_work_and_retained_output"
+      ],
+      "reason": "Only the original clinical requester and matching display scope can distinguish a withheld turn, allowing the manual fallback without exposing payload or other actors."
+    },
+    "clinic_app.ai_pending_subject": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "org uuid, clinic uuid, enrolled uuid, visit uuid, pinned uuid, issued timestamp with time zone, required boolean, scope_purpose text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_pending_choice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_pending_choice"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_attachment_refresh_does_not_offer_refused_pending_candidate"
+      ],
+      "reason": "The private receipt evaluator authenticates enrollment, original visit and source time, including the attachment refusal with a still-valid enrollment receipt."
+    },
+    "clinic_app.ai_pending_visible": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "relation_name text, requested uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ai/migrations/_pending_read_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionproposal:pending_output_read",
+          "clinic_app.ai_agentrun:pending_output_read",
+          "clinic_app.ai_aiartifact:pending_output_read",
+          "clinic_app.ai_careproposal:pending_output_read",
+          "clinic_app.ai_extractioncandidate:pending_output_read",
+          "clinic_app.ai_extractionjob:pending_output_read",
+          "clinic_app.ai_frontdeskturn:pending_output_read",
+          "clinic_app.analytics_analystreview:pending_output_read",
+          "clinic_app.comms_suggestedreply:pending_output_read",
+          "clinic_app.scribe_aidraft:pending_output_read",
+          "clinic_app.scribe_draftactionproposal:pending_output_read",
+          "clinic_app.scribe_draftsectionsuggestion:pending_output_read",
+          "clinic_app.scribe_transcriptsegment:pending_output_read",
+          "clinic_app.scribe_transcriptversion:pending_output_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_model_derived_inventory_matches_restrictive_select_and_privileged_export",
+        "test_pending_output_reader_matrix"
+      ],
+      "reason": "Every marked model has an actual restrictive SELECT policy. The public bit checks the role-specific ordinary audience before asking the private original-scope predicate."
     }
   },
   "sql_method": [

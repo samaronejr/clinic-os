@@ -43,6 +43,7 @@ from apps.ai.care_coordination import (
 )
 from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.core.secrets import SecretUnavailableError
 from apps.identity.current_context import (
     CurrentActorError,
@@ -205,9 +206,9 @@ def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
             dict.fromkeys(
                 item.invocation_id
                 for item in visible_care_items(
-                    CareProposal.objects.filter(
-                        clinic_id=clinic_id, plan=plan
-                    ).order_by("-created_at")
+                    pending_rows(CareProposal)
+                    .filter(clinic_id=clinic_id, plan=plan)
+                    .order_by("-created_at")
                 )
             )
         )
@@ -225,9 +226,9 @@ def _plans(clinic_id: UUID, zone: ZoneInfo) -> tuple[PlanRow, ...]:
 def _bundles(clinic_id: UUID, zone: ZoneInfo) -> tuple[BundleRow, ...]:
     pending: dict[UUID, list[CareProposal]] = {}
     for item in visible_care_items(
-        CareProposal.objects.filter(
-            clinic_id=clinic_id, audience="administrative", state="pending"
-        ).order_by("created_at")
+        pending_rows(CareProposal)
+        .filter(clinic_id=clinic_id, audience="administrative", state="pending")
+        .order_by("created_at")
     ):
         pending.setdefault(item.invocation_id, []).append(item)
     return tuple(
@@ -353,7 +354,8 @@ def _preview(request: HttpRequest, clinic_id: UUID) -> dict[str, object]:
     invocation = _uuid(request, "invocation_id")
     items = pending_bundle(clinic_id=clinic_id, invocation_id=invocation)
     if not items:
-        raise CareConflictError
+        # An absent, hidden or unrelated bundle has no preview authority.
+        raise CareAccessDeniedError
     return {
         "preview": invocation,
         "preview_items": _rows(clinic_id, items),
@@ -419,7 +421,7 @@ def _page(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
 def _outcomes(outcomes: tuple[ItemOutcome, ...]) -> tuple[dict[str, object], ...]:
     items = {
         item.pk: item
-        for item in CareProposal.objects.filter(
+        for item in pending_rows(CareProposal).filter(
             pk__in=[outcome.item_id for outcome in outcomes]
         )
     }

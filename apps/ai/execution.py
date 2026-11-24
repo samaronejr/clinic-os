@@ -16,6 +16,7 @@ from apps.ai.action_store import load_action, record_receipt
 from apps.ai.action_validation import database_time, validate_current
 from apps.ai.approvals import verify_approvals
 from apps.ai.models import ActionExecution, ActionProposal, ActionReceipt, AgentRun
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import transition
 from apps.audit.services import record_phase1_event
 from apps.comms.agent_reminders import authenticate_outcome
@@ -220,7 +221,8 @@ def execute_action(
         except ActionRefusedError as error:
             with action_scope(clinic_id=clinic_id, principal_id=principal_id):
                 rejected = (
-                    ActionProposal.objects.using(using)
+                    pending_rows(ActionProposal)
+                    .using(using)
                     .defer("payload")
                     .filter(
                         pk=proposal_id,
@@ -286,7 +288,7 @@ def execute_action(
             reason = Refusal.OUTCOME.value if state == "unknown" else ""
             set_execution_state(current, state, reason=reason, using=using)
             transition(proposal, state, reason=reason, using=using)
-            AgentRun.objects.using(using).filter(pk=proposal.run_id).update(
+            pending_rows(AgentRun).using(using).filter(pk=proposal.run_id).update(
                 cost_micros=1, latency_ms=latency_ms
             )
             return ExecutionResult(

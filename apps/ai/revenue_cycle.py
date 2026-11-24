@@ -33,6 +33,8 @@ from apps.ai.models import (
     AIArtifact,
     AIInvocation,
 )
+from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import propose_action
 from apps.ai.revenue_contracts import KINDS, validate_reply
 from apps.ai.revenue_sources import (
@@ -192,11 +194,15 @@ def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueRev
             "generating" if invocation.status == "reserved" else "unavailable",
             invocation_id,
         )
-    output = AIArtifact.objects.filter(
-        clinic_id=clinic_id, invocation=invocation, kind="output"
-    ).first()
+    output = (
+        pending_rows(AIArtifact)
+        .filter(clinic_id=clinic_id, invocation=invocation, kind="output")
+        .first()
+    )
     if output is None:
-        return RevenueReview("unavailable", invocation_id)
+        # This requester's successful run has no longer-readable draft. Keep
+        # the manual stale review without querying around the read policy.
+        return RevenueReview("stale", invocation_id)
     try:
         output, context, items = _ready(clinic_id=clinic_id, output_id=output.pk)
     except GatewayAccessDeniedError:
@@ -220,6 +226,7 @@ def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueRev
 
 
 def _reference(output: AIArtifact) -> dict[str, JSON]:
+    output = reselect(output)
     return {
         "kind": "ai_artifact",
         "id": str(output.pk),
@@ -259,9 +266,11 @@ def propose_revenue_action(
     ):
         raise ActionRefusedError(Refusal.DISABLED)
     key = uuid5(output.pk, f"revenue:{position}")
-    previous = ActionProposal.objects.filter(
-        clinic_id=clinic_id, idempotency_key=key
-    ).first()
+    previous = (
+        pending_rows(ActionProposal)
+        .filter(clinic_id=clinic_id, idempotency_key=key)
+        .first()
+    )
     if previous is not None:
         return previous
     provider = current_version("email", clinic_id=clinic_id)
@@ -361,12 +370,16 @@ def execute_revenue_draft(*, clinic_id: UUID, payload: ActionPayload) -> UUID:
     """Only the shared execution platform calls this after exact human approval."""
     from apps.ai.approvals import verify_approvals  # noqa: PLC0415
 
-    proposal = ActionProposal.objects.filter(
-        pk=identifier(payload.data()["action_id"]),
-        clinic_id=clinic_id,
-        digest=payload.digest,
-        state="executing",
-    ).first()
+    proposal = (
+        pending_rows(ActionProposal)
+        .filter(
+            pk=identifier(payload.data()["action_id"]),
+            clinic_id=clinic_id,
+            digest=payload.digest,
+            state="executing",
+        )
+        .first()
+    )
     if (
         proposal is None
         or not ActionExecution.objects.filter(

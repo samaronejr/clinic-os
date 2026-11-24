@@ -20,6 +20,7 @@ from apps.ai.action_validation import (
 )
 from apps.ai.attestations import KEY_ID, StepUpEvidence, attest, verify
 from apps.ai.models import ActionProposal, Approval
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import transition
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id
@@ -147,7 +148,8 @@ def approve_action(
             "SELECT pg_advisory_xact_lock(hashtextextended('agent-send-v1',0))"
         )
     proposal = (
-        ActionProposal.objects.select_for_update(of=("self",))
+        pending_rows(ActionProposal)
+        .select_for_update(of=("self",))
         .select_related("run__policy")
         .filter(
             pk=proposal_id,
@@ -236,7 +238,8 @@ def approve_action(
 def reject_action(*, clinic_id: UUID, proposal_id: UUID, expected_digest: str) -> None:
     """Reject only the inspected effect; do not redirect a stale decision."""
     proposal = (
-        ActionProposal.objects.select_for_update()
+        pending_rows(ActionProposal)
+        .select_for_update()
         .filter(pk=proposal_id, clinic_id=clinic_id)
         .first()
     )

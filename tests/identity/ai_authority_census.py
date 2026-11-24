@@ -10,16 +10,19 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import psycopg
+from apps.ai.contracts import Purpose
 from apps.identity import stepup
 from django.conf import settings
 from django.db import connections
 from psycopg import sql
 
 from ai import (
+    source_visit_reads,
     test_agent_execution,
     test_agent_guards,
     test_brief,
     test_cancellation,
+    test_chart_consent,
     test_controls,
     test_decision_support,
     test_evaluation_authority,
@@ -30,6 +33,7 @@ from ai import (
     test_gateway,
     test_guide_consent,
     test_manual_appeal,
+    test_pending_output_boundary,
     test_posture,
     test_revenue_rollout,
     test_rollout,
@@ -51,6 +55,46 @@ if TYPE_CHECKING:
 
 class _ProofRecorder(Protocol):
     def run(self, label: str, oracle: Callable[[], None]) -> None: ...
+
+
+def exercise_pending_read_authority(
+    proofs: _ProofRecorder,
+    graph: Callable[[], RbacGraph],
+    patch: pytest.MonkeyPatch,
+    secret_root: Path,
+) -> None:
+    """Exercise reselect, refused-turn fallback and staff preview with real reads."""
+    with patch.context() as local:
+        proofs.run(
+            "Held extraction candidate cannot be projected after withdrawal",
+            partial(
+                test_pending_output_boundary.test_held_extraction_candidate_is_reselected_before_projection,
+                graph(),
+                local,
+            ),
+        )
+    with patch.context() as local:
+        proofs.run(
+            "Owned refused chart turn keeps manual fallback",
+            partial(
+                test_chart_consent.test_revocation_fences_queued_work_and_retained_output,
+                graph(),
+                local,
+                Purpose.BRIEF,
+                "retained",
+            ),
+        )
+    with patch.context() as local:
+        proofs.run(
+            "Staff preview withholds only after the care plan's own visit refuses",
+            partial(
+                source_visit_reads.care_source_visit,
+                graph(),
+                local,
+                secret_root,
+                "queue",
+            ),
+        )
 
 
 @contextmanager
@@ -88,6 +132,7 @@ def exercise_ai_authority(
     secret_root: Path,
 ) -> None:
     """Bind source candidates to executed scope, role, owner and transport checks."""
+    exercise_pending_read_authority(proofs, graph, patch, secret_root)
     with patch.context() as local:
         local.setattr(settings, "INSURANCE_SYNTHETIC_ENABLED", True)
         finance = finance_setup._get_wrapped_function()(graph())

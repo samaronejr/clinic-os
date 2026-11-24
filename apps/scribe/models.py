@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from django.db import models
 
+from apps.ai.pending_outputs import OutputProvenance, PendingOutput
 from apps.scribe.draft_models import (
     AIDraft,
     DraftActionProposal,
@@ -195,7 +196,7 @@ class RecordingCommand(TenantScopedModel):
         ]
 
 
-class ChunkTranscription(TenantScopedModel):
+class ChunkTranscription(OutputProvenance, TenantScopedModel):
     """Immutable binding from accepted audio to one governed AI invocation."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -211,7 +212,7 @@ class ChunkTranscription(TenantScopedModel):
         abstract = False
 
 
-class TranscriptVersion(TenantScopedModel):
+class TranscriptVersion(PendingOutput, TenantScopedModel):
     """Append-only partial/final snapshots; corrections create successors."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -250,7 +251,7 @@ class TranscriptVersion(TenantScopedModel):
         ]
 
 
-class TranscriptSegment(TenantScopedModel):
+class TranscriptSegment(PendingOutput, TenantScopedModel):
     """Snapshot-local rows retain stable source identities and encrypted text."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

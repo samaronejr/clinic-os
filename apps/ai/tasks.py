@@ -12,6 +12,7 @@ from apps.ai.completion import finish_failure
 from apps.ai.contracts import Purpose
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AgentRun, AIInvocation
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.comms.models import IntegrationOperation
 from apps.core.fairness import DEFER_COUNTDOWN_SECONDS, fair_acquire
 from apps.core.integration import (
@@ -105,7 +106,8 @@ def run_agent(*, clinic_id: str, proposal_id: str, principal_id: str) -> str:
     clinic, proposal, principal = UUID(clinic_id), UUID(proposal_id), UUID(principal_id)
     with service_principal_context(principal_id=principal, clinic_id=clinic):
         action = (
-            ActionProposal.objects.using("agent")
+            pending_rows(ActionProposal)
+            .using("agent")
             .defer("payload")
             .filter(pk=proposal, clinic_id=clinic)
             .first()
@@ -113,7 +115,8 @@ def run_agent(*, clinic_id: str, proposal_id: str, principal_id: str) -> str:
         if action is None:
             raise ActionAccessDeniedError
         run = (
-            AgentRun.objects.using("agent")
+            pending_rows(AgentRun)
+            .using("agent")
             .defer("contract", "reviewer_edits")
             .select_related("policy")
             .get(pk=action.run_id)

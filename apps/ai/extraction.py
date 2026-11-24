@@ -32,6 +32,8 @@ from apps.ai.models import (
     ExtractionJob,
 )
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import secret_store
@@ -153,7 +155,7 @@ def start_extraction(
     )
     if admission.reason is not None or admission.invocation_id is None:
         raise GatewayRefusedError(admission.reason or "configuration_unavailable")
-    job = ExtractionJob.objects.create(
+    job = pending_rows(ExtractionJob).create(
         organization_id=source.organization_id,
         clinic_id=clinic_id,
         user_id=current_actor_id(),
@@ -172,7 +174,7 @@ def start_extraction(
 
 def authorized_job(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     """Recheck source authority for every display, rasterization, or review."""
-    job = ExtractionJob.objects.filter(pk=job_id, clinic_id=clinic_id).first()
+    job = pending_rows(ExtractionJob).filter(pk=job_id, clinic_id=clinic_id).first()
     if job is None:
         raise GatewayAccessDeniedError
     try:
@@ -217,9 +219,11 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
         raise GatewayAccessDeniedError
     if invocation.status != "succeeded":
         return job
-    artifact = AIArtifact.objects.filter(
-        invocation_id=job.invocation_id, kind="output"
-    ).first()
+    artifact = (
+        pending_rows(AIArtifact)
+        .filter(invocation_id=job.invocation_id, kind="output")
+        .first()
+    )
     if artifact is None:
         raise GatewayAccessDeniedError
     output = json.loads(read_artifact(clinic_id=clinic_id, artifact_id=artifact.pk))
@@ -227,7 +231,7 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     regions = job_source(job=job, include_bytes=True).regions(rotations=rotations)
     candidates = parse_proposals(output["text"], rotations=rotations, regions=regions)
     for position, candidate in enumerate(candidates):
-        row = ExtractionCandidateRecord.objects.create(
+        row = pending_rows(ExtractionCandidateRecord).create(
             organization_id=job.organization_id,
             clinic_id=clinic_id,
             job=job,
@@ -246,6 +250,7 @@ def candidate_data(
     row: ExtractionCandidateRecord, *, regions: SourceEvidence | None = None
 ) -> ExtractionCandidate:
     """Reparse the encrypted draft instead of trusting its stored parsed value."""
+    row = reselect(row)
     payload = row.payload
     proposal = {
         key: payload[key]
@@ -289,7 +294,8 @@ def review_extraction(
 ) -> UUID | None:
     """Recheck identity, authority, expiry, and one effect in the resolver."""
     row = (
-        ExtractionCandidateRecord.objects.select_related("job")
+        pending_rows(ExtractionCandidateRecord)
+        .select_related("job")
         .filter(pk=candidate_id, clinic_id=clinic_id)
         .first()
     )

@@ -10,6 +10,10 @@ from interop.test_authority import (
     test_stored_source_reaches_only_the_pipeline_of_an_in_flight_job,
     test_unknown_and_foreign_jobs_share_one_denial,
 )
+from interop.test_export_finalizer import (
+    test_finalizer_has_identical_wrong_clinic_unknown_and_repeat_denials,
+    test_finalizer_refuses_excluded_or_subsequently_withdrawn_origin,
+)
 from interop.test_external_api import (
     test_foreign_and_unknown_external_ids_return_the_identical_404,
     test_revocation_rotation_and_approver_authority_take_effect_immediately,
@@ -56,6 +60,8 @@ CASES = {
         test_token_endpoint_refuses_with_rfc6749_bodies,
         test_writes_require_idempotency_keys_and_replay_exactly,
         test_export_needs_org_wide_authority_and_stops_once_it_is_lost,
+        test_finalizer_has_identical_wrong_clinic_unknown_and_repeat_denials,
+        test_finalizer_refuses_excluded_or_subsequently_withdrawn_origin,
         test_http_management_downloads_and_refuses_foreign_exports_alike,
         test_missing_foreign_and_clinic_scoped_contexts_expose_no_partner_rows,
         test_non_consented_and_revoked_records_are_refused,
@@ -63,6 +69,10 @@ CASES = {
     )
 }
 SQL_PROTOCOL_ORACLES = {
+    "clinic_app.interop_finalize_export": (
+        "test_finalizer_has_identical_wrong_clinic_unknown_and_repeat_denials",
+        "test_finalizer_refuses_excluded_or_subsequently_withdrawn_origin",
+    ),
     "clinic_app.interop_allowed": (
         "test_import_authority_follows_the_staff_management_bundle",
         "test_unknown_and_foreign_jobs_share_one_denial",

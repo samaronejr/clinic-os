@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Final
 from django.db import transaction
 
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.comms.inbox_rules import MAX_BODY_CHARS
 from apps.comms.inbox_services import (
@@ -80,7 +81,11 @@ def request_suggestion(*, clinic_id: UUID, conversation_id: UUID) -> UUID:
     )
     if inbound is None or not inbound.supported:
         raise InboxRefusedError(Reason.AI_NOT_ALLOWED)
-    live = SuggestedReply.objects.filter(in_reply_to=inbound, state="proposed").first()
+    live = (
+        pending_rows(SuggestedReply)
+        .filter(in_reply_to=inbound, state="proposed")
+        .first()
+    )
     if live is not None:
         if conversation.enrollment_id is not None and not pending_choice_allows(
             clinic_id=clinic_id,
@@ -105,7 +110,7 @@ def request_suggestion(*, clinic_id: UUID, conversation_id: UUID) -> UUID:
     text = draft.strip() if isinstance(draft, str) else ""
     if not 0 < len(text) <= MAX_BODY_CHARS or clinical_content_in_reply(text):
         raise InboxRefusedError(Reason.AI_DROPPED)
-    suggestion = SuggestedReply.objects.create(
+    suggestion = pending_rows(SuggestedReply).create(
         organization_id=conversation.organization_id,
         conversation=conversation,
         in_reply_to=inbound,
@@ -117,7 +122,8 @@ def request_suggestion(*, clinic_id: UUID, conversation_id: UUID) -> UUID:
 
 def _suggestion(clinic_id: UUID, suggestion_id: UUID) -> SuggestedReply:
     suggestion = (
-        SuggestedReply.objects.select_for_update()
+        pending_rows(SuggestedReply)
+        .select_for_update()
         .select_related("conversation")
         .filter(
             pk=suggestion_id,

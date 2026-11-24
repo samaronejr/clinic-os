@@ -28,6 +28,7 @@ from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
 from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AgentPolicyVersion, AgentRun, ModelConfiguration
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.prompt_registry import load_prompt
 from apps.core.secrets import secret_store
 from apps.tenancy.envelope import KEK_SECRET_NAME
@@ -161,7 +162,8 @@ def validate_current(
     ):
         raise ActionRefusedError(Refusal.POLICY)
     stored_prompt = (
-        AgentRun.objects.using(using)
+        pending_rows(AgentRun)
+        .using(using)
         .filter(actionproposal__pk=proposal_id)
         .values_list("prompt_sha256", flat=True)
         .first()
@@ -169,7 +171,8 @@ def validate_current(
     if stored_prompt != load_prompt(Purpose(policy.capability))[1]:
         raise ActionRefusedError(Refusal.POLICY)
     configuration_id = (
-        AgentRun.objects.using(using)
+        pending_rows(AgentRun)
+        .using(using)
         .filter(actionproposal__pk=proposal_id)
         .values_list("configuration_id", flat=True)
         .first()
@@ -190,7 +193,8 @@ def validate_current(
         cursor.execute(
             "SELECT clinic_app.ai_rollout_agent_allowed(%s)",
             [
-                AgentRun.objects.using(using)
+                pending_rows(AgentRun)
+                .using(using)
                 .filter(actionproposal__pk=proposal_id)
                 .values_list("pk", flat=True)
                 .first()

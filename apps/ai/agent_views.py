@@ -29,6 +29,7 @@ from apps.ai.attestations import step_up_evidence
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.models import ActionProposal, AgentPolicyVersion
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.revenue_cycle import check_revenue_sources
 from apps.core.secrets import SecretUnavailableError
 from apps.identity.current_context import CurrentActorError
@@ -86,7 +87,8 @@ def agent_queue(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
         else:
             return redirect(_queue_url(clinic_id))
     proposals = (
-        ActionProposal.objects.filter(clinic_id=clinic_id)
+        pending_rows(ActionProposal)
+        .filter(clinic_id=clinic_id)
         .select_related("run__policy", "clinic")
         .order_by("-created_at")[:100]
     )

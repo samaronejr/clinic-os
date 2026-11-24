@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
+from apps.ai.pending_outputs import OutputProvenance, PendingOutput
 from apps.tenancy.models import TenantScopedModel
 
 TOPICS: Final = ("hours", "prices", "services", "preparation", "policies")
@@ -126,7 +127,7 @@ class KnowledgeArticle(TenantScopedModel):
         ]
 
 
-class FrontDeskThread(TenantScopedModel):
+class FrontDeskThread(OutputProvenance, TenantScopedModel):
     """The agent's state for one conversation; never a copy of message text."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -213,7 +214,7 @@ class FrontDeskThread(TenantScopedModel):
         ]
 
 
-class FrontDeskTurn(TenantScopedModel):
+class FrontDeskTurn(PendingOutput, TenantScopedModel):
     """Provenance of one agent reply: no text, only closed values and pointers."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

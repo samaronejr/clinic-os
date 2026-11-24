@@ -6,8 +6,12 @@ from ai import (
     test_agent_execution,
     test_agent_guards,
     test_agent_staff_authority,
+    test_chart_consent,
     test_guide_consent,
     test_guide_visibility,
+    test_pending_output_boundary,
+    test_pending_output_structure,
+    test_pending_reader_matrix,
     test_revenue_cycle,
     test_vote_attestation,
 )
@@ -434,6 +438,18 @@ PROTOCOL_ORACLES = {
     "clinic_app.ai_guide_consent": [
         "test_finance_guide_binding_is_one_bit_and_never_rebinds"
     ],
+    "clinic_app.ai_archive_current": ["test_pending_output_reader_matrix"],
+    "clinic_app.ai_pending_choice": ["test_pending_output_reader_matrix"],
+    "clinic_app.ai_pending_subject": [
+        "test_attachment_refresh_does_not_offer_refused_pending_candidate"
+    ],
+    "clinic_app.ai_pending_visible": [
+        "test_model_derived_inventory_matches_restrictive_select_and_privileged_export",
+        "test_pending_output_reader_matrix",
+    ],
+    "clinic_app.ai_pending_refusal": [
+        "test_revocation_fences_queued_work_and_retained_output"
+    ],
     "clinic_app.insurance_guide_read_scope": [
         "test_guide_bit_requires_the_same_staff_scope_as_the_visible_guide"
     ],
@@ -695,6 +711,19 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (test_pending_reader_matrix, PROTOCOL_ORACLES["clinic_app.ai_archive_current"]),
+        (test_pending_reader_matrix, PROTOCOL_ORACLES["clinic_app.ai_pending_choice"]),
+        (test_chart_consent, PROTOCOL_ORACLES["clinic_app.ai_pending_refusal"]),
+        (
+            test_pending_output_boundary,
+            PROTOCOL_ORACLES["clinic_app.ai_pending_subject"],
+        ),
+        (
+            test_pending_output_structure,
+            [
+                "test_model_derived_inventory_matches_restrictive_select_and_privileged_export"
+            ],
+        ),
         (test_guide_consent, PROTOCOL_ORACLES["clinic_app.ai_guide_consent"]),
         (
             test_guide_visibility,

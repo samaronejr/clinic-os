@@ -12,6 +12,7 @@ from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, GatewayRefusedError, Purpose, Usage
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact, AIInvocation
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
 from apps.scribe.draft_contracts import (
@@ -44,11 +45,15 @@ def generation_lock(version_id: UUID) -> None:
 
 def current_generation(draft: AIDraft, section: str) -> bool:
     """Section regeneration invalidates that section, not unrelated suggestions."""
-    return not AIDraft.objects.filter(
-        version_id=draft.version_id,
-        generation__gt=draft.generation,
-        sections__contains=[section],
-    ).exists()
+    return (
+        not pending_rows(AIDraft)
+        .filter(
+            version_id=draft.version_id,
+            generation__gt=draft.generation,
+            sections__contains=[section],
+        )
+        .exists()
+    )
 
 
 @transaction.atomic
@@ -75,9 +80,11 @@ def request_draft(
     frame = note_frame(
         clinic_id=clinic_id, version_id=version_id, transcript_id=transcript_id
     )
-    previous = AIDraft.objects.filter(
-        version_id=version_id, request_key=request_key
-    ).first()
+    previous = (
+        pending_rows(AIDraft)
+        .filter(version_id=version_id, request_key=request_key)
+        .first()
+    )
     if previous is not None:
         if (
             previous.base_revision != expected_revision
@@ -92,7 +99,12 @@ def request_draft(
     transcript, sources = resolve_sources(frame, transcript_id=transcript_id)
     if not sources or transcript.version_id is None:
         raise DraftConflictError(DraftReason.PENDING)
-    last = AIDraft.objects.filter(version_id=version_id).order_by("-generation").first()
+    last = (
+        pending_rows(AIDraft)
+        .filter(version_id=version_id)
+        .order_by("-generation")
+        .first()
+    )
     generation = last.generation + 1 if last is not None else 1
     artifact = create_input(
         clinic_id=clinic_id,
@@ -116,7 +128,7 @@ def request_draft(
     )
     if invocation.reason is not None or invocation.invocation_id is None:
         raise GatewayRefusedError(invocation.reason or "configuration_unavailable")
-    draft = AIDraft.objects.create(
+    draft = pending_rows(AIDraft).create(
         organization_id=frame.version.organization_id,
         clinic_id=clinic_id,
         encounter_id=frame.scope.encounter.pk,
@@ -148,7 +160,7 @@ def draft_for_input(artifact: AIArtifact) -> AIDraft | None:
     raw = document(artifact.content)
     if raw.get("schema") != "scribe-draft-reference-v1":
         return None
-    draft = AIDraft.objects.filter(invocation__inputs_ref=artifact).first()
+    draft = pending_rows(AIDraft).filter(invocation__inputs_ref=artifact).first()
     if draft is None or raw != {
         "schema": "scribe-draft-reference-v1",
         "version": str(draft.version_id),
@@ -221,7 +233,7 @@ def complete_draft(*, invocation_id: UUID, content: str) -> None:
     invocation = AIInvocation.objects.get(pk=invocation_id)
     if invocation.purpose != Purpose.SCRIBE_DRAFT:
         return
-    draft = AIDraft.objects.filter(invocation=invocation).first()
+    draft = pending_rows(AIDraft).filter(invocation=invocation).first()
     if draft is None:
         return
     generation_lock(draft.version_id)
@@ -245,7 +257,7 @@ def complete_draft(*, invocation_id: UUID, content: str) -> None:
     )
     for item in parsed.sections:
         if item.section in active:
-            DraftSectionSuggestion.objects.create(
+            pending_rows(DraftSectionSuggestion).create(
                 organization_id=draft.organization_id,
                 version_id=draft.version_id,
                 draft=draft,
@@ -258,7 +270,7 @@ def complete_draft(*, invocation_id: UUID, content: str) -> None:
     # agent approval/execution path. No new clinical tool is implicitly granted.
     if len(active) == len(draft.sections):
         for index, proposal in enumerate(parsed.proposals):
-            DraftActionProposal.objects.create(
+            pending_rows(DraftActionProposal).create(
                 organization_id=draft.organization_id,
                 version_id=draft.version_id,
                 draft=draft,

@@ -326,6 +326,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         # Task 66: rolled-back imported enrollments are hidden from every read.
         ("intake_patientclinicenrollment", "interop_import_visibility"),
         ("intake_duplicatecandidate", "interop_import_visibility"),
+        # The suggestion keeps tenant isolation; pending output has a distinct
+        # restrictive SELECT policy whose expression and roles are checked in AI.
+        ("comms_suggestedreply", "pending_output_read"),
     }
 
 

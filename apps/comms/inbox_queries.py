@@ -16,6 +16,7 @@ from django.utils.translation import gettext, pgettext_lazy
 from django.utils.translation import gettext_lazy as _
 
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.comms.inbox_rules import window_closes_at, window_open
 from apps.comms.inbox_services import (
     CLINICIAN_ROLES,
@@ -259,7 +260,8 @@ def conversation_view(
         if _fits(t, conversation.purpose)
     )
     suggestion = (
-        SuggestedReply.objects.filter(conversation=conversation, state="proposed")
+        pending_rows(SuggestedReply)
+        .filter(conversation=conversation, state="proposed")
         .defer("body")
         .first()
     )

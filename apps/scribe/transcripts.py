@@ -9,6 +9,7 @@ from uuid import UUID
 
 from django.db import IntegrityError, connection, transaction
 
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.scribe.authority import recording_scope, transcription_consent
 from apps.scribe.contracts import ScribeError
@@ -83,7 +84,8 @@ def coverage_for(recording: RecordingSession) -> tuple[CoverageSlot, ...]:
 def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
     """Read one immutable snapshot; the caller owns the surrounding tenant txn."""
     current = (
-        TranscriptVersion.objects.filter(session=recording)
+        pending_rows(TranscriptVersion)
+        .filter(session=recording)
         .order_by("-revision")
         .first()
     )
@@ -97,7 +99,8 @@ def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
             recording.state in {"stopped", "stopped_revoked"},
         )
     source_rows = (
-        TranscriptSegment.objects.filter(
+        pending_rows(TranscriptSegment)
+        .filter(
             session=recording,
             source_id__in=current.coverage["sources"],
             version__revision__lte=current.revision,
@@ -188,7 +191,8 @@ def save_snapshot(
 ) -> TranscriptVersionDTO:
     """Write a complete snapshot and encrypted segments in the same transaction."""
     previous = (
-        TranscriptVersion.objects.filter(session=recording)
+        pending_rows(TranscriptVersion)
+        .filter(session=recording)
         .order_by("-revision")
         .first()
     )
@@ -212,7 +216,7 @@ def save_snapshot(
         raise TranscriptError(TranscriptReason.LIMIT)
     try:
         with transaction.atomic():
-            stored = TranscriptVersion.objects.create(
+            stored = pending_rows(TranscriptVersion).create(
                 organization_id=recording.organization_id,
                 session=recording,
                 predecessor=previous,
@@ -242,7 +246,7 @@ def save_snapshot(
                 else TranscriptReason.LIMIT
             ) from error
         raise
-    TranscriptSegment.objects.bulk_create(
+    pending_rows(TranscriptSegment).bulk_create(
         [
             TranscriptSegment(
                 organization_id=recording.organization_id,

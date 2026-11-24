@@ -12,6 +12,7 @@ from typing import ClassVar, Final
 from django.conf import settings
 from django.db import models
 
+from apps.ai.pending_outputs import PendingOutput
 from apps.tenancy.models import TenantScopedModel
 from apps.workflows.care.vocab import ACTION_KINDS
 
@@ -32,7 +33,7 @@ def _in(field: str, values: tuple[str, ...]) -> models.Q:
     return models.Q(**{f"{field}__in": values})
 
 
-class CareProposal(TenantScopedModel):
+class CareProposal(PendingOutput, TenantScopedModel):
     """One proposed action from one model run over one approved plan version."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

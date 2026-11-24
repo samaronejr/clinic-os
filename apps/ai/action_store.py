@@ -20,6 +20,7 @@ from apps.ai.models import (
     ActionReceipt,
     AgentPolicyVersion,
 )
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import secret_store
 
@@ -32,7 +33,8 @@ def load_action(
 ) -> tuple[ActionProposal, ActionPayload, AgentPolicyVersion]:
     """Reload immutable ciphertext without exposing other runs to the machine role."""
     proposal = (
-        ActionProposal.objects.using(using)
+        pending_rows(ActionProposal)
+        .using(using)
         .defer("payload")
         .select_for_update()
         .filter(

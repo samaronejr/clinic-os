@@ -154,7 +154,6 @@ def display_decision_support(
         clinic_id=clinic_id,
         user_id=current_actor_id(),
         purpose=Purpose.DECISION_SUPPORT.value,
-        inputs_ref__patient_enrollment_id=enrolled,
     ).first()
     if invocation is None:
         raise GatewayAccessDeniedError
@@ -163,7 +162,7 @@ def display_decision_support(
             clinic_id=clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose.DECISION_SUPPORT,
-            display=ChartDisplay(encounter_id, session_binding),
+            display=ChartDisplay(encounter_id, session_binding, enrollment=enrolled),
         )
         request = parse_decision_request(artifact.content)
         if invocation.status == "reserved":

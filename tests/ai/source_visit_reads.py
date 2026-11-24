@@ -61,7 +61,7 @@ def visit_proposal_purposes() -> tuple[Purpose, ...]:
     return tuple(sorted(purposes))
 
 
-def _three_pending(
+def care_source_visit(
     g: RbacGraph, patch: pytest.MonkeyPatch, secret: Path, reader: str
 ) -> None:
     care = care_support.care_world(g, patch, secret)
@@ -165,7 +165,7 @@ def check_source_visit(
     reader: str,
 ) -> None:
     if purpose is Purpose.CARE_COORDINATION:
-        _three_pending(
+        care_source_visit(
             rbac_graph,
             monkeypatch,
             request.getfixturevalue("synthetic_secret_backend"),

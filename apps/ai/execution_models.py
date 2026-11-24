@@ -5,9 +5,10 @@ from typing import ClassVar
 from django.db import models
 
 from apps.ai.agent_models import AgentRecord
+from apps.ai.pending_outputs import OutputProvenance
 
 
-class ActionExecution(AgentRecord):
+class ActionExecution(OutputProvenance, AgentRecord):
     """One fenced execution per digest, including unknown and failed attempts."""
 
     proposal = models.OneToOneField("ai.ActionProposal", on_delete=models.PROTECT)
@@ -22,7 +23,7 @@ class ActionExecution(AgentRecord):
     reason_code = models.CharField(max_length=32, blank=True)
 
 
-class ActionReceipt(AgentRecord):
+class ActionReceipt(OutputProvenance, AgentRecord):
     """Authenticated provider outcome and server attestation with no message body."""
 
     execution = models.ForeignKey(ActionExecution, on_delete=models.PROTECT)
@@ -54,7 +55,7 @@ class ActionReceipt(AgentRecord):
         ]
 
 
-class Compensation(AgentRecord):
+class Compensation(OutputProvenance, AgentRecord):
     """A declared compensating command, never an automatic reversal of clinical care."""
 
     execution = models.OneToOneField(ActionExecution, on_delete=models.PROTECT)

@@ -16,6 +16,7 @@ from apps.ai.contracts import (
 )
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIInvocation
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import check_configuration, enabled_policy
 from apps.ai.services import invoke
 from apps.analytics.analyst_contracts import (
@@ -141,12 +142,12 @@ def review_proposal(
     actor, _version = authorize(clinic_id=clinic_id, metric_id=query.metric_id)
     invocation = AIInvocation.objects.select_for_update().get(pk=invocation_id)
     check_invocation(clinic_id=clinic_id, invocation_id=invocation.pk)
-    previous = AnalystReview.objects.filter(invocation=invocation).first()
+    previous = pending_rows(AnalystReview).filter(invocation=invocation).first()
     if previous is not None:
         if previous.decision != decision or previous.descriptor != query.payload():
             raise AnalyticsConflictError
     else:
-        reviewed = AnalystReview.objects.create(
+        reviewed = pending_rows(AnalystReview).create(
             organization_id=invocation.organization_id,
             clinic_id=clinic_id,
             user_id=actor,

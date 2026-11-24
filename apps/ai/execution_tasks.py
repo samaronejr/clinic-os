@@ -9,6 +9,7 @@ from django.db import transaction
 from apps.ai.action_contracts import ActionAccessDeniedError
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AgentRun
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.tasks import execute_agent as execute
 from apps.tenancy.db import service_principal_context
 
@@ -35,14 +36,14 @@ def _publication(
 
 def dispatch_approved(*, clinic_id: UUID, proposal_id: UUID) -> None:
     """Apply A1 in the approving request; publish machine work after commit."""
-    proposal = ActionProposal.objects.filter(
-        pk=proposal_id, clinic_id=clinic_id
-    ).first()
+    proposal = (
+        pending_rows(ActionProposal).filter(pk=proposal_id, clinic_id=clinic_id).first()
+    )
     if proposal is None:
         raise ActionAccessDeniedError
     if proposal.state != "approved":
         return
-    run = AgentRun.objects.select_related("policy").get(pk=proposal.run_id)
+    run = pending_rows(AgentRun).select_related("policy").get(pk=proposal.run_id)
     if run.principal_id is None:
         execute_action(clinic_id=clinic_id, proposal_id=proposal_id)
         return
@@ -54,7 +55,8 @@ def recover_approved(*, clinic_id: UUID, principal_id: UUID) -> int:
     """Republish at most 100 durable approvals for one authenticated machine."""
     with service_principal_context(principal_id=principal_id, clinic_id=clinic_id):
         rows = tuple(
-            ActionProposal.objects.using("agent")
+            pending_rows(ActionProposal)
+            .using("agent")
             .filter(
                 clinic_id=clinic_id,
                 state="approved",

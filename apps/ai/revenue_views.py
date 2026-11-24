@@ -28,6 +28,7 @@ from apps.ai.contracts import (
 )
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AIArtifact
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.revenue_cycle import (
     RevenueReview,
     collect_revenue_cycle,
@@ -102,11 +103,15 @@ def _review_for_proposal(clinic_id: UUID, proposal: ActionProposal) -> RevenueRe
     if proposal.run.policy.capability != "revenue_cycle":
         raise GatewayAccessDeniedError
     subject = closed(data["subject"], {"kind", "id", "expected_state", "revision"})
-    output = AIArtifact.objects.filter(
-        pk=identifier(subject["id"]),
-        clinic_id=clinic_id,
-        kind="output",
-    ).first()
+    output = (
+        pending_rows(AIArtifact)
+        .filter(
+            pk=identifier(subject["id"]),
+            clinic_id=clinic_id,
+            kind="output",
+        )
+        .first()
+    )
     if output is None or output.invocation_id is None:
         raise GatewayAccessDeniedError
     return collect_revenue_cycle(
@@ -139,7 +144,8 @@ def _command(
         return _review_for_proposal(clinic_id, proposal), proposal, ""
     require_permission("automation.finance", clinic_id=clinic_id)
     selected = (
-        ActionProposal.objects.select_related("run__policy", "clinic")
+        pending_rows(ActionProposal)
+        .select_related("run__policy", "clinic")
         .filter(
             pk=data["proposal_id"],
             clinic_id=clinic_id,

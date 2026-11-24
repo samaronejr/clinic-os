@@ -12,6 +12,7 @@ import rfc8785
 from django.db import transaction
 
 from apps.ai.contracts import GatewayRefusedError
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.ehr.services import ClinicalConflictError, record_clinical_note
 from apps.scribe.draft_contracts import (
@@ -94,9 +95,8 @@ def review_suggestion(
             raise DraftConflictError(DraftReason.REPLAY)
         return previous
     suggestion = (
-        DraftSectionSuggestion.objects.select_related(
-            "draft__invocation__configuration"
-        )
+        pending_rows(DraftSectionSuggestion)
+        .select_related("draft__invocation__configuration")
         .filter(pk=suggestion_id, version_id=version_id)
         .first()
     )
@@ -215,16 +215,17 @@ def read_review(*, clinic_id: UUID, version_id: UUID) -> ReviewPanel:
         transcript, sources = resolve_sources(frame)
     available = transcript is not None and transcript.state == "final" and bool(sources)
     drafts = tuple(
-        AIDraft.objects.filter(version_id=version_id, consent_id=consent.pk).order_by(
-            "-generation"
-        )[:50]
+        pending_rows(AIDraft)
+        .filter(version_id=version_id, consent_id=consent.pk)
+        .order_by("-generation")[:50]
     )
     rows: list[SuggestionRow] = []
     references = sorted(
         json.dumps(source.reference, sort_keys=True) for source in sources
     )
     for suggestion in (
-        DraftSectionSuggestion.objects.filter(draft__in=drafts)
+        pending_rows(DraftSectionSuggestion)
+        .filter(draft__in=drafts)
         .select_related("draft", "reviewdecision")
         .order_by("section", "-draft__generation")
         .distinct("section")
@@ -266,7 +267,9 @@ def read_review(*, clinic_id: UUID, version_id: UUID) -> ReviewPanel:
         )
     latest = drafts[0] if drafts else None
     proposals = (
-        tuple(DraftActionProposal.objects.filter(draft=latest).order_by("ordinal"))
+        tuple(
+            pending_rows(DraftActionProposal).filter(draft=latest).order_by("ordinal")
+        )
         if latest is not None
         else ()
     )

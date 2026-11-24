@@ -20,6 +20,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
+from apps.ai.pending_outputs import SealedOutput
 from apps.tenancy.fields import (
     EncryptedBytesField,
     EncryptedJSONField,
@@ -460,6 +461,10 @@ class OrganizationExport(TenantScopedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     state = models.CharField(max_length=16, default="requested")
+    # Only the source relation and immutable key, never generated content.
+    # NULL identifies archives built before point-of-download revalidation.
+    pending_origins = models.JSONField(null=True, editable=False)
+    build_origins = models.JSONField(null=True, editable=False)
     revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField()
     started_at = models.DateTimeField(null=True)
@@ -533,7 +538,7 @@ class RndsSubmission(TenantScopedModel):
         return f"{self.pk}:{self.state}"
 
 
-class OrganizationExportPart(TenantScopedModel):
+class OrganizationExportPart(SealedOutput, TenantScopedModel):
     """One encrypted byte range of a ready archive; nulled in place on expiry."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

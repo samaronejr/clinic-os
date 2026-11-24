@@ -19,6 +19,8 @@ from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.effects import check_invocation
 from apps.ai.pending_choice import pending_choice_allows
+from apps.ai.pending_outputs import reselect
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.consent.services import ai_disclosure_status
 from apps.identity.current_context import CurrentActorError
 from apps.workflows.access import WorkflowAccessDeniedError
@@ -39,6 +41,7 @@ def instant_text(value: datetime) -> str:
 
 def item_digest(item: CareProposal) -> str:
     """Bind the item's identity, plan revision and exact proposed effect."""
+    item = reselect(item)
     if item.window_start is None or item.window_end is None:
         raise ActionRefusedError(Refusal.SOURCE)
     return hashlib.sha256(
@@ -70,6 +73,7 @@ def plan_source(plan: CarePlan) -> dict[str, JSON]:
 
 def item_source(item: CareProposal) -> dict[str, JSON]:
     """Cite the exact reviewed proposal row and its current revision."""
+    item = reselect(item)
     return {
         "kind": "care_proposal",
         "id": str(item.pk),
@@ -129,9 +133,11 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
     plan = CarePlan.objects.filter(
         pk=identifier(subject["id"]), clinic_id=clinic_id
     ).first()
-    item = CareProposal.objects.filter(
-        pk=identifier(cited["care_proposal"]["id"]), clinic_id=clinic_id
-    ).first()
+    item = (
+        pending_rows(CareProposal)
+        .filter(pk=identifier(cited["care_proposal"]["id"]), clinic_id=clinic_id)
+        .first()
+    )
     if (
         plan is None
         or item is None

@@ -6,6 +6,7 @@ from typing import ClassVar
 from django.conf import settings
 from django.db import models
 
+from apps.ai.pending_outputs import OutputProvenance, PendingOutput
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
@@ -87,7 +88,7 @@ class AgentPolicyVersion(AgentRecord):
         ]
 
 
-class AgentRun(AgentRecord):
+class AgentRun(PendingOutput, AgentRecord):
     """AI-10 provenance; contract data is protected and never chain-of-thought."""
 
     policy = models.ForeignKey(AgentPolicyVersion, on_delete=models.PROTECT)
@@ -117,7 +118,7 @@ class AgentRun(AgentRecord):
     latency_ms = models.PositiveIntegerField(default=0)
 
 
-class ActionProposal(AgentRecord):
+class ActionProposal(PendingOutput, AgentRecord):
     """Immutable canonical JSON and digest; only the state machine may advance."""
 
     run = models.OneToOneField(AgentRun, on_delete=models.PROTECT)
@@ -144,7 +145,7 @@ class ActionProposal(AgentRecord):
         ]
 
 
-class Approval(AgentRecord):
+class Approval(OutputProvenance, AgentRecord):
     """A server attestation of one exact human decision, not a qualified signature."""
 
     proposal = models.ForeignKey(ActionProposal, on_delete=models.PROTECT)

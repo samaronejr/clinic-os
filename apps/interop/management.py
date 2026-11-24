@@ -19,6 +19,8 @@ import rfc8785
 from django.db import DatabaseError, connection, transaction
 from django.db.models.functions import Now
 
+from apps.ai.pending_outputs import archive_current
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.comms.models import IntegrationOperation
 from apps.identity.current_context import CurrentActorError, require_permission
@@ -569,11 +571,13 @@ def download_export_part(
         state="ready",
         expires_at__gt=Now(),
     ).first()
-    if job is None or part > job.part_count:
+    if job is None or part > job.part_count or not archive_current(selected):
         raise InteropAccessDeniedError
-    row = OrganizationExportPart.objects.filter(
-        organization_id=organization_id, export_id=job.pk, part=part
-    ).first()
+    row = (
+        pending_rows(OrganizationExportPart)
+        .filter(organization_id=organization_id, export_id=job.pk, part=part)
+        .first()
+    )
     if row is None or row.data is None:
         raise InteropAccessDeniedError
     record_phase1_event(
