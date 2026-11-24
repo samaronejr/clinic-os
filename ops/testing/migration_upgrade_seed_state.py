@@ -1,13 +1,31 @@
-"""Keep the base schema observation and seed checkpoint in the rehearsal DB."""
+"""Authorize one seed against a freshly migrated disposable database."""
 
+import hashlib
 import json
+import os
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Never, TypedDict, cast
 
-from django.db import connection, transaction
+import psycopg
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from psycopg import sql
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+class _BaseObservation(TypedDict):
+    database: list[str | int]
+    base_sha: str
+    digest: str
+    required: list[str]
+
+
+def _partial() -> Never:
+    message = "partial seed: rebuild database"
+    raise RuntimeError(message)
 
 
 def database_identity() -> list[str | int]:
@@ -46,34 +64,102 @@ def _required_histories() -> list[str]:
     return required
 
 
-def begin_seed() -> tuple[list[str], str | None]:
-    """Claim the scratch DB once, or recover an already committed seed."""
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(1037641436)")
-        cursor.execute("CREATE SCHEMA IF NOT EXISTS upgrade_rehearsal")
+def _base_digest() -> str:
+    """Compare all product tables, including trigger/service side effects."""
+    digest = hashlib.sha256()
+    # A separately scoped read-only admin connection sees FORCE RLS tables;
+    # the fixture itself continues to write through the owner/runtime roles.
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SET LOCAL row_security=off")
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS upgrade_rehearsal.seed ("
-            "singleton boolean PRIMARY KEY CHECK (singleton), "
-            "required text[] NOT NULL, markers text)"
+            "SELECT current_database(), oid FROM pg_database "
+            "WHERE datname=current_database()"
         )
-        cursor.execute("SELECT required, markers FROM upgrade_rehearsal.seed")
-        row = cursor.fetchone()
-        if row is not None:
-            required, recorded = row
-            if recorded is None:
-                message = "upgrade seed has an incomplete database checkpoint"
-                raise RuntimeError(message)
-            return cast("tuple[list[str], str]", (required, recorded))
-        observed = _required_histories()
+        identity = cursor.fetchone()
+        if identity is None or list(identity) != database_identity():
+            _partial()
+        cursor.execute("SELECT to_regnamespace('upgrade_rehearsal') IS NULL")
+        if cursor.fetchone() != (True,):
+            _partial()
         cursor.execute(
-            "INSERT INTO upgrade_rehearsal.seed (singleton, required) "
-            "VALUES (true, %s)",
-            [observed],
+            "SELECT c.relname, c.oid FROM pg_class c "
+            "WHERE c.relnamespace='clinic_app'::regnamespace "
+            "AND c.relkind IN ('r','p') ORDER BY c.relname COLLATE \"C\""
         )
-    return observed, None
+        for name, oid in cursor.fetchall():
+            digest.update(json.dumps([name, oid]).encode() + b"\n")
+            cursor.execute(
+                sql.SQL(
+                    'SELECT to_jsonb(r)::text COLLATE "C" '
+                    "FROM clinic_app.{} AS r ORDER BY 1"
+                ).format(sql.Identifier(name))
+            )
+            for (row,) in cursor:
+                digest.update(row.encode() + b"\n")
+    return digest.hexdigest()
 
 
-def _check_histories(markers: "Mapping[str, object]", required: list[str]) -> None:
+def _observation_path() -> Path:
+    return Path(os.environ["UPGRADE_BASE_OBSERVATION"])
+
+
+def observe_base() -> None:
+    """Only the runner calls this, after migrating a DB created from template0."""
+    executor = MigrationExecutor(connection)
+    loader = executor.loader
+    loader.check_consistent_history(connection)
+    if executor.migration_plan(loader.graph.leaf_nodes()) or (
+        loader.applied_migrations.keys() - loader.disk_migrations.keys()
+    ):
+        message = "upgrade database does not match the expected base migration graph"
+        raise RuntimeError(message)
+    observed: _BaseObservation = {
+        "database": database_identity(),
+        "base_sha": os.environ["UPGRADE_BASE_SHA"],
+        "digest": _base_digest(),
+        "required": _required_histories(),
+    }
+    with _observation_path().open("x", encoding="utf-8") as output:
+        json.dump(observed, output)
+
+
+def _observed_base() -> _BaseObservation:
+    path = _observation_path()
+    if not path.is_file():
+        _partial()
+    observed = cast("_BaseObservation", json.loads(path.read_text(encoding="utf-8")))
+    if (
+        observed["database"] != database_identity()
+        or observed["base_sha"] != os.environ["UPGRADE_BASE_SHA"]
+    ):
+        _partial()
+    return observed
+
+
+def begin_seed(path: Path) -> list[str]:
+    """Consume pristine authorization once, before making any fixture writes."""
+    if any(
+        item.exists() or item.is_symlink()
+        for item in (path, path.with_suffix(".pending"))
+    ):
+        _partial()
+    base = _observed_base()
+    used = _observation_path().with_suffix(".used")
+    if used.exists() or _base_digest() != base["digest"]:
+        _partial()
+    try:
+        used.touch(mode=0o600, exist_ok=False)
+    except FileExistsError:
+        _partial()
+    return base["required"]
+
+
+def check_histories(markers: "Mapping[str, object]", required: list[str]) -> None:
+    """Reject omissions independently of the loader's own presence markers."""
     actual = ["core"]
     actual.extend(
         name
@@ -91,44 +177,27 @@ def _check_histories(markers: "Mapping[str, object]", required: list[str]) -> No
         raise RuntimeError(message)
 
 
-def checkpoint_seed(markers: "Mapping[str, object]", required: list[str]) -> str:
-    """Commit full markers before attempting the fallible file publication."""
-    _check_histories(markers, required)
-    contents = json.dumps(markers, indent=2, sort_keys=True) + "\n"
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE upgrade_rehearsal.seed SET markers=%s "
-            "WHERE singleton AND required=%s AND markers IS NULL",
-            [contents, required],
-        )
-        if cursor.rowcount != 1:
-            message = "cannot commit the upgrade seed checkpoint"
-            raise RuntimeError(message)
-    return contents
-
-
 def publish_seed(path: Path, contents: str) -> None:
-    """Publish, or replay, the exact completed database checkpoint."""
+    """Publish the completed fixture markers without allowing same-DB retry."""
     pending = path.with_suffix(".pending")
-    pending.write_text(contents, encoding="utf-8")
-    pending.replace(path)
+    try:
+        with pending.open("x", encoding="utf-8") as output:
+            output.write(contents)
+        pending.replace(path)
+    except OSError as error:
+        message = "seed receipt publication failed; rebuild database"
+        print(message, file=sys.stderr)  # noqa: T201 - piped diagnostics
+        raise SystemExit(74) from error
 
 
 def require_completed_seed(contents: str) -> list[str]:
-    """Refuse a modified or incomplete receipt before any forward checks."""
+    """Bind fixture markers to the current run's independent base observation."""
     markers = json.loads(contents)
-    if markers["database"] != database_identity():
-        message = "completed upgrade seed belongs to a different database"
-        raise RuntimeError(message)
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT required, markers FROM upgrade_rehearsal.seed")
-        row = cursor.fetchone()
-    if row is None:
-        message = "missing upgrade seed database checkpoint"
-        raise RuntimeError(message)
-    required, recorded = row
-    _check_histories(markers, required)
-    if contents != recorded:
-        message = "seed receipt disagrees with the completed database checkpoint"
-        raise RuntimeError(message)
-    return cast("list[str]", required)
+    base = _observed_base()
+    if (
+        not _observation_path().with_suffix(".used").is_file()
+        or markers["database"] != base["database"]
+    ):
+        _partial()
+    check_histories(markers, base["required"])
+    return base["required"]

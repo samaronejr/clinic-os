@@ -52,6 +52,7 @@ markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
 appointment_id = UUID(markers["appointment_id"])
+availability_id = UUID(markers["availability_id"])
 
 # Every check below runs as the runtime role inside the seeded tenant:
 # ``clinic_app`` + session-scoped tenant/user GUCs, the same boundary the
@@ -85,6 +86,19 @@ with connection.cursor() as cursor:
         [appointment_id],
     )
     check(cursor.fetchone()[0] == 1, "seeded appointment missing after upgrade")
+    cursor.execute(
+        "SELECT count(*) FROM clinic_app.scheduling_availabilityblock "
+        "WHERE id=%s AND clinic_id=%s AND practitioner_id=%s "
+        "AND retired_at IS NULL AND start_at=%s AND end_at=%s",
+        [
+            availability_id,
+            markers["clinic_id"],
+            markers["practitioner_id"],
+            "2035-08-03T08:00:00-03:00",
+            "2035-08-03T12:00:00-03:00",
+        ],
+    )
+    check(cursor.fetchone()[0] == 1, "seeded availability changed after upgrade")
     cursor.execute(
         "SELECT octet_length(full_name) > 0, "
         "position('Synthetic' in full_name::text) "
@@ -189,6 +203,7 @@ Path(os.environ["UPGRADE_VERIFIED_FILE"]).write_text(
             "base_sha": os.environ["UPGRADE_BASE_SHA"],
             "upgrade_db": database_identity()[0],
             "seeds": required_seeds,
+            "database_recreated": os.environ["UPGRADE_DATABASE_RECREATED"] == "1",
         }
     )
     + "\n",

@@ -9,7 +9,8 @@
 #
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
-#   MIGRATION_DATABASE_URL APP_DATABASE_URL GITHUB_WORKSPACE RUNNER_TEMP
+#   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
+#   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 set -euo pipefail
 
@@ -17,27 +18,23 @@ readonly base_sha="${1:?base SHA required}"
 readonly project_root="${GITHUB_WORKSPACE:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
 readonly base_worktree="$work_root/base"
-readonly upgrade_db="upgrade_rc_$$"
+upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
 
 mkdir -p "$work_root"
 # Do not publish a previous run's receipts if this rehearsal fails.
-rm -f "$seed_file" "$work_root/verdict.json" "$work_root/ai-assertions.json"
+rm -f "$seed_file" "$work_root/seed.pending" "$work_root/verdict.json" \
+    "$work_root/verdict.pending" "$work_root/ai-assertions.json"
 
 # Derive upgrade-DB DSNs from the claimed environment: same role
 # credentials, host, port and TLS parameters, different database name.
-owner_dsn="${MIGRATION_DATABASE_URL%%\?*}"
-owner_query=""
-case "$MIGRATION_DATABASE_URL" in
-    *\?*) owner_query="?${MIGRATION_DATABASE_URL#*\?}" ;;
-esac
-owner_dsn="${owner_dsn%/*}/$upgrade_db$owner_query"
-app_dsn="${APP_DATABASE_URL%%\?*}"
-app_query=""
-case "$APP_DATABASE_URL" in
-    *\?*) app_query="?${APP_DATABASE_URL#*\?}" ;;
-esac
-app_dsn="${app_dsn%/*}/$upgrade_db$app_query"
+upgrade_dsn() {
+    local url="$1" path="${1%%\?*}" query=""
+    case "$url" in
+        *\?*) query="?${url#*\?}" ;;
+    esac
+    printf '%s/%s%s' "${path%/*}" "$upgrade_db" "$query"
+}
 
 psql_super() {
     docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
@@ -67,13 +64,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== create upgrade database $upgrade_db =="
-psql_super -d postgres -qc "CREATE DATABASE $upgrade_db"
-db_created=1
-psql_super -d "$upgrade_db" \
-    -v database_name="$upgrade_db" -v app_schema="clinic_app" \
-    -f - < "$project_root/ops/db/bootstrap.sql"
-
 echo "== check out base $base_sha =="
 git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
 worktree_added=1
@@ -94,26 +84,61 @@ mkdir -m 0700 -p "$secret_dir"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
 
-echo "== migrate at base revision =="
-(cd "$base_worktree" && env \
-    APP_DATABASE_URL="$owner_dsn" \
-    CLINIC_DATA_MODE="synthetic" \
-    CLINIC_SECRET_BACKEND="synthetic-file" \
-    CLINIC_SECRET_DIR="$secret_dir" \
-    DJANGO_SETTINGS_MODULE="config.settings.base" \
-    uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
+readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
+export UPGRADE_BASE_SHA="$base_sha"
+export UPGRADE_BASE_OBSERVATION="$secret_dir/base.json"
+export UPGRADE_DATABASE_RECREATED=0
 
-echo "== seed representative data at base revision =="
-(cd "$base_worktree" && env \
-    APP_DATABASE_URL="$owner_dsn" \
-    CLINIC_DATA_MODE="synthetic" \
-    CLINIC_SECRET_BACKEND="synthetic-file" \
-    CLINIC_SECRET_DIR="$secret_dir" \
-    DJANGO_SETTINGS_MODULE="config.settings.base" \
-    UPGRADE_SEED_FILE="$seed_file" \
-    UPGRADE_HELPER_ROOT="$project_root" \
-    uv run --frozen --no-sync --no-env-file python manage.py shell \
-        < "$project_root/ops/testing/migration_upgrade_seed.py")
+base_manage() (
+    cd "$base_worktree"
+    export APP_DATABASE_URL="$owner_dsn"
+    export CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file
+    export CLINIC_SECRET_DIR="$secret_dir" DJANGO_SETTINGS_MODULE=config.settings.base
+    uv run --frozen --no-sync --no-env-file python manage.py "$@"
+)
+
+create_and_migrate_base() {
+    owner_dsn="$(upgrade_dsn "$MIGRATION_DATABASE_URL")"
+    app_dsn="$(upgrade_dsn "$APP_DATABASE_URL")"
+    export UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL")"
+    echo "== create upgrade database $upgrade_db =="
+    psql_super -d postgres -qc "CREATE DATABASE $upgrade_db TEMPLATE template0"
+    db_created=1
+    psql_super -d "$upgrade_db" \
+        -v database_name="$upgrade_db" -v app_schema="clinic_app" \
+        -f - < "$project_root/ops/db/bootstrap.sql"
+    echo "== migrate at base revision =="
+    base_manage migrate --no-input
+    base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_SEED_STATE"])["observe_base"]()'
+}
+
+seed_base() {
+    echo "== seed representative data at base revision =="
+    UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
+        base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py"
+}
+
+export UPGRADE_SEED_STATE="$seed_state"
+create_and_migrate_base
+if seed_base; then
+    :
+else
+    rc=$?
+    # Only publication I/O failure gets a retry. Never retry a guard or
+    # fixture failure, and never reuse or drop a database we did not create.
+    if [ "$rc" != 74 ] || [ "$db_created" != 1 ]; then
+        exit "$rc"
+    fi
+    psql_super -d postgres -qc "DROP DATABASE $upgrade_db"
+    db_created=0
+    upgrade_db="${upgrade_db}_retry"
+    rm -f "$UPGRADE_BASE_OBSERVATION" "${UPGRADE_BASE_OBSERVATION%.json}.used" \
+        "$seed_file" "$work_root/seed.pending"
+    export UPGRADE_DATABASE_RECREATED=1
+    create_and_migrate_base
+    seed_base
+fi
+unset UPGRADE_ADMIN_DATABASE_URL
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
 # Bases that already ship tenancy.0003 install the boundary during the
@@ -189,7 +214,8 @@ echo "== confirm no migration drift =="
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
 python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
-    "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json"
+    "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
+    "$UPGRADE_DATABASE_RECREATED"
 # Check the published artifact, not just the writer's in-memory object.
 if ! cmp -s "$work_root/verdict.json" "$secret_dir/verified.json"; then
     rm -f "$work_root/verdict.json"

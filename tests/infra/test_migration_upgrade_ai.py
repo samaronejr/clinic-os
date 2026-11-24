@@ -189,12 +189,13 @@ def test_verdict_cli_preserves_verified_seed_list(
     verified = tmp_path / "verified.json"
     verified.write_text(
         '{"schema_version":1,"result":"PASS","base_sha":"base",'
-        '"upgrade_db":"upgrade_rc_123","seeds":["core","ai"]}'
+        '"upgrade_db":"upgrade_rc_123","seeds":["core","ai"],'
+        '"database_recreated":false}'
     )
     monkeypatch.setattr(
         sys,
         "argv",
-        ["verdict", str(seed_path), "base", "upgrade_rc_123", str(verified)],
+        ["verdict", str(seed_path), "base", "upgrade_rc_123", str(verified), "0"],
     )
     publisher.main()
     assert json.loads((tmp_path / "verdict.json").read_text()) == json.loads(

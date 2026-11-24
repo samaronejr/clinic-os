@@ -34,8 +34,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 
-class _Checkpoint(Protocol):
-    def __call__(self, markers: "Mapping[str, object]", required: list[str]) -> str: ...
+class _CheckHistories(Protocol):
+    def __call__(
+        self, markers: "Mapping[str, object]", required: list[str]
+    ) -> None: ...
 
 
 state = run_path(
@@ -47,17 +49,9 @@ state = run_path(
 
 seed_path = Path(os.environ["UPGRADE_SEED_FILE"])
 seed_database = cast("Callable[[], list[str | int]]", state["database_identity"])()
-begin_seed = cast("Callable[[], tuple[list[str], str | None]]", state["begin_seed"])
+begin_seed = cast("Callable[[Path], list[str]]", state["begin_seed"])
 publish_seed = cast("Callable[[Path, str], None]", state["publish_seed"])
-if seed_path.exists():
-    cast("Callable[[str], list[str]]", state["require_completed_seed"])(
-        seed_path.read_text(encoding="utf-8")
-    )
-    raise SystemExit(0)
-required, recorded = begin_seed()
-if recorded is not None:
-    publish_seed(seed_path, recorded)
-    raise SystemExit(0)
+required = begin_seed(seed_path)
 
 ORGANIZATION_ID = uuid4()
 CLINIC_ID = uuid4()
@@ -119,7 +113,7 @@ try:
             birth_date=PATIENT_BIRTH_DATE,
             idempotency_key=uuid4(),
         )
-        create_availability(
+        availability = create_availability(
             clinic_id=CLINIC_ID,
             practitioner_id=PRACTITIONER_ID,
             start_local="2035-08-03T08:00",
@@ -157,6 +151,7 @@ finally:
 markers = {
     "appointment_id": str(appointment.pk),
     "audit_events": 2,
+    "availability_id": str(availability.pk),
     "clinic_id": str(CLINIC_ID),
     "database": seed_database,
     "organization_id": str(ORGANIZATION_ID),
@@ -179,6 +174,6 @@ if markers["ai_present"]:
         run_path(str(helper))["seed_ai"],
     )
     markers["ai"] = seed_ai(markers)
-contents = cast("_Checkpoint", state["checkpoint_seed"])(markers, required)
-publish_seed(seed_path, contents)
+cast("_CheckHistories", state["check_histories"])(markers, required)
+publish_seed(seed_path, json.dumps(markers, indent=2, sort_keys=True) + "\n")
 print(f"seeded: {json.dumps(markers, sort_keys=True)}")  # noqa: T201 - piped stdout

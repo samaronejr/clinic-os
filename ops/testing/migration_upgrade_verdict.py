@@ -26,7 +26,7 @@ def completed_seeds(markers: "Mapping[str, object]") -> list[str]:
 
 def main() -> None:
     """Emit the PASS receipt after the verifier and migration drift check."""
-    seed_file, base_sha, upgrade_db, verified_file = sys.argv[1:]
+    seed_file, base_sha, upgrade_db, verified_file, recreated = sys.argv[1:]
     path = Path(seed_file)
     markers = json.loads(path.read_text(encoding="utf-8"))
     verdict = {
@@ -35,6 +35,7 @@ def main() -> None:
         "base_sha": base_sha,
         "upgrade_db": upgrade_db,
         "seeds": completed_seeds(markers),
+        "database_recreated": recreated == "1",
     }
     verified = json.loads(Path(verified_file).read_text(encoding="utf-8"))
     if verdict != verified:
