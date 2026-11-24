@@ -325,6 +325,13 @@ database trust boundary, not as proof against a superuser.
   pool). Role defaults take effect on **login**, not on `SET ROLE`. Repeat
   bootstrap and posture when provisioning a `clinic_agent_*` machine login;
   PostgreSQL does not inherit another role's configuration.
+- Posture follows every membership of the app, owner and machine logins,
+  not just inherited privileges. It rejects a path to a superuser, server
+  file/program or monitoring role, delegated parameter `SET`/`ALTER SYSTEM`,
+  or effective execution of a built-in server file reader or log-directory
+  listing. These logins need no delegated parameter privileges. Check each
+  bootstrapped cluster serving a runtime or lock connection; checking one
+  endpoint does not attest a different cluster or an existing pooled session.
 - The bootstrap disables parameter logging for sampled statements and errors.
   PostgreSQL 16 allows any login to override `log_parameter_max_length_on_error`
   in its own session. The second control is `log_error_verbosity=terse`,

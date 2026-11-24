@@ -7,6 +7,7 @@ import sys
 from typing import Final
 
 import psycopg
+from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
 POSTURE_QUERY: Final = """
@@ -14,13 +15,6 @@ SELECT
     current_user = 'clinic_app'
     AND current_database() = %s
     AND current_database() <> %s
-    AND NOT EXISTS (
-        SELECT 1 FROM pg_catalog.pg_roles AS r
-        WHERE (r.rolname IN ('clinic_agent', 'clinic_app', 'clinic_owner')
-               OR (r.rolcanlogin AND r.rolname ~ '^clinic_agent_[a-z0-9_]+$'))
-          AND (has_parameter_privilege(r.oid, 'log_parameter_max_length', 'SET')
-               OR has_parameter_privilege(r.oid, 'log_error_verbosity', 'SET'))
-    )
     AND regexp_split_to_array(
         current_setting('log_destination'), '[[:space:]]*,[[:space:]]*'
     ) <@ ARRAY['stderr', 'syslog']
@@ -76,8 +70,7 @@ SELECT
           AND pg_get_userbyid(datdba) = 'clinic_owner'
     )
 """
-# Roles POSTURE_QUERY pins by name. The settings pin covers them and every role
-# they can assume (pg_auth_members, followed transitively in the live catalog).
+# The same complete membership graph is checked for role settings and authority.
 PINNED_ROLES: Final = ("clinic_agent", "clinic_app", "clinic_owner")
 MACHINE_LOGINS_QUERY: Final = """
 SELECT rolname FROM pg_catalog.pg_roles
@@ -93,10 +86,10 @@ RUNTIME_ROLE_SETTINGS: Final = (
     *PARAMETER_LOG_SETTINGS,
     "search_path=clinic_app, public",
 )
-# Every pg_db_role_setting row that can apply to a pinned role in this database:
-# role-level (setdatabase = 0), role-in-database, database-wide (setrole = 0)
-# and ALTER ROLE ALL. Rows are (role or '', database-scoped, sorted settings).
-ROLE_SETTINGS_QUERY: Final = """
+# Deliberately follow *all* membership edges. A non-inherited role can still
+# be assumed, and its own grants/memberships then matter. UNION deduplicates
+# diamonds. An inert edge to a privileged role is not a supported exception.
+ROLE_FAMILY: Final = sql.SQL("""
 WITH RECURSIVE family(oid) AS (
     SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ANY(%s)
     UNION
@@ -104,6 +97,37 @@ WITH RECURSIVE family(oid) AS (
     FROM pg_catalog.pg_auth_members AS membership
     JOIN family ON membership.member = family.oid
 )
+""")
+# These logins need no delegated parameter ACL at all. Check actual ACL
+# entries, including PUBLIC, without relying on a list of installed GUCs.
+# Ordinary USERSET operations do not need (or create) a parameter ACL.
+SAFE_ROLE_FAMILY_QUERY: Final = ROLE_FAMILY + sql.SQL("""
+SELECT NOT EXISTS (
+    SELECT FROM family JOIN pg_catalog.pg_roles AS r USING (oid)
+    WHERE r.rolsuper
+       OR r.rolname IN ('pg_read_server_files', 'pg_write_server_files',
+                        'pg_execute_server_program', 'pg_read_all_settings',
+                        'pg_monitor')
+       OR EXISTS (
+           SELECT FROM pg_catalog.pg_parameter_acl AS p
+           WHERE pg_catalog.has_parameter_privilege(
+               r.oid, p.parname, 'SET, ALTER SYSTEM'
+           )
+       )
+       OR EXISTS (
+           SELECT FROM pg_catalog.pg_proc AS p
+           WHERE p.pronamespace = 'pg_catalog'::regnamespace
+             AND p.proname IN (
+                 'pg_read_file', 'pg_read_binary_file', 'pg_ls_logdir', 'lo_import'
+             )
+             AND pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')
+       )
+)
+""")
+# Every pg_db_role_setting row that can apply to a pinned role in this database:
+# role-level (setdatabase = 0), role-in-database, database-wide (setrole = 0)
+# and ALTER ROLE ALL. Rows are (role or '', database-scoped, sorted settings).
+ROLE_SETTINGS_QUERY: Final = ROLE_FAMILY + sql.SQL("""
 SELECT
     COALESCE(role.rolname, ''),
     setting.setdatabase <> 0,
@@ -118,7 +142,7 @@ WHERE setting.setdatabase IN (
     )
   AND (setting.setrole = 0 OR setting.setrole IN (SELECT oid FROM family))
 ORDER BY 1, 2
-"""
+""")
 EXPECTED_ROLE_SETTINGS: Final = [
     ("clinic_agent", False, list(PARAMETER_LOG_SETTINGS)),
     ("clinic_app", False, list(RUNTIME_ROLE_SETTINGS)),
@@ -152,6 +176,10 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
             return False
         database_name = connection_settings["dbname"]
         with psycopg.connect(database_url, connect_timeout=5) as connection:
+            # All parts of the verdict must describe the same catalog snapshot.
+            connection.execute(
+                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+            )
             effective = connection.execute(EFFECTIVE_SETTINGS_QUERY).fetchone()
             result = connection.execute(
                 POSTURE_QUERY,
@@ -160,16 +188,21 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
             machines = [
                 name for (name,) in connection.execute(MACHINE_LOGINS_QUERY).fetchall()
             ]
+            logins = [*PINNED_ROLES, *machines]
+            safe_roles = connection.execute(
+                SAFE_ROLE_FAMILY_QUERY, (logins,)
+            ).fetchone()
             role_settings = [
                 (role, scoped, list(settings))
                 for role, scoped, settings in connection.execute(
-                    ROLE_SETTINGS_QUERY, ([*PINNED_ROLES, *machines],)
+                    ROLE_SETTINGS_QUERY, (logins,)
                 ).fetchall()
             ]
     except (psycopg.Error, ValueError):
         return False
     return (
         result == (True,)
+        and safe_roles == (True,)
         and effective == EXPECTED_EFFECTIVE_SETTINGS
         and sorted(role_settings)
         == sorted(
