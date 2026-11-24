@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,7 +44,7 @@ def _subscriptions(
         "SELECT code,version,provisional,monthly_price_minor "
         "FROM clinic_app.subscriptions_plan"
     )
-    if sorted(cursor.fetchall()) != [(code, 1, True, None) for code in _PLANS]:
+    if Counter(cursor.fetchall()) != Counter((code, 1, True, None) for code in _PLANS):
         failures.append("native fixture: subscriptions_plan")
     cursor.execute(
         "SELECT p.code,e.meter,e.enabled,e.quota "
@@ -55,7 +56,7 @@ def _subscriptions(
         for code in _PLANS
         for meter, quota in sorted(_QUOTAS.items())
     ]
-    if sorted(cursor.fetchall()) != expected:
+    if Counter(cursor.fetchall()) != Counter(expected):
         failures.append("native fixture: subscriptions_entitlement")
     cursor.execute(
         """SELECT p.code,s.state,s.revision,s.grace_ends_at,s.cancellation_at,
