@@ -128,35 +128,55 @@ _MEMBER_GROUPS = frozenset(
 )
 
 
-def _first_difference(actual: Definition, expected: Definition) -> str:
-    for key in sorted(
-        actual.keys() | expected.keys(),
+def _differences(actual: Definition, expected: Definition) -> set[str]:
+    if actual == expected:
+        return set()
+    conflicts = {
+        key
+        for key in actual.keys() | expected.keys()
+        if actual.get(key) != expected.get(key)
+    }
+    # A heap rewrite stores old fast defaults in the tuples. Compare the two
+    # fields as a pair, in this direction only, for this reference boundary.
+    for flag in tuple(conflicts):
+        if flag.startswith("columns.") and flag.endswith(".atthasmissing"):
+            value = flag.removesuffix("atthasmissing") + "attmissingval"
+            if (
+                expected.get(flag) == "true"
+                and expected.get(value) not in {None, "null"}
+                and actual.get(flag) == "false"
+                and actual.get(value) == "null"
+            ):
+                conflicts.difference_update((flag, value))
+    return conflicts
+
+
+def _first_difference(keys: set[str], actual: Definition, expected: Definition) -> str:
+    key = min(
+        keys,
         key=lambda k: (
             k.partition(".")[0] not in _MEMBER_GROUPS,
             k not in actual or k not in expected,
             k,
         ),
-    ):
-        if actual.get(key) != expected.get(key):
-            parts = key.split(".")
-            if parts[0] in _MEMBER_GROUPS:
-                parts = parts[1:]
-            parts = [
-                {"attstorage": "storage", "relacl": "grants", "proacl": "grants"}.get(
-                    part, part
-                )
-                for part in parts
-            ]
-            change = (
-                "unexpected"
-                if key not in expected
-                else "missing"
-                if key not in actual
-                else "differs"
-            )
-            return f"{'.'.join(parts)} ({change})"
-    msg = "Unequal catalog fingerprints without a differing attribute"
-    raise ResumeCatalogError(msg)
+    )
+    parts = key.split(".")
+    if parts[0] in _MEMBER_GROUPS:
+        parts = parts[1:]
+    parts = [
+        {"attstorage": "storage", "relacl": "grants", "proacl": "grants"}.get(
+            part, part
+        )
+        for part in parts
+    ]
+    change = (
+        "unexpected"
+        if key not in expected
+        else "missing"
+        if key not in actual
+        else "differs"
+    )
+    return f"{'.'.join(parts)} ({change})"
 
 
 def checkpoint_applied(editor: BaseDatabaseSchemaEditor, step: str) -> bool:
@@ -177,33 +197,26 @@ def match_boundary(
     checkpoint: Checkpoint, actual: Catalog, states: list[tuple[int, Catalog]]
 ) -> bool:
     """Use this same decision for DB reads and PostgreSQL catalog-row witnesses."""
-    hashes = {name: fingerprint(definition) for name, definition in actual.items()}
-    closest: tuple[int, int, list[str]] | None = None
-    for index in range(len(states) - 1, -1, -1):
-        prefix, expected = states[index]
-        names = [
-            name
+    closest: tuple[int, Catalog, dict[str, set[str]]] | None = None
+    for prefix, expected in reversed(states):
+        conflicts = {
+            name: keys
             for name in sorted(expected)
-            if fingerprint(expected[name]) != hashes[name]
-        ]
-        if not names:
+            if (keys := _differences(actual[name], expected[name]))
+        }
+        if not conflicts:
             return prefix >= checkpoint.prefix
-        # Choose the closest boundary just to diagnose. No partial match is
-        # accepted: every complete object fingerprint must match one boundary.
-        fields = sum(
-            actual[name].get(key) != expected[name].get(key)
-            for name in names
-            for key in actual[name].keys() | expected[name].keys()
-        )
+        # Distance selects the diagnostic only; never combine different prefixes.
+        fields = sum(map(len, conflicts.values()))
         if closest is None or fields < closest[0]:
-            closest = fields, index, names
+            closest = fields, expected, conflicts
     if closest is None:
         msg = f"{checkpoint.migration} has no captured catalog boundaries"
         raise ResumeCatalogError(msg)
-    _, index, names = closest
-    _, expected = states[index]
+    _, expected, conflicts = closest
     details = ", ".join(
-        f"{name}.{_first_difference(actual[name], expected[name])}" for name in names
+        f"{name}.{_first_difference(keys, actual[name], expected[name])}"
+        for name, keys in conflicts.items()
     )
     msg = f"{checkpoint.migration} cannot resume: conflicting catalog for {details}"
     raise ResumeCatalogError(msg)

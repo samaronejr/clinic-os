@@ -546,9 +546,17 @@ adds a column with an install-time timestamp literal and then drops the SQL
 default. PostgreSQL retains the literal in `pg_attribute.attmissingval`, not the
 expression or function that supplied it. For that field alone the verifier
 compares the shape (one finite `timestamptz` literal, no declared default), not
-the instant. A retained default expression, its function, a different type or
-literal kind, and other columns' missing values remain subject to the normal
-exact check. No changes to migration recording or additional settings are needed.
+the instant. While a missing value is present, this literal exception applies
+to those two columns only.
+
+Separately, for **any column**, a table rewrite such as `VACUUM FULL` can
+materialize a fast default: a clean boundary's `(atthasmissing=true,
+attmissingval=V)` matches live `(false, NULL)`. PostgreSQL now reads the value
+from each tuple instead of substituting `V` for an absent field. Later inserts
+and updates can legitimately store other values; retry does not scan rows or
+require them all to equal `V`. The reverse transition, a changed still-present
+value or type, and every other attribute remain exact, including the current
+`pg_attrdef` expression. No changes to migration recording or settings are needed.
 
 ### Authentication or tenant access returns 403
 
