@@ -21,6 +21,7 @@ from ops.testing.migration_upgrade_inbox_fixture import (
     STATUS_RECEIPTS,
     contact_address,
 )
+from ops.testing.migration_upgrade_inbox_intent import project_case
 
 if TYPE_CHECKING:
     from psycopg import Cursor
@@ -41,6 +42,70 @@ class InboxFixtureResult(NamedTuple):
 _SKEW = frozenset(
     {"skew", "accepted_then_queued", "queued_cancelled_first", "race", "r5_a", "crash"}
 )
+
+
+def _check_projection(
+    cursor: Cursor[tuple[object, ...]],
+    cases: dict[str, dict[str, str]],
+    accounts: dict[str, str],
+) -> list[str]:
+    cursor.execute("SELECT current_setting('app.current_tenant')")
+    tenant_row = cursor.fetchone()
+    if tenant_row is None:
+        return ["inbox fixture: tenant context"]
+    tenant = str(tenant_row[0])
+    failures = []
+    expected_receipts: set[tuple[object, ...]] = set()
+    for case, keys in cases.items():
+        state, attempts, receipts = project_case(
+            case, keys, accounts[keys["channel"]], tenant
+        )
+        cursor.execute(
+            "SELECT provider_state FROM clinic_app.comms_message WHERE id=%s",
+            [keys["message"]],
+        )
+        if cursor.fetchone() != (state,):
+            failures.append(f"inbox fixture: {case} provider state")
+        for label, row in attempts.items():
+            cursor.execute(
+                """SELECT status,provider_reference,attempt_sequence,send_permit,
+                          CASE WHEN send_permit_claim IS NOT NULL
+                               THEN '\\x' || encode(send_permit_claim,'hex') END
+                   FROM clinic_app.comms_integrationoperation WHERE id=%s""",
+                [row["id"]],
+            )
+            if cursor.fetchone() != tuple(
+                row[column]
+                for column in (
+                    "status",
+                    "provider_reference",
+                    "attempt_sequence",
+                    "send_permit",
+                    "send_permit_claim",
+                )
+            ):
+                failures.append(f"inbox fixture: {case} attempt {label} projection")
+        expected_receipts.update(
+            (
+                row["event_id"],
+                row["provider_account_id"],
+                row["operation_id"],
+                row["delivery_state"],
+            )
+            for row in receipts.values()
+        )
+    cursor.execute(
+        """SELECT e.event_id,e.provider_account_id::text,e.operation_id::text,
+                  e.delivery_state
+           FROM clinic_app.comms_inboundevent e
+           JOIN clinic_app.comms_provideraccount p ON p.id=e.provider_account_id
+           WHERE e.kind='status' AND p.channel='whatsapp'
+             AND e.organization_id=%s""",
+        [tenant],
+    )
+    if set(cursor.fetchall()) != expected_receipts:
+        failures.append("inbox fixture: WhatsApp receipt attribution")
+    return failures
 
 
 def _attempts(
@@ -320,4 +385,6 @@ def verify_inbox_fixture() -> InboxFixtureResult:
         ):
             failures.append("inbox fixture: exact natural keys and row counts")
         failures.extend(_effects(cursor, cases))
+        if not failures:
+            failures.extend(_check_projection(cursor, cases, accounts))
     return InboxFixtureResult(failures, cases, accounts, manager)
