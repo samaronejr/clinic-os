@@ -151,8 +151,11 @@ def verify_inbox_fixture() -> list[str]:
             )
             identities.update(keys)
         cursor.execute(
-            "SELECT (SELECT count(*) FROM clinic_app.comms_conversation),"
-            "(SELECT count(*) FROM clinic_app.comms_message),"
+            "SELECT (SELECT count(*) FROM clinic_app.comms_conversation "
+            " WHERE channel IN ('whatsapp','email','sms')),"
+            "(SELECT count(*) FROM clinic_app.comms_message m "
+            " JOIN clinic_app.comms_conversation c ON c.id=m.conversation_id "
+            " WHERE c.channel IN ('whatsapp','email','sms')),"
             "(SELECT count(*) FROM clinic_app.comms_provideraccount),"
             "(SELECT count(*) FROM clinic_app.comms_integrationoperation "
             " WHERE subject_type='comms.message')"

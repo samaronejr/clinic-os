@@ -88,6 +88,9 @@ readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
 export UPGRADE_BASE_SHA="$base_sha"
 export UPGRADE_BASE_OBSERVATION="$secret_dir/base.json"
 export UPGRADE_SEED_ROWS="$secret_dir/rows.json"
+export UPGRADE_SEED_COUNTS="$secret_dir/base-counts.json"
+export UPGRADE_SEED_WRITES="$secret_dir/seed-writes.json"
+export UPGRADE_ROWS_HELPER="$project_root/ops/testing/migration_upgrade_rows.py"
 export UPGRADE_DATABASE_RECREATED=0
 
 base_manage() (
@@ -111,6 +114,7 @@ create_and_migrate_base() {
     echo "== migrate at base revision =="
     base_manage migrate --no-input
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_SEED_STATE"])["observe_base"]()'
+    base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["capture_base_counts"]()'
 }
 
 seed_base() {
@@ -133,13 +137,12 @@ else
     psql_super -d postgres -qc "DROP DATABASE $upgrade_db"
     db_created=0
     upgrade_db="${upgrade_db}_retry"
-    rm -f "$UPGRADE_BASE_OBSERVATION" \
+    rm -f "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
         "$seed_file" "$work_root/seed.pending"
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
     seed_base
 fi
-export UPGRADE_ROWS_HELPER="$project_root/ops/testing/migration_upgrade_rows.py"
 base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["capture_rows"]()'
 
 echo "== install the envelope boundary, then issue the tenant DEK =="

@@ -374,9 +374,66 @@ def snapshot() -> tuple[Tables, set[tuple[str, str]]]:
     return rows, applied
 
 
+def catalog_counts(cursor: Cursor[tuple[object, ...]]) -> dict[str, int]:
+    """Read the unfiltered catalog independently of the fixture row reader."""
+    cursor.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='clinic_app' AND table_type='BASE TABLE'"
+    )
+    tables = [str(row[0]) for row in cursor.fetchall()]
+    counts = {}
+    for table in tables:
+        cursor.execute(
+            sql.SQL("SELECT count(*) FROM {}").format(
+                sql.Identifier("clinic_app", table)
+            )
+        )
+        value = cursor.fetchone()
+        if value is None or not isinstance(value[0], int):
+            message = f"cannot inventory fixture table {table}"
+            raise RuntimeError(message)
+        counts[table] = value[0]
+    return counts
+
+
+def fixture_coverage_failure(seeded: set[str], covered: set[str]) -> str | None:
+    """Coverage must match the write set, including runtime side effects."""
+    if seeded != covered:
+        return f"sweep coverage mismatch: {sorted(seeded ^ covered)}"
+    return None
+
+
+def capture_base_counts() -> None:
+    """Record counts only before seeding, including migration-owned tables."""
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SET LOCAL row_security=off")
+        counts = catalog_counts(cursor)
+    with Path(os.environ["UPGRADE_SEED_COUNTS"]).open("x", encoding="utf-8") as stream:
+        json.dump(counts, stream, sort_keys=True)
+
+
 def capture_rows() -> None:
     """Keep the freshly seeded rows outside the published evidence directory."""
     rows, applied = snapshot()
+    before = json.loads(
+        Path(os.environ["UPGRADE_SEED_COUNTS"]).read_text(encoding="utf-8")
+    )
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SET LOCAL row_security=off")
+        after = catalog_counts(cursor)
+    written = {table for table, count in after.items() if count != before.get(table)}
+    if failure := fixture_coverage_failure(written, set(rows)):
+        raise RuntimeError(failure)
+    with Path(os.environ["UPGRADE_SEED_WRITES"]).open("x", encoding="utf-8") as stream:
+        json.dump(sorted(written), stream)
     with Path(os.environ["UPGRADE_SEED_ROWS"]).open("x", encoding="utf-8") as stream:
         json.dump({"rows": rows, "applied": sorted(applied)}, stream, sort_keys=True)
 
