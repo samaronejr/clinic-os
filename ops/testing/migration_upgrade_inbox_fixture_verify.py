@@ -14,7 +14,10 @@ from ops.testing.migration_upgrade_inbox_fixture import (
     ACCOUNTS,
     CASES,
     INBOUND_BODY,
+    NO_ACCEPTED_SEND_CASES,
     OUTBOUND_BODY,
+    PROVIDER_METER_CASES,
+    STATUS_RECEIPTS,
     contact_address,
 )
 
@@ -30,6 +33,75 @@ class InboxFixtureResult(NamedTuple):
 
     failures: list[str]
     cases: dict[str, dict[str, str]]
+
+
+def _effects(
+    cursor: Cursor[tuple[object, ...]], cases: dict[str, dict[str, str]]
+) -> list[str]:
+    failures = []
+    cursor.execute(
+        """SELECT pa.channel,e.kind,count(*)
+        FROM clinic_app.comms_inboundevent e
+        JOIN clinic_app.comms_provideraccount pa
+            ON pa.id=e.provider_account_id AND pa.organization_id=e.organization_id
+        GROUP BY pa.channel,e.kind"""
+    )
+    expected = {
+        (channel, "status", count) for channel, count in STATUS_RECEIPTS.items()
+    }
+    expected.update(
+        (channel, "message", sum(ch == channel for _, ch, _ in CASES))
+        for channel in ACCOUNTS
+    )
+    if set(cursor.fetchall()) != expected:
+        failures.append("inbox fixture: receipt counts by account natural key")
+    cursor.execute(
+        """SELECT m.message_id::text,m.source,m.category,m.billable,m.pricing_type,
+               m.recorded_at >= message.created_at
+        FROM clinic_app.comms_messagemeter m
+        JOIN clinic_app.comms_message message
+          ON message.id=m.message_id AND message.organization_id=m.organization_id"""
+    )
+    expected_meters: set[tuple[str, str, str, bool | None, str, bool]] = {
+        (keys["message"], "expected", "service", None, "", True)
+        for keys in cases.values()
+        if keys["channel"] == "whatsapp"
+    }
+    expected_meters.update(
+        (cases[case]["message"], "provider", "utility", True, "regular", True)
+        for case in PROVIDER_METER_CASES & cases.keys()
+    )
+    if set(cursor.fetchall()) != expected_meters:
+        failures.append("inbox fixture: declared expected and provider meter facts")
+    cursor.execute(
+        """SELECT u.source_ref::text,u.meter,u.quantity,u.occurred_at=m.created_at
+        FROM clinic_app.subscriptions_usageevent u
+        JOIN clinic_app.comms_message m
+          ON m.id=u.source_ref AND m.organization_id=u.organization_id
+        WHERE u.meter='messages'"""
+    )
+    if set(cursor.fetchall()) != {
+        (keys["message"], "messages", 1, True)
+        for case, keys in cases.items()
+        if case not in NO_ACCEPTED_SEND_CASES
+    }:
+        failures.append("inbox fixture: declared outbound usage sources")
+    cursor.execute(
+        """WITH expected AS (
+            SELECT organization_id,
+                   date_trunc('month',occurred_at AT TIME ZONE 'UTC')::date AS period,
+                   sum(quantity) AS quantity
+            FROM clinic_app.subscriptions_usageevent WHERE meter='messages'
+            GROUP BY organization_id,period
+        )
+        SELECT count(*) FROM expected e
+        FULL JOIN (SELECT * FROM clinic_app.subscriptions_usagerollup
+                   WHERE meter='messages') r USING (organization_id,period)
+        WHERE e.quantity IS DISTINCT FROM r.quantity"""
+    )
+    if cursor.fetchone() != (0,):
+        failures.append("inbox fixture: usage rollups by tenant and UTC month")
+    return failures
 
 
 def _inbox_rows(
@@ -180,4 +252,5 @@ def verify_inbox_fixture() -> InboxFixtureResult:
             sum(attempts for _, _, attempts in CASES),
         ):
             failures.append("inbox fixture: exact natural keys and row counts")
+        failures.extend(_effects(cursor, cases))
     return InboxFixtureResult(failures, cases)

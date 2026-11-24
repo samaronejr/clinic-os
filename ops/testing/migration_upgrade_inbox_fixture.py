@@ -58,6 +58,24 @@ ACCOUNTS: Final = {
 }
 INBOUND_BODY: Final = b"Oi"
 OUTBOUND_BODY: Final = b"Mensagem sintetica"
+STATUS_RECEIPTS: Final = {"whatsapp": 34, "email": 7, "sms": 6}
+PROVIDER_METER_CASES: Final = frozenset(
+    {"p_sent_receipt", "p_delivered", "p_failed_delivered", "r_delivered"}
+)
+NO_ACCEPTED_SEND_CASES: Final = frozenset(
+    {
+        "p_queued",
+        "p_cancelled",
+        "none_accepted",
+        "o_rejected",
+        "o_unknown",
+        "s_rejected",
+        "e_unknown",
+        "r8_legacy_inflight",
+        "r7_inflight",
+        "r7_rejected",
+    }
+)
 
 # Visible states after the declared steps. In particular a cancelled attempt
 # is shown as failed, and an unknown provider outcome remains queued.
