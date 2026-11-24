@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -35,6 +36,9 @@ if TYPE_CHECKING:
     from psycopg import Cursor
 
 _UUID_VERSION = 4
+_SUBSECOND = timedelta(microseconds=999_999)
+
+type _ClockWindows = dict[datetime, tuple[datetime, datetime]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +54,42 @@ class _Context:
     graph: DeclaredGraph
     tokens: set[str]
     kek: str
+    symbols: dict[str, UUID]
+    uuid_pattern: re.Pattern[str]
 
 
 @dataclass(frozen=True, slots=True)
 class _Match:
     identity: object
     bindings: dict[UUID, UUID]
+    clocks: _ClockWindows
+
+
+def _merge_clocks(left: _ClockWindows, right: _ClockWindows) -> _ClockWindows | None:
+    windows = left.copy()
+    for anchor, (start, end) in right.items():
+        prior_start, prior_end = windows.get(anchor, (start, end))
+        windows[anchor] = max(start, prior_start), min(end, prior_end)
+    earliest = None
+    for start, end in (windows[key] for key in sorted(windows)):
+        earliest = start if earliest is None else max(earliest, start)
+        if earliest > end:
+            return None
+    return windows
+
+
+def _clock(
+    graph: DeclaredGraph, symbol: datetime, actual: object
+) -> _ClockWindows | None:
+    if not isinstance(actual, datetime) or actual.tzinfo is None:
+        return None
+    anchor = min(graph.anchors, key=lambda point: abs(point - symbol))
+    rounded = symbol.microsecond == 0
+    if rounded and actual.microsecond:
+        return None
+    offset = symbol - (anchor.replace(microsecond=0) if rounded else anchor)
+    start = actual - offset
+    return {anchor: (start, start + _SUBSECOND if rounded else start)}
 
 
 def _columns(
@@ -161,21 +195,113 @@ def _uuid_ref(value: object, column: _Column, graph: DeclaredGraph) -> UUID | No
     return value if isinstance(value, UUID) and value in graph.uuids else None
 
 
+def _uuid_text(symbol: str, value: str, context: _Context) -> dict[UUID, UUID] | None:
+    parts = context.uuid_pattern.split(symbol)
+    pattern = "".join(
+        (r"([0-9a-f-]{36})" if "-" in part else r"([0-9a-f]{32})")
+        if index % 2
+        else re.escape(part)
+        for index, part in enumerate(parts)
+    )
+    match = re.fullmatch(pattern, value)
+    if match is None:
+        return None
+    bindings: dict[UUID, UUID] = {}
+    for text, actual_text in zip(parts[1::2], match.groups(), strict=True):
+        try:
+            actual = UUID(actual_text)
+        except ValueError:
+            return None
+        if actual_text != (str(actual) if "-" in text else actual.hex):
+            return None
+        if bindings.setdefault(context.symbols[text], actual) != actual:
+            return None
+    return bindings
+
+
+@dataclass(slots=True)
+class _Bindings:
+    context: _Context
+    uuids: dict[UUID, UUID]
+    clocks: _ClockWindows
+
+    def _bind_uuids(self, pairs: dict[UUID, UUID]) -> bool:
+        return all(
+            value.version == _UUID_VERSION
+            and self.uuids.setdefault(symbol, value) == value
+            for symbol, value in pairs.items()
+        )
+
+    def _bind_clock(self, symbol: datetime, actual: object) -> bool:
+        constraint = _clock(self.context.graph, symbol, actual)
+        merged = None if constraint is None else _merge_clocks(self.clocks, constraint)
+        if merged is None:
+            return False
+        self.clocks = merged
+        return True
+
+    def _bind_text(self, symbol: str, actual: str) -> bool:
+        if self.context.uuid_pattern.search(symbol) is not None:
+            pairs = _uuid_text(symbol, actual, self.context)
+            return pairs is not None and self._bind_uuids(pairs)
+        try:
+            expected_time = datetime.fromisoformat(symbol)
+        except ValueError:
+            return symbol == actual
+        if not _generated(expected_time, self.context.graph, self.context.tokens):
+            return symbol == actual
+        try:
+            actual_time = datetime.fromisoformat(actual)
+        except ValueError:
+            return False
+        return actual_time.strftime(
+            "%Y-%m-%dT%H:%M:%S.%fZ"
+        ) == actual and self._bind_clock(expected_time, actual_time)
+
+    def compare(self, symbol: object, actual: object) -> bool:
+        if isinstance(symbol, UUID) and isinstance(actual, UUID):
+            return self._bind_uuids({symbol: actual})
+        if isinstance(symbol, datetime):
+            return self._bind_clock(symbol, actual)
+        if isinstance(symbol, str) and isinstance(actual, str):
+            return self._bind_text(symbol, actual)
+        if isinstance(symbol, dict) and isinstance(actual, dict):
+            return symbol.keys() == actual.keys() and all(
+                self.compare(value, actual[key]) for key, value in symbol.items()
+            )
+        if isinstance(symbol, (list, tuple)) and isinstance(actual, list):
+            return len(symbol) == len(actual) and all(
+                self.compare(left, right)
+                for left, right in zip(symbol, actual, strict=True)
+            )
+        return type(symbol) is type(actual) and symbol == actual
+
+
 def _matches(
-    refs: list[tuple[str, UUID]], data: list[tuple[object, ...]]
+    refs: list[tuple[_Column | None, object]],
+    data: list[tuple[object, ...]],
+    context: _Context,
 ) -> list[_Match]:
     candidates = []
     for identity, *values in data:
-        bindings: dict[UUID, UUID] = {}
-        for (_, symbol), value in zip(refs, values, strict=True):
-            if not isinstance(value, UUID) or value.version != _UUID_VERSION:
-                break
-            if bindings.setdefault(symbol, value) != value:
-                break
-        else:
-            if len(set(bindings.values())) == len(bindings):
-                candidates.append(_Match(identity, bindings))
+        bindings = _Bindings(context, {}, {})
+        if all(
+            bindings.compare(symbol, _read_dynamic(value, column))
+            for (column, symbol), value in zip(refs, values, strict=True)
+        ) and len(set(bindings.uuids.values())) == len(bindings.uuids):
+            candidates.append(_Match(identity, bindings.uuids, bindings.clocks))
     return candidates
+
+
+def _read_dynamic(value: object, column: _Column | None) -> object:
+    if column is None or not column.purpose or not isinstance(value, bytes):
+        return value
+    if column.codec == "EncryptedJSONField":
+        decoded = json.loads(value)
+        if rfc8785.dumps(decoded) != value:
+            return None
+        return decoded
+    return value.decode("utf-8")
 
 
 def _candidates(
@@ -187,34 +313,41 @@ def _candidates(
 ) -> list[_Match]:
     predicates: list[sql.Composable] = []
     parameters: list[Any] = []
-    refs: list[tuple[str, UUID]] = []
+    refs: list[tuple[_Column | None, object]] = []
     if isinstance(row.pk, UUID):
-        refs.append(("id", row.pk))
+        refs.append((None, row.pk))
     for key, value in row.fields.items():
         column = columns[key]
         if _generated(value, context.graph, context.tokens):
             predicates.append(
                 sql.SQL("{} IS NOT NULL").format(sql.Identifier(column.name))
             )
-            if symbol := _uuid_ref(value, column, context.graph):
-                refs.append((column.name, symbol))
+            refs.append((column, _uuid_ref(value, column, context.graph) or value))
             continue
         predicate, args = _predicate(column, value, context.kek)
         predicates.append(predicate)
         parameters.extend(args)
     condition = sql.SQL(" AND ").join(predicates) if predicates else sql.SQL("TRUE")
-    fields = sql.SQL(", ").join(
-        sql.Identifier(name) for name in ("id", *(name for name, _ in refs))
-    )
+    selections: list[sql.Composable] = [sql.Identifier("id")]
+    select_args: list[str] = []
+    for selected, _ in refs:
+        name = sql.Identifier(selected.name if selected else "id")
+        if selected and selected.purpose:
+            selections.append(
+                sql.SQL("clinic_app.tenant_decrypt(%s,%s,{})").format(name)
+            )
+            select_args.extend((context.kek, selected.purpose))
+        else:
+            selections.append(name)
     cursor.execute(
         sql.SQL("SELECT {} FROM {} WHERE {} ORDER BY id").format(
-            fields,
+            sql.SQL(", ").join(selections),
             sql.Identifier("clinic_app", table),
             condition,
         ),
-        parameters,
+        [*select_args, *parameters],
     )
-    return _matches(refs, cursor.fetchall())
+    return _matches(refs, cursor.fetchall(), context)
 
 
 def _assign(candidates: list[set[object]]) -> bool:
@@ -236,7 +369,7 @@ def _connect(choices: list[tuple[str, list[_Match]]], known: dict[UUID, UUID]) -
     used: set[tuple[str, object]] = set()
     inverse = {value: symbol for symbol, value in known.items()}
 
-    def visit(pending: list[tuple[str, list[_Match]]]) -> bool:
+    def visit(pending: list[tuple[str, list[_Match]]], clocks: _ClockWindows) -> bool:
         if not pending:
             return True
         ranked = []
@@ -258,6 +391,9 @@ def _connect(choices: list[tuple[str, list[_Match]]], known: dict[UUID, UUID]) -
         table = pending[chosen][0]
         rest = pending[:chosen] + pending[chosen + 1 :]
         for match in ranked[chosen]:
+            merged = _merge_clocks(clocks, match.clocks)
+            if merged is None:
+                continue
             key = (table, match.identity)
             fresh = match.bindings.keys() - known.keys()
             for symbol in fresh:
@@ -265,14 +401,14 @@ def _connect(choices: list[tuple[str, list[_Match]]], known: dict[UUID, UUID]) -
                 known[symbol] = value
                 inverse[value] = symbol
             used.add(key)
-            if visit(rest):
+            if visit(rest, merged):
                 return True
             used.remove(key)
             for symbol in fresh:
                 del inverse[known.pop(symbol)]
         return False
 
-    return visit(choices)
+    return visit(choices, {})
 
 
 def _core(cursor: Cursor[tuple[object, ...]], graph: DeclaredGraph) -> dict[UUID, UUID]:
@@ -307,16 +443,16 @@ def _core(cursor: Cursor[tuple[object, ...]], graph: DeclaredGraph) -> dict[UUID
 def verify_ai_literal_values() -> list[str]:
     """Validate defined fields using one-to-one matching, without captured values."""
     graph = compile_ai_graph()
-    tokens = {value.hex for value in graph.uuids} | {
-        str(value) for value in graph.uuids
-    }
+    symbols = {text: value for value in graph.uuids for text in (str(value), value.hex)}
+    tokens = set(symbols)
     tokens.update(anchor.date().isoformat() for anchor in graph.anchors)
     kek = (
         (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
         .read_text(encoding="ascii")
         .strip()
     )
-    context = _Context(graph, tokens, kek)
+    pattern = re.compile("(" + "|".join(map(re.escape, sorted(symbols))) + ")")
+    context = _Context(graph, tokens, kek, symbols, pattern)
     by_label = defaultdict(list)
     for row in graph.rows:
         by_label[row.label].append(row)
