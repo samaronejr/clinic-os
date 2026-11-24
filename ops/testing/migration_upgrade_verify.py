@@ -21,6 +21,7 @@ import json
 import os
 import sys
 from datetime import date
+from importlib import import_module
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -31,6 +32,10 @@ from apps.intake.models import Patient
 from django.db import connection
 
 from ops.testing.migration_upgrade_ai_verify import verify_ai
+from ops.testing.migration_upgrade_seed_state import (
+    database_identity,
+    require_completed_seed,
+)
 
 failures: list[str] = []
 
@@ -41,7 +46,9 @@ def check(condition: bool, name: str) -> None:
         failures.append(name)
 
 
-markers = json.loads(Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8"))
+seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
+required_seeds = require_completed_seed(seed_contents)
+markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
 appointment_id = UUID(markers["appointment_id"])
@@ -163,7 +170,10 @@ else:
         "audit chain lost rows after upgrade",
     )
 
-failures.extend(verify_ai(markers))
+failures.extend(verify_ai(markers, required="ai" in required_seeds))
+if "inbox" in required_seeds:
+    inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
+    failures.extend(inbox.verify_inbox(markers))
 
 if failures:
     for name in failures:
@@ -171,4 +181,17 @@ if failures:
             f"upgrade-check FAILED: {name}", file=sys.stderr
         )
     sys.exit(1)
+Path(os.environ["UPGRADE_VERIFIED_FILE"]).write_text(
+    json.dumps(
+        {
+            "schema_version": 1,
+            "result": "PASS",
+            "base_sha": os.environ["UPGRADE_BASE_SHA"],
+            "upgrade_db": database_identity()[0],
+            "seeds": required_seeds,
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
 print("upgrade-check: all assertions passed")  # noqa: T201 - piped diagnostics

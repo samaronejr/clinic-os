@@ -176,6 +176,8 @@ echo "== verify preserved data, transform, and boundaries =="
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     UPGRADE_APP_DATABASE_URL="$app_dsn" \
+    UPGRADE_BASE_SHA="$base_sha" \
+    UPGRADE_VERIFIED_FILE="$secret_dir/verified.json" \
     UPGRADE_SEED_FILE="$seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
@@ -187,5 +189,11 @@ echo "== confirm no migration drift =="
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
 python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
-    "$seed_file" "$base_sha" "$upgrade_db"
+    "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json"
+# Check the published artifact, not just the writer's in-memory object.
+if ! cmp -s "$work_root/verdict.json" "$secret_dir/verified.json"; then
+    rm -f "$work_root/verdict.json"
+    echo "published upgrade verdict disagrees with the verified base histories" >&2
+    exit 1
+fi
 echo "migration-upgrade: PASS"

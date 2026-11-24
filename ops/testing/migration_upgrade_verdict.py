@@ -26,7 +26,7 @@ def completed_seeds(markers: "Mapping[str, object]") -> list[str]:
 
 def main() -> None:
     """Emit the PASS receipt after the verifier and migration drift check."""
-    seed_file, base_sha, upgrade_db = sys.argv[1:]
+    seed_file, base_sha, upgrade_db, verified_file = sys.argv[1:]
     path = Path(seed_file)
     markers = json.loads(path.read_text(encoding="utf-8"))
     verdict = {
@@ -36,9 +36,13 @@ def main() -> None:
         "upgrade_db": upgrade_db,
         "seeds": completed_seeds(markers),
     }
-    path.with_name("verdict.json").write_text(
-        json.dumps(verdict) + "\n", encoding="utf-8"
-    )
+    verified = json.loads(Path(verified_file).read_text(encoding="utf-8"))
+    if verdict != verified:
+        message = "upgrade verdict disagrees with the verified base histories"
+        raise RuntimeError(message)
+    pending = path.with_name("verdict.pending")
+    pending.write_text(json.dumps(verdict) + "\n", encoding="utf-8")
+    pending.replace(path.with_name("verdict.json"))
 
 
 if __name__ == "__main__":

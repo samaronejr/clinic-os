@@ -1,15 +1,24 @@
 """Historical AI coverage cannot silently regress to an empty-table upgrade."""
 
+from __future__ import annotations
+
 import ast
 import inspect
+import json
+import sys
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 from django.apps import apps
 from django.db import migrations, models
 from ops.testing import migration_upgrade_ai_seed as seed
 from ops.testing import migration_upgrade_ai_verify as upgrade
+from ops.testing import migration_upgrade_verdict as publisher
 from ops.testing.migration_upgrade_verdict import completed_seeds
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_upgrade_requires_every_changed_model_and_sql_trigger_table() -> None:
@@ -143,13 +152,13 @@ def test_new_affected_model_requires_new_populated_seed(
 
 
 def test_present_historical_ai_schema_requires_seed_markers() -> None:
-    assert upgrade.verify_ai({"ai_present": True}) == [
+    assert upgrade.verify_ai({"ai_present": False}, required=True) == [
         "AI historical schema was present but seed markers are absent"
     ]
 
 
 def test_pre_ai_foundation_is_not_claimed_as_populated_ai_history() -> None:
-    assert upgrade.verify_ai({"ai_present": False}) == []
+    assert upgrade.verify_ai({"ai_present": False}, required=False) == []
 
 
 @pytest.mark.parametrize(
@@ -170,3 +179,24 @@ def test_verdict_records_completed_histories(
 def test_verdict_rejects_declared_history_that_did_not_run() -> None:
     with pytest.raises(ValueError, match="disagree with completed histories"):
         completed_seeds({"seeds": ["core", "ai"]})
+
+
+def test_verdict_cli_preserves_verified_seed_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed_path = tmp_path / "seed.json"
+    seed_path.write_text('{"ai":{"tables":{"ai_aiinvocation":{"count":14}}}}')
+    verified = tmp_path / "verified.json"
+    verified.write_text(
+        '{"schema_version":1,"result":"PASS","base_sha":"base",'
+        '"upgrade_db":"upgrade_rc_123","seeds":["core","ai"]}'
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["verdict", str(seed_path), "base", "upgrade_rc_123", str(verified)],
+    )
+    publisher.main()
+    assert json.loads((tmp_path / "verdict.json").read_text()) == json.loads(
+        verified.read_text()
+    )

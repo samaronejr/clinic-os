@@ -16,7 +16,7 @@ import os
 from datetime import UTC, date, datetime
 from pathlib import Path
 from runpy import run_path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
 
 from apps.audit.canonical import AuditEventInput
@@ -31,22 +31,32 @@ from apps.tenancy.envelope import issue_tenant_key
 from django.db import connection, transaction
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
+
+
+class _Checkpoint(Protocol):
+    def __call__(self, markers: "Mapping[str, object]", required: list[str]) -> str: ...
+
+
+state = run_path(
+    str(
+        Path(os.environ["UPGRADE_HELPER_ROOT"])
+        / "ops/testing/migration_upgrade_seed_state.py"
+    )
+)
 
 seed_path = Path(os.environ["UPGRADE_SEED_FILE"])
-with connection.cursor() as cursor:
-    cursor.execute(
-        "SELECT current_database(), oid FROM pg_database "
-        "WHERE datname=current_database()"
-    )
-    seed_database = list(cursor.fetchone())
+seed_database = cast("Callable[[], list[str | int]]", state["database_identity"])()
+begin_seed = cast("Callable[[], tuple[list[str], str | None]]", state["begin_seed"])
+publish_seed = cast("Callable[[Path, str], None]", state["publish_seed"])
 if seed_path.exists():
-    # Replay a completed seed for this database without duplicating histories.
-    # A fresh rehearsal always starts without markers; a foreign receipt must
-    # never stand in for data loaded into the current database.
-    if json.loads(seed_path.read_text(encoding="utf-8"))["database"] != seed_database:
-        message = "completed upgrade seed belongs to a different database"
-        raise RuntimeError(message)
+    cast("Callable[[str], list[str]]", state["require_completed_seed"])(
+        seed_path.read_text(encoding="utf-8")
+    )
+    raise SystemExit(0)
+required, recorded = begin_seed()
+if recorded is not None:
+    publish_seed(seed_path, recorded)
     raise SystemExit(0)
 
 ORGANIZATION_ID = uuid4()
@@ -169,10 +179,6 @@ if markers["ai_present"]:
         run_path(str(helper))["seed_ai"],
     )
     markers["ai"] = seed_ai(markers)
-pending_seed = seed_path.with_suffix(".pending")
-pending_seed.write_text(
-    json.dumps(markers, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
-)
-pending_seed.replace(seed_path)
+contents = cast("_Checkpoint", state["checkpoint_seed"])(markers, required)
+publish_seed(seed_path, contents)
 print(f"seeded: {json.dumps(markers, sort_keys=True)}")  # noqa: T201 - piped stdout

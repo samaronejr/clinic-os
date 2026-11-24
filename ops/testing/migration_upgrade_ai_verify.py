@@ -416,11 +416,9 @@ def _stopped(
     return assertions
 
 
-def verify_ai(markers: Mapping[str, object]) -> list[str]:
+def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
     """Verify every original column/ciphertext plus new defaults and stop guards."""
-    if "ai_present" not in markers:
-        return ["Historical AI schema presence was not recorded"]
-    if markers["ai_present"] is not True:
+    if not required:
         return []
     history = markers.get("ai")
     if not isinstance(history, dict) or not isinstance(history.get("tables"), dict):
