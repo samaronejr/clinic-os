@@ -276,6 +276,16 @@ _REWRITES: dict[tuple[str, str], tuple[tuple[str, ...], Callable[[Tables], None]
 }
 
 
+def declared_defaults() -> dict[tuple[str, str], dict[str, Row]]:
+    """Return the values declared for columns added during a rehearsal."""
+    return deepcopy(_DEFAULT_COLUMNS)
+
+
+def declared_transform_columns() -> dict[tuple[str, str], tuple[str, ...]]:
+    """Return the columns intentionally changed by fixture transforms."""
+    return {key: columns for key, (columns, _) in _REWRITES.items()}
+
+
 def expected_rows(rows: Tables, applied: set[tuple[str, str]]) -> Tables:
     """Apply reviewed defaults and transforms to the base fixture values."""
     for migration in sorted(_DEFAULT_COLUMNS.keys() | _REWRITES.keys()):
@@ -412,15 +422,17 @@ def capture_base_counts() -> None:
         cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         cursor.execute("SET LOCAL row_security=off")
         counts = catalog_counts(cursor)
+        cursor.execute("SELECT app,name FROM clinic_app.django_migrations")
+        applied = cursor.fetchall()
     with Path(os.environ["UPGRADE_SEED_COUNTS"]).open("x", encoding="utf-8") as stream:
-        json.dump(counts, stream, sort_keys=True)
+        json.dump({"counts": counts, "applied": applied}, stream, sort_keys=True)
 
 
 def verify_seed_inventory() -> None:
     """Compare independent table inventories without capturing seeded values."""
     before = json.loads(
         Path(os.environ["UPGRADE_SEED_COUNTS"]).read_text(encoding="utf-8")
-    )
+    )["counts"]
     with (
         psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
         admin.cursor() as cursor,
@@ -433,7 +445,123 @@ def verify_seed_inventory() -> None:
     if failure := fixture_coverage_failure(written, populated):
         raise RuntimeError(failure)
     with Path(os.environ["UPGRADE_SEED_WRITES"]).open("x", encoding="utf-8") as stream:
-        json.dump(sorted(written), stream)
+        json.dump({table: after[table] for table in sorted(written)}, stream)
+
+
+def verify_seed_cardinality() -> list[str]:
+    """Require exact counts for every table written by the native seed."""
+    expected = json.loads(
+        Path(os.environ["UPGRADE_SEED_WRITES"]).read_text(encoding="utf-8")
+    )
+    if not isinstance(expected, dict) or not expected:
+        return ["missing seeded row counts"]
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SET LOCAL row_security=off")
+        actual = catalog_counts(cursor)
+    return [
+        f"seeded row count mismatch: {table}"
+        for table, count in sorted(expected.items())
+        if type(count) is not int or actual.get(table) != count
+    ]
+
+
+def verify_forward_defaults() -> list[str]:
+    """Compare applicable, untransformed additions with their typed SQL defaults."""
+    prior = json.loads(
+        Path(os.environ["UPGRADE_SEED_COUNTS"]).read_text(encoding="utf-8")
+    )
+    before = {tuple(key) for key in prior["applied"]}
+    inventory = json.loads(
+        Path(os.environ["UPGRADE_SEED_WRITES"]).read_text(encoding="utf-8")
+    )
+    failures = []
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute("SELECT app,name FROM clinic_app.django_migrations")
+        delta = set(cursor.fetchall()) - before
+        transformed = {
+            path
+            for migration, (paths, _) in _REWRITES.items()
+            if migration in delta
+            for path in paths
+        }
+        for migration in sorted(delta & _DEFAULT_COLUMNS.keys()):
+            for table, columns in _DEFAULT_COLUMNS[migration].items():
+                if table not in inventory:
+                    continue
+                for column, value in columns.items():
+                    if f"{table}.{column}" in transformed:
+                        continue
+                    cursor.execute(
+                        sql.SQL(
+                            "SELECT EXISTS (SELECT FROM {} "
+                            "WHERE {} IS DISTINCT FROM %s)"
+                        ).format(
+                            sql.Identifier("clinic_app", table), sql.Identifier(column)
+                        ),
+                        [value],
+                    )
+                    if cursor.fetchone() != (False,):
+                        failures.append(f"wrong seeded SQL default: {table}.{column}")
+    return failures
+
+
+def verify_seed_envelope_keys() -> list[str]:
+    """Require the native fixture's initial, unrotated DEK."""
+    from apps.tenancy.fields import EncryptedField  # noqa: PLC0415
+    from django.apps import apps  # noqa: PLC0415
+    from django.db.migrations.state import ModelState  # noqa: PLC0415
+
+    tables = json.loads(
+        Path(os.environ["UPGRADE_SEED_WRITES"]).read_text(encoding="utf-8")
+    )
+    expected_header = b"\x01\x00\x00\x00\x01"
+    failures = []
+    with (
+        psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        admin.cursor() as cursor,
+    ):
+        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cursor.execute(
+            "SELECT key_version FROM clinic_app.tenancy_tenantdatakey "
+            "WHERE status='active'"
+        )
+        if cursor.fetchall() != [(1,)]:
+            failures.append("unexpected active seed envelope key")
+        for model in apps.get_models():
+            state = ModelState.from_model(model)
+            table = str(
+                state.options.get("db_table", state.app_label + "_" + state.name_lower)
+            )
+            if table not in tables:
+                continue
+            for name, field in state.fields.items():
+                if not isinstance(field, EncryptedField):
+                    continue
+                field.set_attributes_from_name(name)
+                _, column_name = field.get_attname_column()
+                if column_name is None:
+                    continue
+                column = sql.Identifier(column_name)
+                cursor.execute(
+                    sql.SQL(
+                        "SELECT EXISTS (SELECT FROM {} WHERE {col} IS NOT NULL "
+                        "AND substring({col},1,5) IS DISTINCT FROM %s)"
+                    ).format(sql.Identifier("clinic_app", table), col=column),
+                    [expected_header],
+                )
+                if cursor.fetchone() != (False,):
+                    failures.append(
+                        f"unexpected seed envelope key: {table}.{column_name}"
+                    )
+    return failures
 
 
 def differences(expected: Tables, actual: Tables) -> list[str]:

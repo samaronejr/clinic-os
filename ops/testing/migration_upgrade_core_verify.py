@@ -31,7 +31,8 @@ if TYPE_CHECKING:
 
 def _organization(cursor: Cursor[tuple[object, ...]]) -> object:
     cursor.execute(
-        "SELECT id FROM clinic_app.identity_organization WHERE cnpj=%s AND name=%s",
+        "SELECT id FROM clinic_app.identity_organization WHERE cnpj=%s AND name=%s "
+        "AND passkey_step_up_enabled IS NOT DISTINCT FROM false",
         [ORGANIZATION_CNPJ, ORGANIZATION_NAME],
     )
     matches = cursor.fetchall()
@@ -125,6 +126,9 @@ def verify_core_fixture(
         _patient(cursor, organization)
         if not _patient_index(cursor, organization):
             failures.append("core fixture mismatch: intake_patient.full_name_index")
+        cursor.execute("SELECT count(*) FROM clinic_app.identity_clinic")
+        if cursor.fetchone() != (1,):
+            failures.append("core fixture mismatch: identity_clinic row count")
         cursor.execute(
             """
             SELECT count(*) FROM clinic_app.identity_clinic c
@@ -158,6 +162,16 @@ def verify_core_fixture(
             AND b.start_at AT TIME ZONE c.timezone = %s::timestamp
             AND b.end_at AT TIME ZONE c.timezone = %s::timestamp
             AND b.created_at <= a.created_at
+            AND b.idempotency_key IS DISTINCT FROM a.idempotency_key
+            AND pg_typeof(b.created_at) = 'timestamptz'::regtype
+            AND (SELECT atttypmod FROM pg_attribute
+                 WHERE attrelid='clinic_app.scheduling_availabilityblock'::regclass
+                 AND attname='created_at') IN (-1,6)
+            AND b.created_at IS NOT DISTINCT FROM (
+                SELECT started_at FROM upgrade_rehearsal.seed_start
+            )
+            AND a.buffer_after IS NOT DISTINCT FROM 0
+            AND a.buffer_before IS NOT DISTINCT FROM 0
             """,
             [
                 CLINIC_NAME,

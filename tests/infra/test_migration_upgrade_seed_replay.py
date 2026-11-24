@@ -22,6 +22,7 @@ from ops.testing.migration_upgrade_rows import (
     expected_rows,
     read_rows,
     table_keys,
+    verify_seed_envelope_keys,
 )
 from ops.testing.migration_upgrade_seed_state import (
     observe_base,
@@ -80,7 +81,7 @@ def seed_receipt(
         yield receipt
     finally:
         with connection.cursor() as cursor:
-            cursor.execute("DROP SCHEMA IF EXISTS upgrade_rehearsal")
+            cursor.execute("DROP SCHEMA IF EXISTS upgrade_rehearsal CASCADE")
 
 
 def _run_seed() -> None:
@@ -300,6 +301,94 @@ def test_core_oracle_rejects_wrong_values_without_a_capture(
 @pytest.mark.parametrize(
     ("statement", "failure"),
     [
+        (
+            "INSERT INTO clinic_app.identity_clinic "
+            "(id, organization_id, name, crm_uf, timezone) "
+            "SELECT gen_random_uuid(), organization_id, 'Undeclared clinic', "
+            "crm_uf, timezone FROM clinic_app.identity_clinic",
+            "core fixture mismatch: identity_clinic row count",
+        ),
+        (
+            "UPDATE clinic_app.scheduling_availabilityblock "
+            "SET created_at=created_at-interval '365 days'",
+            "core fixture mismatch: appointment linkage or sequence",
+        ),
+        (
+            "UPDATE clinic_app.scheduling_availabilityblock SET idempotency_key="
+            "(SELECT idempotency_key FROM clinic_app.scheduling_appointment)",
+            "core fixture mismatch: appointment linkage or sequence",
+        ),
+        (
+            "UPDATE clinic_app.identity_organization SET passkey_step_up_enabled=true",
+            "core fixture mismatch: identity_organization.name",
+        ),
+        (
+            "UPDATE clinic_app.scheduling_appointment SET buffer_after=11",
+            "core fixture mismatch: appointment linkage or sequence",
+        ),
+    ],
+)
+def test_core_oracle_rejects_wrong_clock_and_declared_defaults(
+    seed_receipt: Path, superuser_database_url: str, statement: str, failure: str
+) -> None:
+    _run_seed()
+    assert not verify_core_fixture()
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute("SET LOCAL session_replication_role=replica")
+        assert admin.execute(statement).rowcount == 1
+    assert failure in verify_core_fixture()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_key_oracle_rejects_valid_envelope_after_rotation(
+    seed_receipt: Path,
+    superuser_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _run_seed()
+    inventory = seed_receipt.with_name("seed-writes.json")
+    inventory.write_text('{"intake_patient": 1}', encoding="utf-8")
+    monkeypatch.setenv("UPGRADE_SEED_WRITES", str(inventory))
+    markers = json.loads(seed_receipt.read_text(encoding="utf-8"))
+    kek = (
+        (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
+        .read_text(encoding="ascii")
+        .strip()
+    )
+    assert not verify_seed_envelope_keys()
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute(
+            "SELECT set_config('app.current_tenant',%s,true)",
+            [markers["organization_id"]],
+        )
+        assert admin.execute(
+            "SELECT clinic_app.tenant_dek_issue(%s)", [kek]
+        ).fetchone() == (2,)
+        admin.execute("SET LOCAL session_replication_role=replica")
+        changed = admin.execute(
+            "UPDATE clinic_app.intake_patient SET full_name="
+            "clinic_app.tenant_reencrypt(%s,'intake.patient.full_name',full_name)",
+            [kek],
+        ).rowcount
+        assert changed == 1
+    assert verify_seed_envelope_keys() == [
+        "unexpected active seed envelope key",
+        "unexpected seed envelope key: intake_patient.full_name",
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("statement", "failure"),
+    [
+        (
+            "UPDATE clinic_app.comms_message SET sent_by_id="
+            "(SELECT id FROM clinic_app.identity_user "
+            "WHERE username='upgrade-fixture-owner') "
+            "WHERE id=(SELECT reply_id FROM clinic_app.ai_frontdeskturn "
+            "WHERE state='done')",
+            "AI portal fixture: declared turn done",
+        ),
         (
             "UPDATE clinic_app.ai_aiinvocation SET configuration_id="
             "(SELECT id FROM clinic_app.ai_modelconfiguration WHERE purpose='analyst') "

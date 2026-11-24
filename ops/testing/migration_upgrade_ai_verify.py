@@ -410,8 +410,11 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
         return ["AI historical schema was present but seed markers are absent"]
     history = cast("_History", history)
     tables = declared_ai_tables()
+    required_tables = json.loads(
+        Path(os.environ["UPGRADE_AI_COVERAGE"]).read_text(encoding="utf-8")
+    )
     failures = coverage_failures(
-        {table: {"count": count} for table, count in tables.items()}
+        {table: {"count": count} for table, count in tables.items()}, required_tables
     )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(

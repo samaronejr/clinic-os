@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from runpy import run_path
 from typing import TYPE_CHECKING, Protocol, cast
+from unittest.mock import patch
 from uuid import uuid4
 
 from apps.audit.canonical import AuditEventInput
@@ -29,6 +30,7 @@ from apps.scheduling.availability_creation import create_availability
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import issue_tenant_key
 from django.db import connection, transaction
+from django.utils import timezone
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -113,19 +115,32 @@ with connection.cursor() as cursor:
     cursor.execute("SET ROLE clinic_app")
 try:
     with tenant_context(OWNER_ID, ORGANIZATION_ID):
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL ROLE NONE")
+            cursor.execute(
+                "CREATE TABLE upgrade_rehearsal.seed_start ("
+                "started_at timestamptz NOT NULL DEFAULT transaction_timestamp())"
+            )
+            cursor.execute(
+                "INSERT INTO upgrade_rehearsal.seed_start DEFAULT VALUES "
+                "RETURNING started_at"
+            )
+            (seed_started_at,) = cursor.fetchone()
+            cursor.execute("SET LOCAL ROLE clinic_app")
         registration = create_patient(
             clinic_id=CLINIC_ID,
             full_name=PATIENT_NAME,
             birth_date=PATIENT_BIRTH_DATE,
             idempotency_key=uuid4(),
         )
-        availability = create_availability(
-            clinic_id=CLINIC_ID,
-            practitioner_id=PRACTITIONER_ID,
-            start_local=core["AVAILABILITY_START"],
-            end_local=core["AVAILABILITY_END"],
-            idempotency_key=uuid4(),
-        )
+        with patch.object(timezone, "now", return_value=seed_started_at):
+            availability = create_availability(
+                clinic_id=CLINIC_ID,
+                practitioner_id=PRACTITIONER_ID,
+                start_local=core["AVAILABILITY_START"],
+                end_local=core["AVAILABILITY_END"],
+                idempotency_key=uuid4(),
+            )
         appointment = create_appointment(
             clinic_id=CLINIC_ID,
             enrollment_id=registration.enrollment.pk,

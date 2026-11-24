@@ -35,9 +35,14 @@ from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_fixture_oracle import check_fixtures
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
 from ops.testing.migration_upgrade_mutation_sweep import verify_sweep_coverage
-from ops.testing.migration_upgrade_seed_state import (
+from ops.testing.migration_upgrade_receipt_reader import (
     database_identity,
     require_completed_seed,
+)
+from ops.testing.migration_upgrade_rows import (
+    verify_forward_defaults,
+    verify_seed_cardinality,
+    verify_seed_envelope_keys,
 )
 
 failures: list[str] = []
@@ -52,6 +57,9 @@ def check(condition: bool, name: str) -> None:
 seed_contents = Path(os.environ["UPGRADE_SEED_FILE"]).read_text("utf-8")
 required_seeds = require_completed_seed(seed_contents)
 markers = json.loads(seed_contents)
+failures.extend(verify_seed_cardinality())
+failures.extend(verify_forward_defaults())
+failures.extend(verify_seed_envelope_keys())
 fixture = check_fixtures(required_seeds)
 failures.extend(fixture.failures)
 if not failures and os.environ.get("UPGRADE_FIXTURE_SWEEP") == "1":

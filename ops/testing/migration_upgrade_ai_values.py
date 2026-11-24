@@ -488,6 +488,11 @@ def verify_ai_literal_values(
             return ["AI literal fixture: core natural keys"]
         for label, rows in sorted(by_label.items()):
             table, columns = _columns(cursor, label)
+            if table == "ai_knowledgearticle" and (
+                columns["title"].db_type != "character varying(120)"
+            ):
+                failures.append("AI literal fixture: ai_knowledgearticle.title type")
+                continue
             candidates = [
                 _candidates(cursor, row, columns, table, context) for row in rows
             ]

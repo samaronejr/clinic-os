@@ -199,6 +199,20 @@ echo "== migrate forward with the candidate =="
     uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
 
 echo "== verify preserved data, transform, and boundaries =="
+export UPGRADE_AI_COVERAGE="$secret_dir/ai-coverage.json"
+(cd "$project_root" && env \
+    APP_DATABASE_URL="$owner_dsn" \
+    CLINIC_DATA_MODE="synthetic" \
+    DJANGO_SETTINGS_MODULE="config.settings.base" \
+    uv run --frozen --no-sync --no-env-file python manage.py shell -c \
+    'import json, os; from pathlib import Path
+from ops.testing.migration_upgrade_ai_verify import altered_ai_tables
+from ops.testing.migration_upgrade_rewrite_graph import (
+    validate_default_declarations, validate_transform_declarations,
+)
+validate_default_declarations()
+validate_transform_declarations()
+Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
 (cd "$project_root" && env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \

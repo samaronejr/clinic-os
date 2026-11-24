@@ -6,19 +6,17 @@ import ast
 import inspect
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
 import pytest
 from django.apps import apps
 from django.db import migrations, models
 from ops.testing import migration_upgrade_ai_recipe as seed
 from ops.testing import migration_upgrade_ai_verify as upgrade
+from ops.testing import migration_upgrade_rewrite_graph as rewrite_graph
 from ops.testing import migration_upgrade_verdict as publisher
 from ops.testing.migration_upgrade_verdict import completed_seeds
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_upgrade_requires_every_changed_model_and_sql_trigger_table() -> None:
@@ -159,6 +157,80 @@ def test_present_historical_ai_schema_requires_seed_markers() -> None:
 
 def test_pre_ai_foundation_is_not_claimed_as_populated_ai_history() -> None:
     assert upgrade.verify_ai({"ai_present": False}, required=False) == []
+
+
+def test_forward_verifier_uses_read_only_receipt_reader() -> None:
+    source = inspect.getsourcefile(upgrade)
+    assert source is not None
+    entry = Path(source).with_name("migration_upgrade_verify.py")
+    imports = {
+        node.module
+        for node in ast.walk(ast.parse(entry.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert "ops.testing.migration_upgrade_receipt_reader" in imports
+    assert "ops.testing.migration_upgrade_seed_state" not in imports
+
+
+def test_ai_verifier_uses_external_coverage_without_loading_migrations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    coverage = tmp_path / "coverage.json"
+    coverage.write_text('["ai_approval"]', encoding="utf-8")
+    monkeypatch.setenv("UPGRADE_AI_COVERAGE", str(coverage))
+    observed = []
+
+    class StopAfterCoverageError(Exception):
+        pass
+
+    def record_coverage(_tables: object, required: object = None) -> list[str]:
+        observed.append(required)
+        raise StopAfterCoverageError
+
+    def reject_graph(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("the forward verifier loaded the project migration graph")
+
+    monkeypatch.setattr(upgrade, "MigrationLoader", reject_graph)
+    monkeypatch.setattr(upgrade, "coverage_failures", record_coverage)
+    with pytest.raises(StopAfterCoverageError):
+        upgrade.verify_ai({"ai": {"retained": {}}}, required=True)
+    assert observed == [["ai_approval"]]
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "failure"),
+    [
+        ("flag", True, "wrong fixture SQL default declaration"),
+        ("unused_flag", False, "unused fixture default declaration"),
+    ],
+)
+def test_declared_sql_defaults_reject_wrong_value_or_unused_column(
+    monkeypatch: pytest.MonkeyPatch, column: str, value: bool, failure: str
+) -> None:
+    key = ("identity", "0036_passkey_sessions")
+    migration = SimpleNamespace(
+        operations=[
+            migrations.AddField(
+                model_name="organization",
+                name="flag",
+                field=models.BooleanField(default=False, db_default=False),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        rewrite_graph,
+        "MigrationLoader",
+        lambda *_a, **_kw: SimpleNamespace(
+            migrated_apps={"identity"}, disk_migrations={key: migration}
+        ),
+    )
+    monkeypatch.setattr(
+        rewrite_graph,
+        "declared_defaults",
+        lambda: {key: {"identity_organization": {column: value}}},
+    )
+    with pytest.raises(RuntimeError, match=failure):
+        rewrite_graph.validate_default_declarations()
 
 
 @pytest.mark.parametrize(

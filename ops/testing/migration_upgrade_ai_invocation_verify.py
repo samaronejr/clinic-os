@@ -150,6 +150,7 @@ def _portal_failures(cursor: Cursor[tuple[object, ...]], kek: str) -> list[str]:
                 AND (r.id IS NULL OR
                     (r.conversation_id=c.id AND r.direction='out'
                      AND r.organization_id=c.organization_id
+                     AND r.sent_by_id IS NOT DISTINCT FROM NULL::uuid
                      AND r.created_at=i.created_at)),
             t.created_at >= i.created_at,
             clinic_app.tenant_decrypt(%s,'comms.message.body',i.body) = %s,
