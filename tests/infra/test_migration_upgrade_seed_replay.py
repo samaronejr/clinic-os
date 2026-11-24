@@ -7,7 +7,8 @@ import os
 from importlib import import_module
 from pathlib import Path
 from runpy import run_path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import psycopg
 import pytest
@@ -28,13 +29,16 @@ from ops.testing.migration_upgrade_seed_state import (
     observe_base,
     require_completed_seed,
 )
+from ops.testing.migration_upgrade_wave_h_floor import preserved
 from psycopg import Rollback, sql
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
+    from django.db.backends.utils import CursorWrapper
+    from ops.testing.migration_upgrade_wave_h_floor import Snapshot
     from psycopg import Cursor
 
 
@@ -86,6 +90,61 @@ def seed_receipt(
 
 def _run_seed() -> None:
     run_path(str(PROJECT_ROOT / "ops/testing/migration_upgrade_seed.py"))
+
+
+type _Preservation = Callable[[CursorWrapper, dict[str, Snapshot]], dict[str, bool]]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_wave_h_preservation_floor_differential(
+    seed_receipt: Path, superuser_database_url: str
+) -> None:
+    """Replay every original-column change and pairwise swap into both checks."""
+    _run_seed()
+    snapshots = json.loads(seed_receipt.read_text(encoding="utf-8"))["ai"]["tables"]
+    base = cast(
+        "_Preservation",
+        run_path(str(Path(__file__).with_name("wave_h_preservation_reference.py")))[
+            "_preserved"
+        ],
+    )
+    with psycopg.connect(superuser_database_url) as admin:
+        for table, snapshot in snapshots.items():
+            query = sql.SQL(
+                "SELECT id::text,to_jsonb(t)::text FROM clinic_app.{} t ORDER BY id"
+            ).format(sql.Identifier(table))
+            original = admin.execute(query).fetchall()
+            cursor = Mock()
+            cursor.fetchone.return_value = (0,)
+
+            def check(
+                rows: list[tuple[str, str]],
+                cursor: Mock = cursor,
+                table: str = table,
+                snapshot: Snapshot = snapshot,
+            ) -> bool:
+                cursor.fetchall.return_value = rows
+                key = f"preserved:{table}"
+                accepted_by_base = base(cursor, {table: snapshot})[key]
+                accepted_by_lane = preserved(cursor, {table: snapshot})[key]
+                assert accepted_by_base or not accepted_by_lane
+                return accepted_by_base and accepted_by_lane
+
+            assert check(original)
+            for index, (row_id, raw) in enumerate(original):
+                record = json.loads(raw)
+                for column, value in record.items():
+                    changed = dict(record)
+                    changed[column] = None if value is not None else "__changed__"
+                    mutated = original.copy()
+                    mutated[index] = (row_id, json.dumps(changed))
+                    assert not check(mutated)
+                for other in range(index):
+                    other_id, other_raw = original[other]
+                    swapped = original.copy()
+                    swapped[index] = (row_id, other_raw)
+                    swapped[other] = (other_id, raw)
+                    check(swapped)
 
 
 def _counts(admin_dsn: str) -> tuple[int, int, int]:

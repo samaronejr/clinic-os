@@ -16,6 +16,7 @@ from psycopg import sql
 
 from ops.testing.migration_upgrade_ai_intent import declared_ai_tables
 from ops.testing.migration_upgrade_ai_retained import retained_checks
+from ops.testing.migration_upgrade_wave_h_floor import preserved
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -23,8 +24,11 @@ if TYPE_CHECKING:
     from django.db.backends.utils import CursorWrapper
     from django.db.migrations.operations.base import Operation
 
+    from ops.testing.migration_upgrade_wave_h_floor import Snapshot
+
 
 class _History(TypedDict):
+    tables: dict[str, Snapshot]
     approvals: list[str]
     pending_evaluations: list[str]
     runs: list[str]
@@ -212,6 +216,12 @@ def _rollout_guards(cursor: CursorWrapper, history: _History) -> dict[str, bool]
         [history["approvals"][0]],
         "rollout stage evidence required",
     )
+    rating = next(iter(history["tables"]["ai_evaluationrating"]["rows"]))
+    assertions["rollout_table_refused:ai_evaluationrating"] = _refused(
+        _clone("ai_evaluationrating", "'user_id',NULL"),
+        [rating],
+        "evaluation rating denied",
+    )
     cursor.execute(
         "SELECT rating.id FROM clinic_app.ai_evaluationrating rating "
         "JOIN clinic_app.ai_evaluationrun run ON run.id=rating.run_id "
@@ -222,7 +232,7 @@ def _rollout_guards(cursor: CursorWrapper, history: _History) -> dict[str, bool]
         "AND rating.case_id='synthetic' AND rating.slot='rater_one'"
     )
     ratings = cursor.fetchall()
-    assertions["rollout_table_refused:ai_evaluationrating"] = (
+    assertions["rollout_table_refused:ai_evaluationrating_natural_key"] = (
         _refused(
             _clone("ai_evaluationrating", "'user_id',NULL"),
             [ratings[0][0]],
@@ -410,11 +420,19 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
         return ["AI historical schema was present but seed markers are absent"]
     history = cast("_History", history)
     tables = declared_ai_tables()
+    floor = history.get("tables")
+    if not isinstance(floor, dict) or set(floor) != set(tables):
+        return ["Wave H preservation floor is missing seeded tables"]
+    snapshots = cast("dict[str, Snapshot]", floor)
     required_tables = json.loads(
         Path(os.environ["UPGRADE_AI_COVERAGE"]).read_text(encoding="utf-8")
     )
-    failures = coverage_failures(
-        {table: {"count": count} for table, count in tables.items()}, required_tables
+    failures = coverage_failures(snapshots, required_tables)
+    failures.extend(
+        coverage_failures(
+            {table: {"count": count} for table, count in tables.items()},
+            required_tables,
+        )
     )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
@@ -422,7 +440,8 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
             "set_config('app.current_user_id',%s,true)",
             [str(markers["organization_id"]), str(markers["owner_id"])],
         )
-        assertions = _guards(cursor, tables)
+        assertions = preserved(cursor, snapshots)
+        assertions.update(_guards(cursor, tables))
         assertions.update(_defaults(cursor))
         assertions.update(_stopped(cursor, history, markers))
         assertions.update(retained_checks(history["retained"], upgraded=True))

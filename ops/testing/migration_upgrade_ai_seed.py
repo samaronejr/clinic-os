@@ -202,8 +202,13 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
             cast("dict[str, str]", declaration["retained"]),
             retained_fence_installed=retained_fence_installed,
         )
+        capture_floor = run_path(
+            str(Path(__file__).with_name("migration_upgrade_wave_h_floor.py"))
+        )["capture_floor"]
+        snapshots = capture_floor(cursor, fixtures.tables)
     return {
         **declaration,
+        "tables": snapshots,
         "base_legacy_activation_allowed": not rollout_installed,
         "base_retained_fence_installed": retained_fence_installed,
         "base_retained_assertions": checks,

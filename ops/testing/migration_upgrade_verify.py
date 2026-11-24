@@ -64,7 +64,6 @@ fixture = check_fixtures(required_seeds)
 failures.extend(fixture.failures)
 if not failures and os.environ.get("UPGRADE_FIXTURE_SWEEP") == "1":
     verify_sweep_coverage(required_seeds)
-ai_keys = fixture.ai_keys
 inbox_fixture = fixture.inbox
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
@@ -201,9 +200,7 @@ else:
         "audit chain lost rows after upgrade",
     )
 
-if ai_keys:
-    markers["ai"] = ai_keys
-    failures.extend(verify_ai(markers, required=True))
+failures.extend(verify_ai(markers, required="ai" in required_seeds))
 if inbox_fixture is not None and not inbox_fixture.failures:
     inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
     markers["inbox"] = {

@@ -172,6 +172,36 @@ def test_forward_verifier_uses_read_only_receipt_reader() -> None:
     assert "ops.testing.migration_upgrade_seed_state" not in imports
 
 
+def test_inbox_verifier_does_not_import_fixture_writer_or_migration_graph() -> None:
+    source = inspect.getsourcefile(upgrade)
+    assert source is not None
+    inbox = Path(source).with_name("migration_upgrade_inbox_verify.py")
+    # The behavior verifier is supplied by the F7 integration.
+    if not inbox.is_file():
+        return
+    tree = ast.parse(inbox.read_text(encoding="utf-8"))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert "ops.testing.migration_upgrade_inbox_payload" in imported
+    assert all(
+        "migration_upgrade_inbox_seed" not in name and ".migrations" not in name
+        for name in imported
+    )
+    assert not any(
+        isinstance(node, ast.Name)
+        and node.id in {"MigrationLoader", "MigrationExecutor", "import_module"}
+        for node in ast.walk(tree)
+    )
+
+
 def test_ai_verifier_uses_external_coverage_without_loading_migrations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -191,9 +221,13 @@ def test_ai_verifier_uses_external_coverage_without_loading_migrations(
         pytest.fail("the forward verifier loaded the project migration graph")
 
     monkeypatch.setattr(upgrade, "MigrationLoader", reject_graph)
+    monkeypatch.setattr(upgrade, "declared_ai_tables", lambda: {"ai_approval": 1})
     monkeypatch.setattr(upgrade, "coverage_failures", record_coverage)
     with pytest.raises(StopAfterCoverageError):
-        upgrade.verify_ai({"ai": {"retained": {}}}, required=True)
+        upgrade.verify_ai(
+            {"ai": {"retained": {}, "tables": {"ai_approval": {"count": 1}}}},
+            required=True,
+        )
     assert observed == [["ai_approval"]]
 
 
