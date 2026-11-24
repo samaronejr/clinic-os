@@ -13,7 +13,7 @@ post-migration verifier can bind to exactly these rows.
 
 import json
 import os
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from runpy import run_path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -57,10 +57,16 @@ ORGANIZATION_ID = uuid4()
 CLINIC_ID = uuid4()
 OWNER_ID = uuid4()
 PRACTITIONER_ID = uuid4()
-OWNER_USERNAME = f"upgrade-owner-{uuid4().hex[:8]}"
-PRACTITIONER_USERNAME = f"upgrade-md-{uuid4().hex[:8]}"
-PATIENT_NAME = "Synthetic Upgrade Persona"
-PATIENT_BIRTH_DATE = date(1988, 4, 17)
+core = run_path(
+    str(
+        Path(os.environ["UPGRADE_HELPER_ROOT"])
+        / "ops/testing/migration_upgrade_core_fixture.py"
+    )
+)
+OWNER_USERNAME = core["OWNER_USERNAME"]
+PRACTITIONER_USERNAME = core["PRACTITIONER_USERNAME"]
+PATIENT_NAME = core["PATIENT_NAME"]
+PATIENT_BIRTH_DATE = core["PATIENT_BIRTH_DATE"]
 
 with transaction.atomic(), connection.cursor() as cursor:
     cursor.execute(
@@ -69,15 +75,15 @@ with transaction.atomic(), connection.cursor() as cursor:
     )
     organization = Organization.objects.create(
         id=ORGANIZATION_ID,
-        name="Synthetic Upgrade Organization",
-        cnpj=f"{int(ORGANIZATION_ID) % 10**14:014d}",
+        name=core["ORGANIZATION_NAME"],
+        cnpj=core["ORGANIZATION_CNPJ"],
     )
     clinic = Clinic.objects.create(
         id=CLINIC_ID,
         organization=organization,
-        name="Synthetic Upgrade Clinic",
-        crm_uf="SP",
-        timezone="America/Sao_Paulo",
+        name=core["CLINIC_NAME"],
+        crm_uf=core["CLINIC_REGION"],
+        timezone=core["CLINIC_TIMEZONE"],
     )
     owner = User.objects.create(
         id=OWNER_ID,
@@ -116,15 +122,17 @@ try:
         availability = create_availability(
             clinic_id=CLINIC_ID,
             practitioner_id=PRACTITIONER_ID,
-            start_local="2035-08-03T08:00",
-            end_local="2035-08-03T12:00",
+            start_local=core["AVAILABILITY_START"],
+            end_local=core["AVAILABILITY_END"],
             idempotency_key=uuid4(),
         )
         appointment = create_appointment(
             clinic_id=CLINIC_ID,
             enrollment_id=registration.enrollment.pk,
             practitioner_id=PRACTITIONER_ID,
-            local_range=AppointmentLocalRange("2035-08-03T09:00", "2035-08-03T10:00"),
+            local_range=AppointmentLocalRange(
+                core["APPOINTMENT_START"], core["APPOINTMENT_END"]
+            ),
             idempotency_key=uuid4(),
         )
         for index in range(2):

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import psycopg
 import pytest
 from django.db import connection
+from ops.testing.migration_upgrade_core_verify import verify_core_fixture
 from ops.testing.migration_upgrade_rows import differences, read_rows, table_keys
 from ops.testing.migration_upgrade_seed_state import (
     observe_base,
@@ -22,6 +23,32 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from psycopg import Cursor
+
+
+def _catalog_counts(cursor: Cursor[tuple[object, ...]]) -> dict[str, int]:
+    cursor.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='clinic_app' AND table_type='BASE TABLE'"
+    )
+    tables = [str(row[0]) for row in cursor.fetchall()]
+    counts = {}
+    for table in tables:
+        cursor.execute(
+            sql.SQL("SELECT count(*) FROM {}").format(
+                sql.Identifier("clinic_app", table)
+            )
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert isinstance(row[0], int)
+        counts[table] = row[0]
+    return counts
+
+
+def _assert_sweep_coverage(seeded: set[str], swept: set[str]) -> None:
+    assert seeded == swept, f"sweep coverage mismatch: {sorted(seeded ^ swept)}"
 
 
 @pytest.fixture
@@ -37,6 +64,7 @@ def seed_receipt(
     monkeypatch.setenv("UPGRADE_BASE_OBSERVATION", str(tmp_path / "base.json"))
     monkeypatch.setenv("UPGRADE_BASE_SHA", "synthetic-base")
     monkeypatch.setenv("UPGRADE_ADMIN_DATABASE_URL", superuser_database_url)
+    monkeypatch.setenv("CLINIC_SECRET_DIR", str(synthetic_secret_backend))
     observe_base()
     try:
         yield receipt
@@ -147,9 +175,19 @@ def test_changed_or_partial_fixture_cannot_seed_even_without_file_markers(
 def test_every_seeded_table_rejects_a_forward_row_mutation(
     seed_receipt: Path, superuser_database_url: str
 ) -> None:
-    _run_seed()
     with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
+        before = _catalog_counts(cursor)
+        _run_seed()
+        after = _catalog_counts(cursor)
+        seeded = {name for name in after if after[name] > before[name]}
         expected = read_rows(cursor)
+        _assert_sweep_coverage(seeded, set(expected))
+        for omitted in seeded:
+            with pytest.raises(
+                AssertionError, match=f"sweep coverage mismatch:.*{omitted}"
+            ):
+                _assert_sweep_coverage(seeded, set(expected) - {omitted})
+        swept = set()
         keys = dict(table_keys(cursor))
         for table, rows in expected.items():
             key = next(iter(rows))
@@ -195,4 +233,44 @@ def test_every_seeded_table_rejects_a_forward_row_mutation(
                 assert differences(expected, actual) == [
                     f"seeded value mismatch: {table}.{column} {key}"
                 ]
+                swept.add(table)
                 raise Rollback(mutation)
+        _assert_sweep_coverage(seeded, swept)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_typed_comparator_rejects_changed_array_lower_bound(
+    seed_receipt: Path, superuser_database_url: str
+) -> None:
+    _run_seed()
+    with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
+        expected = read_rows(cursor, typed=True)
+        with admin.transaction() as mutation:
+            cursor.execute(
+                "UPDATE clinic_app.intake_patientaccessgrant "
+                "SET operations=('[0:' || (cardinality(operations)-1) || ']=' "
+                "|| operations::text)::varchar[]"
+            )
+            assert cursor.rowcount == 1
+            failures = differences(expected, read_rows(cursor, typed=True))
+            assert len(failures) == 1
+            assert failures[0].startswith(
+                "seeded value mismatch: intake_patientaccessgrant.operations "
+            )
+            raise Rollback(mutation)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_core_oracle_rejects_wrong_values_without_a_capture(
+    seed_receipt: Path, superuser_database_url: str
+) -> None:
+    _run_seed()
+    assert verify_core_fixture() == []
+    with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+        admin.execute(
+            "UPDATE clinic_app.identity_organization "
+            "SET name='Unexpected Synthetic Organization'"
+        )
+        assert verify_core_fixture() == [
+            "core fixture mismatch: identity_organization.name"
+        ]

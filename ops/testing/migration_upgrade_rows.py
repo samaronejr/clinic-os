@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 type Row = dict[str, object]
 type Tables = dict[str, dict[str, Row]]
+_TYPED = "__upgrade_typed_values__"
 _ORIGINAL_AND_ONE_RETRY = 2
 
 # Metadata and reference rows are created by migrations, not by the seed.
@@ -219,21 +220,30 @@ def _session_claim(rows: Tables) -> None:
 
 
 def _patient_name_index(rows: Tables) -> None:
-    from apps.intake.patient_name_index import name_indexes  # noqa: PLC0415
-    from apps.tenancy.envelope import reveal  # noqa: PLC0415
     from django.db import connection, transaction  # noqa: PLC0415
 
+    # Independent vector for the defined fixture name, not normalization of
+    # the row under test and not a call to the migration's Python helper.
+    normalized = b"synthetic upgrade persona"
+    kek = (
+        (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
+        .read_text(encoding="ascii")
+        .strip()
+    )
     for patient in rows.get("intake_patient", {}).values():
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "SELECT set_config('app.current_tenant', %s, true)",
                 [str(patient["organization_id"])],
             )
-            name = reveal(
-                purpose="intake.patient.full_name",
-                envelope=bytes.fromhex(str(patient["full_name"])[2:]),
-            ).decode("utf-8")
-            patient["full_name_index"] = "\\x" + name_indexes(name)[-1].hex()
+            cursor.execute(
+                "SELECT clinic_app.hmac(%s,"
+                "clinic_app.tenant_dek_unwrap(%s, key_version), 'sha256') "
+                "FROM clinic_app.tenancy_tenantdatakey "
+                "ORDER BY key_version DESC LIMIT 1",
+                [b"intake.patient.full_name.exact.v1\0" + normalized, kek],
+            )
+            patient["full_name_index"] = "\\x" + bytes(cursor.fetchone()[0]).hex()
 
 
 # The only data rewrites in the supported base paths, in migration order.
@@ -282,6 +292,10 @@ def expected_rows(rows: Tables, applied: set[tuple[str, str]]) -> Tables:
             if any(failure.split(" ", 4)[3] not in columns for failure in changed):
                 message = f"undeclared fixture rewrite in {migration}"
                 raise RuntimeError(message)
+            for path in columns:
+                table, column = path.split(".", 1)
+                for row in rows.get(table, {}).values():
+                    cast("dict[str, str]", row.get(_TYPED, {})).pop(column, None)
     return rows
 
 
@@ -306,22 +320,40 @@ def table_keys(cursor: Cursor[tuple[object, ...]]) -> list[tuple[str, list[str]]
     ]
 
 
-def read_rows(cursor: Cursor[tuple[object, ...]]) -> Tables:
+def read_rows(cursor: Cursor[tuple[object, ...]], *, typed: bool = False) -> Tables:
     """Read all fixture-eligible rows through the scratch admin audit connection."""
     result: Tables = {}
     for table, keys in table_keys(cursor):
+        names: list[str] = []
+        if typed:
+            cursor.execute(
+                "SELECT attname FROM pg_attribute "
+                "WHERE attrelid=%s::regclass AND attnum>0 AND NOT attisdropped "
+                "ORDER BY attnum",
+                ["clinic_app." + table],
+            )
+            names = [str(name) for (name,) in cursor.fetchall()]
+        expressions: list[sql.Composable] = [sql.SQL("to_jsonb(t)::text")]
+        expressions.extend(
+            sql.SQL("encode(pg_catalog.record_send(ROW(t.{})), 'hex')").format(
+                sql.Identifier(name)
+            )
+            for name in names
+        )
         cursor.execute(
-            sql.SQL("SELECT to_jsonb(t)::text FROM clinic_app.{} t").format(
-                sql.Identifier(table)
+            sql.SQL("SELECT {} FROM clinic_app.{} t").format(
+                sql.SQL(", ").join(expressions), sql.Identifier(table)
             )
         )
         rows: dict[str, Row] = {}
-        for (raw,) in cursor:
+        for raw, *values in cursor:
             if not keys:
                 message = f"seeded table {table} has no stable primary key"
                 raise RuntimeError(message)
             value = json.loads(str(raw))
             key = json.dumps([value[k] for k in keys], separators=(",", ":"))
+            if typed:
+                value[_TYPED] = dict(zip(names, values, strict=True))
             rows[key] = value
         if rows:
             result[table] = rows
@@ -336,7 +368,7 @@ def snapshot() -> tuple[Tables, set[tuple[str, str]]]:
     ):
         cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         cursor.execute("SET LOCAL row_security=off")
-        rows = read_rows(cursor)
+        rows = read_rows(cursor, typed=True)
         cursor.execute("SELECT app,name FROM clinic_app.django_migrations")
         applied = {(str(app), str(name)) for app, name in cursor.fetchall()}
     return rows, applied
@@ -359,14 +391,18 @@ def differences(expected: Tables, actual: Tables) -> list[str]:
             if key not in rows or key not in observed:
                 failures.append(f"seeded value mismatch: {table}.<row> {key}")
                 continue
+            old, new = rows[key], observed[key]
+            old_bytes = cast("dict[str, str]", old.get(_TYPED, {}))
+            new_bytes = cast("dict[str, str]", new.get(_TYPED, {}))
             failures.extend(
                 f"seeded value mismatch: {table}.{col} {key}"
-                for col in sorted(rows[key].keys() | observed[key].keys())
+                for col in sorted((old.keys() | new.keys()) - {_TYPED})
                 if (
-                    col not in rows[key]
-                    or col not in observed[key]
-                    or json.dumps(rows[key][col], sort_keys=True)
-                    != json.dumps(observed[key][col], sort_keys=True)
+                    col not in old
+                    or col not in new
+                    or json.dumps(old[col], sort_keys=True)
+                    != json.dumps(new[col], sort_keys=True)
+                    or (col in old_bytes and old_bytes[col] != new_bytes.get(col))
                 )
             )
     return failures
