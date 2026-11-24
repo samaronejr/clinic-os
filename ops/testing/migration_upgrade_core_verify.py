@@ -61,7 +61,8 @@ def _patient(cursor: Cursor[tuple[object, ...]], organization: object) -> None:
         cursor.execute(
             """SELECT
             clinic_app.tenant_decrypt(%s,'intake.patient.birth_date',%s) = %s,
-            clinic_app.tenant_decrypt(%s,'intake.patient.full_name',%s) = %s""",
+            clinic_app.tenant_decrypt(%s,'intake.patient.full_name',%s) = %s,
+            %s <> %s AND %s <> %s""",
             [
                 kek,
                 birth,
@@ -69,9 +70,13 @@ def _patient(cursor: Cursor[tuple[object, ...]], organization: object) -> None:
                 kek,
                 name,
                 PATIENT_NAME.encode(),
+                birth,
+                PATIENT_BIRTH_DATE.isoformat().encode(),
+                name,
+                PATIENT_NAME.encode(),
             ],
         )
-        valid = cursor.fetchone() == (True, True)
+        valid = cursor.fetchone() == (True, True, True)
     except errors.DatabaseError as error:
         if error.sqlstate not in {"TEN01", "TEN02", "TEN03", "39000"}:
             raise
@@ -79,6 +84,30 @@ def _patient(cursor: Cursor[tuple[object, ...]], organization: object) -> None:
     if not valid:
         message = "core fixture mismatch: intake_patient envelope plaintext"
         raise RuntimeError(message)
+
+
+def _patient_index(cursor: Cursor[tuple[object, ...]], organization: object) -> bool:
+    # Independent framing and normalization vector for this seed literal.
+    # Only the random tenant key is resolved from PostgreSQL.
+    kek = (
+        (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
+        .read_text(encoding="ascii")
+        .strip()
+    )
+    cursor.execute(
+        "SELECT p.full_name_index = clinic_app.hmac(%s, "
+        "clinic_app.tenant_dek_unwrap(%s,k.key_version),'sha256') "
+        "FROM clinic_app.intake_patient p "
+        "JOIN clinic_app.tenancy_tenantdatakey k "
+        "ON k.organization_id=p.organization_id "
+        "WHERE p.organization_id=%s::uuid AND k.status='active'",
+        [
+            b"intake.patient.full_name.exact.v1\0synthetic upgrade persona",
+            kek,
+            str(organization),
+        ],
+    )
+    return cursor.fetchall() == [(True,)]
 
 
 def verify_core_fixture() -> list[str]:
@@ -96,6 +125,8 @@ def verify_core_fixture() -> list[str]:
         if organization is None:
             return [*failures, "core fixture mismatch: identity_organization.name"]
         _patient(cursor, organization)
+        if not _patient_index(cursor, organization):
+            failures.append("core fixture mismatch: intake_patient.full_name_index")
         cursor.execute(
             """
             SELECT count(*) FROM clinic_app.identity_clinic c
