@@ -141,36 +141,35 @@ markers = {
     "practitioner_id": str(PRACTITIONER_ID),
     "patient_name": PATIENT_NAME,
 }
-# ``inbox`` scopes a rehearsal from a base whose AI history this seed cannot
-# write (its guards already postdate that history); the verifier then
-# requires the inbox histories instead of silently passing.
-markers["seed_scope"] = os.environ.get("UPGRADE_SEED_SCOPE", "all")
-with connection.cursor() as cursor:
-    cursor.execute("SELECT to_regclass('clinic_app.ai_aiinvocation') IS NOT NULL")
-    markers["ai_present"] = cursor.fetchone()[0]
-if markers["ai_present"] and markers["seed_scope"] != "inbox":
-    helper = (
-        Path(os.environ["UPGRADE_HELPER_ROOT"])
-        / "ops/testing/migration_upgrade_ai_seed.py"
+seeds = ["core"]
+
+
+def _helper(
+    name: str, entry: str
+) -> "Callable[[dict[str, object]], dict[str, object]]":
+    path = Path(os.environ["UPGRADE_HELPER_ROOT"]) / f"ops/testing/{name}"
+    return cast(
+        "Callable[[dict[str, object]], dict[str, object]]", run_path(str(path))[entry]
     )
-    seed_ai = cast(
-        "Callable[[dict[str, object]], dict[str, object]]",
-        run_path(str(helper))["seed_ai"],
-    )
-    markers["ai"] = seed_ai(markers)
-with connection.cursor() as cursor:
-    cursor.execute("SELECT to_regclass('clinic_app.comms_message') IS NOT NULL")
-    inbox_present = cursor.fetchone()[0]
-if inbox_present:
-    helper = (
-        Path(os.environ["UPGRADE_HELPER_ROOT"])
-        / "ops/testing/migration_upgrade_inbox_seed.py"
-    )
-    seed_inbox = cast(
-        "Callable[[dict[str, object]], dict[str, object]]",
-        run_path(str(helper))["seed_inbox"],
-    )
-    markers["inbox"] = seed_inbox(markers)
+
+
+def _present(table: str) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass(%s) IS NOT NULL", [f"clinic_app.{table}"])
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+# The inbox histories come first: the AI seed snapshots whole tables when it
+# finishes, so every row written before that snapshot is preserved with it.
+if _present("comms_message"):
+    markers["inbox"] = _helper("migration_upgrade_inbox_seed.py", "seed_inbox")(markers)
+    seeds.append("inbox")
+markers["ai_present"] = _present("ai_aiinvocation")
+if markers["ai_present"]:
+    markers["ai"] = _helper("migration_upgrade_ai_seed.py", "seed_ai")(markers)
+    seeds.append("ai")
+markers["seeds"] = seeds
 seed_path = os.environ.get("UPGRADE_SEED_FILE", "")
 if seed_path:
     Path(seed_path).write_text(

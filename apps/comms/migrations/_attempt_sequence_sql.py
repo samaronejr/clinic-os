@@ -2,18 +2,24 @@
 
 Every ``comms.message`` outbox row carries ``attempt_sequence``; the highest
 is the message's current attempt. Attempts that predate the sequence are
-ordered only by a link the send itself recorded, never by a clock or a UUID:
-``send_message`` enqueues the original attempt under the message's own
-``command_id`` in the message's insert transaction, and every other attempt
-is a later retry. So a message with one attempt, or with that original plus a
-single retry, has a causal order. Anything else (several retries, or no
-attempt bound to the send) is left unnumbered: the message is held for staff
-reconciliation, no attempt of it may send, and no successor is admitted until
-a staff member records which attempt the provider confirms as current.
+ordered only by evidence the base recorded, never by a clock or a UUID:
 
-A further attempt is admitted only when the current one carries its own
-negative evidence and no attempt or legacy projection proves delivery, so at
-most one provider-accepted attempt per message can be open at a time.
+* ``send_message`` enqueued the original attempt under the message's own
+  ``command_id`` in the message's insert transaction; every other attempt is
+  a later retry. A message with one attempt, or with that original plus a
+  single retry, has a causal order.
+* A WhatsApp status receipt's event id is ``{provider reference}:{status}:
+  {timestamp}``, so each legacy WhatsApp receipt is bound to the attempt that
+  owns the reference, exactly as new receipts are.
+
+Anything else is left unnumbered and held for staff reconciliation: two or
+more retries, an original that cannot be identified, or a retried email/SMS
+message whose provider failure was projected onto the message without naming
+an attempt. While held no attempt may send and no successor is admitted.
+
+A successor is admitted, and a provider reference bound, only while no other
+attempt holds a reference without its own negative evidence, so at most one
+provider-accepted attempt per message is open at a time.
 """
 
 COLUMN_SQL = """
@@ -21,9 +27,25 @@ ALTER TABLE clinic_app.comms_integrationoperation
  ADD COLUMN IF NOT EXISTS attempt_sequence bigint;
 """
 
-# Numbers only messages whose order the send recorded and none of whose
-# attempts is numbered yet, so an interrupted pass resumes unchanged.
+# Binds legacy WhatsApp status receipts to the attempt their own event id
+# names, then numbers only messages whose order the send recorded. Both touch
+# only rows still pending, so an interrupted pass resumes unchanged.
 BACKFILL_SQL = """
+UPDATE clinic_app.comms_inboundevent AS e
+   SET operation_id = o.id,
+       delivery_state = substring(e.event_id
+         FROM ':(sent|delivered|read|failed):[^:]*$')
+  FROM clinic_app.comms_integrationoperation o
+  JOIN clinic_app.comms_message m ON m.id = o.subject_id
+  JOIN clinic_app.comms_conversation c ON c.id = m.conversation_id
+ WHERE e.kind = 'status' AND e.operation_id IS NULL
+   AND e.event_id ~ '^.+:(sent|delivered|read|failed):[^:]*$'
+   AND o.subject_type = 'comms.message' AND o.channel = 'whatsapp'
+   AND o.organization_id = e.organization_id
+   AND c.provider_account_id = e.provider_account_id
+   AND o.provider_reference = substring(e.event_id
+         FROM '^(.+):(?:sent|delivered|read|failed):[^:]*$');
+
 UPDATE clinic_app.comms_integrationoperation AS o
    SET attempt_sequence = r.n
   FROM (SELECT z.id,
@@ -34,14 +56,17 @@ UPDATE clinic_app.comms_integrationoperation AS o
           JOIN (SELECT s.subject_id, count(*) AS total,
                        count(s.attempt_sequence) AS numbered,
                        count(*) FILTER (WHERE s.idempotency_key = sm.command_id)
-                         AS original
+                         AS original,
+                       bool_or(s.channel <> 'whatsapp') AS unattributed
                   FROM clinic_app.comms_integrationoperation s
                   JOIN clinic_app.comms_message sm ON sm.id = s.subject_id
                  WHERE s.subject_type = 'comms.message'
                  GROUP BY s.subject_id) AS c ON c.subject_id = z.subject_id
          WHERE z.subject_type = 'comms.message'
            AND c.numbered = 0
-           AND (c.total = 1 OR (c.total = 2 AND c.original = 1))) AS r
+           AND (c.total = 1
+                OR (c.total = 2 AND c.original = 1
+                    AND NOT (c.unattributed AND m.provider_state = 'failed')))) AS r
  WHERE o.id = r.id;
 """
 
@@ -52,6 +77,24 @@ ALTER TABLE clinic_app.comms_integrationoperation
 ALTER TABLE clinic_app.comms_integrationoperation
  ADD CONSTRAINT comms_operation_attempt_sequence_scope
  CHECK (subject_type = 'comms.message' OR attempt_sequence IS NULL);
+
+-- Whether one attempt carries its own negative evidence: a terminal failure,
+-- a bound failed receipt, or (for the sole original) a pre-attribution
+-- failure projected onto the message.
+CREATE FUNCTION clinic_app.comms_attempt_refuted(
+  attempt clinic_app.comms_integrationoperation
+) RETURNS boolean LANGUAGE sql STABLE
+SET search_path = pg_catalog, clinic_app, pg_temp AS $f$
+ SELECT attempt.status IN ('failed', 'cancelled')
+  OR EXISTS (SELECT 1 FROM clinic_app.comms_inboundevent e
+              WHERE e.operation_id = attempt.id AND e.delivery_state = 'failed')
+  OR (attempt.attempt_sequence = 1 AND EXISTS (
+       SELECT 1 FROM clinic_app.comms_message m
+        WHERE m.id = attempt.subject_id AND m.provider_state = 'failed'))
+$f$;
+REVOKE ALL ON FUNCTION
+ clinic_app.comms_attempt_refuted(clinic_app.comms_integrationoperation)
+ FROM PUBLIC;
 
 CREATE FUNCTION clinic_app.comms_message_attempt_guard()
 RETURNS trigger LANGUAGE plpgsql
@@ -65,6 +108,22 @@ BEGIN
     ERRCODE = '23514',
     CONSTRAINT = 'comms_message_attempt_sequence_immutable_check',
     MESSAGE = 'message attempt order is immutable';
+  END IF;
+  -- A provider reference is bound only while every other accepted attempt
+  -- of the message carries its own negative evidence. Nested so the
+  -- evidence is read only when a reference is actually being bound.
+  IF NEW.subject_type = 'comms.message' AND OLD.provider_reference IS NULL
+     AND NEW.provider_reference IS NOT NULL THEN
+   IF EXISTS (SELECT 1 FROM clinic_app.comms_integrationoperation o
+               WHERE o.subject_type = NEW.subject_type
+                 AND o.subject_id = NEW.subject_id AND o.id <> NEW.id
+                 AND o.provider_reference IS NOT NULL
+                 AND NOT clinic_app.comms_attempt_refuted(o)) THEN
+    RAISE EXCEPTION USING
+     ERRCODE = '23514',
+     CONSTRAINT = 'comms_message_attempt_reference_check',
+     MESSAGE = 'another provider-accepted attempt is still open';
+   END IF;
   END IF;
   RETURN NEW;
  END IF;
@@ -101,16 +160,8 @@ BEGIN
               WHERE o.subject_type = NEW.subject_type
                 AND o.subject_id = NEW.subject_id
                 AND e.delivery_state IN ('delivered', 'read'))
-  OR NOT (current_attempt.status IN ('failed', 'cancelled')
-   OR (current_attempt.status = 'succeeded' AND (
-     EXISTS (SELECT 1 FROM clinic_app.comms_inboundevent e
-              WHERE e.operation_id = current_attempt.id
-                AND e.delivery_state = 'failed')
-     -- A pre-attribution failure names no attempt: it counts only for a
-     -- message that never had a second one.
-     OR (current_attempt.attempt_sequence = 1 AND EXISTS (
-       SELECT 1 FROM clinic_app.comms_message m
-        WHERE m.id = NEW.subject_id AND m.provider_state = 'failed')))))
+  OR current_attempt.status NOT IN ('failed', 'cancelled', 'succeeded')
+  OR NOT clinic_app.comms_attempt_refuted(current_attempt)
  THEN
   RAISE EXCEPTION USING
    ERRCODE = '23514',
@@ -127,22 +178,29 @@ CREATE TRIGGER comms_message_attempt_guard BEFORE INSERT OR UPDATE
 
 GRANT UPDATE (attempt_sequence) ON clinic_app.comms_integrationoperation
  TO clinic_resolver;
+GRANT EXECUTE ON FUNCTION
+ clinic_app.comms_attempt_refuted(clinic_app.comms_integrationoperation)
+ TO clinic_app;
 SET LOCAL ROLE clinic_resolver;
--- Records a staff member's decision for an unordered legacy message: the
--- chosen attempt becomes current; the others precede it. Their mutual order
--- is not evidence, it only fills the numbers.
+-- Records a staff decision for a held legacy message under the caller's
+-- message lock. ``requested_current`` must be an attempt the provider
+-- accepted (it holds a reference); NULL records that none was accepted and
+-- is allowed only when no attempt holds one. Every queued attempt is
+-- cancelled in the same transaction, so none can send after the decision;
+-- an attempt a worker holds in progress refuses the decision until that
+-- worker's recheck has cancelled it.
 CREATE FUNCTION clinic_app.comms_reconcile_attempts(
   requested_message uuid, requested_current uuid
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, clinic_app, pg_temp AS $f$
 DECLARE scope clinic_app.comms_integrationoperation;
+DECLARE chosen uuid;
 BEGIN
  SELECT * INTO scope FROM clinic_app.comms_integrationoperation o
-  WHERE o.id = requested_current AND o.subject_type = 'comms.message'
-    AND o.subject_id = requested_message
+  WHERE o.subject_type = 'comms.message' AND o.subject_id = requested_message
     AND o.organization_id =
         NULLIF(pg_catalog.current_setting('app.current_tenant', true), '')::uuid
-  FOR UPDATE;
+  ORDER BY o.id LIMIT 1;
  IF scope.id IS NULL OR NOT clinic_app.questionnaire_staff(scope.clinic_id,
      ARRAY['clinic_admin', 'clinic_manager', 'receptionist', 'scheduler',
            'nurse', 'physician']) THEN
@@ -151,22 +209,42 @@ BEGIN
  PERFORM 1 FROM clinic_app.comms_integrationoperation o
   WHERE o.subject_type = 'comms.message' AND o.subject_id = requested_message
   FOR UPDATE;
- IF EXISTS (SELECT 1 FROM clinic_app.comms_integrationoperation o
-             WHERE o.subject_type = 'comms.message'
-               AND o.subject_id = requested_message
-               AND o.attempt_sequence IS NOT NULL)
+ IF requested_current IS NULL THEN
+  SELECT o.id INTO chosen FROM clinic_app.comms_integrationoperation o
+   WHERE o.subject_type = 'comms.message' AND o.subject_id = requested_message
+     AND NOT EXISTS (SELECT 1 FROM clinic_app.comms_integrationoperation a
+                      WHERE a.subject_type = 'comms.message'
+                        AND a.subject_id = requested_message
+                        AND a.provider_reference IS NOT NULL)
+   ORDER BY o.id DESC LIMIT 1;
+ ELSE
+  SELECT o.id INTO chosen FROM clinic_app.comms_integrationoperation o
+   WHERE o.id = requested_current AND o.subject_type = 'comms.message'
+     AND o.subject_id = requested_message AND o.provider_reference IS NOT NULL;
+ END IF;
+ IF chosen IS NULL
+    OR EXISTS (SELECT 1 FROM clinic_app.comms_integrationoperation o
+                WHERE o.subject_type = 'comms.message'
+                  AND o.subject_id = requested_message
+                  AND (o.attempt_sequence IS NOT NULL
+                       OR o.status = 'in_progress'))
     OR (SELECT count(*) FROM clinic_app.comms_integrationoperation o
          WHERE o.subject_type = 'comms.message'
            AND o.subject_id = requested_message) < 2 THEN
   RAISE EXCEPTION USING
    ERRCODE = '23514',
    CONSTRAINT = 'comms_message_attempt_reconciliation_check',
-   MESSAGE = 'message attempt order is not awaiting reconciliation';
+   MESSAGE = 'message attempts cannot be reconciled this way';
  END IF;
+ UPDATE clinic_app.comms_integrationoperation AS o
+    SET status = 'cancelled', last_error = 'subject_ineligible',
+        updated_at = pg_catalog.statement_timestamp()
+  WHERE o.subject_type = 'comms.message' AND o.subject_id = requested_message
+    AND o.status = 'pending';
  UPDATE clinic_app.comms_integrationoperation AS o
     SET attempt_sequence = r.n
    FROM (SELECT z.id, row_number() OVER (
-                  ORDER BY z.id = requested_current, z.id) AS n
+                  ORDER BY z.id = chosen, z.id) AS n
            FROM clinic_app.comms_integrationoperation z
           WHERE z.subject_type = 'comms.message'
             AND z.subject_id = requested_message) AS r

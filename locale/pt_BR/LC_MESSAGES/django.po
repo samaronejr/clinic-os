@@ -11578,8 +11578,11 @@ msgstr "Nada é enviado enquanto isto estiver aberto. Confirme com o provedor qu
 msgid "Provider reference %(reference)s"
 msgstr "Referência do provedor %(reference)s"
 
-msgid "No provider reference"
-msgstr "Sem referência do provedor"
+msgid "Nothing is sent while this is open. The provider accepted none of these attempts."
+msgstr "Nada é enviado enquanto isto estiver aberto. O provedor não aceitou nenhuma destas tentativas."
+
+msgid "Record that none was accepted"
+msgstr "Registrar que nenhuma foi aceita"
 
 msgid "Record current attempt"
 msgstr "Registrar tentativa atual"

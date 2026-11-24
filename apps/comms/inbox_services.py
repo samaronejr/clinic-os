@@ -679,8 +679,8 @@ def retry_message(
                     idempotency_key=command_id,
                 )
             )
-            if message.provider_state == "failed":
-                Message.objects.filter(pk=message.pk).update(provider_state="")
+            # The failed projection stays: for a sole original it is that
+            # attempt's own negative evidence, which the reference guard reads.
             record_phase1_event(
                 "comms.message.retried",
                 clinic_id=clinic_id,
@@ -695,19 +695,24 @@ def retry_message(
 
 
 def reconcile_message_attempts(
-    *, clinic_id: UUID, message_id: UUID, current_operation_id: UUID
+    *, clinic_id: UUID, message_id: UUID, current_operation_id: UUID | None
 ) -> SendReceipt:
-    """Record which attempt of an unordered legacy message is current.
+    """Record which attempt of a held legacy message the provider accepted.
 
     Attempts that predate the attempt sequence without a recorded order hold
     the message: nothing sends and no retry is admitted until a staff member
-    who may handle the thread names the attempt the provider confirms. The
-    database records that decision; nothing is sent here.
+    who may handle the thread names the accepted attempt, or records that none
+    was accepted (``None``) when no attempt holds a provider reference. Under
+    the message lock the database cancels every queued attempt in the same
+    transaction and refuses while a worker holds one in progress; nothing is
+    sent here.
     """
     message = Message.objects.filter(
         pk=message_id, conversation__clinic_id=clinic_id, direction="out"
     ).first()
-    if message is None or type(current_operation_id) is not UUID:
+    if message is None or (
+        current_operation_id is not None and type(current_operation_id) is not UUID
+    ):
         raise InboxAccessDeniedError
     conversation, _ = _conversation(clinic_id, message.conversation_id, lock=True)
     hold_subject_mutation_lock(SUBJECT_TYPE, message_id)

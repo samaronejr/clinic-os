@@ -166,10 +166,7 @@ else:
         "audit chain lost rows after upgrade",
     )
 
-if markers.get("seed_scope") == "inbox":
-    check("inbox" in markers, "inbox-scoped upgrade seeded no inbox histories")
-else:
-    failures.extend(verify_ai(markers))
+failures.extend(verify_ai(markers))
 failures.extend(verify_inbox(markers))
 
 if failures:

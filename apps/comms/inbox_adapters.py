@@ -214,11 +214,18 @@ def message_send_eligible(scope: OperationScope) -> bool:
         return False
     if message.provider_state in {"delivered", "read"}:
         return False
-    # A legacy message whose attempt order awaits staff reconciliation sends
-    # nothing: which attempt the provider accepted is not known yet.
-    if IntegrationOperation.objects.filter(
-        subject_type=SUBJECT_TYPE, subject_id=message.pk, attempt_sequence__isnull=True
-    ).exists():
+    # Only the message's current attempt may send: never one awaiting staff
+    # reconciliation, and never one a later attempt has superseded.
+    attempts = list(
+        IntegrationOperation.objects.filter(
+            subject_type=SUBJECT_TYPE, subject_id=message.pk
+        ).values_list("attempt_sequence", flat=True)
+    )
+    if (
+        operation.attempt_sequence is None
+        or None in attempts
+        or operation.attempt_sequence != max(n for n in attempts if n is not None)
+    ):
         return False
     conversation, template = message.conversation, message.template
     if conversation.purpose == "marketing":

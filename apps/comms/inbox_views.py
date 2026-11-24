@@ -316,7 +316,9 @@ def _reconcile(request: HttpRequest, clinic_id: UUID, conversation_id: UUID) -> 
     services.reconcile_message_attempts(
         clinic_id=clinic_id,
         message_id=parse_uuid(request.POST.get("message_id")) or uuid4(),
-        current_operation_id=parse_uuid(request.POST.get("operation_id")) or uuid4(),
+        current_operation_id=None
+        if request.POST.get("operation_id") == "none"
+        else parse_uuid(request.POST.get("operation_id")) or uuid4(),
     )
     return gettext("Current attempt recorded. Nothing was sent.")
 

@@ -14644,6 +14644,28 @@
       "probes": [],
       "reason": "Assigns the per-message attempt sequence and admits a successor only after the current attempt's own negative outcome and no delivery proof. Runtime cannot update the sequence."
     },
+    "clinic_app.comms_attempt_refuted": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_attempt_sequence_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_message_attempt_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "attempt comms_integrationoperation",
+            "returns": "bool",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Reads one message attempt's own negative evidence (terminal failure, bound failed receipt, or the sole original's projected failure) for the attempt guard; no staff role decision."
+    },
     "clinic_app.comms_reconcile_attempts": {
       "discovery": {
         "migrations": [

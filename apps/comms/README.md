@@ -221,17 +221,27 @@ Delivery/read proof from **any** attempt survives in `Message.provider_state`
 and vetoes a queued retry at the send boundary. A pre-attribution failure
 projected onto the message counts only for a message with a single attempt;
 historical unbound reports are never attributed to a successor. Attempts that
-predate the sequence were numbered once by comms 0013 (non-atomic, resumable,
-irreversible) only from the link the send recorded: the attempt enqueued under
-the message's own `command_id` is the original, every other one a later retry.
-A message with one attempt, or that original and one retry, is ordered; any
-other legacy message keeps its attempts unnumbered and shows `reconciliation`:
-the worker's recheck cancels its queued attempts without sending, staff retry
-and direct outbox writes are refused, and only
+predate the sequence were handled once by comms 0013 (non-atomic, resumable,
+irreversible) using only evidence the base recorded. Each legacy WhatsApp
+status receipt is bound to the attempt its own event id names
+(`{reference}:{status}:{timestamp}`). The attempt enqueued under the message's
+own `command_id` is the original and every other one a later retry, so a
+message with one attempt, or that original and one retry, is ordered. Any
+other legacy message, and a retried email/SMS message whose failure was
+projected onto the message without naming an attempt, keeps its attempts
+unnumbered and shows `reconciliation`. While held, the worker's recheck
+cancels its attempts without sending, and staff retry and direct outbox writes
+are refused. Only
 `reconcile_message_attempts(*, clinic_id, message_id, current_operation_id)`
-by a staff member who may handle the thread names the current attempt
-(`comms_reconcile_attempts`, audited as `comms.message.reconciled`). Clocks and
-UUIDs never order attempts.
+by a staff member who may handle the thread releases it
+(`comms_reconcile_attempts`, audited as `comms.message.reconciled`). That
+decision runs under the message lock and names an attempt that holds a
+provider reference, or `None` ("none accepted") when no attempt holds one. In
+the same transaction it cancels every queued attempt, and it is refused while
+a worker holds one in progress. Only the message's current attempt may ever
+send, and the insert/update guard refuses to bind a provider reference while
+another attempt holds one without its own negative evidence. Clocks and UUIDs
+never order attempts.
 
 ### Contact tokens
 

@@ -1,24 +1,19 @@
 """Write pre-sequence inbox histories through the *base* revision's own code.
 
 Loaded with ``runpy`` by ``migration_upgrade_seed.py`` inside the base
-worktree, so it may only use entrypoints that exist there: the staff send and
-retry commands, the outbox worker and the signed inbound webhook. Every
-attempt, acceptance and provider failure below is written by those paths;
-the only test seam is the clock or primary key the base ORM gives one retry's
-INSERT, modelling a web worker whose clock runs behind or ties.
+worktree, so it may only use entrypoints that exist there: the staff send,
+retry and close commands, the outbox worker and the signed inbound webhooks.
+Every attempt, acceptance and provider report below is written by those
+paths; the only test seam is the clock or primary key the base ORM gives one
+retry's INSERT, modelling a web worker whose clock runs behind or ties.
 
-Cases (one conversation each):
+Each case is one conversation written by a fixed step script (see
+``CASES``). After its last step the base's own ``message_states`` is read and
+exported as ``base_state``, so the candidate can be held to exactly what the
+base showed staff and whether the base offered a retry.
 
-* ``skew``: A accepted, provider fails A, staff retry B with its INSERT clock
-  ten seconds behind A; B accepted.
-* ``tie``: as ``skew`` but B's clock equals A's and B's UUID sorts below A's.
-* ``chain``: A accepted, provider fails A, staff retry B, the thread is
-  closed, so the worker cancels B without sending.
-* ``ambiguous``: A accepted and failed, retry B accepted and failed, retry C
-  still queued: two retries the base records no order between.
-
-Only identifiers and the account's phone-number id are exported; the
-account signing key stays in ``CLINIC_SECRET_DIR``.
+Only identifiers are exported; the account signing keys stay in
+``CLINIC_SECRET_DIR``.
 """
 
 from __future__ import annotations
@@ -36,6 +31,7 @@ from uuid import UUID, uuid4
 from apps.comms.inbound_providers import sign
 from apps.comms.inbox_inbound import receive_inbound, secret_name
 from apps.comms.inbox_services import (
+    message_states,
     retry_message,
     send_message,
     set_conversation_state,
@@ -59,16 +55,101 @@ if TYPE_CHECKING:
     from django.db.models import Model
 
 PHONE_NUMBER_ID = "100000000000901"
+EMAIL_ACCOUNT = "upgrade-caixa-1"
 TIMESTAMP = "1790000000"
-SENDERS = {
-    "skew": "5511999990901",
-    "tie": "5511999990902",
-    "chain": "5511999990903",
-    "ambiguous": "5511999990904",
+LATE = "1790000050"
+
+# Step vocabulary: ("send",), ("dispatch", label), ("status", label, state[,
+# stamp]), ("retry"|"retry_skew"|"retry_tie",), ("close",). Labels name
+# attempts in creation order: a, b, c.
+_A_FAILED = (("send",), ("dispatch", "a"), ("status", "a", "failed"))
+CASES: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
+    # Single attempt: every outbox and provider outcome the base can record.
+    "p_queued": ("whatsapp", (("send",),)),
+    "p_sent": ("whatsapp", (("send",), ("dispatch", "a"))),
+    "p_sent_receipt": (
+        "whatsapp",
+        (("send",), ("dispatch", "a"), ("status", "a", "sent")),
+    ),
+    "p_delivered": (
+        "whatsapp",
+        (("send",), ("dispatch", "a"), ("status", "a", "delivered")),
+    ),
+    "p_read": ("whatsapp", (("send",), ("dispatch", "a"), ("status", "a", "read"))),
+    "p_failed": ("whatsapp", _A_FAILED),
+    "p_failed_delivered": (
+        "whatsapp",
+        (*_A_FAILED, ("status", "a", "delivered", LATE)),
+    ),
+    "p_cancelled": ("whatsapp", (("send",), ("close",), ("dispatch", "a"))),
+    # The original and one retry, in every outcome of the retry.
+    "r_queued": ("whatsapp", (*_A_FAILED, ("retry",))),
+    "r_sent": ("whatsapp", (*_A_FAILED, ("retry",), ("dispatch", "b"))),
+    "r_failed": (
+        "whatsapp",
+        (*_A_FAILED, ("retry",), ("dispatch", "b"), ("status", "b", "failed")),
+    ),
+    "r_delivered": (
+        "whatsapp",
+        (*_A_FAILED, ("retry",), ("dispatch", "b"), ("status", "b", "delivered")),
+    ),
+    "r_cancelled": (
+        "whatsapp",
+        (*_A_FAILED, ("retry",), ("close",), ("dispatch", "b")),
+    ),
+    # Email/SMS receipts name no attempt; a sole attempt still has parity.
+    "e_failed": ("email", _A_FAILED),
+    "e_retry_sent": ("email", (*_A_FAILED, ("retry",), ("dispatch", "b"))),
+    "e_retry_failed": (
+        "email",
+        (*_A_FAILED, ("retry",), ("dispatch", "b"), ("status", "b", "failed")),
+    ),
+    # Round-3 worker clocks: the retry's INSERT behind, or tied and lower.
+    "skew": ("whatsapp", (*_A_FAILED, ("retry_skew",), ("dispatch", "b"))),
+    "tie": ("whatsapp", (*_A_FAILED, ("retry_tie",), ("dispatch", "b"))),
+    # Two retries: the base recorded no order between them.
+    "ambiguous": (
+        "whatsapp",
+        (
+            *_A_FAILED,
+            ("retry",),
+            ("dispatch", "b"),
+            ("status", "b", "failed"),
+            ("retry",),
+        ),
+    ),
+    # Three attempts the provider never accepted (the thread was closed).
+    "none_accepted": (
+        "whatsapp",
+        (
+            ("send",),
+            ("close",),
+            ("dispatch", "a"),
+            ("retry",),
+            ("dispatch", "b"),
+            ("retry",),
+        ),
+    ),
+    # Round 4: B accepted under a skewed clock, a late failure for A makes the
+    # base itself show failed and queue C.
+    **dict.fromkeys(
+        ("accepted_then_queued", "queued_cancelled_first", "race"),
+        (
+            "whatsapp",
+            (
+                *_A_FAILED,
+                ("retry_skew",),
+                ("dispatch", "b"),
+                ("status", "a", "failed", LATE),
+                ("retry",),
+            ),
+        ),
+    ),
 }
 
 
-def _body(**value: object) -> bytes:
+def whatsapp_body(**value: object) -> bytes:
+    """One WhatsApp Cloud webhook body carrying the given message/status lists."""
     change = {
         "messaging_product": "whatsapp",
         "metadata": {
@@ -91,9 +172,24 @@ def _body(**value: object) -> bytes:
     return json.dumps(root).encode()
 
 
-def status_body(reference: str, status: str, stamp: str = TIMESTAMP) -> bytes:
-    """One signed-shape WhatsApp status report for one provider reference."""
-    return _body(
+def status_body(channel: str, reference: str, status: str, stamp: str) -> bytes:
+    """One provider status report for one provider reference."""
+    if channel == "email":
+        return json.dumps(
+            {
+                "account": EMAIL_ACCOUNT,
+                "events": [
+                    {
+                        "kind": "status",
+                        "event_id": f"upgrade-status-{uuid4().hex}",
+                        "provider_message_id": reference,
+                        "status": status,
+                        "sent_at": int(stamp),
+                    }
+                ],
+            }
+        ).encode()
+    return whatsapp_body(
         statuses=[
             {
                 "id": reference,
@@ -111,13 +207,54 @@ def status_body(reference: str, status: str, stamp: str = TIMESTAMP) -> bytes:
     )
 
 
+def _inbound_message(channel: str, sender: str, event: str) -> bytes:
+    if channel == "email":
+        return json.dumps(
+            {
+                "account": EMAIL_ACCOUNT,
+                "events": [
+                    {
+                        "kind": "message",
+                        "event_id": event,
+                        "from": sender,
+                        "text": "Oi",
+                        "sent_at": int(TIMESTAMP),
+                    }
+                ],
+            }
+        ).encode()
+    return whatsapp_body(
+        messages=[
+            {
+                "from": sender,
+                "id": event,
+                "timestamp": TIMESTAMP,
+                "type": "text",
+                "text": {"body": "Oi"},
+            }
+        ]
+    )
+
+
+@contextmanager
+def runtime() -> Iterator[None]:
+    """Act as the runtime role, as the web and worker processes do."""
+    with connection.cursor() as cursor:
+        cursor.execute("SET ROLE clinic_app")
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("RESET ROLE")
+
+
 class _Seed:
     def __init__(self, organization_id: UUID, clinic_id: UUID) -> None:
         self.organization_id = organization_id
         self.clinic_id = clinic_id
         self.manager_id = uuid4()
-        self.key = secrets.token_hex(32)
-        self.account_id: UUID | None = None
+        self.keys = {"whatsapp": secrets.token_hex(32), "email": secrets.token_hex(32)}
+        self.accounts: dict[str, UUID] = {}
 
     @contextmanager
     def owner(self) -> Iterator[None]:
@@ -140,42 +277,43 @@ class _Seed:
                 clinic_id=self.clinic_id,
                 role=UserClinicRole.Role.CLINIC_ADMIN,
             )
-            principal = ServicePrincipal.objects.create(
-                organization_id=self.organization_id,
-                clinic_id=self.clinic_id,
-                name=f"inbox-{uuid4().hex}",
-                db_identity=f"clinic_agent_msg_{uuid4().hex}",
-                purpose="messaging_ingest",
+            for channel, provider, external in (
+                ("whatsapp", "whatsapp-cloud-v1", PHONE_NUMBER_ID),
+                ("email", "inbox-email-v1", EMAIL_ACCOUNT),
+            ):
+                principal = ServicePrincipal.objects.create(
+                    organization_id=self.organization_id,
+                    clinic_id=self.clinic_id,
+                    name=f"inbox-{uuid4().hex}",
+                    db_identity=f"clinic_agent_msg_{uuid4().hex}",
+                    purpose="messaging_ingest",
+                )
+                account = ProviderAccount.objects.create(
+                    organization_id=self.organization_id,
+                    clinic_id=self.clinic_id,
+                    channel=channel,
+                    provider=provider,
+                    external_account_id=external,
+                    principal=principal,
+                    signing_key_digest=hashlib.sha256(
+                        self.keys[channel].encode()
+                    ).hexdigest(),
+                )
+                self.accounts[channel] = account.pk
+        for channel, account_id in self.accounts.items():
+            path = Path(str(settings.CLINIC_SECRET_DIR)) / (
+                f"{secret_name(account_id)}.secret"
             )
-            account = ProviderAccount.objects.create(
-                organization_id=self.organization_id,
-                clinic_id=self.clinic_id,
-                channel="whatsapp",
-                provider="whatsapp-cloud-v1",
-                external_account_id=PHONE_NUMBER_ID,
-                principal=principal,
-                signing_key_digest=hashlib.sha256(self.key.encode()).hexdigest(),
-            )
-        self.account_id = account.pk
-        path = (
-            Path(str(settings.CLINIC_SECRET_DIR)) / f"{secret_name(account.pk)}.secret"
-        )
-        path.write_text(self.key)
-        path.chmod(0o600)
+            path.write_text(self.keys[channel])
+            path.chmod(0o600)
 
-    def receive(self, body: bytes) -> None:
-        if self.account_id is None:
-            message = "the inbox account must be provisioned first"
-            raise RuntimeError(message)
+    def receive(self, channel: str, body: bytes) -> None:
+        signature = sign(secret=bytes.fromhex(self.keys[channel]), body=body)
         with runtime():
             receive_inbound(
-                provider="whatsapp",
-                account_id=self.account_id,
-                headers={
-                    "X-Hub-Signature-256": sign(
-                        secret=bytes.fromhex(self.key), body=body
-                    )
-                },
+                provider=channel,
+                account_id=self.accounts[channel],
+                headers={"X-Hub-Signature-256": signature},
                 body=body,
             )
 
@@ -183,68 +321,20 @@ class _Seed:
         with runtime(), tenant_context(self.manager_id, self.organization_id):
             return call()
 
-    def conversation(self, case: str) -> UUID:
-        event = f"wamid.upgrade.{case}.{uuid4().hex}"
-        self.receive(
-            _body(
-                messages=[
-                    {
-                        "from": SENDERS[case],
-                        "id": event,
-                        "timestamp": TIMESTAMP,
-                        "type": "text",
-                        "text": {"body": "Oi"},
-                    }
-                ]
-            )
+    def conversation(self, channel: str, index: int) -> UUID:
+        sender = (
+            f"paciente.upgrade.{index}@example.invalid"
+            if channel == "email"
+            else f"55119999{index:05d}"
         )
+        event = f"upgrade.{index}.{uuid4().hex}"
+        self.receive(channel, _inbound_message(channel, sender, event))
         with self.owner():
             return Message.objects.get(event_id=event).conversation_id
 
-    def pending(self, message_id: UUID) -> IntegrationOperation:
-        with self.owner():
-            return IntegrationOperation.objects.get(
-                subject_id=message_id, status="pending"
-            )
 
-    def dispatch(self, message_id: UUID) -> IntegrationOperation:
-        operation = self.pending(message_id)
-        with runtime():
-            execute_operation(operation.pk)
-        with self.owner():
-            operation.refresh_from_db()
-        return operation
-
-    def fail(self, operation: IntegrationOperation) -> None:
-        if not operation.provider_reference:
-            message = "only an accepted attempt can receive a provider failure"
-            raise RuntimeError(message)
-        self.receive(status_body(operation.provider_reference, "failed"))
-
-    def retry(self, message_id: UUID) -> None:
-        self.staff(
-            lambda: retry_message(
-                clinic_id=self.clinic_id, message_id=message_id, command_id=uuid4()
-            )
-        )
-
-
-@contextmanager
-def runtime() -> Iterator[None]:
-    """Act as the runtime role, as the web and worker processes do."""
-    with connection.cursor() as cursor:
-        cursor.execute("SET ROLE clinic_app")
-    try:
-        yield
-    finally:
-        with connection.cursor() as cursor:
-            cursor.execute("RESET ROLE")
-
-
-def _with_insert_seam(
-    seed: _Seed, first: IntegrationOperation, message_id: UUID, *, tie: bool
-) -> None:
-    """Retry with the base ORM's INSERT clock (and, for ``tie``, key) chosen."""
+def _insert_seam(first: IntegrationOperation, *, tie: bool, seams: ExitStack) -> None:
+    """Choose the base ORM's INSERT clock (and, for ``tie``, key) for a retry."""
     meta = IntegrationOperation._meta  # noqa: SLF001 - the base ORM's INSERT seam
     created_at = meta.get_field("created_at")
     stamp = first.created_at if tie else first.created_at - timedelta(seconds=10)
@@ -254,74 +344,124 @@ def _with_insert_seam(
         setattr(instance, created_at.attname, stamp)
         return stamp
 
-    with ExitStack() as seams:
-        seams.enter_context(patch.object(created_at, "pre_save", clock))
-        if tie:
-            lower = UUID(int=first.pk.int - 1)
-            seams.enter_context(patch.object(meta.pk, "get_default", lambda: lower))
-        seed.retry(message_id)
+    seams.enter_context(patch.object(created_at, "pre_save", clock))
+    if tie:
+        lower = UUID(int=first.pk.int - 1)
+        seams.enter_context(patch.object(meta.pk, "get_default", lambda: lower))
 
 
-def _case(seed: _Seed, case: str) -> dict[str, str]:
-    conversation_id = seed.conversation(case)
-    message_id = seed.staff(
-        lambda: (
-            send_message(
-                clinic_id=seed.clinic_id,
-                conversation_id=conversation_id,
-                command_id=uuid4(),
-                body=f"Mensagem sintetica {case}",
-            ).message_id
-        )
-    )
-    if not isinstance(message_id, UUID):
-        message = "send_message returned no message identifier"
-        raise TypeError(message)
-    first = seed.dispatch(message_id)
-    seed.fail(first)
-    ids = {
-        "conversation": str(conversation_id),
-        "message": str(message_id),
-        "a": str(first.pk),
-    }
-    if case in {"skew", "tie"}:
-        _with_insert_seam(seed, first, message_id, tie=case == "tie")
-        ids["b"] = str(seed.dispatch(message_id).pk)
-    elif case == "chain":
-        seed.retry(message_id)
-        successor = seed.pending(message_id)
-        with seed.owner():
-            revision = Conversation.objects.get(pk=conversation_id).revision
-        seed.staff(
-            lambda: set_conversation_state(
-                clinic_id=seed.clinic_id,
-                conversation_id=conversation_id,
-                state="closed",
-                expected_revision=revision,
+class _History:
+    """One conversation's attempts, labelled in creation order."""
+
+    def __init__(self, seed: _Seed, channel: str, index: int) -> None:
+        self.seed = seed
+        self.channel = channel
+        self.conversation_id = seed.conversation(channel, index)
+        self.message_id: UUID | None = None
+        self.labels: dict[str, IntegrationOperation] = {}
+
+    def _message(self) -> UUID:
+        if self.message_id is None:
+            message = "the history has not sent its message yet"
+            raise RuntimeError(message)
+        return self.message_id
+
+    def _label_new_attempt(self) -> None:
+        with self.seed.owner():
+            known = {op.pk for op in self.labels.values()}
+            fresh = [
+                op
+                for op in IntegrationOperation.objects.filter(
+                    subject_id=self._message()
+                )
+                if op.pk not in known
+            ]
+        if len(fresh) != 1:
+            message = "each send or retry enqueues exactly one attempt"
+            raise RuntimeError(message)
+        self.labels["abc"[len(self.labels)]] = fresh[0]
+
+    def step(self, step: tuple[str, ...]) -> None:
+        seed, verb = self.seed, step[0]
+        if verb == "send":
+            receipt = seed.staff(
+                lambda: send_message(
+                    clinic_id=seed.clinic_id,
+                    conversation_id=self.conversation_id,
+                    command_id=uuid4(),
+                    body="Mensagem sintetica",
+                )
             )
-        )
-        with runtime():
-            execute_operation(successor.pk)
-        ids["b"] = str(successor.pk)
-    else:
-        seed.retry(message_id)
-        second = seed.dispatch(message_id)
-        seed.fail(second)
-        seed.retry(message_id)
-        ids["b"] = str(second.pk)
-        ids["c"] = str(seed.pending(message_id).pk)
-    return ids
+            self.message_id = getattr(receipt, "message_id", None)
+            self._label_new_attempt()
+        elif verb == "dispatch":
+            attempt = self.labels[step[1]]
+            with runtime():
+                execute_operation(attempt.pk)
+            with seed.owner():
+                attempt.refresh_from_db()
+        elif verb == "status":
+            reference = self.labels[step[1]].provider_reference
+            if not reference:
+                message = "only an accepted attempt can receive a provider report"
+                raise RuntimeError(message)
+            stamp = step[3] if len(step) > 3 else TIMESTAMP  # noqa: PLR2004
+            seed.receive(
+                self.channel, status_body(self.channel, reference, step[2], stamp)
+            )
+        elif verb == "close":
+            with seed.owner():
+                revision = Conversation.objects.get(pk=self.conversation_id).revision
+            seed.staff(
+                lambda: set_conversation_state(
+                    clinic_id=seed.clinic_id,
+                    conversation_id=self.conversation_id,
+                    state="closed",
+                    expected_revision=revision,
+                )
+            )
+        else:
+            with ExitStack() as seams:
+                if verb in {"retry_skew", "retry_tie"}:
+                    _insert_seam(self.labels["a"], tie=verb == "retry_tie", seams=seams)
+                seed.staff(
+                    lambda: retry_message(
+                        clinic_id=seed.clinic_id,
+                        message_id=self._message(),
+                        command_id=uuid4(),
+                    )
+                )
+            self._label_new_attempt()
+
+    def exported(self) -> dict[str, str]:
+        message_id = self._message()
+
+        def base_state() -> str:
+            message = Message.objects.get(pk=message_id)
+            return str(message_states([message])[message_id])
+
+        return {
+            "channel": self.channel,
+            "conversation": str(self.conversation_id),
+            "message": str(message_id),
+            "base_state": str(self.seed.staff(base_state)),
+            **{label: str(op.pk) for label, op in self.labels.items()},
+        }
 
 
 def seed_inbox(markers: dict[str, object]) -> dict[str, object]:
-    """Write the four histories into the seeded clinic; return their identifiers."""
+    """Write every case into the seeded clinic; return its identifiers."""
     seed = _Seed(UUID(str(markers["organization_id"])), UUID(str(markers["clinic_id"])))
+    cases: dict[str, dict[str, str]] = {}
     with override_settings(COMMS_SYNTHETIC_CHANNELS=("email", "sms", "whatsapp")):
         seed.provision()
-        cases = {case: _case(seed, case) for case in SENDERS}
+        for index, (name, (channel, steps)) in enumerate(CASES.items(), start=1):
+            history = _History(seed, channel, index)
+            for step in steps:
+                history.step(step)
+            cases[name] = history.exported()
     return {
-        "account_id": str(seed.account_id),
+        "accounts": {channel: str(pk) for channel, pk in seed.accounts.items()},
         "manager_id": str(seed.manager_id),
-        "phone_number_id": PHONE_NUMBER_ID,
         "cases": cases,
     }

@@ -500,12 +500,14 @@ def test_attempt_reconciliation_refuses_outsiders_and_ordered_messages(
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
 
-    def reconcile(actor: UUID, operation_id: UUID) -> str | None:
+    def reconcile(
+        actor: UUID, operation_id: UUID | None, message: UUID = message_id
+    ) -> str | None:
         try:
             with as_actor(graph, actor), connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT clinic_app.comms_reconcile_attempts(%s, %s)",
-                    [message_id, operation_id],
+                    [message, operation_id],
                 )
         except DatabaseError as refused:
             diag = getattr(refused.__cause__, "diag", None)
@@ -515,13 +517,14 @@ def test_attempt_reconciliation_refuses_outsiders_and_ordered_messages(
         return None
 
     outsider = create_role_actor(graph, UserClinicRole.Role.FINANCE).pk
-    # Unknown and foreign attempts, and actors without an inbox role, look alike.
-    assert reconcile(manager_of(graph), uuid4()) == "42501"
+    # Unknown and foreign messages, and actors without an inbox role, look alike.
+    assert reconcile(manager_of(graph), attempt.pk, uuid4()) == "42501"
     assert reconcile(outsider, attempt.pk) == "42501"
-    # An ordered message never awaits reconciliation.
-    assert reconcile(manager_of(graph), attempt.pk) == (
-        "comms_message_attempt_reconciliation_check"
-    )
+    # An ordered message never awaits reconciliation, whatever the choice.
+    for choice in (attempt.pk, uuid4(), None):
+        assert reconcile(manager_of(graph), choice) == (
+            "comms_message_attempt_reconciliation_check"
+        )
     with (
         as_actor(graph, manager_of(graph)),
         pytest.raises(InboxRefusedError, match=Reason.INVALID_STATE),

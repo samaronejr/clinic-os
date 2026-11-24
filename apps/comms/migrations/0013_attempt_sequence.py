@@ -1,4 +1,4 @@
-"""Number existing message attempts by their recorded send link, once."""
+"""Bind legacy WhatsApp receipts and number attempts by recorded links, once."""
 
 from typing import ClassVar
 
@@ -30,7 +30,12 @@ class Migration(migrations.Migration):
         migrations.RunSQL(COLUMN_SQL),
         migrations.RunPython(
             open_table_backfill(
-                tables=("comms_integrationoperation", "comms_message"),
+                tables=(
+                    "comms_integrationoperation",
+                    "comms_message",
+                    "comms_conversation",
+                    "comms_inboundevent",
+                ),
                 sql=BACKFILL_SQL,
             ),
             irreversible,

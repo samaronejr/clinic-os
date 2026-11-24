@@ -89,7 +89,8 @@ class MessageRow:
     message: Message
     state: str
     template_name: str
-    # Only for ``reconciliation``: the attempts staff choose the current one from.
+    # Only for ``reconciliation``: the provider-accepted attempts staff choose
+    # from; empty means the only decision is that none was accepted.
     attempts: tuple[IntegrationOperation, ...] = ()
 
 
@@ -242,7 +243,9 @@ def conversation_view(
     held = [m.pk for m in messages if states.get(m.pk) == "reconciliation"]
     choices: dict[UUID, list[IntegrationOperation]] = {}
     for attempt in IntegrationOperation.objects.filter(
-        subject_type=SUBJECT_TYPE, subject_id__in=held
+        subject_type=SUBJECT_TYPE,
+        subject_id__in=held,
+        provider_reference__isnull=False,
     ).order_by("id"):
         choices.setdefault(attempt.subject_id, []).append(attempt)
     rows = tuple(
