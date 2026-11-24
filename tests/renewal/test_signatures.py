@@ -652,6 +652,8 @@ def test_provider_timeout_rejection_and_unavailable_fail_closed(
     monkeypatch.setattr(signing, "signature_provider_for", _provider_for)
     recovered = setup.request_signature()
     assert recovered.state == "signing"
+    assert setup.initiate().pk == recovered.pk
+    assert setup.receive(*setup.callback(recovered, status="failed")) == "applied"
 
     monkeypatch.setattr(signing, "signature_provider_for", _unavailable_provider)
     stalled = setup.initiate()
@@ -699,9 +701,9 @@ def test_completed_output_is_immutable_and_original_bytes_survive_amendment(
             initiate_signature(clinic_id=graph.clinic_a, document_id=setup.document.pk)
 
 
-def test_abandon_recovers_live_operation(setup: SigningSetup) -> None:
+def test_abandon_recovers_only_known_predispatch_operation(setup: SigningSetup) -> None:
     graph = setup.graph
-    operation = setup.request_signature()
+    operation = setup.enqueue_signature()
     with (
         runtime_role(),
         tenant_context(graph.physician, graph.organization_a),
@@ -717,6 +719,13 @@ def test_abandon_recovers_live_operation(setup: SigningSetup) -> None:
     fresh = setup.request_signature()
     assert fresh.state == "signing"
     assert fresh.pk != operation.pk
+    with (
+        runtime_role(),
+        tenant_context(graph.physician, graph.organization_a),
+        pytest.raises(ClinicalConflictError),
+    ):
+        abandon_signature(clinic_id=graph.clinic_a, operation_id=fresh.pk)
+    assert setup.request_signature().pk == fresh.pk
 
 
 def test_non_issuer_and_cross_tenant_cannot_reach_operations(

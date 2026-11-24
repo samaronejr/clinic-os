@@ -11,6 +11,8 @@ without a second message, status change or meter row.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -48,6 +50,7 @@ from apps.comms.models import (
     TemplateVersion,
 )
 from apps.comms.triage import classify_inbound
+from apps.core.integration import hold_subject_mutation_lock
 from apps.core.secrets import SecretUnavailableError, secret_store
 
 if TYPE_CHECKING:
@@ -105,7 +108,11 @@ def verify_token_name(account_id: UUID) -> str:
 
 
 def authenticate(*, account_id: UUID, headers: Mapping[str, str], body: bytes) -> str:
-    """Verify the signature over the raw bytes; return the proof for the resolver."""
+    """Verify the signature over the raw bytes; return the account key.
+
+    The key stays in this process: ``inbound_context`` proves each
+    transaction to the database with a MAC derived from it, never the key.
+    """
     if len(body) > MAX_BODY_BYTES:
         raise InboundRejectedError
     try:
@@ -126,12 +133,23 @@ def _channel_enabled(channel: str) -> bool:
     return synthetic or channel_capability(channel).real_enabled
 
 
+def transaction_proof(*, key: str, account_id: UUID, xact: str) -> str:
+    """Return the MAC proving one inbound transaction of one account."""
+    message = f"clinic-comms-inbound-v1:{account_id}:{xact}".encode()
+    return hmac.digest(bytes.fromhex(key), message, hashlib.sha256).hex()
+
+
 @contextmanager
 def inbound_context(*, account_id: UUID, proof: str) -> Iterator[ResolvedAccount]:
     """Resolve stored scope in one durable transaction; never borrow a staff actor."""
     if connection.in_atomic_block:
         raise InboundRejectedError
     with transaction.atomic(durable=True), connection.cursor() as cursor:
+        cursor.execute("SELECT pg_catalog.pg_current_xact_id()::text")
+        xact = cursor.fetchone()
+        # Bound to this account and this transaction only: a MAC read from
+        # this session's query text authorizes nothing anywhere else.
+        proof = transaction_proof(key=proof, account_id=account_id, xact=str(xact[0]))
         cursor.execute(
             "SELECT * FROM clinic_app.comms_resolve_inbound(%s, %s)",
             [account_id, proof],
@@ -210,7 +228,9 @@ class _DuplicateEventError(Exception):
     """The provider event id was already recorded: a true replay, nothing else."""
 
 
-def _record_event(account: ResolvedAccount, event: ParsedEvent) -> None:
+def _record_event(
+    account: ResolvedAccount, event: ParsedEvent, *, operation_id: UUID | None = None
+) -> None:
     """Record the event id; only a clash on that unique key is a replay."""
     try:
         with transaction.atomic():
@@ -219,8 +239,15 @@ def _record_event(account: ResolvedAccount, event: ParsedEvent) -> None:
                 provider_account_id=account.account_id,
                 event_id=event.event_id,
                 kind=_kind(event),
+                operation_id=operation_id,
+                delivery_state=event.status if isinstance(event, StatusUpdate) else "",
             )
     except IntegrityError as error:
+        if (
+            getattr(getattr(error.__cause__, "diag", None), "constraint_name", None)
+            != "comms_inbound_event_uniq"
+        ):
+            raise
         raise _DuplicateEventError from error
 
 
@@ -249,7 +276,8 @@ def _apply(account: ResolvedAccount, events: tuple[ParsedEvent, ...]) -> Inbound
             # The receipt and its effect commit or roll back together; any other
             # integrity failure propagates so the provider redelivers.
             with transaction.atomic():
-                _record_event(account, event)
+                if not isinstance(event, StatusUpdate):
+                    _record_event(account, event)
                 _dispatch(account, event)
         except _DuplicateEventError:
             duplicates += 1
@@ -388,6 +416,18 @@ def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:
         subject_type=SUBJECT_TYPE,
     ).first()
     if operation is None:
+        # An accepted send whose acceptance was never recorded: the verified
+        # receipt is the provider's evidence, matched by the attempt's own
+        # synthetic reference.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.comms_adopt_late_reference(%s)",
+                [event.provider_message_id],
+            )
+            adopted = cursor.fetchone()
+        if adopted is not None and adopted[0] is not None:
+            operation = IntegrationOperation.objects.get(pk=adopted[0])
+    if operation is None:
         if IntegrationOperation.objects.filter(
             clinic_id=account.clinic_id,
             provider=PROVIDER_BY_CHANNEL[account.channel],
@@ -396,22 +436,28 @@ def _apply_status(account: ResolvedAccount, event: StatusUpdate) -> bool:
         ).exists():
             raise _RetryLaterError
         return False
+    hold_subject_mutation_lock(SUBJECT_TYPE, operation.subject_id)
     message = (
-        Message.objects.select_for_update()
+        Message.objects.select_for_update(of=("self",))
         .filter(
             pk=operation.subject_id,
             direction="out",
             conversation__clinic_id=account.clinic_id,
+            conversation__provider_account_id=account.account_id,
         )
         .first()
     )
     if message is None:
         return False
-    state = advance_provider_state(
-        current=message.provider_state, incoming=event.status
-    )
-    if state != message.provider_state:
-        Message.objects.filter(pk=message.pk).update(provider_state=state)
+    _record_event(account, event, operation_id=operation.pk)
+    # Positive proof survives *all* attempts. Negative progress belongs only
+    # to the authenticated reference on its immutable event receipt.
+    if event.status in {"delivered", "read"}:
+        state = advance_provider_state(
+            current=message.provider_state, incoming=event.status
+        )
+        if state != message.provider_state:
+            Message.objects.filter(pk=message.pk).update(provider_state=state)
     if event.pricing_category and event.status in {"sent", "delivered"}:
         MessageMeter.objects.get_or_create(
             organization_id=account.organization_id,

@@ -65,6 +65,7 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("prescription_medicationfavorite", "active", "UPDATE"),
         ("prescription_signatureoperation", "authorized_until", "UPDATE"),
         ("prescription_signatureoperation", "completed_at", "UPDATE"),
+        ("prescription_signatureoperation", "dispatch_started", "UPDATE"),
         ("prescription_signatureoperation", "evidence_id", "UPDATE"),
         ("prescription_signatureoperation", "evidence_snapshot", "UPDATE"),
         ("prescription_signatureoperation", "failure_reason", "UPDATE"),

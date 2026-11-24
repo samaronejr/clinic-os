@@ -198,6 +198,16 @@ echo "== migrate forward with the candidate =="
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
 
+# Provider MAC secrets enter the database only by COPY from the secret store.
+echo "== provision provider MAC secrets =="
+(cd "$project_root" && env \
+    APP_DATABASE_URL="$owner_dsn" \
+    CLINIC_DATA_MODE="synthetic" \
+    CLINIC_SECRET_BACKEND="synthetic-file" \
+    CLINIC_SECRET_DIR="$secret_dir" \
+    DJANGO_SETTINGS_MODULE="config.settings.base" \
+    uv run --frozen --no-sync --no-env-file python manage.py provision_comms_mac_secrets)
+
 echo "== verify preserved data, transform, and boundaries =="
 export UPGRADE_AI_COVERAGE="$secret_dir/ai-coverage.json"
 (cd "$project_root" && env \

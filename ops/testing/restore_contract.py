@@ -94,6 +94,7 @@ DOMAIN_RELATIONS: Final = (
     "comms_messagemeter",
     "comms_participant",
     "comms_provideraccount",
+    "comms_providermacsecret",
     "comms_quickreply",
     "comms_suggestedreply",
     "comms_templateversion",

@@ -247,6 +247,7 @@ LIVE_SIGNATURE_STATES: tuple[str, ...] = (
     "signing",
     "signed_unverified",
 )
+COMPLETED_SIGNATURE_STATES: tuple[str, ...] = ("issued", "rehearsal_complete")
 
 
 class SignatureOperation(TenantScopedModel):
@@ -254,7 +255,7 @@ class SignatureOperation(TenantScopedModel):
 
     States are ``draft`` -> ``prepared`` -> ``signing`` -> ``issued`` |
     ``rehearsal_complete`` | ``failed``; a ``prepared`` operation may also
-    fail before dispatch and a live operation may be abandoned to ``failed``.
+    fail before dispatch; local abandonment requires proof dispatch never began.
     ``operation_id`` is the provider-side reference returned when the
     provider accepts the operation. ``issued`` is reserved for an approved
     real provider; a verified synthetic callback reaches only
@@ -290,6 +291,7 @@ class SignatureOperation(TenantScopedModel):
     issuer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     provider = models.CharField(max_length=64)
     operation_id = models.CharField(max_length=128, default="")
+    dispatch_started = models.BooleanField(default=False, db_default=False)
     state = models.CharField(max_length=24, choices=State, default=State.DRAFT)
     category = models.CharField(  # noqa: DJ001 - legacy/unselected is not a class
         max_length=40, choices=PrescriptionClass, null=True, blank=True
@@ -310,11 +312,21 @@ class SignatureOperation(TenantScopedModel):
         max_length=64, null=True
     )
     failure_reason = models.CharField(max_length=64, default="")
+    # Assigned by the insert trigger per document; the only order that names
+    # the current operation. Application clocks never decide it.
+    attempt_sequence = models.BigIntegerField(db_default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True)
 
+    @property
+    def can_abandon(self) -> bool:
+        """Return whether local state proves the provider never saw this request."""
+        return self.state == self.State.DRAFT or (
+            self.state == self.State.PREPARED and not self.dispatch_started
+        )
+
     class Meta:
-        """Bind one live operation per document and one provider reference."""
+        """Bind one settled operation per document and one provider reference."""
 
         constraints: ClassVar = [
             models.CheckConstraint(
@@ -404,10 +416,22 @@ class SignatureOperation(TenantScopedModel):
                 | models.Q(state__in=["draft", "prepared", "failed"]),
                 name="prescription_signature_operation_id_state",
             ),
+            models.UniqueConstraint(
+                fields=("document", "attempt_sequence"),
+                name="prescription_signature_sequence_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(attempt_sequence__gt=0),
+                name="prescription_signature_sequence_assigned",
+            ),
+            models.UniqueConstraint(
+                fields=("document",),
+                condition=models.Q(
+                    state__in=(*LIVE_SIGNATURE_STATES, *COMPLETED_SIGNATURE_STATES)
+                ),
+                name="prescription_signature_settled_unique",
+            ),
         ]
-
-
-COMPLETED_SIGNATURE_STATES: tuple[str, ...] = ("issued", "rehearsal_complete")
 
 
 class PrescriptionDocumentRevocation(TenantScopedModel):

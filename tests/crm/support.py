@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
@@ -29,6 +30,7 @@ from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
 
 from auth.stepup_test_support import create_role_actor
+from comms.support import provision_account_secret
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_retention import admin
@@ -111,7 +113,7 @@ def world(graph: RbacGraph, settings: SettingsWrapper) -> CrmWorld:
             db_identity=f"clinic_agent_crm_{uuid4().hex}",
             purpose="messaging_ingest",
         )
-        ProviderAccount.objects.create(
+        account = ProviderAccount.objects.create(
             organization_id=graph.organization_a,
             clinic_id=graph.clinic_a,
             channel="email",
@@ -122,6 +124,7 @@ def world(graph: RbacGraph, settings: SettingsWrapper) -> CrmWorld:
                 b"synthetic-not-a-credential"
             ).hexdigest(),
         )
+    provision_account_secret(account.pk, secrets.token_hex(32))
     register_send_adapter(EmailInboxAdapter())
     register_subject_recheck(
         "comms.message", message_send_eligible, lock_key=message_lock_key

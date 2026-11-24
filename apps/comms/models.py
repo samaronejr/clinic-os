@@ -98,6 +98,20 @@ class IntegrationOperation(TenantScopedModel):
     last_error = models.CharField(max_length=255, blank=True)
     idempotency_key = models.UUIDField()
     not_before = models.DateTimeField(null=True, blank=True)
+    # Per-message attempt order, assigned by the insert trigger for
+    # ``comms.message`` rows; NULL for every other subject, and for a legacy
+    # message whose order awaits staff reconciliation.
+    attempt_sequence = models.BigIntegerField(null=True, editable=False)
+    # The message's single send permit: ``held`` by the one attempt that may
+    # reach or has reached the provider, ``open`` for another accepted attempt
+    # still awaiting its provider outcome, ``released`` once an attempt's own
+    # provider evidence refutes it. Written only by database resolvers.
+    send_permit = models.CharField(  # noqa: DJ001 - NULL means no permit, as the SQL check
+        max_length=8, null=True, editable=False
+    )
+    # Digest of the token an open in-flight claim returned to its worker; the
+    # outcome is recorded only through ``comms_record_send_outcome``.
+    send_permit_claim = models.BinaryField(null=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -130,6 +144,28 @@ class IntegrationOperation(TenantScopedModel):
                     kind="action", channel="", payload_digest__regex=r"^[0-9a-f]{64}$"
                 ),
                 name="comms_operation_kind_contract",
+            ),
+            models.UniqueConstraint(
+                fields=("subject_type", "subject_id", "attempt_sequence"),
+                name="comms_operation_attempt_sequence_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(subject_type="comms.message")
+                | models.Q(attempt_sequence__isnull=True),
+                name="comms_operation_attempt_sequence_scope",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    send_permit__in=("held", "open", "released"),
+                    subject_type="comms.message",
+                )
+                | models.Q(send_permit__isnull=True),
+                name="comms_operation_send_permit_check",
+            ),
+            models.UniqueConstraint(
+                fields=("subject_type", "subject_id"),
+                condition=models.Q(send_permit="held"),
+                name="comms_operation_send_permit_uniq",
             ),
         ]
 

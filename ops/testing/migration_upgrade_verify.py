@@ -12,6 +12,8 @@ upgraded database. Reads ``UPGRADE_SEED_FILE`` markers written by
   cross-tenant row;
 * the two seeded audit events still verify as a hash chain;
 * grants on the new comms tables remain narrow;
+* seeded inbox histories keep their causal attempt order, and unordered ones
+  hold every send until staff reconcile them;
 * ``makemigrations --check --dry-run`` reports no drift (run separately).
 
 The script exits non-zero with named failures when any check fails.

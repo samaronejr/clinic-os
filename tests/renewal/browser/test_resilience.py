@@ -236,22 +236,21 @@ def test_the_note_is_saved_and_a_signer_outage_stays_retryable(
         # operation waits, visibly, for a retry that cannot succeed yet.
         document = author_and_render(page, base, staff, DAYS[width])
         press_in_view(page, "sign_document")
-        state = "failed" if MODE == "ambiguous" else "prepared"
-        failure = "invalid_provider_reference" if MODE == "ambiguous" else ""
-        outcome = "failed" if MODE == "ambiguous" else "retry"
+        state, failure = "prepared", ""
+        outcome = "reconcile" if MODE == "ambiguous" else "retry"
         assert drive_signature(page, staff, document, fault=MODE) == outcome
         expect(page.locator("[data-state]")).to_have_attribute("data-state", state)
         assert operations(staff, document) == [(state, failure)]
         assert _operation_row(staff, document)["operation_ref"] == ""
         capture(page, root, f"signer-{MODE}", width)
-        if MODE != "ambiguous":
-            expect(page.locator('button[value="retry_dispatch"]')).to_be_visible()
-            press(page, "retry_dispatch")
-            assert drive_signature(page, staff, document, fault=MODE) == "retry"
-            expect(page.locator("[data-state]")).to_have_attribute("data-state", state)
-            assert operations(staff, document) == [(state, failure)]
-        else:
-            expect(page.locator('button[value="retry_dispatch"]')).to_have_count(0)
+        held = _operation_row(staff, document)
+        expect(page.locator('button[value="abandon"]')).to_have_count(0)
+        expect(page.locator('button[value="retry_dispatch"]')).to_be_visible()
+        press(page, "retry_dispatch")
+        assert drive_signature(page, staff, document, fault=MODE) == outcome
+        expect(page.locator("[data-state]")).to_have_attribute("data-state", state)
+        assert operations(staff, document) == [(state, failure)]
+        assert _operation_row(staff, document) == held
         assert not errors
         report(
             root,

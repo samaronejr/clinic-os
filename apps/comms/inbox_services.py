@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.conf import settings
-from django.db import connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -28,6 +28,7 @@ from apps.comms.inbound_providers import WebhookRejectedError, normalize_address
 from apps.comms.inbox_rules import (
     MAX_BODY_CHARS,
     SendRequest,
+    advance_provider_state,
     decide_send,
     effective_delivery_state,
     placeholder_count,
@@ -35,6 +36,7 @@ from apps.comms.inbox_rules import (
 )
 from apps.comms.models import (
     Conversation,
+    InboundEvent,
     IntegrationOperation,
     InternalNote,
     Message,
@@ -48,6 +50,7 @@ from apps.core.integration import (
     OperationRequest,
     enqueue_operation,
     hold_subject_mutation_key,
+    hold_subject_mutation_lock,
 )
 from apps.identity.current_context import (
     CurrentActorError,
@@ -659,45 +662,200 @@ def retry_message(
     if message is None:
         raise InboxAccessDeniedError
     conversation, _ = _conversation(clinic_id, message.conversation_id, lock=True)
+    hold_subject_mutation_lock(SUBJECT_TYPE, message_id)
+    message.refresh_from_db(fields=["provider_state"])
     state = message_states([message]).get(message.pk, "queued")
     if state != "failed":
         raise InboxRefusedError(Reason.NOT_FAILED)
-    with transaction.atomic():
-        enqueue_operation(
-            OperationRequest(
-                channel=conversation.channel,
-                provider=PROVIDER_BY_CHANNEL[conversation.channel],
-                clinic_id=clinic_id,
-                subject_type=SUBJECT_TYPE,
-                subject_id=message.pk,
-                idempotency_key=command_id,
+    try:
+        with transaction.atomic():
+            enqueue_operation(
+                OperationRequest(
+                    channel=conversation.channel,
+                    provider=PROVIDER_BY_CHANNEL[conversation.channel],
+                    clinic_id=clinic_id,
+                    subject_type=SUBJECT_TYPE,
+                    subject_id=message.pk,
+                    idempotency_key=command_id,
+                )
             )
-        )
-        if message.provider_state == "failed":
-            Message.objects.filter(pk=message.pk).update(provider_state="")
-        record_phase1_event(
-            "comms.message.retried", clinic_id=clinic_id, affected_record_id=message.pk
-        )
+            # The failed projection stays: for a sole original it is that
+            # attempt's own negative evidence, which the reference guard reads.
+            record_phase1_event(
+                "comms.message.retried",
+                clinic_id=clinic_id,
+                affected_record_id=message.pk,
+            )
+    except IntegrityError as refused:
+        # The attempt guard admits a successor only after the current attempt's
+        # own negative outcome; the database has the last word on that.
+        raise InboxRefusedError(Reason.NOT_FAILED) from refused
     publish_messages_hint(clinic_id)
     return SendReceipt(message.pk, conversation.pk, replayed=False)
 
 
+def reconcile_message_attempts(
+    *, clinic_id: UUID, message_id: UUID, current_operation_id: UUID | None
+) -> SendReceipt:
+    """Record which attempt of a held legacy message the provider accepted.
+
+    Attempts that predate the attempt sequence without a recorded order hold
+    the message: nothing sends and no retry is admitted until a staff member
+    who may handle the thread names the accepted attempt, or records that none
+    was accepted (``None``) when no attempt holds a provider reference. Under
+    the message lock the database cancels every queued attempt in the same
+    transaction and refuses while a worker holds one in progress; nothing is
+    sent here.
+    """
+    message = Message.objects.filter(
+        pk=message_id, conversation__clinic_id=clinic_id, direction="out"
+    ).first()
+    if message is None or (
+        current_operation_id is not None and type(current_operation_id) is not UUID
+    ):
+        raise InboxAccessDeniedError
+    conversation, _ = _conversation(clinic_id, message.conversation_id, lock=True)
+    hold_subject_mutation_lock(SUBJECT_TYPE, message_id)
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.comms_reconcile_attempts(%s, %s)",
+                [message.pk, current_operation_id],
+            )
+            record_phase1_event(
+                "comms.message.reconciled",
+                clinic_id=clinic_id,
+                affected_record_id=message.pk,
+            )
+    except DatabaseError as refused:
+        raise InboxRefusedError(Reason.INVALID_STATE) from refused
+    publish_messages_hint(clinic_id)
+    return SendReceipt(message.pk, conversation.pk, replayed=False)
+
+
+_PROOF: Final = ("delivered", "read")
+
+
+def _attempt_state(attempt: IntegrationOperation, progress: str) -> str:
+    state = effective_delivery_state(
+        operation_status=attempt.status, provider_state=progress
+    )
+    if attempt.last_error == "outcome_unknown" and state == "queued":
+        return "unconfirmed"
+    return state
+
+
 def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
-    """Derive each outbound message's display state from outbox and provider facts."""
-    ids = [m.pk for m in messages if m.direction == "out"]
-    latest: dict[UUID, IntegrationOperation] = {}
-    for operation in IntegrationOperation.objects.filter(
-        subject_type=SUBJECT_TYPE, subject_id__in=ids
-    ).order_by("created_at", "id"):
-        latest[operation.subject_id] = operation
-    return {
-        m.pk: effective_delivery_state(
-            operation_status=latest[m.pk].status if m.pk in latest else "pending",
-            provider_state=m.provider_state,
+    """Derive each outbound message's display state from outbox and provider facts.
+
+    The current attempt is the one with the highest database-assigned
+    ``attempt_sequence``; worker timestamps never order attempts. Its own
+    evidence decides the state and retry eligibility, except that delivery or
+    read proof from any attempt wins. A late report about an earlier attempt
+    therefore neither reopens a send nor hides the current attempt's failure.
+    A legacy message whose attempts have no recorded order is
+    ``reconciliation`` until staff name its current attempt.
+    """
+    outbound = {m.pk: m for m in messages if m.direction == "out"}
+    attempts: dict[UUID, list[IntegrationOperation]] = {}
+    for attempt in IntegrationOperation.objects.filter(
+        subject_type=SUBJECT_TYPE, subject_id__in=outbound
+    ).order_by("attempt_sequence"):
+        attempts.setdefault(attempt.subject_id, []).append(attempt)
+    reported: dict[UUID, str] = {}
+    failed: set[UUID] = set()
+    for key, progress in (
+        InboundEvent.objects.filter(
+            operation_id__in=[op.pk for ops in attempts.values() for op in ops]
         )
-        for m in messages
-        if m.direction == "out"
-    }
+        .values_list("operation_id", "delivery_state")
+        .distinct()
+    ):
+        reported[key] = advance_provider_state(
+            current=reported.get(key, ""), incoming=progress
+        )
+        if progress == "failed":
+            failed.add(key)
+    states: dict[UUID, str] = {}
+    for message_id, message in outbound.items():
+        own = attempts.get(message_id, [])
+        legacy = message.provider_state
+        # Legacy negative/sent projections did not name an attempt. Never use
+        # one as evidence about a retried message, even on an upgraded database.
+        if len(own) > 1 and legacy not in {"delivered", "read"}:
+            legacy = ""
+        by_sequence = [
+            _attempt_state(
+                attempt,
+                advance_provider_state(
+                    current=legacy, incoming=reported.get(attempt.pk, "")
+                ),
+            )
+            for attempt in own
+        ] or [
+            effective_delivery_state(operation_status="pending", provider_state=legacy)
+        ]
+        proven = [state for state in by_sequence if state in _PROOF]
+        numbered = [a.attempt_sequence is not None for a in own]
+        if proven:
+            states[message_id] = max(proven, key=_PROOF.index)
+        elif any(
+            (a.attempt_sequence is None and a.send_permit is None)
+            or (
+                a.status == "in_progress"
+                and a.send_permit_claim is not None
+                and (
+                    bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
+                    or _claim_abandoned(a.subject_id)
+                )
+            )
+            for a in own
+        ):
+            states[message_id] = "reconciliation"
+        elif any(numbered) or not own:
+            # The highest-numbered attempt is current (NULLs sort last).
+            states[message_id] = by_sequence[sum(numbered) - 1 if own else 0]
+        else:
+            # A decided legacy message: the attempt staff kept holds the
+            # permit; with none kept, every attempt was refuted or closed.
+            held = [
+                s
+                for a, s in zip(own, by_sequence, strict=True)
+                if a.send_permit == "held"
+            ]
+            states[message_id] = held[0] if held else "failed"
+        if states[message_id] == "failed" and awaiting_outcome(own, failed):
+            states[message_id] = "awaiting"
+    return states
+
+
+def _claim_abandoned(message_id: UUID) -> bool:
+    """Whether a send's claim outlived its session (no one holds its lock)."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.comms_claim_abandoned(%s)", [message_id])
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+# The claim digest comms 0018 gives a send a pre-claim revision left in
+# flight; only staff reconciliation or provider evidence closes it.
+LEGACY_IN_FLIGHT: Final = hashlib.sha256(b"legacy-in-flight").digest()
+
+
+def awaiting_outcome(attempts: list[IntegrationOperation], failed: set[UUID]) -> int:
+    """Count accepted attempts that still lack their own provider outcome.
+
+    Only a bound failed receipt (or a permit the database released on such
+    evidence) closes an accepted attempt; while any stays open the message
+    admits no further send, and staff see this count instead of a retry.
+    """
+    return sum(
+        1
+        for attempt in attempts
+        if attempt.provider_reference
+        and attempt.send_permit != "released"
+        and attempt.pk not in failed
+    )
 
 
 def create_template_version(  # noqa: PLR0913 - one field per stored template term

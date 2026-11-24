@@ -393,6 +393,7 @@ def _record_integration_event(
     scope: OperationScope,
     *,
     reason_code: str | None = None,
+    using: str = "default",
 ) -> int:
     """Append one fixed-vocabulary integration event in the current context."""
     append = build_integration_audit_event(
@@ -402,7 +403,7 @@ def _record_integration_event(
         operation_id=scope.operation_id,
         reason_code=reason_code,
     )
-    return record_event(append.event, payload=append.payload)
+    return record_event(append.event, payload=append.payload, using=using)
 
 
 def _request_operation(
@@ -606,8 +607,18 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
         operation.not_before is not None and operation.not_before > timezone.now()
     ):
         return _ClaimDecision("skipped", operation.provider)
+    if (
+        operation.kind == OperationKind.COMMUNICATION
+        and operation.status == _IN_PROGRESS
+    ):
+        _mark_uncertain(operation, reclaimed=True)
+        return _ClaimDecision("reconcile", "")
     if not _actor_has_clinic_authority(scope):
         return _ClaimDecision("revoked", operation.provider)
+    return _claim_sendable(operation)
+
+
+def _claim_sendable(operation: IntegrationOperation) -> _ClaimDecision:
     recovering = (
         operation.kind == OperationKind.ACTION
         and operation.status == _IN_PROGRESS
@@ -624,6 +635,36 @@ def _claim_row(scope: OperationScope) -> _ClaimDecision:
     if not recovering:
         operation.save(update_fields=("attempt_count", "updated_at"))
     return _ClaimDecision("reconcile", operation.provider)
+
+
+def _mark_uncertain(operation: IntegrationOperation, *, reclaimed: bool) -> None:
+    if operation.last_error != "outcome_unknown":
+        operation.last_error = "outcome_unknown"
+        if reclaimed and operation.attempt_count < operation.max_attempts:
+            operation.attempt_count += 1
+        operation.save(update_fields=("last_error", "attempt_count", "updated_at"))
+
+
+def _hold_uncertain_communication(scope: OperationScope, *, reclaimed: bool) -> bool:
+    """Retain unknown delivery under custody, even after the sender is offboarded.
+
+    No subject, content or authority to send is loaded. A known transient refusal
+    goes back to pending instead, where its original bounded retry budget applies.
+    """
+    with _stored_scope_context(scope):
+        operation = (
+            IntegrationOperation.objects.select_for_update()
+            .filter(
+                pk=scope.operation_id,
+                kind=OperationKind.COMMUNICATION,
+                status=_IN_PROGRESS,
+            )
+            .first()
+        )
+        if operation is None:
+            return False
+        _mark_uncertain(operation, reclaimed=reclaimed)
+        return True
 
 
 def _persisted_outcome(scope: OperationScope) -> ExecutionResult:
@@ -653,8 +694,70 @@ def _operation_for_prepare(scope: OperationScope) -> IntegrationOperation:
     return operation
 
 
+_CLAIMED_OUTCOME_RECORDERS: list[
+    Callable[[UUID, str, str | None, str | None], bool | None]
+] = []
+
+
+def register_claimed_outcome_recorder(
+    recorder: Callable[[UUID, str, str | None, str | None], bool | None],
+) -> None:
+    """Route the outcome of a send claimed by this worker's lock session.
+
+    ``recorder(operation_id, outcome, reference, reason)`` returns ``None`` when
+    the operation is not its subject's to record; otherwise it records
+    ``accepted``/``rejected``/``retry``/``withdrawn`` through the subject's
+    own resolver on the ``locks`` connection, the claimant session, inside
+    the transaction this module opens there.
+    """
+    _CLAIMED_OUTCOME_RECORDERS.append(recorder)
+
+
+def _claimed_outcome(
+    scope: OperationScope,
+    outcome: str,
+    reference: str | None = None,
+    *,
+    event_type: str | None,
+    reason_code: str | None = None,
+) -> bool | None:
+    """Record a claimed outcome and its audit event in one transaction.
+
+    Both run on the claimant's lock connection under the stored scope, so a
+    failure of either leaves neither the status change nor the event.
+    """
+    if not _CLAIMED_OUTCOME_RECORDERS:
+        return None
+    locks = connections["locks"]
+    with transaction.atomic(using="locks"), locks.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(scope.actor_id), str(scope.organization_id)],
+        )
+        cursor.execute("SET LOCAL ROLE clinic_app")
+        for recorder in _CLAIMED_OUTCOME_RECORDERS:
+            recorded = recorder(scope.operation_id, outcome, reference, reason_code)
+            if recorded is None:
+                continue
+            if recorded and event_type is not None:
+                _record_integration_event(
+                    event_type, scope, reason_code=reason_code, using="locks"
+                )
+            return recorded
+    return None
+
+
 def _succeed(scope: OperationScope, provider_reference: str) -> bool:
     """Record provider acceptance once, guarded by the claimed status."""
+    recorded = _claimed_outcome(
+        scope,
+        "accepted",
+        provider_reference,
+        event_type="comms.operation.succeeded",
+    )
+    if recorded is not None:
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -673,6 +776,12 @@ def _succeed(scope: OperationScope, provider_reference: str) -> bool:
 
 def _release_for_retry(scope: OperationScope) -> bool:
     """Return one claimed row to pending after a transient send failure."""
+    # A transient refusal is audited by no event, as on the unclaimed path.
+    recorded = _claimed_outcome(
+        scope, "retry", event_type=None, reason_code="transient_send"
+    )
+    if recorded is not None:
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -687,6 +796,14 @@ def _release_for_retry(scope: OperationScope) -> bool:
 
 def _fail_operation(scope: OperationScope, *, reason_code: str) -> bool:
     """Fail one claimable operation once and audit the terminal transition."""
+    recorded = _claimed_outcome(
+        scope,
+        "rejected",
+        event_type="comms.operation.failed",
+        reason_code=reason_code,
+    )
+    if recorded is not None:
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -726,6 +843,14 @@ def _cancel_ineligible(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _subject_eligible(scope):
             return False
+        recorded = _claimed_outcome(
+            scope,
+            "withdrawn",
+            event_type="comms.operation.cancelled",
+            reason_code="subject_ineligible",
+        )
+        if recorded is not None:
+            return recorded
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,
@@ -754,6 +879,14 @@ def _cancel_revoked(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _actor_has_clinic_authority(scope):
             return False
+        recorded = _claimed_outcome(
+            scope,
+            "withdrawn",
+            event_type="comms.operation.cancelled",
+            reason_code="authority_revoked",
+        )
+        if recorded is not None:
+            return recorded
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,
@@ -918,6 +1051,7 @@ def _deliver(
         result = adapter.send(prepared, operation_id=scope.operation_id)
     except AmbiguousSendError:
         # Do not reset to pending: a remote effect may already exist.
+        _hold_uncertain_communication(scope, reclaimed=False)
         outcome = "reconcile"
     except TransientSendError:
         outcome = "retry" if _release_for_retry(scope) else _persisted_outcome(scope)
@@ -933,6 +1067,8 @@ def _deliver(
             type(provider_reference) is not str
             or not 1 <= len(provider_reference) <= MAX_PROVIDER_REFERENCE_LENGTH
         ):
+            if _hold_uncertain_communication(scope, reclaimed=False):
+                return "reconcile"
             outcome = (
                 "failed"
                 if _fail_operation(scope, reason_code="invalid_provider_reference")
@@ -1023,7 +1159,12 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
             with tenant_context(scope.actor_id, scope.organization_id):
                 decision = _claim_row(scope)
         except TenantAccessDeniedError:
-            decision = _ClaimDecision("revoked", "")
+            decision = _ClaimDecision(
+                "reconcile"
+                if _hold_uncertain_communication(scope, reclaimed=True)
+                else "revoked",
+                "",
+            )
         outcome: ExecutionResult
         if decision.outcome == "revoked":
             outcome = (

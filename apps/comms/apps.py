@@ -23,6 +23,7 @@ class CommsConfig(AppConfig):
             WhatsAppInboxAdapter,
             message_lock_key,
             message_send_eligible,
+            record_claimed_outcome,
         )
         from apps.comms.inbox_services import (  # noqa: PLC0415 - app wiring
             SUBJECT_TYPE as MESSAGE_SUBJECT_TYPE,
@@ -33,6 +34,7 @@ class CommsConfig(AppConfig):
             reminder_send_eligible,
         )
         from apps.core.integration import (  # noqa: PLC0415 - app wiring
+            register_claimed_outcome_recorder,
             register_send_adapter,
             register_subject_recheck,
         )
@@ -50,6 +52,7 @@ class CommsConfig(AppConfig):
         register_subject_recheck(
             MESSAGE_SUBJECT_TYPE, message_send_eligible, lock_key=message_lock_key
         )
+        register_claimed_outcome_recorder(record_claimed_outcome)
         from apps.comms.inbox_feed import register_question_feed  # noqa: PLC0415
 
         register_question_feed()

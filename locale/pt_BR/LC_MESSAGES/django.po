@@ -11568,3 +11568,30 @@ msgstr "Curador(a)"
 
 msgid "Patient-authorized adult"
 msgstr "Adulto autorizado pelo paciente"
+
+msgid "Delivery order needs review"
+msgstr "Ordem de envio precisa de revisão"
+
+msgid "Nothing is sent while this is open. Check with the provider which attempt it accepted, then record it."
+msgstr "Nada é enviado enquanto isto estiver aberto. Confirme com o provedor qual tentativa ele aceitou e registre-a."
+
+msgid "Provider reference %(reference)s"
+msgstr "Referência do provedor %(reference)s"
+
+msgid "Nothing is sent while this is open. The provider accepted none of these attempts."
+msgstr "Nada é enviado enquanto isto estiver aberto. O provedor não aceitou nenhuma destas tentativas."
+
+msgid "Record that none was accepted"
+msgstr "Registrar que nenhuma foi aceita"
+
+msgid "Record current attempt"
+msgstr "Registrar tentativa atual"
+
+msgid "Current attempt recorded. Nothing was sent."
+msgstr "Tentativa atual registrada. Nada foi enviado."
+
+msgid "Awaiting provider outcome for %(attempts)s attempts"
+msgstr "Aguardando o resultado do provedor para %(attempts)s tentativas"
+
+msgid "If the provider did accept a send, a retry after this decision may deliver the message twice."
+msgstr "Se o provedor tiver aceitado um envio, uma nova tentativa após esta decisão pode entregar a mensagem duas vezes."

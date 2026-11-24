@@ -150,6 +150,10 @@ outbox lifecycle (queued/sent/failed) combined with the provider's monotonic sta
 (`delivered`, `read`, `failed`); a failure never overwrites proof of delivery.
 A failed message offers `retry_message` under a fresh operation; the stable
 operation id stays the provider idempotency key, so recovery does not duplicate.
+An abandoned send, ambiguous reply or malformed acceptance reference is **not**
+a failed delivery. It stays `in_progress/outcome_unknown`, outside the automatic
+scan and fresh-key retry paths, including when the sender has left the clinic.
+Only known transient refusals return to pending and consume the send budget.
 Roles per purpose: transactional - clinic admin, clinic manager, receptionist,
 scheduler, nurse and physician; care - nurse/physician with patient-scoped
 `clinical.read`; marketing - clinic admin and clinic manager with a registered
@@ -203,8 +207,64 @@ Staff commands append fixed `comms.*` events (no content). Machine ingest append
 principal's account and tenant, and `comms_ingest_audit` appends the hash-chained
 row with the principal as actor. Payload keys are only `clinic_id` and
 `object_verb`; no body, address or label. A replayed or foreign-claim delivery
-appends nothing, and the outbox state machine is untouched: the inbox's delivered
-and read states stay derived from `Message.provider_state`.
+appends nothing. New status receipts bind the reported progress to the operation
+resolved by its own provider reference and the proven conversation account.
+Each message attempt carries a database-assigned `attempt_sequence`; the highest
+is the current attempt, and worker timestamps never order attempts. The display
+state and retry eligibility come from the current attempt's own evidence, so a
+late failure for an earlier attempt cannot reopen a send once a successor was
+accepted, and an earlier acceptance cannot hide the current attempt's failure.
+The insert trigger `comms_message_attempt_guard` admits a successor only after
+the current attempt's own negative outcome and while no attempt has delivery
+proof, so at most one provider-accepted attempt per message is ever open.
+Delivery/read proof from **any** attempt survives in `Message.provider_state`
+and vetoes a queued retry at the send boundary. A pre-attribution failure
+projected onto the message counts only for a message with a single attempt;
+historical unbound reports are never attributed to a successor. Attempts that
+predate the sequence were handled once by comms 0013 (non-atomic, resumable,
+irreversible) using only evidence the base recorded. Each legacy WhatsApp
+status receipt is bound to the attempt its own event id names
+(`{reference}:{status}:{timestamp}`). The attempt enqueued under the message's
+own `command_id` is the original and every other one a later retry, so a
+message with one attempt, or that original and one retry, is ordered. Any
+other legacy message, and a retried email/SMS message whose failure was
+projected onto the message without naming an attempt, keeps its attempts
+unnumbered and shows `reconciliation`. While held, the worker's recheck
+cancels its attempts without sending, and staff retry and direct outbox writes
+are refused. Only
+`reconcile_message_attempts(*, clinic_id, message_id, current_operation_id)`
+by a staff member who may handle the thread releases it
+(`comms_reconcile_attempts`, audited as `comms.message.reconciled`). That
+decision never writes an attempt sequence or a provider outcome. Under the
+message lock it cancels every queued attempt and every claim that never held a
+permit (provably unsent, including one a dead worker left behind), and records
+only which accepted attempt is current: that one keeps the permit and every
+other accepted attempt without its own failure stays `open`. "None accepted"
+is allowed only when no attempt holds a reference; naming a refuted attempt is
+refused while another accepted attempt is unrefuted.
+
+Every send first takes the message's single send permit, claimed by the
+worker's final recheck through `comms_claim_send_permit` under the subject and
+boundary session locks and committed before the provider call;
+`comms_operation_send_permit_uniq` admits one held permit per message. The
+runtime role cannot write `send_permit`, rewrite an accepted attempt's
+reference, or cancel a claimed send. An accepted attempt is closed only by a
+bound failed status receipt, which the receipt guard admits only with the
+inbound proof of the provider secret; an operation status never closes it.
+A claim is taken on the worker's lock connection by the session holding the
+subject lock and is bound to it (comms 0018): the database keeps a nonce only in
+that session's own setting and stores `sha256(pid:nonce)`, so no other session,
+even one that later holds the lock, can match it. While it is open the runtime
+role cannot change the attempt's status, provider reference or permit at all;
+the outcome (accepted, rejected, transient retry, or withdrawn before any call)
+is recorded only by `comms_record_send_outcome` from that live session, in one
+transaction with its audit event. A claim whose session died, and a send a
+pre-claim revision left in flight, stay visibly in flight and are closed only by
+provider evidence or the staff hold. While any accepted attempt lacks that outcome the message admits no further
+attempt and shows `awaiting` ("awaiting provider outcome for N attempts").
+Legacy originals whose failure the base recorded are released by comms
+0015/0016 on every channel. Clocks and UUIDs
+never order attempts.
 
 ### Contact tokens
 
@@ -327,3 +387,40 @@ Each item is known and not scheduled; none is needed for the acceptance or QA pa
   receipt for portal messages, a thread cannot be restricted from representatives,
   and browser notifications stay unavailable (`PUSH_NOTICE` in
   `apps/intake/portal.py`, BLOCKED-ON-EG).
+
+### Provider proofs (comms 0019)
+
+Provider answers are proved by MACs the database verifies itself; the bearer
+key never leaves Python. Each account's MAC secret is held in
+`comms_providermacsecret`, readable only by `clinic_resolver` and the owner-side
+definers (the runtime role has no privilege on it), and provisioned only by
+`COPY` from the adapter's secret store (`manage.py provision_comms_mac_secrets`,
+synthetic only). An account without a secret fails closed. This is plain
+storage protected by role ACL, a deliberate trade-off until server-side binding
+lets the secret move into the tenant KEK envelope.
+
+- Inbound: after the provider signature over the raw body is verified (tagged
+  `clinic-comms-webhook-v1`), the handler proves its own transaction with
+  `HMAC(secret, "clinic-comms-inbound-v1:<account>:<xid>")`; a MAC read from
+  query text authorizes nothing outside that transaction.
+- Outcomes: an accepted or rejected answer needs
+  `HMAC(secret, "clinic-comms-outcome-v1:<attempt>:<outcome>:<reference>")`;
+  a replayed record changes nothing.
+- The runtime role never writes an acceptance, a reference, an attempt delivery
+  or a message's delivery projection directly. A receipt for an in-flight
+  attempt whose acceptance was never recorded is matched by its synthetic
+  reference and records it.
+
+Once an attempt has left `pending` the runtime role cannot move it at all
+(comms 0020): only the claimant's session, a MAC-verified receipt,
+`comms_close_unsent_attempt` (an outbox-claimed attempt that never took the
+permit's claim and holds no reference) or the staff hold may. A claim is taken
+only on an outbox-claimed attempt, and a claim whose session no longer holds the
+subject lock is shown as held for staff. Recording "none accepted" for a legacy
+or abandoned send is a staff decision that may deliver twice if the provider did
+accept it; the page warns of that, the decision is audited, and the residual
+risk is documented.
+
+Pooled lock connections are unsupported: the claim, its session nonce and the
+subject's advisory lock must stay on one database session from claim to
+record, which a transaction-pooling proxy would not guarantee.

@@ -12,11 +12,14 @@ cancelled rather than sent.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 from django.conf import settings
+from django.db import DatabaseError, connections, transaction
 from django.utils import timezone
 
 from apps.comms.adapters import (
@@ -38,6 +41,7 @@ from apps.comms.inbox_services import (
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
 from apps.core.fault_injection import injected_fault
+from apps.core.secrets import SecretUnavailableError, secret_store
 from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
@@ -212,6 +216,21 @@ def message_send_eligible(scope: OperationScope) -> bool:
     )
     if message is None or message.conversation.clinic_id != scope.clinic_id:
         return False
+    if message.provider_state in {"delivered", "read"}:
+        return False
+    # Only the message's current attempt may send: never one awaiting staff
+    # reconciliation, and never one a later attempt has superseded.
+    attempts = list(
+        IntegrationOperation.objects.filter(
+            subject_type=SUBJECT_TYPE, subject_id=message.pk
+        ).values_list("attempt_sequence", "send_permit")
+    )
+    if (
+        operation.attempt_sequence is None
+        or (None, None) in attempts
+        or operation.attempt_sequence != max(n for n, _ in attempts if n is not None)
+    ):
+        return False
     conversation, template = message.conversation, message.template
     if conversation.purpose == "marketing":
         from apps.crm.rules import MARKETING_BODIES  # noqa: PLC0415
@@ -244,7 +263,126 @@ def message_send_eligible(scope: OperationScope) -> bool:
             )
         )
         and all(check(message) for check in _SEND_CHECKS)
+        and _claim_send_permit(operation)
     )
+
+
+# In-flight claims this worker process holds. The database binds each to the
+# lock session that took it; nothing here is a secret.
+_CLAIMS: set[UUID] = set()
+
+
+def _claim_send_permit(operation: IntegrationOperation) -> bool:
+    """Take the message's single send permit for ``operation``, or refuse.
+
+    Runs last in the recheck, on the worker's lock connection: the database
+    claims only for the session that holds the subject lock (at prepare none
+    does, so it only decides eligibility) and binds the claim to it.
+    """
+    if operation.pk in _CLAIMS:
+        return True
+    with connections["locks"].cursor() as cursor:
+        cursor.execute("SET ROLE clinic_app")
+        try:
+            cursor.execute(
+                "SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk]
+            )
+            row = cursor.fetchone()
+        finally:
+            cursor.execute("RESET ROLE")
+    decision = row[0] if row else "refused"
+    if decision == "claimed":
+        _CLAIMS.add(operation.pk)
+    return decision in {"claimed", "eligible"}
+
+
+def outcome_proof(
+    account_id: UUID, operation_id: UUID, outcome: str, reference: str | None
+) -> str:
+    """Sign a synchronous provider answer with the account's provider secret.
+
+    The secret comes from the adapter's own configuration; the database checks
+    the MAC against its resolver-only copy and binds it to this attempt,
+    outcome and reference.
+    """
+    from apps.comms.inbox_inbound import secret_name  # noqa: PLC0415
+
+    key = bytes.fromhex(secret_store().get_secret(secret_name(account_id)))
+    message = f"clinic-comms-outcome-v1:{operation_id}:{outcome}:{reference or ''}"
+    return hmac.digest(key, message.encode(), hashlib.sha256).hex()
+
+
+_UNSENT_CLOSE: dict[str, str] = {
+    "withdrawn": "cancelled",
+    "rejected": "failed",
+    "retry": "pending",
+}
+
+
+def record_claimed_outcome(
+    operation_id: UUID, outcome: str, reference: str | None, reason: str | None
+) -> bool | None:
+    """Record a message attempt's outcome through its resolvers.
+
+    A claim this process holds is recorded by its own lock session with the
+    provider's MAC. An outbox-claimed attempt that never took the send permit's
+    claim provably never reached the provider and is closed by
+    ``comms_close_unsent_attempt``. Anything else is not a message attempt
+    (``None``). A refusal records nothing: the attempt stays visibly in flight.
+    """
+    if operation_id not in _CLAIMS:
+        return _close_unsent(operation_id, outcome, reason)
+    _CLAIMS.discard(operation_id)
+    try:
+        with transaction.atomic(using="locks"), connections["locks"].cursor() as cursor:
+            cursor.execute(
+                "SELECT c.provider_account_id"
+                " FROM clinic_app.comms_integrationoperation o"
+                " JOIN clinic_app.comms_message m ON m.id = o.subject_id"
+                " JOIN clinic_app.comms_conversation c ON c.id = m.conversation_id"
+                " WHERE o.id = %s",
+                [operation_id],
+            )
+            account = cursor.fetchone()
+            proof = (
+                outcome_proof(account[0], operation_id, outcome, reference)
+                if account and account[0] and outcome in {"accepted", "rejected"}
+                else None
+            )
+            cursor.execute(
+                "SELECT clinic_app.comms_record_send_outcome(%s, %s, %s, %s)",
+                [operation_id, outcome, reference, proof],
+            )
+            row = cursor.fetchone()
+    except (DatabaseError, SecretUnavailableError):
+        return False
+    return bool(row and row[0])
+
+
+def _close_unsent(operation_id: UUID, outcome: str, reason: str | None) -> bool | None:
+    with connections["locks"].cursor() as cursor:
+        cursor.execute(
+            "SELECT status FROM clinic_app.comms_integrationoperation"
+            " WHERE id = %s AND subject_type = %s",
+            [operation_id, SUBJECT_TYPE],
+        )
+        row = cursor.fetchone()
+        if row is None or row[0] != "in_progress" or outcome not in _UNSENT_CLOSE:
+            return None
+        try:
+            with transaction.atomic(using="locks"):
+                cursor.execute(
+                    "SELECT clinic_app.comms_close_unsent_attempt(%s, %s, %s)",
+                    [
+                        operation_id,
+                        _UNSENT_CLOSE[outcome],
+                        reason or "subject_ineligible",
+                    ],
+                )
+                closed = cursor.fetchone()
+        except DatabaseError:
+            return False
+    return bool(closed and closed[0])
 
 
 def message_lock_key(scope: OperationScope, subject_id: UUID) -> str | None:

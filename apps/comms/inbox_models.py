@@ -363,6 +363,12 @@ class InboundEvent(TenantScopedModel):
     provider_account = models.ForeignKey(ProviderAccount, on_delete=models.PROTECT)
     event_id = models.CharField(max_length=255)
     kind = models.CharField(max_length=16)
+    operation = models.ForeignKey(
+        "comms.IntegrationOperation", null=True, on_delete=models.PROTECT
+    )
+    delivery_state = models.CharField(
+        max_length=16, default="", db_default="", blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -376,6 +382,15 @@ class InboundEvent(TenantScopedModel):
             models.CheckConstraint(
                 condition=models.Q(kind__in=("message", "status", "template")),
                 name="comms_inbound_event_kind",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(operation__isnull=True, delivery_state="")
+                | models.Q(
+                    kind="status",
+                    operation__isnull=False,
+                    delivery_state__in=PROVIDER_STATE_VALUES,
+                ),
+                name="comms_inbound_attempt_status",
             ),
         ]
 

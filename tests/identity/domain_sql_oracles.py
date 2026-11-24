@@ -31,6 +31,9 @@ from billing.journal_oracles import SQL_PROTOCOL_ORACLES as BILLING_PROTOCOLS
 from billing.psp_oracles import CASES as PSP_CASES
 from billing.psp_oracles import SQL_PROTOCOL_ORACLES as PSP_PROTOCOLS
 from comms import test_portal_messages
+from comms.test_inbox import (
+    test_attempt_reconciliation_refuses_outsiders_and_ordered_messages,
+)
 from crm.sql_oracles import CASES as CRM_CASES
 from crm.sql_oracles import SQL_PROTOCOL_ORACLES as CRM_PROTOCOLS
 from ehr.test_note_grant_lifecycle import (
@@ -518,6 +521,21 @@ PROTOCOL_ORACLES = {
     **{name: list(DELEGATE_CASES) for name in DELEGATE_PROTOCOLS},
     **{name: sorted(DATA_REQUEST_CASES) for name in DATA_REQUEST_PROTOCOLS},
     **PORTAL_PROTOCOLS,
+    "clinic_app.comms_claim_send_permit": [
+        "test_send_permit_is_claimed_only_through_its_resolver"
+    ],
+    "clinic_app.comms_adopt_late_reference": [
+        "test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor"
+    ],
+    "clinic_app.comms_close_unsent_attempt": [
+        "test_settled_attempts_cannot_be_rewritten"
+    ],
+    "clinic_app.comms_record_send_outcome": [
+        "test_a_claimed_send_is_written_only_by_its_claim"
+    ],
+    "clinic_app.comms_reconcile_attempts": [
+        "test_attempt_reconciliation_refuses_outsiders_and_ordered_messages"
+    ],
     **{name: sorted(PORTAL_MESSAGE_CASES) for name in PORTAL_MESSAGE_PROTOCOLS},
     "clinic_app.teleconsult_mode_transition_audit": [
         "test_sql_guards_allow_and_deny_all_staff_roles",
@@ -621,7 +639,14 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
     assert all(callable(case) for case in DATA_REQUEST_CASES.values())
-    assert all(callable(case) for case in PORTAL_MESSAGE_CASES.values())
+    # Portal messages and the inbox reconciliation oracle (one statement: bound).
+    assert all(
+        callable(case)
+        for case in (
+            *PORTAL_MESSAGE_CASES.values(),
+            test_attempt_reconciliation_refuses_outsiders_and_ordered_messages,
+        )
+    )
     assert all(
         callable(PORTAL_CASES[name])
         for names in PORTAL_PROTOCOLS.values()

@@ -58,7 +58,6 @@ from apps.identity.stepup import (
 from apps.prescription.class_policy import require_issuance_class
 from apps.prescription.documents import document_order
 from apps.prescription.models import (
-    LIVE_SIGNATURE_STATES,
     PrescriptionDocument,
     SignatureCallback,
     SignatureOperation,
@@ -105,7 +104,6 @@ type DispatchResult = Literal["signing", "skipped", "reconcile", "retry", "faile
 type ReconciliationResult = Literal["completed", "failed", "reconcile", "skipped"]
 
 _CLAIM_LOCK_NAMESPACE = "clinic-lock-v1:prescription-signature:"
-_LIVE_STATES = LIVE_SIGNATURE_STATES
 
 
 class SignatureUnavailableError(Exception):
@@ -158,6 +156,37 @@ def _document_for_signing(clinic_id: UUID, document_id: UUID) -> PrescriptionDoc
     return document
 
 
+def _current_operation(document: PrescriptionDocument) -> SignatureOperation | None:
+    # Read completion and liveness from ONE locked row: a callback may finish
+    # between two independent existence checks even under the document request lock.
+    # The database-assigned sequence names that row; worker clocks never do.
+    current = (
+        SignatureOperation.objects.select_for_update()
+        .filter(document=document)
+        .order_by("-attempt_sequence")
+        .first()
+    )
+    if current is not None and current.state in ("issued", "rehearsal_complete"):
+        reason = "already_issued" if current.state == "issued" else "already_completed"
+        raise ClinicalConflictError(reason)
+    if current is not None and current.state == "failed":
+        if (
+            current.dispatch_started
+            and current.evidence_id
+            and current.failure_reason
+            in (
+                "invalid_provider_reference",
+                "abandoned",
+                "superseded",
+            )
+        ):
+            # Pre-upgrade failures could be post-acceptance. No invented backfill.
+            reason = "unconfirmed_dispatch"
+            raise ClinicalConflictError(reason)
+        return None
+    return current
+
+
 def initiate_signature(
     *,
     clinic_id: UUID,
@@ -177,6 +206,12 @@ def initiate_signature(
     actor = encounter.physician_id
     if document.issuer_id != actor:
         _denied(clinic_id, document.encounter_id, "not_issuer")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.pg_advisory_xact_lock("
+            "pg_catalog.hashtextextended(%s, 0))",
+            [f"clinic-lock-v1:prescription-sign:{document_id}"],
+        )
     category = document.frozen_input.get("category")
     require_issuance_class(category=category)
     if not signature_capability().synthetic_enabled:
@@ -191,30 +226,13 @@ def initiate_signature(
     if profile is None:
         reason = "registration_profile_required"
         raise PhysicianVerificationRequired(reason)
-    completed = (
-        SignatureOperation.objects.filter(
-            document=document,
-            state__in=(
-                SignatureOperation.State.ISSUED,
-                SignatureOperation.State.REHEARSAL_COMPLETE,
-            ),
-        )
-        .values_list("state", flat=True)
-        .first()
-    )
-    if completed == SignatureOperation.State.ISSUED:
-        reason = "already_issued"
-        raise ClinicalConflictError(reason)
-    if completed is not None:
-        reason = "already_completed"
-        raise ClinicalConflictError(reason)
+    existing = _current_operation(document)
     require_current_document(document)
-    existing = SignatureOperation.objects.filter(
-        document=document, state__in=_LIVE_STATES
-    ).first()
     if existing is not None:
+        if existing.state != SignatureOperation.State.DRAFT:
+            return existing
         superseded = SignatureOperation.objects.filter(
-            pk=existing.pk, state__in=_LIVE_STATES
+            pk=existing.pk, state=SignatureOperation.State.DRAFT
         ).update(
             state=SignatureOperation.State.FAILED,
             failure_reason="superseded",
@@ -387,10 +405,15 @@ def request_signature(
     only its local UUID, and resolves stored scope before calling the provider.
     """
     operation = initiate_signature(clinic_id=clinic_id, document_id=document_id)
-    operation = _prepare_signature(
-        request=request, clinic_id=clinic_id, operation_id=operation.pk
-    )
-    transaction.on_commit(lambda: _publish_dispatch(operation.pk))
+    if operation.state == SignatureOperation.State.DRAFT:
+        operation = _prepare_signature(
+            request=request, clinic_id=clinic_id, operation_id=operation.pk
+        )
+    if operation.state in (
+        SignatureOperation.State.PREPARED,
+        SignatureOperation.State.SIGNED_UNVERIFIED,
+    ):
+        transaction.on_commit(lambda: _publish_dispatch(operation.pk))
     return operation
 
 
@@ -506,12 +529,15 @@ def _operation_lock(operation_id: UUID) -> Iterator[bool]:
 
 
 def _fail_operation(scope: _SignatureScope, *, reason_code: str) -> bool:
-    """Fail one live operation once and audit the terminal transition."""
+    """Only a definitive refusal may close a possibly dispatched request."""
     with _stored_scope_context(scope):
-        updated = SignatureOperation.objects.filter(
+        prepared = SignatureOperation.objects.filter(
             pk=scope.operation_id,
-            state__in=_LIVE_STATES,
-        ).update(
+            state=SignatureOperation.State.PREPARED,
+        )
+        if reason_code != "provider_rejected":
+            prepared = prepared.filter(dispatch_started=False)
+        updated = prepared.update(
             state=SignatureOperation.State.FAILED,
             failure_reason=reason_code,
             completed_at=utc_now(),
@@ -590,8 +616,11 @@ def _persisted_dispatch(scope: _SignatureScope) -> DispatchResult:
 
 def _fail_and_report(scope: _SignatureScope, reason_code: str) -> DispatchResult:
     """Fail one operation and report the terminal dispatch outcome."""
-    _fail_operation(scope, reason_code=reason_code)
-    return "failed"
+    return (
+        "failed"
+        if _fail_operation(scope, reason_code=reason_code)
+        else _persisted_dispatch(scope)
+    )
 
 
 def _provider_begin(
@@ -611,12 +640,12 @@ def _provider_begin(
 
 
 def _bind_dispatch(scope: _SignatureScope, operation_ref: object) -> DispatchResult:
-    """Persist a well-formed provider reference or fail the operation."""
+    """Retain a malformed acceptance for reconciliation under the same key."""
     if (
         type(operation_ref) is not str
         or not 1 <= len(operation_ref) <= MAX_REFERENCE_LENGTH
     ):
-        return _fail_and_report(scope, "invalid_provider_reference")
+        return "reconcile"
     if _mark_signing(scope, operation_ref):
         return "signing"
     return _persisted_dispatch(scope)
@@ -645,6 +674,25 @@ def _dispatch_claimed(scope: _SignatureScope) -> DispatchResult:
         provider = signature_provider_for(scope.provider)
     except SignatureProviderUnavailableError:
         return _fail_and_report(scope, "provider_unavailable")
+    return _begin_claimed(provider, request, scope)
+
+
+def _begin_claimed(
+    provider: CallbackSignatureProvider,
+    request: SignatureRequest,
+    scope: _SignatureScope,
+) -> DispatchResult:
+    # Commit the irreversible boundary before begin. A concurrent pre-dispatch
+    # abandon can win only before this marker; a replacement worker keeps the key.
+    with _stored_scope_context(scope):
+        prepared = SignatureOperation.objects.filter(
+            pk=scope.operation_id, state=SignatureOperation.State.PREPARED
+        )
+        if (
+            not prepared.filter(dispatch_started=False).update(dispatch_started=True)
+            and not prepared.exists()
+        ):
+            return "skipped"
     acceptance = _provider_begin(provider, request, scope)
     if isinstance(acceptance, str):
         return acceptance
@@ -850,7 +898,7 @@ def _verification_request(operation: SignatureOperation) -> VerificationRequest:
 
 
 def _verification_failure(operation: SignatureOperation) -> str:
-    """Revalidate authority both before and after independent verification."""
+    """Revalidate the approval at issuance; any failure refuses release."""
     try:
         require_issuance_class(category=operation.category)
     except ValidationError as refusal:
@@ -886,7 +934,12 @@ def _fail_verification(operation: SignatureOperation, reason: str) -> None:
 def _pending_verification(
     scope: _SignatureScope,
 ) -> VerificationRequest | ReconciliationResult:
-    """Materialize approved bytes inside scope, then leave the transaction."""
+    """Materialize approved bytes inside scope, then leave the transaction.
+
+    Lost or expired authority is not a verdict on the retained candidate: it
+    keeps the document's signing key until verification answers, and
+    ``_complete_verification`` refuses its release afterwards.
+    """
     with _stored_scope_context(scope):
         operation = (
             SignatureOperation.objects.select_for_update()
@@ -898,10 +951,6 @@ def _pending_verification(
         )
         if operation is None:
             return "skipped"
-        failure = _verification_failure(operation)
-        if failure:
-            _fail_verification(operation, failure)
-            return "failed"
         try:
             return _verification_request(operation)
         except (SignatureVerificationError, DocumentStorageError):
@@ -916,11 +965,11 @@ def _independent_verification(
     try:
         verifier = signature_provider_for(scope.provider)
         if not isinstance(verifier, SignatureProvider) or not verifier.synthetic:
-            return None
+            return "reconcile"
         return verifier.verify(request)
-    except SignatureProviderTransientError:
+    except (SignatureProviderTransientError, SignatureProviderUnavailableError):
         return "reconcile"
-    except (SignatureVerificationError, SignatureProviderUnavailableError):
+    except SignatureVerificationError:
         return None
 
 
@@ -941,7 +990,11 @@ def _complete_verification(
             return "skipped"
         failure = _verification_failure(operation)
         if failure or verified is None:
-            _fail_verification(operation, failure or "signature_invalid")
+            # An invalid signature stays negative evidence even past its approval;
+            # a valid one past its approval is only refused release.
+            _fail_verification(
+                operation, "signature_invalid" if verified is None else failure
+            )
             return "failed"
         document_order(operation.document)
         operation.state = SignatureOperation.State.REHEARSAL_COMPLETE
@@ -1001,9 +1054,12 @@ def retry_dispatch(
     clinic_id: UUID,
     operation_id: UUID,
 ) -> SignatureOperation:
-    """Re-dispatch one prepared operation after commit; never duplicates."""
+    """Re-dispatch the same key or verify the retained candidate after commit."""
     operation = signature_status(clinic_id=clinic_id, operation_id=operation_id)
-    if operation.state != SignatureOperation.State.PREPARED:
+    if operation.state not in (
+        SignatureOperation.State.SIGNED_UNVERIFIED,
+        SignatureOperation.State.PREPARED,
+    ):
         reason = "invalid_state"
         raise ClinicalConflictError(reason)
     transaction.on_commit(lambda: _publish_dispatch(operation.pk))
@@ -1016,13 +1072,15 @@ def abandon_signature(
     clinic_id: UUID,
     operation_id: UUID,
 ) -> SignatureOperation:
-    """Abandon one live operation so a fresh attempt can be initiated."""
+    """Abandon only a draft or a request known never to have reached begin."""
     operation = signature_status(clinic_id=clinic_id, operation_id=operation_id)
-    if operation.state not in _LIVE_STATES:
+    if not operation.can_abandon:
         reason = "invalid_state"
         raise ClinicalConflictError(reason)
     updated = SignatureOperation.objects.filter(
-        pk=operation.pk, state=operation.state
+        pk=operation.pk,
+        state=operation.state,
+        dispatch_started=operation.dispatch_started,
     ).update(
         state=SignatureOperation.State.FAILED,
         failure_reason="abandoned",

@@ -67,15 +67,17 @@
       <div class="actions">{% if document.draft.kind == "prescription" %}<a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho</a>{% else %}<a class="button button--secondary" href="{{ review_url }}">{% trans "Review frozen content" %}</a>{% endif %}</div>
       {% endif %}
     {% else %}
-      <p class="feedback" role="status">{% if operation.state == "signing" %}A operação está com o provedor. O resultado chega pelo retorno autenticado; até lá nada foi emitido.{% elif operation.state == "prepared" %}Identidade e registro verificados; o envio ao provedor ainda não foi confirmado.{% else %}A operação foi interrompida antes da confirmação de identidade. Volte à revisão para confirmar e assinar.{% endif %}</p>
+      <p class="feedback" role="status">{% if operation.state == "signing" %}A operação está com o provedor. O resultado chega pelo retorno autenticado; até lá nada foi emitido.{% elif operation.state == "signed_unverified" %}A assinatura recebida ainda não foi verificada. O documento não está liberado.{% elif operation.state == "prepared" %}Identidade e registro verificados; o envio ao provedor ainda não foi confirmado.{% else %}A operação foi interrompida antes da confirmação de identidade. Volte à revisão para confirmar e assinar.{% endif %}</p>
       <div class="actions">
         <a class="button button--secondary" href="{% url 'prescription:signing' clinic_id operation.pk %}">Atualizar estado</a>
         {% if operation.state == "prepared" %}
         <form method="post" data-once>{% csrf_token %}<button class="button" name="action" value="retry_dispatch" type="submit">Reenviar ao provedor</button><span class="rx-once-status" data-once-status role="status" hidden>Reenviando…</span></form>
+        {% elif operation.state == "signed_unverified" %}
+        <form method="post" data-once>{% csrf_token %}<button class="button" name="action" value="retry_dispatch" type="submit">Verificar a assinatura recebida</button></form>
         {% endif %}
-        <form method="post" data-once>{% csrf_token %}<button class="button button--danger" name="action" value="abandon" type="submit">Abandonar operação</button><span class="rx-once-status" data-once-status role="status" hidden>Abandonando…</span></form>
+        {% if operation.can_abandon %}<form method="post" data-once>{% csrf_token %}<button class="button button--danger" name="action" value="abandon" type="submit">Abandonar operação</button><span class="rx-once-status" data-once-status role="status" hidden>Abandonando…</span></form>{% endif %}
       </div>
-      <p class="hint">Abandonar registra a tentativa como falha e libera o documento para uma nova assinatura.</p>
+      {% if operation.can_abandon %}<p class="hint">Abandonar registra a tentativa como falha e libera o documento para uma nova assinatura.</p>{% endif %}
     {% endif %}
   </section>
   <section class="panel" aria-labelledby="evidence-title">

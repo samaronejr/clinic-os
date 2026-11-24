@@ -275,7 +275,8 @@ def test_channel_patient_scope_restores_inbound_gucs_before_and_after_reply(
         assert before[1] == str(rbac_graph.organization_a)
         assert before[2] == str(desk.inbox.principal)
         assert before[3] in (None, "")
-        assert before[4] == desk.inbox.key
+        # The inbound proof is this transaction's MAC, never the bearer key.
+        assert before[4] not in (None, "", desk.inbox.key)
         original_finish(ctx, decision, kek)
         assert _gucs() == before
         scopes.append(before)

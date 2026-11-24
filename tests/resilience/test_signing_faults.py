@@ -50,19 +50,21 @@ def test_an_acceptance_without_a_usable_reference_fails_closed(
     setup = signing_setup
     settings.CLINIC_SYNTHETIC_FAULTS = {"signing": "ambiguous"}
     operation = setup.request_signature()
-    assert (operation.state, operation.failure_reason) == (
-        "failed",
-        "invalid_provider_reference",
+    assert (operation.state, operation.failure_reason, operation.dispatch_started) == (
+        "prepared",
+        "",
+        True,
     )
+    assert setup.dispatch(operation.pk) == "reconcile"
     assert operation.signed_bytes is None or bytes(operation.signed_bytes) == b""
-    # The physician can start again once the provider answers properly.
+    # The same request is create-or-lookup; a malformed reply grants no new key.
     settings.CLINIC_SYNTHETIC_FAULTS = {}
     restarted = setup.request_signature()
-    assert restarted.pk != operation.pk
+    assert restarted.pk == operation.pk
     assert restarted.state == "signing"
     with owner_scope(setup.graph.organization_a):
         assert list(
             SignatureOperation.objects.order_by("created_at").values_list(
                 "state", "failure_reason"
             )
-        ) == [("failed", "invalid_provider_reference"), ("signing", "")]
+        ) == [("signing", "")]

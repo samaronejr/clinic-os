@@ -91,6 +91,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("comms_appointmentreminder", "SELECT"),
     ("comms_integrationoperation", "INSERT"),
     ("comms_integrationoperation", "SELECT"),
+    ("comms_providermacsecret", "INSERT"),
+    ("comms_providermacsecret", "SELECT"),
     ("consent_consentacceptance", "SELECT"),
     ("consent_consentrevocation", "SELECT"),
     ("consent_consenttext", "SELECT"),
@@ -248,7 +250,14 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("intake_patientsession", "acting_for_enrollment_id", "UPDATE"),
     ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
+    ("comms_inboundevent", "delivery_state", "SELECT"),
+    ("comms_provideraccount", "id", "SELECT"),
+    ("comms_inboundevent", "operation_id", "SELECT"),
+    ("comms_integrationoperation", "attempt_sequence", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
+    ("comms_integrationoperation", "provider_reference", "UPDATE"),
+    ("comms_integrationoperation", "send_permit", "UPDATE"),
+    ("comms_integrationoperation", "send_permit_claim", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
     ("identity_user", "id", "SELECT"),
@@ -485,6 +494,11 @@ POSTURE_OVERRIDES: Final = {
     "billing_revision_snapshot": ("v", False, ["clinic_resolver"]),
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
+    "comms_adopt_late_reference": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_close_unsent_attempt": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_record_send_outcome": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
     "configuration_guard": ("v", False, ["clinic_resolver"]),
     "consent_audit_scope": ("s", False, ["clinic_owner", "clinic_resolver"]),
@@ -535,6 +549,7 @@ POSTURE_OVERRIDES: Final = {
     "prescription_revocation_guard": ("v", False, ["clinic_resolver"]),
     "prescription_signature_callback_guard": ("v", False, ["clinic_resolver"]),
     "prescription_signature_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_signature_sequence": ("v", False, ["clinic_resolver"]),
     "prescription_verify_allowance": ("v", True, ["clinic_app", "clinic_resolver"]),
     "prescription_verify_synthetic": ("s", False, ["clinic_resolver"]),
     "protected_tenant": ("s", False, ["clinic_owner", "clinic_resolver"]),
@@ -811,6 +826,14 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_adopt_late_reference", "reference text"),
+    ("comms_claim_send_permit", "requested uuid"),
+    ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"),
+    (
+        "comms_record_send_outcome",
+        "requested uuid, outcome text, reference text, proof text",
+    ),
+    ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
@@ -878,6 +901,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("prescription_signature_guard", ""),
+    ("prescription_signature_sequence", ""),
     ("prescription_signature_scope", "requested_operation uuid"),
     (
         "prescription_verify",
@@ -1250,6 +1274,18 @@ FUNCTION_RESULTS: Final = {
         "TABLE(status text, operation_count bigint, "
         "oldest_created_at timestamp with time zone)"
     ),
+    ("comms_adopt_late_reference", "reference text"): "uuid",
+    ("comms_claim_send_permit", "requested uuid"): "text",
+    ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"): (
+        "boolean"
+    ),
+    (
+        "comms_record_send_outcome",
+        "requested uuid, outcome text, reference text, proof text",
+    ): "boolean",
+    ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
+        "void"
+    ),
     ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",
     ("configuration_guard", ""): "trigger",
@@ -1350,6 +1386,7 @@ FUNCTION_RESULTS: Final = {
         "actor_id uuid, provider text)"
     ),
     ("prescription_signature_guard", ""): "trigger",
+    ("prescription_signature_sequence", ""): "trigger",
     ("prescription_signature_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid, provider text)"
     ),

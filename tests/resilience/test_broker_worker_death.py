@@ -11,12 +11,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 from apps.comms.tasks import dispatch_due_reminders
+from apps.ehr.services import ClinicalConflictError
 from apps.prescription.models import (
     PrescriptionDocument,
     SignatureCallback,
     SignatureOperation,
 )
-from apps.prescription.signing import request_signature
+from apps.prescription.signing import abandon_signature, request_signature
 from apps.tenancy.db import tenant_context
 from django.db import connection
 
@@ -148,6 +149,14 @@ def test_signing_redelivery_after_provider_acceptance(
                 )
                 assert cursor.fetchall() == [("f7-gate-locks",)], (
                     "signing advisory lock was not held on the locks alias"
+                )
+            with (
+                runtime_role(),
+                tenant_context(setup.graph.physician, setup.graph.organization_a),
+                pytest.raises(ClinicalConflictError),
+            ):
+                abandon_signature(
+                    clinic_id=setup.graph.clinic_a, operation_id=operation.pk
                 )
         completed_delivery = delivery(broker, operation.pk)
     assert (completed_delivery.task_id, completed_delivery.redelivered) == (

@@ -205,6 +205,10 @@ def effective_delivery_state(*, operation_status: str, provider_state: str) -> s
     """
     base = _OPERATION_STATES.get(operation_status, DeliveryState.QUEUED)
     reported = _PROVIDER_STATES.get(provider_state)
+    if reported == DeliveryState.READ:
+        return reported
+    if DeliveryState.DELIVERED in (base, reported):
+        return DeliveryState.DELIVERED
     if DeliveryState.FAILED in (base, reported):
         return DeliveryState.FAILED
     if reported is not None and DELIVERY_RANK[reported] > DELIVERY_RANK[base]:
@@ -218,9 +222,10 @@ def advance_provider_state(*, current: str, incoming: str) -> str:
     if new is None:
         return current
     old = _PROVIDER_STATES.get(current)
-    if old is None or old == DeliveryState.FAILED:
-        # Delivery evidence may replace an earlier failure report.
+    if old is None:
         return new
+    if old == DeliveryState.FAILED:
+        return new if new in (DeliveryState.DELIVERED, DeliveryState.READ) else old
     if new == DeliveryState.FAILED:
         # A failure never overwrites proof of delivery.
         return old if old in (DeliveryState.DELIVERED, DeliveryState.READ) else new

@@ -6,6 +6,8 @@ that exist there. It writes one organization with a clinic, an owner user
 and clinic role, one patient + enrollment, one availability block, one
 appointment, and two hash-chained audit events — the representative
 patient/scheduling/role/audit state the candidate upgrade must preserve.
+A base that ships the staff inbox also writes its retry histories through
+``migration_upgrade_inbox_seed.py``.
 
 Marker values are exported to ``$UPGRADE_SEED_FILE`` as JSON so the
 post-migration verifier can bind to exactly these rows.
@@ -184,19 +186,51 @@ markers = {
     "practitioner_id": str(PRACTITIONER_ID),
     "patient_name": PATIENT_NAME,
 }
-with connection.cursor() as cursor:
-    cursor.execute("SELECT to_regclass('clinic_app.ai_aiinvocation') IS NOT NULL")
-    markers["ai_present"] = cursor.fetchone()[0]
+seeds = ["core"]
+
+
+def _helper(
+    name: str, entry: str
+) -> "Callable[[dict[str, object]], dict[str, object]]":
+    path = Path(os.environ["UPGRADE_HELPER_ROOT"]) / f"ops/testing/{name}"
+    return cast(
+        "Callable[[dict[str, object]], dict[str, object]]", run_path(str(path))[entry]
+    )
+
+
+def _present(table: str) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass(%s) IS NOT NULL", [f"clinic_app.{table}"])
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def _has_column(table: str, column: str) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns"
+            " WHERE table_schema = 'clinic_app' AND table_name = %s"
+            " AND column_name = %s)",
+            [table, column],
+        )
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+# The inbox histories come first: the AI seed snapshots whole tables when it
+# finishes, so every row written before that snapshot is preserved with it.
+# They are pre-sequence histories: a base that already orders attempts
+# (comms 0013 applied) has none to write, so ``inbox`` is then left out.
+if _present("comms_message") and not _has_column(
+    "comms_integrationoperation", "attempt_sequence"
+):
+    markers["inbox"] = _helper("migration_upgrade_inbox_seed.py", "seed_inbox")(markers)
+    seeds.append("inbox")
+markers["ai_present"] = _present("ai_aiinvocation")
 if markers["ai_present"]:
-    helper = (
-        Path(os.environ["UPGRADE_HELPER_ROOT"])
-        / "ops/testing/migration_upgrade_ai_seed.py"
-    )
-    seed_ai = cast(
-        "Callable[[dict[str, object]], dict[str, object]]",
-        run_path(str(helper))["seed_ai"],
-    )
-    markers["ai"] = seed_ai(markers)
+    markers["ai"] = _helper("migration_upgrade_ai_seed.py", "seed_ai")(markers)
+    seeds.append("ai")
+markers["seeds"] = seeds
 cast("_CheckHistories", state["check_histories"])(markers, required)
 publish_seed(seed_path, json.dumps(markers, indent=2, sort_keys=True) + "\n")
 print(f"seeded: {json.dumps(markers, sort_keys=True)}")  # noqa: T201 - piped stdout

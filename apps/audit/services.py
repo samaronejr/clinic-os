@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from django.db import connection, connections
+from django.db import DEFAULT_DB_ALIAS, connection, connections
 
 from apps.audit.canonical import (
     AUDIT_PAYLOAD_ALLOWED,
@@ -115,10 +115,15 @@ def record_event(
     event: AuditEventInput,
     *,
     payload: Mapping[str, AuditPayloadInputValue],
+    using: str = DEFAULT_DB_ALIAS,
 ) -> int:
-    """Append one tenant event using organization and actor GUCs."""
+    """Append one tenant event using organization and actor GUCs.
+
+    ``using`` names the connection whose transaction the event joins, so an
+    outcome recorded on another connection is audited atomically with it.
+    """
     normalized_payload = _normalize_payload(payload)
-    with connection.cursor() as cursor:
+    with connections[using].cursor() as cursor:
         cursor.execute(
             "SELECT NULLIF(current_setting('app.current_tenant', true), ''), "
             "NULLIF(current_setting('app.current_user_id', true), '')"

@@ -2293,6 +2293,12 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
     ),
     "comms.message.queued": ("tenant", "clinic-os-web", "comms.message", "queued"),
     "comms.message.retried": ("tenant", "clinic-os-web", "comms.message", "retried"),
+    "comms.message.reconciled": (
+        "tenant",
+        "clinic-os-web",
+        "comms.message",
+        "reconciled",
+    ),
     "comms.template.created": (
         "tenant",
         "clinic-os-web",

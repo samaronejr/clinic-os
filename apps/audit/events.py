@@ -623,7 +623,7 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             f"comms.message.{verb}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-web", "comms.message", verb
             )
-            for verb in ("queued", "retried")
+            for verb in ("queued", "retried", "reconciled")
         },
         **{
             f"comms.template.{verb}": Phase1AuditEventDefinition(
