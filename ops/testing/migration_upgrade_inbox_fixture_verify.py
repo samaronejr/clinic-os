@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 from uuid import UUID
 
 import psycopg
@@ -23,6 +23,13 @@ if TYPE_CHECKING:
 
 _UUID_VERSION = 4
 _IDENTITIES_PER_CASE = 4
+
+
+class InboxFixtureResult(NamedTuple):
+    """Independently resolved inbox probe keys and assertion failures."""
+
+    failures: list[str]
+    cases: dict[str, dict[str, str]]
 
 
 def _inbox_rows(
@@ -71,7 +78,7 @@ def _inbox_rows(
     return cursor.fetchall()
 
 
-def verify_inbox_fixture() -> list[str]:
+def verify_inbox_fixture() -> InboxFixtureResult:
     """Resolve histories from decrypted fixture contacts and verify their shape."""
     kek = (
         (Path(os.environ["CLINIC_SECRET_DIR"]) / "tenant-kek.secret")
@@ -83,6 +90,7 @@ def verify_inbox_fixture() -> list[str]:
         for ordinal, (case, channel, attempts) in enumerate(CASES, 1)
     }
     failures = []
+    cases = {}
     seen = set()
     identities: set[object] = set()
     with (
@@ -96,7 +104,7 @@ def verify_inbox_fixture() -> list[str]:
             [ORGANIZATION_CNPJ],
         )
         if len(cursor.fetchall()) != 1:
-            return ["inbox fixture: organization natural key"]
+            return InboxFixtureResult(["inbox fixture: organization natural key"], {})
         for row in _inbox_rows(cursor, kek):
             (
                 channel,
@@ -122,6 +130,11 @@ def verify_inbox_fixture() -> list[str]:
                 continue
             seen.add(key)
             case, ordinal, attempts = declared[key]
+            cases[case] = {
+                "message": str(outbound),
+                "conversation": str(conversation),
+                "channel": str(channel),
+            }
             keys = {conversation, inbound, outbound, command}
             failures.extend(
                 f"inbox fixture: {case} {reason}"
@@ -167,4 +180,4 @@ def verify_inbox_fixture() -> list[str]:
             sum(attempts for _, _, attempts in CASES),
         ):
             failures.append("inbox fixture: exact natural keys and row counts")
-    return failures
+    return InboxFixtureResult(failures, cases)

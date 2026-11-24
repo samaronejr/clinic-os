@@ -38,3 +38,8 @@ CONFIGURATION: Final = {
     "retrieval_sha256": DIGEST,
     "schema_sha256": DIGEST,
 }
+
+PORTAL_CONTACT: Final = "synthetic.invalid"
+PORTAL_TURN_STATES: Final = ("pending", "done")
+PORTAL_INPUT: Final = "Synthetic inbound."
+PORTAL_REPLY: Final = "Synthetic reply."

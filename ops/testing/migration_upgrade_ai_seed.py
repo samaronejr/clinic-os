@@ -698,17 +698,17 @@ def _front_desk(
         purpose="care",
         enrollment_id=enrollment_id,
         contact_fingerprint=digest,
-        contact_address="synthetic.invalid",
+        contact_address=_CONTRACT["PORTAL_CONTACT"],
         last_activity_at=now,
     )
     thread = fixtures.make("ai.FrontDeskThread", conversation=conversation)
     turns: list[str] = []
-    for state in ("pending", "done"):
+    for state in _CONTRACT["PORTAL_TURN_STATES"]:
         inbound = fixtures.make(
             "comms.Message",
             conversation=conversation,
             direction="in",
-            body="Synthetic inbound.",
+            body=_CONTRACT["PORTAL_INPUT"],
             event_id=uuid4().hex,
             created_at=now,
         )
@@ -717,7 +717,7 @@ def _front_desk(
                 "comms.Message",
                 conversation=conversation,
                 direction="out",
-                body="Synthetic reply.",
+                body=_CONTRACT["PORTAL_REPLY"],
                 command_id=uuid4(),
                 created_at=now,
             )

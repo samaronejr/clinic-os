@@ -34,6 +34,7 @@ from django.db import connection
 from ops.testing.migration_upgrade_ai_invocation_verify import verify_invocation_fixture
 from ops.testing.migration_upgrade_ai_verify import verify_ai
 from ops.testing.migration_upgrade_core_verify import verify_core_fixture
+from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
 from ops.testing.migration_upgrade_inbox_fixture_verify import verify_inbox_fixture
 from ops.testing.migration_upgrade_rows import verify_rows
 from ops.testing.migration_upgrade_seed_state import (
@@ -57,7 +58,8 @@ failures.extend(verify_core_fixture())
 if "ai" in required_seeds:
     failures.extend(verify_invocation_fixture())
 if "inbox" in required_seeds:
-    failures.extend(verify_inbox_fixture())
+    inbox_fixture = verify_inbox_fixture()
+    failures.extend(inbox_fixture.failures)
 markers = json.loads(seed_contents)
 organization_id = UUID(markers["organization_id"])
 patient_id = UUID(markers["patient_id"])
@@ -197,6 +199,16 @@ else:
 failures.extend(verify_ai(markers, required="ai" in required_seeds))
 if "inbox" in required_seeds:
     inbox = import_module("ops.testing.migration_upgrade_inbox_verify")
+    # The historical behavior probe must not take its expected projection
+    # from the base message_states implementation it is meant to check.
+    histories = markers["inbox"]["cases"]
+    for case, keys in inbox_fixture.cases.items():
+        if case in histories:
+            histories[case].update(keys)
+    for case, expected in PARITY_STATES.items():
+        history = histories.get(case)
+        if history is not None:
+            history["base_state"] = expected
     failures.extend(inbox.verify_inbox(markers))
 
 if failures:

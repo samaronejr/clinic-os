@@ -21,6 +21,10 @@ from ops.testing.migration_upgrade_ai_fixture import (
     METHODS,
     OUTPUT_TEMPLATE,
     OWNER_PURPOSES,
+    PORTAL_CONTACT,
+    PORTAL_INPUT,
+    PORTAL_REPLY,
+    PORTAL_TURN_STATES,
     RESERVED_MICROS,
     STATUSES,
     UNBOUND_PURPOSES,
@@ -132,6 +136,86 @@ def _configuration_failures(cursor: Cursor[tuple[object, ...]]) -> list[str]:
     return failures
 
 
+def _portal_failures(cursor: Cursor[tuple[object, ...]], kek: str) -> list[str]:
+    cursor.execute(
+        """SELECT t.state, t.id, i.id, r.id, i.body, r.body,
+            c.purpose='care' AND c.contact_fingerprint=%s
+                AND e.organization_id=c.organization_id AND e.clinic_id=c.clinic_id
+                AND clinic_app.tenant_decrypt(
+                    %s,'comms.conversation.contact_address',c.contact_address) = %s,
+            i.conversation_id=c.id AND i.direction='in'
+                AND i.organization_id=c.organization_id
+                AND i.created_at=c.last_activity_at
+                AND i.event_id ~ '^[0-9a-f]{32}$'
+                AND (r.id IS NULL OR
+                    (r.conversation_id=c.id AND r.direction='out'
+                     AND r.organization_id=c.organization_id
+                     AND r.created_at=i.created_at)),
+            t.created_at >= i.created_at,
+            clinic_app.tenant_decrypt(%s,'comms.message.body',i.body) = %s,
+            CASE WHEN r.id IS NOT NULL THEN
+                clinic_app.tenant_decrypt(%s,'comms.message.body',r.body) = %s
+            END,
+            t.intent,t.outcome
+        FROM clinic_app.ai_frontdeskturn t
+        JOIN clinic_app.ai_frontdeskthread d ON d.id=t.thread_id
+        JOIN clinic_app.comms_conversation c ON c.id=d.conversation_id
+        JOIN clinic_app.intake_patientclinicenrollment e ON e.id=c.enrollment_id
+        JOIN clinic_app.comms_message i ON i.id=t.inbound_id
+        LEFT JOIN clinic_app.comms_message r ON r.id=t.reply_id
+        WHERE c.channel='portal'""",
+        [
+            DIGEST,
+            kek,
+            PORTAL_CONTACT.encode(),
+            kek,
+            PORTAL_INPUT.encode(),
+            kek,
+            PORTAL_REPLY.encode(),
+        ],
+    )
+    rows = cursor.fetchall()
+    failures = []
+    if len(rows) != len(PORTAL_TURN_STATES) or {r[0] for r in rows} != set(
+        PORTAL_TURN_STATES
+    ):
+        failures.append("AI portal fixture: exact natural keys")
+    prior: set[object] = set()
+    ciphertexts: set[object] = set()
+    for row in rows:
+        (
+            state,
+            turn,
+            inbound,
+            reply,
+            input_bytes,
+            reply_bytes,
+            contact,
+            links,
+            order,
+            input_ok,
+            reply_ok,
+            intent,
+            outcome,
+        ) = row
+        done = state == "done"
+        keys = [turn, inbound, *([reply] if done else [])]
+        if not (
+            _new_ids(keys, prior)
+            and contact is True
+            and links is True
+            and order is True
+            and input_ok is True
+            and input_bytes not in ciphertexts
+            and (reply_ok, intent, outcome)
+            == ((True, "greeting", "answered") if done else (None, "", ""))
+        ):
+            failures.append(f"AI portal fixture: declared turn {state}")
+        prior.update(keys)
+        ciphertexts.update((input_bytes, reply_bytes))
+    return failures
+
+
 def verify_invocation_fixture() -> list[str]:
     """Check declared invocations, artifact values, and operation relationships."""
     kek = (
@@ -152,6 +236,7 @@ def verify_invocation_fixture() -> list[str]:
         if not _context(cursor):
             return ["AI invocation fixture: organization natural key"]
         failures.extend(_configuration_failures(cursor))
+        failures.extend(_portal_failures(cursor, kek))
         cursor.execute(
             """SELECT i.purpose,i.status,i.id,s.id,t.id,o.id,o.idempotency_key,
                 u.username,c.purpose,i0.name=%s

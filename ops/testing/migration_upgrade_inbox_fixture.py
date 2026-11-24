@@ -59,6 +59,36 @@ ACCOUNTS: Final = {
 INBOUND_BODY: Final = b"Oi"
 OUTBOUND_BODY: Final = b"Mensagem sintetica"
 
+# Visible states after the declared steps. In particular a cancelled attempt
+# is shown as failed, and an unknown provider outcome remains queued.
+PARITY_STATES: Final = {
+    "p_queued": "queued",
+    "p_sent": "sent",
+    "p_sent_receipt": "sent",
+    "p_delivered": "delivered",
+    "p_read": "read",
+    "p_failed": "failed",
+    "p_failed_delivered": "delivered",
+    "p_cancelled": "failed",
+    "r_queued": "queued",
+    "r_sent": "sent",
+    "r_failed": "failed",
+    "r_delivered": "delivered",
+    "r_cancelled": "failed",
+    "e_failed": "failed",
+    "e_retry_sent": "sent",
+    "e_delivered": "delivered",
+    "e_unknown": "queued",
+    "s_sent": "sent",
+    "s_delivered": "delivered",
+    "s_failed": "failed",
+    "s_retry_sent": "sent",
+    "s_rejected": "failed",
+    "o_rejected": "failed",
+    "o_unknown": "queued",
+    "o_rejected_retry_sent": "sent",
+}
+
 
 def contact_address(channel: str, ordinal: int) -> bytes:
     """Resolve the seeded contact by its channel and ordinal, never by UUID."""
