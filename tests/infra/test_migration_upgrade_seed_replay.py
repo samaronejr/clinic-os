@@ -253,6 +253,7 @@ def test_typed_comparator_rejects_changed_array_lower_bound(
     seed_receipt: Path, superuser_database_url: str
 ) -> None:
     _run_seed()
+    assert verify_ai_literal_values() == []
     with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
         expected = read_rows(cursor, typed=True)
         with admin.transaction() as mutation:
@@ -268,6 +269,15 @@ def test_typed_comparator_rejects_changed_array_lower_bound(
                 "seeded value mismatch: intake_patientaccessgrant.operations "
             )
             raise Rollback(mutation)
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute(
+            "UPDATE clinic_app.intake_patientaccessgrant "
+            "SET operations=('[0:' || (cardinality(operations)-1) || ']=' "
+            "|| operations::text)::varchar[]"
+        )
+    assert verify_ai_literal_values() == [
+        "AI literal fixture: no one-to-one match in intake_patientaccessgrant"
+    ]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -341,6 +351,9 @@ def test_blind_index_oracle_rejects_shared_writer_bug(
     monkeypatch.setattr(patient_creation, "name_indexes", reverse_digests)
     monkeypatch.setattr(backfill, "name_indexes", reverse_digests)
     _run_seed()
+    assert verify_core_fixture() == [
+        "core fixture mismatch: intake_patient.full_name_index"
+    ]
     with psycopg.connect(superuser_database_url) as admin, admin.cursor() as cursor:
         actual = {"intake_patient": read_rows(cursor)["intake_patient"]}
     base_rows = {
