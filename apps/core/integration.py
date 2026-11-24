@@ -694,16 +694,18 @@ def _operation_for_prepare(scope: OperationScope) -> IntegrationOperation:
     return operation
 
 
-_CLAIMED_OUTCOME_RECORDERS: list[Callable[[UUID, str, str | None], bool | None]] = []
+_CLAIMED_OUTCOME_RECORDERS: list[
+    Callable[[UUID, str, str | None, str | None], bool | None]
+] = []
 
 
 def register_claimed_outcome_recorder(
-    recorder: Callable[[UUID, str, str | None], bool | None],
+    recorder: Callable[[UUID, str, str | None, str | None], bool | None],
 ) -> None:
     """Route the outcome of a send claimed by this worker's lock session.
 
-    ``recorder(operation_id, outcome, reference)`` returns ``None`` when this
-    process holds no claim for the operation; otherwise it records
+    ``recorder(operation_id, outcome, reference, reason)`` returns ``None`` when
+    the operation is not its subject's to record; otherwise it records
     ``accepted``/``rejected``/``retry``/``withdrawn`` through the subject's
     own resolver on the ``locks`` connection, the claimant session, inside
     the transaction this module opens there.
@@ -735,7 +737,7 @@ def _claimed_outcome(
         )
         cursor.execute("SET LOCAL ROLE clinic_app")
         for recorder in _CLAIMED_OUTCOME_RECORDERS:
-            recorded = recorder(scope.operation_id, outcome, reference)
+            recorded = recorder(scope.operation_id, outcome, reference, reason_code)
             if recorded is None:
                 continue
             if recorded and event_type is not None:
@@ -775,7 +777,9 @@ def _succeed(scope: OperationScope, provider_reference: str) -> bool:
 def _release_for_retry(scope: OperationScope) -> bool:
     """Return one claimed row to pending after a transient send failure."""
     # A transient refusal is audited by no event, as on the unclaimed path.
-    recorded = _claimed_outcome(scope, "retry", event_type=None)
+    recorded = _claimed_outcome(
+        scope, "retry", event_type=None, reason_code="transient_send"
+    )
     if recorded is not None:
         return recorded
     with _stored_scope_context(scope):
@@ -796,7 +800,7 @@ def _fail_operation(scope: OperationScope, *, reason_code: str) -> bool:
         scope,
         "rejected",
         event_type="comms.operation.failed",
-        reason_code="provider_rejected",
+        reason_code=reason_code,
     )
     if recorded is not None:
         return recorded

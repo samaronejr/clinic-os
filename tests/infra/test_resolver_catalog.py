@@ -496,6 +496,7 @@ POSTURE_OVERRIDES: Final = {
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
     "comms_adopt_late_reference": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_close_unsent_attempt": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_record_send_outcome": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
@@ -827,6 +828,7 @@ FUNCTION_SIGNATURES: Final = {
     ("comms_operation_scope", "requested_operation uuid"),
     ("comms_adopt_late_reference", "reference text"),
     ("comms_claim_send_permit", "requested uuid"),
+    ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"),
     (
         "comms_record_send_outcome",
         "requested uuid, outcome text, reference text, proof text",
@@ -1274,6 +1276,9 @@ FUNCTION_RESULTS: Final = {
     ),
     ("comms_adopt_late_reference", "reference text"): "uuid",
     ("comms_claim_send_permit", "requested uuid"): "text",
+    ("comms_close_unsent_attempt", "requested uuid, outcome text, reason text"): (
+        "boolean"
+    ),
     (
         "comms_record_send_outcome",
         "requested uuid, outcome text, reference text, proof text",

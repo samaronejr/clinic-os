@@ -802,8 +802,12 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         elif any(
             (a.attempt_sequence is None and a.send_permit is None)
             or (
-                a.send_permit_claim is not None
-                and bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
+                a.status == "in_progress"
+                and a.send_permit_claim is not None
+                and (
+                    bytes(a.send_permit_claim) == LEGACY_IN_FLIGHT
+                    or _claim_abandoned(a.subject_id)
+                )
             )
             for a in own
         ):
@@ -823,6 +827,14 @@ def message_states(messages: Iterable[Message]) -> dict[UUID, str]:
         if states[message_id] == "failed" and awaiting_outcome(own, failed):
             states[message_id] = "awaiting"
     return states
+
+
+def _claim_abandoned(message_id: UUID) -> bool:
+    """Whether a send's claim outlived its session (no one holds its lock)."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.comms_claim_abandoned(%s)", [message_id])
+        row = cursor.fetchone()
+    return bool(row and row[0])
 
 
 # The claim digest comms 0018 gives a send a pre-claim revision left in

@@ -10786,6 +10786,22 @@
       "enforced_by": [
         "apps.comms.inbox_services._actor"
       ]
+    },
+    {
+      "symbol": "apps.comms.inbox_adapters._close_unsent",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "The outbox worker's close of an outbox-claimed attempt; clinic_app.comms_close_unsent_attempt moves it only when it never took the send permit's claim and holds no reference, so it provably never reached the provider. No staff authority is read or borrowed."
+    },
+    {
+      "symbol": "apps.comms.inbox_services._claim_abandoned",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "presentation",
+      "reason": "Display only: asks whether a send's claim outlived its session so the thread shows the staff hold; clinic_app.comms_claim_abandoned reads lock state and no tenant data."
     }
   ],
   "probes": [
@@ -14685,7 +14701,8 @@
           "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py",
-          "apps/comms/migrations/_session_claim_sql.py"
+          "apps/comms/migrations/_session_claim_sql.py",
+          "apps/comms/migrations/_settled_attempt_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14734,7 +14751,8 @@
           "apps/comms/migrations/_attempt_sequence_sql.py",
           "apps/comms/migrations/_mac_proof_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
-          "apps/comms/migrations/_send_permit_sql.py"
+          "apps/comms/migrations/_send_permit_sql.py",
+          "apps/comms/migrations/_settled_attempt_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14758,7 +14776,8 @@
         "migrations": [
           "apps/comms/migrations/_inflight_claim_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
-          "apps/comms/migrations/_session_claim_sql.py"
+          "apps/comms/migrations/_session_claim_sql.py",
+          "apps/comms/migrations/_settled_attempt_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -29067,6 +29086,50 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Lets the runtime role change a message's delivery projection only inside a MAC-verified inbound transaction for its own provider account."
+    },
+    "clinic_app.comms_claim_abandoned": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_settled_attempt_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_reconcile_attempts"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "bool",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Reports whether a send's claim outlived its session (no other session holds the subject lock); no staff role decision."
+    },
+    "clinic_app.comms_close_unsent_attempt": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_settled_attempt_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, outcome text, reason text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_settled_attempts_cannot_be_rewritten"
+      ],
+      "reason": "Closes an outbox-claimed message attempt that provably never reached the provider (no permit claim, no reference); no staff authority."
     }
   },
   "sql_method": [

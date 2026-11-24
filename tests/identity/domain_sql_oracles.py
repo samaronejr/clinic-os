@@ -527,6 +527,9 @@ PROTOCOL_ORACLES = {
     "clinic_app.comms_adopt_late_reference": [
         "test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor"
     ],
+    "clinic_app.comms_close_unsent_attempt": [
+        "test_settled_attempts_cannot_be_rewritten"
+    ],
     "clinic_app.comms_record_send_outcome": [
         "test_a_claimed_send_is_written_only_by_its_claim"
     ],

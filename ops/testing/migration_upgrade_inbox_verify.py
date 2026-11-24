@@ -631,8 +631,10 @@ def _r6_raw_sql(world: _World, ids: dict[str, str], failures: list[str]) -> None
     ):
         failures.append("the runtime role could erase B's acceptance")
     forged = "status = 'failed', last_error = 'provider_rejected'"
-    if _raw(world, update.format(forged), [b], keep=True) != "ok":
-        failures.append("the forged status write did not run")
+    if _raw(world, update.format(forged), [b], keep=True) != (
+        "comms_message_attempt_settled_check"
+    ):
+        failures.append("the runtime role could rewrite B's status")
     if world.retry(message) != REFUSED or world.state(message) != "awaiting":
         failures.append("a forged status unlocked a second send")
     if world.direct(message) != "comms_message_attempt_open_check":
@@ -765,6 +767,20 @@ def _unknown_outcome(world: _World, ids: dict[str, str], failures: list[str]) ->
         failures.append("a retry was admitted for a send of unknown outcome")
 
 
+def _r10_rewrite(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    """Check an upgraded accepted send cannot be rewritten by the runtime role."""
+    message, attempt = UUID(ids["message"]), str(ids["a"])
+    update = "UPDATE clinic_app.comms_integrationoperation SET {} WHERE id = %s"
+    forged = [
+        _raw(world, update.format(change), [attempt], keep=True)
+        for change in ("status = 'failed'", "status = 'pending'")
+    ]
+    if forged != ["comms_message_attempt_settled_check"] * 2:
+        failures.append(f"rewrites of an upgraded accepted send were {forged}")
+    if world.state(message) != "sent" or world.retry(message) != REFUSED:
+        failures.append("the upgraded accepted send changed state")
+
+
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     **dict.fromkeys(PARITY, _parity),
     "skew": _accepted_retry,
@@ -786,6 +802,7 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "r7_inflight": _r7_inflight,
     "r7_rejected": _r7_rejected,
     "r8_legacy_inflight": _r8_legacy_inflight,
+    "r10_rewrite": _r10_rewrite,
     "e_unknown": _unknown_outcome,
     "o_unknown": _unknown_outcome,
     "s_retry_failed": _projection_failed,

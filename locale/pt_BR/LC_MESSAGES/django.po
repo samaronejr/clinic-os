@@ -11592,3 +11592,6 @@ msgstr "Tentativa atual registrada. Nada foi enviado."
 
 msgid "Awaiting provider outcome for %(attempts)s attempts"
 msgstr "Aguardando o resultado do provedor para %(attempts)s tentativas"
+
+msgid "If the provider did accept a send, a retry after this decision may deliver the message twice."
+msgstr "Se o provedor tiver aceitado um envio, uma nova tentativa após esta decisão pode entregar a mensagem duas vezes."

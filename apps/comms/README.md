@@ -411,6 +411,16 @@ lets the secret move into the tenant KEK envelope.
   attempt whose acceptance was never recorded is matched by its synthetic
   reference and records it.
 
+Once an attempt has left `pending` the runtime role cannot move it at all
+(comms 0020): only the claimant's session, a MAC-verified receipt,
+`comms_close_unsent_attempt` (an outbox-claimed attempt that never took the
+permit's claim and holds no reference) or the staff hold may. A claim is taken
+only on an outbox-claimed attempt, and a claim whose session no longer holds the
+subject lock is shown as held for staff. Recording "none accepted" for a legacy
+or abandoned send is a staff decision that may deliver twice if the provider did
+accept it; the page warns of that, the decision is audited, and the residual
+risk is documented.
+
 Pooled lock connections are unsupported: the claim, its session nonce and the
 subject's advisory lock must stay on one database session from claim to
 record, which a transaction-pooling proxy would not guarantee.

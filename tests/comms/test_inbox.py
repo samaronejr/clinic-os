@@ -418,7 +418,8 @@ def test_send_permit_is_claimed_only_through_its_resolver(world: InboxWorld) -> 
 
     # Outside the worker's session lock nothing is claimed; an unknown attempt
     # is refused like any other.
-    assert claim(attempt.pk) == "eligible"
+    # An accepted attempt is settled: it can never be claimed again.
+    assert claim(attempt.pk) == "refused"
     assert claim(uuid4()) == "refused"
     # The runtime role cannot release a permit or erase an acceptance itself.
     with (
@@ -1677,13 +1678,13 @@ def test_a_dead_claimant_leaves_its_send_in_flight_for_any_successor(
     }
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
-    # Abandoned, not failed: it stays visibly in flight and sends no more.
+    # Abandoned, not failed: it stays in flight, held for staff, and sends no more.
     assert (attempt.status, attempt.provider_reference) == ("in_progress", None)
     with runtime_role():
         assert execute_operation(attempt.pk) != "succeeded"
     with as_actor(graph, manager_of(graph)):
         assert services.message_states([Message.objects.get(pk=message_id)]) == {
-            message_id: "unconfirmed"
+            message_id: "reconciliation"
         }
     # A verified receipt for the attempt's own synthetic reference still
     # matches it, so the acceptance and its reference are not lost.
@@ -1748,12 +1749,21 @@ def test_a_squatting_claimant_cannot_record_a_forged_acceptance(
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
         foreign = IntegrationOperation.objects.get(subject_id=other)
-    squat = _TAKE_LOCK + (
-        "SELECT clinic_app.comms_claim_send_permit(%s); "
-        "SELECT clinic_app.comms_record_send_outcome(%s, 'accepted', %s, %s)"
+    tenant, op = graph.organization_a, str(attempt.pk)
+    claim = "SELECT clinic_app.comms_claim_send_permit(%s)"
+    # A queued attempt cannot be squatted at all.
+    assert _value(tenant, claim, [op]) == "refused"
+    # Once the outbox claimed it, a squatter holding the lock may claim, but
+    # a guessed MAC, a MAC for another attempt and one for another reference
+    # are all refused.
+    assert _forge(tenant, _SET.format("status = 'in_progress'"), [op]) == "ok"
+    squat = (
+        _TAKE_LOCK
+        + claim
+        + "; "
+        + ("SELECT clinic_app.comms_record_send_outcome(%s, 'accepted', %s, %s)")
     )
-    op, reference = str(attempt.pk), f"synthetic:whatsapp:{attempt.pk}"
-    # A guessed MAC, and a valid MAC for another attempt, are both refused.
+    reference = f"synthetic:whatsapp:{attempt.pk}"
     for proof in (
         "0" * 64,
         inbox_adapters.outcome_proof(
@@ -1761,12 +1771,84 @@ def test_a_squatting_claimant_cannot_record_a_forged_acceptance(
         ),
         inbox_adapters.outcome_proof(world.account, attempt.pk, "accepted", "other"),
     ):
-        assert _forge(
-            graph.organization_a, squat, [str(message_id), op, op, reference, proof]
-        ) == ("42501")
+        assert _forge(tenant, squat, [str(message_id), op, op, reference, proof]) == (
+            "42501"
+        )
     with owner_context(graph.organization_a):
         attempt.refresh_from_db()
-    assert (attempt.status, attempt.provider_reference) == ("pending", None)
+    assert (attempt.status, attempt.provider_reference) == ("in_progress", None)
+
+
+def test_settled_attempts_cannot_be_rewritten(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    sent = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    _dispatch_pending(graph, sent)
+    queued = _send(graph, _only_conversation(graph).pk, body="Outra").message_id
+    with owner_context(graph.organization_a):
+        accepted = IntegrationOperation.objects.get(subject_id=sent)
+        claimed = IntegrationOperation.objects.get(subject_id=queued)
+    tenant = graph.organization_a
+    # The outbox may claim a queued attempt directly; nothing else may move it.
+    assert _forge(tenant, _SET.format("status = 'in_progress'"), [str(claimed.pk)]) == (
+        "ok"
+    )
+    rewrites = [
+        (accepted.pk, "status = 'failed'"),
+        (accepted.pk, "status = 'pending'"),
+        (claimed.pk, "status = 'cancelled'"),
+        (claimed.pk, "status = 'failed'"),
+    ]
+    assert [
+        _forge(tenant, _SET.format(change), [str(pk)]) for pk, change in rewrites
+    ] == ["comms_message_attempt_settled_check"] * 4
+    with owner_context(graph.organization_a):
+        accepted.refresh_from_db()
+        claimed.refresh_from_db()
+    assert (accepted.status, claimed.status) == ("succeeded", "in_progress")
+
+
+def test_an_abandoned_or_withdrawn_claim_never_strands_the_message(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    tenant = graph.organization_a
+    claim = "SELECT clinic_app.comms_claim_send_permit(%s)"
+    withdraw = (
+        "; SELECT clinic_app.comms_record_send_outcome(%s, 'withdrawn', NULL, NULL)"
+    )
+    for leave_claim in (False, True):
+        message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+        with owner_context(graph.organization_a):
+            attempt = IntegrationOperation.objects.get(subject_id=message_id)
+        op = str(attempt.pk)
+        assert _forge(tenant, _SET.format("status = 'in_progress'"), [op]) == "ok"
+        if leave_claim:
+            # A squatter claims and walks away: the claim is abandoned and the
+            # message is held for staff, who close it; one retry then sends.
+            assert _forge(tenant, _TAKE_LOCK + claim, [str(message_id), op]) == "ok"
+            with as_actor(graph, manager_of(graph)):
+                states = services.message_states([Message.objects.get(pk=message_id)])
+                assert states == {message_id: "reconciliation"}
+                services.reconcile_message_attempts(
+                    clinic_id=graph.clinic_a,
+                    message_id=message_id,
+                    current_operation_id=None,
+                )
+        else:
+            # A squatter's own withdrawal closes the attempt unsent.
+            sql = _TAKE_LOCK + claim + withdraw
+            assert _forge(tenant, sql, [str(message_id), op, op]) == "ok"
+        with owner_context(graph.organization_a):
+            attempt.refresh_from_db()
+        assert attempt.send_permit_claim is None
+        assert attempt.status in {"cancelled", "failed"}
+        with as_actor(graph, manager_of(graph)):
+            services.retry_message(
+                clinic_id=graph.clinic_a, message_id=message_id, command_id=uuid4()
+            )
+        assert _dispatch_pending(graph, message_id)
 
 
 def test_no_query_text_carries_the_provider_secret(
