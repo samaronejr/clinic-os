@@ -378,6 +378,45 @@ def test_key_oracle_rejects_valid_envelope_after_rotation(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_literal_oracle_rejects_widening_the_declared_title_type(
+    seed_receipt: Path,
+    superuser_database_url: str,
+) -> None:
+    _run_seed()
+    assert not verify_ai_literal_values()
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute(
+            "ALTER TABLE clinic_app.ai_knowledgearticle ALTER COLUMN title TYPE text"
+        )
+        try:
+            assert verify_ai_literal_values(database=admin) == [
+                "AI literal fixture: ai_knowledgearticle.title type"
+            ]
+        finally:
+            admin.rollback()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clock_oracle_rejects_narrowing_timestamp_precision(
+    seed_receipt: Path,
+    superuser_database_url: str,
+) -> None:
+    _run_seed()
+    assert not verify_core_fixture()
+    with psycopg.connect(superuser_database_url) as admin:
+        admin.execute(
+            "ALTER TABLE clinic_app.scheduling_availabilityblock "
+            "ALTER COLUMN created_at TYPE timestamptz(0)"
+        )
+        try:
+            assert verify_core_fixture(database=admin) == [
+                "core fixture mismatch: appointment linkage or sequence"
+            ]
+        finally:
+            admin.rollback()
+
+
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
     ("statement", "failure"),
     [
