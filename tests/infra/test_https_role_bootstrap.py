@@ -90,6 +90,17 @@ def test_https_bootstrap_installs_migration_roles_with_closed_authority(
             (f"{prefix}clinic_super", True, True, False, True),
             (f"{prefix}clinic_agent", True, False, False, False),
         }
+        logging_defaults = connection.execute(
+            "SELECT rolname, rolconfig FROM pg_roles WHERE rolname = ANY(%s)",
+            ([f"{prefix}clinic_{role}" for role in ("app", "agent", "owner")],),
+        ).fetchall()
+        assert len(logging_defaults) == 3
+        for _, values in logging_defaults:
+            assert set(values) == {
+                "log_error_verbosity=terse",
+                "log_parameter_max_length=0",
+                "log_parameter_max_length_on_error=0",
+            }
         assert connection.execute(
             """SELECT has_schema_privilege(%s, %s, 'USAGE'),
                has_database_privilege(%s, current_database(), 'CONNECT'),

@@ -46,6 +46,23 @@ ALTER ROLE clinic_app WITH LOGIN PASSWORD :'clinic_app_password' NOSUPERUSER NOB
 ALTER ROLE clinic_resolver WITH NOLOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;
 ALTER ROLE clinic_super WITH LOGIN PASSWORD :'clinic_super_password' SUPERUSER;
 
+-- Server-side binding keeps values out of statement text. Keep them out of
+-- statement/duration/sample detail too, even if server sampling is enabled.
+REVOKE SET ON PARAMETER log_parameter_max_length, log_error_verbosity
+    FROM PUBLIC, clinic_agent, clinic_app, clinic_owner;
+SELECT format('ALTER ROLE %I SET log_parameter_max_length = 0', role_name),
+       format('ALTER ROLE %I SET log_parameter_max_length_on_error = 0', role_name),
+       -- PostgreSQL 16 lets the login set the on-error GUC in its own
+       -- session. TERSE suppresses bind error context in stderr/syslog;
+       -- db-posture rejects CSV/JSON destinations, which ignore TERSE here.
+       format('ALTER ROLE %I SET log_error_verbosity = terse', role_name)
+FROM (
+    SELECT rolname AS role_name FROM pg_catalog.pg_roles
+    WHERE rolname IN ('clinic_agent', 'clinic_app', 'clinic_owner')
+       OR (rolcanlogin AND rolname ~ '^clinic_agent_[a-z0-9_]+$')
+) AS roles
+\gexec
+
 ALTER DATABASE :"database_name" OWNER TO clinic_owner;
 REVOKE ALL ON DATABASE :"database_name" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"database_name" TO clinic_owner, clinic_app, clinic_agent, clinic_super;

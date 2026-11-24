@@ -25,8 +25,14 @@ if TYPE_CHECKING:
 
 # Plan-pinned runtime defaults (todo 8 item 5), written out independently of
 # ops/db/posture.py; only the pinned role names are shared with posture.
+LOG_DEFAULTS = [
+    "log_error_verbosity=terse",
+    "log_parameter_max_length=0",
+    "log_parameter_max_length_on_error=0",
+]
 RUNTIME_DEFAULTS = [
     "idle_in_transaction_session_timeout=15s",
+    *LOG_DEFAULTS,
     "search_path=clinic_app, public",
 ]
 APPLICABLE_SETTINGS = """
@@ -56,13 +62,27 @@ def test_runtime_role_defaults_are_pinned_for_transaction_pooling() -> None:
         with psycopg.connect(database_url_for_name(runtime_url, str(name))) as fresh:
             effective = fresh.execute(
                 "SELECT current_user, current_setting('search_path'), "
-                "current_setting('idle_in_transaction_session_timeout')"
+                "current_setting('idle_in_transaction_session_timeout'), "
+                "current_setting('log_error_verbosity'), "
+                "current_setting('log_parameter_max_length'), "
+                "current_setting('log_parameter_max_length_on_error')"
             ).fetchone()
             rows = fresh.execute(APPLICABLE_SETTINGS, (list(PINNED_ROLES),)).fetchall()
-        assert effective == ("clinic_app", "clinic_app, public", "15s"), name
+        assert effective == (
+            "clinic_app",
+            "clinic_app, public",
+            "15s",
+            "terse",
+            "0",
+            "0",
+        ), name
         assert sorted(
             (role, scoped, sorted(values)) for role, scoped, values in rows
-        ) == [("clinic_app", False, RUNTIME_DEFAULTS)], name
+        ) == [
+            ("clinic_agent", False, LOG_DEFAULTS),
+            ("clinic_app", False, RUNTIME_DEFAULTS),
+            ("clinic_owner", False, LOG_DEFAULTS),
+        ], name
 
 
 def test_runtime_aliases_disable_prepared_statements_and_implicit_transactions() -> (
@@ -75,9 +95,10 @@ def test_runtime_aliases_disable_prepared_statements_and_implicit_transactions()
         "MIGRATE": True,
         "NAME": None,
     }
-    for name in ("default", "locks"):
+    for name in ("default", "locks", "agent"):
         config = settings.DATABASES[name]
         assert config["OPTIONS"]["prepare_threshold"] is None
+        assert config["OPTIONS"]["server_side_binding"] is True
         assert config["OPTIONS"]["options"] == "-c search_path=clinic_app,public"
         assert config["ATOMIC_REQUESTS"] is False
         assert connections[name].get_connection_params()["prepare_threshold"] is None

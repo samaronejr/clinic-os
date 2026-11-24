@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 
 def configure_roles(container_id: str, plan: HttpsStackPlan) -> None:
     """Install the production role posture required by existing migrations."""
+    parameter_logging = "".join(
+        f"ALTER ROLE {role} SET log_parameter_max_length = 0;"
+        f"ALTER ROLE {role} SET log_parameter_max_length_on_error = 0;"
+        f"ALTER ROLE {role} SET log_error_verbosity = terse;"
+        for role in ("clinic_app", "clinic_agent", "clinic_owner")
+    )
     sql = (
         f"CREATE ROLE clinic_owner LOGIN PASSWORD '{plan.credentials.owner}';"
         f"CREATE ROLE clinic_app LOGIN PASSWORD '{plan.credentials.app}';"
@@ -24,6 +30,7 @@ def configure_roles(container_id: str, plan: HttpsStackPlan) -> None:
         "NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;"
         "ALTER ROLE clinic_resolver WITH NOLOGIN NOSUPERUSER BYPASSRLS "
         "NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;"
+        f"{parameter_logging}"
         f"ALTER DATABASE {plan.database_name} OWNER TO clinic_owner;"
         f"REVOKE ALL ON DATABASE {plan.database_name} FROM PUBLIC;"
         f"GRANT CONNECT ON DATABASE {plan.database_name} "

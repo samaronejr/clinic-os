@@ -24,6 +24,15 @@ DEFAULT_APP_DATABASE_URL: Final = (
 )
 
 
+def postgres_options() -> dict[str, object]:
+    """Keep values off the SQL text without enabling prepared statements."""
+    return {
+        "options": "-c search_path=clinic_app,public",
+        "prepare_threshold": None,
+        "server_side_binding": True,
+    }
+
+
 def resolve_app_database_config(environment: Mapping[str, str]) -> dict[str, object]:
     """Return the database config ``env.db("APP_DATABASE_URL")`` derives.
 
@@ -92,9 +101,7 @@ def agent_database_config(
         # Same pooling-safe runtime contract as the primary (ADR-018): the
         # agent reaches the same endpoint, possibly behind a transaction pool.
         config["DISABLE_SERVER_SIDE_CURSORS"] = True
-        config.setdefault("OPTIONS", {}).update(
-            options="-c search_path=clinic_app,public", prepare_threshold=None
-        )
+        config.setdefault("OPTIONS", {}).update(postgres_options())
     if any(
         str(config.get(key, "")) != str(primary.get(key, ""))
         for key in ("ENGINE", "HOST", "PORT", "NAME")
@@ -149,9 +156,8 @@ def parse_database_url(
     ):
         _fail()
     options: dict[str, object] = {
+        **postgres_options(),
         "connect_timeout": int(timeout_text),
-        "options": "-c search_path=clinic_app,public",
-        "prepare_threshold": None,
         "sslmode": "verify-full",
         "sslrootcert": str(ca),
     }

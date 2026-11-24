@@ -316,6 +316,23 @@ database trust boundary, not as proof against a superuser.
 
 ## Secrets, encryption, and telemetry
 
+- Django binds values on the server on the default, lock and machine
+  connections. PostgreSQL receives placeholder SQL even for an idle backend's
+  last statement. This does not enable named prepared statements or change
+  transaction pooling (ADR-018).
+- Run `make db-bootstrap` before deploying this configuration, run
+  `make db-posture`, and recycle existing server sessions (including the lock
+  pool). Role defaults take effect on **login**, not on `SET ROLE`. Repeat
+  bootstrap and posture when provisioning a `clinic_agent_*` machine login;
+  PostgreSQL does not inherit another role's configuration.
+- The bootstrap disables parameter logging for sampled statements and errors.
+  PostgreSQL 16 allows any login to override `log_parameter_max_length_on_error`
+  in its own session. The second control is `log_error_verbosity=terse`,
+  which the runtime cannot change; it omits error detail and context from
+  stderr/syslog. `db-posture` rejects CSV and JSON destinations, which write
+  those fields independently of verbosity. This covers core statement,
+  duration, sampling and bind-error reporting, not an untrusted superuser,
+  extension, proxy logger, or SQL function explicitly logging its arguments.
 - Copy `.env.example` only as a schema for local variables. Replace every
   placeholder locally; never commit `.env`, database URLs, credentials,
   session keys, OTP seeds, tokens, patient identifiers, or clinical data.

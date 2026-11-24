@@ -61,8 +61,11 @@ def test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role(
         migrate(FOUNDATION_TARGETS)
         originals = seed_foundation_graph()
         with connection.cursor() as cursor:
-            cursor.execute("SET app.current_user_id = %s", [str(SHARED_USER)])
-            cursor.execute("SET app.current_tenant = %s", [str(ORG_B)])
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, false), "
+                "set_config('app.current_tenant', %s, false)",
+                [str(SHARED_USER), str(ORG_B)],
+            )
             cursor.execute("SET ROLE clinic_owner")
         try:
             migrate([("identity", MIGRATION_NAME)])

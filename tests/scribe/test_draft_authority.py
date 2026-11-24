@@ -12,7 +12,7 @@ from apps.scribe.draft_sources import note_frame
 from apps.scribe.models import DraftSectionSuggestion, ReviewDecision
 from apps.scribe.reviews import review_suggestion
 from apps.tenancy.db import tenant_context
-from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db import IntegrityError, connection, transaction
 
 from ai.retained_rollout_support import authorize_native
 from patient_service_support import runtime_role
@@ -115,7 +115,7 @@ def test_raw_citation_and_history_guards_reject_foreign_references(
         suggestion = DraftSectionSuggestion.objects.filter(draft=queued).first()
         assert suggestion is not None
         with (
-            pytest.raises(DatabaseError),
+            pytest.raises(IntegrityError, match="invalid draft source"),
             transaction.atomic(),
             connection.cursor() as cursor,
         ):
@@ -124,7 +124,7 @@ def test_raw_citation_and_history_guards_reject_foreign_references(
                 "(id,organization_id,version_id,draft_id,section,text,citations,"
                 "assertion_class,created_at) "
                 "SELECT %s,organization_id,version_id,draft_id,'objective',text,"
-                "jsonb_build_array(jsonb_build_object('kind','transcript','id',%s)),"
+                "jsonb_build_array(jsonb_build_object('kind','transcript','id',%s::text)),"
                 "assertion_class,created_at "
                 "FROM clinic_app.scribe_draftsectionsuggestion WHERE id=%s",
                 [uuid4(), str(uuid4()), suggestion.pk],

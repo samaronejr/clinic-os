@@ -145,6 +145,7 @@ def test_production_database_has_runtime_and_session_lock_aliases(
         "d=s.DATABASES; assert list(d)==['default', 'locks']; "
         "assert d['locks']['USER']=='clinic_app'; "
         "assert d['locks']['OPTIONS']['prepare_threshold'] is None; "
+        "assert all(c['OPTIONS']['server_side_binding'] is True for c in d.values()); "
         "x=d['default']; assert x['USER']=='clinic_app'; "
         "assert x['OPTIONS']['sslmode']=='verify-full'; "
         "assert x['OPTIONS']['connect_timeout']==2"

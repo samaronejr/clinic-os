@@ -13,7 +13,7 @@ from .contracts import (
     resolve_website_contact_email,
     validate_secret_store_env,
 )
-from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
+from .database import DEFAULT_APP_DATABASE_URL, agent_database_config, postgres_options
 from .telemetry import configure_sentry, configure_tracing
 
 enforce_wheel_timezone()
@@ -193,10 +193,7 @@ TEMPLATES = [
 
 DATABASES = {"default": env.db("APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL)}
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
-if "OPTIONS" not in DATABASES["default"]:
-    DATABASES["default"]["OPTIONS"] = {}
-DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=clinic_app,public"
-DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"].setdefault("OPTIONS", {}).update(postgres_options())
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 DATABASES["locks"] = env.db_url_config(
     env.str(
@@ -205,9 +202,7 @@ DATABASES["locks"] = env.db_url_config(
     )
 )
 DATABASES["locks"]["ATOMIC_REQUESTS"] = False
-DATABASES["locks"].setdefault("OPTIONS", {}).update(
-    options="-c search_path=clinic_app,public", prepare_threshold=None
-)
+DATABASES["locks"].setdefault("OPTIONS", {}).update(postgres_options())
 
 # Display for signed-in pages of a user without a stored UserPreference row.
 # Fixed here; only config.settings.renewal takes it from the browser runner

@@ -18,7 +18,7 @@ from django.core.exceptions import ImproperlyConfigured
 from config.display import DisplayValueError, resolve_display
 
 from . import base
-from .database import agent_database_config
+from .database import agent_database_config, postgres_options
 
 env = environ.Env()
 
@@ -41,11 +41,7 @@ if (
 
 DATABASES = {"default": env.db("APP_DATABASE_URL")}
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
-DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
-    "-c search_path=clinic_app,public"
-)
-
-DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"].setdefault("OPTIONS", {}).update(postgres_options())
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 DATABASES["locks"] = deepcopy(DATABASES["default"])
 DATABASES.update(agent_database_config(os.environ, primary=DATABASES["default"]))

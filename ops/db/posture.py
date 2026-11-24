@@ -14,6 +14,16 @@ SELECT
     current_user = 'clinic_app'
     AND current_database() = %s
     AND current_database() <> %s
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles AS r
+        WHERE (r.rolname IN ('clinic_agent', 'clinic_app', 'clinic_owner')
+               OR (r.rolcanlogin AND r.rolname ~ '^clinic_agent_[a-z0-9_]+$'))
+          AND (has_parameter_privilege(r.oid, 'log_parameter_max_length', 'SET')
+               OR has_parameter_privilege(r.oid, 'log_error_verbosity', 'SET'))
+    )
+    AND regexp_split_to_array(
+        current_setting('log_destination'), '[[:space:]]*,[[:space:]]*'
+    ) <@ ARRAY['stderr', 'syslog']
     AND EXISTS (
         SELECT 1
         FROM pg_roles
@@ -68,9 +78,19 @@ SELECT
 """
 # Roles POSTURE_QUERY pins by name. The settings pin covers them and every role
 # they can assume (pg_auth_members, followed transitively in the live catalog).
-PINNED_ROLES: Final = ("clinic_app", "clinic_owner")
+PINNED_ROLES: Final = ("clinic_agent", "clinic_app", "clinic_owner")
+MACHINE_LOGINS_QUERY: Final = """
+SELECT rolname FROM pg_catalog.pg_roles
+WHERE rolcanlogin AND rolname ~ '^clinic_agent_[a-z0-9_]+$'
+"""
+PARAMETER_LOG_SETTINGS: Final = (
+    "log_error_verbosity=terse",
+    "log_parameter_max_length=0",
+    "log_parameter_max_length_on_error=0",
+)
 RUNTIME_ROLE_SETTINGS: Final = (
     "idle_in_transaction_session_timeout=15s",
+    *PARAMETER_LOG_SETTINGS,
     "search_path=clinic_app, public",
 )
 # Every pg_db_role_setting row that can apply to a pinned role in this database:
@@ -99,14 +119,21 @@ WHERE setting.setdatabase IN (
   AND (setting.setrole = 0 OR setting.setrole IN (SELECT oid FROM family))
 ORDER BY 1, 2
 """
-EXPECTED_ROLE_SETTINGS: Final = [("clinic_app", False, list(RUNTIME_ROLE_SETTINGS))]
+EXPECTED_ROLE_SETTINGS: Final = [
+    ("clinic_agent", False, list(PARAMETER_LOG_SETTINGS)),
+    ("clinic_app", False, list(RUNTIME_ROLE_SETTINGS)),
+    ("clinic_owner", False, list(PARAMETER_LOG_SETTINGS)),
+]
 # The session this check opens is itself a fresh runtime session; its effective
 # values catch any precedence path the catalog comparison does not model.
 EFFECTIVE_SETTINGS_QUERY: Final = (
     "SELECT current_setting('search_path'), "
-    "current_setting('idle_in_transaction_session_timeout')"
+    "current_setting('idle_in_transaction_session_timeout'), "
+    "current_setting('log_error_verbosity'), "
+    "current_setting('log_parameter_max_length'), "
+    "current_setting('log_parameter_max_length_on_error')"
 )
-EXPECTED_EFFECTIVE_SETTINGS: Final = ("clinic_app, public", "15s")
+EXPECTED_EFFECTIVE_SETTINGS: Final = ("clinic_app, public", "15s", "terse", "0", "0")
 FAILURE_MESSAGE: Final = "database posture check failed"
 
 
@@ -130,10 +157,13 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
                 POSTURE_QUERY,
                 (database_name, test_database_name, test_database_name),
             ).fetchone()
+            machines = [
+                name for (name,) in connection.execute(MACHINE_LOGINS_QUERY).fetchall()
+            ]
             role_settings = [
                 (role, scoped, list(settings))
                 for role, scoped, settings in connection.execute(
-                    ROLE_SETTINGS_QUERY, (list(PINNED_ROLES),)
+                    ROLE_SETTINGS_QUERY, ([*PINNED_ROLES, *machines],)
                 ).fetchall()
             ]
     except (psycopg.Error, ValueError):
@@ -141,7 +171,13 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
     return (
         result == (True,)
         and effective == EXPECTED_EFFECTIVE_SETTINGS
-        and role_settings == EXPECTED_ROLE_SETTINGS
+        and sorted(role_settings)
+        == sorted(
+            [
+                *EXPECTED_ROLE_SETTINGS,
+                *((name, False, list(PARAMETER_LOG_SETTINGS)) for name in machines),
+            ]
+        )
     )
 
 

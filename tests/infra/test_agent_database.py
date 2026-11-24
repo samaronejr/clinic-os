@@ -37,6 +37,7 @@ def test_agent_alias_uses_separate_login_with_exact_options() -> None:
     assert alias["agent"]["OPTIONS"] == {
         "options": "-c search_path=clinic_app,public",
         "prepare_threshold": None,
+        "server_side_binding": True,
     }
 
 
@@ -97,5 +98,6 @@ def test_strict_agent_dsn_requires_verified_tls(tmp_path: Path) -> None:
         "sslrootcert": str(ca),
         "options": "-c search_path=clinic_app,public",
         "prepare_threshold": None,
+        "server_side_binding": True,
     }
     assert alias["agent"]["DISABLE_SERVER_SIDE_CURSORS"] is True
