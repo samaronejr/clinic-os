@@ -251,7 +251,13 @@ runtime role cannot write `send_permit`, rewrite an accepted attempt's
 reference, or cancel a claimed send. An accepted attempt is closed only by a
 bound failed status receipt, which the receipt guard admits only with the
 inbound proof of the provider secret; an operation status never closes it.
-While any accepted attempt lacks that outcome the message admits no further
+A claim taken under the worker's session lock stores only a digest of a token
+returned to that worker (comms 0017); while it is open the runtime role cannot
+change the attempt's status, provider reference or permit at all, and the
+outcome (accepted, rejected, transient retry, or withdrawn before any call) is
+recorded only by `comms_record_send_outcome`, which needs the token and needs
+the caller's own session to hold the subject lock. A claim a dead session left
+behind is never closed by default. While any accepted attempt lacks that outcome the message admits no further
 attempt and shows `awaiting` ("awaiting provider outcome for N attempts").
 Legacy originals whose failure the base recorded are released by comms
 0015/0016 on every channel. Clocks and UUIDs

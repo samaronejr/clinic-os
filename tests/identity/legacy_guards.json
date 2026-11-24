@@ -14628,6 +14628,7 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_attempt_sequence_sql.py",
+          "apps/comms/migrations/_inflight_claim_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_send_permit_sql.py"
         ],
@@ -14699,6 +14700,7 @@
     "clinic_app.comms_claim_send_permit": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_inflight_claim_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py"
         ],
         "policies": [],
@@ -14706,7 +14708,7 @@
         "signatures": [
           {
             "arguments": "requested uuid",
-            "returns": "bool",
+            "returns": "text",
             "security_definer": true,
             "set_returning": false
           }
@@ -14717,6 +14719,51 @@
         "test_send_permit_is_claimed_only_through_its_resolver"
       ],
       "reason": "Claims a message's single send permit for the worker's final recheck in the current tenant; releases a holder only on its own provider evidence and refuses while another attempt is open."
+    },
+    "clinic_app.comms_record_send_outcome": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inflight_claim_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, token uuid, outcome text, reference text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_a_claimed_send_is_written_only_by_its_claim"
+      ],
+      "reason": "Records the provider's answer for one claimed in-flight send; needs the claim's token and the caller session holding the subject advisory lock, otherwise the same refusal as an unknown attempt."
+    },
+    "clinic_app.comms_subject_lock_key": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_inflight_claim_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.comms_claim_send_permit",
+          "clinic_app.comms_record_send_outcome"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "int8",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Derives the message subject's advisory lock key for the claim resolvers; no staff role decision."
     },
     "clinic_app.comms_patient_audit": {
       "kind": "domain_protocol",

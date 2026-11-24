@@ -252,7 +252,9 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("comms_inboundevent", "operation_id", "SELECT"),
     ("comms_integrationoperation", "attempt_sequence", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
+    ("comms_integrationoperation", "provider_reference", "UPDATE"),
     ("comms_integrationoperation", "send_permit", "UPDATE"),
+    ("comms_integrationoperation", "send_permit_claim", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
     ("identity_user", "id", "SELECT"),
@@ -490,6 +492,7 @@ POSTURE_OVERRIDES: Final = {
     "billing_settlement_guard": ("v", False, ["clinic_resolver"]),
     "billing_settlement_receipt": ("v", False, ["clinic_resolver"]),
     "comms_claim_send_permit": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "comms_record_send_outcome": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_reconcile_attempts": ("v", True, ["clinic_app", "clinic_resolver"]),
     "comms_schedule_reminders_v1": ("v", False, ["clinic_resolver"]),
     "configuration_guard": ("v", False, ["clinic_resolver"]),
@@ -819,6 +822,10 @@ FUNCTION_SIGNATURES: Final = {
     ),
     ("comms_operation_scope", "requested_operation uuid"),
     ("comms_claim_send_permit", "requested uuid"),
+    (
+        "comms_record_send_outcome",
+        "requested uuid, token uuid, outcome text, reference text",
+    ),
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"),
     ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
@@ -1260,7 +1267,11 @@ FUNCTION_RESULTS: Final = {
         "TABLE(status text, operation_count bigint, "
         "oldest_created_at timestamp with time zone)"
     ),
-    ("comms_claim_send_permit", "requested uuid"): "boolean",
+    ("comms_claim_send_permit", "requested uuid"): "text",
+    (
+        "comms_record_send_outcome",
+        "requested uuid, token uuid, outcome text, reference text",
+    ): "boolean",
     ("comms_reconcile_attempts", "requested_message uuid, requested_current uuid"): (
         "void"
     ),

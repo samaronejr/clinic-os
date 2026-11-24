@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
+from uuid import UUID
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection, connections
 from django.utils import timezone
 
 from apps.comms.adapters import (
@@ -43,7 +44,6 @@ from apps.intake.models import PatientClinicEnrollment, PatientContact
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from uuid import UUID
 
     from apps.comms.adapters import OperationScope
     from apps.comms.models import Conversation
@@ -264,18 +264,57 @@ def message_send_eligible(scope: OperationScope) -> bool:
     )
 
 
+# Tokens of the in-flight claims this worker process holds, by operation. A
+# claim whose process dies is never recorded by anyone else.
+_CLAIMS: dict[UUID, UUID] = {}
+
+
 def _claim_send_permit(operation: IntegrationOperation) -> bool:
     """Take the message's single send permit for ``operation``, or refuse.
 
-    Runs last in the recheck, which the worker repeats under the subject and
-    boundary session locks and commits before the provider call. Only
-    ``comms_claim_send_permit`` writes the permit: it releases a holder only on
-    that holder's own provider evidence and refuses while any other attempt is
-    open, in flight or accepted without an outcome.
+    Runs last in the recheck. At prepare no session holds the subject lock, so
+    the database only decides eligibility; under the worker's session lock it
+    claims the permit and returns a token whose digest alone it stores.
     """
+    if operation.pk in _CLAIMS:
+        return True
     with connection.cursor() as cursor:
         cursor.execute("SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk])
         row = cursor.fetchone()
+    decision = row[0] if row else "refused"
+    if decision == "refused":
+        return False
+    if decision != "eligible":
+        _CLAIMS[operation.pk] = UUID(decision)
+    return True
+
+
+def record_claimed_outcome(
+    operation_id: UUID, outcome: str, reference: str | None
+) -> bool | None:
+    """Record a claimed send's outcome through its token, or ``None`` if unclaimed.
+
+    Runs on the connection that holds the subject's session lock, which the
+    database requires of the caller. A refusal records nothing: the attempt
+    stays visibly in flight rather than taking an outcome by default.
+    """
+    token = _CLAIMS.pop(operation_id, None)
+    if token is None:
+        return None
+    try:
+        with connections["locks"].cursor() as cursor:
+            # As the runtime role, whatever login the lock connection uses.
+            cursor.execute("SET ROLE clinic_app")
+            try:
+                cursor.execute(
+                    "SELECT clinic_app.comms_record_send_outcome(%s, %s, %s, %s)",
+                    [operation_id, token, outcome, reference],
+                )
+                row = cursor.fetchone()
+            finally:
+                cursor.execute("RESET ROLE")
+    except DatabaseError:
+        return False
     return bool(row and row[0])
 
 

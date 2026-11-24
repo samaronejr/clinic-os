@@ -109,6 +109,9 @@ class IntegrationOperation(TenantScopedModel):
     send_permit = models.CharField(  # noqa: DJ001 - NULL means no permit, as the SQL check
         max_length=8, null=True, editable=False
     )
+    # Digest of the token an open in-flight claim returned to its worker; the
+    # outcome is recorded only through ``comms_record_send_outcome``.
+    send_permit_claim = models.BinaryField(null=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

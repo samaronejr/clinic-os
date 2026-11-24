@@ -693,8 +693,40 @@ def _operation_for_prepare(scope: OperationScope) -> IntegrationOperation:
     return operation
 
 
+_CLAIMED_OUTCOME_RECORDERS: list[Callable[[UUID, str, str | None], bool | None]] = []
+
+
+def register_claimed_outcome_recorder(
+    recorder: Callable[[UUID, str, str | None], bool | None],
+) -> None:
+    """Route the outcome of a send claimed through a database token.
+
+    ``recorder(operation_id, outcome, reference)`` returns ``None`` when this
+    process holds no claim for the operation; otherwise it records
+    ``accepted``/``rejected``/``retry``/``withdrawn`` through the subject's
+    own resolver, on the connection that holds the subject's session lock.
+    """
+    _CLAIMED_OUTCOME_RECORDERS.append(recorder)
+
+
+def _claimed_outcome(
+    scope: OperationScope, outcome: str, reference: str | None = None
+) -> bool | None:
+    for recorder in _CLAIMED_OUTCOME_RECORDERS:
+        recorded = recorder(scope.operation_id, outcome, reference)
+        if recorded is not None:
+            return recorded
+    return None
+
+
 def _succeed(scope: OperationScope, provider_reference: str) -> bool:
     """Record provider acceptance once, guarded by the claimed status."""
+    recorded = _claimed_outcome(scope, "accepted", provider_reference)
+    if recorded is not None:
+        if recorded:
+            with _stored_scope_context(scope):
+                _record_integration_event("comms.operation.succeeded", scope)
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -713,6 +745,9 @@ def _succeed(scope: OperationScope, provider_reference: str) -> bool:
 
 def _release_for_retry(scope: OperationScope) -> bool:
     """Return one claimed row to pending after a transient send failure."""
+    recorded = _claimed_outcome(scope, "retry")
+    if recorded is not None:
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -727,6 +762,14 @@ def _release_for_retry(scope: OperationScope) -> bool:
 
 def _fail_operation(scope: OperationScope, *, reason_code: str) -> bool:
     """Fail one claimable operation once and audit the terminal transition."""
+    recorded = _claimed_outcome(scope, "rejected")
+    if recorded is not None:
+        if recorded:
+            with _stored_scope_context(scope):
+                _record_integration_event(
+                    "comms.operation.failed", scope, reason_code="provider_rejected"
+                )
+        return recorded
     with _stored_scope_context(scope):
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
@@ -766,6 +809,9 @@ def _cancel_ineligible(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _subject_eligible(scope):
             return False
+        recorded = _claimed_outcome(scope, "withdrawn")
+        if recorded is not None:
+            return recorded
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,
@@ -794,6 +840,9 @@ def _cancel_revoked(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _actor_has_clinic_authority(scope):
             return False
+        recorded = _claimed_outcome(scope, "withdrawn")
+        if recorded is not None:
+            return recorded
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,

@@ -34,6 +34,7 @@ from uuid import UUID, uuid4
 
 from apps.audit.models import AuditEvent
 from apps.comms import inbox_services as services
+from apps.comms.adapters import PermanentSendError
 from apps.comms.inbound_providers import sign
 from apps.comms.inbox_inbound import receive_inbound, secret_name
 from apps.comms.inbox_queries import conversation_view
@@ -640,6 +641,84 @@ def _r6_raw_sql(world: _World, ids: dict[str, str], failures: list[str]) -> None
         failures.append("a forged status admitted a direct outbox write")
 
 
+def _r7_inflight(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    """Forge outcomes from another session after the provider accepted."""
+    message, attempt = UUID(ids["message"]), UUID(ids["a"])
+    with world.owner():
+        provider = IntegrationOperation.objects.get(pk=attempt).provider
+    adapter = integration._SEND_ADAPTERS[provider]  # noqa: SLF001
+    original, calls = adapter.send, []
+    accepted, release = Event(), Event()
+    errors: list[str] = []
+
+    def held(*args: object, **kwargs: object) -> object:
+        calls.append(1)
+        result = original(*args, **kwargs)  # type: ignore[arg-type]
+        accepted.set()
+        if not release.wait(RACE_TIMEOUT):
+            errors.append("worker was never released")
+        return result
+
+    def worker() -> None:
+        try:
+            world.dispatch(attempt)
+        except Exception as error:  # noqa: BLE001 - reported as a named failure
+            errors.append(type(error).__name__)
+        finally:
+            connection.close()
+
+    update = "UPDATE clinic_app.comms_integrationoperation SET {} WHERE id = %s"
+    forged: list[str] = []
+    with patch.object(adapter, "send", held):
+        thread = Thread(target=worker)
+        thread.start()
+        try:
+            if accepted.wait(RACE_TIMEOUT):
+                forged.extend(
+                    _raw(world, update.format(change), [str(attempt)], keep=True)
+                    for change in ("status = 'pending'", "status = 'failed'")
+                )
+        finally:
+            release.set()
+            thread.join(RACE_TIMEOUT)
+        # Recovery or a second worker finds nothing it may send.
+        world.dispatch(attempt)
+        for pending in world.pending(message):
+            world.dispatch(UUID(pending))
+    failures.extend(errors)
+    _single_send(world, attempt, failures, forged=forged, calls=len(calls))
+
+
+def _single_send(
+    world: _World, attempt: UUID, failures: list[str], *, forged: list[str], calls: int
+) -> None:
+    if forged != ["comms_message_attempt_claim_check"] * 2:
+        failures.append(f"forged in-flight writes were {forged}")
+    if calls != 1:
+        failures.append(f"{calls} provider calls for one accepted send")
+    with world.owner():
+        message = IntegrationOperation.objects.get(pk=attempt).subject_id
+    if world.attempts(message)[str(attempt)][1:] != ("succeeded", True):
+        failures.append("the accepted send was not recorded by its claim")
+
+
+def _r7_rejected(world: _World, ids: dict[str, str], failures: list[str]) -> None:
+    """Check that a genuine synchronous rejection admits exactly one retry."""
+    message, attempt = UUID(ids["message"]), UUID(ids["a"])
+    with world.owner():
+        provider = IntegrationOperation.objects.get(pk=attempt).provider
+    adapter = integration._SEND_ADAPTERS[provider]  # noqa: SLF001
+
+    def refuse(*_args: object, **_kwargs: object) -> object:
+        raise PermanentSendError
+
+    with patch.object(adapter, "send", refuse):
+        world.dispatch(attempt)
+    if world.attempts(message)[str(attempt)][1] != "failed":
+        failures.append("the provider's rejection was not recorded")
+    _one_more_send(world, message, failures, before=0)
+
+
 _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     **dict.fromkeys(PARITY, _parity),
     "skew": _accepted_retry,
@@ -658,6 +737,8 @@ _CASES: dict[str, Callable[[_World, dict[str, str], list[str]], None]] = {
     "crash": _crash,
     "r6_two_open": _r6_two_open,
     "r6_raw_sql": _r6_raw_sql,
+    "r7_inflight": _r7_inflight,
+    "r7_rejected": _r7_rejected,
     "s_retry_failed": _projection_failed,
 }
 

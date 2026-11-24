@@ -177,6 +177,8 @@ CASES: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
             ("status", "a", "failed", LATE),
         ),
     ),
+    # Round 7: a single queued attempt the candidate's worker sends.
+    **dict.fromkeys(("r7_inflight", "r7_rejected"), ("whatsapp", (("send",),))),
     # Round 6: the base itself left two accepted attempts (B and C) open.
     **dict.fromkeys(
         ("r6_two_open", "r6_raw_sql"),
