@@ -17,7 +17,7 @@ the functions re-validate it in-database.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NoReturn
 
 from django.db import DatabaseError, connection
 
@@ -73,7 +73,7 @@ def _sqlstate(error: DatabaseError) -> str | None:
     return None
 
 
-def _raise_mapped(error: DatabaseError) -> None:
+def _raise_mapped(error: DatabaseError) -> NoReturn:
     """Map database failures onto the closed envelope error vocabulary."""
     mapped = _SQLSTATE_MAP.get(_sqlstate(error) or "")
     if mapped is not None:
@@ -81,7 +81,7 @@ def _raise_mapped(error: DatabaseError) -> None:
     raise EnvelopeError from error
 
 
-def _kek() -> str:
+def fetch_tenant_kek() -> str:
     """Fetch the tenant KEK from the configured secret store, fail closed."""
     return secret_store().get_secret(KEK_SECRET_NAME)
 
@@ -125,7 +125,9 @@ def issue_tenant_key() -> int:
     KEK and stored; plaintext key material never reaches this process.
     Returns the new key version.
     """
-    result = _call_scalar("SELECT clinic_app.tenant_dek_issue(%s)", (_kek(),))
+    result = _call_scalar(
+        "SELECT clinic_app.tenant_dek_issue(%s)", (fetch_tenant_kek(),)
+    )
     if type(result) is not int:
         raise EnvelopeUnavailableError
     return result
@@ -140,7 +142,7 @@ def encrypt(*, purpose: str, plaintext: bytes) -> bytes:
     _validate_purpose(purpose)
     result = _call_scalar(
         "SELECT clinic_app.tenant_encrypt(%s, %s, %s)",
-        (_kek(), purpose, plaintext),
+        (fetch_tenant_kek(), purpose, plaintext),
     )
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
@@ -157,7 +159,7 @@ def decrypt(*, purpose: str, envelope: bytes) -> bytes:
     _validate_purpose(purpose)
     result = _call_scalar(
         "SELECT clinic_app.tenant_decrypt(%s, %s, %s)",
-        (_kek(), purpose, envelope),
+        (fetch_tenant_kek(), purpose, envelope),
     )
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
@@ -173,7 +175,7 @@ def reencrypt(*, purpose: str, envelope: bytes) -> bytes:
     _validate_purpose(purpose)
     result = _call_scalar(
         "SELECT clinic_app.tenant_reencrypt(%s, %s, %s)",
-        (_kek(), purpose, envelope),
+        (fetch_tenant_kek(), purpose, envelope),
     )
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
@@ -191,7 +193,7 @@ def protect(*, purpose: str, plaintext: bytes) -> bytes:
     _validate_purpose(purpose)
     result = _call_scalar(
         "SELECT clinic_app.protected_encrypt(%s, %s, %s)",
-        (_kek(), purpose, plaintext),
+        (fetch_tenant_kek(), purpose, plaintext),
     )
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
@@ -203,7 +205,7 @@ def reveal(*, purpose: str, envelope: bytes) -> bytes:
     _validate_purpose(purpose)
     result = _call_scalar(
         "SELECT clinic_app.protected_decrypt(%s, %s, %s)",
-        (_kek(), purpose, envelope),
+        (fetch_tenant_kek(), purpose, envelope),
     )
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
@@ -218,7 +220,7 @@ def rewrap_tenant_keys(*, new_kek: str) -> int:
     Returns the number of rewrapped versions.
     """
     result = _call_scalar(
-        "SELECT clinic_app.tenant_dek_rewrap(%s, %s)", (_kek(), new_kek)
+        "SELECT clinic_app.tenant_dek_rewrap(%s, %s)", (fetch_tenant_kek(), new_kek)
     )
     if type(result) is not int:
         raise EnvelopeUnavailableError

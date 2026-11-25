@@ -40,7 +40,7 @@ from apps.audit.services import record_event
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _denied,
+    deny_clinical_access,
 )
 from apps.identity.models import PhysicianEvidence, PhysicianProfile
 from apps.identity.physician_registry import SigningIdentity
@@ -61,7 +61,7 @@ from apps.prescription.models import (
 )
 from apps.prescription.services import (
     DocumentStorageError,
-    _authorize_document_care,
+    authorize_document_care,
     authorize_encounter,
 )
 from apps.prescription.signature_provider import (
@@ -165,7 +165,7 @@ def initiate_signature(
     )
     actor = encounter.physician_id
     if document.issuer_id != actor:
-        _denied(clinic_id, document.encounter_id, "not_issuer")
+        deny_clinical_access(clinic_id, document.encounter_id, "not_issuer")
     if not signature_capability().synthetic_enabled:
         raise SignatureUnavailableError
     if sha256(bytes(document.pdf_bytes)).hexdigest() != document.pdf_digest:
@@ -763,7 +763,7 @@ def signature_status(
         clinic_id=clinic_id, encounter_id=operation.encounter_id
     )
     if operation.issuer_id != encounter.physician_id:
-        _denied(clinic_id, operation.encounter_id, "not_issuer")
+        deny_clinical_access(clinic_id, operation.encounter_id, "not_issuer")
     return operation
 
 
@@ -835,7 +835,7 @@ def download_signed_document(
         SignatureOperation.State.REHEARSAL_COMPLETE,
     ):
         raise ClinicalAccessDeniedError
-    _authorize_document_care(clinic_id, operation.encounter_id)
+    authorize_document_care(clinic_id, operation.encounter_id)
     data = bytes(operation.signed_bytes or b"")
     if not data or sha256(data).hexdigest() != operation.signed_digest:
         raise DocumentStorageError

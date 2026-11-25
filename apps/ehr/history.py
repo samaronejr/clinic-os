@@ -11,7 +11,11 @@ from django.db import connection, transaction
 
 from apps.audit.services import record_phase1_event
 from apps.ehr.models import Allergy, Encounter, HistoryAssessment, Problem
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, _denied
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    deny_clinical_access,
+)
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -64,7 +68,7 @@ def authorize_history(
     try:
         require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     except CurrentActorError:
-        _denied(clinic_id, encounter_id, "role_denied")
+        deny_clinical_access(clinic_id, encounter_id, "role_denied")
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ehr_assigned(%s), clinic_app.ehr_history_care(%s)",
@@ -72,7 +76,7 @@ def authorize_history(
         )
         assigned, care = cursor.fetchone() or (False, False)
     if not care or (write and not assigned):
-        _denied(
+        deny_clinical_access(
             clinic_id, encounter_id, "not_assigned" if write else "no_care_relationship"
         )
     return encounter

@@ -29,10 +29,10 @@ from apps.audit.services import (
     AuditPayloadValueRejectedError,
     AuditTrustedContext,
     CanonicalValue,
-    _content_hash,
-    _normalize_payload,
-    _record_system_event,
+    audit_content_hash,
+    normalize_audit_payload,
     record_event,
+    record_system_event,
 )
 from django.apps import apps as django_apps
 from django.db import connection, transaction
@@ -266,7 +266,7 @@ def test_service_rejects_unknown_payload_key_before_sql() -> None:
         "reason_code",
         "request_id",
     } == AUDIT_PAYLOAD_ALLOWED
-    assert _normalize_payload(
+    assert normalize_audit_payload(
         {"clinic_id": "11111111-1111-4111-8111-111111111111"}
     ) == {"clinic_id": "11111111-1111-4111-8111-111111111111"}
 
@@ -339,9 +339,9 @@ def test_canonical_hash_is_order_invariant_without_unicode_normalization() -> No
 
     # When: hashes are computed from the typed semantic content
     context = AuditTrustedContext(organization_id, actor_user_id)
-    hash_a = _content_hash(event, context, ordered_a)
-    hash_b = _content_hash(event, context, ordered_b)
-    hash_decomposed = _content_hash(
+    hash_a = audit_content_hash(event, context, ordered_a)
+    hash_b = audit_content_hash(event, context, ordered_b)
+    hash_decomposed = audit_content_hash(
         event,
         context,
         decomposed,
@@ -829,7 +829,7 @@ def test_system_append_is_owner_only_and_never_visible_in_tenant_view() -> None:
 
     # When: owner appends with absent and present optional actor contexts
     first_payload = {"reason_code": "system-test"}
-    first_seq = _record_system_event(event, payload=first_payload)
+    first_seq = record_system_event(event, payload=first_payload)
     actor_user_id = uuid4()
     second_event = replace(
         event,
@@ -841,7 +841,7 @@ def test_system_append_is_owner_only_and_never_visible_in_tenant_view() -> None:
             "SELECT set_config('app.current_user_id', %s, true)",
             [str(actor_user_id)],
         )
-        second_seq = _record_system_event(second_event, payload=second_payload)
+        second_seq = record_system_event(second_event, payload=second_payload)
     with (
         psycopg.connect(_runtime_database_url()) as raw_connection,
         pytest.raises(InsufficientPrivilege),

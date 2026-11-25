@@ -39,8 +39,8 @@ from django.utils import timezone
 from apps.audit.canonical import AuditEventInput
 from apps.audit.services import (
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
     record_event,
 )
 from apps.comms.models import IntegrationOperation
@@ -53,7 +53,7 @@ from apps.core.secrets import secret_store
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _denied,
+    deny_clinical_access,
     record_denial,
 )
 from apps.identity.current_context import (
@@ -256,14 +256,14 @@ def _issuer_document(*, clinic_id: UUID, document_id: UUID) -> PrescriptionDocum
             clinic_id, (UserClinicRole.Role.PHYSICIAN,)
         )
     except CurrentActorError:
-        _denied(clinic_id, document_id, "role_denied")
+        deny_clinical_access(clinic_id, document_id, "role_denied")
     document = PrescriptionDocument.objects.filter(
         pk=document_id, clinic_id=clinic_id
     ).first()
     if document is None:
         raise ClinicalAccessDeniedError
     if document.issuer_id != actor:
-        _denied(clinic_id, document.encounter_id, "not_issuer")
+        deny_clinical_access(clinic_id, document.encounter_id, "not_issuer")
     return document
 
 
@@ -495,10 +495,10 @@ def _record_patient_download(document_id: UUID) -> None:
         occurred_at_utc=timezone.now(),
     )
     session_id, organization_id, clinic_id, _ = _patient_session_scope()
-    payload = _normalize_payload(
+    payload = normalize_audit_payload(
         {"clinic_id": str(clinic_id), "object_verb": "downloaded"}
     )
-    content_hash = _content_hash(
+    content_hash = audit_content_hash(
         event,
         AuditTrustedContext(organization_id=organization_id, actor_user_id=session_id),
         payload,

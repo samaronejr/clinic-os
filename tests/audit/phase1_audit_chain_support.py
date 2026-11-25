@@ -12,7 +12,7 @@ import pytest
 from apps.audit.canonical import AuditEventInput, AuditTrustedContext
 from apps.audit.events import PHASE1_AUDIT_EVENTS, build_phase1_audit_event
 from apps.audit.models import SYSTEM_ORG_ID
-from apps.audit.services import _record_system_event, record_event, verify_chain
+from apps.audit.services import record_event, record_system_event, verify_chain
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from psycopg.errors import InvalidParameterValue
@@ -64,7 +64,7 @@ def append_fixed_matrix() -> None:
         clinic_id=CLINIC_ID,
         affected_record_id=UUID("66666666-6666-4666-8666-666666666666"),
     )
-    system_seq = _record_system_event(
+    system_seq = record_system_event(
         system_append.event,
         payload=system_append.payload,
     )

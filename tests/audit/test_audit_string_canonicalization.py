@@ -9,8 +9,8 @@ from apps.audit.services import (
     AuditEventValueRejectedError,
     AuditPayloadValueRejectedError,
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
 )
 
 
@@ -52,7 +52,7 @@ def test_payload_text_subtypes_are_frozen_before_canonical_sorting() -> None:
     dynamic_value = _DynamicText("GET")
     _DynamicText.encode_calls = 0
 
-    normalized = _normalize_payload(
+    normalized = normalize_audit_payload(
         {dynamic_key: dynamic_value, "reason_code": "canonical-order"}
     )
 
@@ -68,14 +68,14 @@ def test_payload_text_subtypes_are_frozen_before_canonical_sorting() -> None:
 def test_dynamic_payload_key_hash_matches_its_json_round_trip() -> None:
     event = _event()
     context = AuditTrustedContext(uuid4(), uuid4())
-    normalized = _normalize_payload(
+    normalized = normalize_audit_payload(
         {
             _DynamicText("http_method"): "GET",
             "reason_code": "canonical-order",
         }
     )
 
-    assert _content_hash(event, context, normalized) == _content_hash(
+    assert audit_content_hash(event, context, normalized) == audit_content_hash(
         event,
         context,
         {"http_method": "GET", "reason_code": "canonical-order"},
@@ -119,6 +119,6 @@ def test_event_validation_uses_frozen_text_not_overridden_strip(
 
 def test_payload_validation_uses_frozen_text_not_overridden_strip() -> None:
     with pytest.raises(AuditPayloadValueRejectedError) as exc_info:
-        _normalize_payload({"reason_code": _DynamicText("   ")})
+        normalize_audit_payload({"reason_code": _DynamicText("   ")})
 
     assert exc_info.value.key == "reason_code"

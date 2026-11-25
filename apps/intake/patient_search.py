@@ -11,7 +11,7 @@ from django.db import connection, transaction
 from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.intake.access import authorized_manager_clinic
-from apps.tenancy.envelope import _kek
+from apps.tenancy.envelope import fetch_tenant_kek
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -79,7 +79,7 @@ def search_patients(
         # lower(name)/birth_date/patient ordering, 25-row pages) executes
         # inside the database boundary so ciphertext never feeds predicates
         # and only the authorized page's plaintext leaves the database.
-        kek = _kek()
+        kek = fetch_tenant_kek()
         offset = (page - 1) * PAGE_SIZE
         with connection.cursor() as cursor:
             cursor.execute(

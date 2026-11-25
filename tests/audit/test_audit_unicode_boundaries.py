@@ -11,9 +11,9 @@ from apps.audit.services import (
     AuditEventInput,
     AuditEventValueRejectedError,
     AuditPayloadValueRejectedError,
-    _normalize_payload,
-    _record_system_event,
+    normalize_audit_payload,
     record_event,
+    record_system_event,
     verify_chain,
 )
 from django.db import connection, transaction
@@ -79,7 +79,7 @@ def test_event_boundary_rejects_unpersistable_unicode(value: str) -> None:
 @pytest.mark.parametrize("value", _UNPERSISTABLE_TEXT)
 def test_payload_boundary_rejects_unpersistable_unicode(value: str) -> None:
     with pytest.raises(AuditPayloadValueRejectedError) as exc_info:
-        _normalize_payload({"reason_code": value})
+        normalize_audit_payload({"reason_code": value})
 
     assert exc_info.value.key == "reason_code"
 
@@ -88,7 +88,7 @@ def test_payload_boundary_rejects_unpersistable_unicode(value: str) -> None:
     "appender",
     [
         pytest.param(record_event, id="tenant"),
-        pytest.param(_record_system_event, id="system"),
+        pytest.param(record_system_event, id="system"),
     ],
 )
 def test_payload_rejection_happens_before_database_access(
@@ -127,13 +127,13 @@ def test_rejected_tenant_text_leaves_the_valid_chain_unchanged() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_rejected_system_text_leaves_the_valid_chain_unchanged() -> None:
-    valid_seq = _record_system_event(
+    valid_seq = record_system_event(
         _event(),
         payload={"reason_code": "valid"},
     )
     for value in _UNPERSISTABLE_TEXT:
         with pytest.raises(AuditPayloadValueRejectedError):
-            _record_system_event(_event(), payload={"reason_code": value})
+            record_system_event(_event(), payload={"reason_code": value})
 
     result = verify_chain()
 

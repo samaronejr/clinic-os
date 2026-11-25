@@ -17,7 +17,7 @@ import psycopg
 import pytest
 from apps.audit import services as audit_services
 from apps.audit.models import SYSTEM_ORG_ID
-from apps.audit.services import AuditEventInput, _record_system_event, record_event
+from apps.audit.services import AuditEventInput, record_event, record_system_event
 from django.db import connection, connections, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.utils import DatabaseError
@@ -289,7 +289,7 @@ def test_app_mutation_is_permission_denied(
 )
 def test_owner_mutation_raises_exact_immutable_message(statement: str) -> None:
     # Given: one committed system-ledger row and an enabled trigger
-    _record_system_event(
+    record_system_event(
         _event(datetime.now(UTC)),
         payload={"reason_code": "immutability-test"},
     )
@@ -356,7 +356,7 @@ def test_valid_empty_tenant_chain_is_explicit() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_valid_system_chain_verifies_only_on_owner_connection() -> None:
     # Given: one owner-only system event
-    seq = _record_system_event(
+    seq = record_system_event(
         _event(datetime.now(UTC)),
         payload={"reason_code": "system-verification"},
     )
@@ -374,7 +374,7 @@ def test_valid_system_chain_verifies_only_on_owner_connection() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_app_cannot_verify_or_read_system_chain() -> None:
     # Given: a system event and a direct app connection
-    _record_system_event(
+    record_system_event(
         _event(datetime.now(UTC)),
         payload={"reason_code": "system-hidden"},
     )
@@ -628,7 +628,7 @@ def test_disable_window_exception_recovers_and_next_mutation_is_blocked(
     audit_superuser_connection: DatabaseWrapper,
 ) -> None:
     # Given: an intentional database error while both triggers are disabled
-    _record_system_event(
+    record_system_event(
         _event(datetime.now(UTC)),
         payload={"reason_code": "interruption-recovery"},
     )

@@ -70,12 +70,14 @@ def record_denial(clinic_id: UUID, record_id: UUID, reason: str) -> None:
     )
 
 
-def _denied(clinic_id: UUID, record_id: UUID, reason: str) -> NoReturn:
+def deny_clinical_access(clinic_id: UUID, record_id: UUID, reason: str) -> NoReturn:
+    """Record a bounded denial reason, then fail closed."""
     record_denial(clinic_id, record_id, reason)
     raise ClinicalAccessDeniedError
 
 
-def _appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
+def resolve_clinic_appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
+    """Resolve a clinic appointment after proving current-actor membership."""
     appointment = Appointment.objects.filter(
         pk=appointment_id, clinic_id=clinic_id
     ).first()
@@ -89,15 +91,16 @@ def _appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
     return appointment
 
 
-def _assigned(appointment: Appointment) -> UUID:
+def require_assigned_physician(appointment: Appointment) -> UUID:
+    """Return the current actor when they are the appointment's physician."""
     try:
         actor = require_current_actor_clinic_roles(
             appointment.clinic_id, (UserClinicRole.Role.PHYSICIAN,)
         )
     except CurrentActorError:
-        _denied(appointment.clinic_id, appointment.pk, "role_denied")
+        deny_clinical_access(appointment.clinic_id, appointment.pk, "role_denied")
     if actor != appointment.practitioner_id:
-        _denied(appointment.clinic_id, appointment.pk, "not_assigned")
+        deny_clinical_access(appointment.clinic_id, appointment.pk, "not_assigned")
     return actor
 
 
@@ -147,8 +150,8 @@ def publish_template(
 
 def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
     """Serialize starts; cancellation never removes an existing record."""
-    appointment = _appointment(clinic_id, appointment_id)
-    actor = _assigned(appointment)
+    appointment = resolve_clinic_appointment(clinic_id, appointment_id)
+    actor = require_assigned_physician(appointment)
     with transaction.atomic():
         appointment = Appointment.objects.select_for_update().get(pk=appointment.pk)
         existing = Encounter.objects.filter(appointment=appointment).first()
@@ -197,7 +200,9 @@ def create_draft(
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    actor = _assigned(_appointment(clinic_id, encounter.appointment_id))
+    actor = require_assigned_physician(
+        resolve_clinic_appointment(clinic_id, encounter.appointment_id)
+    )
     with transaction.atomic():
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         existing = (
@@ -251,7 +256,7 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     try:
         require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     except CurrentActorError:
-        _denied(clinic_id, version_id, "role_denied")
+        deny_clinical_access(clinic_id, version_id, "role_denied")
     version = (
         ClinicalDocumentVersion.objects.filter(
             pk=version_id, document__encounter__clinic_id=clinic_id
@@ -260,7 +265,7 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
         .first()
     )
     if version is None:
-        _denied(clinic_id, version_id, "no_care_relationship")
+        deny_clinical_access(clinic_id, version_id, "no_care_relationship")
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ehr_assigned(%s), clinic_app.ehr_care(%s)",
@@ -276,7 +281,7 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
         )
         or (not assigned and not care)
     ):
-        _denied(clinic_id, version.pk, "no_care_relationship")
+        deny_clinical_access(clinic_id, version.pk, "no_care_relationship")
     record_phase1_event(
         "ehr.record.viewed", clinic_id=clinic_id, affected_record_id=version.pk
     )
@@ -292,11 +297,13 @@ def record_clinical_note(
 ) -> ClinicalDocumentVersion:
     """Save explicitly; stale editors and failed transactions retain prior data."""
     authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _assigned(
-        _appointment(clinic_id, authorized.document.encounter.appointment_id)
+    actor = require_assigned_physician(
+        resolve_clinic_appointment(
+            clinic_id, authorized.document.encounter.appointment_id
+        )
     )
     if authorized.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+        deny_clinical_access(clinic_id, version_id, "not_assigned")
     if set(content) != set(SOAP_FIELDS) or any(
         not isinstance(v, str) or len(v) > MAX_CONTENT for v in content.values()
     ):

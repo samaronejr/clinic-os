@@ -19,8 +19,8 @@ from apps.audit.canonical import (
     AuditTrustedContext,
     CanonicalValue,
     ValidAuditPayload,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
 )
 from apps.audit.events import (
     PHASE1_AUDIT_EVENTS,
@@ -61,12 +61,12 @@ __all__ = (
     "Phase1AuditEventRejectedError",
     "SystemAuditAccessRejectedError",
     "ValidAuditPayload",
-    "_content_hash",
-    "_normalize_payload",
-    "_record_system_event",
+    "audit_content_hash",
     "build_phase1_audit_event",
+    "normalize_audit_payload",
     "record_event",
     "record_phase1_event",
+    "record_system_event",
     "verify_chain",
 )
 
@@ -117,7 +117,7 @@ def record_event(
     payload: Mapping[str, AuditPayloadInputValue],
 ) -> int:
     """Append one tenant event using organization and actor GUCs."""
-    normalized_payload = _normalize_payload(payload)
+    normalized_payload = normalize_audit_payload(payload)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT NULLIF(current_setting('app.current_tenant', true), ''), "
@@ -130,7 +130,7 @@ def record_event(
             organization_id=_parse_required_context(row[0], "app.current_tenant"),
             actor_user_id=_parse_required_context(row[1], "app.current_user_id"),
         )
-        content_hash = _content_hash(event, context, normalized_payload)
+        content_hash = audit_content_hash(event, context, normalized_payload)
         cursor.execute(
             "SELECT clinic_app.audit_append("
             "%s::text, %s::text, %s::inet, %s::text, %s::text, "
@@ -152,13 +152,13 @@ def record_event(
     return int(appended[0])
 
 
-def _record_system_event(
+def record_system_event(
     event: AuditEventInput,
     *,
     payload: Mapping[str, AuditPayloadInputValue],
 ) -> int:
     """Append through the owner-only system chain function."""
-    normalized_payload = _normalize_payload(payload)
+    normalized_payload = normalize_audit_payload(payload)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT current_user, "
@@ -172,7 +172,7 @@ def _record_system_event(
             organization_id=SYSTEM_ORG_ID,
             actor_user_id=_parse_optional_actor(row[1]),
         )
-        content_hash = _content_hash(event, context, normalized_payload)
+        content_hash = audit_content_hash(event, context, normalized_payload)
         cursor.execute(
             "SELECT clinic_app.audit_append_system("
             "%s::text, %s::text, %s::inet, %s::text, %s::text, "
@@ -207,7 +207,7 @@ def record_phase1_event(
         affected_record_id=affected_record_id,
     )
     if append.chain == "system":
-        return _record_system_event(append.event, payload=append.payload)
+        return record_system_event(append.event, payload=append.payload)
     return record_event(append.event, payload=append.payload)
 
 

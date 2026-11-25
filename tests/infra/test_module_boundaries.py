@@ -1,5 +1,7 @@
+import ast
 from collections.abc import Callable
 from inspect import Parameter, signature
+from pathlib import Path
 from typing import Final, NoReturn
 
 import pytest
@@ -52,6 +54,73 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[2]
+# ops/testing is a white-box harness rather than production runtime code.
+PRODUCTION_SOURCE_ROOTS: Final = (
+    REPOSITORY_ROOT / "apps",
+    REPOSITORY_ROOT / "config",
+    REPOSITORY_ROOT / "ops" / "container",
+    REPOSITORY_ROOT / "ops" / "db",
+)
+INTERNAL_MODULE_PREFIXES: Final = ("apps.", "config.", "ops.")
+INTERNAL_MODULE_ROOTS: Final = {"apps", "config", "ops"}
+
+
+def _from_import_violations(path: Path, node: ast.ImportFrom) -> list[str]:
+    module = node.module or "<relative>"
+    if not node.level and not module.startswith(INTERNAL_MODULE_PREFIXES):
+        return []
+    return [
+        f"{path}:{node.lineno} imports {alias.name} from {module}"
+        for alias in node.names
+        if alias.name.startswith("_")
+    ]
+
+
+def _module_import_violations(path: Path, node: ast.Import) -> list[str]:
+    return [
+        f"{path}:{node.lineno} imports private module {alias.name}"
+        for alias in node.names
+        if alias.name.split(".")[0] in INTERNAL_MODULE_ROOTS
+        and any(part.startswith("_") for part in alias.name.split(".")[1:])
+    ]
+
+
+def _node_import_violations(path: Path, node: ast.AST) -> list[str]:
+    if isinstance(node, ast.ImportFrom):
+        return _from_import_violations(path, node)
+    if isinstance(node, ast.Import):
+        return _module_import_violations(path, node)
+    return []
+
+
+def _parse_python_source(path: Path) -> ast.AST:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _production_source_paths() -> list[Path]:
+    # Migrations are immutable history; their local SQL helpers stay frozen.
+    return [REPOSITORY_ROOT / "manage.py"] + [
+        path
+        for source_root in PRODUCTION_SOURCE_ROOTS
+        for path in sorted(source_root.rglob("*.py"))
+        if "migrations" not in path.parts
+    ]
+
+
+def _private_import_violations() -> list[str]:
+    return [
+        violation
+        for source_path in _production_source_paths()
+        for node in ast.walk(_parse_python_source(source_path))
+        for violation in _node_import_violations(
+            source_path.relative_to(REPOSITORY_ROOT), node
+        )
+    ]
+
+
+def test_production_modules_do_not_import_private_symbols_across_modules() -> None:
+    assert _private_import_violations() == []
 
 
 def test_existing_foundation_apps_remain_registered() -> None:

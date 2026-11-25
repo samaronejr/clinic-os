@@ -28,8 +28,8 @@ from django.utils import timezone
 from apps.audit.canonical import AuditEventInput
 from apps.audit.services import (
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
     record_event,
     record_phase1_event,
 )
@@ -37,9 +37,9 @@ from apps.ehr.models import ClinicalDocumentVersion
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _appointment,
-    _assigned,
     record_denial,
+    require_assigned_physician,
+    resolve_clinic_appointment,
 )
 from apps.identity.current_context import (
     CurrentActorError,
@@ -519,7 +519,9 @@ def release_version(*, clinic_id: UUID, version_id: UUID) -> RecordRelease:
     if version is None:
         raise ClinicalAccessDeniedError
     encounter = version.document.encounter
-    actor = _assigned(_appointment(clinic_id, encounter.appointment_id))
+    actor = require_assigned_physician(
+        resolve_clinic_appointment(clinic_id, encounter.appointment_id)
+    )
     if version.state not in ("finalized", "superseded"):
         msg = "precondition_failed"
         raise ClinicalConflictError(msg)
@@ -567,7 +569,9 @@ def revoke_release(*, clinic_id: UUID, release_id: UUID) -> RecordRelease:
     )
     if version is None:
         raise ClinicalAccessDeniedError
-    _assigned(_appointment(clinic_id, version.document.encounter.appointment_id))
+    require_assigned_physician(
+        resolve_clinic_appointment(clinic_id, version.document.encounter.appointment_id)
+    )
     with transaction.atomic():
         locked = (
             RecordRelease.objects.select_for_update()
@@ -684,8 +688,10 @@ def _record_patient_view(
         affected_record_id=str(version_id),
         occurred_at_utc=timezone.now(),
     )
-    payload = _normalize_payload({"clinic_id": str(clinic_id), "object_verb": "viewed"})
-    content_hash = _content_hash(
+    payload = normalize_audit_payload(
+        {"clinic_id": str(clinic_id), "object_verb": "viewed"}
+    )
+    content_hash = audit_content_hash(
         event,
         AuditTrustedContext(organization_id=organization_id, actor_user_id=session_id),
         payload,

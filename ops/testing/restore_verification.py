@@ -16,8 +16,8 @@ from apps.audit.canonical import (
     AuditPayloadKeyRejected,
     AuditPayloadValueRejectedError,
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
 )
 
 from ops.testing.restore_contract import (
@@ -198,7 +198,7 @@ def _audit_content_hash(row: dict[str, object]) -> bytes:
             organization_id=UUID(str(row["organization_id"])),
             actor_user_id=None if actor is None else UUID(str(actor)),
         )
-        payload = _normalize_payload(row["payload"])  # type: ignore[arg-type]
+        payload = normalize_audit_payload(row["payload"])  # type: ignore[arg-type]
     except (
         AttributeError,
         AuditEventValueRejectedError,
@@ -209,7 +209,7 @@ def _audit_content_hash(row: dict[str, object]) -> bytes:
         ValueError,
     ):
         _fail("restored audit row is invalid")
-    return _content_hash(event, context, payload)
+    return audit_content_hash(event, context, payload)
 
 
 def require_empty_target(client: _SqlClient) -> None:

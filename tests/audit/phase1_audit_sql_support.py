@@ -14,8 +14,8 @@ from apps.audit.canonical import (
     AuditEventInput,
     AuditPayloadValueRejectedError,
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
 )
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import record_event
@@ -58,7 +58,7 @@ def raw_append(
     payload: Mapping[str, str],
     context: AuditTrustedContext,
 ) -> int:
-    content_hash = _content_hash(event, context, _normalize_payload(payload))
+    content_hash = audit_content_hash(event, context, normalize_audit_payload(payload))
     query = sql.SQL("SELECT clinic_app.{}(%s,%s,%s,%s,%s,%s,%s,%s)").format(
         sql.Identifier(function_name)
     )
