@@ -1,0 +1,86 @@
+{
+  "attribution": "The cluster-wide gate refused the intentionally sealed scheduling template during the seven clean-posture assertions (eight PostgreSQL connection refusals in that window). Independently, post-run inspection found two clock fixtures restored reformatted definitions and historical teleconsult DDL left the capture routine without the later encounter-specific consent check. Both fixture problems needed correction; the verifier was not relaxed.",
+  "collected": 16651,
+  "errors": 0,
+  "exit_codes": {
+    "first_exact_wrapper": 1,
+    "isolation": 0,
+    "mutation_pytest_expected": 1,
+    "publish": 1,
+    "sc5": 1,
+    "unit_witness": 1,
+    "verified_exact_wrapper": 0
+  },
+  "failed": 7,
+  "failure_attributions": [
+    {
+      "cause": "The valid runtime URL authenticated; the cluster-wide inspection still encountered the sealed scheduling template. The db-posture Python process refused and Make returned 2; this was not a credential rejection.",
+      "error": "AssertionError: Make returned 2; expected 0 (database posture check failed)",
+      "failed_expression": "result.returncode == 0",
+      "node_id": "tests/infra/test_db_posture_url.py::test_db_posture_authenticates_the_supplied_app_database_url",
+      "source_line": 85
+    },
+    {
+      "cause": "The privileged leaf was still disconnected from clinic_app. A separate sealed scheduling template invalidated the required clean-cluster baseline before the bridge membership could be granted.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "posture._verify_database_posture(app_url, test_db)",
+      "node_id": "tests/infra/test_role_family_posture.py::test_posture_refuses_transitive_set_only_parameter_authority",
+      "source_line": 53
+    },
+    {
+      "cause": "The secondary database still had its default PUBLIC CONNECT and no prohibited EXECUTE grant. The existing sealed scheduling template made the first baseline fail before that test granted EXECUTE.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "_runtime_posture()",
+      "node_id": "tests/infra/test_role_family_posture.py::test_connectable_secondary_has_independent_routine_grants",
+      "source_line": 247
+    },
+    {
+      "cause": "The app lacked CONNECT and the reachable machine login had already authenticated to the new database. The independent sealed scheduling template made baseline posture false before the machine received EXECUTE.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "_runtime_posture()",
+      "node_id": "tests/infra/test_role_family_posture.py::test_machine_only_database_keeps_local_grant_in_scope",
+      "source_line": 394
+    },
+    {
+      "cause": "The SET-only path to the secondary owner and the inspector CONNECT grant had been established. The sealed scheduling template, not a grant to pg_database_owner, caused failure at the baseline before that grant.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "_runtime_posture()",
+      "node_id": "tests/infra/test_role_family_posture.py::test_reachable_database_owner_activates_local_grant",
+      "source_line": 436
+    },
+    {
+      "cause": "The secondary database was still inspectable. The scheduling template blocked inspection before the test reached its own CONNECTION LIMIT 0 change.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "_runtime_posture()",
+      "node_id": "tests/infra/test_role_family_posture.py::test_connectable_but_uninspectable_database_refuses_posture",
+      "source_line": 462
+    },
+    {
+      "cause": "The newly created database still allowed connections. The scheduling template blocked inspection before the test reached its own ALLOW_CONNECTIONS false change.",
+      "error": "AssertionError: expected True, observed False",
+      "failed_expression": "_runtime_posture()",
+      "node_id": "tests/infra/test_role_family_posture.py::test_connection_disabled_database_is_not_skipped",
+      "source_line": 477
+    }
+  ],
+  "focused_passed": 54,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795601284944980,
+    "nice": 10,
+    "result": "exit-code",
+    "run_id": "6d2e94a370494b92bdd6c6f516304113",
+    "start_us": 1795586923958433,
+    "state": "failed",
+    "status": 1,
+    "unit": "cpi-kek-r4-full-de424fa4.service"
+  },
+  "passed": 16644,
+  "publication": "withheld; no all-pass release for this SHA",
+  "run_id": "6d2e94a370494b92bdd6c6f516304113",
+  "sha": "de424fa482adc1346392049fbf2d556cb05c957d",
+  "skipped": 0,
+  "standalone_isolation_passed": 3308,
+  "status": "REJECTED",
+  "tree": "440f2725888647a1e4184a780ae7827a5592a9e6"
+}

@@ -1,0 +1,71 @@
+{
+  "attribution": "Seven clean-posture assertions failed when the session-scoped scheduling factory retained a sealed datallowconn=false template in pg_database. Eight connection-refusal log entries matched the failure window. The ordinary deploy posture passed after fixture teardown; an ordered three-case witness reproduced the red boundary without modifying the verifier. The publisher was not invoked after the full-unit witness exited 1.",
+  "collected": 16651,
+  "diff_from_de424fa4": {
+    "added_lines": 49,
+    "files": [
+      "tests/patients/delegate_support.py",
+      "tests/patients/test_delegates.py",
+      "tests/patients/test_dsar.py",
+      "tests/teleconsult/test_event_migration.py",
+      "tests/teleconsult/test_mode_migration.py"
+    ],
+    "removed_lines": 87,
+    "scope": "Test-only, not exclusively fixture declarations: captured clock restoration, fixture consumers, historical migration test bodies, and stronger catalog/guard/history assertions. No production code, deployment posture, gate implementation, or exception-policy change."
+  },
+  "errors": 0,
+  "exit_codes": {
+    "isolation": 0,
+    "mutation_pytest_expected": 1,
+    "publish": null,
+    "sc5": 1,
+    "unit_witness": 1,
+    "verified_exact_wrapper": 0
+  },
+  "failed": 7,
+  "focused_passed": 58,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795616290033834,
+    "nice": 10,
+    "result": "exit-code",
+    "run_id": "36aecde2c8084367a6b47f4221757489",
+    "start_us": 1795602501160401,
+    "state": "failed",
+    "status": 1,
+    "unit": "cpi-kek-r4-full-661483f0.service"
+  },
+  "passed": 16644,
+  "previous_de424fa4_fixture_definitions_restored": true,
+  "publication": "withheld; no all-pass release for this SHA",
+  "r4_verification": {
+    "application_exceptions_with_provenance": 608,
+    "backup_restore_guard_cases": 6,
+    "catalog": "pg_catalog plus pg_extension and member namespaces, current and initial EXECUTE ACLs, recursive role graph",
+    "database_scope": "Every pg_database row inspected as clinic_posture independently of app CONNECT; per-database datdba -> pg_database_owner included. Inspection failures deny.",
+    "isolation_cases": 3308,
+    "mutation_invocation": "e5051301e5e443109798054e821a94be",
+    "native_or_extension_member_exceptions": 0,
+    "redundant_checks": {
+      "pg_read_all_stats": "Role already has EXECUTE on two catalog-restricted routines; omitting just the role check does not admit it. Original denial test retained.",
+      "rolsuper": "Other effective authorization checks still deny a superuser. Original denial test retained."
+    },
+    "required_control_ids": [
+      "omit_native_memory_routine",
+      "check_extension_members_only",
+      "filter_by_app_connect",
+      "omit_context_owner_edge"
+    ],
+    "static": "Ruff lint/format, strict mypy (2949 files), Django checks, migration drift, bootstrap/migration, standalone posture and diff-check passed. This does not turn the full-run posture failures into passes.",
+    "uninspectable_controls": [
+      "allow_uninspectable",
+      "filter_connection_enabled"
+    ]
+  },
+  "run_id": "36aecde2c8084367a6b47f4221757489",
+  "sha": "661483f07919db74a27cec36875a1c23e8bebc8e",
+  "skipped": 0,
+  "standalone_isolation_passed": 3308,
+  "status": "REJECTED",
+  "tree": "19090e7ea725d73d65446d16a85f5bec3233fe50"
+}

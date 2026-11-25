@@ -1,0 +1,84 @@
+{
+  "boundary_controls": {
+    "boundary-green": {
+      "failed": 0,
+      "passed": 3,
+      "run_id": "c8b7686390764deb966f8ab4d8341af4"
+    },
+    "boundary-red": {
+      "failed": 1,
+      "passed": 2,
+      "run_id": "d7ed783a83204376b0b6a0faf7cc1e8b"
+    }
+  },
+  "coverage": "93.59%",
+  "duplicates": 0,
+  "exact_release_gates": "passed",
+  "extra": 0,
+  "focused_tests": 60,
+  "fsync_off_disposable_only_utc": "2026-11-25T10:21:05.775301373Z",
+  "full_exit": 0,
+  "full_nonbrowser_tests": 16651,
+  "guards_before_after": [
+    126,
+    126
+  ],
+  "initial_diagnostic_run_id": "67165a4a46e945eabd0e0686cbc056de",
+  "initial_diagnostic_sha": "de424fa482adc1346392049fbf2d556cb05c957d",
+  "initial_diagnostic_wrapper_exit": 1,
+  "isolated_harness_tests": 3308,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795630753278268,
+    "nice": 10,
+    "result": "success",
+    "run_id": "7472575ca4e3404bb27014085a95729b",
+    "start_us": 1795616957533401,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r4-full-bb64a1de.service"
+  },
+  "missing": 0,
+  "mutation_result": {
+    "equivalent": [
+      "pg_read_all_stats",
+      "r.rolsuper"
+    ],
+    "killed": 29,
+    "requested_killed": [
+      "check_extension_members_only",
+      "filter_by_app_connect",
+      "omit_context_owner_edge",
+      "omit_native_memory_routine"
+    ],
+    "run_id": "9e9643d1b7614f4c8142ac84caf39e68"
+  },
+  "new_r4_tests": 9,
+  "nonpass": 0,
+  "parent": "661483f07919db74a27cec36875a1c23e8bebc8e",
+  "previous_tests": 16642,
+  "redis_binary_sha256": "acf84fdf1c977253714617a7470b0acf5237c4b0bc1b36c3842b332c8dce491b",
+  "redis_umask": "022",
+  "rejected_predecessors": [
+    {
+      "failed": 7,
+      "manifest": "SC5-de424fa4-rejected/outcomes.jsonl",
+      "manifest_sha256": "f7ec7b6af610a91b60b13f8140d2af8b5a98430ec03b16b91d76799789e948b7",
+      "passed": 16644,
+      "run_id": "6d2e94a370494b92bdd6c6f516304113",
+      "sha": "de424fa482adc1346392049fbf2d556cb05c957d"
+    },
+    {
+      "failed": 7,
+      "manifest": "SC5-661483f0-rejected/outcomes.jsonl",
+      "manifest_sha256": "12865ffbd3cc711fb350413015ea44e75703fcde0f7ba9201f60447fa1e032f0",
+      "passed": 16644,
+      "run_id": "36aecde2c8084367a6b47f4221757489",
+      "sha": "661483f07919db74a27cec36875a1c23e8bebc8e"
+    }
+  ],
+  "run_id": "7472575ca4e3404bb27014085a95729b",
+  "sha": "bb64a1de35504b5582b8d3adf0183f220f472ff7",
+  "static_files_checked": 2949,
+  "tree": "4a07860158334b82ba7dc7ccfeff9828092050d9"
+}
