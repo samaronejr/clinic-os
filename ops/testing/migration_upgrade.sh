@@ -13,6 +13,7 @@
 #   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 # Set UPGRADE_FIXTURE_SWEEP=1 to require per-table mutation coverage before PASS.
+# Set UPGRADE_WAVE_H_DIFFERENTIAL=1 for independent native Wave H comparison.
 set -euo pipefail
 
 readonly base_sha="${1:?base SHA required}"
@@ -21,6 +22,7 @@ readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
 readonly base_worktree="$work_root/base"
 upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
+readonly differential="${UPGRADE_WAVE_H_DIFFERENTIAL:-}"
 
 mkdir -p "$work_root"
 # Do not publish a previous run's receipts if this rehearsal fails.
@@ -34,7 +36,7 @@ upgrade_dsn() {
     case "$url" in
         *\?*) query="?${url#*\?}" ;;
     esac
-    printf '%s/%s%s' "${path%/*}" "$upgrade_db" "$query"
+    printf '%s/%s%s' "${path%/*}" "${2:-$upgrade_db}" "$query"
 }
 readonly lock_source_dsn="${LOCKS_DATABASE_URL:?LOCKS_DATABASE_URL required}"
 
@@ -52,14 +54,62 @@ psql_super() {
 db_created=0
 worktree_added=0
 secret_dir="${RUNNER_TEMP:-/tmp}/migration-upgrade-secrets.$$"
+wave_added=0
+wave_db_created=0
+wave_db="${upgrade_db}_wave"
+wave_tree="$secret_dir/wave"
+differential_stage=setup
+readonly differential_report="$secret_dir/differential.json"
+
+publish_differential() {
+    python3 - "$work_root" "$base_sha" "$upgrade_db" "$1" \
+        "$differential_stage" "$differential_report" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+root, base, db, result, stage, report = sys.argv[1:]
+target = Path(root) / "verdict.json"
+comparison = Path(report)
+details = json.loads(comparison.read_text()) if comparison.is_file() else {
+    "result": "FAIL",
+    "projection_cases": 0,
+    "probe_window_cases": 0,
+    "differences": [],
+    "base_reject_lane_pass_pairs": [],
+}
+if result == "PASS":
+    verdict = json.loads(target.read_text())
+    if details.get("result") != "PASS":
+        raise RuntimeError("differential passing report is missing")
+else:
+    verdict = {"schema_version": 1, "result": "FAIL", "base_sha": base, "upgrade_db": db}
+    verdict["reason"] = stage
+verdict["differential"] = details
+pending = target.with_suffix(".pending")
+pending.write_text(json.dumps(verdict) + "\n", encoding="utf-8")
+pending.replace(target)
+PYEOF
+}
+
 cleanup() {
     rc=$?
     trap - EXIT
+    if [ "$rc" != 0 ] && [ -n "$differential" ]; then
+        echo "Wave H differential failed: $differential_stage" >&2
+        publish_differential FAIL || echo "could not write differential verdict" >&2
+    fi
     if [ "$worktree_added" = 1 ]; then
         git -C "$project_root" worktree remove --force "$base_worktree" || true
     fi
     if [ "$db_created" = 1 ]; then
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $upgrade_db" || true
+    fi
+    if [ "$wave_db_created" = 1 ]; then
+        psql_super -d postgres -qc "DROP DATABASE IF EXISTS $wave_db" || true
+    fi
+    if [ "$wave_added" = 1 ]; then
+        git -C "$project_root" worktree remove --force "$wave_tree" || true
     fi
     rm -rf "$secret_dir"
     exit $rc
@@ -121,8 +171,76 @@ create_and_migrate_base() {
 
 seed_base() {
     echo "== seed representative data at base revision =="
+    if [ -n "$differential" ]; then
+        differential_stage=candidate_probe_case_generation
+        collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json"
+        return $?
+    fi
     UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
         base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py"
+}
+
+collect_probe_cases() {
+    UPGRADE_HELPER_ROOT="$1" UPGRADE_SEED_FILE="$2" UPGRADE_WAVE_H_PROBE_CASES="$3" \
+        UPGRADE_PROBE_DRIVER="$project_root/tests/infra/wave_h_probe_faults.py" \
+        base_manage shell -c 'import os, runpy
+from pathlib import Path
+runpy.run_path(os.environ["UPGRADE_PROBE_DRIVER"])["run_seed"](
+    Path(os.environ["UPGRADE_HELPER_ROOT"]) / "ops/testing/migration_upgrade_seed.py",
+    Path(os.environ["UPGRADE_WAVE_H_PROBE_CASES"]))'
+}
+
+rehearse_wave_h() {
+    local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
+    local native="$secret_dir/native"
+    mkdir -m 700 "$native"
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$native/tenant-kek.secret"
+    chmod 600 "$native/tenant-kek.secret"
+    differential_stage=reference_worktree
+    if [ "$differential" = 1 ]; then
+        git -C "$project_root" worktree add --detach "$wave_tree" "$wave_sha"
+        wave_added=1
+        if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
+            ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
+        else
+            (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
+        fi
+    else
+        wave_tree="$(realpath "$differential")"
+    fi
+    test "$(git -C "$wave_tree" rev-parse HEAD)" = "$wave_sha"
+    test -z "$(git -C "$wave_tree" status --porcelain --untracked-files=no)"
+
+    differential_stage=reference_migration
+    local owner_dsn app_dsn secret_dir="$native"
+    owner_dsn="$(upgrade_dsn "$MIGRATION_DATABASE_URL" "$wave_db")"
+    app_dsn="$(upgrade_dsn "$APP_DATABASE_URL" "$wave_db")"
+    psql_super -d postgres -qc "CREATE DATABASE $wave_db TEMPLATE template0"
+    wave_db_created=1
+    psql_super -d "$wave_db" -v database_name="$wave_db" -v app_schema=clinic_app \
+        -f - < "$wave_tree/ops/db/bootstrap.sql"
+    base_manage migrate --no-input
+    differential_stage=reference_probe_case_generation
+    collect_probe_cases "$wave_tree" "$native/seed.json" "$native/probes.json"
+    differential_stage=reference_forward_migration
+    (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
+        CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
+        CLINIC_SECRET_DIR="$native" DJANGO_SETTINGS_MODULE=config.settings.base \
+        uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
+    APP_DATABASE_URL="$owner_dsn" UPGRADE_APP_DATABASE_URL="$app_dsn" \
+        UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL" "$wave_db")" \
+        CLINIC_SECRET_DIR="$native" UPGRADE_SEED_FILE="$native/seed.json" \
+        UPGRADE_WAVE_H_PROBE_CASES="$native/probes.json" \
+        python3 - "$native/environment.json" <<'PYEOF'
+import json
+import os
+import sys
+from pathlib import Path
+
+keys = ("APP_DATABASE_URL", "UPGRADE_APP_DATABASE_URL", "UPGRADE_ADMIN_DATABASE_URL",
+        "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES")
+Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}))
+PYEOF
 }
 
 export UPGRADE_SEED_STATE="$seed_state"
@@ -140,11 +258,12 @@ else
     db_created=0
     upgrade_db="${upgrade_db}_retry"
     rm -f "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
-        "$seed_file" "$work_root/seed.pending"
+        "$seed_file" "$work_root/seed.pending" "$secret_dir/lane-probes.json"
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
     seed_base
 fi
+differential_stage=forward_rehearsal
 base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["verify_seed_inventory"]()'
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
@@ -225,8 +344,9 @@ from ops.testing.migration_upgrade_rewrite_graph import (
 validate_default_declarations()
 validate_transform_declarations()
 Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
-if [ -n "${UPGRADE_WAVE_H_DIFFERENTIAL:-}" ]; then
-    : "${UPGRADE_WAVE_H_NATIVE_ENV:?path to the independent Wave H rehearsal environment required}"
+if [ -n "$differential" ]; then
+    rehearse_wave_h
+    differential_stage=verifier_differential
     (cd "$project_root" && env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
@@ -237,9 +357,13 @@ if [ -n "${UPGRADE_WAVE_H_DIFFERENTIAL:-}" ]; then
         UPGRADE_BASE_SHA="$base_sha" \
         UPGRADE_VERIFIED_FILE="$secret_dir/verified.json" \
         UPGRADE_SEED_FILE="$seed_file" \
+        UPGRADE_WAVE_H_NATIVE_ENV="$secret_dir/native/environment.json" \
+        UPGRADE_WAVE_H_PROBE_CASES="$secret_dir/lane-probes.json" \
+        UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
-        tests/infra/wave_h_entry_differential.py "$UPGRADE_WAVE_H_DIFFERENTIAL")
+        tests/infra/wave_h_entry_differential.py "$wave_tree")
 fi
+differential_stage=clean_forward_verification
 (cd "$project_root" && env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
@@ -267,5 +391,9 @@ if ! cmp -s "$work_root/verdict.json" "$secret_dir/verified.json"; then
     rm -f "$work_root/verdict.json"
     echo "published upgrade verdict disagrees with the verified base histories" >&2
     exit 1
+fi
+if [ -n "$differential" ]; then
+    differential_stage=verdict_publication
+    publish_differential PASS
 fi
 echo "migration-upgrade: PASS"

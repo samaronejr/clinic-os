@@ -121,17 +121,16 @@ def _projection(admin: psycopg.Connection, table: str, snapshot: Row) -> Project
     return originals
 
 
-def _refuse(
+def _compare(
     old: subprocess.Popen[str],
     new: subprocess.Popen[str],
     table: str,
     base_fault: Row,
     lane_fault: Row,
-) -> None:
-    for label, result in (
-        ("Wave H", _verdict(old, base_fault)),
-        ("lane", _verdict(new, lane_fault)),
-    ):
+) -> Row | None:
+    base_result = _verdict(old, base_fault)
+    lane_result = _verdict(new, lane_fault)
+    for result in (base_result, lane_result):
         failures = result["failures"]
         assert isinstance(failures, list)
         if (
@@ -139,18 +138,18 @@ def _refuse(
             or result["attested"]
             or not any(str(line).endswith(f"preserved:{table}") for line in failures)
         ):
-            message = f"{label}: {table}: missing digest refusal: {result}"
-            raise AssertionError(message)
+            return {
+                "table": table,
+                "case": lane_fault["description"],
+                "wave_h": base_result,
+                "lane": lane_result,
+                "base_reject_lane_pass": base_result["status"] == 1
+                and (lane_result["status"] == 0 or lane_result["attested"] is True),
+            }
+    return None
 
 
-def main() -> None:
-    """Run the clean sibling and every generated fault without publishing."""
-    if os.environ.get("CLINIC_DATA_MODE") != "synthetic":
-        message = "full verifier differential only runs on synthetic rehearsals"
-        raise RuntimeError(message)
-    base = Path(sys.argv[1]).resolve()
-    lane = Path.cwd()
-    _check_base(base)
+def _run(base: Path, report: Row, differences: list[Row]) -> None:
     old_env = json.loads(Path(os.environ["UPGRADE_WAVE_H_NATIVE_ENV"]).read_text())
     base_snapshots = json.loads(Path(old_env["UPGRADE_SEED_FILE"]).read_text())["ai"][
         "tables"
@@ -179,7 +178,7 @@ def main() -> None:
             _worker(base, worker, out / "differential-base.json", old_env)
         )
         new = stack.enter_context(
-            _worker(lane, worker, out / "differential-lane.json", {})
+            _worker(Path.cwd(), worker, out / "differential-lane.json", {})
         )
         _check_clean(_verdict(old, {}), attested=False)
         _check_clean(_verdict(new, {}), attested=True)
@@ -206,8 +205,10 @@ def main() -> None:
                 for base_fault, fault in zip(
                     _faults(table, old_rows), _faults(table, new_rows), strict=True
                 ):
-                    _refuse(old, new, table, base_fault, fault)
+                    if difference := _compare(old, new, table, base_fault, fault):
+                        differences.append(difference)
                     checked += 1
+                    report["projection_cases"] = checked
                 for phase in probes:
                     faults = []
                     for case, clean_rows in (
@@ -222,16 +223,58 @@ def main() -> None:
                             for column in columns
                             if clean[column] != projected[column]
                         } == {case["column"]}
-                        faults.append({"table": table, "rows": [(key, projected)]})
-                    _refuse(old, new, table, *faults)
+                        faults.append(
+                            {
+                                "table": table,
+                                "description": f"{phase}: {case['column']} in {key}",
+                                "rows": [(key, projected)],
+                            }
+                        )
+                    if difference := _compare(old, new, table, *faults):
+                        differences.append(difference)
+                    report["probe_window_cases"] = (
+                        int(str(report["probe_window_cases"])) + 1
+                    )
                 sys.stdout.write(f"Wave H differential: {table}: {checked} cases\n")
                 sys.stdout.flush()
         assert checked > 0
         _check_clean(_verdict(old, {}), attested=False)
         _check_clean(_verdict(new, {}), attested=True)
-        sys.stdout.write(f"Wave H full-entry differential passed: {checked} cases\n")
-        sys.stdout.write("Wave H probe-window differential passed: 118 cases\n")
+
+
+def main() -> int:
+    """Record all mismatches and retain progress on a failed rehearsal."""
+    differences: list[Row] = []
+    report: Row = {
+        "result": "FAIL",
+        "projection_cases": 0,
+        "probe_window_cases": 0,
+        "differences": differences,
+    }
+    try:
+        if os.environ.get("CLINIC_DATA_MODE") != "synthetic":
+            message = "full verifier differential only runs on synthetic rehearsals"
+            raise RuntimeError(message)
+        base = Path(sys.argv[1]).resolve()
+        _check_base(base)
+        _run(base, report, differences)
+        assert report["probe_window_cases"] == 118
+        if not differences:
+            report["result"] = "PASS"
+            sys.stdout.write(
+                f"Wave H full-entry differential passed: "
+                f"{report['projection_cases']} cases\n"
+            )
+            sys.stdout.write("Wave H probe-window differential passed: 118 cases\n")
+    finally:
+        report["base_reject_lane_pass_pairs"] = [
+            row for row in differences if row["base_reject_lane_pass"] is True
+        ]
+        Path(os.environ["UPGRADE_WAVE_H_REPORT"]).write_text(
+            json.dumps(report) + "\n", encoding="utf-8"
+        )
+    return 1 if differences else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
