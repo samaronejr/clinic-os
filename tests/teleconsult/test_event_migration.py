@@ -21,6 +21,8 @@ from teleconsult.test_mode_migration import catalog_hash, history_hash
 from teleconsult.test_participants import seed_world
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from rbac_fixtures import RbacGraph
 
 __all__ = ("synthetic_provider",)
@@ -40,8 +42,13 @@ def guard_definition() -> tuple[str, str]:
 
 
 def test_event_authority_reverse_is_exact_with_populated_v2_events(
-    rbac_graph: RbacGraph, synthetic_provider: object
+    committed_migration_world: AbstractContextManager[RbacGraph],
 ) -> None:
+    with committed_migration_world as rbac_graph:
+        _exercise_event_migration(rbac_graph)
+
+
+def _exercise_event_migration(rbac_graph: RbacGraph) -> None:
     w = seed_world(rbac_graph)
     with runtime_role(), tenant_context(w.graph.physician, w.organization):
         participants.set_audio_only(
@@ -63,6 +70,10 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
             # Reversible descendants can precede the protected migration in
             # the rollback plan. Restore the full graph before checking it.
             MigrationExecutor(connection).migrate(installed_targets)
+        assert (
+            frozenset(MigrationExecutor(connection).loader.applied_migrations)
+            == installed
+        )
         assert guard_definition()[0] == before
         assert catalog_hash() == original_catalog
         assert history_hash(w.organization) == original_history
@@ -75,6 +86,7 @@ def test_event_authority_reverse_is_exact_with_populated_v2_events(
             # re-created capture policy would come back without the fence.
             for node in (
                 ("identity", "0051_enterprise_governance"),
+                ("scribe", "0002_ai_disclosure_capture"),
                 ("teleconsult", "0007_consented_capture"),
                 ("teleconsult", "0006_mode_audit"),
                 ("teleconsult", "0005_event_authority"),

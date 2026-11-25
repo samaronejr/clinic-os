@@ -28,6 +28,7 @@ def _create_roles(admin: psycopg.Connection) -> tuple[sql.Identifier, sql.Identi
     return bridge, leaf
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_posture_refuses_transitive_set_only_parameter_authority() -> None:
     app_url = os.environ["APP_DATABASE_URL"]
     test_db = os.environ.get(
@@ -235,6 +236,7 @@ def _runtime_posture() -> bool:
     )
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_connectable_secondary_has_independent_routine_grants() -> None:
     # The gate must discover this database: it is neither the app database
     # nor the precreated test database, and CONNECT is initially via PUBLIC.
@@ -362,6 +364,7 @@ def _reachable_machine() -> Iterator[tuple[str, str]]:
             admin.execute(sql.SQL("DROP ROLE {}").format(machine))
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_machine_only_database_keeps_local_grant_in_scope() -> None:
     with (
         _reachable_machine() as (machine_name, password),
@@ -406,6 +409,7 @@ def test_machine_only_database_keeps_local_grant_in_scope() -> None:
         assert _runtime_posture()
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_reachable_database_owner_activates_local_grant() -> None:
     with (
         _secondary() as (admin, name, identifier),
@@ -457,6 +461,7 @@ def test_reachable_database_owner_activates_local_grant() -> None:
             admin.execute(sql.SQL("DROP ROLE {}").format(owner))
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_connectable_but_uninspectable_database_refuses_posture() -> None:
     with _secondary() as (admin, _name, identifier):
         assert _runtime_posture()
@@ -472,6 +477,7 @@ def test_connectable_but_uninspectable_database_refuses_posture() -> None:
         assert _runtime_posture()
 
 
+@pytest.mark.usefixtures("clean_posture_environment")
 def test_connection_disabled_database_is_not_skipped() -> None:
     with _secondary() as (admin, _name, identifier):
         assert _runtime_posture()

@@ -19,6 +19,7 @@ from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
 
 from database_urls import database_url_for_name
+from isolated_pg_fixtures import clean_posture_environment, migrated_pg_cluster
 from rbac_fixtures import RbacGraph, rbac_graph
 from tenant_key_support import issue_tenant_key_for, synthetic_secret_backend
 from tenant_probe_support import tenant_probe_pair
@@ -163,6 +164,8 @@ TRUNCATE_GUARDS = (
 )
 __all__: Final = (
     "RbacGraph",
+    "clean_posture_environment",
+    "migrated_pg_cluster",
     "rbac_graph",
     "synthetic_secret_backend",
     "tenant_probe_pair",

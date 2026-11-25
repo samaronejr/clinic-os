@@ -16,6 +16,7 @@ MAKE_BINARY: Final = shutil.which("make")
 MAKE_TIMEOUT_SECONDS: Final = 15
 INVALID_CREDENTIAL: Final = "posture-credential-must-be-rejected"
 WRONG_DATABASE: Final = "postgres"
+pytestmark = pytest.mark.usefixtures("clean_posture_environment")
 
 
 def _replace_password(database_url: str, password: str) -> str:
@@ -86,6 +87,11 @@ def test_db_posture_authenticates_the_supplied_app_database_url() -> None:
     assert database_url not in output
     password = urlsplit(database_url).password
     assert password is None or password not in output
+    refused = _run_posture(_replace_password(database_url, INVALID_CREDENTIAL))
+    assert refused.returncode != 0
+    assert "database posture check failed" in _output(refused)
+    assert INVALID_CREDENTIAL not in _output(refused)
+    assert _run_posture(database_url).returncode == 0
 
 
 @pytest.mark.parametrize(

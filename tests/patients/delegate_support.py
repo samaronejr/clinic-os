@@ -163,8 +163,16 @@ def active_grant(
 @contextmanager
 def delegate_clock(at: datetime) -> Iterator[None]:
     """Replace the owner-only clock, not authorization, and restore it exactly."""
+    definition = (
+        "SELECT pg_catalog.pg_get_functiondef(oid), prosrc FROM pg_catalog.pg_proc "
+        "WHERE oid = 'clinic_app.delegate_now()'::regprocedure"
+    )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(definition)
+        original = cursor.fetchone()
+        assert original is not None
+        assert original[1].strip() == "SELECT statement_timestamp()"
         cursor.execute(
             "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
             "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
@@ -177,10 +185,7 @@ def delegate_clock(at: datetime) -> Iterator[None]:
     finally:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
-            )
+            cursor.execute(original[0])
+            cursor.execute(definition)
+            assert cursor.fetchone() == original
             cursor.execute("RESET ROLE")

@@ -209,8 +209,16 @@ def _members(data: bytes) -> str:
 
 @contextmanager
 def data_request_clock(at: datetime) -> Iterator[None]:
+    definition = (
+        "SELECT pg_catalog.pg_get_functiondef(oid), prosrc FROM pg_catalog.pg_proc "
+        "WHERE oid = 'clinic_app.data_request_now()'::regprocedure"
+    )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(definition)
+        original = cursor.fetchone()
+        assert original is not None
+        assert original[1].strip() == "SELECT statement_timestamp()"
         cursor.execute(
             "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
             "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
@@ -223,12 +231,9 @@ def data_request_clock(at: datetime) -> Iterator[None]:
     finally:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
-            )
+            cursor.execute(original[0])
+            cursor.execute(definition)
+            assert cursor.fetchone() == original
             cursor.execute("RESET ROLE")
 
 

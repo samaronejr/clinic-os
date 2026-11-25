@@ -21,6 +21,7 @@ from teleconsult.test_mode_transition import mode_history
 from teleconsult.test_participants import seed_world
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
     from uuid import UUID
 
     from rbac_fixtures import RbacGraph
@@ -34,6 +35,7 @@ OLD = [("teleconsult", "0005_event_authority")]
 MODE_CHAIN = (
     ("teleconsult", "0006_mode_audit"),
     ("teleconsult", "0007_consented_capture"),
+    ("scribe", "0002_ai_disclosure_capture"),
     ("identity", "0051_enterprise_governance"),
 )
 
@@ -61,7 +63,8 @@ def catalog_hash() -> str:
             "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
             "WHERE n.nspname='clinic_app' AND p.proname IN "
             "('teleconsult_mode_transition_scope','teleconsult_mode_transition_audit',"
-            "'teleconsult_binding_guard','teleconsult_immutable') "
+            "'teleconsult_binding_guard','teleconsult_immutable',"
+            "'scribe_room_capture_allowed') "
             "ORDER BY p.proname"
         )
         return hashlib.sha256(repr(cursor.fetchall()).encode()).hexdigest()
@@ -82,14 +85,18 @@ def history_hash(organization: UUID) -> str:
 
 
 def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
-    rbac_graph: RbacGraph, synthetic_provider: object
+    committed_migration_world: AbstractContextManager[RbacGraph],
 ) -> None:
+    with committed_migration_world as rbac_graph:
+        _exercise_mode_migration(rbac_graph)
+
+
+def _exercise_mode_migration(rbac_graph: RbacGraph) -> None:
     w = seed_world(rbac_graph)
     second = second_patient_session(w)
     with runtime_role(), patient_session_context(w.patient_session):
         participants.set_patient_audio_only(session_id=w.session, enabled=True)
-    original = history_hash(w.organization)
-    new_catalog = catalog_hash()
+    original, new_catalog = history_hash(w.organization), catalog_hash()
     executor = MigrationExecutor(connection)
     installed = frozenset(executor.loader.applied_migrations)
     # A graph rollback now crosses protected transcript storage. Prove that it
@@ -101,6 +108,9 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
         # A failed graph rollback may already have removed reversible
         # descendants. Reinstall them before comparing the protected graph.
         MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
+    assert (
+        frozenset(MigrationExecutor(connection).loader.applied_migrations) == installed
+    )
     assert catalog_hash() == new_catalog
     assert history_hash(w.organization) == original
     reversed_modes = False
