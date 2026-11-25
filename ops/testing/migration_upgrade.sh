@@ -14,11 +14,12 @@
 # Usage: migration_upgrade.sh <base_sha>
 # Set UPGRADE_FIXTURE_SWEEP=1 to require per-table mutation coverage before PASS.
 # Set UPGRADE_WAVE_H_DIFFERENTIAL=1 for independent native Wave H comparison.
-# Consumers supply UPGRADE_RUN_ID and require it in the final PASS receipt.
+# Consumers require the run_nonce announced by this invocation in its PASS.
 set -euo pipefail
 
 readonly base_sha="${1:-}"
-readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
+readonly runner_root="${RUNNER_TEMP:-/tmp}"
+work_root="$runner_root/migration-upgrade"
 readonly started_at="$EPOCHREALTIME"
 readonly run_id="${UPGRADE_RUN_ID:-${started_at//./}-$$-$RANDOM}"
 commit_sha="${UPGRADE_COMMIT_SHA:-unknown}"
@@ -63,28 +64,46 @@ readonly differential_report="$secret_dir/differential.json"
 verdict_ready=0
 setup_detail=""
 project_root=""
+run_nonce=""
+publication_count=0
+publication_pending=()
 
 publish_shell_verdict() {
-    local result="${1:-FAIL}" pending="$work_root/.verdict-$run_id-$$.pending"
-    (set -o noclobber; : > "$pending") || return 1
-    if ! printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","commit_sha":"%s","started_at":"%s"}\n' \
-        "$result" "$differential_stage" "$setup_detail" "$run_id" "$commit_sha" "$started_at" > "$pending" ||
-        ! mv -T -- "$pending" "$work_root/verdict.json"; then
-        rm -f -- "$pending"
-        return 1
-    fi
+    local result="${1:-FAIL}" pending
+    publication_count=$((publication_count + 1))
+    pending="$work_root/.verdict-$run_nonce-$publication_count.pending"
+    (set -o noclobber
+        printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","run_nonce":"%s","commit_sha":"%s","started_at":"%s"}\n' \
+            "$result" "$differential_stage" "$setup_detail" "$run_id" "$run_nonce" "$commit_sha" "$started_at" > "$pending"
+    ) || return 1
+    publication_pending+=("$pending")
+    mv -T -- "$pending" "$work_root/verdict.json"
+}
+
+validate_root() {
+    local remaining="${runner_root#/}" prefix="" component
+    [[ "$runner_root" = /* ]] || return 1
+    while [ -n "$remaining" ]; do
+        component="${remaining%%/*}"
+        case "$component" in ""|.|..) return 1 ;; esac
+        prefix="$prefix/$component"
+        [[ ! -L "$prefix" && -d "$prefix" ]] || return 1
+        [[ "$remaining" = */* ]] || break
+        remaining="${remaining#*/}"
+    done
+    [[ ! -L "$work_root" ]] || return 1
 }
 
 publish_verdict() {
     python3 - "$work_root" "$base_sha" "$upgrade_db" "$1" \
         "$differential_stage" "$differential_report" "$run_id" "$commit_sha" \
-        "$started_at" "$secret_dir/verdict.json" "$differential" <<'PYEOF'
+        "$started_at" "$secret_dir/verdict.json" "$differential" "$run_nonce" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 from uuid import uuid4
 
-root, base, db, result, stage, report, run_id, commit, started, attestation, differential = sys.argv[1:]
+root, base, db, result, stage, report, run_id, commit, started, attestation, differential, nonce = sys.argv[1:]
 target = Path(root) / "verdict.json"
 comparison = Path(report)
 details = json.loads(comparison.read_text()) if comparison.is_file() else {
@@ -103,7 +122,7 @@ else:
     verdict["reason"] = stage
 if differential:
     verdict["differential"] = details
-verdict.update(run_id=run_id, commit_sha=commit, started_at=started)
+verdict.update(run_id=run_id, run_nonce=nonce, commit_sha=commit, started_at=started)
 pending = target.with_name(f".verdict-{uuid4().hex}.pending")
 with pending.open("x", encoding="utf-8") as stream:
     try:
@@ -120,7 +139,7 @@ cleanup() {
     trap - EXIT ERR
     trap '' TERM INT HUP
     if [ "$rc" != 0 ]; then
-        echo "migration-upgrade: $differential_stage${setup_detail:+: $setup_detail} (run $run_id)" >&2
+        echo "migration-upgrade: FAIL / $differential_stage${setup_detail:+: $setup_detail} (run $run_id${run_nonce:+, nonce $run_nonce})" >&2
         if [ "$verdict_ready" = 1 ]; then
             if [ "$secret_dir_created" = 0 ] ||
                 [ "$differential_stage" = setup ] || [ "$differential_stage" = interrupted ]; then
@@ -145,6 +164,9 @@ cleanup() {
     if [ "$secret_dir_created" = 1 ]; then
         rm -rf "$secret_dir"
     fi
+    if ((${#publication_pending[@]})); then
+        rm -f -- "${publication_pending[@]}" || true
+    fi
     exit $rc
 }
 interrupt() {
@@ -162,40 +184,63 @@ if [[ ! "$run_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     echo "migration-upgrade: setup: invalid run identity" >&2
     exit 1
 fi
-# An unwritable directory may retain an old file: no consumer may treat it
-# as current without the caller's independently chosen invocation identity.
+differential_stage=unsafe_destination
+validate_root
+differential_stage=setup
+for required in mkdir realpath flock od tr mv; do
+    command -v "$required" >/dev/null || { setup_detail="missing_$required"; exit 127; }
+done
+run_nonce="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+[[ "$run_nonce" =~ ^[0-9a-f]{32}$ ]]
+
+# Pin the verified directory and lock its inode, not a replaceable lock file.
+differential_stage=unsafe_destination
+exec {root_fd}< "$runner_root"
+root_handle="/proc/$$/fd/$root_fd"
+[[ "$(realpath -e -- "$root_handle")" = "$runner_root" ]]
 differential_stage=verdict_destination_unwritable
-command -v mv >/dev/null || { setup_detail=missing_mv; exit 127; }
-if [ -e "$work_root/verdict.json" ] || [ -L "$work_root/verdict.json" ]; then
-    stale="$work_root/.verdict-stale-$run_id-$$.json"
-    test ! -d "$work_root/verdict.json"
-    mv -T --no-clobber -- "$work_root/verdict.json" "$stale"
-    test ! -e "$work_root/verdict.json" && test ! -L "$work_root/verdict.json" || exit 1
+if [ ! -d "$root_handle/migration-upgrade" ]; then
+    mkdir -- "$root_handle/migration-upgrade" ||
+        [[ -d "$root_handle/migration-upgrade" ]] || exit 1
 fi
+differential_stage=unsafe_destination
+validate_root
+exec {destination_fd}< "$root_handle/migration-upgrade"
+destination_handle="/proc/$$/fd/$destination_fd"
+[[ "$(realpath -e -- "$destination_handle")" = "$work_root" ]]
+validate_root
+differential_stage=concurrent_run
+flock -n -x -E 75 "$destination_fd"
+work_root="$destination_handle"
+printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
+
+project_root="${GITHUB_WORKSPACE:-${BASH_SOURCE[0]%/*}/../..}"
+requested_commit="$commit_sha"
+if command -v git >/dev/null; then
+    if resolved_sha="$(git -C "$project_root" rev-parse HEAD)"; then
+        commit_sha="$resolved_sha"
+    fi
+fi
+differential_stage=verdict_destination_unwritable
+# Arm failure publication before the atomic replacement. A signal delivered
+# at the rename boundary already has the lock, nonce, and writable handle.
 verdict_ready=1
-if [ ! -d "$work_root" ]; then
-    command -v mkdir >/dev/null || { setup_detail=missing_mkdir; exit 127; }
-    mkdir -p "$work_root"
-fi
-test ! -L "$work_root"
 publish_shell_verdict RUNNING
 differential_stage=setup
-project_root="${GITHUB_WORKSPACE:-${BASH_SOURCE[0]%/*}/../..}"
-if command -v git >/dev/null; then
-    resolved_sha="$(git -C "$project_root" rev-parse HEAD)" || exit 1
-    if [ "$commit_sha" != unknown ] && [ "$commit_sha" != "$resolved_sha" ]; then
-        setup_detail=commit_mismatch
-        commit_sha="$resolved_sha"
-        exit 1
-    fi
-    commit_sha="$resolved_sha"
-fi
 for required in git python3 docker uv mkdir rm head od tr chmod cmp ln realpath grep env; do
     if ! command -v "$required" >/dev/null; then
         setup_detail="missing_$required"
         exit 127
     fi
 done
+if [ -z "${resolved_sha:-}" ]; then
+    setup_detail=commit_unavailable
+    exit 1
+fi
+if [ "$requested_commit" != unknown ] && [ "$requested_commit" != "$commit_sha" ]; then
+    setup_detail=commit_mismatch
+    exit 1
+fi
 if [ -e "$work_root/seed.pending" ] || [ -L "$work_root/seed.pending" ]; then
     differential_stage=stale_seed_pending
     echo "stale_seed_pending: refusing to remove an existing seed staging entry" >&2
