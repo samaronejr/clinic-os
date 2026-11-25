@@ -43,12 +43,15 @@ import hashlib
 import os
 import re
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
+
+    from django.db.backends.utils import CursorWrapper
 
 import rfc8785
 from django.db import DatabaseError, connection, connections, transaction
@@ -112,11 +115,17 @@ MAX_ATTEMPTS_BOUND: Final = 32767
 MAX_PROVIDER_LENGTH: Final = 64
 MAX_SUBJECT_TYPE_LENGTH: Final = 128
 MAX_PROVIDER_REFERENCE_LENGTH: Final = 255
-# Deadlock and serialization failures: the claimant retries its own work in a
-# new transaction this many times in all, contending on the locks themselves
-# (no sleeps), before the visible hold applies.
-CONTENTION_ATTEMPTS: Final = 3
-_CONTENTION_SQLSTATES: Final = frozenset({"40P01", "40001"})
+# Every lock wait on the lock session is bounded by this lock_timeout, so a
+# held row or advisory lock surfaces as 55P03 instead of an unbounded wait.
+# Deadlock (40P01), serialization (40001) and lock-timeout (55P03) failures
+# are retried by the claimant for as long as its lock session is alive and
+# still holds its subject lock: contention stalls a send at worst and never
+# holds it. No sleeps: each retry waits on the lock itself.
+LOCK_WAIT_TIMEOUT: Final = "500ms"
+_CONTENTION_SQLSTATES: Final = frozenset({"40P01", "40001", "55P03"})
+_HELD_SUBJECT_LOCK: ContextVar[str | None] = ContextVar(
+    "clinic_held_subject_lock", default=None
+)
 _PENDING = IntegrationOperation.Status.PENDING
 _IN_PROGRESS = IntegrationOperation.Status.IN_PROGRESS
 _SUCCEEDED = IntegrationOperation.Status.SUCCEEDED
@@ -706,8 +715,64 @@ _CLAIMED_OUTCOME_FORGETTERS: list[Callable[[UUID], None]] = []
 
 
 def is_contention(error: DatabaseError) -> bool:
-    """Whether ``error`` is a deadlock or serialization failure worth a retry."""
+    """Whether ``error`` is lock contention: deadlock, serialization, lock wait."""
     return getattr(error.__cause__, "sqlstate", None) in _CONTENTION_SQLSTATES
+
+
+def bound_lock_waits(cursor: CursorWrapper) -> None:
+    """Bound every lock wait of the lock session by ``LOCK_WAIT_TIMEOUT``."""
+    cursor.execute(
+        "SELECT pg_catalog.set_config('lock_timeout', %s, false)",
+        [LOCK_WAIT_TIMEOUT],
+    )
+
+
+def lock_session_holds_its_lock() -> bool:
+    """Whether the lock session is alive and still holds its subject lock.
+
+    Outside a send (no subject lock taken yet) only liveness is asked. A dead
+    session raises here, which fails the caller closed.
+    """
+    key = _HELD_SUBJECT_LOCK.get()
+    with connections["locks"].cursor() as cursor:
+        if key is None:
+            cursor.execute("SELECT true")
+        else:
+            cursor.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks l"
+                " WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1"
+                " AND l.pid = pg_catalog.pg_backend_pid()"
+                " AND l.classid::text::bigint"
+                " = (pg_catalog.hashtextextended(%s, 0) >> 32) & 4294967295"
+                " AND l.objid::text::bigint"
+                " = pg_catalog.hashtextextended(%s, 0) & 4294967295)",
+                [key, key],
+            )
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def retry_contention(error: DatabaseError) -> bool:
+    """Whether to retry after ``error``: contention, with the lock still held."""
+    return is_contention(error) and lock_session_holds_its_lock()
+
+
+def _wait_for_advisory_lock(key: str) -> None:
+    """Take a session advisory lock, retrying bounded waits while it is ours."""
+    while True:
+        try:
+            with connections["locks"].cursor() as cursor:
+                bound_lock_waits(cursor)
+                cursor.execute(
+                    "SELECT pg_catalog.pg_advisory_lock("
+                    "pg_catalog.hashtextextended(%s, 0))",
+                    [key],
+                )
+        except DatabaseError as error:
+            if retry_contention(error):
+                continue
+            raise
+        return
 
 
 def register_claimed_outcome_recorder(
@@ -723,8 +788,8 @@ def register_claimed_outcome_recorder(
     own resolver on the ``locks`` connection, the claimant session, inside
     the transaction this module opens there. A recorder lets a deadlock or
     serialization failure propagate and keeps its claim until that transaction
-    commits; when every attempt contended, ``forget(operation_id)`` drops the
-    claim so no later recheck can reuse it.
+    commits; if the lock session no longer holds its lock,
+    ``forget(operation_id)`` drops the claim so no later recheck can reuse it.
     """
     _CLAIMED_OUTCOME_RECORDERS.append(recorder)
     _CLAIMED_OUTCOME_FORGETTERS.append(forget)
@@ -741,14 +806,14 @@ def _claimed_outcome(
     """Record a claimed outcome and its audit event in one transaction.
 
     Both run on the claimant's lock connection under the stored scope, so a
-    failure of either leaves neither the status change nor the event. A
-    deadlock or serialization failure rolls that transaction back and the
-    claimant retries it whole, under the same live claim, session and MAC, up
-    to ``CONTENTION_ATTEMPTS`` times; only then does the visible hold apply.
+    failure of either leaves neither the status change nor the event. Lock
+    contention rolls that transaction back and the claimant retries it whole,
+    under the same live claim, session and MAC, for as long as its lock
+    session still holds its lock; only a lost lock session fails closed.
     """
     if not _CLAIMED_OUTCOME_RECORDERS:
         return None
-    for _attempt in range(CONTENTION_ATTEMPTS):
+    while True:
         try:
             return _claimed_outcome_once(
                 scope, outcome, reference, event_type, reason_code
@@ -756,6 +821,8 @@ def _claimed_outcome(
         except DatabaseError as error:
             if not is_contention(error):
                 raise
+            if not lock_session_holds_its_lock():
+                break
     for forget in _CLAIMED_OUTCOME_FORGETTERS:
         forget(scope.operation_id)
     return False
@@ -770,6 +837,7 @@ def _claimed_outcome_once(
 ) -> bool | None:
     locks = connections["locks"]
     with transaction.atomic(using="locks"), locks.cursor() as cursor:
+        bound_lock_waits(cursor)
         cursor.execute(
             "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
             "pg_catalog.set_config('app.current_tenant', %s, true)",
@@ -961,11 +1029,7 @@ def _claim_subject_lock(scope: OperationScope) -> str | None:
         key = (
             f"{_SUBJECT_LOCK_NAMESPACE}{operation.subject_type}:{operation.subject_id}"
         )
-    with connections["locks"].cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended(%s, 0))",
-            [key],
-        )
+    _wait_for_advisory_lock(key)
     return key
 
 
@@ -1033,11 +1097,8 @@ def _claim_boundary_lock(scope: OperationScope) -> str | None:
         if lock_key is None:
             return None
         key = f"{_SUBJECT_LOCK_NAMESPACE}{lock_key}"
-    with connections["locks"].cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended(%s, 0))",
-            [key],
-        )
+    # Bounded waits retried while the subject lock is still this session's.
+    _wait_for_advisory_lock(key)
     return key
 
 
@@ -1065,6 +1126,7 @@ def _send_and_finish(
     lock_key = _claim_subject_lock(scope)
     if lock_key is None:
         return _persisted_outcome(scope)
+    held = _HELD_SUBJECT_LOCK.set(lock_key)
     try:
         decision = _presend_decision(scope)
         if decision != "send":
@@ -1078,6 +1140,7 @@ def _send_and_finish(
         finally:
             _release_boundary_lock(boundary_key)
     finally:
+        _HELD_SUBJECT_LOCK.reset(held)
         _release_subject_lock(lock_key)
 
 

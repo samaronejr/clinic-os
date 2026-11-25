@@ -60,7 +60,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-local-synthetic-only-change-before-use}
       ALLOWED_HOSTS: localhost,127.0.0.1
       APP_DATABASE_URL: postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@pgbouncer:5432/clinic
-      LOCKS_DATABASE_URL: postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@db:5432/clinic
+      LOCKS_DATABASE_URL: postgresql://clinic_lock:${CLINIC_LOCK_PASSWORD:-clinic_lock_password}@db:5432/clinic
       DATABASE_TRANSACTION_POOLING: "true"
       CELERY_BROKER_URL: redis://redis:6379/0
       REALTIME_REDIS_URL: redis://redis:6379/1

@@ -49,6 +49,7 @@ from apps.intake.contacts import save_contact_destination, verify_contact
 from django.db import (
     DatabaseError,
     IntegrityError,
+    InterfaceError,
     OperationalError,
     connection,
     connections,
@@ -2155,27 +2156,242 @@ def test_a_deadlock_at_claim_time_leaves_the_send_claimable(
     assert attempt.status == "succeeded"
 
 
-def test_exhausted_recording_retries_hold_the_send_and_spend_the_claim(
-    world: InboxWorld,
+_SUBJECT = "clinic-lock-v1:comms-subject:"
+
+
+class _Attacker:
+    """A clinic_app session that holds a row or advisory lock and re-waits on
+    the claimant's subject lock in 600 ms slices, under the 1 s deadlock
+    timeout, so its own waits never run the deadlock detector."""
+
+    def __init__(
+        self,
+        app_url: str,
+        tenant: UUID,
+        message_id: UUID,
+        *,
+        row: str | None = None,
+        advisory: str | None = None,
+    ) -> None:
+        self.acquired, self.release = threading.Event(), threading.Event()
+        self.failures: list[BaseException] = []
+        self._args = (app_url, str(tenant), f"{_SUBJECT}comms.message:{message_id}")
+        self._row, self._advisory = row, advisory
+        self._thread = threading.Thread(target=self._run)
+
+    def _run(self) -> None:
+        app_url, tenant, subject = self._args
+        try:
+            with psycopg.connect(app_url) as attacker:
+                attacker.execute(
+                    "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                    [tenant],
+                )
+                if self._row is not None:
+                    attacker.execute(
+                        "SELECT 1 FROM clinic_app.comms_integrationoperation"
+                        " WHERE id = %s FOR UPDATE",
+                        [self._row],
+                    )
+                if self._advisory is not None:
+                    attacker.execute(
+                        "SELECT pg_catalog.pg_advisory_xact_lock("
+                        "pg_catalog.hashtextextended(%s, 0))",
+                        [self._advisory],
+                    )
+                attacker.execute("SET LOCAL lock_timeout = '600ms'")
+                self.acquired.set()
+                # Bounded by a slice count, not a timer: at most 60 slices.
+                for _slice in range(60):
+                    if self.release.is_set():
+                        break
+                    try:
+                        with attacker.transaction():
+                            attacker.execute(
+                                "SELECT pg_catalog.pg_advisory_xact_lock("
+                                "pg_catalog.hashtextextended(%s, 0))",
+                                [subject],
+                            )
+                    except psycopg.errors.LockNotAvailable:
+                        continue
+                    # The claimant let go of its subject lock: nothing to hold.
+                    break
+                attacker.rollback()
+        except BaseException as failure:  # noqa: BLE001 - reported to the test
+            self.failures.append(failure)
+            self.acquired.set()
+
+    def start(self) -> None:
+        self._thread.start()
+        assert self.acquired.wait(timeout=30)
+        assert not self.failures
+
+    def stop(self) -> None:
+        self.release.set()
+        self._thread.join(timeout=30)
+        assert not self._thread.is_alive()
+        assert not self.failures
+
+
+def _counting(
+    statement: str, *, on: int, then: Callable[[], None], seen: list[object]
+) -> Callable[..., object]:
+    """Call ``then`` before the ``on``-th lock-session ``statement``."""
+
+    def wrapper(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        if statement in sql and (
+            statement != "pg_advisory_lock" or _SUBJECT in str(params)
+        ):
+            seen.append(params)
+            if len(seen) == on:
+                then()
+        return execute(sql, params, *rest)
+
+    return wrapper
+
+
+@pytest.mark.parametrize("site", ["claim", "recording", "boundary"])
+def test_a_sliced_lock_attacker_only_stalls_the_send(
+    world: InboxWorld, app_database_url: str, site: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    conversation = _only_conversation(graph)
+    message_id = _send(graph, conversation.pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    boundary = f"{_SUBJECT}{services.conversation_lock_key(conversation.pk)}"
+    attacker = _Attacker(
+        app_database_url,
+        graph.organization_a,
+        message_id,
+        row=None if site == "boundary" else str(attempt.pk),
+        advisory=boundary if site == "boundary" else None,
+    )
+    seen: list[object] = []
+    # Released only after four contended tries: more than any count cap.
+    if site == "recording":
+        watched = _counting(
+            "comms_record_send_outcome", on=5, then=attacker.release.set, seen=seen
+        )
+        during: Callable[[UUID], None] = lambda _op: attacker.start()  # noqa: E731
+    else:
+        statement = "comms_claim_send_permit" if site == "claim" else "pg_advisory_lock"
+
+        def then() -> None:
+            # Claim #2 is the first taken under the subject lock; advisory
+            # lock #2 is the boundary wait (#1 is the subject lock itself).
+            if len(seen) == 2:
+                attacker.start()
+            elif len(seen) == 6:
+                attacker.release.set()
+
+        watched = _each(statement, then, seen)
+        during = lambda _op: None  # noqa: E731
+    try:
+        with connections["locks"].execute_wrapper(watched):
+            assert _in_flight(graph, message_id, during) == ("succeeded", 1)
+    finally:
+        attacker.stop()
+    # Each wait was bounded by the lock session's lock_timeout and retried
+    # while the attacker held on: more tries than any count cap allowed.
+    assert len(seen) >= (5 if site == "recording" else 6)
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert attempt.status == "succeeded"
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+@pytest.mark.parametrize(
+    "statement", ["comms_record_send_outcome", "comms_claim_send_permit"]
+)
+def test_repeated_deadlocks_never_exhaust_the_claimant(
+    world: InboxWorld, statement: str
 ) -> None:
     graph = world.graph
     world.receive(world.message_body(text="Oi"))
     message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
-    recorded: list[object] = []
-    deadlock = _deadlock_on(
-        "comms_record_send_outcome", integration.CONTENTION_ATTEMPTS, recorded
-    )
-    with connections["locks"].execute_wrapper(deadlock):
-        outcome, calls = _in_flight(graph, message_id, lambda _op: None)
-    assert (outcome, calls) != ("succeeded", 1)
-    assert calls == 1
-    assert len(recorded) == integration.CONTENTION_ATTEMPTS
+    seen: list[object] = []
+    # Five deadlocks in a row: more than any fixed retry count.
+    with connections["locks"].execute_wrapper(_deadlock_on(statement, 5, seen)):
+        assert _in_flight(graph, message_id, lambda _op: None) == ("succeeded", 1)
+    assert len(seen) >= 6
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+def _each(
+    statement: str, then: Callable[[], None], seen: list[object]
+) -> Callable[..., object]:
+    """Record each lock-session ``statement`` and call ``then`` before it runs."""
+
+    def wrapper(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        if statement in sql and (
+            statement != "pg_advisory_lock" or _SUBJECT in str(params)
+        ):
+            seen.append(params)
+            then()
+        return execute(sql, params, *rest)
+
+    return wrapper
+
+
+def test_a_lock_session_killed_mid_retry_fails_closed_with_one_call(
+    world: InboxWorld, app_database_url: str, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
     with owner_context(graph.organization_a):
         attempt = IntegrationOperation.objects.get(subject_id=message_id)
-    # Only now does the visible hold apply, and no later recheck can reuse
-    # this process's claim.
+    attacker = _Attacker(
+        app_database_url, graph.organization_a, message_id, row=str(attempt.pk)
+    )
+    calls: list[UUID] = []
+
+    killed: list[int] = []
+
+    def kill() -> None:
+        pid = connections["locks"].connection.info.backend_pid
+        killed.append(pid)
+        with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+            admin.execute("SELECT pg_catalog.pg_terminate_backend(%s)", [pid])
+
+    def during(operation_id: UUID) -> None:
+        calls.append(operation_id)
+        attacker.start()
+
+    seen: list[object] = []
+    # Killed on the fifth try: past any old retry cap, mid-retry.
+    watched = _counting("comms_record_send_outcome", on=5, then=kill, seen=seen)
+    try:
+        with connections["locks"].execute_wrapper(watched):
+            try:
+                outcome = _in_flight(graph, message_id, during)[0]
+            except (DatabaseError, InterfaceError):
+                outcome = "raised"
+    finally:
+        attacker.stop()
+        connections["locks"].close()
+    assert killed
+    assert outcome != "succeeded"
+    # A later dispatch of the same attempt makes no second call.
+    with runtime_role():
+        assert execute_operation(attempt.pk) != "succeeded"
+    assert len(calls) == 1
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
     assert attempt.status == "in_progress"
-    assert attempt.pk not in inbox_adapters._CLAIMS
+    assert attempt.provider_reference is None
 
 
 def test_a_recorded_outcome_replays_as_a_no_op(world: InboxWorld) -> None:

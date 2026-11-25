@@ -56,7 +56,7 @@
       "CLINIC_SECRET_DIR": "/run/clinic-secrets",
       "DATABASE_TRANSACTION_POOLING": "true",
       "DJANGO_SETTINGS_MODULE": "config.settings.realtime",
-      "LOCKS_DATABASE_URL": "postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@db:5432/clinic",
+      "LOCKS_DATABASE_URL": "postgresql://clinic_lock:${CLINIC_LOCK_PASSWORD:-clinic_lock_password}@db:5432/clinic",
       "REALTIME_ENABLED": "true",
       "REALTIME_REDIS_URL": "redis://redis:6379/1",
       "SECRET_KEY": "${SECRET_KEY:-local-synthetic-only-change-before-use}"
@@ -99,7 +99,7 @@
       "CLINIC_SECRET_DIR": "/run/clinic-secrets",
       "DATABASE_TRANSACTION_POOLING": "true",
       "DJANGO_SETTINGS_MODULE": "config.settings.base",
-      "LOCKS_DATABASE_URL": "postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@db:5432/clinic",
+      "LOCKS_DATABASE_URL": "postgresql://clinic_lock:${CLINIC_LOCK_PASSWORD:-clinic_lock_password}@db:5432/clinic",
       "REALTIME_ENABLED": "true",
       "REALTIME_REDIS_URL": "redis://redis:6379/1",
       "SECRET_KEY": "${SECRET_KEY:-local-synthetic-only-change-before-use}"

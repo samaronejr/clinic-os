@@ -41,7 +41,7 @@ from apps.comms.inbox_services import (
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
 from apps.core.fault_injection import injected_fault
-from apps.core.integration import CONTENTION_ATTEMPTS, is_contention
+from apps.core.integration import bound_lock_waits, is_contention, retry_contention
 from apps.core.secrets import SecretUnavailableError, secret_store
 from apps.intake.models import PatientClinicEnrollment, PatientContact
 
@@ -290,24 +290,26 @@ def _claim_send_permit(operation: IntegrationOperation) -> bool:
 
 
 def _claim_statement(operation_id: UUID) -> tuple[object, ...] | None:
-    """Run the claim, retrying its own statement on deadlock or serialization.
+    """Run the claim, retrying its own statement on lock contention.
 
     Each try is one autocommit statement on the lock session (the clinic_lock
-    login itself, never clinic_app), so a contended try claimed nothing and
-    the attempt stays claimable; the retries contend on the locks themselves.
+    login itself, never clinic_app), its lock waits bounded by the session's
+    lock_timeout, so a contended try claimed nothing and the attempt stays
+    claimable. It retries for as long as the lock session is alive and still
+    holds its subject lock; otherwise it fails closed.
     """
-    for remaining in range(CONTENTION_ATTEMPTS - 1, -1, -1):
+    while True:
         try:
             with connections["locks"].cursor() as cursor:
+                bound_lock_waits(cursor)
                 cursor.execute(
                     "SELECT clinic_app.comms_claim_send_permit(%s)", [operation_id]
                 )
                 row: tuple[object, ...] | None = cursor.fetchone()
                 return row
         except DatabaseError as error:
-            if not remaining or not is_contention(error):
+            if not retry_contention(error):
                 raise
-    return None
 
 
 def forget_claim(operation_id: UUID) -> None:
