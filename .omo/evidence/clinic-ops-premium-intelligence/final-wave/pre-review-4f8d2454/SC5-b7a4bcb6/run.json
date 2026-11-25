@@ -1,0 +1,48 @@
+{
+  "coverage": "93.59%",
+  "diagnostic_wrapper_exit_before_attribution": 1,
+  "duplicates": 0,
+  "exact_release_gates": "passed",
+  "extra": 0,
+  "fsync_off_disposable_only_utc": "2026-11-25T01:11:16.018399075Z",
+  "full_exit": 0,
+  "full_nonbrowser_tests": 16642,
+  "guards_before_after": [
+    126,
+    126
+  ],
+  "isolated_harness_tests": 3308,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795584309521185,
+    "nice": 10,
+    "result": "success",
+    "run_id": "d87276f81d3f4fda84543daf033ae810",
+    "start_us": 1795570148266429,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r3-full-b7a4bcb6.service"
+  },
+  "missing": 0,
+  "mutation_score": {
+    "all_added_privilege_omissions_killed": 7,
+    "database_scope_mutants_killed": 2,
+    "killed": 21,
+    "redundant_superuser_check_survived": 1
+  },
+  "negative_controls": {
+    "binder": "public canary failed",
+    "role_family": "grant regression failed"
+  },
+  "new_p1_posture_tests": 14,
+  "new_r3_tests": 10,
+  "nonpass": 0,
+  "original_tests": 16618,
+  "parent": "6b84a4faf05183d3ac622d212c51bbdeb58987f6",
+  "redis_binary_sha256": "acf84fdf1c977253714617a7470b0acf5237c4b0bc1b36c3842b332c8dce491b",
+  "redis_umask": "022",
+  "run_id": "d87276f81d3f4fda84543daf033ae810",
+  "sha": "b7a4bcb62f84965d84616ab22bf7dd9695bd1df5",
+  "static_files_checked": 2949,
+  "tree": "1443643b0de5c84e1d0959609bd4fc2938f13977"
+}
