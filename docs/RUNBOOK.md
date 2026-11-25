@@ -591,12 +591,26 @@ not compare that bit. `indisvalid`, `indisready`, `indislive`, and the declared
 clustering designation (`indisclustered`) are still compared.
 
 A first `CLUSTER table_name USING index_name` also designates that index for
-future clustering. If the designation was previously unset, a **bare** retry
-correctly refuses that schema change. For a physical reorder only, record the
-prior designation before maintenance and restore it before retrying. Use
-`ALTER TABLE table_name SET WITHOUT CLUSTER` for a previously unset designation,
-not as an unconditional reset. This keeps the rewritten heap and restores the
-schema represented by `pg_dump`; the verifier does not discard `CLUSTER ON`.
+future clustering. A bare retry must refuse, name the table, index and
+`indisclustered`, and leave the schema, rows and migration ledger untouched.
+Recovery never ignores or automatically clears the designation.
+
+1. Keep application writes gated. On the migration database, confirm the
+   designated index matches the one in the error. Substitute the named table:
+
+   ```sql
+   SELECT indrelid::regclass AS table_name, indexrelid::regclass AS index_name
+   FROM pg_catalog.pg_index
+   WHERE indrelid = 'clinic_app.table_name'::regclass AND indisclustered;
+   ```
+
+2. If the pre-maintenance designation was **unset** and only the physical
+   reorder was intended, an operator can run
+   `ALTER TABLE clinic_app.table_name SET WITHOUT CLUSTER`. This preserves
+   the rewritten heap. Do not clear a prior or intentionally changed designation;
+   resolve that schema change separately.
+3. Reconnect as the migration owner and retry `python manage.py migrate --noinput`
+   on the same database. Do not fake the recorder row.
 
 ### Authentication or tenant access returns 403
 
