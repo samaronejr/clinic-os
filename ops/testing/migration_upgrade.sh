@@ -16,18 +16,12 @@
 # Set UPGRADE_WAVE_H_DIFFERENTIAL=1 for independent native Wave H comparison.
 set -euo pipefail
 
-readonly base_sha="${1:?base SHA required}"
-readonly project_root="${GITHUB_WORKSPACE:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+readonly base_sha="${1:-}"
 readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
 readonly base_worktree="$work_root/base"
 upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
 readonly differential="${UPGRADE_WAVE_H_DIFFERENTIAL:-}"
-
-mkdir -p "$work_root"
-# Do not publish a previous run's receipts if this rehearsal fails.
-rm -f "$seed_file" "$work_root/seed.pending" "$work_root/verdict.json" \
-    "$work_root/verdict.pending" "$work_root/ai-assertions.json"
 
 # Derive upgrade-DB DSNs from the claimed environment: same role
 # credentials, host, port and TLS parameters, different database name.
@@ -54,6 +48,7 @@ psql_super() {
 db_created=0
 worktree_added=0
 secret_dir="${RUNNER_TEMP:-/tmp}/migration-upgrade-secrets.$$"
+secret_dir_created=0
 wave_added=0
 wave_db_created=0
 wave_db="${upgrade_db}_wave"
@@ -67,6 +62,7 @@ publish_differential() {
 import json
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 root, base, db, result, stage, report = sys.argv[1:]
 target = Path(root) / "verdict.json"
@@ -86,9 +82,14 @@ else:
     verdict = {"schema_version": 1, "result": "FAIL", "base_sha": base, "upgrade_db": db}
     verdict["reason"] = stage
 verdict["differential"] = details
-pending = target.with_suffix(".pending")
-pending.write_text(json.dumps(verdict) + "\n", encoding="utf-8")
-pending.replace(target)
+pending = target.with_name(f".verdict-{uuid4().hex}.pending")
+with pending.open("x", encoding="utf-8") as stream:
+    try:
+        stream.write(json.dumps(verdict) + "\n")
+        stream.flush()
+        pending.replace(target)
+    finally:
+        pending.unlink(missing_ok=True)
 PYEOF
 }
 
@@ -111,10 +112,29 @@ cleanup() {
     if [ "$wave_added" = 1 ]; then
         git -C "$project_root" worktree remove --force "$wave_tree" || true
     fi
-    rm -rf "$secret_dir"
+    if [ "$secret_dir_created" = 1 ]; then
+        rm -rf "$secret_dir"
+    fi
     exit $rc
 }
 trap cleanup EXIT
+
+mkdir -p "$work_root"
+if [ -e "$work_root/seed.pending" ] || [ -L "$work_root/seed.pending" ]; then
+    differential_stage=stale_seed_pending
+    echo "stale_seed_pending: refusing to remove an existing seed staging entry" >&2
+    exit 1
+fi
+# Do not publish a previous run's receipts if this rehearsal fails.
+rm -f "$seed_file" "$work_root/verdict.json" "$work_root/verdict.pending" \
+    "$work_root/ai-assertions.json"
+if [ -z "$base_sha" ]; then
+    differential_stage=missing_base_sha
+    echo "base SHA required" >&2
+    exit 1
+fi
+project_root="${GITHUB_WORKSPACE:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+readonly project_root
 
 echo "== check out base $base_sha =="
 git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
@@ -132,7 +152,8 @@ fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
-mkdir -m 0700 -p "$secret_dir"
+mkdir -m 0700 "$secret_dir"
+secret_dir_created=1
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
 
