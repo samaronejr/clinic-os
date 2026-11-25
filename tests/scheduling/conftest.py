@@ -105,7 +105,7 @@ def _django_db_helper(
         yield
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def scheduling_worlds(
     request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
 ) -> Worlds:
@@ -144,12 +144,22 @@ def pytest_runtest_teardown(
         stack = item.stash.get(WORLD_STACK, None)
         if stack is not None:
             stack.close()
+        # A clone must outlive Django's trigger teardown, but its sealed
+        # template must not outlive this scheduling run and block other DBs' audits.
+        if nextitem is None or not nextitem.nodeid.startswith("tests/scheduling/"):
+            _close_worlds(item.config)
+
+
+def _close_worlds(config: pytest.Config) -> None:
+    factory = config.stash.get(WORLD_FACTORY, None)
+    if factory is not None:
+        factory.close()
+        del config.stash[WORLD_FACTORY]
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    factory = session.config.stash.get(WORLD_FACTORY, None)
-    if factory is not None:
-        factory.close()
+    # Also cover an interrupted run with no normal package boundary.
+    _close_worlds(session.config)
 
 
 @pytest.fixture(autouse=True)
