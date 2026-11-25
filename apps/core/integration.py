@@ -51,10 +51,17 @@ from uuid import UUID
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
+    from django.db.backends.base.base import BaseDatabaseWrapper
     from django.db.backends.utils import CursorWrapper
 
 import rfc8785
-from django.db import DatabaseError, connection, connections, transaction
+from django.db import (
+    DatabaseError,
+    InterfaceError,
+    connection,
+    connections,
+    transaction,
+)
 from django.utils import timezone
 
 from apps.audit.events import build_integration_audit_event
@@ -144,6 +151,7 @@ _ACTION_DISPATCHERS: dict[str, Callable[[OperationScope], None]] = {}
 _ACTION_RECOVERY_ADAPTERS: dict[str, SendAdapter] = {}
 _CALLBACK_AUTHENTICATORS: dict[str, CallbackAuthenticator] = {}
 _SUBJECT_RECHECKS: dict[str, Callable[[OperationScope], bool]] = {}
+_SUBJECT_PERMITS: dict[str, Callable[[OperationScope], bool]] = {}
 _SUBJECT_LOCK_KEYS: dict[str, Callable[[OperationScope, UUID], str | None]] = {}
 
 
@@ -280,6 +288,7 @@ def register_subject_recheck(
     recheck: Callable[[OperationScope], bool],
     *,
     lock_key: Callable[[OperationScope, UUID], str | None] | None = None,
+    permit: Callable[[OperationScope], bool] | None = None,
 ) -> None:
     """Register the send-time eligibility recheck for one subject type.
 
@@ -289,11 +298,16 @@ def register_subject_recheck(
     the subject's stable mutation-boundary lock key; when registered,
     the send boundary holds that session lock from its second recheck
     until the provider answers, and mutations hold the matching
-    transaction lock through ``hold_subject_mutation_key``.
+    transaction lock through ``hold_subject_mutation_key``. ``permit``
+    optionally takes the subject's send permit, which may wait on locks: it
+    always runs outside any default-connection transaction, after the recheck
+    admitted the send, and a refusal is treated as ineligible.
     """
     _SUBJECT_RECHECKS[subject_type] = recheck
     if lock_key is not None:
         _SUBJECT_LOCK_KEYS[subject_type] = lock_key
+    if permit is not None:
+        _SUBJECT_PERMITS[subject_type] = permit
 
 
 def clear_integration_registrations() -> None:
@@ -950,16 +964,21 @@ def _subject_eligible(scope: OperationScope) -> bool:
 def _cancel_ineligible(scope: OperationScope) -> bool:
     """Cancel one claimable operation only while its subject is ineligible."""
     with _stored_scope_context(scope):
+        eligible = _subject_eligible(scope)
+    if eligible and _take_permit(scope):
+        return False
+    # The lock session's recording may wait: no default transaction is open.
+    recorded = _claimed_outcome(
+        scope,
+        "withdrawn",
+        event_type="comms.operation.cancelled",
+        reason_code="subject_ineligible",
+    )
+    if recorded is not None:
+        return recorded
+    with _stored_scope_context(scope):
         if _subject_eligible(scope):
             return False
-        recorded = _claimed_outcome(
-            scope,
-            "withdrawn",
-            event_type="comms.operation.cancelled",
-            reason_code="subject_ineligible",
-        )
-        if recorded is not None:
-            return recorded
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,
@@ -988,14 +1007,18 @@ def _cancel_revoked(scope: OperationScope) -> bool:
     with _stored_scope_context(scope):
         if _actor_has_clinic_authority(scope):
             return False
-        recorded = _claimed_outcome(
-            scope,
-            "withdrawn",
-            event_type="comms.operation.cancelled",
-            reason_code="authority_revoked",
-        )
-        if recorded is not None:
-            return recorded
+    # The lock session's recording may wait: no default transaction is open.
+    recorded = _claimed_outcome(
+        scope,
+        "withdrawn",
+        event_type="comms.operation.cancelled",
+        reason_code="authority_revoked",
+    )
+    if recorded is not None:
+        return recorded
+    with _stored_scope_context(scope):
+        if _actor_has_clinic_authority(scope):
+            return False
         updated = IntegrationOperation.objects.filter(
             pk=scope.operation_id,
             status__in=_CLAIMABLE_STATUSES,
@@ -1051,7 +1074,37 @@ def _release_subject_lock(key: str) -> None:
 
 
 def _presend_decision(scope: OperationScope) -> _PresendDecision:
-    """Recheck status, actor authority and subject eligibility under the lock."""
+    """Recheck under the lock, take the send permit, then re-validate.
+
+    No default-connection transaction is open while the permit waits: the
+    checks run in one short transaction, the permit outside any, and the send
+    state is re-validated in a fresh transaction under the held lock. If the
+    default connection is lost before the provider call, the whole decision
+    is re-run under the held lock (the permit is not taken twice).
+    """
+    while True:
+        try:
+            decision = _presend_checks(scope)
+            if decision != "send":
+                return decision
+            if not _take_permit(scope):
+                return "ineligible"
+            return _presend_checks(scope)
+        except (DatabaseError, InterfaceError):
+            if not _lost(connection):
+                raise
+            connection.close()
+            if not lock_session_holds_its_lock():
+                raise
+
+
+def _lost(database: BaseDatabaseWrapper) -> bool:
+    """Whether a connection was lost (closed, terminated or unusable)."""
+    return database.connection is None or not database.is_usable()
+
+
+def _presend_checks(scope: OperationScope) -> _PresendDecision:
+    """Check status, actor authority and subject eligibility in one transaction."""
     with _stored_scope_context(scope):
         operation = IntegrationOperation.objects.filter(pk=scope.operation_id).first()
         if operation is None:
@@ -1063,6 +1116,18 @@ def _presend_decision(scope: OperationScope) -> _PresendDecision:
         if not _subject_eligible(scope):
             return "ineligible"
         return "send"
+
+
+def _take_permit(scope: OperationScope) -> bool:
+    """Take the subject's send permit outside any default-connection transaction."""
+    with _stored_scope_context(scope):
+        subject_type = (
+            IntegrationOperation.objects.filter(pk=scope.operation_id)
+            .values_list("subject_type", flat=True)
+            .first()
+        )
+    permit = _SUBJECT_PERMITS.get(subject_type or "")
+    return permit is None or permit(scope)
 
 
 def _decision_outcome(
@@ -1127,21 +1192,43 @@ def _send_and_finish(
     if lock_key is None:
         return _persisted_outcome(scope)
     held = _HELD_SUBJECT_LOCK.set(lock_key)
+    boundary_key: str | None = None
     try:
-        decision = _presend_decision(scope)
-        if decision != "send":
-            return _decision_outcome(scope, decision)
-        boundary_key = _claim_boundary_lock(scope)
         try:
             decision = _presend_decision(scope)
             if decision == "send":
-                return _deliver(scope, adapter, prepared)
-            return _decision_outcome(scope, decision)
-        finally:
-            _release_boundary_lock(boundary_key)
+                boundary_key = _claim_boundary_lock(scope)
+                decision = _presend_decision(scope)
+        except (DatabaseError, InterfaceError):
+            # Before any provider call: a lost lock session is recovered;
+            # anything else is raised unchanged.
+            if not _lost(connections["locks"]):
+                raise
+            return _recover_lost_lock_session(scope)
+        if decision == "send":
+            return _deliver(scope, adapter, prepared)
+        return _decision_outcome(scope, decision)
     finally:
+        _release_boundary_lock(boundary_key)
         _HELD_SUBJECT_LOCK.reset(held)
         _release_subject_lock(lock_key)
+
+
+def _recover_lost_lock_session(scope: OperationScope) -> ExecutionResult:
+    """Route a send whose lock session died before any provider call.
+
+    The attempt returns to pending only when the database proves it was never
+    sent (no permit claim, no provider reference: comms_close_unsent_attempt).
+    A claim the dead session took cannot be proven unsent, so it stays visibly
+    in flight for the documented staff hold, with no automatic resend.
+    """
+    connections["locks"].close()
+    released = _HELD_SUBJECT_LOCK.set(None)
+    try:
+        recovered = _release_for_retry(scope)
+    finally:
+        _HELD_SUBJECT_LOCK.reset(released)
+    return "retry" if recovered else _persisted_outcome(scope)
 
 
 def _deliver(
@@ -1234,7 +1321,14 @@ def _send_claimed(
     except TransientSendError:
         outcome = "retry" if _release_for_retry(scope) else _persisted_outcome(scope)
     else:
-        outcome = _send_and_finish(scope, adapter, prepared)
+        # The permit may wait on locks: taken only after the prepare
+        # transaction has closed.
+        if _take_permit(scope):
+            outcome = _send_and_finish(scope, adapter, prepared)
+        else:
+            outcome = (
+                "cancelled" if _cancel_ineligible(scope) else _persisted_outcome(scope)
+            )
     return outcome
 
 

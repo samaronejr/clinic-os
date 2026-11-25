@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from pathlib import Path
@@ -75,7 +76,7 @@ from patient_http_support import receptionist_client
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from uuid import UUID
 
     from pytest_django.fixtures import SettingsWrapper
@@ -1486,9 +1487,44 @@ def _in_flight(
             raise raises["error"]  # type: ignore[misc]
         return original(prepared, operation_id=operation_id)
 
-    with runtime_role(), patch.object(adapter, "send", send):
+    with _real_runtime(), patch.object(adapter, "send", send):
         outcome = execute_operation(attempt.pk)
     return outcome, len(calls)
+
+
+@contextmanager
+def _real_runtime() -> Iterator[None]:
+    """The runtime role with its real role settings, as a clinic_app login has.
+
+    ``SET ROLE`` alone skips role-level settings, so the 15 s
+    idle_in_transaction_session_timeout and the rest are applied explicitly.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT unnest(setconfig) FROM pg_catalog.pg_db_role_setting"
+            " WHERE setrole = 'clinic_app'::regrole AND setdatabase = 0"
+        )
+        applied = [str(row[0]).split("=", 1) for row in cursor.fetchall()]
+    assert ["idle_in_transaction_session_timeout", "15s"] in applied
+    with runtime_role():
+        with connection.cursor() as cursor:
+            for name, value in applied:
+                cursor.execute(
+                    "SELECT pg_catalog.set_config(%s, %s, false)", [name, value]
+                )
+        try:
+            yield
+        finally:
+            try:
+                with connection.cursor() as cursor:
+                    for name, _value in applied:
+                        cursor.execute(
+                            "SELECT pg_catalog.set_config(%s, %s, false)",
+                            [name, ""],
+                        )
+                    cursor.execute("RESET ALL")
+            except (DatabaseError, InterfaceError):
+                connection.close()
 
 
 def test_a_claimed_send_is_written_only_by_its_claim(world: InboxWorld) -> None:
@@ -2164,7 +2200,7 @@ class _Attacker:
     the claimant's subject lock in 600 ms slices, under the 1 s deadlock
     timeout, so its own waits never run the deadlock detector."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the attacker's whole shape
         self,
         app_url: str,
         tenant: UUID,
@@ -2172,11 +2208,12 @@ class _Attacker:
         *,
         row: str | None = None,
         advisory: str | None = None,
+        slices: int = 60,
     ) -> None:
         self.acquired, self.release = threading.Event(), threading.Event()
         self.failures: list[BaseException] = []
         self._args = (app_url, str(tenant), f"{_SUBJECT}comms.message:{message_id}")
-        self._row, self._advisory = row, advisory
+        self._row, self._advisory, self._slices = row, advisory, slices
         self._thread = threading.Thread(target=self._run)
 
     def _run(self) -> None:
@@ -2201,8 +2238,8 @@ class _Attacker:
                     )
                 attacker.execute("SET LOCAL lock_timeout = '600ms'")
                 self.acquired.set()
-                # Bounded by a slice count, not a timer: at most 60 slices.
-                for _slice in range(60):
+                # Bounded by a slice count, not a timer.
+                for _slice in range(self._slices):
                     if self.release.is_set():
                         break
                     try:
@@ -2301,6 +2338,109 @@ def test_a_sliced_lock_attacker_only_stalls_the_send(
     with owner_context(graph.organization_a):
         attempt.refresh_from_db()
     assert attempt.status == "succeeded"
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+# 34 tries bounded by the 500 ms lock_timeout: a stall past the runtime
+# role's 15 s idle_in_transaction_session_timeout, counted, not timed.
+_LONG_STALL = 34
+
+
+@pytest.mark.parametrize("site", ["claim", "recording", "boundary"])
+def test_a_stall_past_the_runtime_idle_timeout_still_sends_once(
+    world: InboxWorld, app_database_url: str, site: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    conversation = _only_conversation(graph)
+    message_id = _send(graph, conversation.pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    boundary = f"{_SUBJECT}{services.conversation_lock_key(conversation.pk)}"
+    attacker = _Attacker(
+        app_database_url,
+        graph.organization_a,
+        message_id,
+        row=None if site == "boundary" else str(attempt.pk),
+        advisory=boundary if site == "boundary" else None,
+        slices=2 * _LONG_STALL,
+    )
+    seen: list[object] = []
+    statement = {
+        "claim": "comms_claim_send_permit",
+        "recording": "comms_record_send_outcome",
+        "boundary": "pg_advisory_lock",
+    }[site]
+
+    def then() -> None:
+        if site != "recording" and len(seen) == 2:
+            attacker.start()
+        elif len(seen) == _LONG_STALL:
+            attacker.release.set()
+
+    def during(_op: UUID) -> None:
+        if site == "recording":
+            attacker.start()
+
+    try:
+        with connections["locks"].execute_wrapper(_each(statement, then, seen)):
+            assert _in_flight(graph, message_id, during) == ("succeeded", 1)
+    finally:
+        attacker.stop()
+    assert len(seen) >= _LONG_STALL
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert attempt.status == "succeeded"
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+def test_a_lock_session_killed_at_claim_time_returns_the_send_to_pending(
+    world: InboxWorld, app_database_url: str, superuser_database_url: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    attacker = _Attacker(
+        app_database_url, graph.organization_a, message_id, row=str(attempt.pk)
+    )
+    killed: list[int] = []
+    seen: list[object] = []
+
+    def then() -> None:
+        if len(seen) == 2:
+            attacker.start()
+        elif len(seen) == 4:
+            # The lock session dies while its claim waits: no permit was
+            # taken and no provider call made.
+            pid = connections["locks"].connection.info.backend_pid
+            killed.append(pid)
+            attacker.release.set()
+            with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+                admin.execute("SELECT pg_catalog.pg_terminate_backend(%s)", [pid])
+
+    try:
+        with connections["locks"].execute_wrapper(
+            _each("comms_claim_send_permit", then, seen)
+        ):
+            first = _in_flight(graph, message_id, lambda _op: None)
+    finally:
+        attacker.stop()
+    assert killed
+    # Proven unsent by the database (no claim, no reference): retryable.
+    assert first == ("retry", 0)
+    with owner_context(graph.organization_a):
+        attempt.refresh_from_db()
+    assert (attempt.status, attempt.send_permit_claim) == ("pending", None)
+    # The next dispatch sends exactly once.
+    assert _in_flight(graph, message_id, lambda _op: None) == ("succeeded", 1)
     with as_actor(graph, manager_of(graph)):
         assert services.message_states([Message.objects.get(pk=message_id)]) == {
             message_id: "sent"

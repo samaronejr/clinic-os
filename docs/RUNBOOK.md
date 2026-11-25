@@ -63,6 +63,17 @@ clinic_lock`; it never falls back to `APP_DATABASE_URL`. `db-bootstrap`
 creates the role and sets its password from `CLINIC_LOCK_PASSWORD`. The lock
 DSN must be a direct/session connection, never a transaction-pooling proxy.
 
+Lost lock session before the provider call (worker crash, operator
+`pg_terminate_backend`, network loss; `clinic_app` cannot signal it): the
+worker reconnects and routes the send itself. If the attempt never took the
+send permit and has no provider reference, the database proves it unsent
+(`comms_close_unsent_attempt`) and it returns to pending for one normal retry.
+If the dead session had already taken the permit, nothing is resent
+automatically: the thread shows "Delivery order needs review". Check with the
+provider; if it accepted the send, record that attempt as current; otherwise
+record "no provider acceptance is recorded", which admits exactly one retry
+and warns that it may deliver twice.
+
 Start the web process as the runtime role:
 
 ```sh

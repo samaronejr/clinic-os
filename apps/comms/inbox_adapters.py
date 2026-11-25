@@ -264,29 +264,28 @@ def message_send_eligible(scope: OperationScope) -> bool:
             )
         )
         and all(check(message) for check in _SEND_CHECKS)
-        and _claim_send_permit(operation)
     )
+
+
+def send_permit(scope: OperationScope) -> bool:
+    """Take the message's send permit; integration runs it outside any transaction.
+
+    The claim may wait on locks (bounded by the lock session's lock_timeout
+    and retried while the lock is held), so it never runs inside the tenant
+    transaction of the recheck: a long stall cannot expire that transaction.
+    """
+    if scope.operation_id in _CLAIMS:
+        return True
+    row = _claim_statement(scope.operation_id)
+    decision = row[0] if row else "refused"
+    if decision == "claimed":
+        _CLAIMS.add(scope.operation_id)
+    return decision in {"claimed", "eligible"}
 
 
 # In-flight claims this worker process holds. The database binds each to the
 # lock session that took it; nothing here is a secret.
 _CLAIMS: set[UUID] = set()
-
-
-def _claim_send_permit(operation: IntegrationOperation) -> bool:
-    """Take the message's single send permit for ``operation``, or refuse.
-
-    Runs last in the recheck, on the worker's lock connection: the database
-    claims only for the session that holds the subject lock (at prepare none
-    does, so it only decides eligibility) and binds the claim to it.
-    """
-    if operation.pk in _CLAIMS:
-        return True
-    row = _claim_statement(operation.pk)
-    decision = row[0] if row else "refused"
-    if decision == "claimed":
-        _CLAIMS.add(operation.pk)
-    return decision in {"claimed", "eligible"}
 
 
 def _claim_statement(operation_id: UUID) -> tuple[object, ...] | None:

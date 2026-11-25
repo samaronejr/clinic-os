@@ -442,6 +442,13 @@ and an outcome recording with its audit event retries whole in a new
 transaction under the same live claim, session and MAC. Only when the lock
 session dies or no longer holds its lock does the attempt fail closed, as
 before, and the process drops its claim so no later recheck can reuse it.
+No default-connection transaction is open while the claim waits (the permit
+runs between two short transactions and the send is re-validated under the
+held lock), so a stall cannot expire the runtime role's
+idle-in-transaction timeout; a default connection lost before the provider
+call re-runs the decision under the held lock. A lock session lost before the
+provider call returns a provably unsent attempt to pending, and leaves one
+whose permit it held for the staff hold (docs/RUNBOOK.md).
 
 Pooled lock connections are unsupported: the claim, its session nonce and the
 subject's advisory lock must stay on one database session from claim to
