@@ -87,6 +87,29 @@ remember_file() {
     fi
 }
 
+remember_inbox_files() {
+    local names name
+    owns_path "$secret_dir" && owns_path "$seed_file" || return 0
+    # F7's seed creates one dynamically named signing key per account.
+    # Use its receipt, not a directory scan that could adopt a foreign name.
+    names="$(python3 - "$seed_file" <<'PYEOF'
+import json
+import sys
+from uuid import UUID
+
+with open(sys.argv[1], encoding="utf-8") as receipt:
+    accounts = json.load(receipt).get("inbox", {}).get("accounts", {})
+for account in accounts.values():
+    print(f"comms-inbox-{UUID(account).hex}.secret")
+PYEOF
+)" || return 0  # The verifier, not cleanup bookkeeping, judges seed contents.
+    while IFS= read -r name; do
+        if [[ -n "$name" ]] && owns_path "$secret_dir"; then
+            remember_file "$secret_dir/$name"
+        fi
+    done <<< "$names"
+}
+
 tree_manifest() {
     find -P "$1" -printf '%D:%i %y %p\0' | sort -z | sha256sum
 }
@@ -255,7 +278,9 @@ cleanup() {
         if owns_path "$secret_dir/native"; then
             rmdir -- "$secret_dir/native" || true
         fi
-        rmdir -- "$secret_dir" || true
+        if owns_path "$secret_dir"; then
+            rmdir -- "$secret_dir" || true
+        fi
     fi
     for pending in "${!publication_pending[@]}"; do
         if owns_path "$pending" && [[ ! -L "$pending" ]] &&
@@ -432,6 +457,7 @@ seed_base() {
     fi
     remember_file "$seed_file"
     remember_file "$secret_dir/seed.pending"
+    remember_inbox_files
     return "$rc"
 }
 
@@ -615,6 +641,7 @@ remember_file "$UPGRADE_AI_COVERAGE"
 if [ -n "$differential" ]; then
     rehearse_wave_h
     differential_stage=verifier_differential
+    differential_rc=0
     (cd "$project_root" && env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
@@ -629,11 +656,17 @@ if [ -n "$differential" ]; then
         UPGRADE_WAVE_H_PROBE_CASES="$secret_dir/lane-probes.json" \
         UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
-        tests/infra/wave_h_entry_differential.py "$wave_tree")
+        tests/infra/wave_h_entry_differential.py "$wave_tree") || differential_rc=$?
     remember_file "$differential_report"
     for artifact in differential-base.json differential-lane.json ai-assertions.json; do
         remember_file "$secret_dir/$artifact"
     done
+    if owns_path "$secret_dir/native"; then
+        remember_file "$secret_dir/native/ai-assertions.json"
+    fi
+    if [ "$differential_rc" != 0 ]; then
+        exit "$differential_rc"
+    fi
 fi
 differential_stage=clean_forward_verification
 (cd "$project_root" && env \
