@@ -348,15 +348,19 @@ def validate_secret_store_env(
     return backend, directory
 
 
-def require_locks_database_url(environment: Mapping[str, str]) -> str:
+def require_locks_database_url(
+    environment: Mapping[str, str], *, default: str | None = None
+) -> str:
     """Return the outbox lock session's DSN, which must log in as clinic_lock.
 
     The comms send permit binds each claim to its lock session, so that
     session must be one the runtime role neither is nor may signal. There is
-    no fallback to ``APP_DATABASE_URL``: a missing or clinic_app lock DSN
-    would let any runtime session terminate a live claim.
+    never a fallback to ``APP_DATABASE_URL``: a clinic_app lock DSN would let
+    any runtime session terminate a live claim. Only development and test
+    settings pass ``default`` (the development clinic_lock identity) for an
+    absent variable; a supplied value is always checked.
     """
-    value = environment.get("LOCKS_DATABASE_URL", "")
+    value = environment.get("LOCKS_DATABASE_URL", default or "")
     try:
         role = unquote(urlsplit(value).username or "")
     except ValueError:

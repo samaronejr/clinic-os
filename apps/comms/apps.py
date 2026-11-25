@@ -21,6 +21,7 @@ class CommsConfig(AppConfig):
             PortalInboxAdapter,
             SMSInboxAdapter,
             WhatsAppInboxAdapter,
+            forget_claim,
             message_lock_key,
             message_send_eligible,
             record_claimed_outcome,
@@ -52,7 +53,7 @@ class CommsConfig(AppConfig):
         register_subject_recheck(
             MESSAGE_SUBJECT_TYPE, message_send_eligible, lock_key=message_lock_key
         )
-        register_claimed_outcome_recorder(record_claimed_outcome)
+        register_claimed_outcome_recorder(record_claimed_outcome, forget=forget_claim)
         from apps.comms.inbox_feed import register_question_feed  # noqa: PLC0415
 
         register_question_feed()

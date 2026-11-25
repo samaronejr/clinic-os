@@ -41,6 +41,7 @@ from apps.comms.inbox_services import (
 from apps.comms.models import IntegrationOperation, Message
 from apps.comms.whatsapp_payloads import template_payload, text_payload
 from apps.core.fault_injection import injected_fault
+from apps.core.integration import CONTENTION_ATTEMPTS, is_contention
 from apps.core.secrets import SecretUnavailableError, secret_store
 from apps.intake.models import PatientClinicEnrollment, PatientContact
 
@@ -281,14 +282,37 @@ def _claim_send_permit(operation: IntegrationOperation) -> bool:
     """
     if operation.pk in _CLAIMS:
         return True
-    with connections["locks"].cursor() as cursor:
-        # The lock session is the clinic_lock login itself, never clinic_app.
-        cursor.execute("SELECT clinic_app.comms_claim_send_permit(%s)", [operation.pk])
-        row = cursor.fetchone()
+    row = _claim_statement(operation.pk)
     decision = row[0] if row else "refused"
     if decision == "claimed":
         _CLAIMS.add(operation.pk)
     return decision in {"claimed", "eligible"}
+
+
+def _claim_statement(operation_id: UUID) -> tuple[object, ...] | None:
+    """Run the claim, retrying its own statement on deadlock or serialization.
+
+    Each try is one autocommit statement on the lock session (the clinic_lock
+    login itself, never clinic_app), so a contended try claimed nothing and
+    the attempt stays claimable; the retries contend on the locks themselves.
+    """
+    for remaining in range(CONTENTION_ATTEMPTS - 1, -1, -1):
+        try:
+            with connections["locks"].cursor() as cursor:
+                cursor.execute(
+                    "SELECT clinic_app.comms_claim_send_permit(%s)", [operation_id]
+                )
+                row: tuple[object, ...] | None = cursor.fetchone()
+                return row
+        except DatabaseError as error:
+            if not remaining or not is_contention(error):
+                raise
+    return None
+
+
+def forget_claim(operation_id: UUID) -> None:
+    """Drop this process's claim once its recording is given up."""
+    _CLAIMS.discard(operation_id)
 
 
 def outcome_proof(
@@ -327,7 +351,6 @@ def record_claimed_outcome(
     """
     if operation_id not in _CLAIMS:
         return _close_unsent(operation_id, outcome, reason)
-    _CLAIMS.discard(operation_id)
     try:
         with transaction.atomic(using="locks"), connections["locks"].cursor() as cursor:
             cursor.execute(
@@ -345,8 +368,18 @@ def record_claimed_outcome(
                 [operation_id, outcome, reference, proof],
             )
             row = cursor.fetchone()
-    except (DatabaseError, SecretUnavailableError):
+    except DatabaseError as error:
+        # A deadlock or serialization failure keeps the claim: the caller
+        # retries this recording in a new transaction under the same claim.
+        if is_contention(error):
+            raise
+        forget_claim(operation_id)
         return False
+    except SecretUnavailableError:
+        forget_claim(operation_id)
+        return False
+    # The claim is spent only once the recording transaction commits.
+    transaction.on_commit(lambda: forget_claim(operation_id), using="locks")
     return bool(row and row[0])
 
 
@@ -369,7 +402,9 @@ def _close_unsent(operation_id: UUID, outcome: str, reason: str | None) -> bool 
                     ],
                 )
                 closed = cursor.fetchone()
-        except DatabaseError:
+        except DatabaseError as error:
+            if is_contention(error):
+                raise
             return False
     return bool(closed and closed[0])
 

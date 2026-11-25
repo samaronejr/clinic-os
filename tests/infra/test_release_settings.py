@@ -37,6 +37,9 @@ def _release_environment(tmp_path: Path, role: str = "clinic_owner") -> dict[str
             "MIGRATION_DATABASE_URL": (
                 f"postgresql://{role}:synthetic@db.qa.clinic-os.dev:5432/clinic?{query}"
             ),
+            "LOCKS_DATABASE_URL": (
+                f"postgresql://clinic_lock:synthetic@db.qa.clinic-os.dev:5432/clinic?{query}"
+            ),
             "SECRET_KEY": VALID_RUNTIME_TOKEN,
             "SECURE_SSL_HOST": "app.qa.clinic-os.dev",
         }
@@ -50,8 +53,9 @@ def test_release_is_owner_only_command_settings_not_wsgi(tmp_path: Path) -> None
     code = (
         "import config.settings.release as s; "
         "assert s.CLINIC_PROCESS_ROLE=='clinic_owner'; "
-        "assert list(s.DATABASES)==['default']; "
+        "assert list(s.DATABASES)==['default', 'locks']; "
         "assert s.DATABASES['default']['USER']=='clinic_owner'; "
+        "assert s.DATABASES['locks']['USER']=='clinic_lock'; "
         "assert s.SECURE_PROXY_SSL_HEADER is None; "
         "assert s.DEBUG is False; "
         "assert not hasattr(s, 'WSGI_APPLICATION')"
@@ -82,4 +86,29 @@ def test_release_rejects_every_non_owner_database_role(
     assert result.returncode != 0
     assert "database contract" in result.stderr
     assert database_url not in result.stderr
+    assert "synthetic" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "lock_dsn",
+    [None, "", "postgresql://clinic_app:synthetic@db.qa.clinic-os.dev:5432/clinic"],
+    ids=["missing", "empty", "runtime-role"],
+)
+def test_release_refuses_to_start_without_a_clinic_lock_dsn(
+    tmp_path: Path, lock_dsn: str | None
+) -> None:
+    environment = _release_environment(tmp_path)
+    if lock_dsn is None:
+        environment.pop("LOCKS_DATABASE_URL")
+    else:
+        environment["LOCKS_DATABASE_URL"] = lock_dsn
+    result = _run_process(
+        (sys.executable, "-c", "import config.settings.release"),
+        check=False,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "LOCKS_DATABASE_URL must be set and log in as clinic_lock" in result.stderr
     assert "synthetic" not in result.stderr

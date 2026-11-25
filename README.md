@@ -64,8 +64,9 @@ uv run pytest --reuse-db tests
 ```
 
 The sourced environment includes `LOCKS_DATABASE_URL` (the `clinic_lock` login
-of the outbox lock session). Every settings module that runs the application
-refuses to start without it and never falls back to `APP_DATABASE_URL`; see
+of the outbox lock session). Serving, renewal, browser and release settings
+refuse to start without it; no settings module ever falls back to
+`APP_DATABASE_URL`; see
 [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 The full local gate is `make ci` (ruff, ruff format, mypy --strict, pytest with

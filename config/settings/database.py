@@ -22,6 +22,13 @@ MAX_CONNECT_TIMEOUT: Final = 3
 DEFAULT_APP_DATABASE_URL: Final = (
     "postgresql://clinic_app:clinic_app_password@localhost:5432/clinic"
 )
+# The development lock-session identity base and test settings use when
+# LOCKS_DATABASE_URL is absent (as APP_DATABASE_URL has its default above). It
+# is clinic_lock, never the runtime role; serving and release settings take no
+# default and refuse to start without an explicit clinic_lock DSN.
+DEFAULT_LOCKS_DATABASE_URL: Final = (
+    "postgresql://clinic_lock:clinic_lock_password@localhost:5432/clinic"
+)
 
 
 def resolve_app_database_config(environment: Mapping[str, str]) -> dict[str, object]:

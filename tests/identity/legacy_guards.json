@@ -10741,12 +10741,12 @@
       "reason": "Requester-bound exact-clinic output selection retains existing RLS and Finance authority, then delegates original permission and current governed-source authentication to check_invocation before new or idempotent proposal admission."
     },
     {
-      "symbol": "apps.comms.inbox_adapters._claim_send_permit",
+      "symbol": "apps.comms.inbox_adapters._claim_statement",
       "signals": [
         "resolver"
       ],
       "kind": "provider",
-      "reason": "The worker's final send recheck on its lock connection; clinic_app.comms_claim_send_permit claims only for the session that itself holds the subject's advisory lock and binds the claim to it. No staff authority is read or borrowed; tests/comms/test_inbox.py covers other sessions and squatters."
+      "reason": "The worker's final send recheck on its lock connection (the clinic_lock login); clinic_app.comms_claim_send_permit claims only for the session that itself holds the subject's advisory lock and binds the claim to it, and a deadlock or serialization failure is retried as its own statement. No staff authority is read or borrowed; tests/comms/test_inbox.py covers other sessions, squatters and claim-time deadlocks."
     },
     {
       "symbol": "apps.comms.inbox_adapters.record_claimed_outcome",

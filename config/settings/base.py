@@ -14,7 +14,11 @@ from .contracts import (
     resolve_website_contact_email,
     validate_secret_store_env,
 )
-from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
+from .database import (
+    DEFAULT_APP_DATABASE_URL,
+    DEFAULT_LOCKS_DATABASE_URL,
+    agent_database_config,
+)
 from .telemetry import configure_sentry, configure_tracing
 
 enforce_wheel_timezone()
@@ -200,7 +204,9 @@ DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=clinic_app,public"
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 # The outbox lock session logs in as clinic_lock; there is no fallback.
-DATABASES["locks"] = env.db_url_config(require_locks_database_url(os.environ))
+DATABASES["locks"] = env.db_url_config(
+    require_locks_database_url(os.environ, default=DEFAULT_LOCKS_DATABASE_URL)
+)
 DATABASES["locks"]["ATOMIC_REQUESTS"] = False
 DATABASES["locks"].setdefault("OPTIONS", {}).update(
     options="-c search_path=clinic_app,public", prepare_threshold=None

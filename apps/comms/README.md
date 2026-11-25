@@ -433,6 +433,13 @@ outbox's fixed reasons. A verified receipt for an attempt staff closed as having
 no recorded provider acceptance is recorded against it and shown as a possible
 duplicate.
 
+A deadlock or serialization failure never strands a send: the claim statement
+is retried as its own autocommit statement, and an outcome recording (with its
+audit event) is retried whole in a new transaction under the same live claim,
+session and MAC, at most `CONTENTION_ATTEMPTS` (3) times with no sleeps. Only
+when every attempt contended does the visible hold apply, and the process then
+drops its claim so no later recheck can reuse it.
+
 Pooled lock connections are unsupported: the claim, its session nonce and the
 subject's advisory lock must stay on one database session from claim to
 record, which a transaction-pooling proxy would not guarantee.

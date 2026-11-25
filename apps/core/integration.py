@@ -112,6 +112,11 @@ MAX_ATTEMPTS_BOUND: Final = 32767
 MAX_PROVIDER_LENGTH: Final = 64
 MAX_SUBJECT_TYPE_LENGTH: Final = 128
 MAX_PROVIDER_REFERENCE_LENGTH: Final = 255
+# Deadlock and serialization failures: the claimant retries its own work in a
+# new transaction this many times in all, contending on the locks themselves
+# (no sleeps), before the visible hold applies.
+CONTENTION_ATTEMPTS: Final = 3
+_CONTENTION_SQLSTATES: Final = frozenset({"40P01", "40001"})
 _PENDING = IntegrationOperation.Status.PENDING
 _IN_PROGRESS = IntegrationOperation.Status.IN_PROGRESS
 _SUCCEEDED = IntegrationOperation.Status.SUCCEEDED
@@ -697,10 +702,18 @@ def _operation_for_prepare(scope: OperationScope) -> IntegrationOperation:
 _CLAIMED_OUTCOME_RECORDERS: list[
     Callable[[UUID, str, str | None, str | None], bool | None]
 ] = []
+_CLAIMED_OUTCOME_FORGETTERS: list[Callable[[UUID], None]] = []
+
+
+def is_contention(error: DatabaseError) -> bool:
+    """Whether ``error`` is a deadlock or serialization failure worth a retry."""
+    return getattr(error.__cause__, "sqlstate", None) in _CONTENTION_SQLSTATES
 
 
 def register_claimed_outcome_recorder(
     recorder: Callable[[UUID, str, str | None, str | None], bool | None],
+    *,
+    forget: Callable[[UUID], None],
 ) -> None:
     """Route the outcome of a send claimed by this worker's lock session.
 
@@ -708,9 +721,13 @@ def register_claimed_outcome_recorder(
     the operation is not its subject's to record; otherwise it records
     ``accepted``/``rejected``/``retry``/``withdrawn`` through the subject's
     own resolver on the ``locks`` connection, the claimant session, inside
-    the transaction this module opens there.
+    the transaction this module opens there. A recorder lets a deadlock or
+    serialization failure propagate and keeps its claim until that transaction
+    commits; when every attempt contended, ``forget(operation_id)`` drops the
+    claim so no later recheck can reuse it.
     """
     _CLAIMED_OUTCOME_RECORDERS.append(recorder)
+    _CLAIMED_OUTCOME_FORGETTERS.append(forget)
 
 
 def _claimed_outcome(
@@ -724,10 +741,33 @@ def _claimed_outcome(
     """Record a claimed outcome and its audit event in one transaction.
 
     Both run on the claimant's lock connection under the stored scope, so a
-    failure of either leaves neither the status change nor the event.
+    failure of either leaves neither the status change nor the event. A
+    deadlock or serialization failure rolls that transaction back and the
+    claimant retries it whole, under the same live claim, session and MAC, up
+    to ``CONTENTION_ATTEMPTS`` times; only then does the visible hold apply.
     """
     if not _CLAIMED_OUTCOME_RECORDERS:
         return None
+    for _attempt in range(CONTENTION_ATTEMPTS):
+        try:
+            return _claimed_outcome_once(
+                scope, outcome, reference, event_type, reason_code
+            )
+        except DatabaseError as error:
+            if not is_contention(error):
+                raise
+    for forget in _CLAIMED_OUTCOME_FORGETTERS:
+        forget(scope.operation_id)
+    return False
+
+
+def _claimed_outcome_once(
+    scope: OperationScope,
+    outcome: str,
+    reference: str | None,
+    event_type: str | None,
+    reason_code: str | None,
+) -> bool | None:
     locks = connections["locks"]
     with transaction.atomic(using="locks"), locks.cursor() as cursor:
         cursor.execute(

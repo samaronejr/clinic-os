@@ -4,7 +4,9 @@ import os
 
 from . import base
 from .contracts import (
+    LOCK_ROLE,
     parse_production_hosts,
+    require_locks_database_url,
     validate_runtime_secret,
     validate_secure_ssl_host,
 )
@@ -24,7 +26,12 @@ DATABASES = {
     "default": parse_database_url(
         os.environ.get("MIGRATION_DATABASE_URL", ""),
         required_role=CLINIC_PROCESS_ROLE,
-    )
+    ),
+    # Required with no default, as for serving: the release image runs the
+    # same settings tree, whose lock session is the clinic_lock login.
+    "locks": parse_database_url(
+        require_locks_database_url(os.environ), required_role=LOCK_ROLE
+    ),
 }
 DEBUG = False
 SECURE_PROXY_SSL_HEADER = None

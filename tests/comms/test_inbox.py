@@ -49,6 +49,7 @@ from apps.intake.contacts import save_contact_destination, verify_contact
 from django.db import (
     DatabaseError,
     IntegrityError,
+    OperationalError,
     connection,
     connections,
     transaction,
@@ -2094,6 +2095,87 @@ def test_a_receipt_after_a_staff_close_shows_a_possible_duplicate(
         assert services.message_states([Message.objects.get(pk=message_id)]) == {
             message_id: "duplicate"
         }
+
+
+def _deadlock_on(
+    statement: str, times: int, seen: list[object]
+) -> Callable[..., object]:
+    """Fail the first ``times`` matching lock-session statements as deadlocks."""
+    left = [times]
+
+    def wrapper(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        if statement in sql:
+            seen.append(params)
+            if left[0]:
+                left[0] -= 1
+                raise OperationalError from psycopg.errors.DeadlockDetected()
+        return execute(sql, params, *rest)
+
+    return wrapper
+
+
+def test_a_deadlock_while_recording_an_acceptance_is_retried_once(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    recorded: list[object] = []
+    deadlock = _deadlock_on("comms_record_send_outcome", 1, recorded)
+    with connections["locks"].execute_wrapper(deadlock):
+        assert _in_flight(graph, message_id, lambda _op: None) == ("succeeded", 1)
+    # Same claim, same session, same MAC: the retry repeats the recording.
+    assert len(recorded) == 2
+    assert recorded[0] == recorded[1]
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.status == "succeeded"
+    assert attempt.provider_reference == f"synthetic:whatsapp:{attempt.pk}"
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+def test_a_deadlock_at_claim_time_leaves_the_send_claimable(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    claims: list[object] = []
+    deadlock = _deadlock_on("comms_claim_send_permit", 1, claims)
+    with connections["locks"].execute_wrapper(deadlock):
+        assert _in_flight(graph, message_id, lambda _op: None) == ("succeeded", 1)
+    assert len(claims) >= 2
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.status == "succeeded"
+
+
+def test_exhausted_recording_retries_hold_the_send_and_spend_the_claim(
+    world: InboxWorld,
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    recorded: list[object] = []
+    deadlock = _deadlock_on(
+        "comms_record_send_outcome", integration.CONTENTION_ATTEMPTS, recorded
+    )
+    with connections["locks"].execute_wrapper(deadlock):
+        outcome, calls = _in_flight(graph, message_id, lambda _op: None)
+    assert (outcome, calls) != ("succeeded", 1)
+    assert calls == 1
+    assert len(recorded) == integration.CONTENTION_ATTEMPTS
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    # Only now does the visible hold apply, and no later recheck can reuse
+    # this process's claim.
+    assert attempt.status == "in_progress"
+    assert attempt.pk not in inbox_adapters._CLAIMS
 
 
 def test_a_recorded_outcome_replays_as_a_no_op(world: InboxWorld) -> None:

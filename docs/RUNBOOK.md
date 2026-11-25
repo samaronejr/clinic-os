@@ -52,8 +52,10 @@ development and pre-created test databases. `make migrate` intentionally
 substitutes `MIGRATION_DATABASE_URL` for the Django connection; never migrate
 with the `clinic_app` runtime role.
 
-`LOCKS_DATABASE_URL` is required by every settings module that runs the
-application: the outbox lock session that holds the comms send permit logs in
+`LOCKS_DATABASE_URL` is required by the serving, renewal, browser and release
+settings, with no default (development and test settings use the local
+`clinic_lock` identity when it is absent, as `APP_DATABASE_URL` has its
+default): the outbox lock session that holds the comms send permit logs in
 as `clinic_lock`, a role `clinic_app` neither is nor may signal, so no runtime
 session can terminate or cancel a live claim. A missing or non-`clinic_lock`
 value fails startup with `LOCKS_DATABASE_URL must be set and log in as

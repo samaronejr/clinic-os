@@ -5,6 +5,7 @@ import environ
 
 from .base import *  # noqa: F403
 from .contracts import require_locks_database_url
+from .database import DEFAULT_LOCKS_DATABASE_URL
 
 test_env = environ.Env()
 DATABASES = {
@@ -19,9 +20,11 @@ DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
 )
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
-# The outbox lock session logs in as clinic_lock (required, no fallback), a
+# The outbox lock session logs in as clinic_lock (never APP's DSN), a
 # role the runtime role neither is nor may signal; it mirrors the test database.
-DATABASES["locks"] = test_env.db_url_config(require_locks_database_url(os.environ))
+DATABASES["locks"] = test_env.db_url_config(
+    require_locks_database_url(os.environ, default=DEFAULT_LOCKS_DATABASE_URL)
+)
 DATABASES["locks"]["ATOMIC_REQUESTS"] = False
 DATABASES["locks"]["OPTIONS"] = deepcopy(DATABASES["default"]["OPTIONS"])
 DATABASES["locks"]["TEST"] = {"MIRROR": "default"}

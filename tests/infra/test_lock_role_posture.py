@@ -111,20 +111,27 @@ def test_a_clinic_lock_dsn_is_accepted() -> None:
 
 
 @pytest.mark.parametrize("module", ["config.settings.base", "config.settings.test"])
-def test_startup_fails_closed_without_a_lock_dsn(module: str) -> None:
-    # APP_DATABASE_URL is present, so a fallback would have started.
+def test_development_settings_default_to_clinic_lock_never_the_runtime_dsn(
+    module: str,
+) -> None:
+    # APP_DATABASE_URL is present; an absent lock DSN takes the development
+    # clinic_lock identity, never APP's.
     environment = {
         key: value for key, value in os.environ.items() if key != "LOCKS_DATABASE_URL"
     }
     environment["DJANGO_SETTINGS_MODULE"] = module
-    environment.setdefault("APP_DATABASE_URL", "postgresql://clinic_app:x@db:1/c")
-    started = subprocess.run(
-        [sys.executable, "-c", "import django; django.setup()"],
+    environment["APP_DATABASE_URL"] = "postgresql://clinic_app:x@app-host:1/c"
+    code = (
+        "import django; django.setup(); from django.conf import settings as s; "
+        "d=s.DATABASES['locks']; print(d['USER'], d['HOST'])"
+    )
+    started = subprocess.run(  # noqa: S603 - fixed interpreter and arguments
+        [sys.executable, "-c", code],
         cwd=ROOT,
         env=environment,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert started.returncode != 0
-    assert "LOCKS_DATABASE_URL must be set and log in as clinic_lock" in started.stderr
+    assert started.returncode == 0, started.stderr
+    assert started.stdout.split() == ["clinic_lock", "localhost"]

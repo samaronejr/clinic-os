@@ -98,14 +98,9 @@ def application_environment(
         "CLINIC_SECRET_DIR": PurePosixPath("/", "tmp").as_posix(),
         "DJANGO_SETTINGS_MODULE": settings,
         key: _database_url(role, password, database, database_host),
-        **(
-            {
-                "LOCKS_DATABASE_URL": _database_url(
-                    "clinic_lock", credentials.lock, database, database_host
-                )
-            }
-            if purpose == "web"
-            else {}
+        # Both images load the settings tree, which requires the lock DSN.
+        "LOCKS_DATABASE_URL": _database_url(
+            "clinic_lock", credentials.lock, database, database_host
         ),
         "PYTHONTZPATH": "",
         "SECRET_KEY": credentials.runtime,

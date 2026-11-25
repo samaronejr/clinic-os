@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.ai import front_desk
 from apps.ai.contracts import GatewayRefusedError
@@ -22,7 +23,7 @@ from apps.intake.models import PatientAccessGrant, PatientSession
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import KEK_SECRET_NAME, protect
-from django.db import DatabaseError, connection, connections, transaction
+from django.db import DatabaseError, connection, transaction
 
 from ai.evaluation_support import as_reviewer, evaluation_world
 from ai.support import model
@@ -518,48 +519,81 @@ def test_administrative_expansion_still_requires_platform_activation(
     assert not agent_replies(desk.graph)
 
 
-def test_native_old_snapshot_cannot_reply_after_a_committed_kill(
+@pytest.mark.parametrize(
+    ("isolation", "kill_after_authorize", "kill"),
+    [
+        ("REPEATABLE READ", False, True),
+        ("READ COMMITTED", True, True),
+        ("READ COMMITTED", False, False),
+    ],
+    ids=["old-snapshot", "authorized-then-killed", "control"],
+)
+def test_native_old_snapshot_cannot_reply_after_a_committed_kill(  # noqa: PLR0913
     rbac_graph: RbacGraph,
     settings: SettingsWrapper,
     monkeypatch: pytest.MonkeyPatch,
+    superuser_database_url: str,
+    isolation: str,
+    kill_after_authorize: bool,
+    kill: bool,
 ) -> None:
     desk = desk_world(rbac_graph, settings, monkeypatch)
     context = pending_acceptance(desk, monkeypatch)
     kek = secret_store().get_secret(KEK_SECRET_NAME)
     before = len(agent_replies(desk.graph))
-    refused = False
-    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-        cursor.execute(
-            "SELECT * FROM clinic_app.comms_resolve_inbound(%s,%s)",
-            [desk.inbox.account, desk.inbox.key],
-        )
-        account = cursor.fetchone()
-        assert account is not None
-        cursor.execute(
-            "SELECT set_config('app.current_tenant',%s,true),"
-            "set_config('app.current_principal',%s,true),"
-            "set_config('app.comms_inbound_proof',%s,true)",
-            [str(account[0]), str(account[2]), desk.inbox.key],
-        )
-        cursor.execute("SELECT enabled FROM clinic_app.ai_gatewayswitch WHERE id=1")
-        assert cursor.fetchone() == (True,)
-        # The separate owner connection commits the kill after the old
-        # snapshot, before source authorization takes its shared send fence.
-        with connections["locks"].cursor() as owner:
+
+    def kill_switch() -> None:
+        # A separate owner session commits the kill.
+        with psycopg.connect(superuser_database_url, autocommit=True) as owner:
             owner.execute(
                 "UPDATE clinic_app.ai_gatewayswitch SET enabled=false WHERE id=1"
             )
-        cursor.execute("SELECT enabled FROM clinic_app.ai_gatewayswitch WHERE id=1")
-        assert cursor.fetchone() == (True,)
-        native_authorize(context, kek)
-        try:
-            with transaction.atomic():
-                native_effect(context, "finish", kek)
-        except DatabaseError:
-            refused = True
-    assert refused
-    assert len(agent_replies(desk.graph)) == before
+
+    refused = False
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL {isolation}"
+        )
+    try:
+        # The inbound transaction proves itself with the account MAC bound to
+        # its own xid (inbound_context); the key never enters SQL.
+        with (
+            runtime_role(),
+            inbound_context(account_id=desk.inbox.account, proof=desk.inbox.key),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute("SELECT enabled FROM clinic_app.ai_gatewayswitch WHERE id=1")
+            assert cursor.fetchone() == (True,)
+            if kill and not kill_after_authorize:
+                # After the old snapshot, before the shared send fence.
+                kill_switch()
+                cursor.execute(
+                    "SELECT enabled FROM clinic_app.ai_gatewayswitch WHERE id=1"
+                )
+                assert cursor.fetchone() == (True,)
+            stage = native_authorize(context, kek)
+            # An old snapshot is never admitted; a fresh one is, until a kill.
+            assert stage == (
+                "" if isolation == "REPEATABLE READ" else "monitored_autonomy"
+            )
+            if kill and kill_after_authorize:
+                kill_switch()
+            try:
+                with transaction.atomic():
+                    native_effect(context, "finish", kek)
+            except DatabaseError:
+                refused = True
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SET SESSION CHARACTERISTICS AS TRANSACTION"
+                " ISOLATION LEVEL READ COMMITTED"
+            )
+    # After a committed kill nothing replies, even when authorization came
+    # first. The control replies on the same path, so each refusal comes from
+    # the kill (or the old snapshot) and nothing else.
+    assert refused is kill
+    assert len(agent_replies(desk.graph)) == before + (0 if kill else 1)
 
 
 def _session_authorize(

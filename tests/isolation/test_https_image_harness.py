@@ -64,6 +64,57 @@ def test_https_application_environment_imports_production_settings(
     assert result.stdout == "clinic_app\n"
 
 
+def test_release_image_environment_carries_the_lock_dsn_and_needs_it(
+    tmp_path: Path,
+) -> None:
+    # Given the actual release environment the harness assembles.
+    environment = application_environment(
+        "clinic_https_fixture_db",
+        SOURCE_DATABASE_HOST,
+        "release",
+        credentials_for("11111111-1111-4111-8111-111111111111"),
+    )
+    assert urlsplit(environment["LOCKS_DATABASE_URL"]).username == "clinic_lock"
+    assert environment["DJANGO_SETTINGS_MODULE"] == "config.settings.release"
+    with runtime_directory(tmp_path, purpose="https-release") as directory:
+        ca = directory / "db-ca.pem"
+        _ = ca.write_text("synthetic CA fixture\n", encoding="ascii")
+        ca.chmod(0o444)
+        for key in ("MIGRATION_DATABASE_URL", "LOCKS_DATABASE_URL"):
+            database_url = urlsplit(environment[key])
+            query = dict(parse_qsl(database_url.query))
+            query["sslrootcert"] = str(ca)
+            environment[key] = database_url._replace(query=urlencode(query)).geturl()
+
+        def start(child: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            return _run_process(
+                (
+                    sys.executable,
+                    "-c",
+                    "import config.settings.release as s; print(s.CLINIC_PROCESS_ROLE)",
+                ),
+                check=False,
+                capture_output=True,
+                cwd=PROJECT_ROOT,
+                env=child,
+                text=True,
+                timeout=15,
+            )
+
+        # When release settings load with exactly that environment, and
+        # again without the lock DSN.
+        started = start(environment)
+        refused = start(
+            {k: v for k, v in environment.items() if k != "LOCKS_DATABASE_URL"}
+        )
+
+    # Then it starts with it and refuses without it: there is no fallback.
+    assert started.returncode == 0, started.stderr
+    assert started.stdout == "clinic_owner\n"
+    assert refused.returncode != 0
+    assert "LOCKS_DATABASE_URL must be set and log in as clinic_lock" in refused.stderr
+
+
 def test_https_command_is_an_exact_harness_only_override() -> None:
     assert TLS_COMMAND == (
         "gunicorn",
