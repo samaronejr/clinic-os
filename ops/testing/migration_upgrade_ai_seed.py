@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
     from django.db.models import Manager, Model
 
+    from ops.testing.migration_upgrade_wave_h_floor import Snapshot
+
 
 class _DeclareRows(Protocol):
     def __call__(
@@ -53,7 +55,7 @@ class LegacyRows:
         """Bind every loaded tenant row to the existing representative clinic."""
         self.organization = organization
         self.clinic = clinic
-        self.tables: set[str] = set()
+        self.tables: dict[str, list[str]] = {}
 
     def make(self, label: str, **fields: object) -> Model:
         """Load a historical row with constraints active and its trigger restored."""
@@ -77,7 +79,12 @@ class LegacyRows:
                         sql.Identifier(table)
                     )
                 )
-                self.tables.add(table)
+                self.tables[table] = [
+                    field.name
+                    for field in connection.introspection.get_table_description(
+                        cursor, table
+                    )
+                ]
         if "organization" in state.fields:
             fields.setdefault("organization_id", self.organization)
         if "clinic" in state.fields:
@@ -113,19 +120,32 @@ class LegacyRows:
         """Allocate generated fixture values through the normal UUID source."""
         return uuid4()
 
-    def finish(self) -> None:
-        """Restore every guard and validate deferred foreign keys."""
+    def finish(self) -> dict[str, Snapshot]:
+        """Restore and sample each table at Wave H's native pre-probe boundary."""
+        capture_floor = run_path(
+            str(Path(__file__).with_name("migration_upgrade_wave_h_floor.py"))
+        )["capture_floor"]
+        snapshots: dict[str, Snapshot] = {}
         with connection.cursor() as cursor:
             cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-            for table in sorted(self.tables):
+            for table, columns in self.tables.items():
                 cursor.execute(
                     sql.SQL("ALTER TABLE clinic_app.{} ENABLE TRIGGER USER").format(
                         sql.Identifier(table)
                     )
                 )
+                snapshot = cast("dict[str, Snapshot]", capture_floor(cursor, (table,)))[
+                    table
+                ]
+                if set(snapshot["columns"]) != set(columns):
+                    message = f"Wave H floor columns changed during seed: {table}"
+                    raise RuntimeError(message)
+                snapshot["columns"] = columns
+                snapshots[table] = snapshot
             # Native extraction links its deferred observation FK before inserting
             # that observation. Restore normal timing after validating the load.
             cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        return snapshots
 
 
 def _baseline_approvals(approvals: Sequence[str], *, rollout_installed: bool) -> None:
@@ -193,7 +213,9 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
                 "declare_ai_rows"
             ],
         )(fixtures, markers, enrollment_id)
-        fixtures.finish()
+        # Capture once, before either probe and before leaving the original
+        # atomic seed block. Probes neither receive nor refresh these digests.
+        snapshots = fixtures.finish()
         _baseline_approvals(
             cast("list[str]", declaration["approvals"]),
             rollout_installed=rollout_installed,
@@ -202,10 +224,6 @@ def seed_ai(markers: Mapping[str, object]) -> dict[str, object]:
             cast("dict[str, str]", declaration["retained"]),
             retained_fence_installed=retained_fence_installed,
         )
-        capture_floor = run_path(
-            str(Path(__file__).with_name("migration_upgrade_wave_h_floor.py"))
-        )["capture_floor"]
-        snapshots = capture_floor(cursor, fixtures.tables)
     return {
         **declaration,
         "tables": snapshots,

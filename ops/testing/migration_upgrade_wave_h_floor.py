@@ -40,7 +40,11 @@ def _digest(record: dict[str, object]) -> str:
 
 
 def capture_floor(cursor: CursorWrapper, tables: Iterable[str]) -> dict[str, Snapshot]:
-    """Capture only digests in the seed transaction, before forward migration."""
+    """Capture seed digests at the original per-table guard restoration.
+
+    No later capture point or column mapping is allowed for the Wave H floor.
+    Probe outcomes are separate receipt fields, not replacements for this floor.
+    """
     snapshots = {}
     for table in sorted(tables):
         records = _records(cursor, table)

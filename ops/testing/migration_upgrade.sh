@@ -214,6 +214,7 @@ validate_default_declarations()
 validate_transform_declarations()
 Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
 if [ -n "${UPGRADE_WAVE_H_DIFFERENTIAL:-}" ]; then
+    : "${UPGRADE_WAVE_H_NATIVE_ENV:?path to the independent Wave H rehearsal environment required}"
     (cd "$project_root" && env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
@@ -221,6 +222,7 @@ if [ -n "${UPGRADE_WAVE_H_DIFFERENTIAL:-}" ]; then
         CLINIC_SECRET_DIR="$secret_dir" \
         DJANGO_SETTINGS_MODULE="config.settings.base" \
         UPGRADE_APP_DATABASE_URL="$app_dsn" \
+        UPGRADE_BASE_SHA="$base_sha" \
         UPGRADE_VERIFIED_FILE="$secret_dir/verified.json" \
         UPGRADE_SEED_FILE="$seed_file" \
         uv run --frozen --no-sync --no-env-file python \

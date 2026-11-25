@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from importlib import import_module
 from pathlib import Path
 from runpy import run_path
@@ -36,6 +38,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from types import FrameType
 
     from django.db.backends.utils import CursorWrapper
     from ops.testing.migration_upgrade_wave_h_floor import Snapshot
@@ -93,6 +96,60 @@ def _run_seed() -> None:
 
 
 type _Preservation = Callable[[CursorWrapper, dict[str, Snapshot]], dict[str, bool]]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_wave_h_floor_captures_each_table_when_its_guard_is_restored(
+    seed_receipt: Path,
+) -> None:
+    """The original finish loop pairs each guard restore with its digest read."""
+    events: list[tuple[str, str]] = []
+    probe_names = {"_baseline_approvals", "_baseline_retained"}
+
+    def profile(frame: FrameType, event: str, arg: object) -> None:
+        if (
+            event == "call"
+            and frame.f_code.co_name in probe_names
+            and frame.f_code.co_filename.endswith("/migration_upgrade_ai_seed.py")
+        ):
+            events.append(("probe", frame.f_code.co_name))
+
+    def observe(
+        execute: Callable[..., object],
+        statement: object,
+        params: object,
+        many: bool,
+        context: object,
+    ) -> object:
+        if isinstance(statement, sql.Composable):
+            text = statement.as_string()
+            patterns = (
+                ("enable", r'ALTER TABLE clinic_app\."(\w+)" ENABLE TRIGGER USER'),
+                (
+                    "read",
+                    r"SELECT id::text,to_jsonb\(t\) FROM clinic_app\."
+                    r'"(\w+)" t ORDER BY id',
+                ),
+            )
+            for action, pattern in patterns:
+                if match := re.fullmatch(pattern, text):
+                    events.append((action, match[1]))
+        return execute(statement, params, many, context)
+
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(profile)
+        with connection.execute_wrapper(observe):
+            _run_seed()
+    finally:
+        sys.setprofile(previous)
+    tables = json.loads(seed_receipt.read_text(encoding="utf-8"))["ai"]["tables"]
+    restores = [table for action, table in events if action == "enable"]
+    assert len(restores) == len(set(restores)) == len(tables) == 59
+    assert set(restores) == tables.keys()
+    assert events == [
+        (action, table) for table in restores for action in ("enable", "read")
+    ] + [("probe", "_baseline_approvals"), ("probe", "_baseline_retained")]
 
 
 @pytest.mark.django_db(transaction=True)
