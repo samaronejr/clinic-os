@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
 
@@ -450,7 +451,11 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
         if not passed:
             failures.append("AI upgrade assertion failed: " + name)
     report = Path(os.environ["UPGRADE_SEED_FILE"]).with_name("ai-assertions.json")
-    report.write_text(
-        json.dumps(assertions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    contents = json.dumps(assertions, indent=2, sort_keys=True) + "\n"
+    helper = os.environ.get("UPGRADE_OWNED_OUTPUT_HELPER")
+    if helper is None or os.environ.get("UPGRADE_DIFFERENTIAL_WORKER") == "1":
+        report.write_text(contents, encoding="utf-8")
+    else:
+        with runpy.run_path(helper)["open_owned"](report) as stream:
+            stream.write(contents)
     return failures
