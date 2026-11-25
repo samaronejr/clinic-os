@@ -29,7 +29,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, Never, cast
 from urllib.parse import quote, urlsplit
@@ -498,6 +498,7 @@ class ProvisionedDatabase:
     super_dsn: str
     super_password: str
     volume: str
+    posture_password: str = field(default_factory=secrets.token_urlsafe, repr=False)
 
 
 def _excluded(path: str) -> bool:
@@ -726,6 +727,7 @@ def _docker(
     *arguments: str,
     timeout: int = COMMAND_TIMEOUT_SECONDS,
     stdin: bytes | None = None,
+    environment: dict[str, str] | None = None,
 ) -> str:
     executable = shutil.which("docker")
     if executable is None:
@@ -736,6 +738,7 @@ def _docker(
             check=False,
             capture_output=True,
             input=stdin,
+            env=environment,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
@@ -1630,6 +1633,8 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         f"CLINIC_APP_PASSWORD={database.app_password}",
         "-e",
         f"CLINIC_SUPER_PASSWORD={database.super_password}",
+        "-e",
+        "CLINIC_POSTURE_PASSWORD",
         database.container,
         "psql",
         "-h",
@@ -1647,6 +1652,10 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         "-f",
         "-",
         stdin=bootstrap,
+        environment={
+            **os.environ,
+            "CLINIC_POSTURE_PASSWORD": database.posture_password,
+        },
     )
 
 
@@ -1664,6 +1673,7 @@ def _gate_coverage(
                 # As in hosted CI: the default broker is a host Redis that
                 # may belong to another project.
                 "CELERY_BROKER_URL": "memory://",
+                "CLINIC_POSTURE_PASSWORD": database.posture_password,
                 # Keep profiles out of subsequent current-source image inputs.
                 "COVERAGE_FILE": str(logs / "coverage.data"),
                 "DJANGO_SETTINGS_MODULE": "config.settings.test",

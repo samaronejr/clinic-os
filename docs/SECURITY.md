@@ -7,7 +7,7 @@ are in [RUNBOOK.md](RUNBOOK.md); architectural context is in
 
 ## Database roles and posture
 
-The bootstrap creates five roles with distinct duties (including ADR-019's machine role):
+The bootstrap separates runtime, migration, administration, and inspection:
 
 | Role | Login | Superuser | `rolbypassrls` | Intended use |
 | --- | --- | --- | --- | --- |
@@ -16,6 +16,7 @@ The bootstrap creates five roles with distinct duties (including ADR-019's machi
 | `clinic_agent` | yes (no default password) | no | **no** | NOINHERIT machine role; no ownership, staff membership, default DML, audit or key-table reads |
 | `clinic_resolver` | no | no | yes | narrowly privileged owner of fixed resolver/auth `SECURITY DEFINER` functions |
 | `clinic_super` | yes | yes | no (superuser still bypasses RLS) | local/CI database administration and test setup only, never application runtime |
+| `clinic_posture` | yes (no default password) | no | no | independent catalog inspection; needs `CONNECT`, not a runtime role, database owner, or privileged monitoring role |
 
 `clinic_app` is `NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`. It receives
 the minimum tenant-table DML needed by the foundation, cannot log in as
@@ -327,20 +328,45 @@ database trust boundary, not as proof against a superuser.
   PostgreSQL does not inherit another role's configuration.
 - Posture follows every membership edge of the app, owner and machine logins,
   including SET-only and ADMIN-only paths. It rejects reachable superusers,
-  `CREATEROLE`, `BYPASSRLS`, backend signaling, server file/program and
+  `CREATEROLE`, `REPLICATION`, `BYPASSRLS`, backend signaling, server file/program and
   monitoring roles, and delegated parameter `SET`/`ALTER SYSTEM`. The only
   bypass exception is the migration owner's path to the NOLOGIN
   `clinic_resolver`; the same resolver is forbidden from any runtime login.
-- Native routine ACLs are database-local. Posture checks all overloads of
-  `lo_import`, `lo_export`, `pg_read_file`, `pg_read_binary_file`, `pg_ls_dir`,
-  `pg_ls_logdir` and `pg_stat_file` in **every connection-enabled database**
-  where `clinic_app` has effective `CONNECT`, including connectable templates.
-  It authenticates to each on the same endpoint, checks the role and database
-  identity, and refuses if any catalog cannot be inspected. Run the gate with
-  database creation/removal and grants/revokes quiescent: read-only transactions
-  in separate databases are not an atomic cluster-wide ACL snapshot. Check
-  each runtime/lock cluster; one endpoint does not attest another cluster or
-  previously established sessions.
+- Posture enumerates **every row of `pg_database`**, including templates and
+  databases with no app `CONNECT`. It authenticates the supplied runtime URL
+  as `clinic_app` first. On that same selected endpoint, preserving TLS options,
+  it then logs into **each** database as `clinic_posture` with the independent
+  `CLINIC_POSTURE_PASSWORD`. It verifies both role identities and database
+  name/OID. A missing credential, closed database, HBA rejection, denied
+  catalog read, or wrong identity fails the gate. Use a direct single-cluster
+  endpoint with database creation, role changes and ACL changes quiescent:
+  separate read-only transactions do not form an atomic cluster snapshot.
+- Every installed `pg_catalog` or extension-schema routine with an explicit
+  ACL withholding `PUBLIC EXECUTE` is restricted. Original PostgreSQL and
+  extension ACLs in `pg_init_privs` remain authoritative even if a new
+  `PUBLIC` grant would otherwise remove the routine from the inventory.
+  Actual extension member namespaces are included, not just `extnamespace`.
+  The gate checks effective access through the whole family, including the
+  **local** edge from the current database's owner to `pg_database_owner`.
+  No native routine or extension member has an exception.
+- The application schema also hosts extensions: migration-owned application
+  routines there are **not** exempt as a class. Each permitted overload in
+  `ops/db/routine-exceptions.tsv` records its owner, canonical PG16 definition
+  digest, maximum grantees and migration reason. Private migration/definer
+  helpers are not staff or machine exceptions. A new overload, a new grantee,
+  a replaced body, or membership exposing a private helper fails closed. Review
+  policy updates against the source migration; never generate approvals from the
+  database being inspected.
+- Give the inspector `CONNECT` on restricted databases; do not grant runtime
+  logins extra access for the check. On a stock PG16 cluster even a superuser
+  cannot connect to `template0` while `datallowconn` is false. With an explicit
+  inspection credential, administrative bootstrap revokes `PUBLIC` access,
+  checks the owner and remaining `CONNECT` grants, then allows connections in
+  the same transaction. The read-only verifier never changes a database to
+  make itself pass. If site policy requires `template0` closed, coordinate an
+  operator-managed audit window and restore the setting afterwards; while it
+  is closed, this all-database attestation is unavailable. Keep the inspector's
+  credential out of application environments and repeat for each runtime/lock cluster.
 - The bootstrap disables parameter logging for sampled statements and errors.
   PostgreSQL 16 allows any login to override `log_parameter_max_length_on_error`
   in its own session. The second control is `log_error_verbosity=terse`,

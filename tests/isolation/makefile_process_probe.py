@@ -16,11 +16,13 @@ PASSWORD_VARIABLES: Final = (
     "CLINIC_OWNER_PASSWORD",
     "CLINIC_APP_PASSWORD",
     "CLINIC_SUPER_PASSWORD",
+    "CLINIC_POSTURE_PASSWORD",
 )
 PSQL_VARIABLES: Final = (
     ("clinic_owner_password", "CLINIC_OWNER_PASSWORD"),
     ("clinic_app_password", "CLINIC_APP_PASSWORD"),
     ("clinic_super_password", "CLINIC_SUPER_PASSWORD"),
+    ("clinic_posture_password", "CLINIC_POSTURE_PASSWORD"),
 )
 
 

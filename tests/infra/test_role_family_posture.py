@@ -80,6 +80,8 @@ def test_posture_refuses_transitive_set_only_parameter_authority() -> None:
     "grant",
     [
         "ALTER ROLE {} SUPERUSER",
+        "ALTER ROLE {} REPLICATION",
+        "GRANT pg_stat_scan_tables TO {}",
         "GRANT SET ON PARAMETER log_error_verbosity TO {}",
         "GRANT SET ON PARAMETER log_statement TO {}",
         "GRANT ALTER SYSTEM ON PARAMETER work_mem TO {}",
@@ -96,6 +98,8 @@ def test_posture_refuses_transitive_set_only_parameter_authority() -> None:
     ],
     ids=[
         "superuser",
+        "replication",
+        "scan-tables",
         "verbosity",
         "statement-logging",
         "alter-system",
@@ -126,18 +130,13 @@ def test_posture_rejects_inheritance_after_a_role_switch(grant: LiteralString) -
                 bridge
             )
         )
-        params = (list(posture.PINNED_ROLES),)
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            True,
-        )
+        admin.execute(posture.CATALOG_PATH)
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
         admin.execute(sql.SQL(grant).format(leaf))
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            False,
-        )
+        assert not posture._role_authority_safe(admin, logins)
         admin.execute(sql.SQL("REVOKE {} FROM clinic_app").format(bridge))
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            True,
-        )
+        assert posture._role_authority_safe(admin, logins)
 
 
 @pytest.mark.parametrize(
@@ -182,18 +181,13 @@ def test_grant_and_revoke_behind_admin_only_edge(
                 bridge
             )
         )
-        params = (list(posture.PINNED_ROLES),)
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            True,
-        )
+        admin.execute(posture.CATALOG_PATH)
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
         admin.execute(sql.SQL(grant).format(leaf))
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            False,
-        )
+        assert not posture._role_authority_safe(admin, logins)
         admin.execute(sql.SQL(undo).format(leaf))
-        assert admin.execute(posture.SAFE_ROLE_FAMILY_QUERY, params).fetchone() == (
-            True,
-        )
+        assert posture._role_authority_safe(admin, logins)
 
 
 def test_migration_resolver_exception_is_not_an_app_exception() -> None:
@@ -259,7 +253,14 @@ def test_connectable_secondary_has_independent_routine_grants() -> None:
             admin.execute(
                 sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(identifier)
             )
-            assert _runtime_posture()
+            # Give the inspector its own access; a clean result here would
+            # mean that removing app CONNECT hid the committed grant.
+            admin.execute(
+                sql.SQL("GRANT CONNECT ON DATABASE {} TO clinic_posture").format(
+                    identifier
+                )
+            )
+            assert not _runtime_posture()
             admin.execute(
                 sql.SQL("GRANT CONNECT ON DATABASE {} TO clinic_app").format(identifier)
             )
@@ -270,6 +271,190 @@ def test_connectable_secondary_has_independent_routine_grants() -> None:
                 "FROM clinic_app"
             )
         assert _runtime_posture()
+
+
+def test_native_memory_routine_direct_grant_refused() -> None:
+    with (
+        psycopg.connect(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as admin,
+        admin.transaction(force_rollback=True),
+    ):
+        admin.execute(posture.CATALOG_PATH)
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
+        admin.execute(
+            "GRANT EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer) "
+            "TO clinic_app"
+        )
+        assert not posture._role_authority_safe(admin, logins)
+        admin.execute(
+            "REVOKE EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer) "
+            "FROM clinic_app"
+        )
+        assert posture._role_authority_safe(admin, logins)
+
+
+def test_unlisted_restricted_routine_in_extension_schema() -> None:
+    with (
+        psycopg.connect(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as admin,
+        admin.transaction(force_rollback=True),
+    ):
+        admin.execute(posture.CATALOG_PATH)
+        schema = sql.Identifier("posture_" + uuid4().hex)
+        routine = sql.SQL("{}.{}()").format(schema, sql.Identifier(uuid4().hex))
+        admin.execute(sql.SQL("CREATE SCHEMA {}").format(schema))
+        admin.execute(sql.SQL("CREATE EXTENSION hstore WITH SCHEMA {}").format(schema))
+        # Not itself an extension member, not known by name when code shipped.
+        admin.execute(
+            sql.SQL("CREATE FUNCTION {} RETURNS int LANGUAGE SQL RETURN 1").format(
+                routine
+            )
+        )
+        admin.execute(sql.SQL("REVOKE ALL ON FUNCTION {} FROM PUBLIC").format(routine))
+        bridge, leaf = _create_roles(admin)
+        admin.execute(sql.SQL("GRANT {} TO {} WITH INHERIT FALSE").format(leaf, bridge))
+        admin.execute(
+            sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE").format(bridge)
+        )
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
+        admin.execute(
+            sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(routine, leaf)
+        )
+        assert not posture._role_authority_safe(admin, logins)
+        admin.execute(
+            sql.SQL("REVOKE EXECUTE ON FUNCTION {} FROM {}").format(routine, leaf)
+        )
+        assert posture._role_authority_safe(admin, logins)
+
+
+@contextmanager
+def _reachable_machine() -> Iterator[tuple[str, str]]:
+    name = "clinic_agent_" + uuid4().hex
+    machine = sql.Identifier(name)
+    password = uuid4().hex
+    with psycopg.connect(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"], autocommit=True
+    ) as admin:
+        with admin.transaction():
+            admin.execute(
+                sql.SQL("CREATE ROLE {} LOGIN NOINHERIT PASSWORD {}").format(
+                    machine, sql.Literal(password)
+                )
+            )
+            for setting, value in (
+                ("log_error_verbosity", "terse"),
+                ("log_parameter_max_length", "0"),
+                ("log_parameter_max_length_on_error", "0"),
+            ):
+                admin.execute(
+                    sql.SQL("ALTER ROLE {} SET {} TO {}").format(
+                        machine, sql.Identifier(setting), sql.Literal(value)
+                    )
+                )
+            admin.execute(
+                sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE").format(
+                    machine
+                )
+            )
+        try:
+            yield name, password
+        finally:
+            admin.execute(sql.SQL("DROP ROLE {}").format(machine))
+
+
+def test_machine_only_database_keeps_local_grant_in_scope() -> None:
+    with (
+        _reachable_machine() as (machine_name, password),
+        _secondary() as (admin, name, identifier),
+        psycopg.connect(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname=name, autocommit=True
+        ) as secondary,
+    ):
+        machine = sql.Identifier(machine_name)
+        admin.execute(
+            sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(identifier)
+        )
+        admin.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, clinic_posture").format(
+                identifier, machine
+            )
+        )
+        assert admin.execute(
+            "SELECT has_database_privilege('clinic_app', %s, 'CONNECT'),"
+            " pg_has_role('clinic_app', %s, 'SET')",
+            (name, machine_name),
+        ).fetchone() == (False, True)
+        with psycopg.connect(
+            os.environ["APP_DATABASE_URL"],
+            dbname=name,
+            user=machine_name,
+            password=password,
+        ) as peer:
+            assert peer.execute("SELECT current_user").fetchone() == (machine_name,)
+        assert _runtime_posture()
+        secondary.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) TO {}"
+            ).format(machine)
+        )
+        assert not _runtime_posture()
+        secondary.execute(
+            sql.SQL(
+                "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) FROM {}"
+            ).format(machine)
+        )
+        assert _runtime_posture()
+
+
+def test_reachable_database_owner_activates_local_grant() -> None:
+    with (
+        _secondary() as (admin, name, identifier),
+        psycopg.connect(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname=name, autocommit=True
+        ) as secondary,
+    ):
+        owner_name = "posture_owner_" + uuid4().hex
+        owner = sql.Identifier(owner_name)
+        admin.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(owner))
+        try:
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} OWNER TO {}").format(identifier, owner)
+            )
+            admin.execute(
+                sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE").format(
+                    owner
+                )
+            )
+            admin.execute(
+                sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(identifier)
+            )
+            admin.execute(
+                sql.SQL("GRANT CONNECT ON DATABASE {} TO clinic_posture").format(
+                    identifier
+                )
+            )
+            assert _runtime_posture()
+            secondary.execute(
+                "GRANT EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) "
+                "TO pg_database_owner"
+            )
+            assert secondary.execute(
+                "SELECT has_function_privilege("
+                "'clinic_app', 'pg_stat_file(text)', 'EXECUTE'),"
+                " has_function_privilege(%s, 'pg_stat_file(text)', 'EXECUTE')",
+                (owner_name,),
+            ).fetchone() == (False, True)
+            assert not _runtime_posture()
+            secondary.execute(
+                "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) "
+                "FROM pg_database_owner"
+            )
+            assert _runtime_posture()
+        finally:
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} OWNER TO CURRENT_USER").format(identifier)
+            )
+            admin.execute(sql.SQL("DROP ROLE {}").format(owner))
 
 
 def test_connectable_but_uninspectable_database_refuses_posture() -> None:
@@ -285,3 +470,45 @@ def test_connectable_but_uninspectable_database_refuses_posture() -> None:
                 sql.SQL("ALTER DATABASE {} CONNECTION LIMIT -1").format(identifier)
             )
         assert _runtime_posture()
+
+
+def test_connection_disabled_database_is_not_skipped() -> None:
+    with _secondary() as (admin, _name, identifier):
+        assert _runtime_posture()
+        admin.execute(
+            sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS false").format(identifier)
+        )
+        try:
+            assert not _runtime_posture()
+        finally:
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS true").format(identifier)
+            )
+        assert _runtime_posture()
+
+
+def test_initially_restricted_native_routine_cannot_be_opened_to_public() -> None:
+    with (
+        psycopg.connect(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as admin,
+        admin.transaction(force_rollback=True),
+    ):
+        admin.execute(posture.CATALOG_PATH)
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
+        admin.execute("GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO PUBLIC")
+        assert not posture._role_authority_safe(admin, logins)
+
+
+def test_private_migrated_helper_does_not_allow_new_runtime_grantee() -> None:
+    with (
+        psycopg.connect(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as admin,
+        admin.transaction(force_rollback=True),
+    ):
+        admin.execute(posture.CATALOG_PATH)
+        logins = list(posture.PINNED_ROLES)
+        assert posture._role_authority_safe(admin, logins)
+        admin.execute(
+            "GRANT EXECUTE ON FUNCTION clinic_app.intake_patient_mirror_guard_v1() "
+            "TO clinic_app"
+        )
+        assert not posture._role_authority_safe(admin, logins)

@@ -32,7 +32,12 @@ set +a
 
 Keep each `CLINIC_*_PASSWORD` synchronized with the matching password component
 in `APP_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and
-`TEST_SUPERUSER_DATABASE_URL`. Use shell-safe local values when sourcing the
+`TEST_SUPERUSER_DATABASE_URL`. Separately supply a unique
+`CLINIC_POSTURE_PASSWORD` to the administrative bootstrap and posture commands;
+it has no application DSN. The inspector needs `CONNECT` in every database,
+including templates. Coordinate the `template0` inspection window as described
+in [SECURITY.md](SECURITY.md#secrets-encryption-and-telemetry).
+Use shell-safe local values when sourcing the
 file. Compose reads `.env` itself, but Make and direct `uv` commands need the
 variables exported into the current shell as shown above.
 
@@ -52,9 +57,10 @@ development and pre-created test databases. `make migrate` intentionally
 substitutes `MIGRATION_DATABASE_URL` for the Django connection; never migrate
 with the `clinic_app` runtime role.
 
-Start the web process as the runtime role:
+Start the web process as the runtime role, without the inspection credential:
 
 ```sh
+unset CLINIC_POSTURE_PASSWORD
 APP_DATABASE_URL="$APP_DATABASE_URL" uv run python manage.py runserver 127.0.0.1:8000
 ```
 

@@ -5,6 +5,8 @@
 -- Optional machine credential: absent means password authentication is disabled.
 \set clinic_agent_password ''
 \getenv clinic_agent_password CLINIC_AGENT_PASSWORD
+\set clinic_posture_password ''
+\getenv clinic_posture_password CLINIC_POSTURE_PASSWORD
 
 SELECT format(
     'CREATE ROLE clinic_owner LOGIN PASSWORD %L',
@@ -46,6 +48,17 @@ ALTER ROLE clinic_app WITH LOGIN PASSWORD :'clinic_app_password' NOSUPERUSER NOB
 ALTER ROLE clinic_resolver WITH NOLOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;
 ALTER ROLE clinic_super WITH LOGIN PASSWORD :'clinic_super_password' SUPERUSER;
 
+-- Only an explicitly provisioned inspection credential enables the audit
+-- window's prerequisites. Never open a closed non-template database here.
+SELECT 'CREATE ROLE clinic_posture NOINHERIT'
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'clinic_posture')
+\gexec
+SELECT format(
+    'ALTER ROLE clinic_posture LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L',
+    NULLIF(:'clinic_posture_password', '')
+)
+\gexec
+
 -- Server-side binding keeps values out of statement text. Keep them out of
 -- statement/duration/sample detail too, even if server sampling is enabled.
 REVOKE SET ON PARAMETER log_parameter_max_length, log_error_verbosity
@@ -66,6 +79,33 @@ FROM (
 ALTER DATABASE :"database_name" OWNER TO clinic_owner;
 REVOKE ALL ON DATABASE :"database_name" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"database_name" TO clinic_owner, clinic_app, clinic_agent, clinic_super;
+GRANT CONNECT ON DATABASE :"database_name" TO clinic_posture;
+
+-- A stock template0 is not inspectable even by a superuser. Do not change
+-- it in the read-only gate. In explicitly provisioned clusters, remove
+-- PUBLIC access *before* opening it; refuse unexpected pre-existing grants.
+SELECT (:'clinic_posture_password' <> '') AS provision_inspection
+\gset
+\if :provision_inspection
+BEGIN;
+REVOKE ALL ON DATABASE template0 FROM PUBLIC;
+GRANT CONNECT ON DATABASE template0 TO clinic_posture;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM pg_database d, LATERAL aclexplode(d.datacl) a
+        WHERE d.datname = 'template0' AND a.privilege_type = 'CONNECT'
+          AND a.grantee NOT IN (d.datdba, 'clinic_posture'::regrole)
+    ) OR EXISTS (
+        SELECT FROM pg_database d JOIN pg_roles r ON r.oid = d.datdba
+        WHERE d.datname = 'template0' AND NOT r.rolsuper
+    ) THEN
+        RAISE EXCEPTION 'unexpected template0 CONNECT authority';
+    END IF;
+END $$;
+ALTER DATABASE template0 ALLOW_CONNECTIONS true;
+COMMIT;
+\endif
 
 CREATE SCHEMA IF NOT EXISTS :"app_schema" AUTHORIZATION clinic_owner;
 ALTER SCHEMA :"app_schema" OWNER TO clinic_owner;

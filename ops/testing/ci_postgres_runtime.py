@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Never
@@ -160,6 +161,7 @@ def write_environment(path: Path, lease: CiDatabaseLease) -> None:
         "APP_DATABASE_URL": database_url("clinic_app", lease.app_password, lease),
         "CLINIC_APP_PASSWORD": lease.app_password,
         "CLINIC_OWNER_PASSWORD": lease.owner_password,
+        "CLINIC_POSTURE_PASSWORD": secrets.token_urlsafe(24),
         "CLINIC_SUPER_PASSWORD": lease.super_password,
         "MIGRATION_DATABASE_URL": database_url(
             "clinic_owner", lease.owner_password, lease
