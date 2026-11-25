@@ -92,7 +92,15 @@ def _check_base(worktree: Path) -> None:
         [git, "-C", str(worktree), "rev-parse", "HEAD"], text=True
     ).strip()
     status = subprocess.check_output(  # noqa: S603 - fixed Git status command
-        [git, "-C", str(worktree), "status", "--porcelain", "--untracked-files=no"],
+        [
+            git,
+            "--no-optional-locks",
+            "-C",
+            str(worktree),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ],
         text=True,
     )
     if head != WAVE_H or status:
