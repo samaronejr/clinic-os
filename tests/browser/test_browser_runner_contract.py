@@ -28,7 +28,7 @@ UV_IMAGE = (
 )
 APT_TRANSACTION = (
     "apt-get update && apt-get install -y --no-install-recommends "
-    "libnss3-tools=2:3.98-1ubuntu0.2 && rm -rf /var/lib/apt/lists/*"
+    "libnss3-tools=2:3.98-1ubuntu0.3 && rm -rf /var/lib/apt/lists/*"
 )
 
 
