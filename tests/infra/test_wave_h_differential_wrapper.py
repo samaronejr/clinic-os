@@ -2,8 +2,10 @@
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -12,13 +14,15 @@ BASE = "61918080021ddcfe2912e6922677143d5704d96d"
 FOUNDATION = "b39ae436590c8a9c00ad8fc93d619875d1822827"
 
 
-pytestmark = pytest.mark.skipif(
+requires_postgres = pytest.mark.skipif(
     os.environ.get("RUN_WAVE_H_DIFFERENTIAL_E2E") != "1",
     reason="requires a claimed PostgreSQL instance and locked base environments",
 )
 
 
-def _run_wrapper(base: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_wrapper(
+    base: str, tmp_path: Path, *, bin_dir: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     env = {
         key: value
         for key, value in os.environ.items()
@@ -26,7 +30,15 @@ def _run_wrapper(base: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
     }
     if base != BASE:
         env.pop("UPGRADE_REUSE_ENVIRONMENT", None)
-    return subprocess.run(  # noqa: S603 - fixed repository harness and pinned base
+    if bin_dir is not None:
+        env["PATH"] = str(bin_dir)
+    run_id = uuid4().hex
+    git = shutil.which("git")
+    assert git is not None
+    commit = subprocess.check_output(  # noqa: S603 - local fixed Git query
+        [git, "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    result = subprocess.run(  # noqa: S603 - fixed repository harness and pinned base
         [str(ROOT / "ops/testing/migration_upgrade.sh"), base],
         cwd=ROOT,
         env={
@@ -34,14 +46,24 @@ def _run_wrapper(base: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
             "GITHUB_WORKSPACE": str(ROOT),
             "RUNNER_TEMP": str(tmp_path),
             "UPGRADE_WAVE_H_DIFFERENTIAL": "1",
+            "UPGRADE_RUN_ID": run_id,
+            "UPGRADE_COMMIT_SHA": commit,
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         check=False,
     )
+    route = tmp_path / "migration-upgrade" / "verdict.json"
+    if route.is_file() and "verdict_destination_unwritable" not in result.stdout:
+        verdict = json.loads(route.read_text(encoding="utf-8"))
+        assert verdict.get("run_id") == run_id, result.stdout[-6000:]
+        assert verdict.get("commit_sha") == commit
+        assert float(verdict["started_at"]) > 0
+    return result
 
 
+@requires_postgres
 def test_wrapper_generates_native_probe_cases_and_publishes_verdict(
     tmp_path: Path,
 ) -> None:
@@ -65,6 +87,7 @@ def test_wrapper_generates_native_probe_cases_and_publishes_verdict(
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 
 
+@requires_postgres
 def test_wrapper_names_probe_case_generation_failure(tmp_path: Path) -> None:
     result = _run_wrapper(FOUNDATION, tmp_path)
     receipt = tmp_path / "migration-upgrade"
@@ -76,6 +99,110 @@ def test_wrapper_names_probe_case_generation_failure(tmp_path: Path) -> None:
     assert verdict["reason"] == "candidate_probe_case_generation"
     assert verdict["differential"]["probe_window_cases"] == 0
     assert not (receipt / "base").exists()
+    assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
+
+
+def _tools(tmp_path: Path, *, missing: str = "") -> Path:
+    bin_dir = tmp_path / "tools"
+    bin_dir.mkdir()
+    for name in (
+        "bash",
+        "git",
+        "python3",
+        "docker",
+        "uv",
+        "mkdir",
+        "mv",
+        "rm",
+        "head",
+        "od",
+        "tr",
+        "chmod",
+        "cmp",
+        "ln",
+        "realpath",
+        "grep",
+        "env",
+    ):
+        if name == missing:
+            continue
+        source = shutil.which(name)
+        if source is None:
+            # These tests stop before invoking Docker/uv.
+            assert name in {"docker", "uv"}
+            source = "/bin/false"
+        (bin_dir / name).symlink_to(source)
+    return bin_dir
+
+
+def _old_pass(tmp_path: Path) -> Path:
+    receipt = tmp_path / "migration-upgrade"
+    receipt.mkdir()
+    (receipt / "verdict.json").write_text(
+        '{"result":"PASS","run_id":"previous"}\n', encoding="utf-8"
+    )
+    return receipt
+
+
+def test_wrapper_terminates_with_current_interrupted_verdict(tmp_path: Path) -> None:
+    receipt = _old_pass(tmp_path)
+    bin_dir = _tools(tmp_path, missing="git")
+    git = shutil.which("git")
+    assert git is not None
+    shim = bin_dir / "git"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'if [[ "$3:$4" == worktree:add ]]; then kill -TERM "$PPID"; exit 0; fi\n'
+        f'exec {git} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+    assert result.returncode == 143, result.stdout
+    verdict = json.loads((receipt / "verdict.json").read_text(encoding="utf-8"))
+    assert verdict["result"] == "FAIL"
+    assert verdict["reason"] == "interrupted"
+    assert verdict["detail"] == "TERM"
+    assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
+
+
+def test_wrapper_records_setup_failure_without_python(tmp_path: Path) -> None:
+    receipt = _old_pass(tmp_path)
+    (receipt / "seed.pending").mkdir()
+    result = _run_wrapper(BASE, tmp_path, bin_dir=_tools(tmp_path, missing="python3"))
+    assert result.returncode == 127, result.stdout
+    verdict = json.loads((receipt / "verdict.json").read_text(encoding="utf-8"))
+    assert verdict["result"] == "FAIL"
+    assert verdict["reason"] == "setup"
+    assert verdict["detail"] == "missing_python3"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="requires actual write denial")
+def test_unwritable_destination_never_certifies_previous_run(tmp_path: Path) -> None:
+    receipt = _old_pass(tmp_path)
+    receipt.chmod(0o500)
+    try:
+        result = _run_wrapper(BASE, tmp_path)
+        assert result.returncode != 0
+        assert "verdict_destination_unwritable" in result.stdout
+        assert "== check out base" not in result.stdout
+        verdict = json.loads((receipt / "verdict.json").read_text(encoding="utf-8"))
+        assert verdict["run_id"] == "previous"
+    finally:
+        receipt.chmod(0o700)
+
+
+def test_wrapper_preserves_unowned_staging_paths(tmp_path: Path) -> None:
+    receipt = _old_pass(tmp_path)
+    base = receipt / "base"
+    base.mkdir()
+    original_inode = base.stat().st_ino
+    pending = receipt / "verdict.pending"
+    pending.write_text("unowned", encoding="utf-8")
+    result = _run_wrapper(BASE, tmp_path, bin_dir=_tools(tmp_path, missing="uv"))
+    assert pending.read_text(encoding="utf-8") == "unowned"
+    assert base.stat().st_ino == original_inode
+    assert result.returncode == 127
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 
 
