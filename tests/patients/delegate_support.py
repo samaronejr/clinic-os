@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
@@ -21,6 +21,7 @@ from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
 from django.test import override_settings
 from django.utils import timezone
+from psycopg import sql
 
 from identity.permission_support import permission_actor, permission_context
 from patient_service_support import runtime_role
@@ -161,15 +162,21 @@ def active_grant(
 
 
 @contextmanager
-def delegate_clock(at: datetime) -> Iterator[None]:
-    """Replace the owner-only clock, not authorization, and restore it exactly."""
+def patient_sql_clock(
+    name: Literal["delegate_now", "data_request_now"], at: datetime
+) -> Iterator[None]:
+    """Freeze only the clock expression and restore the installed definition."""
+    signature = f"clinic_app.{name}()"
+    query = "SELECT pg_catalog.pg_get_functiondef(%s::regprocedure)"
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(query, [signature])
+        row = cursor.fetchone()
+        assert row is not None
+        original = str(row[0])
+        assert original.count("statement_timestamp()") == 1
         cursor.execute(
-            "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
-            "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-            "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-            "$f$ SELECT %s::timestamptz $f$".replace("%s", "'" + at.isoformat() + "'")
+            original.replace("statement_timestamp()", sql.Literal(at).as_string())
         )
         cursor.execute("RESET ROLE")
     try:
@@ -177,10 +184,7 @@ def delegate_clock(at: datetime) -> Iterator[None]:
     finally:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
-            )
+            cursor.execute(original)
+            cursor.execute(query, [signature])
+            assert cursor.fetchone() == (original,)
             cursor.execute("RESET ROLE")

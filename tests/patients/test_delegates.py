@@ -45,8 +45,8 @@ from identity.permission_support import permission_context
 from patient_service_support import runtime_role
 from patients.delegate_support import (
     active_grant,
-    delegate_clock,
     delegate_world,
+    patient_sql_clock,
     request_grant,
 )
 from renewal.test_amendments import AMENDED
@@ -506,7 +506,7 @@ def test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending(
     with runtime_role():
         assert client.get("/patient/").status_code == 200
     # Equality is expired too; advancing past the boundary would miss >= bugs.
-    with delegate_clock(world.deadline):
+    with patient_sql_clock("delegate_now", world.deadline):
         with runtime_role():
             expired = client.get("/patient/")
         assert expired.status_code == 403

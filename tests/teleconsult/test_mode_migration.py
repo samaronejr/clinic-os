@@ -9,7 +9,7 @@ import pytest
 from apps.audit.services import verify_chain
 from apps.intake.patient_access import patient_session_context
 from apps.teleconsult import participants
-from django.db import connection
+from django.db import connection, transaction
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 
@@ -28,12 +28,12 @@ if TYPE_CHECKING:
 __all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 OLD = [("teleconsult", "0005_event_authority")]
-# Identity 0051 fences every policy that exists when it runs: as the reversible
-# descendant of these migrations it is unapplied before them and re-applied
-# after them, so the re-created capture policy never comes back unfenced.
+# Scribe adds the encounter-specific disclosure check to the capture routine;
+# identity then fences the policies. Replay both descendants in forward order.
 MODE_CHAIN = (
     ("teleconsult", "0006_mode_audit"),
     ("teleconsult", "0007_consented_capture"),
+    ("scribe", "0002_ai_disclosure_capture"),
     ("identity", "0051_enterprise_governance"),
 )
 
@@ -61,7 +61,8 @@ def catalog_hash() -> str:
             "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
             "WHERE n.nspname='clinic_app' AND p.proname IN "
             "('teleconsult_mode_transition_scope','teleconsult_mode_transition_audit',"
-            "'teleconsult_binding_guard','teleconsult_immutable') "
+            "'teleconsult_binding_guard','teleconsult_immutable',"
+            "'scribe_room_capture_allowed') "
             "ORDER BY p.proname"
         )
         return hashlib.sha256(repr(cursor.fetchall()).encode()).hexdigest()
@@ -94,25 +95,19 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
     installed = frozenset(executor.loader.applied_migrations)
     # A graph rollback now crosses protected transcript storage. Prove that it
     # refuses, then test the exact reversible teleconsult migrations in place.
-    try:
-        with pytest.raises(IrreversibleError):
-            executor.migrate(OLD)
-    finally:
-        # A failed graph rollback may already have removed reversible
-        # descendants. Reinstall them before comparing the protected graph.
-        MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
+    with pytest.raises(IrreversibleError), transaction.atomic():
+        executor.migrate(OLD)
     assert catalog_hash() == new_catalog
     assert history_hash(w.organization) == original
-    reversed_modes = False
-    try:
+    # Inspect actual backwards/forwards DDL and data. Do not commit this
+    # historical subset over functions subsequently replaced by other apps.
+    with transaction.atomic():
         mode_migrations(backwards=True)
-        reversed_modes = True
         old_catalog = catalog_hash()
         assert history_hash(w.organization) == original
         with setup_context(w.organization):
             verify_chain(w.organization)
         mode_migrations(backwards=False)
-        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
         with connection.cursor() as cursor:
@@ -122,16 +117,12 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
             )
             assert cursor.fetchone() == (True,)
         mode_migrations(backwards=True)
-        reversed_modes = True
         assert catalog_hash() == old_catalog
         assert history_hash(w.organization) == original
         mode_migrations(backwards=False)
-        reversed_modes = False
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
-    finally:
-        if reversed_modes:
-            mode_migrations(backwards=False)
+        transaction.set_rollback(True)
     assert (
         frozenset(MigrationExecutor(connection).loader.applied_migrations) == installed
     )

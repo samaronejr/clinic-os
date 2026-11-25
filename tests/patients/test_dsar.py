@@ -18,7 +18,6 @@ import dataclasses
 import io
 import json
 import zipfile
-from contextlib import contextmanager
 from datetime import timedelta
 from queue import Queue
 from threading import Barrier, Thread
@@ -80,15 +79,13 @@ from auth.stepup_test_support import verified_request
 from identity.permission_support import permission_actor, permission_context
 from patient_http_support import audit_event_types, audit_payloads
 from patient_service_support import runtime_role
-from patients.delegate_support import active_grant, delegate_world
+from patients.delegate_support import active_grant, delegate_world, patient_sql_clock
 from provider_gate_support import activate_capability, seed_capabilities
 from renewal.test_amendments import AMENDED
 from renewal.test_encounters import setup_context
 from renewal.test_patient_access import _issue, _redeem
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from datetime import datetime
     from pathlib import Path
 
     from apps.identity.delegates import DelegateReceipt
@@ -205,31 +202,6 @@ def _members(data: bytes) -> str:
             package.read(name).decode("utf-8", errors="replace")
             for name in package.namelist()
         )
-
-
-@contextmanager
-def data_request_clock(at: datetime) -> Iterator[None]:
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SET LOCAL ROLE clinic_resolver")
-        cursor.execute(
-            "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
-            "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-            "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-            "$f$ SELECT %s::timestamptz $f$".replace("%s", "'" + at.isoformat() + "'")
-        )
-        cursor.execute("RESET ROLE")
-    try:
-        yield
-    finally:
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
-            )
-            cursor.execute("RESET ROLE")
 
 
 def _submit(  # noqa: PLR0913 - the contract's full keyword surface
@@ -855,12 +827,15 @@ def test_overdue_is_database_time_and_equality_is_overdue(
         receipt.due_at,
         receipt.due_at + timedelta(days=1),
     ):
-        with data_request_clock(at), permission_context(rbac_graph, manager):
+        with (
+            patient_sql_clock("data_request_now", at),
+            permission_context(rbac_graph, manager),
+        ):
             (row,) = staff_data_subject_requests(clinic_id=rbac_graph.clinic_a)
             observed.append(row.overdue)
     assert observed == [False, True, True]
     pinned = receipt.due_at + timedelta(days=2)
-    with data_request_clock(pinned):
+    with patient_sql_clock("data_request_now", pinned):
         later = _submit(rbac_graph, world.patient_session_id, "portability")
     assert later.received_at == pinned
     assert later.due_at == pinned + DATA_REQUEST_DUE
