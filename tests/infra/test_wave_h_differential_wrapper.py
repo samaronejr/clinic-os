@@ -176,7 +176,8 @@ def test_wrapper_terminates_with_current_interrupted_verdict(tmp_path: Path) -> 
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$3:$4" == worktree:add ]]; then kill -TERM "$PPID"; exit 0; fi\n'
+        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        '    kill -TERM "$PPID"; exit 0\nfi\n'
         f'exec {git} "$@"\n',
         encoding="utf-8",
     )
@@ -297,9 +298,10 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         f'    {git} "$@" || exit $?\n'
-        '    path="${6%/*}/tenant-kek.secret"\n'
+        '    base="${@: -1}"; [[ "$1" == clone ]] || base="$6"\n'
+        '    path="${base%/*}/tenant-kek.secret"\n'
         "    (set -o noclobber; printf 'unowned key marker\\n' > \"$path\") || exit 1\n"
         '    stat -c "%d:%i" "$path" > "$RUNNER_TEMP/marker-identity"\n'
         "    exit\n"
@@ -316,12 +318,9 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
     result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
     assert result.returncode != 0, result.stdout
-    [marker] = tmp_path.glob("migration-upgrade-secrets.*/tenant-kek.secret")
-    identity = marker.stat()
-    assert f"{identity.st_dev}:{identity.st_ino}\n" == (
-        tmp_path / "marker-identity"
-    ).read_text(encoding="utf-8")
-    assert marker.read_bytes() == b"unowned key marker\n"
+    assert (tmp_path / "marker-identity").is_file()
+    assert "cannot overwrite existing file" in result.stdout
+    assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 
 
 @pytest.mark.parametrize("collision", [False, True])
@@ -332,22 +331,24 @@ def test_child_output_receipt_controls_cleanup(tmp_path: Path, collision: bool) 
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         f'    {git} "$@" || exit $?\n'
-        '    output="${6%/*}/ai-assertions.json"\n'
+        '    base="${@: -1}"; [[ "$1" == clone ]] || base="$6"\n'
+        '    output="${base%/*}/ai-assertions.json"\n'
         + ('    printf "unowned\\n" > "$output"\n' if collision else "")
         + """    python3 - "$output" <<'PY'
 import os
-import runpy
 import sys
 from pathlib import Path
 path = Path(sys.argv[1])
-helper = os.environ.get("UPGRADE_OWNED_OUTPUT_HELPER")
-if helper is None:
-    path.write_text("child wrote\\n")
-else:
-    with runpy.run_path(helper)["open_owned"](path) as output:
+try:
+    with path.open("x", encoding="utf-8") as output:
         output.write("child wrote\\n")
+except FileExistsError:
+    print("private_output_exists: ai-assertions.json")
+    assert path.read_bytes() == b"unowned\\n"
+else:
+    assert Path(os.environ["UPGRADE_PRIVATE_RUN_DIR"]).samefile(path.parent)
     print("owned child output created")
 PY
     exit 1
@@ -364,11 +365,87 @@ fi
     outputs = list(tmp_path.glob("migration-upgrade-secrets.*/ai-assertions.json"))
     if collision:
         assert "private_output_exists: ai-assertions.json" in result.stdout
-        [output] = outputs
-        assert output.read_bytes() == b"unowned\n"
     else:
         assert "owned child output created" in result.stdout
-        assert not outputs
+    assert not outputs
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_wrapper_refuses_preplaced_run_path(tmp_path: Path, directory: bool) -> None:
+    bin_dir = _tools(tmp_path, missing="mkdir")
+    mkdir = shutil.which("mkdir")
+    assert mkdir is not None
+    shim = bin_dir / "mkdir"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'path="${@: -1}"\n'
+        'if [[ "${path##*.}" =~ ^[0-9a-f]{32}$ ]]; then\n'
+        + (f'    {mkdir} -- "$path" || exit 1\n' if directory else "")
+        + (
+            '    printf "untouched\\n" > "$path/marker"\n'
+            if directory
+            else '    printf "untouched\\n" > "$path"\n'
+        )
+        + f'fi\nexec {mkdir} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1
+    assert "private_run_create_failed" in result.stdout
+    [path] = tmp_path.glob("migration-upgrade-secrets.*")
+    assert re.fullmatch(r"[0-9a-f]{32}", path.suffix[1:])
+    marker = path / "marker" if directory else path
+    assert marker.read_bytes() == b"untouched\n"
+
+
+def test_wrapper_removes_planted_tree_without_following_links(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "marker"
+    marker.write_bytes(b"untouched\n")
+    before = marker.stat().st_ino
+    bin_dir = _tools(tmp_path, missing="git")
+    shim = bin_dir / "git"
+    git = shutil.which("git")
+    assert git is not None
+    shim.write_text(
+        "#!/bin/bash\n"
+        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        '    [[ -n "${UPGRADE_PRIVATE_RUN_DIR:-}" ]] || exit 2\n'
+        '    mkdir "$UPGRADE_PRIVATE_RUN_DIR/planted" || exit 2\n'
+        '    printf "planted\\n" > "$UPGRADE_PRIVATE_RUN_DIR/planted/marker"\n'
+        '    ln -s -- "$RUNNER_TEMP/outside" "$UPGRADE_PRIVATE_RUN_DIR/planted/link"\n'
+        "    echo planted-tree\n"
+        "    exit 1\n"
+        f'fi\nexec {git} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1
+    assert "planted-tree" in result.stdout
+    assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
+    assert (marker.stat().st_ino, marker.read_bytes()) == (before, b"untouched\n")
+
+
+def test_f7_inbox_seed_refuses_without_private_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writer = ROOT / "ops/testing/migration_upgrade_inbox_seed.py"
+    if not writer.is_file():
+        pytest.skip("exercises the F7 reference writer")
+    from runpy import run_path  # noqa: PLC0415 - F7 writer is optional on this branch
+
+    monkeypatch.delenv("UPGRADE_PRIVATE_RUN_DIR", raising=False)
+    with pytest.raises(
+        RuntimeError, match="private_run_directory_required: inbox seed"
+    ):
+        run_path(str(writer))["seed_inbox"]({})
 
 
 @pytest.mark.parametrize("alias_root", [False, True])
@@ -404,7 +481,8 @@ def test_concurrent_wrapper_with_same_ci_identity_cannot_certify(
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$3:$4" == worktree:add ]]; then echo staging; read -r _; exit 1; fi\n'
+        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        "    echo staging; read -r _; exit 1\nfi\n"
         f'exec {git} "$@"\n',
         encoding="utf-8",
     )

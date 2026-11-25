@@ -49,17 +49,15 @@ psql_super() {
 # Cleanup is armed before any resource exists so every failure path drops
 # only what this run created; the original exit status is preserved.
 db_created=0
-worktree_added=0
-secret_dir="${RUNNER_TEMP:-/tmp}/migration-upgrade-secrets.$$"
-readonly base_worktree="$secret_dir/base"
-readonly seed_file="$secret_dir/seed.json"
-secret_dir_created=0
-wave_added=0
+secret_dir=""
+run_name=""
+run_fd=""
+run_identity=""
 wave_db_created=0
 wave_db="${upgrade_db}_wave"
-wave_tree="$secret_dir/wave"
+wave_tree=""
 differential_stage=setup
-readonly differential_report="$secret_dir/differential.json"
+differential_report=""
 verdict_ready=0
 setup_detail=""
 project_root=""
@@ -67,17 +65,8 @@ run_nonce=""
 publication_count=0
 declare -A owned_paths=()
 declare -A publication_pending=()
-declare -a private_files=()
-base_manifest=""
-wave_manifest=""
 destination_fd=""
 running_published=0
-
-remember_path() {
-    local identity
-    identity="$(stat -c '%d:%i' -- "$1")" || return 1
-    owned_paths["$1"]="$identity:$run_nonce"
-}
 
 remember_open_file() {
     local identity
@@ -93,47 +82,43 @@ write_private_key() {
         return 1
     fi
     set +o noclobber
-    remember_open_file "$path" "$fd"
-    private_files+=("$path")
     chmod 600 -- "/proc/$$/fd/$fd"
     head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >&"$fd"
     exec {fd}>&-
 }
 
-remember_file() {
-    if [[ -e "$1" && ! -L "$1" ]]; then
-        remember_path "$1" || return 1
-        private_files+=("$1")
-    fi
-}
+remove_run_tree() {
+    python3 - "$root_fd" "$run_fd" "$run_name" "$run_identity" <<'PYEOF'
+import os
+import shutil
+import stat
+import sys
 
-collect_output_receipts() {
-    local nonce identity path
-    [[ -n "${UPGRADE_OWNED_OUTPUT_FD:-}" ]] || return 0
-    while IFS=$'\t' read -r nonce identity path; do
-        [[ "$nonce" = "$run_nonce" && "$identity" =~ ^[0-9]+:[0-9]+$ ]] || continue
-        case "$path" in
-            "$secret_dir/ai-assertions.json"|"$secret_dir/native/ai-assertions.json"|\
-            "$secret_dir/ai-assertions-differential.json") ;;
-            "$secret_dir"/comms-inbox-*.secret)
-                [[ "${path#"$secret_dir"/}" =~ ^comms-inbox-[0-9a-f]{32}\.secret$ ]] || continue
-                ;;
-            *) continue ;;
-        esac
-        owned_paths["$path"]="$identity:$nonce"
-        private_files+=("$path")
-    done < "/proc/$$/fd/$UPGRADE_OWNED_OUTPUT_FD"
-}
+parent, root = map(int, sys.argv[1:3])
+name, expected = sys.argv[3:]
 
-tree_manifest() {
-    find -P "$1" -printf '%D:%i %y %p\0' | sort -z | sha256sum
-}
+def check_root():
+    entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    handle = os.fstat(root)
+    if not stat.S_ISDIR(entry.st_mode) or not os.path.samestat(entry, handle):
+        raise RuntimeError("private_run_replaced")
+    if f"{handle.st_dev}:{handle.st_ino}" != expected:
+        raise RuntimeError("private_run_identity_mismatch")
 
-remove_owned_file() {
-    if owns_path "$1"; then
-        rm -f -- "$1"
-        unset 'owned_paths[$1]'
-    fi
+check_root()
+if not shutil.rmtree.avoids_symlink_attacks:
+    raise RuntimeError("private_run_cleanup_unsupported")
+# Enumerate and delete through the original handle, never through a
+# pathname that can be redirected to an unrelated directory.
+for item in os.listdir(root):
+    entry = os.stat(item, dir_fd=root, follow_symlinks=False)
+    if stat.S_ISDIR(entry.st_mode):
+        shutil.rmtree(item, dir_fd=root)
+    else:
+        os.unlink(item, dir_fd=root)
+check_root()
+os.rmdir(name, dir_fd=parent)
+PYEOF
 }
 
 owns_path() {
@@ -260,20 +245,12 @@ cleanup() {
             fi
         fi
         if [ "$verdict_ready" = 1 ]; then
-            if [ "$secret_dir_created" = 0 ] ||
+            if [ -z "$run_identity" ] ||
                 [ "$differential_stage" = setup ] || [ "$differential_stage" = interrupted ]; then
                 publish_shell_verdict || echo "verdict_destination_unwritable (run $run_id)" >&2
             elif ! publish_verdict FAIL; then
                 publish_shell_verdict || echo "verdict_destination_unwritable (run $run_id)" >&2
             fi
-        fi
-    fi
-    if [ "$worktree_added" = 1 ] && owns_path "$secret_dir" && owns_path "$base_worktree"; then
-        if [[ -n "$base_manifest" && "$(tree_manifest "$base_worktree")" = "$base_manifest" ]] &&
-            owns_path "$secret_dir" && owns_path "$base_worktree"; then
-            git -C "$project_root" worktree remove --force "$base_worktree" || true
-        elif owns_path "$secret_dir" && owns_path "$base_worktree"; then
-            rmdir -- "$base_worktree" 2>/dev/null || true
         fi
     fi
     if [ "$db_created" = 1 ]; then
@@ -282,29 +259,10 @@ cleanup() {
     if [ "$wave_db_created" = 1 ]; then
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $wave_db" || true
     fi
-    if [ "$wave_added" = 1 ] && owns_path "$secret_dir" && owns_path "$wave_tree"; then
-        if [[ -n "$wave_manifest" && "$(tree_manifest "$wave_tree")" = "$wave_manifest" ]] &&
-            owns_path "$secret_dir" && owns_path "$wave_tree"; then
-            git -C "$project_root" worktree remove --force "$wave_tree" || true
-        elif owns_path "$secret_dir" && owns_path "$wave_tree"; then
-            rmdir -- "$wave_tree" 2>/dev/null || true
-        fi
-    fi
     local pending contents fd
-    if [ "$secret_dir_created" = 1 ] && owns_path "$secret_dir"; then
-        collect_output_receipts
-        for pending in "${private_files[@]}"; do
-            owns_path "$secret_dir" || break
-            if [[ "$pending" != "$secret_dir/native/"* ]] || owns_path "$secret_dir/native"; then
-                remove_owned_file "$pending"
-            fi
-        done
-        if owns_path "$secret_dir" && owns_path "$secret_dir/native"; then
-            rmdir -- "$secret_dir/native" || true
-        fi
-        if owns_path "$secret_dir"; then
-            rmdir -- "$secret_dir" || true
-        fi
+    if [[ -n "$run_identity" ]] && ! remove_run_tree; then
+        echo "migration-upgrade: private_run_cleanup_failed" >&2
+        if [ "$rc" = 0 ]; then rc=1; fi
     fi
     for pending in "${!publication_pending[@]}"; do
         if owns_path "$pending" && [[ ! -L "$pending" ]] &&
@@ -405,25 +363,27 @@ readonly project_root
 export PYTHONDONTWRITEBYTECODE=1
 umask 077
 
-# The workflow publishes work_root: no temporary verifier receipt or KEK
-# belongs there. Claim our private tree before staging any of its contents.
-mkdir -m 0700 "$secret_dir"
-remember_path "$secret_dir"
-secret_dir_created=1
-set -o noclobber
-exec {UPGRADE_OWNED_OUTPUT_FD}> "$secret_dir/.ownership-receipts"
-set +o noclobber
-remember_open_file "$secret_dir/.ownership-receipts" "$UPGRADE_OWNED_OUTPUT_FD"
-private_files+=("$secret_dir/.ownership-receipts")
-export UPGRADE_OWNED_OUTPUT_FD
-export UPGRADE_OWNED_OUTPUT_NONCE="$run_nonce"
-export UPGRADE_OWNED_OUTPUT_HELPER="$project_root/ops/testing/migration_upgrade_owned_output.py"
+# The public artifact directory never contains fixture material.
+run_name="migration-upgrade-secrets.$run_nonce"
+if ! mkdir -m 0700 -- "$root_handle/$run_name"; then
+    setup_detail=private_run_create_failed
+    exit 1
+fi
+exec {run_fd}< "$root_handle/$run_name"
+secret_dir="/proc/$$/fd/$run_fd"
+[[ ! -L "$root_handle/$run_name" && -d "$secret_dir" ]]
+opened_identity="$(stat -Lc '%d:%i' -- "$secret_dir")"
+[[ "$(stat -c '%d:%i:%a' -- "$root_handle/$run_name")" = "$opened_identity:700" ]]
+run_identity="$opened_identity"
+readonly base_worktree="$secret_dir/base" seed_file="$secret_dir/seed.json"
+wave_tree="$secret_dir/wave"
+differential_report="$secret_dir/differential.json"
+export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
+mkdir -m 0700 -- "$secret_dir/tmp" "$secret_dir/uv-cache"
+export TMPDIR="$secret_dir/tmp" UV_CACHE_DIR="$secret_dir/uv-cache"
 echo "== check out base $base_sha =="
-mkdir -- "$base_worktree"
-remember_path "$base_worktree"
-worktree_added=1
-git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
-base_manifest="$(tree_manifest "$base_worktree")"
+git clone --quiet --shared --no-checkout -- "$project_root" "$base_worktree"
+git -C "$base_worktree" checkout --quiet --detach "$base_sha"
 
 echo "== sync base dependencies =="
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
@@ -434,7 +394,6 @@ if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
 else
     (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
 fi
-base_manifest="$(tree_manifest "$base_worktree")"
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
@@ -452,6 +411,7 @@ base_manage() (
     cd "$base_worktree"
     export APP_DATABASE_URL="$owner_dsn"
     export CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file
+    export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
     export CLINIC_SECRET_DIR="$secret_dir" DJANGO_SETTINGS_MODULE=config.settings.base
     uv run --frozen --no-sync --no-env-file python manage.py "$@"
 )
@@ -469,9 +429,7 @@ create_and_migrate_base() {
     echo "== migrate at base revision =="
     base_manage migrate --no-input
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_SEED_STATE"])["observe_base"]()'
-    remember_file "$UPGRADE_BASE_OBSERVATION"
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["capture_base_counts"]()'
-    remember_file "$UPGRADE_SEED_COUNTS"
 }
 
 seed_base() {
@@ -480,13 +438,10 @@ seed_base() {
     if [ -n "$differential" ]; then
         differential_stage=candidate_probe_case_generation
         collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json" || rc=$?
-        remember_file "$secret_dir/lane-probes.json"
     else
         UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
             base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py" || rc=$?
     fi
-    remember_file "$seed_file"
-    remember_file "$secret_dir/seed.pending"
     return "$rc"
 }
 
@@ -504,21 +459,16 @@ rehearse_wave_h() {
     local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
     local native="$secret_dir/native"
     mkdir -m 700 "$native"
-    remember_path "$native"
     write_private_key "$native/tenant-kek.secret"
     differential_stage=reference_worktree
     if [ "$differential" = 1 ]; then
-        mkdir -- "$wave_tree"
-        remember_path "$wave_tree"
-        wave_added=1
-        git -C "$project_root" worktree add --detach "$wave_tree" "$wave_sha"
-        wave_manifest="$(tree_manifest "$wave_tree")"
+        git clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
+        git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
         if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
             ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
         else
             (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
         fi
-        wave_manifest="$(tree_manifest "$wave_tree")"
     else
         wave_tree="$(realpath "$differential")"
     fi
@@ -536,8 +486,6 @@ rehearse_wave_h() {
     base_manage migrate --no-input
     differential_stage=reference_probe_case_generation
     collect_probe_cases "$wave_tree" "$native/seed.json" "$native/probes.json"
-    remember_file "$native/seed.json"
-    remember_file "$native/probes.json"
     differential_stage=reference_forward_migration
     (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
@@ -557,7 +505,6 @@ keys = ("APP_DATABASE_URL", "UPGRADE_APP_DATABASE_URL", "UPGRADE_ADMIN_DATABASE_
         "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES")
 Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}))
 PYEOF
-    remember_file "$native/environment.json"
 }
 
 export UPGRADE_SEED_STATE="$seed_state"
@@ -576,7 +523,7 @@ else
     upgrade_db="${upgrade_db}_retry"
     for artifact in "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
         "$seed_file" "$secret_dir/seed.pending" "$secret_dir/lane-probes.json"; do
-        remove_owned_file "$artifact"
+        rm -f -- "$artifact"
     done
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
@@ -584,7 +531,6 @@ else
 fi
 differential_stage=forward_rehearsal
 base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["verify_seed_inventory"]()'
-remember_file "$UPGRADE_SEED_WRITES"
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
 # Bases that already ship tenancy.0003 install the boundary during the
@@ -654,7 +600,6 @@ from ops.testing.migration_upgrade_rewrite_graph import (
 validate_default_declarations()
 validate_transform_declarations()
 Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
-remember_file "$UPGRADE_AI_COVERAGE"
 if [ -n "$differential" ]; then
     rehearse_wave_h
     differential_stage=verifier_differential
@@ -674,10 +619,6 @@ if [ -n "$differential" ]; then
         UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
         tests/infra/wave_h_entry_differential.py "$wave_tree") || differential_rc=$?
-    remember_file "$differential_report"
-    for artifact in differential-base.json differential-lane.json; do
-        remember_file "$secret_dir/$artifact"
-    done
     if [ "$differential_rc" != 0 ]; then
         exit "$differential_rc"
     fi
@@ -695,7 +636,6 @@ differential_stage=clean_forward_verification
     UPGRADE_SEED_FILE="$seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
-remember_file "$secret_dir/verified.json"
 
 echo "== confirm no migration drift =="
 (cd "$project_root" && env \
@@ -706,7 +646,6 @@ echo "== confirm no migration drift =="
 python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
     "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
     "$UPGRADE_DATABASE_RECREATED"
-remember_file "$secret_dir/verdict.json"
 # Check the published artifact, not just the writer's in-memory object.
 if ! cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
     echo "published upgrade verdict disagrees with the verified base histories" >&2
