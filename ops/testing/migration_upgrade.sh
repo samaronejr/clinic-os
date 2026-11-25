@@ -66,18 +66,74 @@ setup_detail=""
 project_root=""
 run_nonce=""
 publication_count=0
-publication_pending=()
+declare -A owned_paths=()
+declare -A publication_pending=()
+declare -a private_files=()
+base_manifest=""
+wave_manifest=""
+destination_fd=""
+running_published=0
+
+remember_path() {
+    local identity
+    identity="$(stat -c '%d:%i' -- "$1")" || return 1
+    owned_paths["$1"]="$identity:$run_nonce"
+}
+
+remember_file() {
+    if [[ -e "$1" && ! -L "$1" ]]; then
+        remember_path "$1" || return 1
+        private_files+=("$1")
+    fi
+}
+
+tree_manifest() {
+    find -P "$1" -printf '%D:%i %y %p\0' | sort -z | sha256sum
+}
+
+remove_owned_file() {
+    if owns_path "$1"; then
+        rm -f -- "$1"
+        unset 'owned_paths[$1]'
+    fi
+}
+
+owns_path() {
+    local identity
+    [[ -n "${owned_paths[$1]:-}" ]] || return 1
+    identity="$(stat -c '%d:%i' -- "$1" 2>/dev/null)" || return 1
+    [[ "$identity:$run_nonce" = "${owned_paths[$1]}" ]]
+}
+
+owns_destination_lock() {
+    local line
+    [[ -n "$destination_fd" ]] || return 1
+    while IFS= read -r line; do
+        [[ "$line" == lock:*FLOCK*WRITE* ]] && return 0
+    done < "/proc/$$/fdinfo/$destination_fd"
+    return 1
+}
 
 publish_shell_verdict() {
-    local result="${1:-FAIL}" pending
+    local result="${1:-FAIL}" pending fd
     publication_count=$((publication_count + 1))
     pending="$work_root/.verdict-$run_nonce-$publication_count.pending"
-    (set -o noclobber
-        printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","run_nonce":"%s","commit_sha":"%s","started_at":"%s"}\n' \
-            "$result" "$differential_stage" "$setup_detail" "$run_id" "$run_nonce" "$commit_sha" "$started_at" > "$pending"
-    ) || return 1
-    publication_pending+=("$pending")
-    mv -T -- "$pending" "$work_root/verdict.json"
+    set -o noclobber
+    if ! exec {fd}> "$pending"; then
+        set +o noclobber
+        return 1
+    fi
+    set +o noclobber
+    publication_pending["$pending"]="$fd"
+    local identity
+    identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$fd")" || return 1
+    owned_paths["$pending"]="$identity:$run_nonce"
+    printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","run_nonce":"%s","commit_sha":"%s","started_at":"%s"}\n' \
+        "$result" "$differential_stage" "$setup_detail" "$run_id" "$run_nonce" "$commit_sha" "$started_at" >&"$fd" || return 1
+    owns_path "$pending" || return 1
+    mv -T -- "$pending" "$work_root/verdict.json" || return 1
+    unset 'publication_pending[$pending]' 'owned_paths[$pending]'
+    exec {fd}>&-
 }
 
 validate_root() {
@@ -129,8 +185,17 @@ with pending.open("x", encoding="utf-8") as stream:
         stream.write(json.dumps(verdict) + "\n")
         stream.flush()
         pending.replace(target)
-    finally:
-        pending.unlink(missing_ok=True)
+    except BaseException:
+        import os
+
+        try:
+            if os.path.samestat(pending.lstat(), os.fstat(stream.fileno())):
+                with pending.open(encoding="utf-8") as receipt:
+                    if json.load(receipt).get("run_nonce") == nonce:
+                        pending.unlink()
+        except (OSError, ValueError):
+            pass
+        raise
 PYEOF
 }
 
@@ -140,6 +205,17 @@ cleanup() {
     trap '' TERM INT HUP
     if [ "$rc" != 0 ]; then
         echo "migration-upgrade: FAIL / $differential_stage${setup_detail:+: $setup_detail} (run $run_id${run_nonce:+, nonce $run_nonce})" >&2
+        if [ "$differential_stage" = interrupted ] && [ "$running_published" = 0 ] &&
+            owns_destination_lock; then
+            # The shell can dispatch a trap before observing flock's status.
+            # fdinfo proves that this descriptor, not a contender, holds it.
+            verdict_ready=1
+            if publish_shell_verdict RUNNING; then
+                printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
+            else
+                echo "verdict_destination_unwritable (run $run_id)" >&2
+            fi
+        fi
         if [ "$verdict_ready" = 1 ]; then
             if [ "$secret_dir_created" = 0 ] ||
                 [ "$differential_stage" = setup ] || [ "$differential_stage" = interrupted ]; then
@@ -149,8 +225,12 @@ cleanup() {
             fi
         fi
     fi
-    if [ "$worktree_added" = 1 ]; then
-        git -C "$project_root" worktree remove --force "$base_worktree" || true
+    if [ "$worktree_added" = 1 ] && owns_path "$secret_dir" && owns_path "$base_worktree"; then
+        if [[ -n "$base_manifest" && "$(tree_manifest "$base_worktree")" = "$base_manifest" ]]; then
+            git -C "$project_root" worktree remove --force "$base_worktree" || true
+        else
+            rmdir -- "$base_worktree" 2>/dev/null || true
+        fi
     fi
     if [ "$db_created" = 1 ]; then
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $upgrade_db" || true
@@ -158,15 +238,35 @@ cleanup() {
     if [ "$wave_db_created" = 1 ]; then
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $wave_db" || true
     fi
-    if [ "$wave_added" = 1 ]; then
-        git -C "$project_root" worktree remove --force "$wave_tree" || true
+    if [ "$wave_added" = 1 ] && owns_path "$secret_dir" && owns_path "$wave_tree"; then
+        if [[ -n "$wave_manifest" && "$(tree_manifest "$wave_tree")" = "$wave_manifest" ]]; then
+            git -C "$project_root" worktree remove --force "$wave_tree" || true
+        else
+            rmdir -- "$wave_tree" 2>/dev/null || true
+        fi
     fi
-    if [ "$secret_dir_created" = 1 ]; then
-        rm -rf "$secret_dir"
+    local pending contents fd
+    if [ "$secret_dir_created" = 1 ] && owns_path "$secret_dir"; then
+        for pending in "${private_files[@]}"; do
+            if [[ "$pending" != "$secret_dir/native/"* ]] || owns_path "$secret_dir/native"; then
+                remove_owned_file "$pending"
+            fi
+        done
+        if owns_path "$secret_dir/native"; then
+            rmdir -- "$secret_dir/native" || true
+        fi
+        rmdir -- "$secret_dir" || true
     fi
-    if ((${#publication_pending[@]})); then
-        rm -f -- "${publication_pending[@]}" || true
-    fi
+    for pending in "${!publication_pending[@]}"; do
+        if owns_path "$pending" && [[ ! -L "$pending" ]] &&
+            IFS= read -r contents < "$pending" &&
+            [[ "$contents" == *'"run_nonce":"'"$run_nonce"'"'* ]] &&
+            owns_path "$pending"; then
+            rm -f -- "$pending" || true
+        fi
+        fd="${publication_pending[$pending]}"
+        exec {fd}>&-
+    done
     exit $rc
 }
 interrupt() {
@@ -187,7 +287,7 @@ fi
 differential_stage=unsafe_destination
 validate_root
 differential_stage=setup
-for required in mkdir realpath flock od tr mv; do
+for required in mkdir realpath flock od tr mv stat; do
     command -v "$required" >/dev/null || { setup_detail="missing_$required"; exit 127; }
 done
 run_nonce="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
@@ -209,10 +309,7 @@ exec {destination_fd}< "$root_handle/migration-upgrade"
 destination_handle="/proc/$$/fd/$destination_fd"
 [[ "$(realpath -e -- "$destination_handle")" = "$work_root" ]]
 validate_root
-differential_stage=concurrent_run
-flock -n -x -E 75 "$destination_fd"
 work_root="$destination_handle"
-printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
 
 project_root="${GITHUB_WORKSPACE:-${BASH_SOURCE[0]%/*}/../..}"
 requested_commit="$commit_sha"
@@ -221,13 +318,17 @@ if command -v git >/dev/null; then
         commit_sha="$resolved_sha"
     fi
 fi
+differential_stage=concurrent_run
+flock -n -x -E 75 "$destination_fd"
 differential_stage=verdict_destination_unwritable
 # Arm failure publication before the atomic replacement. A signal delivered
 # at the rename boundary already has the lock, nonce, and writable handle.
 verdict_ready=1
 publish_shell_verdict RUNNING
+running_published=1
+printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
 differential_stage=setup
-for required in git python3 docker uv mkdir rm head od tr chmod cmp ln realpath grep env; do
+for required in git python3 docker uv mkdir rm rmdir head od tr chmod cmp ln realpath grep env find sort sha256sum; do
     if ! command -v "$required" >/dev/null; then
         setup_detail="missing_$required"
         exit 127
@@ -252,14 +353,19 @@ if [ -z "$base_sha" ]; then
     exit 1
 fi
 readonly project_root
+export PYTHONDONTWRITEBYTECODE=1
 
 # The workflow publishes work_root: no temporary verifier receipt or KEK
 # belongs there. Claim our private tree before staging any of its contents.
 mkdir -m 0700 "$secret_dir"
+remember_path "$secret_dir"
 secret_dir_created=1
 echo "== check out base $base_sha =="
+mkdir -- "$base_worktree"
+remember_path "$base_worktree"
 worktree_added=1
 git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
+base_manifest="$(tree_manifest "$base_worktree")"
 
 echo "== sync base dependencies =="
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
@@ -270,10 +376,12 @@ if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
 else
     (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
 fi
+base_manifest="$(tree_manifest "$base_worktree")"
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
+remember_file "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
 
 readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
@@ -306,18 +414,25 @@ create_and_migrate_base() {
     echo "== migrate at base revision =="
     base_manage migrate --no-input
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_SEED_STATE"])["observe_base"]()'
+    remember_file "$UPGRADE_BASE_OBSERVATION"
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["capture_base_counts"]()'
+    remember_file "$UPGRADE_SEED_COUNTS"
 }
 
 seed_base() {
+    local rc=0
     echo "== seed representative data at base revision =="
     if [ -n "$differential" ]; then
         differential_stage=candidate_probe_case_generation
-        collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json"
-        return $?
+        collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json" || rc=$?
+        remember_file "$secret_dir/lane-probes.json"
+    else
+        UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
+            base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py" || rc=$?
     fi
-    UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
-        base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py"
+    remember_file "$seed_file"
+    remember_file "$secret_dir/seed.pending"
+    return "$rc"
 }
 
 collect_probe_cases() {
@@ -334,17 +449,23 @@ rehearse_wave_h() {
     local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
     local native="$secret_dir/native"
     mkdir -m 700 "$native"
+    remember_path "$native"
     head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$native/tenant-kek.secret"
+    remember_file "$native/tenant-kek.secret"
     chmod 600 "$native/tenant-kek.secret"
     differential_stage=reference_worktree
     if [ "$differential" = 1 ]; then
+        mkdir -- "$wave_tree"
+        remember_path "$wave_tree"
         wave_added=1
         git -C "$project_root" worktree add --detach "$wave_tree" "$wave_sha"
+        wave_manifest="$(tree_manifest "$wave_tree")"
         if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
             ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
         else
             (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
         fi
+        wave_manifest="$(tree_manifest "$wave_tree")"
     else
         wave_tree="$(realpath "$differential")"
     fi
@@ -362,6 +483,8 @@ rehearse_wave_h() {
     base_manage migrate --no-input
     differential_stage=reference_probe_case_generation
     collect_probe_cases "$wave_tree" "$native/seed.json" "$native/probes.json"
+    remember_file "$native/seed.json"
+    remember_file "$native/probes.json"
     differential_stage=reference_forward_migration
     (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
@@ -381,6 +504,7 @@ keys = ("APP_DATABASE_URL", "UPGRADE_APP_DATABASE_URL", "UPGRADE_ADMIN_DATABASE_
         "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES")
 Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}))
 PYEOF
+    remember_file "$native/environment.json"
 }
 
 export UPGRADE_SEED_STATE="$seed_state"
@@ -397,14 +521,17 @@ else
     psql_super -d postgres -qc "DROP DATABASE $upgrade_db"
     db_created=0
     upgrade_db="${upgrade_db}_retry"
-    rm -f "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
-        "$seed_file" "$secret_dir/seed.pending" "$secret_dir/lane-probes.json"
+    for artifact in "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
+        "$seed_file" "$secret_dir/seed.pending" "$secret_dir/lane-probes.json"; do
+        remove_owned_file "$artifact"
+    done
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
     seed_base
 fi
 differential_stage=forward_rehearsal
 base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_ROWS_HELPER"])["verify_seed_inventory"]()'
+remember_file "$UPGRADE_SEED_WRITES"
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
 # Bases that already ship tenancy.0003 install the boundary during the
@@ -484,6 +611,7 @@ from ops.testing.migration_upgrade_rewrite_graph import (
 validate_default_declarations()
 validate_transform_declarations()
 Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
+remember_file "$UPGRADE_AI_COVERAGE"
 if [ -n "$differential" ]; then
     rehearse_wave_h
     differential_stage=verifier_differential
@@ -502,6 +630,10 @@ if [ -n "$differential" ]; then
         UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
         tests/infra/wave_h_entry_differential.py "$wave_tree")
+    remember_file "$differential_report"
+    for artifact in differential-base.json differential-lane.json ai-assertions.json; do
+        remember_file "$secret_dir/$artifact"
+    done
 fi
 differential_stage=clean_forward_verification
 (cd "$project_root" && env \
@@ -516,6 +648,8 @@ differential_stage=clean_forward_verification
     UPGRADE_SEED_FILE="$seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
+remember_file "$secret_dir/verified.json"
+remember_file "$secret_dir/ai-assertions.json"
 
 echo "== confirm no migration drift =="
 (cd "$project_root" && env \
@@ -526,6 +660,7 @@ echo "== confirm no migration drift =="
 python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
     "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
     "$UPGRADE_DATABASE_RECREATED"
+remember_file "$secret_dir/verdict.json"
 # Check the published artifact, not just the writer's in-memory object.
 if ! cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
     echo "published upgrade verdict disagrees with the verified base histories" >&2
