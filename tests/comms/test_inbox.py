@@ -2722,3 +2722,163 @@ def test_a_claimed_outcome_and_its_audit_event_commit_together(
         None,
         0,
     )
+
+
+def _dispatch_counted(
+    graph: RbacGraph,
+    message_id: UUID,
+    calls: list[UUID],
+    wrapper: Callable[..., object] | None = None,
+) -> str:
+    """Execute the message's attempt as the real runtime, counting provider calls."""
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    adapter = integration._SEND_ADAPTERS[attempt.provider]
+    original = adapter.send
+
+    def send(prepared: object, *, operation_id: UUID) -> object:
+        calls.append(operation_id)
+        return original(prepared, operation_id=operation_id)
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(_real_runtime())
+        stack.enter_context(patch.object(adapter, "send", send))
+        if wrapper is not None:
+            stack.enter_context(connection.execute_wrapper(wrapper))
+        try:
+            return execute_operation(attempt.pk)
+        except BaseException as error:
+            if isinstance(error, KeyboardInterrupt):
+                raise
+            return "raised"
+
+
+def _sent_once(graph: RbacGraph, message_id: UUID, calls: list[UUID]) -> None:
+    assert len(calls) == 1
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+def test_a_kill_before_any_default_statement_of_a_send_only_stalls_it(
+    world: InboxWorld,
+    app_database_url: str,
+    record_property: Callable[[str, object], None],
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    conversation = _only_conversation(graph).pk
+    # Derive the statements one clean send issues on the default connection.
+    recorded: list[str] = []
+
+    def record(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        recorded.append(sql)
+        return execute(sql, params, *rest)
+
+    clean = _send(graph, conversation, body="Olá").message_id
+    calls: list[UUID] = []
+    assert _dispatch_counted(graph, clean, calls, record) == "succeeded"
+    _sent_once(graph, clean, calls)
+    total = len(recorded)
+    record_property("default_statements", total)
+    assert total > 0
+    killer = _DefaultKiller(app_database_url)
+    for index in range(total):
+        message_id = _send(graph, conversation, body=f"Olá {index}").message_id
+        calls = []
+        counter = [0]
+
+        def strike(
+            execute: Callable[..., object],
+            sql: str,
+            params: object,
+            *rest: object,
+            at: int = index,
+            tally: list[int] = counter,
+        ) -> object:
+            if tally[0] == at:
+                killer.kill_now()
+            tally[0] += 1
+            return execute(sql, params, *rest)
+
+        before = killer.kills
+        outcome = _dispatch_counted(graph, message_id, calls, strike)
+        assert killer.kills == before + 1, (index, recorded[index][:80])
+        if outcome != "succeeded":
+            # Nothing was sent; the outbox redelivers it once.
+            assert calls == [], (index, recorded[index][:80])
+            outcome = _dispatch_counted(graph, message_id, calls)
+        assert outcome == "succeeded", (index, recorded[index][:80])
+        _sent_once(graph, message_id, calls)
+
+
+def test_a_real_decrypt_failure_still_fails_closed(world: InboxWorld) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    calls: list[UUID] = []
+    # A wrong key is no lost connection: nothing is re-run or sent.
+    with patch("apps.tenancy.envelope._kek", return_value="0" * 64):
+        outcome = _dispatch_counted(graph, message_id, calls)
+    assert outcome != "succeeded"
+    assert calls == []
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.provider_reference is None
+
+
+class _Crash(BaseException):
+    """The worker process dying right after the row claim committed."""
+
+
+@pytest.mark.parametrize("loss", ["guc_reset", "crash", "lost_ack"])
+def test_a_row_claim_lost_after_its_commit_sends_once_on_redelivery(
+    world: InboxWorld, app_database_url: str, loss: str
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    killer = _DefaultKiller(app_database_url)
+    claimed: list[bool] = []
+    original = integration._claim_row
+
+    def claim_row(scope: object) -> object:
+        decision = original(scope)  # type: ignore[arg-type]
+        claimed.append(True)
+        if loss == "lost_ack":
+
+            def lost() -> None:
+                msg = "server closed the connection after the commit"
+                raise OperationalError(msg)
+
+            transaction.on_commit(lost)
+        return decision
+
+    def after_commit(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        if loss == "guc_reset" and claimed and "RESET app.current_user_id" in sql:
+            claimed.clear()
+            killer.kill_now()
+        return execute(sql, params, *rest)
+
+    def crash(*_args: object, **_kwargs: object) -> object:
+        raise _Crash
+
+    calls: list[UUID] = []
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(integration, "_claim_row", claim_row))
+        if loss == "crash":
+            stack.enter_context(patch.object(integration, "_send_claimed", crash))
+        first = _dispatch_counted(graph, message_id, calls, after_commit)
+    assert first != "succeeded"
+    assert calls == []
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.status == "in_progress"
+    # Redelivery returns the provably unsent attempt to pending and sends once.
+    assert _dispatch_counted(graph, message_id, calls) == "succeeded"
+    _sent_once(graph, message_id, calls)

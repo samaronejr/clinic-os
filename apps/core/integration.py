@@ -54,11 +54,11 @@ if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
     from django.db.backends.utils import CursorWrapper
 
+import psycopg
 import rfc8785
 from django.db import (
     DatabaseError,
     InterfaceError,
-    OperationalError,
     connection,
     connections,
     transaction,
@@ -618,6 +618,29 @@ def _operation_lock(operation_id: UUID) -> Iterator[bool]:
         lock_connection.close()
 
 
+def _return_orphan_to_pending(scope: OperationScope) -> None:
+    """Return an abandoned, provably unsent attempt to pending before the claim.
+
+    Under the operation lock an in-progress row was left by a claimant that
+    died after committing the row claim (a kill before the GUC reset, a crash,
+    a lost commit ack). If the database proves it never sent (no permit claim,
+    no provider reference, columns clinic_app cannot write), the subject's
+    recorder closes it to pending (``comms_close_unsent_attempt``) and the
+    redelivery claims it normally; otherwise it stays for the existing hold.
+    """
+
+    def lookup() -> str | None:
+        with _stored_scope_context(scope):
+            return (
+                IntegrationOperation.objects.filter(pk=scope.operation_id)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+    if _default_step(lookup) == _IN_PROGRESS:
+        _claimed_outcome(scope, "retry", event_type=None, reason_code="transient_send")
+
+
 def _claim_row(scope: OperationScope) -> _ClaimDecision:
     """Claim one pending row or bound one in-progress row under lock.
 
@@ -1104,7 +1127,7 @@ def _presend_decision(scope: OperationScope) -> _PresendDecision:
             if not _take_permit(scope):
                 return "ineligible"
             return _presend_checks(scope)
-        except (DatabaseError, InterfaceError) as error:
+        except Exception as error:
             if not _default_lost(error):
                 raise
             connection.close()
@@ -1117,20 +1140,39 @@ def _lost(database: BaseDatabaseWrapper) -> bool:
     return database.connection is None or not database.is_usable()
 
 
-def _default_lost(error: Exception) -> bool:
+def _default_lost(error: BaseException) -> bool:
     """Whether a default-connection failure means the connection was lost.
 
-    Every operational, interface, connection (08), operator-intervention (57,
-    e.g. an admin shutdown by pg_terminate_backend) or idle-in-transaction
-    (25P03) failure counts, as does a connection already dropped.
+    The whole cause/context chain is walked, so a domain error (for example
+    an ``EnvelopeError`` from ``protected_decrypt``) counts only when a
+    connection failure caused it (``_connection_failure``). A real decrypt
+    failure (wrong key, tampered envelope) has no such cause and still fails
+    closed.
     """
-    if isinstance(error, (OperationalError, InterfaceError)):
-        return True
-    state = str(getattr(error.__cause__, "sqlstate", "") or "")
-    return (
-        state.startswith(("08", "57"))
-        or state == "25P03"
-        or connection.connection is None
+    seen: set[int] = set()
+    link: BaseException | None = error
+    while link is not None and id(link) not in seen:
+        seen.add(id(link))
+        if _connection_failure(link):
+            return True
+        link = link.__cause__ or link.__context__
+    return False
+
+
+def _connection_failure(link: BaseException) -> bool:
+    """Whether one exception is itself a lost-connection failure.
+
+    With a SQLSTATE: class 08 (connection exception), 57P01-57P05 (admin
+    shutdown, crash shutdown, cannot connect now, database dropped, idle
+    session timeout) or 25P03 (idle in transaction). Without one: a
+    driver-level operational or interface error (the client lost the server)
+    or Django's "connection already closed".
+    """
+    state = str(getattr(link, "sqlstate", "") or "")
+    if state:
+        return state.startswith(("08", "57P0")) or state == "25P03"
+    return isinstance(
+        link, InterfaceError | psycopg.OperationalError | psycopg.InterfaceError
     )
 
 
@@ -1145,7 +1187,7 @@ def _default_step[T](step: Callable[[], T]) -> T:
     while True:
         try:
             return step()
-        except (DatabaseError, InterfaceError) as error:
+        except Exception as error:
             if not _default_lost(error):
                 raise
             connection.close()
@@ -1433,6 +1475,7 @@ def execute_operation(operation_id: UUID) -> ExecutionResult:
     with _operation_lock(operation_id) as acquired:
         if not acquired:
             return "reconcile"
+        _return_orphan_to_pending(scope)
         try:
             with tenant_context(scope.actor_id, scope.organization_id):
                 decision = _claim_row(scope)
