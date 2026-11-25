@@ -90,10 +90,10 @@ RUNTIME_ROLE_SETTINGS: Final = (
 # be assumed, and its own grants/memberships then matter. UNION deduplicates
 # diamonds. An inert edge to a privileged role is not a supported exception.
 ROLE_FAMILY: Final = sql.SQL("""
-WITH RECURSIVE family(oid) AS (
-    SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ANY(%s)
+WITH RECURSIVE family(login, oid) AS (
+    SELECT rolname, oid FROM pg_catalog.pg_roles WHERE rolname = ANY(%s)
     UNION
-    SELECT membership.roleid
+    SELECT family.login, membership.roleid
     FROM pg_catalog.pg_auth_members AS membership
     JOIN family ON membership.member = family.oid
 )
@@ -105,9 +105,14 @@ SAFE_ROLE_FAMILY_QUERY: Final = ROLE_FAMILY + sql.SQL("""
 SELECT NOT EXISTS (
     SELECT FROM family JOIN pg_catalog.pg_roles AS r USING (oid)
     WHERE r.rolsuper
+       OR r.rolcreaterole
+       OR (r.rolbypassrls AND NOT (
+           family.login = 'clinic_owner' AND r.rolname = 'clinic_resolver'
+           AND NOT r.rolcanlogin
+       ))
        OR r.rolname IN ('pg_read_server_files', 'pg_write_server_files',
                         'pg_execute_server_program', 'pg_read_all_settings',
-                        'pg_monitor')
+                        'pg_monitor', 'pg_signal_backend', 'pg_read_all_stats')
        OR EXISTS (
            SELECT FROM pg_catalog.pg_parameter_acl AS p
            WHERE pg_catalog.has_parameter_privilege(
@@ -118,7 +123,8 @@ SELECT NOT EXISTS (
            SELECT FROM pg_catalog.pg_proc AS p
            WHERE p.pronamespace = 'pg_catalog'::regnamespace
              AND p.proname IN (
-                 'pg_read_file', 'pg_read_binary_file', 'pg_ls_logdir', 'lo_import'
+                 'pg_read_file', 'pg_read_binary_file', 'pg_ls_dir', 'pg_ls_logdir',
+                 'pg_stat_file', 'lo_import', 'lo_export'
              )
              AND pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')
        )
@@ -151,14 +157,58 @@ EXPECTED_ROLE_SETTINGS: Final = [
 # The session this check opens is itself a fresh runtime session; its effective
 # values catch any precedence path the catalog comparison does not model.
 EFFECTIVE_SETTINGS_QUERY: Final = (
-    "SELECT current_setting('search_path'), "
-    "current_setting('idle_in_transaction_session_timeout'), "
-    "current_setting('log_error_verbosity'), "
-    "current_setting('log_parameter_max_length'), "
-    "current_setting('log_parameter_max_length_on_error')"
+    "SELECT pg_catalog.current_setting('search_path'), "
+    "pg_catalog.current_setting('idle_in_transaction_session_timeout'), "
+    "pg_catalog.current_setting('log_error_verbosity'), "
+    "pg_catalog.current_setting('log_parameter_max_length'), "
+    "pg_catalog.current_setting('log_parameter_max_length_on_error')"
 )
 EXPECTED_EFFECTIVE_SETTINGS: Final = ("clinic_app, public", "15s", "terse", "0", "0")
 FAILURE_MESSAGE: Final = "database posture check failed"
+READ_ONLY: Final = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+CATALOG_PATH: Final = "SET LOCAL search_path = pg_catalog, pg_temp"
+CONNECTABLE_DATABASES: Final = """
+SELECT d.datname, d.oid FROM pg_catalog.pg_database AS d
+WHERE d.datallowconn
+  AND pg_catalog.has_database_privilege('clinic_app', d.oid, 'CONNECT')
+ORDER BY d.datname
+"""
+DATABASE_IDENTITY: Final = """
+SELECT session_user, current_user, datname, oid FROM pg_catalog.pg_database
+WHERE datname = pg_catalog.current_database()
+"""
+
+
+def _all_databases_safe(
+    primary: psycopg.Connection, database_url: str, logins: list[str]
+) -> bool:
+    """Inspect native function ACLs at their database of record as clinic_app."""
+    targets = primary.execute(CONNECTABLE_DATABASES).fetchall()
+    if not any(name == primary.info.dbname for name, _ in targets):
+        return False
+    for name, oid in targets:
+        expected = ("clinic_app", "clinic_app", name, oid)
+        if name == primary.info.dbname:
+            identity = primary.execute(DATABASE_IDENTITY).fetchone()
+            safe = primary.execute(SAFE_ROLE_FAMILY_QUERY, (logins,)).fetchone()
+        else:
+            # Keep the authenticated endpoint and TLS options, changing only
+            # the database. Never interpolate a catalog name into a DSN.
+            with psycopg.connect(
+                database_url,
+                dbname=name,
+                host=primary.info.host,
+                hostaddr=primary.info.hostaddr,
+                port=primary.info.port,
+                connect_timeout=5,
+            ) as peer:
+                peer.execute(READ_ONLY)
+                peer.execute(CATALOG_PATH)
+                identity = peer.execute(DATABASE_IDENTITY).fetchone()
+                safe = peer.execute(SAFE_ROLE_FAMILY_QUERY, (logins,)).fetchone()
+        if identity != expected or safe != (True,):
+            return False
+    return True
 
 
 def _verify_database_posture(database_url: str, test_database_name: str) -> bool:
@@ -176,11 +226,9 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
             return False
         database_name = connection_settings["dbname"]
         with psycopg.connect(database_url, connect_timeout=5) as connection:
-            # All parts of the verdict must describe the same catalog snapshot.
-            connection.execute(
-                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
-            )
+            connection.execute(READ_ONLY)
             effective = connection.execute(EFFECTIVE_SETTINGS_QUERY).fetchone()
+            connection.execute(CATALOG_PATH)
             result = connection.execute(
                 POSTURE_QUERY,
                 (database_name, test_database_name, test_database_name),
@@ -189,9 +237,7 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
                 name for (name,) in connection.execute(MACHINE_LOGINS_QUERY).fetchall()
             ]
             logins = [*PINNED_ROLES, *machines]
-            safe_roles = connection.execute(
-                SAFE_ROLE_FAMILY_QUERY, (logins,)
-            ).fetchone()
+            safe_roles = _all_databases_safe(connection, database_url, logins)
             role_settings = [
                 (role, scoped, list(settings))
                 for role, scoped, settings in connection.execute(
@@ -202,7 +248,7 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
         return False
     return (
         result == (True,)
-        and safe_roles == (True,)
+        and safe_roles
         and effective == EXPECTED_EFFECTIVE_SETTINGS
         and sorted(role_settings)
         == sorted(
