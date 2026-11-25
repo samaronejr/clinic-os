@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import TYPE_CHECKING
 
 import pytest
 from apps.tenancy.envelope import issue_tenant_key
 from django.db import connection, transaction
 from django.test import override_settings
+from ops.testing.migration_upgrade_kek import write_tenant_kek
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -41,9 +41,7 @@ def synthetic_secret_backend(tmp_path: Path) -> Iterator[Path]:
     """
     root = tmp_path / "tenant-key-secrets"
     root.mkdir(mode=0o700)
-    kek = root / "tenant-kek.secret"
-    kek.write_text(secrets.token_hex(32))
-    kek.chmod(0o600)
+    write_tenant_kek(root)
     with override_settings(
         CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
     ):

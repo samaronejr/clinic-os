@@ -77,16 +77,7 @@ remember_open_file() {
 }
 
 write_private_key() {
-    local path="$1" fd
-    set -o noclobber
-    if ! exec {fd}> "$path"; then
-        set +o noclobber
-        return 1
-    fi
-    set +o noclobber
-    chmod 600 -- "/proc/$$/fd/$fd"
-    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >&"$fd"
-    exec {fd}>&-
+    python3 "$project_root/ops/testing/migration_upgrade_kek.py" "${1:-}"
 }
 
 remove_run_tree() {
@@ -401,7 +392,7 @@ fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
-write_private_key "$secret_dir/tenant-kek.secret"
+write_private_key "$secret_dir"
 
 readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
 export UPGRADE_BASE_SHA="$base_sha"
@@ -464,7 +455,7 @@ rehearse_wave_h() {
     local wave_sha=ab71193c110a3b579728d2811d28dad471875390
     local native="$secret_dir/native"
     mkdir -m 700 "$native"
-    write_private_key "$native/tenant-kek.secret"
+    write_private_key "$native"
     differential_stage=reference_worktree
     git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
     git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
