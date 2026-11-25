@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
@@ -42,10 +43,11 @@ def _faults(table: str, originals: Projection) -> Iterator[dict[str, object]]:
 
 @contextmanager
 def _worker(
-    worktree: Path, worker: Path, attestation: Path
+    worktree: Path, worker: Path, attestation: Path, overrides: dict[str, str]
 ) -> Iterator[subprocess.Popen[str]]:
     env = {
         **os.environ,
+        **overrides,
         "PYTHONPATH": str(worktree),
         "UPGRADE_VERIFIED_FILE": str(attestation),
     }
@@ -98,6 +100,49 @@ def _check_base(worktree: Path) -> None:
         raise RuntimeError(message)
 
 
+def _projection(admin: psycopg.Connection, table: str, snapshot: Row) -> Projection:
+    keys = snapshot["rows"]
+    columns = snapshot["columns"]
+    assert isinstance(keys, dict)
+    assert isinstance(columns, list)
+    originals = [
+        (key, {column: row[column] for column in columns})
+        for key, row in admin.execute(
+            sql.SQL("SELECT id::text,to_jsonb(t) FROM {} t").format(
+                sql.Identifier("clinic_app", table)
+            )
+        )
+        if key in keys
+    ]
+    assert {
+        key: hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
+        for key, row in originals
+    } == keys
+    return originals
+
+
+def _refuse(
+    old: subprocess.Popen[str],
+    new: subprocess.Popen[str],
+    table: str,
+    base_fault: Row,
+    lane_fault: Row,
+) -> None:
+    for label, result in (
+        ("Wave H", _verdict(old, base_fault)),
+        ("lane", _verdict(new, lane_fault)),
+    ):
+        failures = result["failures"]
+        assert isinstance(failures, list)
+        if (
+            result["status"] != 1
+            or result["attested"]
+            or not any(str(line).endswith(f"preserved:{table}") for line in failures)
+        ):
+            message = f"{label}: {table}: missing digest refusal: {result}"
+            raise AssertionError(message)
+
+
 def main() -> None:
     """Run the clean sibling and every generated fault without publishing."""
     if os.environ.get("CLINIC_DATA_MODE") != "synthetic":
@@ -106,51 +151,86 @@ def main() -> None:
     base = Path(sys.argv[1]).resolve()
     lane = Path.cwd()
     _check_base(base)
-    receipt = json.loads(Path(os.environ["UPGRADE_SEED_FILE"]).read_text())
-    snapshots = receipt["ai"]["tables"]
-    if not snapshots:
-        message = "full verifier differential requires the native AI fixture"
-        raise RuntimeError(message)
+    old_env = json.loads(Path(os.environ["UPGRADE_WAVE_H_NATIVE_ENV"]).read_text())
+    base_snapshots = json.loads(Path(old_env["UPGRADE_SEED_FILE"]).read_text())["ai"][
+        "tables"
+    ]
+    snapshots = json.loads(Path(os.environ["UPGRADE_SEED_FILE"]).read_text())["ai"][
+        "tables"
+    ]
+    assert len(base_snapshots) == 59
+    assert base_snapshots.keys() == snapshots.keys()
+    base_probes = json.loads(Path(old_env["UPGRADE_WAVE_H_PROBE_CASES"]).read_text())
+    probes = json.loads(Path(os.environ["UPGRADE_WAVE_H_PROBE_CASES"]).read_text())
+    assert (
+        set(base_probes)
+        == set(probes)
+        == {
+            "_baseline_approvals",
+            "_baseline_retained",
+        }
+    )
+    for phase in probes:
+        assert base_probes[phase].keys() == probes[phase].keys() == snapshots.keys()
     worker = Path(__file__).with_name("wave_h_entry_worker.py").resolve()
     out = Path(os.environ["UPGRADE_VERIFIED_FILE"]).parent
     with ExitStack() as stack:
-        old = stack.enter_context(_worker(base, worker, out / "differential-base.json"))
-        new = stack.enter_context(_worker(lane, worker, out / "differential-lane.json"))
+        old = stack.enter_context(
+            _worker(base, worker, out / "differential-base.json", old_env)
+        )
+        new = stack.enter_context(
+            _worker(lane, worker, out / "differential-lane.json", {})
+        )
         _check_clean(_verdict(old, {}), attested=False)
         _check_clean(_verdict(new, {}), attested=True)
         checked = 0
-        with psycopg.connect(
-            os.environ["UPGRADE_ADMIN_DATABASE_URL"], autocommit=True
-        ) as admin:
+        with (
+            psycopg.connect(old_env["UPGRADE_ADMIN_DATABASE_URL"]) as old_admin,
+            psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+        ):
             for table, snapshot in sorted(snapshots.items()):
-                keys = snapshot["rows"]
-                originals = [
-                    (key, {column: row[column] for column in snapshot["columns"]})
-                    for key, row in admin.execute(
-                        sql.SQL("SELECT id::text,to_jsonb(t) FROM {} t").format(
-                            sql.Identifier("clinic_app", table)
-                        )
-                    )
-                    if key in keys
+                reference = base_snapshots[table]
+                assert set(reference["columns"]) == set(snapshot["columns"])
+                columns = sorted(reference["columns"])
+                old_rows = _projection(old_admin, table, reference)
+                new_rows = _projection(admin, table, snapshot)
+                assert len(old_rows) == len(new_rows)
+                old_rows = [
+                    (key, {column: row[column] for column in columns})
+                    for key, row in old_rows
                 ]
-                assert {key for key, _ in originals} == keys.keys()
-                for fault in _faults(table, originals):
-                    base_result = _verdict(old, fault)
-                    lane_result = _verdict(new, fault)
-                    if base_result["status"] == 1 and (
-                        lane_result["status"] != 1 or lane_result["attested"]
-                    ):
-                        message = (
-                            f"{table}: {fault['description']}: lane accepted fault"
-                        )
-                        raise AssertionError(message)
+                new_rows = [
+                    (key, {column: row[column] for column in columns})
+                    for key, row in new_rows
+                ]
+                for base_fault, fault in zip(
+                    _faults(table, old_rows), _faults(table, new_rows), strict=True
+                ):
+                    _refuse(old, new, table, base_fault, fault)
                     checked += 1
+                for phase in probes:
+                    faults = []
+                    for case, clean_rows in (
+                        (base_probes[phase][table], old_rows),
+                        (probes[phase][table], new_rows),
+                    ):
+                        ((key, modified),) = case["rows"]
+                        projected = {column: modified[column] for column in columns}
+                        clean = dict(clean_rows)[key]
+                        assert {
+                            column
+                            for column in columns
+                            if clean[column] != projected[column]
+                        } == {case["column"]}
+                        faults.append({"table": table, "rows": [(key, projected)]})
+                    _refuse(old, new, table, *faults)
                 sys.stdout.write(f"Wave H differential: {table}: {checked} cases\n")
                 sys.stdout.flush()
         assert checked > 0
         _check_clean(_verdict(old, {}), attested=False)
         _check_clean(_verdict(new, {}), attested=True)
         sys.stdout.write(f"Wave H full-entry differential passed: {checked} cases\n")
+        sys.stdout.write("Wave H probe-window differential passed: 118 cases\n")
 
 
 if __name__ == "__main__":
