@@ -15,6 +15,11 @@ BASE = "61918080021ddcfe2912e6922677143d5704d96d"
 FOUNDATION = "b39ae436590c8a9c00ad8fc93d619875d1822827"
 
 
+@pytest.fixture
+def synthetic_secret_backend() -> None:
+    """The subprocess provisions its own KEK inside its private run tree."""
+
+
 requires_postgres = pytest.mark.skipif(
     os.environ.get("RUN_WAVE_H_DIFFERENTIAL_E2E") != "1",
     reason="requires a claimed PostgreSQL instance and locked base environments",
