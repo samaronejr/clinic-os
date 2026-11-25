@@ -325,7 +325,7 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
 
     assert result.returncode != 0, result.stdout
     assert (tmp_path / "marker-identity").is_file()
-    assert "cannot overwrite existing file" in result.stdout
+    assert "private_output_exists: tenant-kek.secret" in result.stdout
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 
 
