@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from rest_framework import generics, views, viewsets
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -18,7 +20,15 @@ SERIALIZERS = {
 }
 ADMINS = {"ModelAdmin", "InlineModelAdmin", "TabularInline", "StackedInline"}
 FORMS = {"Form", "ModelForm", "BaseModelForm", "BaseModelFormSet", "BaseInlineFormSet"}
-FAMILIES = SERIALIZERS | ADMINS | FORMS
+# Also cover a source-only (not yet importable or routed) generic view that
+# already commits to raw pending input, including aliases of framework bases.
+DRF_VIEWS = {
+    value.__name__
+    for module in (generics, views, viewsets)
+    for value in vars(module).values()
+    if isinstance(value, type) and issubclass(value, views.APIView)
+}
+FAMILIES = SERIALIZERS | ADMINS | FORMS | DRF_VIEWS
 FACTORIES = {"modelform_factory", "modelformset_factory", "inlineformset_factory"}
 DECLARATIVE = "raw pending model at declarative binding"
 
@@ -112,6 +122,10 @@ def _class_binding(cls: ast.ClassDef, b: Bindings) -> bool:
         elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
             values.append(stmt)
         elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if stmt.name == "get_queryset":
+                values.extend(stmt.body)
+                if stmt.returns:
+                    values.append(stmt.returns)
             values.extend(
                 arg.annotation
                 for arg in (

@@ -20,12 +20,15 @@ from ai.pending_boundary_inventory import (
     violations,
 )
 from ai.pending_declarations import framework_classes
+from ai.pending_serializer_routes import resolved_serializer_violations
 
 ROOT = Path(__file__).resolve().parents[2]
 BOUNDARY = "apps.ai.pending_outputs"
 
 
 def test_pending_models_have_only_one_data_access_boundary() -> None:
+    bindings = resolved_serializer_violations()
+    assert not bindings, "\n".join(bindings)
     spec = find_spec(BOUNDARY)
     assert spec is not None, "no model-derived pending-output boundary"
     assert spec.origin is not None

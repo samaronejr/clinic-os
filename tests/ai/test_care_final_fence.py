@@ -99,6 +99,57 @@ def _separate_exclusive(clinic: UUID) -> bool:
         connections.close_all()
 
 
+@pytest.mark.parametrize("transport", ["native"])
+def test_queued_withdrawal_precedes_later_readers(
+    page: Page, transport: str, superuser_database_url: str
+) -> None:
+    g = page.care.graph
+    writer_pid: Future[int] = Future()
+
+    def reader() -> bool:
+        try:
+            with as_actor(g, page.care.manager):
+                return try_hold_decision(clinic_id=g.clinic_a, using="default")
+        finally:
+            connections.close_all()
+
+    def withdraw() -> None:
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SELECT pg_backend_pid()")
+                writer_pid.set_result(cur.fetchone()[0])
+            refuse_plan_visit(g, page.care)
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        with as_actor(g, page.care.manager):
+            assert try_hold_decision(clinic_id=g.clinic_a, using="default")
+            assert pool.submit(reader).result(timeout=30), "readers can share"
+            finished = pool.submit(withdraw)
+            pid = writer_pid.result(timeout=30)
+            _await_blocked(superuser_database_url, pid)
+            # Prove this backend's held shared advisory lock, not an unrelated
+            # row lock, is the reason the actual withdrawal is in the queue.
+            with connection.cursor() as cur:
+                cur.execute(
+                    "SELECT EXISTS (SELECT FROM pg_locks w JOIN pg_locks r "
+                    "USING (locktype, database, classid, objid, objsubid) "
+                    "WHERE w.locktype='advisory' AND w.pid=%s AND NOT w.granted "
+                    "AND w.mode='ExclusiveLock' AND r.pid=pg_backend_pid() "
+                    "AND r.mode='ShareLock' AND r.granted)",
+                    [pid],
+                )
+                assert cur.fetchone() == (True,)
+            assert not pool.submit(reader).result(timeout=30), "reader overtook writer"
+        finished.result(timeout=30)
+        assert pool.submit(reader).result(timeout=30), "writer committed and released"
+    with as_actor(g, page.care.manager):
+        assert not CareProposal.objects.filter(
+            pk__in=[k.pk for k in page.keys]
+        ).exists()
+
+
 def _refuse_at_formatter(
     care: CareWorld, entered: Event, attempt: Future[tuple[int, bool]]
 ) -> None:
