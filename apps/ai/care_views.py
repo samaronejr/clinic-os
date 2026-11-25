@@ -311,6 +311,10 @@ def _context(
 
     def project(batch: RenderSelection) -> HttpResponse:
         selected = batch.many(selection.keys)
+        if selection.keys and not selected:
+            # A vanished selection is indistinguishable from an unknown open,
+            # preview or follow-up; do not authorize it from the earlier lookup.
+            raise CareAccessDeniedError
         context: dict[str, object] = {
             **extra,
             "clinic_id": clinic_id,
@@ -369,7 +373,7 @@ def care_coordination(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
         ActionAccessDeniedError,
         GatewayAccessDeniedError,
     ):
-        return render(request, "403.html", status=403)
+        response = render(request, "403.html", status=403)
     except StepUpRequired:
         return flow_redirect(request, "identity:step-up", _url(clinic_id))
     except (

@@ -6,6 +6,7 @@ from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 from django.db import connection
 
 from ai.pending_boundary_inventory import (
@@ -18,6 +19,7 @@ from ai.pending_boundary_inventory import (
     unclassified,
     violations,
 )
+from ai.pending_declarations import framework_classes
 
 ROOT = Path(__file__).resolve().parents[2]
 BOUNDARY = "apps.ai.pending_outputs"
@@ -31,11 +33,36 @@ def test_pending_models_have_only_one_data_access_boundary() -> None:
     assert declared.fields
     assert not unclassified()
     assert not permit_issuance(Path(spec.origin).read_text(), declared, boundary=True)
+    paths = [
+        p
+        for directory in ("apps", "config")
+        for p in (ROOT / directory).rglob("*.py")
+        if "migrations" not in p.parts and p != Path(spec.origin)
+    ]
+    families = framework_classes(p.read_text() for p in paths)
+    processors = {
+        s
+        for engine in settings.TEMPLATES
+        for options in [engine.get("OPTIONS")]
+        if isinstance(options, dict)
+        for s in options.get("context_processors", ())
+    }
     found = {
         str(p.relative_to(ROOT)): issues
-        for p in (ROOT / "apps").rglob("*.py")
-        if "migrations" not in p.parts and p != Path(spec.origin)
-        if (issues := violations(p.read_text(), declared))
+        for p in paths
+        if (
+            issues := violations(
+                p.read_text(),
+                declared,
+                project_families=families,
+                processors=frozenset(
+                    s.rsplit(".", 1)[1]
+                    for s in processors
+                    if s.rsplit(".", 1)[0]
+                    == ".".join(p.relative_to(ROOT).with_suffix("").parts)
+                ),
+            )
+        )
     }
     assert found == {}
     assert declared.permits

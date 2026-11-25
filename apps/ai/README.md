@@ -1,5 +1,25 @@
 # Governed synthetic AI gateway
 
+### Pending display and later use
+
+An earlier lookup supplies selectors, not permission to display or act. Before
+the final batch read, the renderer takes the shared side of the clinic's choice
+lock. The fresh row-policy query is a separate statement. A writer already in
+progress causes the selection to fail closed; a writer arriving after admission
+waits until the response transaction has built the bytes. The batch shares one
+lock across all rows. Rolling back a savepoint also discards its admission.
+Organization-wide archive reads take the shared organization lock; migration
+`0025_pending_export_choice_fence` takes its exclusive counterpart in each
+source-choice writer, without changing any table or function grants. The export
+resolver still independently authenticates its requester and rechecks all origins.
+
+While a frame is active its typed formatters may read its rows. Calling back
+through a handle starts a fresh scoped read; a retained handle never reuses
+formatting authority. A missing or withdrawn item yields the same result as an
+unknown selector. Staff pages serialize synchronously, never as a pending
+stream. Provider sends, broker delivery and socket transmission happen outside
+the rendering transaction.
+
 ## Revenue-cycle assistant (todo 60, AI-06)
 
 Default off: `revenue_cycle` has its own organization opt-in, evaluated model

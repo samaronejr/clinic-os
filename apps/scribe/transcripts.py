@@ -197,7 +197,7 @@ def current_snapshot(recording: RecordingSession) -> TranscriptVersionDTO:
             recording.state in {"stopped", "stopped_revoked"},
         )
 
-    return ai_pending_visible(selection.keys, project)
+    return ai_pending_visible(selection.keys, project, clinic_id=recording.clinic_id)
 
 
 def refresh_coverage(
@@ -335,7 +335,9 @@ def read_transcript(
     recording = authorized_recording(clinic_id=clinic_id, session_id=session_id)
     snapshot = select_snapshot(recording)
     return ai_pending_visible(
-        snapshot.keys, lambda batch: project_transcript(recording, snapshot, batch)
+        snapshot.keys,
+        lambda batch: project_transcript(recording, snapshot, batch),
+        clinic_id=clinic_id,
     )
 
 

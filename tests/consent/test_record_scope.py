@@ -474,6 +474,10 @@ NON_BINDING = {
         r"pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\("
         r"'ai-pending-decision:'\|\|NEW\.clinic_id::text,0\)\)"
     ): "clinic choice/decision serialization key, not a row binding",
+    (
+        r"pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\("
+        r"'ai-pending-export:'\|\|NEW\.organization_id::text,0\)\)"
+    ): "organization-wide pending export/choice serialization, not a record selector",
     r"SELECT s\.id,s\.organization_id,s\.clinic_id,s\.patient_id": "session projection",
     r"SELECT s\.session_id,s\.organization_id,s\.clinic_id,s\.patient_id": (
         "effective session projection from current_patient_authority()"

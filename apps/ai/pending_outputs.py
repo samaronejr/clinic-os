@@ -19,14 +19,17 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cache
+from threading import Event, get_ident
 from typing import TYPE_CHECKING, cast, final
 
 from django.apps import apps
 from django.db import connection, connections, models, transaction
 from django.db.models.functions import Cast
+from django.http.response import HttpResponseBase
+from django.template.response import SimpleTemplateResponse
 
 from apps.ai.contracts import GatewayAccessDeniedError
-from apps.consent.decision_fence import try_hold_decision
+from apps.consent.decision_fence import try_hold_decision, try_hold_organization_read
 from apps.core.secrets import secret_store
 from apps.tenancy.envelope import KEK_SECRET_NAME
 
@@ -96,10 +99,7 @@ class VisiblePending[M: models.Model](_VisibleOutput):
         return cast("M", frame._records[self._key])  # noqa: SLF001 - same boundary
 
     def project[R](self, build: Callable[[VisiblePending[M]], R]) -> R | None:
-        """Recheck a retained handle; reuse only the active projection frame."""
-        frame = _CURRENT.get()
-        if frame is not None and frame.get(self._key) is self:
-            return build(self)
+        """Revalidate a callback even when invoked from another live frame."""
 
         def single(batch: RenderSelection) -> R | None:
             fresh = batch.get(self._key)
@@ -148,6 +148,8 @@ class RenderSelection(_VisibleOutput):
     _export_data: list[tuple[str, str | dict[str, object]]]
     _export_rows: tuple[VisibleExportRow, ...]
     _issuer: object
+    _thread: int
+    _ended: Event
 
     def __post_init__(self) -> None:
         """Reject construction outside the issuing boundary."""
@@ -156,7 +158,7 @@ class RenderSelection(_VisibleOutput):
 
     def get[M: models.Model](self, selector: PendingKey[M]) -> VisiblePending[M] | None:
         """Return the checked handle or omit a missing or withheld selector."""
-        if _CURRENT.get() is not self:
+        if not self._active():
             raise GatewayAccessDeniedError
         return cast("VisiblePending[M] | None", self._handles.get(selector))
 
@@ -168,16 +170,24 @@ class RenderSelection(_VisibleOutput):
 
     def export_rows(self) -> tuple[VisibleExportRow, ...]:
         """Return the filtered page in the export resolver's cursor order."""
-        if _CURRENT.get() is not self:
+        if not self._active():
             raise GatewayAccessDeniedError
         return self._export_rows
 
     def owns_export(self, row: VisibleExportRow, index: int) -> bool:
         """Test the identity of an export permit, not the caller's page keys."""
         return (
-            _CURRENT.get() is self
+            self._active()
             and 0 <= index < len(self._export_rows)
             and self._export_rows[index] is row
+        )
+
+    def _active(self) -> bool:
+        # A copied Context can outlive its caller on the same thread.
+        return (
+            _CURRENT.get() is self
+            and self._thread == get_ident()
+            and not self._ended.is_set()
         )
 
 
@@ -199,7 +209,7 @@ def _read_batch(
     for index, (model, ids) in enumerate(groups.items()):
         source = rows(model).filter(pk__in=ids).order_by()
         if clinic_id is not None:
-            source = source.filter(clinic_id=clinic_id)
+            source = source.filter(**{_clinic_binding(model): clinic_id})
         # A typed NULL in every other arm preserves each field's native database
         # type and normal Django converter, including its own encryption purpose.
         slots = {
@@ -214,6 +224,17 @@ def _read_batch(
             ).values_list("pending_render_group", *slots)
         )
     return list(arms[0].union(*arms[1:], all=True))
+
+
+def _clinic_binding(model: type[models.Model]) -> str:
+    """Bind the row to the clinic whose choice lock protects this projection."""
+    return {
+        "comms.suggestedreply": "conversation__clinic_id",
+        "scribe.transcriptversion": "session__clinic_id",
+        "scribe.transcriptsegment": "session__clinic_id",
+        "scribe.draftsectionsuggestion": "draft__clinic_id",
+        "scribe.draftactionproposal": "draft__clinic_id",
+    }.get(rows(model).query.get_meta().label_lower, "clinic_id")
 
 
 def _fresh_records(
@@ -247,26 +268,46 @@ def ai_pending_visible[R](
     *,
     clinic_id: UUID | None = None,
 ) -> R:
-    """Reselect under live RLS and synchronously project inside the transaction."""
+    """Lock before the final statement; keep its admission through serialization."""
     with nullcontext() if connection.in_atomic_block else transaction.atomic():
+        records: dict[PendingKey[models.Model], models.Model] = {}
+        export_data: list[tuple[str, str | dict[str, object]]] = []
         if isinstance(selectors, ExportPage):
+            if not try_hold_organization_read():
+                raise GatewayAccessDeniedError
             export_data = _export_page(selectors)
-            records: dict[PendingKey[models.Model], models.Model] = {}
         else:
-            export_data = []
-            records = _fresh_records(selectors, clinic_id)
+            selected = tuple(selectors)
+            if selected and (
+                try_hold_organization_read()
+                if clinic_id is None
+                else try_hold_decision(clinic_id=clinic_id, using=connection.alias)
+            ):
+                # Separate READ COMMITTED statement after the successful lock.
+                records = _fresh_records(selected, clinic_id)
         handles = {k: VisiblePending(k, clinic_id, _ISSUER) for k in records}
+        ended = Event()
         selection = RenderSelection(
             records,
             handles,
             export_data,
             tuple(VisibleExportRow(i, _ISSUER) for i in range(len(export_data))),
             _ISSUER,
+            get_ident(),
+            ended,
         )
         token = _CURRENT.set(selection)
         try:
-            return project(selection)
+            result = project(selection)
+            # Never defer a pending projection to middleware or to a streaming
+            # iterator after commit. Socket transmission is not part of rendering.
+            if isinstance(result, SimpleTemplateResponse) and not result.is_rendered:
+                result.render()
+            if isinstance(result, HttpResponseBase) and result.streaming:
+                raise GatewayAccessDeniedError
+            return result
         finally:
+            ended.set()
             _CURRENT.reset(token)
             records.clear()
             handles.clear()

@@ -265,4 +265,4 @@ def _render_snapshot(
         context["available"] = _available(recording)
         return render(request, "scribe/transcript.html", context, status=status)
 
-    return ai_pending_visible(snapshot.keys, project)
+    return ai_pending_visible(snapshot.keys, project, clinic_id=recording.clinic_id)

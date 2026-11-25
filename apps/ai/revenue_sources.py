@@ -15,6 +15,7 @@ from apps.ai.action_validation import database_time
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError, Purpose
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy
 from apps.ai.revenue_contracts import MAX_ROWS, RevenueFacts, decode, parse_model_input
@@ -65,7 +66,14 @@ def retained_output(
         )
         .first()
     )
-    if output is None or output.invocation is None:
+    # The admitted source check can take audit/guide locks that a later
+    # refusal also needs. Acquire the choice fence after the initial lookup,
+    # but *before* admitting that source; the render batch reuses it.
+    if (
+        output is None
+        or output.invocation is None
+        or not decisions_visible((key(output),), clinic_id=clinic_id)
+    ):
         raise GatewayAccessDeniedError
     check_invocation(clinic_id=clinic_id, invocation_id=output.invocation.pk)
     # The input may disappear under restrictive RLS between the output SELECT

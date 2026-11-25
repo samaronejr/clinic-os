@@ -79,7 +79,9 @@ def plan_source(plan: CarePlan) -> dict[str, JSON]:
     }
 
 
-def item_source(selector: PendingKey[CareProposal]) -> dict[str, JSON]:
+def item_source(
+    selector: PendingKey[CareProposal], *, clinic_id: UUID
+) -> dict[str, JSON]:
     """Action-time recheck, independent of the reviewer's earlier response."""
 
     def source(batch: RenderSelection) -> dict[str, JSON]:
@@ -88,7 +90,7 @@ def item_source(selector: PendingKey[CareProposal]) -> dict[str, JSON]:
             raise ActionRefusedError(Refusal.SOURCE)
         return checked_item_source(checked)
 
-    return ai_pending_visible((selector,), source)
+    return ai_pending_visible((selector,), source, clinic_id=clinic_id)
 
 
 def plan_is_current(plan: CarePlan) -> bool:
@@ -164,7 +166,7 @@ def check_care_sources(*, data: dict[str, JSON], clinic_id: UUID) -> UUID:
         or item.state != "pending"
         or item.audience != "administrative"
         or not care_choice_allows(plan, generated_at=item.created_at)
-        or cited["care_proposal"] != item_source(key(item))
+        or cited["care_proposal"] != item_source(key(item), clinic_id=clinic_id)
         or care_window(data["parameters"])
         != (item.kind, item.window_start, item.window_end)
     ):

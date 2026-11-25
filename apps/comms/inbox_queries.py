@@ -133,7 +133,9 @@ class ConversationView:
     def suggestion(self) -> ReplyPreview | None:
         """Recheck a retained conversation even for a direct service caller."""
         return ai_pending_visible(
-            (self.suggestion_key,) if self.suggestion_key else (), self.project_reply
+            (self.suggestion_key,) if self.suggestion_key else (),
+            self.project_reply,
+            clinic_id=self.conversation.clinic_id,
         )
 
     def project_reply(self, batch: RenderSelection) -> ReplyPreview | None:

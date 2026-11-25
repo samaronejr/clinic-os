@@ -59,7 +59,10 @@ def _stored_snapshot(value: TranscriptVersionDTO) -> Iterator[None]:
     with (
         patch.object(transcripts, "select_snapshot", return_value=read),
         patch.object(transcript_views, "select_snapshot", return_value=read),
-        patch.object(pending_outputs, "connection", in_atomic_block=True),
+        patch.object(
+            pending_outputs, "connection", in_atomic_block=True, alias="default"
+        ),
+        patch.object(pending_outputs, "try_hold_decision", return_value=True) as fence,
         patch.object(
             pending_outputs,
             "_fresh_records",
@@ -68,6 +71,14 @@ def _stored_snapshot(value: TranscriptVersionDTO) -> Iterator[None]:
         patch.object(transcripts, "_snapshot", return_value=value),
     ):
         yield
+        # Only the DB-free serializer fixture substitutes for the real lock.
+        # Both the live clinic lock and the actual response bytes are exercised
+        # independently by the two-connection Care tests.
+        assert fence.call_count
+        assert all(
+            c.kwargs == {"clinic_id": UUID(int=30), "using": "default"}
+            for c in fence.call_args_list
+        )
 
 
 class Controls(HTMLParser):

@@ -377,6 +377,7 @@ def render_review[R](
             *proposals,
         ),
         project,
+        clinic_id=clinic_id,
     )
 
 

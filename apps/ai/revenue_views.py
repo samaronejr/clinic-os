@@ -19,7 +19,7 @@ from apps.ai.action_contracts import (
     Refusal,
 )
 from apps.ai.action_payload import closed, identifier, parse_payload
-from apps.ai.agent_presenter import present_proposal
+from apps.ai.agent_presenter import proposal_row
 from apps.ai.approvals import approve_action, reject_action
 from apps.ai.artifacts import ArtifactProjection
 from apps.ai.attestations import step_up_evidence
@@ -274,7 +274,7 @@ def _render_page(
             {
                 "clinic_id": clinic_id,
                 "review": visible_review,
-                "proposal": present_proposal(checked) if checked is not None else None,
+                "proposal": proposal_row(checked) if checked is not None else None,
                 "can_approve": can_approve,
                 "error": shown.error,
                 "notice": shown.notice,

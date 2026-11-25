@@ -475,7 +475,8 @@ def _payload(*, item: CareProposal, policy: AgentPolicyVersion, attempt: UUID) -
         raise ActionRefusedError(Refusal.POLICY)
     now = database_time()
     sources = sorted(
-        (plan_source(item.plan), item_source(key(item))), key=rfc8785.dumps
+        (plan_source(item.plan), item_source(key(item), clinic_id=item.clinic_id)),
+        key=rfc8785.dumps,
     )
     data: dict[str, JSON] = {
         "schema_version": 1,

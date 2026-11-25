@@ -30,6 +30,7 @@ from django.db import DatabaseError, connection
 from django.db.models import F
 from django.utils import timezone
 
+from apps.ai.contracts import GatewayAccessDeniedError
 from apps.ai.pending_outputs import ExportPage, ai_pending_visible, record_export_origin
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
@@ -158,7 +159,7 @@ def _write_pages(
                 )
             if after is None:
                 return
-    except TenantAccessDeniedError as error:
+    except (TenantAccessDeniedError, GatewayAccessDeniedError) as error:
         raise ExportFailureError(AUTHORITY_REVOKED) from error
     except EnvelopeError as error:
         raise ExportFailureError(DECRYPT_FAILED) from error

@@ -10912,6 +10912,13 @@
       "reason": "Resolves the job's exact source through the existing result or attachment authority, then reparses only a candidate issued by the response's visibility batch for the filing command."
     },
     {
+      "symbol": "apps.ai.pending_outputs.ai_pending_visible",
+      "signals": ["denial"],
+      "kind": "direct",
+      "probes": ["apps.ai.pending_outputs.ai_pending_visible#cut1"],
+      "reason": "Only the real actor's post-lock, RLS-scoped read can issue handles; committed or contending choice writers cannot authorize a stale projection."
+    },
+    {
       "symbol": "apps.ai.pending_outputs.RenderSelection.__post_init__",
       "signals": [
         "denial"
@@ -11105,6 +11112,7 @@
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
     "apps.ai.pending_outputs._export_page#cut1",
+    "apps.ai.pending_outputs.ai_pending_visible#cut1",
     "apps.ai.pending_outputs.archive_current#cut1",
     "apps.ai.pending_outputs.decisions_visible#cut1",
     "apps.ai.pending_outputs.reselect#cut1",

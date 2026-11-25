@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import inspect
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
-from apps.ai.contracts import ProviderRequest, ProviderUnavailableError, Purpose
+from apps.ai.contracts import (
+    ProviderRequest,
+    ProviderResult,
+    ProviderUnavailableError,
+    Purpose,
+)
 from apps.ai.controls import set_organization_policy
 from apps.ai.policy import OrganizationPolicy
 from apps.consent.services import (
@@ -25,6 +31,7 @@ from apps.identity.clinic_configuration import latest_configuration
 from apps.identity.models import User
 from apps.intake.patient_access import patient_session_context
 from apps.providers.lifecycle import VersionInput, propose_version
+from apps.scribe.gateway import ScribeSyntheticProvider
 from apps.scribe.models import (
     AudioChunk,
     ChunkTranscription,
@@ -46,7 +53,7 @@ from apps.scribe.transcript_views import transcript_review
 from apps.scribe.transcripts import coverage_for
 from apps.tenancy.db import tenant_context
 from django.contrib.sessions.backends.db import SessionStore
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, connection, connections, transaction
 from django.test import RequestFactory
 
 from ai.support import model, seed
@@ -55,8 +62,6 @@ from scribe.test_ingest import World, chunk, media, world
 
 if TYPE_CHECKING:
     from uuid import UUID
-
-    from apps.scribe.gateway import ScribeSyntheticProvider
 
     from rbac_fixtures import RbacGraph
 
@@ -154,6 +159,53 @@ def test_recording_consent_alone_never_dispatches_asr(rbac_graph: RbacGraph) -> 
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert not ChunkTranscription.objects.filter(session_id=scope.session).exists()
         assert AudioChunk.objects.get(session_id=scope.session).wrapped_key
+
+
+def test_capture_provider_is_called_after_projection_commit(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph = rbac_graph
+    scope = world(graph)
+    permit_asr(graph, scope, monkeypatch)
+    operation = accepted(graph, scope)
+    with runtime_role():
+        assert run_transcription(operation_id=str(operation)) == "queued"
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        request = ChunkTranscription.objects.select_related("invocation").get(
+            session_id=scope.session
+        )
+        inference = request.invocation.operation_id
+    assert inference is not None
+
+    def available() -> bool:
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_try_advisory_xact_lock(hashtextextended(%s,0))",
+                    [f"ai-pending-decision:{graph.clinic_a}"],
+                )
+                row = cur.fetchone()
+                return row is not None and row[0] is True
+        finally:
+            connections.close_all()
+
+    transcribe = ScribeSyntheticProvider.transcribe
+    observed = []
+
+    def checked(
+        provider: ScribeSyntheticProvider, *, request: ProviderRequest
+    ) -> ProviderResult:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            observed.append(
+                (connection.in_atomic_block, pool.submit(available).result(timeout=30))
+            )
+        return transcribe(provider, request=request)
+
+    monkeypatch.setattr(ScribeSyntheticProvider, "transcribe", checked)
+    with runtime_role():
+        assert execute_operation(inference) == "succeeded"
+    assert observed == [(False, True)]
 
 
 def test_governed_completion_review_and_final_are_retained_successors(

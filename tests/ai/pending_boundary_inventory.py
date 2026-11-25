@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 from django.apps import apps
 
+from ai.pending_declarations import declarative_bindings
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
@@ -62,6 +64,8 @@ _FRAME_STATE = frozenset(
         "_export_data",
         "_export_rows",
         "_issuer",
+        "_thread",
+        "_ended",
         "_key",
         "_clinic",
         "_index",
@@ -79,6 +83,7 @@ class Inventory:
     # pending output once it is rendered.
     content: frozenset[str]
     keys: frozenset[str]
+    pending_relations: frozenset[str]
 
 
 def inventory() -> Inventory:
@@ -121,6 +126,12 @@ def inventory() -> Inventory:
             }
         )
         - content,
+        frozenset(
+            field.name
+            for model in apps.get_models()
+            for field in model._meta.get_fields()
+            if field.is_relation and field.related_model in models
+        ),
     )
 
 
@@ -658,7 +669,13 @@ def _direct_field_projections(
     return bad
 
 
-def violations(source: str, spec: Inventory) -> set[tuple[int, str]]:
+def violations(
+    source: str,
+    spec: Inventory,
+    *,
+    processors: frozenset[str] = frozenset(),
+    project_families: frozenset[str] = frozenset(),
+) -> set[tuple[int, str]]:
     """Flag independent ORM/SQL reads and generic model serialization.
 
     Formatters may consume rows obtained through the data boundary. Live
@@ -682,6 +699,13 @@ def violations(source: str, spec: Inventory) -> set[tuple[int, str]]:
     bad = _direct_field_projections(tree, spec.fields, names)
     bad |= _raw_projection_signatures(tree, spec, names)
     bad |= permit_issuance(source, spec)
+    bad |= declarative_bindings(
+        tree,
+        models=set(names),
+        permits=spec.permits,
+        fields=(spec.pending_relations, spec.content),
+        registered=(processors, project_families),
+    )
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Attribute)

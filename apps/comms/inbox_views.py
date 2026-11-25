@@ -447,7 +447,9 @@ def _page(
         context["suggested_reply"] = view.project_reply(batch)
         return render(request, "comms/conversation.html", context)
 
-    return ai_pending_visible((selector,) if selector is not None else (), project)
+    return ai_pending_visible(
+        (selector,) if selector is not None else (), project, clinic_id=clinic_id
+    )
 
 
 def _quick_reply_text(request: HttpRequest, clinic_id: UUID, purpose: str) -> str:

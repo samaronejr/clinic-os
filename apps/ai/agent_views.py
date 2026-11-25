@@ -24,7 +24,7 @@ from apps.ai.agent_policies import (
     policy_administrator,
     publish_agent_policy,
 )
-from apps.ai.agent_presenter import present_proposal
+from apps.ai.agent_presenter import proposal_row
 from apps.ai.approvals import approve_action, reject_action
 from apps.ai.attestations import step_up_evidence
 from apps.ai.care_sources import check_care_sources
@@ -110,7 +110,7 @@ def agent_queue(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
             "ai/automations.html",
             {
                 "clinic_id": clinic_id,
-                "rows": tuple(present_proposal(row, zone=zone) for row in visible),
+                "rows": tuple(proposal_row(row, zone=zone) for row in visible),
                 "error": error,
             },
             status=status,

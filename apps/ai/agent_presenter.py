@@ -72,10 +72,10 @@ def present_proposal(
     """
     if not isinstance(checked, VisiblePending):
         raise GatewayAccessDeniedError
-    return checked.project(partial(_proposal_row, zone=zone))
+    return checked.project(partial(proposal_row, zone=zone))
 
 
-def _proposal_row(
+def proposal_row(
     checked: VisiblePending[ActionProposal], *, zone: ZoneInfo | None = None
 ) -> ProposalRow:
     """Disclose one effect, no money, no real recipient, version and expiry."""
