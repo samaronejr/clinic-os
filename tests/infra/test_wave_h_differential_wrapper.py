@@ -140,6 +140,11 @@ def _tools(tmp_path: Path, *, missing: str = "") -> Path:
         "ln",
         "realpath",
         "flock",
+        "stat",
+        "rmdir",
+        "find",
+        "sort",
+        "sha256sum",
         "grep",
         "env",
     ):
@@ -212,6 +217,77 @@ def test_wrapper_interrupts_at_verdict_replacement(
         "interrupted",
         signal,
     )
+
+
+@pytest.mark.parametrize(
+    ("signal", "status"), [("TERM", 143), ("INT", 130), ("HUP", 129)]
+)
+def test_wrapper_interrupts_on_lock_return_before_running(
+    tmp_path: Path, signal: str, status: int
+) -> None:
+    receipt = _old_pass(tmp_path)
+    bin_dir = _tools(tmp_path, missing="flock")
+    flock = shutil.which("flock")
+    assert flock is not None
+    shim = bin_dir / "flock"
+    shim.write_text(
+        f'#!/bin/bash\n{flock} "$@" || exit $?\nkill -{signal} "$PPID"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+    witness = tmp_path / "transitions"
+    mv = shutil.which("mv")
+    assert mv is not None
+    (bin_dir / "mv").unlink()
+    recorder = bin_dir / "mv"
+    recorder.write_text(
+        "#!/bin/bash\n"
+        'IFS= read -r record < "${@: -2:1}" || exit 1\n'
+        f'{mv} "$@" || exit $?\n'
+        f'printf "%s\\n" "$record" >> {witness!s}\n',
+        encoding="utf-8",
+    )
+    recorder.chmod(0o700)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == status, result.stdout
+    verdict = json.loads((receipt / "verdict.json").read_text(encoding="utf-8"))
+    transitions = [
+        json.loads(line) for line in witness.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [item["result"] for item in transitions] == ["RUNNING", "FAIL"]
+    assert all(item["run_nonce"] == verdict["run_nonce"] for item in transitions)
+    assert transitions[-1] == verdict
+    assert (verdict["reason"], verdict["detail"]) == ("interrupted", signal)
+
+
+def test_wrapper_preserves_replacement_at_vacated_pending_name(tmp_path: Path) -> None:
+    receipt = _old_pass(tmp_path)
+    bin_dir = _tools(tmp_path, missing="mv")
+    mv = shutil.which("mv")
+    assert mv is not None
+    shim = bin_dir / "mv"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'source="${@: -2:1}"\n'
+        'IFS= read -r record < "$source"\n'
+        f'{mv} "$@" || exit $?\n'
+        """if [[ "$record" == *'"result":"RUNNING"'* ]]; then
+    (set -o noclobber; printf 'unowned replacement\\n' > "$source") || exit 1
+fi
+""",
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+    result = _run_wrapper("", tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1, result.stdout
+    verdict = json.loads((receipt / "verdict.json").read_text(encoding="utf-8"))
+    assert (verdict["result"], verdict["reason"]) == ("FAIL", "missing_base_sha")
+    [replacement] = receipt.glob(".verdict-*.pending")
+    assert replacement.read_bytes() == b"unowned replacement\n"
 
 
 @pytest.mark.parametrize("alias_root", [False, True])
