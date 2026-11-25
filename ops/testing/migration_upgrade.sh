@@ -16,6 +16,7 @@
 # Set UPGRADE_WAVE_H_DIFFERENTIAL=1 for independent native Wave H comparison.
 # Consumers require the run_nonce announced by this invocation in its PASS.
 set -euo pipefail
+export GIT_OPTIONAL_LOCKS=0
 
 readonly base_sha="${1:-}"
 readonly runner_root="${RUNNER_TEMP:-/tmp}"
@@ -335,7 +336,7 @@ publish_shell_verdict RUNNING
 running_published=1
 printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
 differential_stage=setup
-for required in git python3 docker uv mkdir rm rmdir head od tr chmod cmp ln realpath grep env find sort sha256sum; do
+for required in git tar python3 docker uv mkdir rm rmdir head od tr chmod cmp ln realpath grep env; do
     if ! command -v "$required" >/dev/null; then
         setup_detail="missing_$required"
         exit 127
@@ -382,8 +383,10 @@ export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
 mkdir -m 0700 -- "$secret_dir/tmp" "$secret_dir/uv-cache"
 export TMPDIR="$secret_dir/tmp" UV_CACHE_DIR="$secret_dir/uv-cache"
 echo "== check out base $base_sha =="
-git clone --quiet --shared --no-checkout -- "$project_root" "$base_worktree"
-git -C "$base_worktree" checkout --quiet --detach "$base_sha"
+mkdir -m 0700 -- "$base_worktree"
+git -C "$project_root" archive --format=tar --output="$secret_dir/base.tar" "$base_sha"
+tar -xf "$secret_dir/base.tar" -C "$base_worktree"
+rm -- "$secret_dir/base.tar"
 
 echo "== sync base dependencies =="
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
@@ -461,16 +464,12 @@ rehearse_wave_h() {
     mkdir -m 700 "$native"
     write_private_key "$native/tenant-kek.secret"
     differential_stage=reference_worktree
-    if [ "$differential" = 1 ]; then
-        git clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
-        git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
-        if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
-            ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
-        else
-            (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
-        fi
+    git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
+    git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
+    if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
+        ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
     else
-        wave_tree="$(realpath "$differential")"
+        (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
     fi
     test "$(git -C "$wave_tree" rev-parse HEAD)" = "$wave_sha"
     test -z "$(git -C "$wave_tree" status --porcelain --untracked-files=no)"

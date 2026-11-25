@@ -131,6 +131,7 @@ def _tools(tmp_path: Path, *, missing: str = "") -> Path:
     for name in (
         "bash",
         "git",
+        "tar",
         "python3",
         "docker",
         "uv",
@@ -181,7 +182,7 @@ def test_wrapper_terminates_with_current_interrupted_verdict(tmp_path: Path) -> 
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         '    kill -TERM "$PPID"; exit 0\nfi\n'
         f'exec {git} "$@"\n',
         encoding="utf-8",
@@ -303,9 +304,9 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         f'    {git} "$@" || exit $?\n'
-        '    base="${@: -1}"; [[ "$1" == clone ]] || base="$6"\n'
+        '    base="${UPGRADE_PRIVATE_RUN_DIR:-${6%/*}}/base"\n'
         '    path="${base%/*}/tenant-kek.secret"\n'
         "    (set -o noclobber; printf 'unowned key marker\\n' > \"$path\") || exit 1\n"
         '    stat -c "%d:%i" "$path" > "$RUNNER_TEMP/marker-identity"\n'
@@ -336,9 +337,9 @@ def test_child_output_receipt_controls_cleanup(tmp_path: Path, collision: bool) 
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         f'    {git} "$@" || exit $?\n'
-        '    base="${@: -1}"; [[ "$1" == clone ]] || base="$6"\n'
+        '    base="${UPGRADE_PRIVATE_RUN_DIR:-${6%/*}}/base"\n'
         '    output="${base%/*}/ai-assertions.json"\n'
         + ('    printf "unowned\\n" > "$output"\n' if collision else "")
         + """    python3 - "$output" <<'PY'
@@ -418,7 +419,7 @@ def test_wrapper_removes_planted_tree_without_following_links(tmp_path: Path) ->
     assert git is not None
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         '    [[ -n "${UPGRADE_PRIVATE_RUN_DIR:-}" ]] || exit 2\n'
         '    mkdir "$UPGRADE_PRIVATE_RUN_DIR/planted" || exit 2\n'
         '    printf "planted\\n" > "$UPGRADE_PRIVATE_RUN_DIR/planted/marker"\n'
@@ -486,7 +487,7 @@ def test_concurrent_wrapper_with_same_ci_identity_cannot_certify(
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
+        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
         "    echo staging; read -r _; exit 1\nfi\n"
         f'exec {git} "$@"\n',
         encoding="utf-8",
