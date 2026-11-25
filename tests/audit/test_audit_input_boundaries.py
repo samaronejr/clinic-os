@@ -13,7 +13,7 @@ from apps.audit.services import (
     AuditEventInput,
     AuditEventValueRejectedError,
     AuditPayloadValueRejectedError,
-    _normalize_payload,
+    normalize_audit_payload,
     record_event,
     verify_chain,
 )
@@ -134,7 +134,7 @@ def test_official_payload_boundary_rejects_raw_out_of_domain_strings(
     value: str,
 ) -> None:
     with pytest.raises(AuditPayloadValueRejectedError):
-        _normalize_payload({key: value})
+        normalize_audit_payload({key: value})
 
 
 @pytest.mark.django_db(transaction=True)

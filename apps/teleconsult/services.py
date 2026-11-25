@@ -517,7 +517,6 @@ def enter_room(*, token: str, role: str) -> RoomEntry:
     else:
         _enter_as_patient(credential)
     session = credential.session
-    denied = False
     with transaction.atomic():
         _lock_session(session.pk)
         session = TeleconsultSession.objects.get(pk=session.pk)
@@ -529,24 +528,23 @@ def enter_room(*, token: str, role: str) -> RoomEntry:
             or credential.expires_at <= timezone.now()
             or _liveness_failure(session) is not None
         )
-        if not denied and not _room_ready(session.pk):
-            raise TeleconsultConflictError(_ROOM_NOT_READY)
         if not denied:
+            if not _room_ready(session.pk):
+                raise TeleconsultConflictError(_ROOM_NOT_READY)
             if credential.first_used_at is None:
                 credential.first_used_at = timezone.now()
                 credential.save(update_fields=("first_used_at",))
                 _event(session, "joined", actor_role=role)
             room = TeleconsultRoom.objects.get(session=session)
-    if denied:
-        refresh_session(session)
-        _event(session, "join_denied", actor_role=role)
-        raise TeleconsultAccessDeniedError
-    return RoomEntry(
-        session=session,
-        room_name=room.room_name,
-        role=role,
-        credential=credential,
-    )
+            return RoomEntry(
+                session=session,
+                room_name=room.room_name,
+                role=role,
+                credential=credential,
+            )
+    refresh_session(session)
+    _event(session, "join_denied", actor_role=role)
+    raise TeleconsultAccessDeniedError
 
 
 def start_consultation(*, clinic_id: UUID, session_id: UUID) -> TeleconsultSession:

@@ -6,7 +6,7 @@ import os
 import re
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NoReturn
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
@@ -246,16 +246,16 @@ def validate_secret_store_env(
     return backend, directory
 
 
-def _secret_failure() -> None:
+def _secret_failure() -> NoReturn:
     message = "SECRET_KEY violates the runtime secret contract"
     raise ImproperlyConfigured(message)
 
 
-def _host_failure() -> None:
+def _host_failure() -> NoReturn:
     message = "ALLOWED_HOSTS violates the production host contract"
     raise ImproperlyConfigured(message)
 
 
-def _ssl_host_failure() -> None:
+def _ssl_host_failure() -> NoReturn:
     message = "SECURE_SSL_HOST violates the SSL host contract"
     raise ImproperlyConfigured(message)

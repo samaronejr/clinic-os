@@ -19,8 +19,8 @@ from apps.audit.models import SYSTEM_ORG_ID
 from apps.audit.services import (
     AuditEventInput,
     AuditEventValueRejectedError,
-    _record_system_event,
     record_event,
+    record_system_event,
     verify_chain,
 )
 from django.db import connection, transaction
@@ -100,7 +100,7 @@ def test_event_rejects_non_address_component_ip_runtime_values(
     "appender",
     [
         pytest.param(record_event, id="tenant"),
-        pytest.param(_record_system_event, id="system"),
+        pytest.param(record_system_event, id="system"),
     ],
 )
 @pytest.mark.parametrize(
@@ -181,7 +181,7 @@ def test_system_address_component_ip_persists_and_immediately_verifies(
     event = replace(_event(), component_ip=component_ip)
 
     # When: the system service appends, reads, and immediately verifies its chain
-    seq = _record_system_event(
+    seq = record_system_event(
         event,
         payload={"reason_code": "component-ip-system-valid"},
     )

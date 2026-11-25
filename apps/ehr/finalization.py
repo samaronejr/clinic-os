@@ -23,10 +23,10 @@ from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _appointment,
-    _assigned,
-    _denied,
+    deny_clinical_access,
     record_denial,
+    require_assigned_physician,
+    resolve_clinic_appointment,
     view_version,
 )
 from apps.identity.stepup import StepUpRequired, assert_step_up
@@ -84,12 +84,12 @@ def _author_version(clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
         .first()
     )
     if version is None:
-        _denied(clinic_id, version_id, "no_care_relationship")
-    actor = _assigned(
-        _appointment(clinic_id, version.document.encounter.appointment_id)
+        deny_clinical_access(clinic_id, version_id, "no_care_relationship")
+    actor = require_assigned_physician(
+        resolve_clinic_appointment(clinic_id, version.document.encounter.appointment_id)
     )
     if version.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+        deny_clinical_access(clinic_id, version_id, "not_assigned")
     return version
 
 
@@ -168,8 +168,10 @@ def amend_document(
 ) -> ClinicalDocumentVersion:
     """Open one linked amendment draft on the document's current version."""
     authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _assigned(
-        _appointment(clinic_id, authorized.document.encounter.appointment_id)
+    actor = require_assigned_physician(
+        resolve_clinic_appointment(
+            clinic_id, authorized.document.encounter.appointment_id
+        )
     )
     reason = reason.strip()
     if not reason or len(reason) > MAX_REASON:
@@ -246,7 +248,9 @@ def close_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    _assigned(_appointment(clinic_id, encounter.appointment_id))
+    require_assigned_physician(
+        resolve_clinic_appointment(clinic_id, encounter.appointment_id)
+    )
     with transaction.atomic():
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         if encounter.state == Encounter.State.CLOSED:

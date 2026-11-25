@@ -32,7 +32,7 @@ from apps.ehr.attachment_storage import (
     default_storage,
 )
 from apps.ehr.models import ClinicalAttachment, Encounter
-from apps.ehr.services import ClinicalAccessDeniedError, _denied
+from apps.ehr.services import ClinicalAccessDeniedError, deny_clinical_access
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_id,
@@ -135,7 +135,7 @@ def authorize_attachment_encounter(
     try:
         require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     except CurrentActorError:
-        _denied(clinic_id, encounter_id, "role_denied")
+        deny_clinical_access(clinic_id, encounter_id, "role_denied")
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.ehr_assigned(%s), clinic_app.ehr_care(%s)",
@@ -143,7 +143,7 @@ def authorize_attachment_encounter(
         )
         assigned, care = cursor.fetchone() or (False, False)
     if not care or (write and not assigned):
-        _denied(
+        deny_clinical_access(
             clinic_id, encounter_id, "not_assigned" if write else "no_care_relationship"
         )
     return encounter
@@ -388,7 +388,7 @@ def download_attachment(
         raise ClinicalAccessDeniedError
     authorize_attachment_encounter(clinic_id, row.encounter_id)
     if row.state != ClinicalAttachment.State.AVAILABLE:
-        _denied(clinic_id, row.pk, "not_available")
+        deny_clinical_access(clinic_id, row.pk, "not_available")
     backend = storage if storage is not None else default_storage()
     try:
         data = reveal(

@@ -17,7 +17,7 @@ from apps.ehr.models import Encounter
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _denied,
+    deny_clinical_access,
     record_denial,
 )
 from apps.identity.current_context import (
@@ -359,7 +359,7 @@ def render_document(
         return document
 
 
-def _authorize_document_care(clinic_id: UUID, encounter_id: UUID) -> None:
+def authorize_document_care(clinic_id: UUID, encounter_id: UUID) -> None:
     """Recheck the clinical read predicate for the artifact's encounter."""
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
     if encounter is None:
@@ -367,12 +367,12 @@ def _authorize_document_care(clinic_id: UUID, encounter_id: UUID) -> None:
     try:
         require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     except CurrentActorError:
-        _denied(clinic_id, encounter_id, "role_denied")
+        deny_clinical_access(clinic_id, encounter_id, "role_denied")
     with connection.cursor() as cursor:
         cursor.execute("SELECT clinic_app.ehr_care(%s)", [encounter_id])
         care = cursor.fetchone()
     if not care or not care[0]:
-        _denied(clinic_id, encounter_id, "no_care_relationship")
+        deny_clinical_access(clinic_id, encounter_id, "no_care_relationship")
 
 
 def download_document(*, clinic_id: UUID, document_id: UUID) -> DocumentDownload:
@@ -387,7 +387,7 @@ def download_document(*, clinic_id: UUID, document_id: UUID) -> DocumentDownload
     ).first()
     if document is None:
         raise ClinicalAccessDeniedError
-    _authorize_document_care(clinic_id, document.encounter_id)
+    authorize_document_care(clinic_id, document.encounter_id)
     data = bytes(document.pdf_bytes)
     if sha256(data).hexdigest() != document.pdf_digest:
         raise DocumentStorageError

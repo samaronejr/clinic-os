@@ -16,8 +16,8 @@ from apps.audit.canonical import (
     AuditPayloadKeyRejected,
     AuditPayloadValueRejectedError,
     AuditTrustedContext,
-    _content_hash,
-    _normalize_payload,
+    audit_content_hash,
+    normalize_audit_payload,
 )
 from apps.audit.models import SYSTEM_ORG_ID
 
@@ -259,8 +259,8 @@ def _content_hashes(
                 None if row.actor_user_id is None else UUID(str(row.actor_user_id))
             ),
         )
-        normalized_payload = _normalize_payload(json.loads(row.payload))
-        content_hash = _content_hash(event, context, normalized_payload)
+        normalized_payload = normalize_audit_payload(json.loads(row.payload))
+        content_hash = audit_content_hash(event, context, normalized_payload)
         curr_hash = bytes(row.curr_hash)
     except (
         AttributeError,

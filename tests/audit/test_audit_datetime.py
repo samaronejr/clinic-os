@@ -12,9 +12,9 @@ from apps.audit.services import (
     AuditEventInput,
     AuditEventValueRejectedError,
     AuditTrustedContext,
-    _content_hash,
-    _record_system_event,
+    audit_content_hash,
     record_event,
+    record_system_event,
     verify_chain,
 )
 from django.db import connection, transaction
@@ -116,7 +116,7 @@ def test_custom_timezone_is_observed_once_before_canonical_hashing() -> None:
 
     # When: the boundary constructs the event and canonical hashing consumes it
     event = _event(timestamp)
-    _content_hash(
+    audit_content_hash(
         event,
         AuditTrustedContext(uuid4(), None),
         {"reason_code": "counted-timezone"},
@@ -143,7 +143,7 @@ def test_custom_timezone_is_observed_once_before_canonical_hashing() -> None:
     "appender",
     [
         pytest.param(record_event, id="tenant"),
-        pytest.param(_record_system_event, id="system"),
+        pytest.param(record_system_event, id="system"),
     ],
 )
 def test_datetime_subclass_is_rejected_before_hash_or_cursor(
@@ -167,7 +167,7 @@ def test_datetime_subclass_is_rejected_before_hash_or_cursor(
     # When: either supported path receives the dynamic runtime subtype
     with (
         patch(
-            "apps.audit.services._content_hash",
+            "apps.audit.services.audit_content_hash",
             side_effect=AssertionError("hash boundary reached"),
         ) as content_hash,
         patch(
@@ -233,7 +233,7 @@ def test_tenant_timestamp_is_normalized_once_and_immediately_verifies(
     assert stored is not None
     assert stored[0] == event.occurred_at_utc
     assert bytes(stored[1]) == _ZERO_HASH
-    content_hash = _content_hash(
+    content_hash = audit_content_hash(
         event,
         AuditTrustedContext(organization_id, actor_user_id),
         payload,
@@ -264,7 +264,7 @@ def test_system_timestamp_is_normalized_once_and_immediately_verifies(
     # When: the owner-only service stores and verifies the system event
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SELECT set_config('app.current_user_id', '', true)")
-        seq = _record_system_event(event, payload=payload)
+        seq = record_system_event(event, payload=payload)
         cursor.execute(
             "SELECT occurred_at_utc, prev_hash, curr_hash "
             "FROM clinic_app.audit_event WHERE organization_id = %s AND seq = %s",
@@ -280,7 +280,7 @@ def test_system_timestamp_is_normalized_once_and_immediately_verifies(
     assert stored is not None
     assert stored[0] == event.occurred_at_utc
     assert bytes(stored[1]) == _ZERO_HASH
-    content_hash = _content_hash(
+    content_hash = audit_content_hash(
         event,
         AuditTrustedContext(SYSTEM_ORG_ID, None),
         payload,

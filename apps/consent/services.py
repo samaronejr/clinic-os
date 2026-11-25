@@ -13,7 +13,11 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.audit.events import build_phase1_audit_event
-from apps.audit.services import AuditTrustedContext, _content_hash, record_phase1_event
+from apps.audit.services import (
+    AuditTrustedContext,
+    audit_content_hash,
+    record_phase1_event,
+)
 from apps.consent.models import ConsentAcceptance, ConsentRevocation, ConsentText
 from apps.identity.current_context import require_current_actor_clinic_roles
 from apps.identity.models import Clinic, UserClinicRole
@@ -132,7 +136,7 @@ def _patient_audit(
     event = build_phase1_audit_event(
         event_name, clinic_id=authority.clinic_id, affected_record_id=record_id
     )
-    content_hash = _content_hash(
+    content_hash = audit_content_hash(
         event.event,
         AuditTrustedContext(
             organization_id=authority.organization_id,

@@ -185,9 +185,10 @@ def _is_bounded_text(value: str, maximum: int) -> bool:
     )
 
 
-def _normalize_payload(
+def normalize_audit_payload(
     payload: Mapping[str, AuditPayloadInputValue],
 ) -> ValidAuditPayload:
+    """Validate and normalize the fixed audit payload vocabulary."""
     normalized: dict[str, str | int] = {}
     for raw_key, value in payload.items():
         key = _freeze_text(raw_key)
@@ -224,11 +225,12 @@ def _is_canonical_uuid(value: str) -> bool:
         return False
 
 
-def _content_hash(
+def audit_content_hash(
     event: AuditEventInput,
     context: AuditTrustedContext,
     payload: ValidAuditPayload,
 ) -> bytes:
+    """Hash one event's canonical content under the audit domain separator."""
     occurred_at_utc = event.occurred_at_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     actor_id = None if context.actor_user_id is None else str(context.actor_user_id)
     component_ip = None if event.component_ip is None else str(event.component_ip)
