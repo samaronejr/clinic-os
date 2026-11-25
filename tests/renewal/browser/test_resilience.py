@@ -21,7 +21,7 @@ from django.utils.translation import gettext, pgettext
 from playwright.sync_api import expect
 from psycopg import sql
 
-from renewal.browser._fixture_secrets import worker_dsn
+from renewal.browser._fixture_secrets import lock_dsn, worker_dsn
 from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._teleconsult import register_physician
@@ -163,6 +163,7 @@ def run_provider_worker(operation: str, root: Path) -> list[str]:
     environment = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "PYTHONPATH": os.pathsep.join((".", "tests")),
     }

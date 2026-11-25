@@ -870,6 +870,8 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
             app_password="pw",  # noqa: S106 - synthetic fixture value.
             container="clinic_renewal_db_drv",
             database="clinic",
+            lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
+            lock_password="pw",  # noqa: S106 - synthetic fixture value.
             owner_dsn="postgresql://clinic_owner:pw@127.0.0.1:55432/clinic",
             owner_password="pw",  # noqa: S106 - synthetic fixture value.
             port=55432,
@@ -887,7 +889,7 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
 
     monkeypatch.setattr(runner, "_provision_database", provision)
     monkeypatch.setattr(runner, "_create_test_database", lambda *args: None)
-    monkeypatch.setattr(runner, "_migrate", lambda *args: None)
+    monkeypatch.setattr(runner, "_migrate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runner, "_run_bounded", run)
     assert runner._gate_coverage(PROJECT_ROOT, tmp_path, "drv") == [
         {"command": "coverage", "exit": 0}

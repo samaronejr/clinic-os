@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+from urllib.parse import unquote, urlsplit
 
 import environ
 from django.core.exceptions import ImproperlyConfigured, ValidationError
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 
 SYNTHETIC_DATA_MODE: Final = "synthetic"
 LIVE_DATA_MODE: Final = "live"
+LOCK_ROLE: Final = "clinic_lock"
 SECRET_PREFIXES: Final = (
     "development",
     "test",
@@ -344,6 +346,25 @@ def validate_secret_store_env(
         message = "CLINIC_SECRET_DIR is required for CLINIC_SECRET_BACKEND"
         raise ImproperlyConfigured(message)
     return backend, directory
+
+
+def require_locks_database_url(environment: Mapping[str, str]) -> str:
+    """Return the outbox lock session's DSN, which must log in as clinic_lock.
+
+    The comms send permit binds each claim to its lock session, so that
+    session must be one the runtime role neither is nor may signal. There is
+    no fallback to ``APP_DATABASE_URL``: a missing or clinic_app lock DSN
+    would let any runtime session terminate a live claim.
+    """
+    value = environment.get("LOCKS_DATABASE_URL", "")
+    try:
+        role = unquote(urlsplit(value).username or "")
+    except ValueError:
+        role = ""
+    if role != LOCK_ROLE:
+        message = "LOCKS_DATABASE_URL must be set and log in as clinic_lock"
+        raise ImproperlyConfigured(message)
+    return value
 
 
 def _secret_failure() -> None:

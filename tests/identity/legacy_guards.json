@@ -14676,7 +14676,8 @@
     "clinic_app.comms_status_attempt_guard": {
       "discovery": {
         "migrations": [
-          "apps/comms/migrations/_attempt_delivery_sql.py"
+          "apps/comms/migrations/_attempt_delivery_sql.py",
+          "apps/comms/migrations/_lock_role_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -14775,6 +14776,7 @@
       "discovery": {
         "migrations": [
           "apps/comms/migrations/_inflight_claim_sql.py",
+          "apps/comms/migrations/_lock_role_sql.py",
           "apps/comms/migrations/_permit_evidence_sql.py",
           "apps/comms/migrations/_session_claim_sql.py",
           "apps/comms/migrations/_settled_attempt_sql.py"
@@ -29024,6 +29026,7 @@
     "clinic_app.comms_adopt_late_reference": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_lock_role_sql.py",
           "apps/comms/migrations/_mac_proof_sql.py"
         ],
         "policies": [],
@@ -29112,6 +29115,7 @@
     "clinic_app.comms_close_unsent_attempt": {
       "discovery": {
         "migrations": [
+          "apps/comms/migrations/_lock_role_sql.py",
           "apps/comms/migrations/_settled_attempt_sql.py"
         ],
         "policies": [],
@@ -29130,6 +29134,28 @@
         "test_settled_attempts_cannot_be_rewritten"
       ],
       "reason": "Closes an outbox-claimed message attempt that provably never reached the provider (no permit claim, no reference); no staff authority."
+    },
+    "clinic_app.comms_attempt_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/comms/migrations/_lock_role_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, OUT status text, OUT account uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_a_close_racing_a_claim_leaves_no_stale_claim"
+      ],
+      "reason": "Tells the clinic_lock session one message attempt's status and provider account in the session's tenant; no staff authority and no table access for the lock role."
     }
   },
   "sql_method": [

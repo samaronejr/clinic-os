@@ -205,6 +205,10 @@ def test_production_direct_process_trusts_no_forwarded_header(tmp_path: Path) ->
                 "postgresql://clinic_app:synthetic@db.qa.clinic-os.dev:5432/"
                 f"clinic?{query}"
             ),
+            "LOCKS_DATABASE_URL": (
+                "postgresql://clinic_lock:synthetic@db.qa.clinic-os.dev:5432/"
+                f"clinic?{query}"
+            ),
             "CLINIC_DATA_MODE": "synthetic",
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(tmp_path / "secrets"),

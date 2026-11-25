@@ -102,6 +102,7 @@ def test_acceptance_caller_and_make_recipe_forward_an_isolated_media_root(
         owner_password=credential,
         postgres_password=credential,
         super_password=credential,
+        lock_password=credential,
     )
     observed: list[Path] = []
 

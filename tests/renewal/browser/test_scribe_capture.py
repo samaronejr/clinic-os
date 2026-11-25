@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import fixture_dsn
+from renewal.browser._fixture_secrets import fixture_dsn, lock_dsn
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -161,6 +161,7 @@ def fixture_command(
         env={
             **os.environ,
             "APP_DATABASE_URL": fixture_dsn(),
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
             "SCRIBE_FIXTURE_ORGANIZATION": staff["organization"],

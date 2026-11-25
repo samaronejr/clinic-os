@@ -1741,6 +1741,7 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         username="renewal-owner-x",
         password="secret-password",  # noqa: S106 - synthetic fixture value.
         secret_key=secrets.token_urlsafe(48),
+        lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
     )
     assert environment["CLINIC_BROWSER_ENGINE"] == "webkit"
     assert environment["CLINIC_RENEWAL_BASE_URL"] == "http://127.0.0.1:48000"
@@ -1779,6 +1780,8 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
         app_password="pw",  # noqa: S106 - synthetic fixture value.
         container="clinic_renewal_db_covpin",
         database="clinic",
+        lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
+        lock_password="pw",  # noqa: S106 - synthetic fixture value.
         owner_dsn="postgresql://clinic_owner:pw@127.0.0.1:55432/clinic",
         owner_password="pw",  # noqa: S106 - synthetic fixture value.
         port=55432,
@@ -1816,7 +1819,7 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
 
     monkeypatch.setattr(runner, "_provision_database", fake_provision)
     monkeypatch.setattr(runner, "_create_test_database", lambda *args: None)
-    monkeypatch.setattr(runner, "_migrate", lambda *args: None)
+    monkeypatch.setattr(runner, "_migrate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runner, "_run_bounded", fake_run)
     results = runner._gate_coverage(REPOSITORY, tmp_path, "covpin")
     assert results == [{"command": "coverage", "exit": 0}]
@@ -1853,7 +1856,8 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
     environments = (
         runner._child_env({}),
         runner._server_environment(
-            "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic"
+            "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic",
+            "postgresql://clinic_lock:synthetic@127.0.0.1:55432/clinic",
         ),
         runner._pytest_environment(
             base_url="http://127.0.0.1:48000",
@@ -1863,6 +1867,7 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
             username="synthetic-staff",
             password=tmp_path.name,
             secret_key=secrets.token_urlsafe(48),
+            lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
         ),
     )
     for environment in environments:
@@ -1880,6 +1885,8 @@ def test_signing_suites_export_the_app_worker_dsn(
         app_password="",
         container="unused",
         database="clinic",
+        lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
+        lock_password="pw",  # noqa: S106 - synthetic fixture value.
         owner_dsn="postgresql://clinic_owner:synthetic@127.0.0.1:55432/clinic",
         owner_password="",
         port=55432,
@@ -1894,11 +1901,11 @@ def test_signing_suites_export_the_app_worker_dsn(
     monkeypatch.setattr(
         runner, "_provision_database", lambda *_args: contextlib.nullcontext(database)
     )
-    monkeypatch.setattr(runner, "_migrate", lambda *_args: None)
+    monkeypatch.setattr(runner, "_migrate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         runner,
         "_seed",
-        lambda *_args: dict.fromkeys(
+        lambda *_args, **_kwargs: dict.fromkeys(
             ("clinic_id", "organization_id", "username", "password"), "fixture"
         ),
     )
@@ -2335,6 +2342,7 @@ def test_renewal_settings_reject_an_owner_role_dsn(tmp_path: Path) -> None:
         "HOME": os.environ.get("HOME", "/root"),
         "DJANGO_SETTINGS_MODULE": "config.settings.renewal",
         "APP_DATABASE_URL": "postgresql://clinic_owner:pw@127.0.0.1:55432/clinic",
+        "LOCKS_DATABASE_URL": "postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
         "SECRET_KEY": "renewal-test-secret",
         "PYTHONPATH": str(REPOSITORY),
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -2365,7 +2373,8 @@ def test_renewal_settings_reject_an_owner_role_dsn(tmp_path: Path) -> None:
 def test_renewal_passkey_challenge_uses_a_browser_valid_loopback_origin() -> None:
     # Given the actual renewal serving environment, without opening its database.
     environment = runner._server_environment(
-        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic",
+        "postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
     )
     # When a browser on localhost starts a ceremony at the ephemeral server port.
     completed = subprocess.run(
@@ -2512,6 +2521,7 @@ def _leaky_run(
         "PYTHONPATH": f"{REPOSITORY / 'tests'}{os.pathsep}{REPOSITORY}",
         "PYTHONDONTWRITEBYTECODE": "1",
         "LEAK_PROBE_OUT": str(probe),
+        "LOCKS_DATABASE_URL": "postgresql://clinic_lock:x@127.0.0.1:5/clinic",
         "CLINIC_RENEWAL_FIXTURE_DATABASE_URL": (
             f"postgresql://clinic_owner:{owner_password}@127.0.0.1:5/clinic"
         ),
@@ -2610,8 +2620,14 @@ def test_secret_runner_inputs_are_the_redacted_environment() -> None:
         username="user",
         password=sentinel,
         secret_key=sentinel,
+        lock_dsn=f"postgresql://clinic_lock:{sentinel}@127.0.0.1:1/clinic",
     )
     derived = {name for name, value in exported.items() if value == sentinel}
+    derived |= {
+        name
+        for name, value in exported.items()
+        if name.startswith("CLINIC_RENEWAL_") and sentinel in value
+    }
     tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
@@ -2647,7 +2663,8 @@ def test_server_signing_key_reaches_only_synthetic_fixture_environment(
 ) -> None:
     # Given the key minted by the actual server environment constructor.
     server = runner._server_environment(
-        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic",
+        "postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
     )
     key = fixture_secrets.FixtureSecret(server["SECRET_KEY"])
     server["SECRET_KEY"] = key
@@ -2668,6 +2685,7 @@ def test_server_signing_key_reaches_only_synthetic_fixture_environment(
         username="user",
         password=fixture_secrets.new_password(),
         secret_key=key,
+        lock_dsn="postgresql://clinic_lock:pw@127.0.0.1:55432/clinic",
     )
     environment["PYTHONPATH"] = f"{REPOSITORY / 'tests'}{os.pathsep}{REPOSITORY}"
     assert environment["SECRET_KEY"] == key
@@ -2968,7 +2986,12 @@ def test_display_receipt_records_requested_and_effective(
 ) -> None:
     # The effective display is resolved from the served app's own environment,
     # as config.settings.renewal resolves it; public pages always stay light.
-    served = {**runner._server_environment("postgresql://x"), **request_.environment()}
+    served = {
+        **runner._server_environment(
+            "postgresql://x", "postgresql://clinic_lock:x@h:1/d"
+        ),
+        **request_.environment(),
+    }
     receipt = runner._display_receipt(request_, served)
     assert receipt == {
         "effective": {

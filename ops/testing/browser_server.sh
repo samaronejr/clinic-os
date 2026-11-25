@@ -47,6 +47,7 @@ readonly python_bin="$environment_root/bin/python"
 : "${CLINIC_BROWSER_USERNAME:?browser-server: missing CLINIC_BROWSER_USERNAME}"
 : "${CLINIC_BROWSER_PASSWORD:?browser-server: missing CLINIC_BROWSER_PASSWORD}"
 : "${APP_DATABASE_URL:?browser-server: missing APP_DATABASE_URL}"
+: "${LOCKS_DATABASE_URL:?browser-server: missing LOCKS_DATABASE_URL}"
 [[ "$CLINIC_BROWSER_EVIDENCE_ROOT" == /* ]] || fail
 
 exec env -i \
@@ -58,6 +59,7 @@ exec env -i \
   PYTHONTZPATH='' \
   DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:?}" \
   APP_DATABASE_URL="$APP_DATABASE_URL" \
+  LOCKS_DATABASE_URL="$LOCKS_DATABASE_URL" \
   CLINIC_DATA_MODE=synthetic \
   CLINIC_BROWSER_BASE_URL="$CLINIC_BROWSER_BASE_URL" \
   CLINIC_BROWSER_CLINIC_ID="$CLINIC_BROWSER_CLINIC_ID" \

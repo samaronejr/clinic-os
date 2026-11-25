@@ -32,7 +32,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, Never, cast
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from uuid import uuid4
 
 import psycopg
@@ -403,6 +403,7 @@ PROTECTED_DATABASE_PORT: Final = 5432
 APP_ROLE: Final = "clinic_app"
 OWNER_ROLE: Final = "clinic_owner"
 SUPER_ROLE: Final = "clinic_super"
+LOCK_ROLE: Final = "clinic_lock"
 LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "localhost", "::1"})
 BROWSER_CANDIDATES: Final = (
     "google-chrome",
@@ -491,6 +492,8 @@ class ProvisionedDatabase:
     app_password: str
     container: str
     database: str
+    lock_dsn: str
+    lock_password: str
     owner_dsn: str
     owner_password: str
     port: int
@@ -706,6 +709,14 @@ def _validate_serving_dsn(dsn: str) -> str:
     return dsn
 
 
+def _override_lock_dsn() -> str:
+    """Return the clinic_lock DSN an external serving DSN must bring along."""
+    dsn = os.environ.get("CLINIC_RENEWAL_LOCKS_DATABASE_URL", "")
+    if unquote(urlsplit(dsn).username or "") != LOCK_ROLE:
+        _fail("renewal lock DSN must use the clinic_lock role")
+    return dsn
+
+
 def _require_app_role(dsn: str) -> None:
     """Prove the serving DSN authenticates as a non-superuser app role."""
     try:
@@ -780,6 +791,7 @@ def _provision_database(
         "CLINIC_OWNER_PASSWORD": secrets.token_urlsafe(24),
         "CLINIC_APP_PASSWORD": secrets.token_urlsafe(24),
         "CLINIC_SUPER_PASSWORD": secrets.token_urlsafe(24),
+        "CLINIC_LOCK_PASSWORD": secrets.token_urlsafe(24),
     }
     bootstrap = repository / "ops/db/bootstrap.sql"
     init = repository / "ops/db/init"
@@ -841,6 +853,8 @@ def _provision_database(
             passwords["CLINIC_APP_PASSWORD"],
             container,
             database,
+            _dsn(LOCK_ROLE, passwords["CLINIC_LOCK_PASSWORD"], port, database),
+            passwords["CLINIC_LOCK_PASSWORD"],
             _dsn(OWNER_ROLE, passwords["CLINIC_OWNER_PASSWORD"], port, database),
             passwords["CLINIC_OWNER_PASSWORD"],
             port,
@@ -969,12 +983,13 @@ def _run_bounded(
             raise
 
 
-def _migrate(repository: Path, owner_dsn: str, log: Path) -> None:
+def _migrate(repository: Path, owner_dsn: str, log: Path, *, lock_dsn: str) -> None:
     code = _run_bounded(
         [sys.executable, "manage.py", "migrate", "--no-input"],
         _child_env(
             {
                 "APP_DATABASE_URL": owner_dsn,
+                "LOCKS_DATABASE_URL": lock_dsn,
                 "CLINIC_DATA_MODE": "synthetic",
                 "DJANGO_SETTINGS_MODULE": "config.settings.base",
             }
@@ -992,6 +1007,8 @@ def _seed(
     owner_dsn: str,
     log: Path,
     secret_environment: dict[str, str] | None = None,
+    *,
+    lock_dsn: str,
 ) -> dict[str, str]:
     """Provision the smoke fixture through the owner bootstrap service.
 
@@ -1011,6 +1028,7 @@ def _seed(
                 "APP_DATABASE_URL": owner_dsn,
                 "CLINIC_DATA_MODE": "synthetic",
                 "DJANGO_SETTINGS_MODULE": "config.settings.base",
+                "LOCKS_DATABASE_URL": lock_dsn,
                 "RENEWAL_CLINIC_ID": clinic_id,
                 "RENEWAL_CLINIC_NAME": "Renewal Smoke Clinic",
                 "RENEWAL_CNPJ": "11222333000181",
@@ -1132,11 +1150,12 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
     }
 
 
-def _server_environment(app_dsn: str) -> dict[str, str]:
+def _server_environment(app_dsn: str, lock_dsn: str) -> dict[str, str]:
     return _child_env(
         {
             "ALLOWED_HOSTS": "127.0.0.1,localhost",
             "APP_DATABASE_URL": app_dsn,
+            "LOCKS_DATABASE_URL": lock_dsn,
             # Browser journeys exercise real dispatch boundaries through
             # outbox records and worker subprocesses; the in-process
             # broker exists only so request-time apply_async does not
@@ -1159,10 +1178,15 @@ def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     username: str,
     password: str,
     secret_key: str,
+    lock_dsn: str,
 ) -> dict[str, str]:
     """Export only the private runner-to-fixture inputs to the suite child."""
     return _child_env(
         {
+            # The suite's own settings and every worker it spawns need the
+            # clinic_lock session DSN; workers get it as a fixture secret.
+            "CLINIC_RENEWAL_LOCKS_DATABASE_URL": lock_dsn,
+            "LOCKS_DATABASE_URL": lock_dsn,
             # Suite fixtures and worker subprocesses never reach a host Redis.
             "CELERY_BROKER_URL": "memory://",
             "CLINIC_DATA_MODE": "synthetic",
@@ -1298,20 +1322,32 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         contextlib.ExitStack() as extra_processes,
     ):
         if override_dsn is not None:
-            app_dsn = override_dsn
+            app_dsn, lock_dsn = override_dsn, _override_lock_dsn()
         else:
             if not isinstance(database, ProvisionedDatabase):
                 _fail("renewal database provisioning returned no lease")
             provisioned = database
-            _migrate(repository, provisioned.owner_dsn, pytest_log)
-            fixture = _seed(
-                repository, provisioned.owner_dsn, pytest_log, secret_environment
+            _migrate(
+                repository,
+                provisioned.owner_dsn,
+                pytest_log,
+                lock_dsn=provisioned.lock_dsn,
             )
-            app_dsn = _validate_serving_dsn(provisioned.app_dsn)
+            fixture = _seed(
+                repository,
+                provisioned.owner_dsn,
+                pytest_log,
+                secret_environment,
+                lock_dsn=provisioned.lock_dsn,
+            )
+            app_dsn, lock_dsn = (
+                _validate_serving_dsn(provisioned.app_dsn),
+                provisioned.lock_dsn,
+            )
         _require_app_role(app_dsn)
         spawned: list[SupervisedMaster] = []
         server_environment = {
-            **_server_environment(app_dsn),
+            **_server_environment(app_dsn, lock_dsn),
             **display_environment,
             **secret_environment,
             **_synthetic_adapters(suite),
@@ -1372,6 +1408,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     username=fixture["username"],
                     password=fixture["password"],
                     secret_key=server_environment["SECRET_KEY"],
+                    lock_dsn=lock_dsn,
                 ),
                 **secret_environment,
                 **(_synthetic_adapters(suite) if suite == "resilience" else {}),
@@ -1630,6 +1667,8 @@ def _create_test_database(repository: Path, database: ProvisionedDatabase) -> No
         f"CLINIC_APP_PASSWORD={database.app_password}",
         "-e",
         f"CLINIC_SUPER_PASSWORD={database.super_password}",
+        "-e",
+        f"CLINIC_LOCK_PASSWORD={database.lock_password}",
         database.container,
         "psql",
         "-h",
@@ -1657,10 +1696,16 @@ def _gate_coverage(
 ) -> list[JsonObject]:
     with _provision_database(repository, f"ci{token}", memory_backed=True) as database:
         _create_test_database(repository, database)
-        _migrate(repository, database.owner_dsn, logs / "gate-coverage-migrate.log")
+        _migrate(
+            repository,
+            database.owner_dsn,
+            logs / "gate-coverage-migrate.log",
+            lock_dsn=database.lock_dsn,
+        )
         environment = _child_env(
             {
                 "APP_DATABASE_URL": database.app_dsn,
+                "LOCKS_DATABASE_URL": database.lock_dsn,
                 # As in hosted CI: the default broker is a host Redis that
                 # may belong to another project.
                 "CELERY_BROKER_URL": "memory://",

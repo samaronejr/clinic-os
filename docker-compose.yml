@@ -12,6 +12,7 @@ services:
       CLINIC_OWNER_PASSWORD: ${CLINIC_OWNER_PASSWORD:-clinic_owner_password}
       CLINIC_APP_PASSWORD: ${CLINIC_APP_PASSWORD:-clinic_app_password}
       CLINIC_SUPER_PASSWORD: ${CLINIC_SUPER_PASSWORD:-clinic_super_password}
+      CLINIC_LOCK_PASSWORD: ${CLINIC_LOCK_PASSWORD:-clinic_lock_password}
     ports:
       - "${POSTGRES_HOST_IP:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:

@@ -17,7 +17,7 @@ import pytest
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import new_access_code, worker_dsn
+from renewal.browser._fixture_secrets import lock_dsn, new_access_code, worker_dsn
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
@@ -222,6 +222,7 @@ def _worker(operation: str, outcome: str, root: Path) -> None:
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),

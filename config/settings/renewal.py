@@ -18,6 +18,7 @@ from django.core.exceptions import ImproperlyConfigured
 from config.display import DisplayValueError, resolve_display
 
 from . import base
+from .contracts import require_locks_database_url
 from .database import agent_database_config
 
 env = environ.Env()
@@ -47,7 +48,12 @@ DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
 
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
-DATABASES["locks"] = deepcopy(DATABASES["default"])
+# The lock session is a separate clinic_lock login on the same loopback DB.
+DATABASES["locks"] = {
+    **deepcopy(DATABASES["default"]),
+    **env.db_url_config(require_locks_database_url(os.environ)),
+}
+DATABASES["locks"]["OPTIONS"] = deepcopy(DATABASES["default"]["OPTIONS"])
 DATABASES.update(agent_database_config(os.environ, primary=DATABASES["default"]))
 
 DEBUG = False

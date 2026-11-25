@@ -14,7 +14,7 @@ from uuid import UUID
 import psycopg
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import OWNER_PASSWORD, FixtureSecret
+from renewal.browser._fixture_secrets import OWNER_PASSWORD, FixtureSecret, lock_dsn
 from renewal.browser._navigation import (
     expect_document,
     goto_settled,
@@ -55,6 +55,7 @@ def seed_review(staff: dict[str, str], theme: str) -> dict[str, str]:
         env={
             **os.environ,
             "APP_DATABASE_URL": staff["dsn"],
+            "LOCKS_DATABASE_URL": lock_dsn(),
             "DJANGO_SETTINGS_MODULE": "config.settings.base",
             "CLINIC_DATA_MODE": "synthetic",
             OWNER_PASSWORD: staff["password"],

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from copy import deepcopy
 from pathlib import Path
 
 from . import base
@@ -41,7 +40,15 @@ DATABASES = {
         database_prefix=f"{_environment['COMPOSE_PROJECT_NAME']}_",
     )
 }
-DATABASES["locks"] = deepcopy(DATABASES["default"])
+# The lock session is a separate clinic_lock login (the runtime role may
+# not signal it); it is part of the closed browser environment.
+DATABASES["locks"] = parse_database_url(
+    _environment["LOCKS_DATABASE_URL"],
+    required_role="clinic_lock",
+    required_host=BROWSER_DATABASE_HOST,
+    required_hostaddr="127.0.0.1",
+    database_prefix=f"{_environment['COMPOSE_PROJECT_NAME']}_",
+)
 DEBUG = False
 SECURE_SSL_HOST = ""
 SECURE_SSL_REDIRECT = False

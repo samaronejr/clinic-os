@@ -6,7 +6,9 @@ from django.core.exceptions import ImproperlyConfigured
 
 from . import base
 from .contracts import (
+    LOCK_ROLE,
     parse_production_hosts,
+    require_locks_database_url,
     validate_runtime_secret,
     validate_secure_ssl_host,
 )
@@ -26,16 +28,11 @@ DATABASES = {
     "default": parse_database_url(
         os.environ.get("APP_DATABASE_URL", ""), required_role=CLINIC_PROCESS_ROLE
     ),
+    # The lock session is a direct/session clinic_lock login; never APP's.
     "locks": parse_database_url(
-        os.environ.get("LOCKS_DATABASE_URL", os.environ.get("APP_DATABASE_URL", "")),
-        required_role=CLINIC_PROCESS_ROLE,
+        require_locks_database_url(os.environ), required_role=LOCK_ROLE
     ),
 }
-if base.env.bool("DATABASE_TRANSACTION_POOLING", default=False) and not os.environ.get(
-    "LOCKS_DATABASE_URL"
-):
-    message = "transaction pooling requires a direct/session LOCKS_DATABASE_URL"
-    raise ImproperlyConfigured(message)
 DATABASES.update(
     agent_database_config(os.environ, primary=DATABASES["default"], strict_tls=True)
 )

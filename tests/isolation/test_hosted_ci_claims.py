@@ -106,6 +106,7 @@ def test_ci_postgres_environment_percent_encodes_database_credentials(
         "Aa1!/?:#@owner",
         "Aa1!/?:#@postgres",
         "Aa1!/?:#@super",
+        "Aa1!/?:#@lock",
     )
 
     # When: the hosted database environment is materialized.

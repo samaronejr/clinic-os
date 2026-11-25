@@ -200,6 +200,7 @@ def _start_worker(log_path: Path, ready_fifo: Path) -> subprocess.Popen[bytes]:
     env = {
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
         "MIGRATION_DATABASE_URL": os.environ["APP_DATABASE_URL"],
+        "LOCKS_DATABASE_URL": os.environ["LOCKS_DATABASE_URL"],
         "CELERY_BROKER_URL": os.environ["CELERY_BROKER_URL"],
         "CLINIC_SECRET_BACKEND": "synthetic-file",
         "CLINIC_SECRET_DIR": os.environ["CLINIC_SECRET_DIR"],

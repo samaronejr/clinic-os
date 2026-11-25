@@ -9,7 +9,7 @@
 #
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
-#   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
+#   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL LOCKS_DATABASE_URL
 #   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 # Set UPGRADE_FIXTURE_SWEEP=1 to require per-table mutation coverage before PASS.
@@ -36,11 +36,12 @@ upgrade_dsn() {
     esac
     printf '%s/%s%s' "${path%/*}" "$upgrade_db" "$query"
 }
+readonly lock_source_dsn="${LOCKS_DATABASE_URL:?LOCKS_DATABASE_URL required}"
 
 psql_super() {
     docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
-        -e CLINIC_SUPER_PASSWORD \
+        -e CLINIC_SUPER_PASSWORD -e CLINIC_LOCK_PASSWORD \
         "$POSTGRES_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -h localhost -p "$POSTGRES_PORT" \
         -U "$POSTGRES_USER" "$@"
@@ -105,6 +106,7 @@ create_and_migrate_base() {
     owner_dsn="$(upgrade_dsn "$MIGRATION_DATABASE_URL")"
     app_dsn="$(upgrade_dsn "$APP_DATABASE_URL")"
     export UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL")"
+    export LOCKS_DATABASE_URL="$(upgrade_dsn "$lock_source_dsn")"
     echo "== create upgrade database $upgrade_db =="
     psql_super -d postgres -qc "CREATE DATABASE $upgrade_db TEMPLATE template0"
     db_created=1

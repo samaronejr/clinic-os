@@ -1479,6 +1479,7 @@ def test_synthetic_startup_ignores_unrelated_activation_state(
     environment = {
         "CLINIC_DATA_MODE": "synthetic",
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
+        "LOCKS_DATABASE_URL": "postgresql://clinic_lock:x@localhost:5432/clinic",
         activation.ACTIVATION_STATE_ENV: live_environment[
             activation.ACTIVATION_STATE_ENV
         ],

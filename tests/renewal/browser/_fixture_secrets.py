@@ -49,6 +49,7 @@ REDACTED: Final = "<fixture secret>"
 OWNER_PASSWORD: Final = "CLINIC_RENEWAL_PASSWORD"  # noqa: S105 - a variable name
 SECRET_ENVIRONMENT: Final = (
     "CLINIC_RENEWAL_FIXTURE_DATABASE_URL",
+    "CLINIC_RENEWAL_LOCKS_DATABASE_URL",
     "CLINIC_RENEWAL_WORKER_DATABASE_URL",
     OWNER_PASSWORD,
     "SECRET_KEY",
@@ -89,6 +90,11 @@ def environment_secret(name: str) -> FixtureSecret:
 def fixture_dsn() -> FixtureSecret:
     """The owner DSN the runner lends fixtures for seeding."""
     return environment_secret("CLINIC_RENEWAL_FIXTURE_DATABASE_URL")
+
+
+def lock_dsn() -> FixtureSecret:
+    """The clinic_lock DSN every Django subprocess needs for its lock session."""
+    return environment_secret("CLINIC_RENEWAL_LOCKS_DATABASE_URL")
 
 
 def worker_dsn() -> FixtureSecret:

@@ -15,6 +15,8 @@ from uuid import UUID
 
 import psycopg
 
+from renewal.browser._fixture_secrets import lock_dsn
+
 
 def grant_org_admin(staff: dict[str, str], user_id: str) -> None:
     """Give ``user_id`` org_admin on every clinic the session's fixtures made."""
@@ -39,6 +41,7 @@ def seed_quorum_proposal(staff: dict[str, str], first: str, second: str) -> str:
     environment = {
         **os.environ,
         "APP_DATABASE_URL": staff["dsn"],
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": ".:tests",

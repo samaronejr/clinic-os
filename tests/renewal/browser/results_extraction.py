@@ -15,6 +15,7 @@ from PIL import Image
 from playwright.sync_api import expect
 
 from ai.test_extraction import pdf_fixture
+from renewal.browser._fixture_secrets import lock_dsn
 from renewal.browser._navigation import expect_document, goto_settled
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
@@ -36,6 +37,7 @@ def fixture(
     environment = {
         **os.environ,
         "APP_DATABASE_URL": staff["dsn"],
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": ".:tests",

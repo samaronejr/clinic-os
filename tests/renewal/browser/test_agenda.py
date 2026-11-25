@@ -45,6 +45,7 @@ from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import (
     fixture_dsn,
+    lock_dsn,
     new_password,
     new_totp_key,
     worker_dsn,
@@ -1934,6 +1935,7 @@ def _lifecycle_worker(
     env = {
         **os.environ,
         "APP_DATABASE_URL": worker_dsn(),
+        "LOCKS_DATABASE_URL": lock_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),
