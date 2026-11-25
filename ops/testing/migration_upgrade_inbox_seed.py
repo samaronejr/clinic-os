@@ -21,7 +21,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import runpy
 import secrets
 from contextlib import ExitStack, contextmanager
 from datetime import timedelta
@@ -372,16 +371,10 @@ class _Seed:
                 )
                 self.accounts[channel] = account.pk
         for channel, account_id in self.accounts.items():
-            path = Path(str(settings.CLINIC_SECRET_DIR)) / (
-                f"{secret_name(account_id)}.secret"
-            )
-            helper = os.environ.get("UPGRADE_OWNED_OUTPUT_HELPER")
-            if helper is None:
-                path.write_text(self.keys[channel])
-                path.chmod(0o600)
-            else:
-                with runpy.run_path(helper)["open_owned"](path) as output:
-                    output.write(self.keys[channel])
+            path = _private_inbox_directory() / f"{secret_name(account_id)}.secret"
+            with path.open("x", encoding="utf-8") as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(self.keys[channel])
 
     def receive(self, channel: str, body: bytes) -> None:
         signature = sign(secret=bytes.fromhex(self.keys[channel]), body=body)
@@ -541,8 +534,17 @@ class _History:
         }
 
 
+def _private_inbox_directory() -> Path:
+    run_dir = os.environ.get("UPGRADE_PRIVATE_RUN_DIR")
+    if not run_dir or run_dir != str(settings.CLINIC_SECRET_DIR):
+        message = "private_run_directory_required: inbox seed"
+        raise RuntimeError(message)
+    return Path(run_dir)
+
+
 def seed_inbox(markers: dict[str, object]) -> dict[str, object]:
     """Write every case into the seeded clinic; return its identifiers."""
+    _private_inbox_directory()
     seed = _Seed(UUID(str(markers["organization_id"])), UUID(str(markers["clinic_id"])))
     cases: dict[str, dict[str, str]] = {}
     with override_settings(COMMS_SYNTHETIC_CHANNELS=("email", "sms", "whatsapp")):
