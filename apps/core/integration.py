@@ -58,6 +58,7 @@ import rfc8785
 from django.db import (
     DatabaseError,
     InterfaceError,
+    OperationalError,
     connection,
     connections,
     transaction,
@@ -697,12 +698,16 @@ def _hold_uncertain_communication(scope: OperationScope, *, reclaimed: bool) -> 
 
 def _persisted_outcome(scope: OperationScope) -> ExecutionResult:
     """Report the stored status after a guarded completion touched no row."""
-    with _stored_scope_context(scope):
-        status = (
-            IntegrationOperation.objects.filter(pk=scope.operation_id)
-            .values_list("status", flat=True)
-            .first()
-        )
+
+    def lookup() -> str | None:
+        with _stored_scope_context(scope):
+            return (
+                IntegrationOperation.objects.filter(pk=scope.operation_id)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+    status = _default_step(lookup)
     if status == _FAILED:
         return "failed"
     if status == _CANCELLED:
@@ -1045,13 +1050,22 @@ def _claim_subject_lock(scope: OperationScope) -> str | None:
     answers; subject mutations hold the matching transaction lock, so
     their commit either precedes the recheck or follows the send.
     """
-    with _stored_scope_context(scope):
-        operation = IntegrationOperation.objects.filter(pk=scope.operation_id).first()
-        if operation is None:
-            return None
-        key = (
-            f"{_SUBJECT_LOCK_NAMESPACE}{operation.subject_type}:{operation.subject_id}"
-        )
+
+    def lookup() -> str | None:
+        with _stored_scope_context(scope):
+            operation = IntegrationOperation.objects.filter(
+                pk=scope.operation_id
+            ).first()
+            if operation is None:
+                return None
+            return (
+                f"{_SUBJECT_LOCK_NAMESPACE}{operation.subject_type}:"
+                f"{operation.subject_id}"
+            )
+
+    key = _default_step(lookup)
+    if key is None:
+        return None
     _wait_for_advisory_lock(key)
     return key
 
@@ -1090,8 +1104,8 @@ def _presend_decision(scope: OperationScope) -> _PresendDecision:
             if not _take_permit(scope):
                 return "ineligible"
             return _presend_checks(scope)
-        except (DatabaseError, InterfaceError):
-            if not _lost(connection):
+        except (DatabaseError, InterfaceError) as error:
+            if not _default_lost(error):
                 raise
             connection.close()
             if not lock_session_holds_its_lock():
@@ -1101,6 +1115,42 @@ def _presend_decision(scope: OperationScope) -> _PresendDecision:
 def _lost(database: BaseDatabaseWrapper) -> bool:
     """Whether a connection was lost (closed, terminated or unusable)."""
     return database.connection is None or not database.is_usable()
+
+
+def _default_lost(error: Exception) -> bool:
+    """Whether a default-connection failure means the connection was lost.
+
+    Every operational, interface, connection (08), operator-intervention (57,
+    e.g. an admin shutdown by pg_terminate_backend) or idle-in-transaction
+    (25P03) failure counts, as does a connection already dropped.
+    """
+    if isinstance(error, (OperationalError, InterfaceError)):
+        return True
+    state = str(getattr(error.__cause__, "sqlstate", "") or "")
+    return (
+        state.startswith(("08", "57"))
+        or state == "25P03"
+        or connection.connection is None
+    )
+
+
+def _default_step[T](step: Callable[[], T]) -> T:
+    """Run one default-connection step, re-running it after a lost connection.
+
+    Each step starts from durable state, so it is re-run whole on a fresh
+    connection (bounded by the connect timeout, no sleeps) for as long as the
+    lock session is alive and still holds its lock; anyone who keeps killing
+    the default connection stalls the send at worst.
+    """
+    while True:
+        try:
+            return step()
+        except (DatabaseError, InterfaceError) as error:
+            if not _default_lost(error):
+                raise
+            connection.close()
+            if not lock_session_holds_its_lock():
+                raise
 
 
 def _presend_checks(scope: OperationScope) -> _PresendDecision:
@@ -1120,12 +1170,16 @@ def _presend_checks(scope: OperationScope) -> _PresendDecision:
 
 def _take_permit(scope: OperationScope) -> bool:
     """Take the subject's send permit outside any default-connection transaction."""
-    with _stored_scope_context(scope):
-        subject_type = (
-            IntegrationOperation.objects.filter(pk=scope.operation_id)
-            .values_list("subject_type", flat=True)
-            .first()
-        )
+
+    def lookup() -> str | None:
+        with _stored_scope_context(scope):
+            return (
+                IntegrationOperation.objects.filter(pk=scope.operation_id)
+                .values_list("subject_type", flat=True)
+                .first()
+            )
+
+    subject_type = _default_step(lookup)
     permit = _SUBJECT_PERMITS.get(subject_type or "")
     return permit is None or permit(scope)
 
@@ -1151,17 +1205,23 @@ def _claim_boundary_lock(scope: OperationScope) -> str | None:
     connection outside any transaction and is held from the second
     recheck until the provider answers.
     """
-    with _stored_scope_context(scope):
-        operation = IntegrationOperation.objects.filter(pk=scope.operation_id).first()
-        if operation is None:
-            return None
-        resolver = _SUBJECT_LOCK_KEYS.get(operation.subject_type)
-        if resolver is None:
-            return None
-        lock_key = resolver(scope, operation.subject_id)
-        if lock_key is None:
-            return None
-        key = f"{_SUBJECT_LOCK_NAMESPACE}{lock_key}"
+
+    def lookup() -> str | None:
+        with _stored_scope_context(scope):
+            operation = IntegrationOperation.objects.filter(
+                pk=scope.operation_id
+            ).first()
+            if operation is None:
+                return None
+            resolver = _SUBJECT_LOCK_KEYS.get(operation.subject_type)
+            if resolver is None:
+                return None
+            lock_key = resolver(scope, operation.subject_id)
+            return None if lock_key is None else f"{_SUBJECT_LOCK_NAMESPACE}{lock_key}"
+
+    key = _default_step(lookup)
+    if key is None:
+        return None
     # Bounded waits retried while the subject lock is still this session's.
     _wait_for_advisory_lock(key)
     return key
@@ -1288,14 +1348,30 @@ def _send_claimed(
     scope: OperationScope, provider: str, *, recovery: bool = False
 ) -> ExecutionResult:
     """Prepare inside the tenant transaction, then send outside it."""
-    with _stored_scope_context(scope):
-        operation = _operation_for_prepare(scope)
-        adapters = (
-            (_ACTION_RECOVERY_ADAPTERS if recovery else _ACTION_ADAPTERS)
-            if operation.kind == OperationKind.ACTION
-            else _SEND_ADAPTERS
-        )
-        adapter = adapters.get(provider)
+    try:
+        return _send_claimed_once(scope, provider, recovery=recovery)
+    except (DatabaseError, InterfaceError):
+        # Before the subject lock or any provider call: a lost lock session
+        # returns a provably unsent attempt to pending, never "unconfirmed".
+        if not _lost(connections["locks"]):
+            raise
+        return _recover_lost_lock_session(scope)
+
+
+def _send_claimed_once(
+    scope: OperationScope, provider: str, *, recovery: bool
+) -> ExecutionResult:
+    def lookup() -> SendAdapter | None:
+        with _stored_scope_context(scope):
+            operation = _operation_for_prepare(scope)
+            adapters = (
+                (_ACTION_RECOVERY_ADAPTERS if recovery else _ACTION_ADAPTERS)
+                if operation.kind == OperationKind.ACTION
+                else _SEND_ADAPTERS
+            )
+            return adapters.get(provider)
+
+    adapter = _default_step(lookup)
     if adapter is None:
         return (
             "failed"
@@ -1303,9 +1379,13 @@ def _send_claimed(
             else _persisted_outcome(scope)
         )
     outcome: ExecutionResult
-    try:
+
+    def prepare() -> object:
         with tenant_context(scope.actor_id, scope.organization_id):
-            prepared = _prepare_with_authority(scope, adapter)
+            return _prepare_with_authority(scope, adapter)
+
+    try:
+        prepared = _default_step(prepare)
     except (TenantAccessDeniedError, _ClinicAuthorityRevokedError):
         outcome = "cancelled" if _cancel_revoked(scope) else _persisted_outcome(scope)
     except _SubjectIneligibleError:

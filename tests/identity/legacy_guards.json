@@ -2660,7 +2660,7 @@
       ]
     },
     {
-      "symbol": "apps.core.integration._send_claimed",
+      "symbol": "apps.core.integration._send_claimed_once",
       "signals": [
         "tenant_boundary"
       ],

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import threading
 from contextlib import contextmanager
@@ -60,6 +62,7 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.translation import gettext
+from psycopg.conninfo import conninfo_to_dict
 
 from auth.stepup_test_support import create_role_actor
 from comms.support import (
@@ -1494,37 +1497,30 @@ def _in_flight(
 
 @contextmanager
 def _real_runtime() -> Iterator[None]:
-    """The runtime role with its real role settings, as a clinic_app login has.
+    """Log the default connection in as clinic_app itself, with its real settings.
 
-    ``SET ROLE`` alone skips role-level settings, so the 15 s
-    idle_in_transaction_session_timeout and the rest are applied explicitly.
+    A login (not ``SET ROLE`` from the owner) applies the role's own settings,
+    including the 15 s idle_in_transaction_session_timeout, and makes the
+    connection one any other clinic_app session may terminate.
     """
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT unnest(setconfig) FROM pg_catalog.pg_db_role_setting"
-            " WHERE setrole = 'clinic_app'::regrole AND setdatabase = 0"
-        )
-        applied = [str(row[0]).split("=", 1) for row in cursor.fetchall()]
-    assert ["idle_in_transaction_session_timeout", "15s"] in applied
-    with runtime_role():
+    runtime = conninfo_to_dict(os.environ["APP_DATABASE_URL"])
+    saved = dict(connection.settings_dict)
+    connection.close()
+    connection.settings_dict.update(
+        USER=str(runtime["user"]), PASSWORD=str(runtime["password"])
+    )
+    try:
         with connection.cursor() as cursor:
-            for name, value in applied:
-                cursor.execute(
-                    "SELECT pg_catalog.set_config(%s, %s, false)", [name, value]
-                )
-        try:
-            yield
-        finally:
-            try:
-                with connection.cursor() as cursor:
-                    for name, _value in applied:
-                        cursor.execute(
-                            "SELECT pg_catalog.set_config(%s, %s, false)",
-                            [name, ""],
-                        )
-                    cursor.execute("RESET ALL")
-            except (DatabaseError, InterfaceError):
-                connection.close()
+            cursor.execute(
+                "SELECT session_user, current_setting("
+                "'idle_in_transaction_session_timeout')"
+            )
+            assert cursor.fetchone() == ("clinic_app", "15s")
+        yield
+    finally:
+        connection.close()
+        connection.settings_dict.clear()
+        connection.settings_dict.update(saved)
 
 
 def test_a_claimed_send_is_written_only_by_its_claim(world: InboxWorld) -> None:
@@ -2441,6 +2437,155 @@ def test_a_lock_session_killed_at_claim_time_returns_the_send_to_pending(
     assert (attempt.status, attempt.send_permit_claim) == ("pending", None)
     # The next dispatch sends exactly once.
     assert _in_flight(graph, message_id, lambda _op: None) == ("succeeded", 1)
+    with as_actor(graph, manager_of(graph)):
+        assert services.message_states([Message.objects.get(pk=message_id)]) == {
+            message_id: "sent"
+        }
+
+
+class _DefaultKiller:
+    """A second clinic_app session that terminates the worker's default connection.
+
+    ``kill_now`` terminates it at once (waiting until the backend is gone);
+    ``arm(n)`` terminates it before each of the next ``n`` default statements,
+    so reconnects are killed too.
+    """
+
+    def __init__(self, app_url: str) -> None:
+        self._app_url, self.left, self.kills = app_url, 0, 0
+
+    def kill_now(self) -> bool:
+        """Terminate the current default backend; False if it is already gone."""
+        connection.ensure_connection()
+        assert connection.connection is not None
+        pid = connection.connection.info.backend_pid
+        with psycopg.connect(self._app_url, autocommit=True) as killer:
+            row = killer.execute(
+                "SELECT pg_catalog.pg_terminate_backend(%s, 5000)", [pid]
+            ).fetchone()
+        if row == (True,):
+            self.kills += 1
+            return True
+        return False
+
+    def arm(self, times: int) -> None:
+        self.left = times
+
+    def strike(self, times: int) -> None:
+        """Kill now, then keep killing each reconnect until ``times`` is spent."""
+        self.kill_now()
+        self.arm(times - 1)
+
+    def on_lock_statement(
+        self, statement: str, number: int, times: int
+    ) -> Callable[..., object]:
+        """A lock-session wrapper striking before its ``number``-th ``statement``."""
+        seen: list[object] = []
+
+        def wrapper(
+            execute: Callable[..., object], sql: str, params: object, *rest: object
+        ) -> object:
+            if statement in sql and (
+                statement != "pg_advisory_lock" or _SUBJECT in str(params)
+            ):
+                seen.append(params)
+                if len(seen) == number:
+                    self.strike(times)
+            return execute(sql, params, *rest)
+
+        return wrapper
+
+    def before(
+        self, original: Callable[..., object], times: int
+    ) -> Callable[..., object]:
+        """Wrap ``original`` so its first call's default statements are killed."""
+        called: list[bool] = []
+
+        def armed(*args: object) -> object:
+            if not called:
+                called.append(True)
+                self.arm(times)
+            return original(*args)
+
+        return armed
+
+    def wrapper(
+        self, execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        # A backend already killed (not yet noticed) fails on its own; only a
+        # live one is terminated, and only that counts.
+        if self.left > 0 and self.kill_now():
+            self.left -= 1
+        return execute(sql, params, *rest)
+
+
+_KILL_POINTS = (
+    "before_claim",
+    "subject_check",
+    "claim_wait",
+    "before_boundary",
+    "after_boundary",
+    "after_call",
+    "recording",
+)
+
+
+@pytest.mark.parametrize("times", [1, 3], ids=["once", "repeated"])
+@pytest.mark.parametrize("point", _KILL_POINTS)
+def test_killing_the_default_connection_only_stalls_the_send(
+    world: InboxWorld, app_database_url: str, point: str, times: int
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    killer = _DefaultKiller(app_database_url)
+    lock_hook = {
+        "claim_wait": ("comms_claim_send_permit", 2),
+        "after_boundary": ("pg_advisory_lock", 2),
+        "recording": ("comms_record_send_outcome", 1),
+    }.get(point)
+    keys = integration._SUBJECT_LOCK_KEYS
+    patches: dict[str, contextlib.AbstractContextManager[object]] = {
+        "before_claim": patch.object(
+            integration,
+            "_operation_for_prepare",
+            killer.before(integration._operation_for_prepare, times),
+        ),
+        "subject_check": patch.object(
+            integration,
+            "_subject_eligible",
+            killer.before(integration._subject_eligible, times),
+        ),
+        "before_boundary": patch.dict(
+            keys,
+            {services.SUBJECT_TYPE: killer.before(keys[services.SUBJECT_TYPE], times)},
+        ),
+    }
+
+    def during(_op: UUID) -> None:
+        if point == "after_call":
+            killer.strike(times)
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(connection.execute_wrapper(killer.wrapper))
+        if lock_hook is not None:
+            stack.enter_context(
+                connections["locks"].execute_wrapper(
+                    killer.on_lock_statement(*lock_hook, times)
+                )
+            )
+        if point in patches:
+            stack.enter_context(patches[point])
+        assert _in_flight(graph, message_id, during) == ("succeeded", 1)
+    # Before the call every armed kill lands on a reconnect; after it the
+    # default connection may never be used again.
+    if point in {"after_call", "recording"}:
+        assert killer.kills >= 1
+    else:
+        assert killer.kills == times
+    with owner_context(graph.organization_a):
+        attempt = IntegrationOperation.objects.get(subject_id=message_id)
+    assert attempt.status == "succeeded"
     with as_actor(graph, manager_of(graph)):
         assert services.message_states([Message.objects.get(pk=message_id)]) == {
             message_id: "sent"

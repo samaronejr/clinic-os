@@ -450,6 +450,17 @@ call re-runs the decision under the held lock. A lock session lost before the
 provider call returns a provably unsent attempt to pending, and leaves one
 whose permit it held for the staff hold (docs/RUNBOOK.md).
 
+Losing the worker's default connection (any clinic_app session may terminate
+it, and crashes, network loss or a server restart drop it too) stalls at
+worst; never holds a send or makes a second call. Every operational,
+interface, connection, operator-intervention or idle-in-transaction failure
+on it counts as lost: each step re-runs from durable state on a fresh
+connection (connect timeout, no sleeps) for as long as the lock session is
+alive and still holds its lock. Before the provider call the decision is
+re-run without taking the permit twice; after it, the outcome is recorded on
+the lock session with the same claim, session and MAC; before the claim the
+attempt stays, or returns to, pending.
+
 Pooled lock connections are unsupported: the claim, its session nonce and the
 subject's advisory lock must stay on one database session from claim to
 record, which a transaction-pooling proxy would not guarantee.
