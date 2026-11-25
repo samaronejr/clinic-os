@@ -14,13 +14,16 @@
 # Usage: migration_upgrade.sh <base_sha>
 # Set UPGRADE_FIXTURE_SWEEP=1 to require per-table mutation coverage before PASS.
 # Set UPGRADE_WAVE_H_DIFFERENTIAL=1 for independent native Wave H comparison.
+# Consumers supply UPGRADE_RUN_ID and require it in the final PASS receipt.
 set -euo pipefail
 
 readonly base_sha="${1:-}"
 readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
-readonly base_worktree="$work_root/base"
+readonly started_at="$EPOCHREALTIME"
+readonly run_id="${UPGRADE_RUN_ID:-${started_at//./}-$$-$RANDOM}"
+commit_sha="${UPGRADE_COMMIT_SHA:-unknown}"
+[[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || commit_sha=unknown
 upgrade_db="upgrade_rc_$$"
-readonly seed_file="$work_root/seed.json"
 readonly differential="${UPGRADE_WAVE_H_DIFFERENTIAL:-}"
 
 # Derive upgrade-DB DSNs from the claimed environment: same role
@@ -48,6 +51,8 @@ psql_super() {
 db_created=0
 worktree_added=0
 secret_dir="${RUNNER_TEMP:-/tmp}/migration-upgrade-secrets.$$"
+readonly base_worktree="$secret_dir/base"
+readonly seed_file="$secret_dir/seed.json"
 secret_dir_created=0
 wave_added=0
 wave_db_created=0
@@ -55,16 +60,31 @@ wave_db="${upgrade_db}_wave"
 wave_tree="$secret_dir/wave"
 differential_stage=setup
 readonly differential_report="$secret_dir/differential.json"
+verdict_ready=0
+setup_detail=""
+project_root=""
 
-publish_differential() {
+publish_shell_verdict() {
+    local result="${1:-FAIL}" pending="$work_root/.verdict-$run_id-$$.pending"
+    (set -o noclobber; : > "$pending") || return 1
+    if ! printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","commit_sha":"%s","started_at":"%s"}\n' \
+        "$result" "$differential_stage" "$setup_detail" "$run_id" "$commit_sha" "$started_at" > "$pending" ||
+        ! mv -T -- "$pending" "$work_root/verdict.json"; then
+        rm -f -- "$pending"
+        return 1
+    fi
+}
+
+publish_verdict() {
     python3 - "$work_root" "$base_sha" "$upgrade_db" "$1" \
-        "$differential_stage" "$differential_report" <<'PYEOF'
+        "$differential_stage" "$differential_report" "$run_id" "$commit_sha" \
+        "$started_at" "$secret_dir/verdict.json" "$differential" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 from uuid import uuid4
 
-root, base, db, result, stage, report = sys.argv[1:]
+root, base, db, result, stage, report, run_id, commit, started, attestation, differential = sys.argv[1:]
 target = Path(root) / "verdict.json"
 comparison = Path(report)
 details = json.loads(comparison.read_text()) if comparison.is_file() else {
@@ -75,13 +95,15 @@ details = json.loads(comparison.read_text()) if comparison.is_file() else {
     "base_reject_lane_pass_pairs": [],
 }
 if result == "PASS":
-    verdict = json.loads(target.read_text())
-    if details.get("result") != "PASS":
+    verdict = json.loads(Path(attestation).read_text())
+    if differential and details.get("result") != "PASS":
         raise RuntimeError("differential passing report is missing")
 else:
     verdict = {"schema_version": 1, "result": "FAIL", "base_sha": base, "upgrade_db": db}
     verdict["reason"] = stage
-verdict["differential"] = details
+if differential:
+    verdict["differential"] = details
+verdict.update(run_id=run_id, commit_sha=commit, started_at=started)
 pending = target.with_name(f".verdict-{uuid4().hex}.pending")
 with pending.open("x", encoding="utf-8") as stream:
     try:
@@ -95,10 +117,18 @@ PYEOF
 
 cleanup() {
     rc=$?
-    trap - EXIT
-    if [ "$rc" != 0 ] && [ -n "$differential" ]; then
-        echo "Wave H differential failed: $differential_stage" >&2
-        publish_differential FAIL || echo "could not write differential verdict" >&2
+    trap - EXIT ERR
+    trap '' TERM INT HUP
+    if [ "$rc" != 0 ]; then
+        echo "migration-upgrade: $differential_stage${setup_detail:+: $setup_detail} (run $run_id)" >&2
+        if [ "$verdict_ready" = 1 ]; then
+            if [ "$secret_dir_created" = 0 ] ||
+                [ "$differential_stage" = setup ] || [ "$differential_stage" = interrupted ]; then
+                publish_shell_verdict || echo "verdict_destination_unwritable (run $run_id)" >&2
+            elif ! publish_verdict FAIL; then
+                publish_shell_verdict || echo "verdict_destination_unwritable (run $run_id)" >&2
+            fi
+        fi
     fi
     if [ "$worktree_added" = 1 ]; then
         git -C "$project_root" worktree remove --force "$base_worktree" || true
@@ -117,28 +147,74 @@ cleanup() {
     fi
     exit $rc
 }
+interrupt() {
+    differential_stage=interrupted
+    setup_detail="$1"
+    exit "$2"
+}
+trap 'interrupt TERM 143' TERM
+trap 'interrupt INT 130' INT
+trap 'interrupt HUP 129' HUP
+trap 'exit "$?"' ERR
 trap cleanup EXIT
 
-mkdir -p "$work_root"
+if [[ ! "$run_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "migration-upgrade: setup: invalid run identity" >&2
+    exit 1
+fi
+# An unwritable directory may retain an old file: no consumer may treat it
+# as current without the caller's independently chosen invocation identity.
+differential_stage=verdict_destination_unwritable
+command -v mv >/dev/null || { setup_detail=missing_mv; exit 127; }
+if [ -e "$work_root/verdict.json" ] || [ -L "$work_root/verdict.json" ]; then
+    stale="$work_root/.verdict-stale-$run_id-$$.json"
+    test ! -d "$work_root/verdict.json"
+    mv -T --no-clobber -- "$work_root/verdict.json" "$stale"
+    test ! -e "$work_root/verdict.json" && test ! -L "$work_root/verdict.json" || exit 1
+fi
+verdict_ready=1
+if [ ! -d "$work_root" ]; then
+    command -v mkdir >/dev/null || { setup_detail=missing_mkdir; exit 127; }
+    mkdir -p "$work_root"
+fi
+test ! -L "$work_root"
+publish_shell_verdict RUNNING
+differential_stage=setup
+project_root="${GITHUB_WORKSPACE:-${BASH_SOURCE[0]%/*}/../..}"
+if command -v git >/dev/null; then
+    resolved_sha="$(git -C "$project_root" rev-parse HEAD)" || exit 1
+    if [ "$commit_sha" != unknown ] && [ "$commit_sha" != "$resolved_sha" ]; then
+        setup_detail=commit_mismatch
+        commit_sha="$resolved_sha"
+        exit 1
+    fi
+    commit_sha="$resolved_sha"
+fi
+for required in git python3 docker uv mkdir rm head od tr chmod cmp ln realpath grep env; do
+    if ! command -v "$required" >/dev/null; then
+        setup_detail="missing_$required"
+        exit 127
+    fi
+done
 if [ -e "$work_root/seed.pending" ] || [ -L "$work_root/seed.pending" ]; then
     differential_stage=stale_seed_pending
     echo "stale_seed_pending: refusing to remove an existing seed staging entry" >&2
     exit 1
 fi
-# Do not publish a previous run's receipts if this rehearsal fails.
-rm -f "$seed_file" "$work_root/verdict.json" "$work_root/verdict.pending" \
-    "$work_root/ai-assertions.json"
 if [ -z "$base_sha" ]; then
     differential_stage=missing_base_sha
     echo "base SHA required" >&2
     exit 1
 fi
-project_root="${GITHUB_WORKSPACE:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 readonly project_root
 
+# The workflow publishes work_root: no temporary verifier receipt or KEK
+# belongs there. Claim our private tree before staging any of its contents.
+mkdir -m 0700 "$secret_dir"
+secret_dir_created=1
 echo "== check out base $base_sha =="
-git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
 worktree_added=1
+git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
 
 echo "== sync base dependencies =="
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
@@ -152,8 +228,6 @@ fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
-mkdir -m 0700 "$secret_dir"
-secret_dir_created=1
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
 
@@ -219,8 +293,8 @@ rehearse_wave_h() {
     chmod 600 "$native/tenant-kek.secret"
     differential_stage=reference_worktree
     if [ "$differential" = 1 ]; then
-        git -C "$project_root" worktree add --detach "$wave_tree" "$wave_sha"
         wave_added=1
+        git -C "$project_root" worktree add --detach "$wave_tree" "$wave_sha"
         if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
             ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
         else
@@ -279,7 +353,7 @@ else
     db_created=0
     upgrade_db="${upgrade_db}_retry"
     rm -f "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
-        "$seed_file" "$work_root/seed.pending" "$secret_dir/lane-probes.json"
+        "$seed_file" "$secret_dir/seed.pending" "$secret_dir/lane-probes.json"
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
     seed_base
@@ -408,13 +482,10 @@ python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
     "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
     "$UPGRADE_DATABASE_RECREATED"
 # Check the published artifact, not just the writer's in-memory object.
-if ! cmp -s "$work_root/verdict.json" "$secret_dir/verified.json"; then
-    rm -f "$work_root/verdict.json"
+if ! cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
     echo "published upgrade verdict disagrees with the verified base histories" >&2
     exit 1
 fi
-if [ -n "$differential" ]; then
-    differential_stage=verdict_publication
-    publish_differential PASS
-fi
+differential_stage=verdict_publication
+publish_verdict PASS
 echo "migration-upgrade: PASS"

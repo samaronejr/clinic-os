@@ -344,7 +344,16 @@ jobs:
           make migrate
           base_sha="$(git merge-base origin/main HEAD)"
           echo "upgrade base: $base_sha"
+          export UPGRADE_RUN_ID="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export UPGRADE_COMMIT_SHA="$(git rev-parse HEAD)"
           ops/testing/migration_upgrade.sh "$base_sha"
+          python3 -c 'import json, os, pathlib, sys
+          verdict = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          if (verdict.get("result"), verdict.get("run_id"), verdict.get("commit_sha")) != (
+              "PASS", os.environ["UPGRADE_RUN_ID"], os.environ["UPGRADE_COMMIT_SHA"]
+          ):
+              raise SystemExit("upgrade verdict does not belong to this invocation")' \
+              "$RUNNER_TEMP/migration-upgrade/verdict.json"
       - name: Publish upgrade evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
