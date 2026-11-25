@@ -77,3 +77,26 @@ def test_wrapper_names_probe_case_generation_failure(tmp_path: Path) -> None:
     assert verdict["differential"]["probe_window_cases"] == 0
     assert not (receipt / "base").exists()
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
+
+
+def test_wrapper_preserves_stale_pending_directory_and_publishes_failure(
+    tmp_path: Path,
+) -> None:
+    receipt = tmp_path / "migration-upgrade"
+    stale = receipt / "seed.pending"
+    stale.mkdir(parents=True)
+    unowned = stale / "keep"
+    unowned.write_text("unowned", encoding="utf-8")
+    verdict_path = receipt / "verdict.json"
+    verdict_path.write_text('{"result":"PASS"}\n', encoding="utf-8")
+
+    result = _run_wrapper(BASE, tmp_path)
+
+    assert result.returncode == 1
+    assert unowned.read_text(encoding="utf-8") == "unowned"
+    assert verdict_path.is_file(), result.stdout[-6000:]
+    verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
+    assert verdict["result"] == "FAIL"
+    assert verdict["reason"] == "stale_seed_pending"
+    assert not (receipt / "base").exists()
+    assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
