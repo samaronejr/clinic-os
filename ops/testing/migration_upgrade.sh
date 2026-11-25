@@ -79,6 +79,27 @@ remember_path() {
     owned_paths["$1"]="$identity:$run_nonce"
 }
 
+remember_open_file() {
+    local identity
+    identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$2")" || return 1
+    owned_paths["$1"]="$identity:$run_nonce"
+}
+
+write_private_key() {
+    local path="$1" fd
+    set -o noclobber
+    if ! exec {fd}> "$path"; then
+        set +o noclobber
+        return 1
+    fi
+    set +o noclobber
+    remember_open_file "$path" "$fd"
+    private_files+=("$path")
+    chmod 600 -- "/proc/$$/fd/$fd"
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >&"$fd"
+    exec {fd}>&-
+}
+
 remember_file() {
     if [[ -e "$1" && ! -L "$1" ]]; then
         remember_path "$1" || return 1
@@ -86,27 +107,22 @@ remember_file() {
     fi
 }
 
-remember_inbox_files() {
-    local names name
-    owns_path "$secret_dir" && owns_path "$seed_file" || return 0
-    # F7's seed creates one dynamically named signing key per account.
-    # Use its receipt, not a directory scan that could adopt a foreign name.
-    names="$(python3 - "$seed_file" <<'PYEOF'
-import json
-import sys
-from uuid import UUID
-
-with open(sys.argv[1], encoding="utf-8") as receipt:
-    accounts = json.load(receipt).get("inbox", {}).get("accounts", {})
-for account in accounts.values():
-    print(f"comms-inbox-{UUID(account).hex}.secret")
-PYEOF
-)" || return 0  # The verifier, not cleanup bookkeeping, judges seed contents.
-    while IFS= read -r name; do
-        if [[ -n "$name" ]] && owns_path "$secret_dir"; then
-            remember_file "$secret_dir/$name"
-        fi
-    done <<< "$names"
+collect_output_receipts() {
+    local nonce identity path
+    [[ -n "${UPGRADE_OWNED_OUTPUT_FD:-}" ]] || return 0
+    while IFS=$'\t' read -r nonce identity path; do
+        [[ "$nonce" = "$run_nonce" && "$identity" =~ ^[0-9]+:[0-9]+$ ]] || continue
+        case "$path" in
+            "$secret_dir/ai-assertions.json"|"$secret_dir/native/ai-assertions.json"|\
+            "$secret_dir/ai-assertions-differential.json") ;;
+            "$secret_dir"/comms-inbox-*.secret)
+                [[ "${path#"$secret_dir"/}" =~ ^comms-inbox-[0-9a-f]{32}\.secret$ ]] || continue
+                ;;
+            *) continue ;;
+        esac
+        owned_paths["$path"]="$identity:$nonce"
+        private_files+=("$path")
+    done < "/proc/$$/fd/$UPGRADE_OWNED_OUTPUT_FD"
 }
 
 tree_manifest() {
@@ -147,9 +163,7 @@ publish_shell_verdict() {
     fi
     set +o noclobber
     publication_pending["$pending"]="$fd"
-    local identity
-    identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$fd")" || return 1
-    owned_paths["$pending"]="$identity:$run_nonce"
+    remember_open_file "$pending" "$fd" || return 1
     printf '{"schema_version":1,"result":"%s","reason":"%s","detail":"%s","run_id":"%s","run_nonce":"%s","commit_sha":"%s","started_at":"%s"}\n' \
         "$result" "$differential_stage" "$setup_detail" "$run_id" "$run_nonce" "$commit_sha" "$started_at" >&"$fd" || return 1
     owns_path "$pending" || return 1
@@ -177,6 +191,7 @@ publish_verdict() {
         "$differential_stage" "$differential_report" "$run_id" "$commit_sha" \
         "$started_at" "$secret_dir/verdict.json" "$differential" "$run_nonce" <<'PYEOF'
 import json
+import os
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -203,17 +218,23 @@ if differential:
 verdict.update(run_id=run_id, run_nonce=nonce, commit_sha=commit, started_at=started)
 pending = target.with_name(f".verdict-{uuid4().hex}.pending")
 with pending.open("x", encoding="utf-8") as stream:
+    identity = os.fstat(stream.fileno())
+
+    def still_owned():
+        return os.path.samestat(pending.lstat(), identity)
+
     try:
         stream.write(json.dumps(verdict) + "\n")
         stream.flush()
+        if not still_owned():
+            raise RuntimeError("verdict staging file was replaced")
         pending.replace(target)
     except BaseException:
-        import os
-
         try:
-            if os.path.samestat(pending.lstat(), os.fstat(stream.fileno())):
+            if still_owned():
                 with pending.open(encoding="utf-8") as receipt:
-                    if json.load(receipt).get("run_nonce") == nonce:
+                    owned_receipt = os.path.samestat(os.fstat(receipt.fileno()), identity)
+                    if owned_receipt and json.load(receipt).get("run_nonce") == nonce and still_owned():
                         pending.unlink()
         except (OSError, ValueError):
             pass
@@ -248,9 +269,10 @@ cleanup() {
         fi
     fi
     if [ "$worktree_added" = 1 ] && owns_path "$secret_dir" && owns_path "$base_worktree"; then
-        if [[ -n "$base_manifest" && "$(tree_manifest "$base_worktree")" = "$base_manifest" ]]; then
+        if [[ -n "$base_manifest" && "$(tree_manifest "$base_worktree")" = "$base_manifest" ]] &&
+            owns_path "$secret_dir" && owns_path "$base_worktree"; then
             git -C "$project_root" worktree remove --force "$base_worktree" || true
-        else
+        elif owns_path "$secret_dir" && owns_path "$base_worktree"; then
             rmdir -- "$base_worktree" 2>/dev/null || true
         fi
     fi
@@ -261,20 +283,23 @@ cleanup() {
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $wave_db" || true
     fi
     if [ "$wave_added" = 1 ] && owns_path "$secret_dir" && owns_path "$wave_tree"; then
-        if [[ -n "$wave_manifest" && "$(tree_manifest "$wave_tree")" = "$wave_manifest" ]]; then
+        if [[ -n "$wave_manifest" && "$(tree_manifest "$wave_tree")" = "$wave_manifest" ]] &&
+            owns_path "$secret_dir" && owns_path "$wave_tree"; then
             git -C "$project_root" worktree remove --force "$wave_tree" || true
-        else
+        elif owns_path "$secret_dir" && owns_path "$wave_tree"; then
             rmdir -- "$wave_tree" 2>/dev/null || true
         fi
     fi
     local pending contents fd
     if [ "$secret_dir_created" = 1 ] && owns_path "$secret_dir"; then
+        collect_output_receipts
         for pending in "${private_files[@]}"; do
+            owns_path "$secret_dir" || break
             if [[ "$pending" != "$secret_dir/native/"* ]] || owns_path "$secret_dir/native"; then
                 remove_owned_file "$pending"
             fi
         done
-        if owns_path "$secret_dir/native"; then
+        if owns_path "$secret_dir" && owns_path "$secret_dir/native"; then
             rmdir -- "$secret_dir/native" || true
         fi
         if owns_path "$secret_dir"; then
@@ -378,12 +403,21 @@ if [ -z "$base_sha" ]; then
 fi
 readonly project_root
 export PYTHONDONTWRITEBYTECODE=1
+umask 077
 
 # The workflow publishes work_root: no temporary verifier receipt or KEK
 # belongs there. Claim our private tree before staging any of its contents.
 mkdir -m 0700 "$secret_dir"
 remember_path "$secret_dir"
 secret_dir_created=1
+set -o noclobber
+exec {UPGRADE_OWNED_OUTPUT_FD}> "$secret_dir/.ownership-receipts"
+set +o noclobber
+remember_open_file "$secret_dir/.ownership-receipts" "$UPGRADE_OWNED_OUTPUT_FD"
+private_files+=("$secret_dir/.ownership-receipts")
+export UPGRADE_OWNED_OUTPUT_FD
+export UPGRADE_OWNED_OUTPUT_NONCE="$run_nonce"
+export UPGRADE_OWNED_OUTPUT_HELPER="$project_root/ops/testing/migration_upgrade_owned_output.py"
 echo "== check out base $base_sha =="
 mkdir -- "$base_worktree"
 remember_path "$base_worktree"
@@ -404,9 +438,7 @@ base_manifest="$(tree_manifest "$base_worktree")"
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
 # as an artifact and key material must never land in retained evidence.
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
-remember_file "$secret_dir/tenant-kek.secret"
-chmod 600 "$secret_dir/tenant-kek.secret"
+write_private_key "$secret_dir/tenant-kek.secret"
 
 readonly seed_state="$project_root/ops/testing/migration_upgrade_seed_state.py"
 export UPGRADE_BASE_SHA="$base_sha"
@@ -455,7 +487,6 @@ seed_base() {
     fi
     remember_file "$seed_file"
     remember_file "$secret_dir/seed.pending"
-    remember_inbox_files
     return "$rc"
 }
 
@@ -474,9 +505,7 @@ rehearse_wave_h() {
     local native="$secret_dir/native"
     mkdir -m 700 "$native"
     remember_path "$native"
-    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$native/tenant-kek.secret"
-    remember_file "$native/tenant-kek.secret"
-    chmod 600 "$native/tenant-kek.secret"
+    write_private_key "$native/tenant-kek.secret"
     differential_stage=reference_worktree
     if [ "$differential" = 1 ]; then
         mkdir -- "$wave_tree"
@@ -646,12 +675,9 @@ if [ -n "$differential" ]; then
         uv run --frozen --no-sync --no-env-file python \
         tests/infra/wave_h_entry_differential.py "$wave_tree") || differential_rc=$?
     remember_file "$differential_report"
-    for artifact in differential-base.json differential-lane.json ai-assertions.json; do
+    for artifact in differential-base.json differential-lane.json; do
         remember_file "$secret_dir/$artifact"
     done
-    if owns_path "$secret_dir/native"; then
-        remember_file "$secret_dir/native/ai-assertions.json"
-    fi
     if [ "$differential_rc" != 0 ]; then
         exit "$differential_rc"
     fi
@@ -670,7 +696,6 @@ differential_stage=clean_forward_verification
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
 remember_file "$secret_dir/verified.json"
-remember_file "$secret_dir/ai-assertions.json"
 
 echo "== confirm no migration drift =="
 (cd "$project_root" && env \

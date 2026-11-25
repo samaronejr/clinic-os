@@ -50,7 +50,9 @@ def _worker(
         **overrides,
         "PYTHONPATH": str(worktree),
         "UPGRADE_VERIFIED_FILE": str(attestation),
+        "UPGRADE_DIFFERENTIAL_WORKER": "1",
     }
+    output_fd = env.get("UPGRADE_OWNED_OUTPUT_FD")
     with subprocess.Popen(  # noqa: S603 - fixed interpreter and test script
         [str(worktree / ".venv/bin/python"), str(worker)],
         cwd=worktree,
@@ -58,6 +60,7 @@ def _worker(
         text=True,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
+        pass_fds=() if output_fd is None else (int(output_fd),),
     ) as process:
         try:
             yield process

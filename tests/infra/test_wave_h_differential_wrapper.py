@@ -290,6 +290,87 @@ fi
     assert replacement.read_bytes() == b"unowned replacement\n"
 
 
+def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
+    bin_dir = _tools(tmp_path, missing="git")
+    git = shutil.which("git")
+    assert git is not None
+    shim = bin_dir / "git"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'if [[ "$3:$4" == worktree:add ]]; then\n'
+        f'    {git} "$@" || exit $?\n'
+        '    path="${6%/*}/tenant-kek.secret"\n'
+        "    (set -o noclobber; printf 'unowned key marker\\n' > \"$path\") || exit 1\n"
+        '    stat -c "%d:%i" "$path" > "$RUNNER_TEMP/marker-identity"\n'
+        "    exit\n"
+        "fi\n"
+        f'exec {git} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+    for name in ("docker", "uv"):
+        (bin_dir / name).unlink()
+    (bin_dir / "docker").symlink_to("/bin/false")
+    (bin_dir / "uv").symlink_to("/bin/true")
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode != 0, result.stdout
+    [marker] = tmp_path.glob("migration-upgrade-secrets.*/tenant-kek.secret")
+    identity = marker.stat()
+    assert f"{identity.st_dev}:{identity.st_ino}\n" == (
+        tmp_path / "marker-identity"
+    ).read_text(encoding="utf-8")
+    assert marker.read_bytes() == b"unowned key marker\n"
+
+
+@pytest.mark.parametrize("collision", [False, True])
+def test_child_output_receipt_controls_cleanup(tmp_path: Path, collision: bool) -> None:
+    bin_dir = _tools(tmp_path, missing="git")
+    git = shutil.which("git")
+    assert git is not None
+    shim = bin_dir / "git"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'if [[ "$3:$4" == worktree:add ]]; then\n'
+        f'    {git} "$@" || exit $?\n'
+        '    output="${6%/*}/ai-assertions.json"\n'
+        + ('    printf "unowned\\n" > "$output"\n' if collision else "")
+        + """    python3 - "$output" <<'PY'
+import os
+import runpy
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+helper = os.environ.get("UPGRADE_OWNED_OUTPUT_HELPER")
+if helper is None:
+    path.write_text("child wrote\\n")
+else:
+    with runpy.run_path(helper)["open_owned"](path) as output:
+        output.write("child wrote\\n")
+    print("owned child output created")
+PY
+    exit 1
+fi
+"""
+        + f'exec {git} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1
+    outputs = list(tmp_path.glob("migration-upgrade-secrets.*/ai-assertions.json"))
+    if collision:
+        assert "private_output_exists: ai-assertions.json" in result.stdout
+        [output] = outputs
+        assert output.read_bytes() == b"unowned\n"
+    else:
+        assert "owned child output created" in result.stdout
+        assert not outputs
+
+
 @pytest.mark.parametrize("alias_root", [False, True])
 def test_wrapper_rejects_symlink_without_writing(
     tmp_path: Path, alias_root: bool

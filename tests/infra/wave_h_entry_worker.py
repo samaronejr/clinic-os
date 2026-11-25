@@ -7,9 +7,10 @@ import json
 import os
 import runpy
 import sys
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import django
 from django.db import connection
@@ -97,9 +98,44 @@ def main() -> None:
     """Consume cases from stdin without importing the other worktree."""
     django.setup()
     entry = Path.cwd() / "ops/testing/migration_upgrade_verify.py"
-    for line in sys.stdin:
-        sys.stdout.write(json.dumps(_verify(entry, json.loads(line))) + "\n")
-        sys.stdout.flush()
+    helper = os.environ.get("UPGRADE_OWNED_OUTPUT_HELPER")
+    with ExitStack() as outputs:
+        if helper is not None:
+            api = runpy.run_path(helper)
+            path = Path(os.environ["UPGRADE_SEED_FILE"]).with_name("ai-assertions.json")
+            output = (
+                path
+                if path.parent.name == "native"
+                else path.with_name("ai-assertions-differential.json")
+            )
+            original = Path.write_text
+            stream = None
+
+            def write(
+                pathname: Path,
+                data: str,
+                encoding: str | None = None,
+                errors: str | None = None,
+                newline: str | None = None,
+            ) -> int:
+                nonlocal stream
+                if pathname != path:
+                    return original(pathname, data, encoding, errors, newline)
+                if stream is None:
+                    stream = outputs.enter_context(api["open_owned"](output))
+                elif not api["same_output"](output, stream):
+                    message = "private_output_replaced: ai-assertions.json"
+                    raise FileExistsError(message)
+                stream.seek(0)
+                stream.truncate()
+                count = stream.write(data)
+                stream.flush()
+                return int(count)
+
+            outputs.enter_context(patch.object(Path, "write_text", write))
+        for line in sys.stdin:
+            sys.stdout.write(json.dumps(_verify(entry, json.loads(line))) + "\n")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":
