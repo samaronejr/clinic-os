@@ -22,7 +22,8 @@ from apps.ai.contracts import (
     Usage,
 )
 from apps.ai.effects import check_invocation
-from apps.ai.models import AIInvocation
+from apps.ai.models import AIArtifact, AIInvocation
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import check_configuration, enabled_policy
 from apps.ai.services import invoke
@@ -46,7 +47,6 @@ from apps.audit.services import record_phase1_event
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from apps.ai.models import AIArtifact
     from apps.ai.pending_outputs import VisiblePending
 
 
@@ -101,6 +101,7 @@ def display_proposal(*, clinic_id: UUID, invocation_id: UUID) -> Proposal:
     )
 
 
+@clinic_workflow
 def prepare_proposal(
     *, clinic_id: UUID, invocation_id: UUID
 ) -> Proposal | ArtifactProjection[Proposal]:
@@ -134,7 +135,15 @@ def prepare_proposal(
         return Proposal("generating", invocation_id)
     if invocation.status != "succeeded":
         return Proposal("unavailable", invocation_id)
-    selector = artifact_selector(clinic_id=clinic_id, artifact_id=invocation.output.pk)
+    output = (
+        pending_rows(AIArtifact)
+        .filter(invocation=invocation, kind="output")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if output is None:
+        raise AnalyticsAccessDeniedError
+    selector = artifact_selector(clinic_id=clinic_id, artifact_id=output)
 
     def build(checked: VisiblePending[AIArtifact]) -> Proposal:
         return Proposal(
@@ -148,6 +157,7 @@ def prepare_proposal(
 
 
 @transaction.atomic
+@clinic_workflow
 def review_proposal(
     *,
     clinic_id: UUID,

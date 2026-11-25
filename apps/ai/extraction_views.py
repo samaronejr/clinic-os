@@ -36,6 +36,7 @@ from apps.ai.extraction import (
 from apps.ai.extraction_contracts import MAX_UNIT_LENGTH, ExtractionInputError
 from apps.ai.extraction_documents import render_page
 from apps.ai.models import AIInvocation, ExtractionCandidateRecord, ExtractionJob
+from apps.ai.pending_access import workflow
 from apps.ai.pending_outputs import PendingKey, ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ehr.attachment_storage import AttachmentStorageError
@@ -148,15 +149,16 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             context["saved"] = True
         elif action != "refresh":
             return HttpResponse(status=400)
-        job = collect_extraction(clinic_id=clinic_id, job_id=job.pk)
-    job_key = key(job)
-    selectors = tuple(
-        PendingKey(ExtractionCandidateRecord, pk)
-        for pk in pending_rows(ExtractionCandidateRecord)
-        .filter(job_id=job_key.pk, clinic_id=clinic_id)
-        .order_by("position")
-        .values_list("pk", flat=True)
-    )
+        job = collect_extraction(clinic_id=clinic_id, job_id=key(job).pk)
+    with workflow(clinic_id):
+        job_key = key(job)
+        selectors = tuple(
+            PendingKey(ExtractionCandidateRecord, pk)
+            for pk in pending_rows(ExtractionCandidateRecord)
+            .filter(job_id=job_key.pk, clinic_id=clinic_id)
+            .order_by("position")
+            .values_list("pk", flat=True)
+        )
     page = int(request.POST.get("page", "1"))
     zoom = int(request.POST.get("zoom", "100"))
 

@@ -10,8 +10,9 @@ from apps.ai.pending_outputs import VisiblePending
 from apps.identity.models import Organization
 from apps.workflows.models import CareAction
 from django.test import override_settings
-from django.urls import include, path
+from django.urls import include, path, resolve
 from rest_framework import generics, serializers, viewsets
+from rest_framework.routers import SimpleRouter
 from rest_framework.views import APIView
 
 from ai import test_pending_output_structure as structure
@@ -167,3 +168,53 @@ class Preview(generics.ListAPIView):
     assert not violations(source, inventory())
     mutant = source.replace("model=CareAction", "model=CareProposal")
     assert DECLARATIVE in {reason for _, reason in violations(mutant, inventory())}
+
+
+def test_secondary_guard_refuses_opaque_method_on_provenance_input() -> None:
+    class RelatedMetadata(serializers.Serializer[AIInvocation]):
+        category = serializers.SerializerMethodField()
+
+        def get_category(self, obj: AIInvocation) -> str:
+            return obj.output.kind
+
+    with pytest.raises(
+        AssertionError, match=r"probe/preview/.*opaque method field category"
+    ):
+        _guard(
+            List.as_view(
+                queryset=AIInvocation.objects.none(), serializer_class=RelatedMetadata
+            )
+        )
+
+
+@pytest.mark.parametrize("by_value", [False, True], ids=["present", "value"])
+def test_reachable_detail_selector_cannot_hide_behind_empty_kwargs(
+    by_value: bool,
+) -> None:
+    class Detail(viewsets.ReadOnlyModelViewSet[Any]):
+        queryset = CareAction.objects.none()
+        serializer_class = State
+
+        def get_serializer_class(self) -> type[serializers.BaseSerializer[Any]]:
+            if (
+                "pk" in self.kwargs
+                and "clinic" in self.kwargs
+                and (not by_value or self.kwargs["pk"] == "reviewed")
+            ):
+                msg = "detail selector cannot resolve"
+                raise ValueError(msg)
+            return State
+
+    router = SimpleRouter()
+    router.register("rows", Detail, basename="rows")
+    routes = (path("at/<int:clinic>/", include(router.urls)),)
+    with override_settings(ROOT_URLCONF=routes):
+        match = resolve("/at/7/rows/reviewed/")
+        assert match.kwargs == {"clinic": 7, "pk": "reviewed"}
+        with pytest.raises(
+            AssertionError, match=r"Detail\.retrieve .*unresolved serializer"
+        ) as exc:
+            structure.test_pending_models_have_only_one_data_access_boundary()
+    assert (
+        "URL capture 'pk'" if by_value else "detail selector cannot resolve"
+    ) in str(exc.value)

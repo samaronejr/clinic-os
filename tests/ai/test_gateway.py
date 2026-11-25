@@ -70,8 +70,10 @@ def test_fake_call_is_metered_once_and_all_content_stays_encrypted(
             read_artifact(clinic_id=g.clinic_a, artifact_id=invocation.inputs_ref_id)
             == SENTINEL
         )
+    with runtime_role(), tenant_context(g.shared_user, g.organization_a):
         output = AIArtifact.objects.get(invocation=invocation)
         assert read_artifact(clinic_id=g.clinic_a, artifact_id=output.pk)
+    with runtime_role(), tenant_context(g.shared_user, g.organization_a):
         assert AIArtifact.objects.filter(kind="output").count() == 1
         replay = invoke(
             clinic_id=g.clinic_a,

@@ -259,6 +259,7 @@ def test_governed_completion_review_and_final_are_retained_successors(
         assert final.state == "final"
         assert current.segments[0].speaker == "unknown"
         assert final.segments[0].speaker == "caregiver"
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert TranscriptVersion.objects.filter(session_id=scope.session).count() == 4
         assert TranscriptSegment.objects.filter(session_id=scope.session).count() == 3
         with (
@@ -368,6 +369,7 @@ def test_recorded_visit_final_preserves_inaudibility_and_ambiguous_dose(
         assert [segment.start_ms for segment in final.segments] == sorted(
             segment.start_ms for segment in final.segments
         )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert TranscriptVersion.objects.filter(session_id=scope.session).count() == 9
 
 
@@ -382,8 +384,10 @@ def test_late_audio_refreshes_coverage_without_changing_saved_versions(
     permit_asr(graph, scope, monkeypatch)
     operation = accepted(graph, scope)
     with runtime_role():
-        assert run_transcription(operation_id=str(operation)) == "queued"
-        assert run_transcription(operation_id=str(operation)) == "queued"
+        assert [run_transcription(operation_id=str(operation)) for _ in range(2)] == [
+            "queued",
+            "queued",
+        ]
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         admission = ChunkTranscription.objects.get(session_id=scope.session)
         inference = admission.invocation.operation_id
@@ -462,6 +466,7 @@ def test_late_audio_refreshes_coverage_without_changing_saved_versions(
         assert current is not None
         assert current.revision == saved.revision
         assert current.segments == saved.segments
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert (
             TranscriptVersion.objects.filter(session_id=scope.session).count()
             == saved.revision

@@ -44,6 +44,7 @@ from apps.ai.care_coordination import (
 from apps.ai.care_models import CareProposal
 from apps.ai.care_sources import checked_item_source
 from apps.ai.contracts import GatewayAccessDeniedError
+from apps.ai.pending_access import workflow
 from apps.ai.pending_outputs import (
     PendingKey,
     RenderSelection,
@@ -294,20 +295,21 @@ def _context(
     # the page and why they cannot approve, never another person's rows.
     staff = automation and _care_staff(clinic_id)
     zone = _zone(clinic_id)
-    plans, plan_keys = _plans(clinic_id) if clinician else ((), ())
-    candidates = pending_rows(CareProposal).filter(clinic_id=clinic_id)
-    admin_keys = (
-        tuple(
-            key(row)
-            for row in visible_care_items(
-                candidates.filter(audience="administrative", state="pending").order_by(
-                    "created_at"
+    with workflow(clinic_id):
+        plans, plan_keys = _plans(clinic_id) if clinician else ((), ())
+        candidates = pending_rows(CareProposal).filter(clinic_id=clinic_id)
+        admin_keys = (
+            tuple(
+                key(row)
+                for row in visible_care_items(
+                    candidates.filter(
+                        audience="administrative", state="pending"
+                    ).order_by("created_at")
                 )
             )
+            if staff
+            else ()
         )
-        if staff
-        else ()
-    )
 
     def project(batch: RenderSelection) -> HttpResponse:
         selected = batch.many(selection.keys)
@@ -512,7 +514,8 @@ def _page(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         or any(len(request.POST.getlist(key)) != 1 for key in request.POST)
     ):
         return render(request, "400.html", status=400)
-    extra = handler(request, clinic_id)
+    with workflow(clinic_id):
+        extra = handler(request, clinic_id)
     return _render(request, clinic_id, extra_context=extra)
 
 

@@ -12,13 +12,13 @@ import rfc8785
 from django.db import transaction
 
 from apps.ai.contracts import GatewayRefusedError
+from apps.ai.models import AIInvocation
 from apps.ai.pending_outputs import (
     PendingKey,
     ai_pending_visible,
     decisions_visible,
-    key,
+    fenced_keys,
 )
-from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
@@ -117,27 +117,54 @@ def review_suggestion(
             raise DraftConflictError(DraftReason.REPLAY)
         # A recorded human decision is not a new decision on pending output.
         return previous
-    suggestion = (
-        pending_rows(DraftSectionSuggestion)
-        .select_related("draft__invocation__configuration")
-        .filter(pk=suggestion_id, version_id=version_id)
-        .first()
-    )
-    if suggestion is None or not decisions_visible(
-        (key(suggestion),), clinic_id=clinic_id
-    ):
+    selector = PendingKey(DraftSectionSuggestion, suggestion_id)
+    if not decisions_visible((selector,), clinic_id=clinic_id):
         raise DraftAccessDeniedError
+    parents = fenced_keys(
+        AIDraft,
+        clinic=clinic_id,
+        version_id=version_id,
+        draftsectionsuggestion__pk=suggestion_id,
+        limit=1,
+    )
+    if not parents:
+        raise DraftAccessDeniedError
+
+    def apply(batch: RenderSelection) -> ReviewDecision:
+        suggestion, draft = batch.get(selector), batch.get(parents[0])
+        if (
+            suggestion is None
+            or draft is None
+            or suggestion.record.version_id != version_id
+            or suggestion.record.draft_id != draft.record.pk
+        ):
+            raise DraftAccessDeniedError
+        return _apply_checked(frame, suggestion, draft, review, digest)
+
+    return ai_pending_visible((selector, parents[0]), apply, clinic_id=clinic_id)
+
+
+def _apply_checked(
+    frame: NoteFrame,
+    selected: VisiblePending[DraftSectionSuggestion],
+    parent: VisiblePending[AIDraft],
+    review: ReviewInput,
+    digest: str,
+) -> ReviewDecision:
+    suggestion, draft = selected.record, parent.record
+    clinic_id, version_id = frame.scope.encounter.clinic_id, frame.version.pk
+    expected_revision, command_id = review.expected_revision, review.command_id
+    action, content, replacement = review.action, review.content, review.replacement
     if (
-        ReviewDecision.objects.filter(suggestion=suggestion).exists()
+        ReviewDecision.objects.filter(suggestion_id=suggestion.pk).exists()
         or frame.version.revision != expected_revision
     ):
         raise DraftConflictError
-    draft = suggestion.draft
     result = frame.version
     if action != "rejected":
         if not current_generation(draft, suggestion.section):
             raise DraftConflictError(DraftReason.GENERATION)
-        sources_for_draft(draft)
+        sources_for_draft(parent)
         current = content[suggestion.section]
         comparison = merge_section(
             base=draft.base_content[suggestion.section],
@@ -167,12 +194,14 @@ def review_suggestion(
             raise DraftConflictError from error
         # Revalidate dependencies after the EHR CAS as well. A source changed
         # during the save rolls back that save, all read audits and this command.
-        sources_for_draft(draft)
-    invocation = draft.invocation
+        sources_for_draft(parent)
+    invocation = AIInvocation.objects.select_related("configuration").get(
+        pk=draft.invocation_id, clinic_id=clinic_id
+    )
     decision = ReviewDecision.objects.create(
         organization_id=frame.version.organization_id,
         version_id=version_id,
-        suggestion=suggestion,
+        suggestion_id=suggestion.pk,
         reviewed_by_id=frame.scope.physician_id,
         command_id=command_id,
         request_digest=digest,
@@ -283,36 +312,35 @@ def render_review[R](
         except TranscriptAccessDeniedError as error:
             raise DraftAccessDeniedError from error
         snapshot = select_snapshot(recording)
-    draft_ids = tuple(
-        pending_rows(AIDraft)
-        .filter(version_id=version_id, consent_id=consent.pk)
-        .order_by("-generation")
-        .values_list("pk", flat=True)[:50]
+    drafts = fenced_keys(
+        AIDraft,
+        clinic=clinic_id,
+        version_id=version_id,
+        consent_id=consent.pk,
+        ordering=("-generation",),
+        limit=50,
     )
-    drafts = tuple(PendingKey(AIDraft, pk) for pk in draft_ids)
-    suggestions = tuple(
-        (PendingKey(DraftSectionSuggestion, pk), PendingKey(AIDraft, draft_id))
-        for pk, draft_id in pending_rows(DraftSectionSuggestion)
-        .filter(draft_id__in=draft_ids)
-        .order_by("section", "-draft__generation")
-        .distinct("section")
-        .values_list("pk", "draft_id")
+    suggestions = fenced_keys(
+        DraftSectionSuggestion,
+        clinic=clinic_id,
+        draft_id__in=[d.pk for d in drafts],
+        ordering=("section", "-draft__generation"),
+        distinct_on=("section",),
     )
     proposals = (
-        tuple(
-            PendingKey(DraftActionProposal, pk)
-            for pk in pending_rows(DraftActionProposal)
-            .filter(draft_id=draft_ids[0])
-            .order_by("ordinal")
-            .values_list("pk", flat=True)
+        fenced_keys(
+            DraftActionProposal,
+            clinic=clinic_id,
+            draft_id=drafts[0].pk,
+            ordering=("ordinal",),
         )
-        if draft_ids
+        if drafts
         else ()
     )
     decisions = {
         decision.suggestion_id: decision
         for decision in ReviewDecision.objects.filter(
-            suggestion_id__in=[suggestion.pk for suggestion, _ in suggestions]
+            suggestion_id__in=[suggestion.pk for suggestion in suggestions]
         )
     }
 
@@ -345,12 +373,12 @@ def render_review[R](
                 frame,
                 suggestion,
                 draft,
-                decisions.get(suggestion_key.pk),
+                decisions.get(suggestion.record.pk),
                 binding,
             )
-            for suggestion_key, draft_key in suggestions
-            if (suggestion := batch.get(suggestion_key)) is not None
-            and (draft := batch.get(draft_key)) is not None
+            for suggestion in batch.many(suggestions)
+            if (draft := batch.get(PendingKey(AIDraft, suggestion.record.draft_id)))
+            is not None
         )
         latest = batch.get(drafts[0]) if drafts else None
         return emit(
@@ -373,7 +401,7 @@ def render_review[R](
         (
             *snapshot.keys,
             *drafts,
-            *(suggestion for suggestion, _ in suggestions),
+            *suggestions,
             *proposals,
         ),
         project,

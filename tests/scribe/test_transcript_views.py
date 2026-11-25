@@ -208,6 +208,7 @@ def test_native_speaker_correction_finalization_and_revision_conflicts(
             assert final.segments[0].speaker == "caregiver"
             assert final.segments[0].text_reviewed
             assert final.segments[0].uncertainty == ()
+        with tenant_context(graph.physician, graph.organization_a):
             assert (
                 TranscriptVersion.objects.filter(session_id=scope.session).count() == 5
             )

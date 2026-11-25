@@ -160,11 +160,9 @@ def test_attachment_refresh_does_not_offer_refused_pending_candidate(
     with runtime_role():
         assert execute_operation(operation_id=op) == "succeeded"
     with as_actor(g, g.physician):
-        candidate = (
-            collect_extraction(clinic_id=g.clinic_a, job_id=job.pk)
-            .candidates.order_by("position")
-            .first()
-        )
+        completed = collect_extraction(clinic_id=g.clinic_a, job_id=job.pk)
+    with as_actor(g, g.physician):
+        candidate = completed.candidates.order_by("position").first()
         assert candidate is not None
     client = _client(g.physician, "physician")
     url = reverse("ai:extraction", args=(g.clinic_a,))

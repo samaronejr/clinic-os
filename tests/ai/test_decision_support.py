@@ -169,6 +169,7 @@ def test_fake_model_has_separate_facts_references_hypotheses_and_exact_licensed_
             "reference_statements",
             "model_hypotheses",
         }
+    with as_actor(ready.graph, ready.graph.physician):
         assert invocation.output.expires_at == invocation.inputs_ref.expires_at
         assert (
             invocation.output.expires_at - invocation.inputs_ref.created_at
@@ -587,6 +588,7 @@ def test_restricted_fact_is_hidden_after_display_grant_is_revoked(
             invocation_id=queued.invocation_id,
         )
         assert all(item.fact.id != note.pk for item in panel.considerations)
+    with as_actor(g, reader):
         invocation = AIInvocation.objects.get(pk=queued.invocation_id)
         assert (
             parse_decision_request(invocation.inputs_ref.content).chart.enrollment

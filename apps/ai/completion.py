@@ -49,15 +49,15 @@ def finish_failure(
         invocation.cost_minor = (
             invocation.cost_micros + MICROS_PER_CENTAVO - 1
         ) // MICROS_PER_CENTAVO
-    invocation.save(
-        update_fields=(
-            "status",
-            "reason_code",
-            "latency_ms",
-            "cost_micros",
-            "cost_minor",
-            "settled_at",
-        )
+    # Only provenance counters change. Do not ask Model.save() to validate
+    # an unrelated cached input-artifact descriptor under the decision fence.
+    AIInvocation.objects.filter(pk=invocation.pk).update(
+        status=invocation.status,
+        reason_code=invocation.reason_code,
+        latency_ms=invocation.latency_ms,
+        cost_micros=invocation.cost_micros,
+        cost_minor=invocation.cost_minor,
+        settled_at=invocation.settled_at,
     )
     if reason == "provider_timeout":
         circuit, opened = AICircuit.objects.get_or_create(
@@ -154,12 +154,13 @@ def finish_success(
             "settled_at",
         )
     )
+    artifact_id = artifact.pk
     if project is not None:
         project()
     record_phase1_event(
         "ai.artifact.created",
         clinic_id=invocation.clinic_id,
-        affected_record_id=artifact.pk,
+        affected_record_id=artifact_id,
     )
     record_phase1_event(
         "ai.invocation.succeeded",

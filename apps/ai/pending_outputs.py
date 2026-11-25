@@ -28,6 +28,7 @@ from django.db.models.functions import Cast
 from django.http.response import HttpResponseBase
 from django.template.response import SimpleTemplateResponse
 
+from apps.ai import pending_access
 from apps.ai.contracts import GatewayAccessDeniedError
 from apps.consent.decision_fence import try_hold_decision, try_hold_organization_read
 from apps.core.secrets import secret_store
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
     from apps.ai.contracts import Purpose
 
 
-class PendingOutput:
+class PendingOutput(pending_access.ProtectedRecord):
     """A concrete subclass may project unaccepted AI output; FORCE RLS decides."""
 
 
@@ -49,7 +50,7 @@ class OutputProvenance:
     """A classified lineage edge holding human decisions or operational state."""
 
 
-class SealedOutput:
+class SealedOutput(pending_access.ProtectedRecord):
     """Previously serialized pending rows: release only after rechecking origins."""
 
 
@@ -63,7 +64,7 @@ class PendingKey[M: models.Model]:
 
 def key[M: models.Model](row: M) -> PendingKey[M]:
     """Discard all previously loaded fields and select_related caches."""
-    return PendingKey(type(row), row.pk)
+    return PendingKey(type(row), pending_access.selector_pk(row))
 
 
 _ISSUER = object()
@@ -209,7 +210,7 @@ def _read_batch(
     for index, (model, ids) in enumerate(groups.items()):
         source = rows(model).filter(pk__in=ids).order_by()
         if clinic_id is not None:
-            source = source.filter(**{_clinic_binding(model): clinic_id})
+            source = source.filter(**{pending_access.clinic_binding(model): clinic_id})
         # A typed NULL in every other arm preserves each field's native database
         # type and normal Django converter, including its own encryption purpose.
         slots = {
@@ -224,17 +225,6 @@ def _read_batch(
             ).values_list("pending_render_group", *slots)
         )
     return list(arms[0].union(*arms[1:], all=True))
-
-
-def _clinic_binding(model: type[models.Model]) -> str:
-    """Bind the row to the clinic whose choice lock protects this projection."""
-    return {
-        "comms.suggestedreply": "conversation__clinic_id",
-        "scribe.transcriptversion": "session__clinic_id",
-        "scribe.transcriptsegment": "session__clinic_id",
-        "scribe.draftsectionsuggestion": "draft__clinic_id",
-        "scribe.draftactionproposal": "draft__clinic_id",
-    }.get(rows(model).query.get_meta().label_lower, "clinic_id")
 
 
 def _fresh_records(
@@ -275,7 +265,8 @@ def ai_pending_visible[R](
         if isinstance(selectors, ExportPage):
             if not try_hold_organization_read():
                 raise GatewayAccessDeniedError
-            export_data = _export_page(selectors)
+            with pending_access.construct_batch(_ISSUER):
+                export_data = _export_page(selectors)
         else:
             selected = tuple(selectors)
             if selected and (
@@ -284,7 +275,8 @@ def ai_pending_visible[R](
                 else try_hold_decision(clinic_id=clinic_id, using=connection.alias)
             ):
                 # Separate READ COMMITTED statement after the successful lock.
-                records = _fresh_records(selected, clinic_id)
+                with pending_access.construct_batch(_ISSUER):
+                    records = _fresh_records(selected, clinic_id)
         handles = {k: VisiblePending(k, clinic_id, _ISSUER) for k in records}
         ended = Event()
         selection = RenderSelection(
@@ -298,11 +290,14 @@ def ai_pending_visible[R](
         )
         token = _CURRENT.set(selection)
         try:
-            result = project(selection)
-            # Never defer a pending projection to middleware or to a streaming
-            # iterator after commit. Socket transmission is not part of rendering.
-            if isinstance(result, SimpleTemplateResponse) and not result.is_rendered:
-                result.render()
+            with pending_access.project_instances(_ISSUER, records.values()):
+                result = project(selection)
+                # Serialize now, not in middleware or an iterator after commit.
+                if (
+                    isinstance(result, SimpleTemplateResponse)
+                    and not result.is_rendered
+                ):
+                    result.render()
             if isinstance(result, HttpResponseBase) and result.streaming:
                 raise GatewayAccessDeniedError
             return result
@@ -323,6 +318,11 @@ def _registered() -> frozenset[type[models.Model]]:
     )
 
 
+def install_pending_access() -> None:
+    """Install the per-model guard once the application registry is complete."""
+    pending_access.install(_registered(), issuer=_ISSUER)
+
+
 @cache
 def relations() -> frozenset[str]:
     """Derive export dependencies from models, never UI routes."""
@@ -339,12 +339,35 @@ def rows[M: models.Model](model: type[M]) -> models.QuerySet[M]:
         msg = "not a pending-output model"
         raise TypeError(msg)
     manager = cast("models.Manager[M]", model._default_manager)  # noqa: SLF001
-    return manager.all()
+    return pending_access.command_rows(
+        manager.all(), pending_access.clinic_binding(model)
+    )
+
+
+def fenced_keys[M: models.Model](
+    model: type[M],
+    *,
+    clinic: UUID,
+    ordering: tuple[str, ...] = (),
+    distinct_on: tuple[str, ...] = (),
+    limit: int | None = None,
+    **lookups: object,
+) -> tuple[PendingKey[M], ...]:
+    """Discover only selectors under the actor's lock; issue no row or field."""
+    if not try_hold_decision(clinic_id=clinic, using=connection.alias):
+        return ()
+    with pending_access.workflow(clinic):
+        query = rows(model).filter(**lookups).order_by(*ordering)
+        if distinct_on:
+            query = query.distinct(*distinct_on)
+        return tuple(
+            PendingKey(model, pk) for pk in query.values_list("pk", flat=True)[:limit]
+        )
 
 
 def reselect[M: models.Model](instance: M) -> M:
     """Reauthorize a retained instance for a workflow command, not rendering."""
-    visible = rows(type(instance)).filter(pk=instance.pk).first()
+    visible = rows(type(instance)).filter(pk=key(instance).pk).first()
     if visible is None:
         raise GatewayAccessDeniedError
     return visible
@@ -398,6 +421,24 @@ def archive_current(export_id: UUID) -> bool:
         cursor.execute("SELECT clinic_app.ai_archive_current(%s)", [export_id])
         row = cursor.fetchone()
         return row is not None and row[0] is True
+
+
+def sealed_part_key[M: models.Model](
+    model: type[M], *, organization_id: UUID, export_id: UUID, part: int
+) -> PendingKey[M] | None:
+    """Resolve only a part's opaque key under its organization fence and RLS."""
+    if model not in _registered() or not issubclass(model, SealedOutput):
+        return None
+    if not try_hold_organization_read() or not archive_current(export_id):
+        return None
+    with pending_access.construct_batch(_ISSUER):
+        pk = (
+            rows(model)
+            .filter(organization_id=organization_id, export_id=export_id, part=part)
+            .values_list("pk", flat=True)
+            .first()
+        )
+    return None if pk is None else PendingKey(model, pk)
 
 
 def record_export_origin(

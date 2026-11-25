@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from apps.ai.models import AIArtifact, AIInvocation
+from apps.ai.pending_outputs import key
 from apps.core.fairness import DEFER_COUNTDOWN_SECONDS
 from apps.core.integration import execute_operation
 from apps.ehr.models import ClinicalDocumentVersion, DraftEditState
@@ -77,7 +78,7 @@ def accept(scope: DraftWorld, suggestion: DraftSectionSuggestion) -> ReviewDecis
         clinic_id=graph.clinic_a,
         version_id=scope.version,
         review=ReviewInput(
-            suggestion.pk, version.revision, uuid4(), "accepted", version.soap
+            key(suggestion).pk, version.revision, uuid4(), "accepted", version.soap
         ),
     )
 
@@ -113,16 +114,22 @@ def test_generation_and_three_clinician_decisions_never_finalize_automatically(
                 clinic_id=graph.clinic_a, version_id=scope.version
             ).rows
         )
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT base_content FROM clinic_app.scribe_aidraft WHERE id=%s",
-                [queued.pk],
-            )
-            ciphertext = bytes(cursor.fetchone()[0])
-            assert (
-                json.loads(reveal(purpose="scribe.draft.base", envelope=ciphertext))
-                == queued.base_content
-            )
+    # Verify committed ciphertext without reading a raw draft in the reviews'
+    # fenced transaction. The three decisions above still run together.
+    with (
+        runtime_role(),
+        tenant_context(graph.physician, graph.organization_a),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "SELECT base_content FROM clinic_app.scribe_aidraft WHERE id=%s",
+            [queued.pk],
+        )
+        ciphertext = bytes(cursor.fetchone()[0])
+        assert (
+            json.loads(reveal(purpose="scribe.draft.base", envelope=ciphertext))
+            == queued.base_content
+        )
 
 
 def test_source_backed_action_suggestion_is_retained_for_review(
@@ -284,6 +291,7 @@ def test_transcript_successor_marks_pending_suggestions_stale_without_note_mutat
         )
         panel = read_review(clinic_id=graph.clinic_a, version_id=scope.version)
         assert all(row.state == "stale" for row in panel.rows)
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         suggestion = DraftSectionSuggestion.objects.get(
             draft=queued, section="subjective"
         )

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 from apps.ai.contracts import GatewayRefusedError, Purpose
 from apps.ai.models import AIInvocation
+from apps.ai.pending_access import command_rows, workflow
 from apps.analytics.analyst import display_proposal, request_analyst, review_proposal
 from apps.analytics.contracts import AnalyticsAccessDeniedError, AnalyticsConflictError
 from apps.analytics.models import AnalystReview, ReadModelRefresh
@@ -15,6 +16,7 @@ from apps.core.integration import execute_operation
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, transaction
 
+from ai.pending_observation import count_rows
 from ai.retained_rollout_support import (
     INVALIDATIONS,
     Invalidation,
@@ -48,17 +50,18 @@ def native_review(
     )
     query = ready.query
     assert query is not None
-    AnalystReview.objects.create(
-        organization_id=world.graph.organization_a,
-        clinic_id=world.graph.clinic_a,
-        user_id=world.administrator,
-        invocation_id=invocation_id,
-        descriptor=query.payload(),
-        window_start=query.start,
-        window_end=query.end,
-        authorization_version=ready.authorization_version,
-        decision="accepted",
-    )
+    with workflow(world.graph.clinic_a):
+        command_rows(AnalystReview.objects.all(), "clinic_id").create(
+            organization_id=world.graph.organization_a,
+            clinic_id=world.graph.clinic_a,
+            user_id=world.administrator,
+            invocation_id=invocation_id,
+            descriptor=query.payload(),
+            window_start=query.start,
+            window_end=query.end,
+            authorization_version=ready.authorization_version,
+            decision="accepted",
+        )
 
 
 @pytest.mark.parametrize("mode", INVALIDATIONS)
@@ -98,7 +101,7 @@ def test_retained_analyst_review_cannot_borrow_current_model_permission(
                     )
                     is not None
                 )
-            assert AnalystReview.objects.filter(invocation=invocation).exists()
+            assert count_rows(AnalystReview, graph.clinic_a, invocation=invocation) == 1
             transaction.set_rollback(True)
     clinic_id = invalidate(graph, invocation.pk, mode, monkeypatch)
     with runtime_role(), tenant_context(world.administrator, graph.organization_a):

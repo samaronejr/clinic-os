@@ -9,6 +9,7 @@ from uuid import UUID
 
 from django.db import IntegrityError, connection, transaction
 
+from apps.ai.pending_access import workflow
 from apps.ai.pending_outputs import PendingKey, ai_pending_visible
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
@@ -100,31 +101,32 @@ class SnapshotRead:
 
 def select_snapshot(recording: RecordingSession) -> SnapshotRead:
     """Select the current revision and its exact immutable segment revisions."""
-    current = (
-        pending_rows(TranscriptVersion)
-        .filter(session=recording)
-        .order_by("-revision")
-        .values_list("pk", "revision", "coverage")
-        .first()
-    )
-    if current is None:
-        return SnapshotRead(None)
-    version_id, revision, coverage = current
-    segment_ids = (
-        pending_rows(TranscriptSegment)
-        .filter(
-            session=recording,
-            source_id__in=coverage["sources"],
-            version__revision__lte=revision,
+    with workflow(recording.clinic_id):
+        current = (
+            pending_rows(TranscriptVersion)
+            .filter(session=recording)
+            .order_by("-revision")
+            .values_list("pk", "revision", "coverage")
+            .first()
         )
-        .order_by("source_id", "-version__revision")
-        .distinct("source_id")
-        .values_list("pk", flat=True)
-    )
-    return SnapshotRead(
-        PendingKey(TranscriptVersion, version_id),
-        tuple(PendingKey(TranscriptSegment, pk) for pk in segment_ids),
-    )
+        if current is None:
+            return SnapshotRead(None)
+        version_id, revision, coverage = current
+        segment_ids = (
+            pending_rows(TranscriptSegment)
+            .filter(
+                session=recording,
+                source_id__in=coverage["sources"],
+                version__revision__lte=revision,
+            )
+            .order_by("source_id", "-version__revision")
+            .distinct("source_id")
+            .values_list("pk", flat=True)
+        )
+        return SnapshotRead(
+            PendingKey(TranscriptVersion, version_id),
+            tuple(PendingKey(TranscriptSegment, pk) for pk in segment_ids),
+        )
 
 
 def _snapshot(
@@ -236,94 +238,97 @@ def save_snapshot(
     changed_source: UUID | None = None,
 ) -> TranscriptVersionDTO:
     """Write a complete snapshot and encrypted segments in the same transaction."""
-    previous = (
-        pending_rows(TranscriptVersion)
-        .filter(session=recording)
-        .order_by("-revision")
-        .first()
-    )
-    if value.revision != (previous.revision + 1 if previous is not None else 1):
-        raise TranscriptError(TranscriptReason.STALE)
-    coverage = {
-        "slots": [
-            {
-                "epoch_id": str(slot.epoch_id),
-                "track": slot.track,
-                "sequence": slot.sequence,
-                "chunk_id": str(slot.chunk_id) if slot.chunk_id is not None else None,
-            }
-            for slot in value.coverage
-        ],
-        "completed": sorted(str(chunk) for chunk in value.completed_chunks),
-        "sources": sorted(str(item.segment_id) for item in value.segments),
-        "recording_closed": value.recording_closed,
-    }
-    if len(json.dumps(coverage).encode("utf-8")) > MAX_COVERAGE_BYTES:
-        raise TranscriptError(TranscriptReason.LIMIT)
-    try:
-        with transaction.atomic():
-            stored = pending_rows(TranscriptVersion).create(
-                organization_id=recording.organization_id,
-                session=recording,
-                predecessor=previous,
-                revision=value.revision,
-                state=value.state,
-                mutation=mutation,
-                incomplete_acknowledged=value.incomplete_acknowledged,
-                coverage=coverage,
-                request=recognition.request if recognition is not None else None,
-                recognition_index=recognition.index
-                if recognition is not None
-                else None,
-                latency_ms=recognition.latency_ms if recognition is not None else 0,
-                created_by_id=recording.physician_id,
-            )
-    except IntegrityError as error:
-        constraint = getattr(
-            getattr(error.__cause__, "diag", None), "constraint_name", None
+    with workflow(recording.clinic_id):
+        previous = (
+            pending_rows(TranscriptVersion)
+            .filter(session=recording)
+            .order_by("-revision")
+            .first()
         )
-        if constraint in {
-            "scribe_transcript_coverage_changed",
-            "scribe_transcript_capacity",
-        }:
-            raise TranscriptError(
-                TranscriptReason.STALE
-                if constraint == "scribe_transcript_coverage_changed"
-                else TranscriptReason.LIMIT
-            ) from error
-        raise
-    pending_rows(TranscriptSegment).bulk_create(
-        [
-            TranscriptSegment(
-                organization_id=recording.organization_id,
-                session=recording,
-                version=stored,
-                source_id=item.segment_id,
-                chunk_id=item.chunk_id,
-                start_ms=item.start_ms,
-                end_ms=item.end_ms,
-                text=item.text,
-                speaker=item.speaker,
-                confidence_milli=item.confidence_milli,
-                uncertainty=[asdict(span) for span in item.uncertainty],
-                language=item.language,
-                speaker_reviewed=item.speaker_reviewed,
-                text_reviewed=item.text_reviewed,
+        if value.revision != (previous.revision + 1 if previous is not None else 1):
+            raise TranscriptError(TranscriptReason.STALE)
+        coverage = {
+            "slots": [
+                {
+                    "epoch_id": str(slot.epoch_id),
+                    "track": slot.track,
+                    "sequence": slot.sequence,
+                    "chunk_id": str(slot.chunk_id)
+                    if slot.chunk_id is not None
+                    else None,
+                }
+                for slot in value.coverage
+            ],
+            "completed": sorted(str(chunk) for chunk in value.completed_chunks),
+            "sources": sorted(str(item.segment_id) for item in value.segments),
+            "recording_closed": value.recording_closed,
+        }
+        if len(json.dumps(coverage).encode("utf-8")) > MAX_COVERAGE_BYTES:
+            raise TranscriptError(TranscriptReason.LIMIT)
+        try:
+            with transaction.atomic():
+                stored = pending_rows(TranscriptVersion).create(
+                    organization_id=recording.organization_id,
+                    session=recording,
+                    predecessor=previous,
+                    revision=value.revision,
+                    state=value.state,
+                    mutation=mutation,
+                    incomplete_acknowledged=value.incomplete_acknowledged,
+                    coverage=coverage,
+                    request=recognition.request if recognition is not None else None,
+                    recognition_index=recognition.index
+                    if recognition is not None
+                    else None,
+                    latency_ms=recognition.latency_ms if recognition is not None else 0,
+                    created_by_id=recording.physician_id,
+                )
+        except IntegrityError as error:
+            constraint = getattr(
+                getattr(error.__cause__, "diag", None), "constraint_name", None
             )
-            for item in value.segments
-            if (
-                recognition is not None
-                and item.chunk_id == recognition.request.chunk_id
-            )
-            or item.segment_id == changed_source
-        ]
-    )
-    record_phase1_event(
-        f"scribe.transcript.{mutation}",
-        clinic_id=recording.clinic_id,
-        affected_record_id=stored.pk,
-    )
-    return replace(value, version_id=stored.pk)
+            if constraint in {
+                "scribe_transcript_coverage_changed",
+                "scribe_transcript_capacity",
+            }:
+                raise TranscriptError(
+                    TranscriptReason.STALE
+                    if constraint == "scribe_transcript_coverage_changed"
+                    else TranscriptReason.LIMIT
+                ) from error
+            raise
+        pending_rows(TranscriptSegment).bulk_create(
+            [
+                TranscriptSegment(
+                    organization_id=recording.organization_id,
+                    session=recording,
+                    version=stored,
+                    source_id=item.segment_id,
+                    chunk_id=item.chunk_id,
+                    start_ms=item.start_ms,
+                    end_ms=item.end_ms,
+                    text=item.text,
+                    speaker=item.speaker,
+                    confidence_milli=item.confidence_milli,
+                    uncertainty=[asdict(span) for span in item.uncertainty],
+                    language=item.language,
+                    speaker_reviewed=item.speaker_reviewed,
+                    text_reviewed=item.text_reviewed,
+                )
+                for item in value.segments
+                if (
+                    recognition is not None
+                    and item.chunk_id == recognition.request.chunk_id
+                )
+                or item.segment_id == changed_source
+            ]
+        )
+        record_phase1_event(
+            f"scribe.transcript.{mutation}",
+            clinic_id=recording.clinic_id,
+            affected_record_id=stored.pk,
+        )
+        return replace(value, version_id=stored.pk)
 
 
 def read_transcript(

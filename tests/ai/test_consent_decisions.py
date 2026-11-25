@@ -79,6 +79,10 @@ def _prepared(
     evidence = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
+    # Assert the durable result in a fresh reviewer transaction, not via a
+    # retained command instance while the proposal's consent fence is held.
+    with finance_scope(setup):
+        proposal = ActionProposal.objects.get(pk=proposal.pk)
         assert proposal.state == "validated"
         if command == "execute":
             approve(world, proposal, evidence)

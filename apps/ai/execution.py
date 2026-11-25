@@ -16,6 +16,7 @@ from apps.ai.action_store import load_action, record_receipt
 from apps.ai.action_validation import database_time, validate_current
 from apps.ai.approvals import verify_approvals
 from apps.ai.models import ActionExecution, ActionProposal, ActionReceipt, AgentRun
+from apps.ai.pending_access import clinic_workflow, command_rows
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import transition
 from apps.audit.services import record_phase1_event
@@ -92,7 +93,9 @@ def _reserve(
         using=using,
     )
     now = database_time(using=using)
-    budget_rows = ActionExecution.objects.using(using).filter(
+    budget_rows = command_rows(
+        ActionExecution.objects.using(using), "clinic_id"
+    ).filter(
         clinic_id=proposal.clinic_id,
         proposal__run__policy__capability=policy.capability,
         intent_at__gte=now.replace(hour=0, minute=0, second=0, microsecond=0),
@@ -107,7 +110,7 @@ def _reserve(
     execution = ActionExecution.objects.using(using).create(
         organization_id=proposal.organization_id,
         clinic_id=proposal.clinic_id,
-        proposal=proposal,
+        proposal_id=proposal.pk,
         digest=payload.digest,
         provider_key=identifier(data["idempotency_key"]),
         fencing_token=1,
@@ -151,6 +154,7 @@ def _mark_send(
     )
 
 
+@clinic_workflow
 def execute_action(
     *, clinic_id: UUID, proposal_id: UUID, principal_id: UUID | None = None
 ) -> ExecutionResult:

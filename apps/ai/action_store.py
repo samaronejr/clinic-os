@@ -20,6 +20,7 @@ from apps.ai.models import (
     ActionReceipt,
     AgentPolicyVersion,
 )
+from apps.ai.pending_access import command_rows
 from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.audit.services import record_phase1_event
@@ -59,7 +60,19 @@ def load_action(
             raise ActionAccessDeniedError
         raw = row[0]
     else:
-        raw = proposal.payload
+        # This column was intentionally deferred until after the actual
+        # decision check. Use the scoped query, not an implicit base-manager
+        # deferred-field fetch. Never widen the machine alias's column grant.
+        content = (
+            pending_rows(ActionProposal)
+            .using(using)
+            .filter(pk=proposal_id)
+            .values_list("payload", flat=True)
+            .first()
+        )
+        if not isinstance(content, str):
+            raise ActionAccessDeniedError
+        raw = content
     try:
         payload = parse_payload(raw)
     except ActionInputError:
@@ -67,7 +80,7 @@ def load_action(
     if payload.digest != proposal.digest:
         raise ActionRefusedError(Refusal.DIGEST)
     policy = (
-        AgentPolicyVersion.objects.using(using)
+        command_rows(AgentPolicyVersion.objects.using(using), "clinic_id")
         .filter(agentrun__id=proposal.run_id)
         .first()
     )

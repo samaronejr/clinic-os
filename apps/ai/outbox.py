@@ -27,6 +27,7 @@ from apps.ai.contracts import (
 from apps.ai.decision_contracts import parse_decision_request
 from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.output_validation import call_provider, parse_method
+from apps.ai.pending_access import workflow
 from apps.ai.policy import check_configuration, check_rollout_binding, enabled_policy
 from apps.ai.prompt_registry import load_prompt
 from apps.ai.revenue_sources import parse_context as parse_revenue_context
@@ -153,41 +154,42 @@ class GatewayActionAdapter:
             clinic_id=operation.clinic_id,
             user_id=operation.actor_id,
         )
-        source = input_for(
-            clinic_id=operation.clinic_id,
-            inputs_ref=invocation.inputs_ref_id,
-            purpose=Purpose(invocation.purpose),
-        )
-        prompt, digest = load_prompt(Purpose(invocation.purpose))
-        if digest != invocation.prompt_sha256 or digest != operation.payload_digest:
-            finish_failure(invocation, reason="configuration_unavailable")
-            raise AITransportError
-        configuration = invocation.configuration
-        return PreparedInference(
-            scope=OperationScope(
-                operation.pk,
-                operation.organization_id,
-                operation.clinic_id,
-                operation.actor_id,
-            ),
-            invocation_id=invocation.pk,
-            provider=configuration.provider,
-            method=parse_method(source.method),
-            request=ProviderRequest(
-                configuration.model_id,
-                configuration.endpoint,
-                prompt,
-                parse_revenue_context(source.content).facts.encode()
-                if invocation.purpose == Purpose.REVENUE_CYCLE
-                else source.content,
-                Usage(
-                    tokens_in=invocation.limit_tokens_in,
-                    tokens_out=invocation.limit_tokens_out,
-                    audio_seconds=invocation.limit_audio_seconds,
+        with workflow(operation.clinic_id):
+            source = input_for(
+                clinic_id=operation.clinic_id,
+                inputs_ref=invocation.inputs_ref_id,
+                purpose=Purpose(invocation.purpose),
+            )
+            prompt, digest = load_prompt(Purpose(invocation.purpose))
+            if digest != invocation.prompt_sha256 or digest != operation.payload_digest:
+                finish_failure(invocation, reason="configuration_unavailable")
+                raise AITransportError
+            configuration = invocation.configuration
+            return PreparedInference(
+                scope=OperationScope(
+                    operation.pk,
+                    operation.organization_id,
+                    operation.clinic_id,
+                    operation.actor_id,
                 ),
-                configuration.timeout_seconds,
-            ),
-        )
+                invocation_id=invocation.pk,
+                provider=configuration.provider,
+                method=parse_method(source.method),
+                request=ProviderRequest(
+                    configuration.model_id,
+                    configuration.endpoint,
+                    prompt,
+                    parse_revenue_context(source.content).facts.encode()
+                    if invocation.purpose == Purpose.REVENUE_CYCLE
+                    else source.content,
+                    Usage(
+                        tokens_in=invocation.limit_tokens_in,
+                        tokens_out=invocation.limit_tokens_out,
+                        audio_seconds=invocation.limit_audio_seconds,
+                    ),
+                    configuration.timeout_seconds,
+                ),
+            )
 
     def send(self, prepared: object, *, operation_id: UUID) -> SendResult:
         """Honor SendAdapter's object boundary, never put content in receipts."""

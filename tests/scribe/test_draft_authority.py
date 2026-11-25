@@ -152,6 +152,9 @@ def test_raw_review_guard_enforces_applied_text_by_decision_kind(
                 frame.version.soap,
             ),
         )
+    # Exercise the database trigger as the same physician after the real
+    # decision commits, rather than reading the retained draft behind its fence.
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         decision.refresh_from_db()
         assert decision.applied_text is None
         with connection.cursor() as cursor:

@@ -105,6 +105,11 @@ ORM_METHODS = frozenset(
 # Python site -> the cell deciding it, or ("equivalent", why) when another
 # binding decides it first.
 PY_SITES: dict[str, str | tuple[str, str]] = {
+    "clinic_marker:compare:callback.name == _key(clinic_id)": (
+        "equivalent",
+        "A matching transaction-local marker reuses an already-held clinic fence; "
+        "it grants no row and cannot replace the fresh RLS query.",
+    ),
     "publish_text:Clinic.get:pk": "test_writes_store_the_exact_scope",
     "publish_text:ConsentText.create:organization_id": (
         "test_writes_store_the_exact_scope"

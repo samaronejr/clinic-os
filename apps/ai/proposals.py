@@ -18,6 +18,7 @@ from apps.ai.action_validation import validate_current
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import Purpose
 from apps.ai.models import ActionProposal, AgentPolicyVersion, AgentRun
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import check_configuration, rollout_approval, select_configuration
 from apps.ai.prompt_registry import load_prompt
@@ -66,6 +67,7 @@ def transition(
 
 
 @transaction.atomic
+@clinic_workflow
 def propose_action(
     *, clinic_id: UUID, payload: ActionPayload, context: AgentContext = DEFAULT_CONTEXT
 ) -> ActionProposal:

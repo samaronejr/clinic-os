@@ -121,7 +121,7 @@ def invoke(
         ),
         config_version=configuration.version,
         prompt_sha256=prompt_sha256,
-        inputs_ref=artifact,
+        inputs_ref_id=artifact.pk,
         limit_tokens_in=budget.limits.tokens_in,
         limit_tokens_out=budget.limits.tokens_out,
         limit_audio_seconds=budget.limits.audio_seconds,

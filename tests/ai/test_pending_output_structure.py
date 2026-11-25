@@ -123,6 +123,21 @@ def test_every_checked_presenter_fails_the_guard_when_given_its_raw_model() -> N
     assert missed == []
 
 
+def test_validation_only_read_cannot_treat_a_raw_model_as_a_permit() -> None:
+    source = """
+from apps.scribe.models import AIDraft
+from apps.ai.pending_outputs import VisiblePending as Checked
+def validate(row: Checked[AIDraft], live: tuple[str, ...]) -> tuple[str, ...]:
+    if len(row.record.source_refs) != len(live):
+        raise ValueError("source mismatch")
+    return live
+"""
+    declared = inventory()
+    assert not violations(source, declared)
+    raw = source.replace("row: Checked[AIDraft]", "row: AIDraft")
+    assert (4, RAW) in violations(raw, declared)
+
+
 def test_raw_queryset_alias_into_dto_constructor_is_detected() -> None:
     mutant = """
 from apps.ai.models import CareProposal as Care

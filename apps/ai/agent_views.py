@@ -30,6 +30,7 @@ from apps.ai.attestations import step_up_evidence
 from apps.ai.care_sources import check_care_sources
 from apps.ai.contracts import GatewayRefusedError
 from apps.ai.models import ActionProposal, AgentPolicyVersion
+from apps.ai.pending_access import workflow
 from apps.ai.pending_outputs import RenderSelection, ai_pending_visible
 from apps.ai.pending_outputs import key as pending_key
 from apps.ai.pending_outputs import rows as pending_rows
@@ -90,13 +91,14 @@ def agent_queue(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
             status = 503
         else:
             return redirect(_queue_url(clinic_id))
-    proposals = (
-        pending_rows(ActionProposal)
-        .filter(clinic_id=clinic_id)
-        .select_related("run__policy", "clinic")
-        .order_by("-created_at")[:100]
-    )
-    selectors = tuple(pending_key(row) for row in proposals if _visible(row))
+    with workflow(clinic_id):
+        proposals = (
+            pending_rows(ActionProposal)
+            .filter(clinic_id=clinic_id)
+            .select_related("run__policy", "clinic")
+            .order_by("-created_at")[:100]
+        )
+        selectors = tuple(pending_key(row) for row in proposals if _visible(row))
 
     def project(batch: RenderSelection) -> HttpResponse:
         visible = batch.many(selectors)

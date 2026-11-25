@@ -127,6 +127,7 @@ def test_gateway_runs_offline_and_only_human_acceptance_executes_metrics(
                 authorization_version=ready.authorization_version,
                 decision="accepted",
             )
+    with runtime_role(), tenant_context(world.administrator, graph.organization_a):
         assert AnalystReview.objects.count() == 0
         result = review_proposal(
             clinic_id=graph.clinic_a,
@@ -136,6 +137,7 @@ def test_gateway_runs_offline_and_only_human_acceptance_executes_metrics(
             decision="accepted",
         )
         assert result is not None
+    with runtime_role(), tenant_context(world.administrator, graph.organization_a):
         assert AnalystReview.objects.get(invocation=invocation).decision == "accepted"
         assert (
             review_proposal(

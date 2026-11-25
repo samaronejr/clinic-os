@@ -13,6 +13,7 @@ from apps.ai.pending_outputs import PendingOutput, SealedOutput
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Model
 from django.urls import URLResolver, get_resolver
+from django.utils.regex_helper import normalize
 from drf_spectacular.utils import OpenApiResponse
 from rest_framework import serializers
 from rest_framework.generics import GenericAPIView
@@ -33,6 +34,69 @@ type Serializer = serializers.BaseSerializer[Any]
 
 class UnresolvedSerializerError(AssertionError):
     """Static inspection cannot establish this route's field bindings."""
+
+
+@dataclass(frozen=True)
+class _Capture:
+    """Real kwargs from the route matcher, plus a conservative unsampled arm."""
+
+    sample: object
+
+
+_UNSAMPLED = object()
+
+
+def _captures(pattern: URLPattern | URLResolver) -> dict[str, _Capture]:
+    route = pattern.pattern
+    names = route.regex.groupindex
+    if not names:
+        return {}
+    uuid = "00000000-0000-4000-8000-000000000001"
+    for template, keys in normalize(route.regex.pattern):
+        for token in ("1", "a", uuid):
+            values = {
+                k: uuid
+                if getattr(route.converters.get(k), "regex", "").endswith("{12}")
+                else token
+                for k in keys
+            }
+            match = route.match(template % values)
+            if match is not None and names.keys() <= match[2].keys():
+                return {key: _Capture(match[2][key]) for key in names}
+    return dict.fromkeys(names, _Capture(_UNSAMPLED))
+
+
+def _kwargs(bindings: dict[str, object]) -> Iterator[Mapping[str, object]]:
+    concrete = {
+        k: v.sample if isinstance(v, _Capture) else v for k, v in bindings.items()
+    }
+    if any(v is _UNSAMPLED for v in concrete.values()):
+        msg = "no concrete URL witness for named capture"
+        raise UnresolvedSerializerError(msg)
+    yield concrete
+    if any(isinstance(v, _Capture) for v in bindings.values()):
+        yield _RouteKwargs(bindings)
+
+
+@dataclass(frozen=True)
+class _RouteKwargs(Mapping[str, object]):
+    bindings: dict[str, object]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.bindings)
+
+    def __len__(self) -> int:
+        return len(self.bindings)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.bindings
+
+    def __getitem__(self, key: str) -> object:
+        value = self.bindings[key]
+        if isinstance(value, _Capture):
+            msg = f"serializer selection depends on URL capture {key!r}"
+            raise UnresolvedSerializerError(msg)
+        return value
 
 
 @dataclass(frozen=True)
@@ -100,8 +164,19 @@ def _fields(
         _fields(field.child, parents, path, issues, chain)
     elif isinstance(field, serializers.Serializer):
         parents |= _models(getattr(getattr(field, "Meta", None), "model", None))
+        if (
+            parents
+            and type(field).to_representation
+            is not serializers.Serializer.to_representation
+        ):
+            name = type(field).__name__
+            msg = f"opaque to_representation on {name} at {path or '<root>'}"
+            raise UnresolvedSerializerError(msg)
         for name, bound in field.fields.items():
             child_path = f"{path}.{name}" if path else name
+            if parents and isinstance(bound, serializers.SerializerMethodField):
+                msg = f"opaque method field {child_path} on {type(field).__name__}"
+                raise UnresolvedSerializerError(msg)
             reached = _source(bound, parents, child_path, issues)
             _fields(bound, reached, child_path, issues, chain)
     elif isinstance(field, serializers.BaseSerializer):
@@ -179,6 +254,16 @@ def _manual(view: object, action: str, method: str) -> Iterator[Serializer]:
         msg = "manual response contract cannot resolve a model-bound serializer"
         raise UnresolvedSerializerError(msg)
     schema = schema_class()
+    # Spectacular expands **view.kwargs to ask DRF for a version. Its stock
+    # unversioned implementation ignores every value. This is not used for a
+    # queryset/serializer selector or an application versioning implementation.
+    if (
+        isinstance(view, APIView)
+        and view.versioning_class is None
+        and type(view).determine_version is APIView.determine_version
+        and isinstance(view.kwargs, _RouteKwargs)
+    ):
+        view.kwargs = view.kwargs.bindings.copy()
     schema.view, schema.method = view, method.upper()
     yield from _as_serializers(schema.get_response_serializers())
 
@@ -231,14 +316,18 @@ def _routes(
 ) -> Iterator[tuple[str, Callable[..., object], dict[str, object]]]:
     for pattern in patterns:
         path = prefix + str(pattern.pattern)
+        bindings = {
+            **(defaults or {}),
+            **_captures(pattern),
+        }
         if isinstance(pattern, URLResolver):
             yield from _routes(
                 pattern.url_patterns,
                 path,
-                {**(defaults or {}), **pattern.default_kwargs},
+                {**bindings, **pattern.default_kwargs},
             )
         else:
-            yield path, pattern.callback, {**(defaults or {}), **pattern.default_args}
+            yield path, pattern.callback, {**bindings, **pattern.default_args}
 
 
 def _audit(view: object, action: str, method: str) -> set[str]:
@@ -269,15 +358,27 @@ def _routed_actions(
             yield method, action
 
 
+def _uses_serializers(target: object, cls: object) -> bool:
+    protocol = ("serializer_class", "get_serializer_class", "get_serializer")
+    return any(hasattr(target, attr) for attr in protocol) or (
+        isinstance(cls, type) and issubclass(cls, APIView)
+    )
+
+
+def _bind_action(view: object, action: str, actions: dict[str, str] | None) -> None:
+    if isinstance(view, ViewSetMixin):
+        if not actions:
+            msg = "missing viewset action map"
+            raise UnresolvedSerializerError(msg)
+        view.action, view.action_map = action, actions
+
+
 def _at_route(
     path: str, callback: Callable[..., object], defaults: dict[str, object]
 ) -> Iterator[str]:
     cls = getattr(callback, "cls", getattr(callback, "view_class", None))
     target = cls or callback
-    protocol = ("serializer_class", "get_serializer_class", "get_serializer")
-    if not any(hasattr(target, attr) for attr in protocol) and not (
-        isinstance(cls, type) and issubclass(cls, APIView)
-    ):
+    if not _uses_serializers(target, cls):
         return  # ordinary Django route with no DRF binding
     label = f"{path} {target.__qualname__}"
     try:
@@ -295,17 +396,14 @@ def _at_route(
             return
         for method, action in methods:
             label = f"{path} {cls.__qualname__}.{action} ({method.upper()})"
-            view = cls(**kwargs)
-            if isinstance(view, ViewSetMixin):
-                if not actions:
-                    yield f"{label}: unresolved serializer (missing viewset action map)"
-                    return
-                view.action, view.action_map = action, actions
-            vars(view).update(
-                request=_MethodOnly(method.upper()), format_kwarg=None, kwargs=defaults
-            )
-            for issue in sorted(_audit(view, action, method)):
-                yield f"{label}: {issue}"
+            for bound in _kwargs(defaults):
+                view = cls(**kwargs)
+                _bind_action(view, action, actions)
+                vars(view).update(
+                    request=_MethodOnly(method.upper()), format_kwarg=None, kwargs=bound
+                )
+                for issue in sorted(_audit(view, action, method)):
+                    yield f"{label}: {issue}"
     except Exception as exc:
         # A constructor, selector or field builder can fail for any reason.
         # Report the route and cause; another route's success cannot cover it.

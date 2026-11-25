@@ -20,6 +20,7 @@ from apps.ai.action_validation import (
 )
 from apps.ai.attestations import KEY_ID, StepUpEvidence, attest, verify
 from apps.ai.models import ActionProposal, Approval
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import transition
@@ -135,6 +136,7 @@ def verify_approvals(
 
 
 @transaction.atomic
+@clinic_workflow
 def approve_action(
     *,
     clinic_id: UUID,
@@ -236,6 +238,7 @@ def approve_action(
 
 
 @transaction.atomic
+@clinic_workflow
 def reject_action(*, clinic_id: UUID, proposal_id: UUID, expected_digest: str) -> None:
     """Reject only the inspected effect; do not redirect a stale decision."""
     proposal = (

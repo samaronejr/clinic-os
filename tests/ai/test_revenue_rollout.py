@@ -14,6 +14,7 @@ from apps.ai.care_coordination import _payload
 from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError, Purpose
 from apps.ai.models import ActionProposal, AgentRun
+from apps.ai.pending_outputs import key
 from apps.ai.proposals import propose_action
 from apps.core.secrets import secret_store
 from apps.tenancy.envelope import KEK_SECRET_NAME
@@ -21,6 +22,7 @@ from django.db import DatabaseError, connection, transaction
 
 from ai.care_support import acting, care_world
 from ai.care_support import request_and_collect as collect_care
+from ai.pending_observation import observe
 from ai.retained_rollout_support import (
     INVALIDATIONS,
     Invalidation,
@@ -141,8 +143,9 @@ def test_retained_revenue_reproposal_keeps_original_permission(
                 if native
                 else propose_action(clinic_id=world.setup.clinic_id, payload=payload)
             )
-            assert allowed.state == "validated"
-            assert allowed.quorum == 1
+            assert observe(
+                allowed, world.setup.clinic_id, lambda r: (r.state, r.quorum)
+            ) == ("validated", 1)
             transaction.set_rollback(True)
     clinic_id = invalidate(world.setup.graph, review.invocation_id, mode, monkeypatch)
     with finance_scope(world.setup):
@@ -196,6 +199,7 @@ def test_native_care_payload_keeps_its_own_invocation(
                 _payload(item=item, policy=care.policy, attempt=uuid4())
             ),
         )
+    with acting(rbac_graph, care.manager):
         with transaction.atomic():
             assert (
                 native_reproposal(
@@ -263,8 +267,8 @@ def test_retained_revenue_idempotent_preview_rechecks_source(
     with finance_scope(world.setup):
         payload = parse_payload(template.payload)
         assert (
-            propose_action(clinic_id=template.clinic_id, payload=payload).pk
-            == template.pk
+            key(propose_action(clinic_id=template.clinic_id, payload=payload)).pk
+            == key(template).pk
         )
     invalidate(world.setup.graph, review.invocation_id, mode, monkeypatch)
     with finance_scope(world.setup), pytest.raises(PYTHON_REFUSALS):

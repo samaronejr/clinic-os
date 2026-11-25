@@ -19,8 +19,7 @@ import rfc8785
 from django.db import DatabaseError, connection, transaction
 from django.db.models.functions import Now
 
-from apps.ai.pending_outputs import PendingKey, ai_pending_visible, archive_current
-from apps.ai.pending_outputs import rows as pending_rows
+from apps.ai.pending_outputs import ai_pending_visible, sealed_part_key
 from apps.audit.services import record_phase1_event
 from apps.comms.models import IntegrationOperation
 from apps.identity.current_context import CurrentActorError, require_permission
@@ -572,22 +571,21 @@ def download_export_part(
         state="ready",
         expires_at__gt=Now(),
     ).first()
-    if job is None or part > job.part_count or not archive_current(selected):
+    if job is None or part > job.part_count:
         raise InteropAccessDeniedError
-    part_id = (
-        pending_rows(OrganizationExportPart)
-        .filter(organization_id=organization_id, export_id=job.pk, part=part)
-        .values_list("pk", flat=True)
-        .first()
+    selector = sealed_part_key(
+        OrganizationExportPart,
+        organization_id=organization_id,
+        export_id=job.pk,
+        part=part,
     )
-    if part_id is None:
+    if selector is None:
         raise InteropAccessDeniedError
     record_phase1_event(
         "interop.organization_export.downloaded",
         clinic_id=job.clinic_id,
         affected_record_id=job.pk,
     )
-    selector = PendingKey(OrganizationExportPart, part_id)
 
     def project(batch: RenderSelection) -> ExportPartDownload:
         checked = batch.get(selector)

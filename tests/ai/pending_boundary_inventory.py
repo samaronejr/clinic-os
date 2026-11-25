@@ -461,6 +461,34 @@ def _annotation_aliases(tree: ast.Module) -> dict[str, ast.AST]:
     return aliases
 
 
+def _receiver_types(
+    node: ast.AST, aliases: dict[str, ast.AST], seen: frozenset[str] = frozenset()
+) -> set[str]:
+    """Possible receiver types, not the types *inside* a permit or container."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            node = ast.parse(node.value, mode="eval").body
+        except SyntaxError:
+            return {""}
+    arms: tuple[ast.AST, ...]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        arms = (node.left, node.right)
+    elif isinstance(node, ast.Subscript) and _leaf(node.value) in {"Optional", "Union"}:
+        arms = (
+            tuple(node.slice.elts)
+            if isinstance(node.slice, ast.Tuple)
+            else (node.slice,)
+        )
+    else:
+        if isinstance(node, ast.Constant) and node.value is None:
+            return set()
+        name = _leaf(node.value if isinstance(node, ast.Subscript) else node)
+        if name in aliases and name not in seen:
+            return _receiver_types(aliases[name], aliases, seen | {name})
+        return {name}
+    return {t for arm in arms for t in _receiver_types(arm, aliases, seen)}
+
+
 def _raw_projection_signatures(
     tree: ast.Module, spec: Inventory, names: dict[str, str]
 ) -> set[tuple[int, str]]:
@@ -485,6 +513,26 @@ def _raw_projection_signatures(
         }
         if not raw:
             continue
+        # A validator can disclose only a decision and still try to open a
+        # pending model as a visibility permit. This check is independent of
+        # where the resulting value flows. A genuine raw/permit union is not
+        # a definitely raw receiver; its issued arm can legitimately open it.
+        row_args = {
+            arg.arg
+            for arg in _arguments(fn)
+            if arg.arg in raw
+            and arg.annotation is not None
+            and (options := _receiver_types(arg.annotation, aliases))
+            and options <= names.keys()
+        }
+        if any(
+            isinstance(n, ast.Attribute)
+            and n.attr == "record"
+            and isinstance(n.value, ast.Name)
+            and n.value.id in row_args
+            for n in ast.walk(fn)
+        ):
+            bad.add((fn.lineno, RAW))
         flows = _flows(fn)
         derived = _propagate(raw, flows, _mentions)
         stored = _propagate(

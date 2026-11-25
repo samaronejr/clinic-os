@@ -39,6 +39,7 @@ from apps.ai.models import (
     AIArtifact,
     AIInvocation,
 )
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import PendingKey, reselect
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import propose_action
@@ -194,6 +195,7 @@ def collect_revenue_cycle(*, clinic_id: UUID, invocation_id: UUID) -> RevenueRev
     )
 
 
+@clinic_workflow
 def prepare_revenue_review(
     *, clinic_id: UUID, invocation_id: UUID
 ) -> RevenueReview | ArtifactProjection[RevenueReview]:
@@ -269,6 +271,7 @@ def _reference(output: AIArtifact) -> dict[str, JSON]:
 
 
 @transaction.atomic
+@clinic_workflow
 def propose_revenue_action(
     *, clinic_id: UUID, output_id: UUID, position: int
 ) -> ActionProposal:
@@ -357,6 +360,7 @@ def propose_revenue_action(
     )
 
 
+@clinic_workflow
 def check_revenue_sources(
     *, clinic_id: UUID, data: dict[str, JSON]
 ) -> tuple[AIArtifact, RevenueContext, dict[str, JSON]]:

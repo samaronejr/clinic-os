@@ -16,6 +16,8 @@ from apps.ai.action_contracts import ActionAccessDeniedError
 from apps.ai.approvals import reject_action
 from apps.ai.contracts import GatewayAccessDeniedError, Purpose
 from apps.ai.models import ActionProposal, AIArtifact
+from apps.ai.pending_access import PendingReadOutsideVisibilityError
+from apps.ai.pending_outputs import RenderSelection, ai_pending_visible, key
 from apps.ai.revenue_cycle import _reference
 from apps.identity import stepup
 from django.conf import settings
@@ -77,15 +79,23 @@ def _retained_finance_reference(world: RevenueWorld) -> None:
         assert citation["id"] == str(held.pk)
         assert citation["content_sha256"] == sha256(held.content.encode()).hexdigest()
         proposal = proposal_for(world, review)
+    with finance_scope(setup):
+        selector = key(proposal)
+        digest = proposal.digest
         with transaction.atomic():
             reject_action(
                 clinic_id=setup.clinic_id,
-                proposal_id=proposal.pk,
-                expected_digest=proposal.digest,
+                proposal_id=selector.pk,
+                expected_digest=digest,
             )
-            assert ActionProposal.objects.filter(
-                pk=proposal.pk, state="rejected"
-            ).exists()
+            with pytest.raises(PendingReadOutsideVisibilityError):
+                ActionProposal.objects.filter(pk=selector.pk, state="rejected").exists()
+
+            def rejected(batch: RenderSelection) -> bool:
+                checked = batch.get(selector)
+                return checked is not None and checked.record.state == "rejected"
+
+            assert ai_pending_visible((selector,), rejected, clinic_id=setup.clinic_id)
             transaction.set_rollback(True)
     withdraw(patient, receipt)
     with finance_scope(setup):

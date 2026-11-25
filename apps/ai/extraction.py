@@ -31,6 +31,7 @@ from apps.ai.models import (
     ExtractionCandidateRecord,
     ExtractionJob,
 )
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_choice import pending_choice_allows
 from apps.ai.pending_outputs import (
     PendingKey,
@@ -210,6 +211,7 @@ def job_source(*, job: ExtractionJob, include_bytes: bool) -> ExtractionSource:
 
 
 @transaction.atomic
+@clinic_workflow
 def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
     """Materialize an invocation once; inference never acknowledges or files results."""
     job = authorized_job(clinic_id=clinic_id, job_id=job_id)
@@ -218,7 +220,7 @@ def collect_extraction(*, clinic_id: UUID, job_id: UUID) -> ExtractionJob:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
             [f"ai-extraction:{job.pk}"],
         )
-    if job.candidates.exists():
+    if pending_rows(ExtractionCandidateRecord).filter(job_id=job.pk).exists():
         return job
     invocation = AIInvocation.objects.filter(pk=job.invocation_id).first()
     if invocation is None:
@@ -310,6 +312,7 @@ def project_candidate(
 
 
 @transaction.atomic
+@clinic_workflow
 def review_extraction(
     *,
     clinic_id: UUID,

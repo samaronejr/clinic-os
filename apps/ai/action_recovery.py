@@ -13,6 +13,7 @@ from apps.ai.action_validation import validate_current
 from apps.ai.approvals import verify_approvals
 from apps.ai.execution import set_execution_state
 from apps.ai.models import ActionExecution, ActionReceipt, Compensation
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.proposals import transition
 from apps.audit.services import record_phase1_event
 from apps.comms import agent_reminders
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 
+@clinic_workflow
 def reconcile_action(
     *, clinic_id: UUID, proposal_id: UUID, principal_id: UUID
 ) -> ExecutionResult:
@@ -85,6 +87,7 @@ def reconcile_action(
             return ExecutionResult(proposal.pk, state, current.pk, receipt.pk)
 
 
+@clinic_workflow
 def compensate_action(
     *, clinic_id: UUID, proposal_id: UUID, principal_id: UUID
 ) -> ExecutionResult:

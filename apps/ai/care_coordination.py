@@ -52,6 +52,7 @@ from apps.ai.contracts import (
 from apps.ai.effects import check_invocation
 from apps.ai.execution import execute_action
 from apps.ai.models import AgentPolicyVersion, AIInvocation
+from apps.ai.pending_access import clinic_workflow, workflow
 from apps.ai.pending_outputs import (
     RenderSelection,
     ai_pending_visible,
@@ -322,6 +323,7 @@ def _store(
 
 
 @transaction.atomic
+@clinic_workflow
 def collect_care_coordination(*, clinic_id: UUID, invocation_id: UUID) -> CareBundle:
     """Turn the requester's finished run into reviewable proposals, once.
 
@@ -354,6 +356,7 @@ def collect_care_coordination(*, clinic_id: UUID, invocation_id: UUID) -> CareBu
     return CareBundle("ready", invocation.pk, plan.pk, items)
 
 
+@clinic_workflow
 def care_bundle(*, clinic_id: UUID, invocation_id: UUID) -> CareBundle:
     """Return the bundle rows the caller may see; none at all is the denial."""
     items = _visible_items(clinic_id, invocation_id)
@@ -469,6 +472,13 @@ def _care_policy(clinic_id: UUID) -> AgentPolicyVersion:
 
 def _payload(*, item: CareProposal, policy: AgentPolicyVersion, attempt: UUID) -> str:
     """Build the closed action envelope for one exact administrative effect."""
+    with workflow(policy.clinic_id):
+        return _checked_payload(item, policy, attempt)
+
+
+def _checked_payload(
+    item: CareProposal, policy: AgentPolicyVersion, attempt: UUID
+) -> str:
     item = reselect(item)
     provider = current_version("email", clinic_id=item.clinic_id)
     if provider is None or item.window_start is None or item.window_end is None:
@@ -565,6 +575,7 @@ def _approve_item(
 
 
 @transaction.atomic
+@clinic_workflow
 def approve_care_bundle(
     *,
     clinic_id: UUID,
@@ -648,6 +659,7 @@ def _accept(*, clinic_id: UUID, item: CareProposal) -> CareProposal:
 
 
 @transaction.atomic
+@clinic_workflow
 def decide_care_item(
     *,
     clinic_id: UUID,

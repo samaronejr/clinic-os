@@ -91,12 +91,18 @@ def raw_confirmation(
         clinic_id=row.clinic_id if clinic_id is None else clinic_id,
         purpose=Purpose.EXTRACTION,
     )
+    selector, scope, job_id, confirmer = (
+        key(row),
+        row.clinic_id,
+        row.job_id,
+        str(row.job.user_id),
+    )
     payload = filing_payload(
-        candidate_data(key(row), clinic_id=row.clinic_id, job_id=row.job_id),
-        confirmer=str(row.job.user_id),
+        candidate_data(selector, clinic_id=scope, job_id=job_id),
+        confirmer=confirmer,
         manual_unit="mg/dL",
     )
-    payload["extraction_candidate"] = str(row.pk)
+    payload["extraction_candidate"] = str(selector.pk)
     source = protect(
         purpose="orders.observation.source",
         plaintext=json.dumps(payload, separators=(",", ":")).encode(),
@@ -104,7 +110,7 @@ def raw_confirmation(
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM clinic_app.ai_review_extraction(%s,%s,'confirmed',%s,%s)",
-            [row.pk, target, source, secret_store().get_secret("tenant-kek")],
+            [selector.pk, target, source, secret_store().get_secret("tenant-kek")],
         )
         receipt = cursor.fetchone()
     assert receipt is not None
@@ -333,6 +339,17 @@ def test_attachment_requires_scan_and_independent_exact_byte_identity_match(
             manual_unit="mg/dL",
         )
         assert identifier is not None
+    _assert_filing(rbac_graph, identifier, source_job, job, attachment.pk)
+
+
+def _assert_filing(
+    graph: RbacGraph,
+    identifier: UUID,
+    source_job: ExtractionJob,
+    job: ExtractionJob,
+    attachment_id: UUID,
+) -> None:
+    with as_actor(graph, graph.physician):
         observation = ResultObservation.objects.get(pk=identifier)
         assert (observation.version_id, observation.source["unit"]) == (
             source_job.result_version_id,
@@ -341,8 +358,8 @@ def test_attachment_requires_scan_and_independent_exact_byte_identity_match(
         assert (
             observation.source["provenance"],
             observation.source["confirmer"],
-        ) == ("imported", str(rbac_graph.physician))
-        assert (job.result_version_id, job.attachment_id) == (None, attachment.pk)
+        ) == ("imported", str(graph.physician))
+        assert (job.result_version_id, job.attachment_id) == (None, attachment_id)
 
 
 def test_resolver_rejects_another_current_version_even_with_identical_bytes(

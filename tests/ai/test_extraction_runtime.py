@@ -13,6 +13,7 @@ from apps.ai.controls import set_organization_policy
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.extraction_views import extraction_view
 from apps.ai.models import ExtractionCandidateRecord, ExtractionJob
+from apps.ai.pending_outputs import key
 from apps.ai.policy import OrganizationPolicy
 from apps.core.integration import execute_operation
 from apps.identity.clinic_configuration import latest_configuration
@@ -131,7 +132,7 @@ def test_five_confirmations_import_exact_values_without_acknowledgment(
         ):
             identifier = review_extraction(
                 clinic_id=rbac_graph.clinic_a,
-                candidate_id=row.pk,
+                candidate_id=key(row).pk,
                 decision="confirmed",
                 manual_unit=manual_unit,
             )
@@ -139,12 +140,13 @@ def test_five_confirmations_import_exact_values_without_acknowledgment(
             assert (
                 review_extraction(
                     clinic_id=rbac_graph.clinic_a,
-                    candidate_id=row.pk,
+                    candidate_id=key(row).pk,
                     decision="confirmed",
                     manual_unit=manual_unit,
                 )
                 == identifier
             )
+    with as_actor(rbac_graph, rbac_graph.physician):
         observations = list(
             ResultObservation.objects.filter(version_id=job.result_version_id).order_by(
                 "position"

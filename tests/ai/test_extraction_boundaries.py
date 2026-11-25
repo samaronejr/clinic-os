@@ -160,15 +160,14 @@ def test_patient_scope_and_expiry_are_decided_at_the_actual_boundary(
                 result_version_id=job.result_version_id,
                 attachment_id=uuid4(),
             )
+        expiry = candidate.expires_at
         with pytest.raises(ExtractionInputError):
             extraction.review_extraction(
                 clinic_id=job.clinic_id,
                 candidate_id=candidate.pk,
                 decision="approved",
             )
-        monkeypatch.setattr(
-            "apps.ai.extraction.timezone.now", lambda: candidate.expires_at
-        )
+        monkeypatch.setattr("apps.ai.extraction.timezone.now", lambda: expiry)
         with pytest.raises(ExtractionInputError):
             extraction.review_extraction(
                 clinic_id=job.clinic_id,

@@ -13,6 +13,7 @@ from apps.ai.models import AIArtifact
 from apps.analytics.analyst import request_analyst
 
 from ai import brief_support, care_support, decision_support_helpers, revenue_support
+from ai.pending_observation import count_rows
 from ai.test_extraction_runtime import extracted_job
 from ai.test_front_desk import desk_world, say
 from analytics.test_analyst import analyst_world
@@ -139,7 +140,7 @@ def test_registered_domain_entry_cannot_bypass_authorization(
         else:
             # Inside the real runtime transaction, before even an uncommitted
             # first input can be written. Merely checking at dispatch is too late.
-            assert not AIArtifact.objects.filter(purpose=purpose.value).exists()
+            assert count_rows(AIArtifact, subject.clinic_id, purpose=purpose.value) == 0
         raise BoundaryReachedError
 
     monkeypatch.setattr(authorization, "authorize_capability", refuse)

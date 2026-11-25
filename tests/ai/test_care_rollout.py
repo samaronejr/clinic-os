@@ -13,6 +13,8 @@ from apps.ai.care_coordination import CareAccessDeniedError, _payload, decide_ca
 from apps.ai.care_models import CareProposal
 from apps.ai.contracts import GatewayRefusedError, Purpose
 from apps.ai.models import AgentRun
+from apps.ai.pending_access import workflow
+from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.proposals import propose_action
 from apps.workflows.care.models import CareAction
 from apps.workflows.care.services import CareActionSpec, add_care_action
@@ -20,6 +22,7 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from ai.care_support import acting, care_world, request_and_collect
+from ai.pending_observation import observe
 from ai.retained_rollout_support import (
     INVALIDATIONS,
     Invalidation,
@@ -81,7 +84,7 @@ def native_reproposal(
         )
         approval = cursor.fetchone()
     assert approval is not None
-    return AgentRun.objects.create(
+    return pending_rows(AgentRun).create(
         organization_id=template.organization_id,
         clinic_id=template.clinic_id,
         policy_id=template.policy_id,
@@ -118,13 +121,14 @@ def test_retained_clinical_care_cannot_apply_after_rollout_invalidation(
             if native:
                 native_accept(item, clinic_id=rbac_graph.clinic_a)
             else:
+                accepted = decide_care_item(
+                    clinic_id=item.clinic_id,
+                    item_id=item.pk,
+                    decision="accept",
+                    expected_revision=item.revision,
+                )
                 assert (
-                    decide_care_item(
-                        clinic_id=item.clinic_id,
-                        item_id=item.pk,
-                        decision="accept",
-                        expected_revision=item.revision,
-                    ).state
+                    observe(accepted, rbac_graph.clinic_a, lambda r: r.state)
                     == "accepted"
                 )
             assert CareAction.objects.filter(plan=world.plan).count() == before + 1
@@ -180,13 +184,17 @@ def test_retained_administrative_care_cannot_repropose_under_new_permission(
             _payload(item=item, policy=world.policy, attempt=uuid4())
         )
         with transaction.atomic():
-            proposal = propose_action(clinic_id=item.clinic_id, payload=payload)
-            assert proposal.state == "validated"
-            template = AgentRun.objects.get(pk=proposal.run_id)
-            if native:
-                assert native_reproposal(
-                    template, bundle.invocation_id, clinic_id=rbac_graph.clinic_a
-                ).pk
+            proposal = propose_action(clinic_id=rbac_graph.clinic_a, payload=payload)
+            state, run_id = observe(
+                proposal, rbac_graph.clinic_a, lambda r: (r.state, r.run_id)
+            )
+            assert state == "validated"
+            with workflow(rbac_graph.clinic_a):
+                template = pending_rows(AgentRun).get(pk=run_id)
+                if native:
+                    assert native_reproposal(
+                        template, bundle.invocation_id, clinic_id=rbac_graph.clinic_a
+                    ).pk
             transaction.set_rollback(True)
     clinic_id = invalidate(rbac_graph, bundle.invocation_id, mode, monkeypatch)
     with acting(rbac_graph, world.manager):

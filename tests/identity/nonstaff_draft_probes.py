@@ -90,6 +90,7 @@ def draft_subjects(
             request_key=uuid4(),
             request=DraftRequest(frame.version.revision),
         )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         operation = draft.invocation.operation_id
     assert operation is not None
     with runtime_role():

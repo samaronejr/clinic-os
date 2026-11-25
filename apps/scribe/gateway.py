@@ -153,9 +153,9 @@ class ScribeGatewayActionAdapter(GatewayActionAdapter):
     def prepare(self, operation: IntegrationOperation) -> PreparedInference:
         """Commit an authority refusal before the outbox's final subject recheck."""
         prepared = super().prepare(operation)
-        invocation = AIInvocation.objects.select_related("inputs_ref").get(
-            pk=prepared.invocation_id
-        )
+        # Only provenance and the scalar selector are needed here. The input
+        # itself is reselected by ai_pending_visible below.
+        invocation = AIInvocation.objects.get(pk=prepared.invocation_id)
         if invocation.purpose not in {Purpose.SCRIBE_DRAFT, Purpose.SCRIBE_ASR}:
             return prepared
 

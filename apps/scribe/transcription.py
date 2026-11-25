@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, Purpose, Usage
 from apps.ai.effects import check_invocation
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import CurrentActorError
@@ -162,6 +163,7 @@ def prepare_audio(*, clinic_id: UUID, chunk_id: UUID) -> PreparedAudio:
 
 
 @transaction.atomic
+@clinic_workflow
 def request_transcription(
     *,
     clinic_id: UUID,

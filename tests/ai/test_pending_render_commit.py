@@ -187,9 +187,11 @@ def test_retained_finance_handle_cannot_reissue_a_reviewable_digest(
     review = revenue_support.request_and_collect(world)
     with finance_scope(world.setup):
         proposal = proposal_for(world, review)
+    with finance_scope(world.setup):
         raw = ActionProposal.objects.select_related("clinic", "run__policy").get(
             pk=proposal.pk
         )
+        expected = (raw.pk, raw.digest)
         # Same oracle across the incompatible acquisition APIs: keep exactly
         # what that revision allows its real public presenter to accept.
         boundary = getattr(pending_outputs, "ai_pending_visible", None)
@@ -205,7 +207,7 @@ def test_retained_finance_handle_cannot_reissue_a_reviewable_digest(
         positive = present_proposal(handle)
         assert positive is not None
         assert positive.reviewable
-        assert (positive.proposal_id, positive.digest) == (raw.pk, raw.digest)
+        assert (positive.proposal_id, positive.digest) == expected
     withdraw(patient, receipt)
     with finance_scope(world.setup):
         assert not ActionProposal.objects.filter(pk=raw.pk).exists()
@@ -508,8 +510,8 @@ def test_one_batch_keeps_visible_siblings_and_rechecks_retained_handles(
         )
         # The unknown selector is omitted; the visible siblings keep order.
         assert [h.project(lambda c: c.record.pk) for h in held] == [
-            first.pk,
-            second.pk,
+            keys[0].pk,
+            keys[2].pk,
         ]
         with pytest.raises(GatewayAccessDeniedError):
             _record(held[0])

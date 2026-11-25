@@ -30,6 +30,7 @@ from apps.ai.contracts import (
 )
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AIArtifact
+from apps.ai.pending_access import workflow
 from apps.ai.pending_outputs import PendingKey, RenderSelection, ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.revenue_cycle import (
@@ -220,7 +221,8 @@ def revenue_cycle_page(request: HttpRequest, clinic_id: UUID) -> HttpResponseBas
             )
         else:
             try:
-                review, proposal, notice = _command(request, clinic_id, form)
+                with workflow(clinic_id):
+                    review, proposal, notice = _command(request, clinic_id, form)
             except (
                 GatewayAccessDeniedError,
                 ActionAccessDeniedError,

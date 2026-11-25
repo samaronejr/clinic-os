@@ -15,6 +15,7 @@ from apps.ai.action_validation import database_time
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayInputError, Purpose
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.policy import enabled_policy
@@ -47,6 +48,7 @@ def require_finance(*, clinic_id: UUID) -> UUID:
         raise GatewayAccessDeniedError from None
 
 
+@clinic_workflow
 def retained_output(
     *, clinic_id: UUID, output_id: UUID
 ) -> tuple[AIArtifact, RevenueContext]:

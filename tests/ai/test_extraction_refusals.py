@@ -45,6 +45,7 @@ def test_extraction_candidate_must_belong_to_the_authorized_job(
         assert execute_operation(operation_id=operation) == "succeeded"
     with as_actor(graph, graph.physician):
         collect_extraction(clinic_id=job.clinic_id, job_id=sibling.pk)
+    with as_actor(graph, graph.physician):
         candidate = sibling.candidates.order_by("position").first()
         assert candidate is not None
         assert not job.candidates.filter(pk=candidate.pk).exists()

@@ -99,6 +99,16 @@ def _separate_exclusive(clinic: UUID) -> bool:
         connections.close_all()
 
 
+def _live_count(page: Page) -> int:
+    # Keep the independent row-policy witness. The formatter's own fenced
+    # connection can no longer issue a raw query as a test probe.
+    try:
+        with as_actor(page.care.graph, page.care.manager):
+            return CareProposal.objects.filter(pk__in=[k.pk for k in page.keys]).count()
+    finally:
+        connections.close_all()
+
+
 @pytest.mark.parametrize("transport", ["native"])
 def test_queued_withdrawal_precedes_later_readers(
     page: Page, transport: str, superuser_database_url: str
@@ -194,9 +204,9 @@ def test_care_final_formatter_serializes_real_refusal(
                         "SELECT pg_backend_pid()=ANY(pg_blocking_pids(%s))", [pid]
                     )
                     assert cur.fetchone() == (True,)
-            fresh = CareProposal.objects.filter(
-                pk__in=[k.pk for k in page.keys]
-            ).count()
+
+            with ThreadPoolExecutor(max_workers=1) as observer:
+                fresh = observer.submit(_live_count, page).result(timeout=30)
             if not fresh:
                 # Observe admission only. Do not read a withdrawn field.
                 observations.append(

@@ -10851,6 +10851,19 @@
       ]
     },
     {
+      "symbol": "apps.ai.pending_access._command_record",
+      "signals": ["denial"],
+      "kind": "direct",
+      "probes": ["apps.ai.pending_access._command_record#cut1"],
+      "reason": "The Finance decision oracle observes the post-lock command instance refresh under its real clinic and RLS scope, rejects an independent manager read, and verifies the actual decision through the typed projection."
+    },
+    {
+      "symbol": "apps.ai.pending_outputs.install_pending_access",
+      "signals": ["scope_name"],
+      "kind": "data_operation",
+      "reason": "Startup registration derives descriptors and database hooks from the live model registry; it issues no query or runtime row authority. Access itself is independently exercised by the fenced mutation and command oracles."
+    },
+    {
       "symbol": "apps.ai.pending_outputs.decisions_visible",
       "signals": [
         "resolver"
@@ -11111,6 +11124,7 @@
     "apps.ai.owner.reset_circuit#cut1",
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
+    "apps.ai.pending_access._command_record#cut1",
     "apps.ai.pending_outputs._export_page#cut1",
     "apps.ai.pending_outputs.ai_pending_visible#cut1",
     "apps.ai.pending_outputs.archive_current#cut1",

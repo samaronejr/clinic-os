@@ -20,6 +20,17 @@ unknown selector. Staff pages serialize synchronously, never as a pending
 stream. Provider sends, broker delivery and socket transmission happen outside
 the rendering transaction.
 
+The lock alone does not authorize Django to read pending fields. While a
+consent fence is held, an independent ORM read raises
+`PendingReadOutsideVisibilityError` before it returns a row or scalar. This
+also applies to populated relation and queryset caches: a serializer method,
+custom representation or template cannot borrow an active frame to load
+another instance. A checked row belongs to its issuing frame, even if the
+caller retains the Python object past commit. Workflow commands use
+clinic-scoped queries on their acting database alias. A pre-lock command row
+must be refreshed under RLS before use, and command access is suspended while
+a projection callback runs. These checks do not grant a database privilege.
+
 ## Revenue-cycle assistant (todo 60, AI-06)
 
 Default off: `revenue_cycle` has its own organization opt-in, evaluated model

@@ -17,6 +17,7 @@ from apps.orders.values import OrdersAccessDeniedError
 from django.test import RequestFactory
 from django.urls import resolve, reverse
 
+from ai.pending_observation import observe
 from ai.support import DEFAULT_BUDGET
 from ai.test_extraction_runtime import extracted_job
 from auth.stepup_test_support import verified_request
@@ -65,8 +66,9 @@ def extraction_calls(
             candidate_id=candidate.pk,
             decision="rejected",
         )
-        candidate.refresh_from_db()
-        return candidate.status == "rejected" and candidate.reviewed_by_id == actor
+        return observe(
+            candidate, graph.clinic_a, lambda r: (r.status, r.reviewed_by_id)
+        ) == ("rejected", actor)
 
     return {
         "apps.ai.extraction.extraction_source": lambda: (

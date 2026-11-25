@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from django.db import transaction
 
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_choice import pending_choice_allows
 from apps.ai.pending_outputs import decisions_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
@@ -140,6 +141,7 @@ def _suggestion(clinic_id: UUID, suggestion_id: UUID) -> SuggestedReply:
     return suggestion
 
 
+@clinic_workflow
 def use_suggestion(
     *,
     clinic_id: UUID,
@@ -176,6 +178,7 @@ def use_suggestion(
     return receipt
 
 
+@clinic_workflow
 def discard_suggestion(*, clinic_id: UUID, suggestion_id: UUID) -> None:
     """Reject a draft without penalty; nothing is sent."""
     with transaction.atomic():

@@ -38,6 +38,7 @@ from apps.ai.models import (
     Approval,
 )
 from apps.ai.outbox import GatewayActionAdapter
+from apps.ai.pending_outputs import PendingKey, key
 from apps.ai.proposals import propose_action
 from apps.ai.revenue_cycle import (
     check_revenue_sources,
@@ -58,6 +59,7 @@ from apps.insurance.models import Appeal, Batch
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
+from ai.pending_observation import checked_value, observe
 from ai.revenue_support import (
     CARD_SENTINEL,
     PAYER_SENTINEL,
@@ -165,6 +167,7 @@ def test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft
     with finance_scope(setup):
         before = Appeal.objects.count()
         proposal = proposal_for(world, review)
+    with finance_scope(setup):
         assert proposal.state == "validated"
         payload = parse_payload(proposal.payload)
         assert (
@@ -178,32 +181,35 @@ def test_human_digest_approval_creates_only_one_unsubmitted_administrative_draft
         # The direct tool bridge and the generic executor both refuse bypass.
         with pytest.raises(ActionRefusedError, match=Refusal.QUORUM.value):
             execute_revenue_draft(clinic_id=setup.clinic_id, payload=payload)
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=key(proposal).pk)
         assert result.state == "rejected"
     # A fresh preview after the rejected attempt is still bound to its exact run.
     review = request_and_collect(world)
     request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
+    with finance_scope(setup):
         evidence = step_up_evidence(
             request, clinic_id=setup.clinic_id, digest=proposal.digest
         )
         with pytest.raises(ActionRefusedError, match=Refusal.DIGEST.value):
             approve_action(
                 clinic_id=setup.clinic_id,
-                proposal_id=proposal.pk,
+                proposal_id=key(proposal).pk,
                 expected_digest="0" * 64,
                 evidence=evidence,
             )
         approve_action(
             clinic_id=setup.clinic_id,
-            proposal_id=proposal.pk,
+            proposal_id=key(proposal).pk,
             expected_digest=proposal.digest,
             evidence=evidence,
         )
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=key(proposal).pk)
         assert result.state == "receipt"
-        repeated = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        repeated = execute_action(
+            clinic_id=setup.clinic_id, proposal_id=key(proposal).pk
+        )
         assert repeated.execution_id == result.execution_id
         assert Appeal.objects.count() == before + 1
         appeal = Appeal.objects.order_by("-created_at").first()
@@ -342,12 +348,13 @@ def test_new_return_invalidates_the_exact_previous_proposal(
     request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
+    with finance_scope(setup):
         evidence = step_up_evidence(
             request, clinic_id=setup.clinic_id, digest=proposal.digest
         )
         approve_action(
             clinic_id=setup.clinic_id,
-            proposal_id=proposal.pk,
+            proposal_id=key(proposal).pk,
             expected_digest=proposal.digest,
             evidence=evidence,
         )
@@ -359,7 +366,7 @@ def test_new_return_invalidates_the_exact_previous_proposal(
             command_id=uuid4(),
         )
         before = Appeal.objects.count()
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=key(proposal).pk)
         assert result.state == "rejected"
         assert result.reason is Refusal.SOURCE
         assert Appeal.objects.count() == before
@@ -518,6 +525,7 @@ def test_material_commands_are_unrepresentable_in_an_a1_approval(
     review = request_and_collect(world)
     with finance_scope(world.setup):
         proposal = proposal_for(world, review)
+    with finance_scope(world.setup):
         data = json.loads(proposal.payload)
         data["operation"]["name"] = operation
         with pytest.raises(ActionInputError):
@@ -534,12 +542,13 @@ def approve(
     world: RevenueWorld, proposal: ActionProposal, request: HttpRequest
 ) -> Approval:
     """Approve the exact digest with fresh evidence from this TOTP session."""
+    digest = observe(proposal, world.setup.clinic_id, lambda row: row.digest)
     return approve_action(
         clinic_id=world.setup.clinic_id,
-        proposal_id=proposal.pk,
-        expected_digest=proposal.digest,
+        proposal_id=key(proposal).pk,
+        expected_digest=digest,
         evidence=step_up_evidence(
-            request, clinic_id=world.setup.clinic_id, digest=proposal.digest
+            request, clinic_id=world.setup.clinic_id, digest=digest
         ),
     )
 
@@ -575,20 +584,29 @@ def test_sentinels_never_reach_prompts_sinks_or_effect_records(
     request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
+        selector = key(proposal)
         approve(world, proposal, request)
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=selector.pk)
         assert result.state == "receipt"
         appeal = Appeal.objects.exclude(pk=world.cycle.appeal_id).get()
-        approvals = list(Approval.objects.filter(proposal=proposal).values())
-        executions = list(ActionExecution.objects.filter(proposal=proposal).values())
+        approvals = list(Approval.objects.filter(proposal_id=selector.pk).values())
+        executions = list(
+            ActionExecution.objects.filter(proposal_id=selector.pk).values()
+        )
         assert approvals
         assert executions
+        payload, run_id = checked_value(
+            selector, setup.clinic_id, lambda row: (row.payload, row.run_id)
+        )
+        contract = checked_value(
+            PendingKey(AgentRun, run_id), setup.clinic_id, lambda run: run.contract
+        )
         records = repr(
             [
                 approvals,
                 executions,
-                list(ActionProposal.objects.filter(pk=proposal.pk).values("payload")),
-                list(AgentRun.objects.filter(pk=proposal.run_id).values("contract")),
+                [{"payload": payload}],
+                [{"contract": contract}],
             ]
         )
     with owner_context(setup.graph.organization_a):
@@ -627,18 +645,26 @@ def test_payer_facing_appeal_text_omits_internal_source_identities(
     request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         proposal = proposal_for(world, review)
+        selector = key(proposal)
         approve(world, proposal, request)
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=selector.pk)
         assert result.state == "receipt"
         appeal = Appeal.objects.exclude(pk=world.cycle.appeal_id).get()
-        stored = json.loads(AIArtifact.objects.get(pk=review.output_id).content)
+        stored = json.loads(
+            checked_value(
+                PendingKey(AIArtifact, review.output_id),
+                setup.clinic_id,
+                lambda row: row.content,
+            )
+        )
+        digest = checked_value(selector, setup.clinic_id, lambda row: row.digest)
     # The digest-bound artifact still records exactly this item's citations.
     assert set(stored["items"][item.position]["citations"]) == {
         source["alias"] for source in item.citations
     }
     # The payer-facing body is exactly the reviewed wording, nothing internal.
     assert appeal.body == item.text
-    for value in (*internal, str(review.output_id), str(proposal.pk), proposal.digest):
+    for value in (*internal, str(review.output_id), str(selector.pk), digest):
         assert value not in appeal.body
 
 
@@ -675,6 +701,7 @@ def test_another_finance_reviewer_cannot_approve_or_reach_the_requesters_draft(
     request = verified_request(graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         approve(world, proposal, request)
+    with finance_scope(setup):
         assert list(
             Approval.objects.filter(proposal=proposal).values_list(
                 "approver_id", flat=True
@@ -691,44 +718,47 @@ def test_stale_digests_and_reused_or_rebound_evidence_never_approve(
     request = verified_request(setup.graph.clinic_admin, persisted=True)
     with finance_scope(setup):
         older = proposal_for(world, first)
+    with finance_scope(setup):
         current = proposal_for(world, second)
-        assert older.digest != current.digest
+    with finance_scope(setup):
+        older_digest, current_digest = older.digest, current.digest
+        assert older_digest != current_digest
         stale = step_up_evidence(
-            request, clinic_id=setup.clinic_id, digest=older.digest
+            request, clinic_id=setup.clinic_id, digest=older_digest
         )
         # A digest displayed for an older proposal never approves the current one.
         with pytest.raises(ActionRefusedError, match=Refusal.DIGEST.value):
             approve_action(
                 clinic_id=setup.clinic_id,
-                proposal_id=current.pk,
-                expected_digest=older.digest,
+                proposal_id=key(current).pk,
+                expected_digest=older_digest,
                 evidence=stale,
             )
         # Evidence attested for another digest is refused, also when relabelled.
-        for evidence in (stale, replace(stale, digest=current.digest)):
+        for evidence in (stale, replace(stale, digest=current_digest)):
             with pytest.raises(ActionRefusedError, match=Refusal.ATTESTATION.value):
                 approve_action(
                     clinic_id=setup.clinic_id,
-                    proposal_id=current.pk,
-                    expected_digest=current.digest,
+                    proposal_id=key(current).pk,
+                    expected_digest=current_digest,
                     evidence=evidence,
                 )
         evidence = step_up_evidence(
-            request, clinic_id=setup.clinic_id, digest=current.digest
+            request, clinic_id=setup.clinic_id, digest=current_digest
         )
         votes = [
             approve_action(
                 clinic_id=setup.clinic_id,
-                proposal_id=current.pk,
-                expected_digest=current.digest,
+                proposal_id=key(current).pk,
+                expected_digest=current_digest,
                 evidence=evidence,
             ).pk
             for _replay in range(2)
         ]
         # Replaying the same evidence returns the one recorded vote.
         assert votes[0] == votes[1]
-        assert Approval.objects.filter(proposal=current).count() == 1
-        assert not Approval.objects.filter(proposal=older).exists()
+        assert Approval.objects.filter(proposal_id=key(current).pk).count() == 1
+        assert not Approval.objects.filter(proposal_id=key(older).pk).exists()
 
 
 def test_a_source_change_before_approval_refuses_the_approval_itself(
@@ -748,8 +778,9 @@ def test_a_source_change_before_approval_refuses_the_approval_itself(
         )
         with pytest.raises(ActionRefusedError, match=Refusal.SOURCE.value):
             approve(world, proposal, request)
-        assert not Approval.objects.filter(proposal=proposal).exists()
-        result = execute_action(clinic_id=setup.clinic_id, proposal_id=proposal.pk)
+        proposal_id = checked_value(key(proposal), setup.clinic_id, lambda row: row.pk)
+        assert not Approval.objects.filter(proposal_id=proposal_id).exists()
+        result = execute_action(clinic_id=setup.clinic_id, proposal_id=key(proposal).pk)
         assert result.state == "rejected"
         assert Appeal.objects.count() == before
 
@@ -809,6 +840,7 @@ def unbound(world: RevenueWorld) -> Unbound:
         pending = propose_revenue_action(
             clinic_id=setup.clinic_id, output_id=review.output_id, position=0
         )
+    with finance_scope(setup):
         assert pending.state == "validated"
         evidence = step_up_evidence(
             request, clinic_id=setup.clinic_id, digest=pending.digest
@@ -821,12 +853,13 @@ def forge_vote(
     world: RevenueWorld, proposal: ActionProposal, snapshot: object
 ) -> Approval:
     """Write an approval row directly: no step-up, approve_action or HMAC."""
+    digest = observe(proposal, world.setup.clinic_id, lambda row: row.digest)
     return Approval.objects.create(
         organization_id=world.setup.graph.organization_a,
         clinic_id=world.setup.clinic_id,
-        proposal_id=proposal.pk,
+        proposal_id=key(proposal).pk,
         approver_id=world.setup.graph.clinic_admin,
-        digest=proposal.digest,
+        digest=digest,
         authority_snapshot=snapshot,
         step_up_evidence_ref=uuid4(),
         step_up_evidence={},
@@ -850,17 +883,16 @@ def writer_vote(
     request: HttpRequest,
 ) -> bool:
     """Call the only vote writer (ai.0012) with genuine step-up for this digest."""
-    evidence = step_up_evidence(
-        request, clinic_id=world.setup.clinic_id, digest=proposal.digest
-    )
+    digest = observe(proposal, world.setup.clinic_id, lambda row: row.digest)
+    evidence = step_up_evidence(request, clinic_id=world.setup.clinic_id, digest=digest)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT clinic_app.agent_record_approval("
             "%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s)",
             [
-                proposal.pk,
+                key(proposal).pk,
                 uuid4(),
-                proposal.digest,
+                digest,
                 json.dumps(snapshot),
                 evidence.evidence_id,
                 json.dumps(
@@ -985,7 +1017,7 @@ def test_sql_accepts_only_tiss_manage_snapshots_on_revenue_votes(
             transaction.atomic(),
         ):
             writer_vote(world, proposal, snapshot, request)
-        assert not Approval.objects.filter(proposal=proposal).exists()
+        assert not Approval.objects.filter(proposal_id=key(proposal).pk).exists()
 
 
 def test_sql_refuses_raw_revenue_state_changes_without_finance_automation(

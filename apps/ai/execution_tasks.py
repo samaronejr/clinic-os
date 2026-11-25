@@ -9,6 +9,7 @@ from django.db import transaction
 from apps.ai.action_contracts import ActionAccessDeniedError
 from apps.ai.execution import execute_action
 from apps.ai.models import ActionProposal, AgentRun
+from apps.ai.pending_access import clinic_workflow
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.tasks import execute_agent as execute
 from apps.tenancy.db import service_principal_context
@@ -34,6 +35,7 @@ def _publication(
     return publish
 
 
+@clinic_workflow
 def dispatch_approved(*, clinic_id: UUID, proposal_id: UUID) -> None:
     """Apply A1 in the approving request; publish machine work after commit."""
     proposal = (

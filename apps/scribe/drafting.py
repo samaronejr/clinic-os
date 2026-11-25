@@ -12,6 +12,8 @@ from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, GatewayRefusedError, Purpose, Usage
 from apps.ai.effects import check_invocation
 from apps.ai.models import AIArtifact, AIInvocation
+from apps.ai.pending_access import clinic_workflow, workflow
+from apps.ai.pending_outputs import VisiblePending, ai_pending_visible, key
 from apps.ai.pending_outputs import rows as pending_rows
 from apps.ai.services import invoke
 from apps.audit.services import record_phase1_event
@@ -31,7 +33,7 @@ from apps.scribe.models import AIDraft, DraftActionProposal, DraftSectionSuggest
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from apps.ai.pending_outputs import VisiblePending
+    from apps.ai.pending_outputs import RenderSelection
     from apps.scribe.draft_contracts import DraftSource
 
 
@@ -46,18 +48,20 @@ def generation_lock(version_id: UUID) -> None:
 
 def current_generation(draft: AIDraft, section: str) -> bool:
     """Section regeneration invalidates that section, not unrelated suggestions."""
-    return (
-        not pending_rows(AIDraft)
-        .filter(
-            version_id=draft.version_id,
-            generation__gt=draft.generation,
-            sections__contains=[section],
+    with workflow(draft.clinic_id):
+        return (
+            not pending_rows(AIDraft)
+            .filter(
+                version_id=draft.version_id,
+                generation__gt=draft.generation,
+                sections__contains=[section],
+            )
+            .exists()
         )
-        .exists()
-    )
 
 
 @transaction.atomic
+@clinic_workflow
 def request_draft(
     *,
     clinic_id: UUID,
@@ -171,30 +175,55 @@ def draft_for_input(artifact: AIArtifact) -> AIDraft | None:
     return draft
 
 
-def sources_for_draft(draft: AIDraft) -> tuple[DraftSource, ...]:
+def sources_for_draft(
+    record: AIDraft | VisiblePending[AIDraft],
+) -> tuple[DraftSource, ...]:
     """Recheck live authority, exact consent and every dependency before use."""
+    draft = record.record if isinstance(record, VisiblePending) else record
     frame = note_frame(clinic_id=draft.clinic_id, version_id=draft.version_id)
-    check_invocation(clinic_id=draft.clinic_id, invocation_id=draft.invocation_id)
-    consent = drafting_consent(frame)
-    if consent.pk != draft.consent_id:
-        raise DraftAccessDeniedError
-    _transcript, sources = resolve_sources(frame, transcript_id=draft.transcript_id)
-    if sorted(
-        json.dumps(source.reference, sort_keys=True) for source in sources
-    ) != sorted(
-        json.dumps(reference, sort_keys=True) for reference in draft.source_refs
-    ):
-        raise DraftConflictError(DraftReason.SOURCE)
-    return sources
+
+    def validate(checked: VisiblePending[AIDraft]) -> tuple[DraftSource, ...]:
+        current = checked.record
+        if current.version_id != frame.version.pk:
+            raise DraftAccessDeniedError
+        check_invocation(
+            clinic_id=current.clinic_id, invocation_id=current.invocation_id
+        )
+        consent = drafting_consent(frame)
+        if consent.pk != current.consent_id:
+            raise DraftAccessDeniedError
+        _transcript, sources = resolve_sources(
+            frame, transcript_id=current.transcript_id
+        )
+        if sorted(json.dumps(s.reference, sort_keys=True) for s in sources) != sorted(
+            json.dumps(r, sort_keys=True) for r in current.source_refs
+        ):
+            raise DraftConflictError(DraftReason.SOURCE)
+        return sources
+
+    if isinstance(record, VisiblePending):
+        return validate(record)
+    selector = key(draft)
+
+    def project(batch: RenderSelection) -> tuple[DraftSource, ...]:
+        checked = batch.get(selector)
+        if checked is None:
+            raise DraftAccessDeniedError
+        return validate(checked)
+
+    return ai_pending_visible(
+        (selector,), project, clinic_id=frame.scope.encounter.clinic_id
+    )
 
 
 def eligible_draft(artifact: AIArtifact) -> bool:
     """No old generation gains authority from an opaque input reference."""
-    draft = draft_for_input(artifact)
-    if draft is None:
-        return True
-    sources_for_draft(draft)
-    return any(current_generation(draft, section) for section in draft.sections)
+    with workflow(artifact.clinic_id):
+        draft = draft_for_input(artifact)
+        if draft is None:
+            return True
+        sources_for_draft(draft)
+        return any(current_generation(draft, section) for section in draft.sections)
 
 
 def retained_draft_allowed(artifact: AIArtifact) -> bool:
@@ -214,19 +243,20 @@ def retained_draft_allowed(artifact: AIArtifact) -> bool:
 
 def materialize_draft(checked: VisiblePending[AIArtifact]) -> str | None:
     """Plaintext is ephemeral and repr-hidden in the shared provider request."""
-    draft = draft_for_input(checked.record)
-    if draft is None:
-        return None
-    sources = sources_for_draft(draft)
-    return json.dumps(
-        {
-            "schema": "scribe-material-v1",
-            "sections": draft.sections,
-            "sources": [asdict(source) for source in sources],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
+    with workflow(checked.record.clinic_id):
+        draft = draft_for_input(checked.record)
+        if draft is None:
+            return None
+        sources = sources_for_draft(draft)
+        return json.dumps(
+            {
+                "schema": "scribe-material-v1",
+                "sections": draft.sections,
+                "sources": [asdict(source) for source in sources],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
 
 
 def complete_draft(*, invocation_id: UUID, content: str) -> None:
@@ -234,52 +264,55 @@ def complete_draft(*, invocation_id: UUID, content: str) -> None:
     invocation = AIInvocation.objects.get(pk=invocation_id)
     if invocation.purpose != Purpose.SCRIBE_DRAFT:
         return
-    draft = pending_rows(AIDraft).filter(invocation=invocation).first()
-    if draft is None:
-        return
-    generation_lock(draft.version_id)
-    active = tuple(
-        section for section in draft.sections if current_generation(draft, section)
-    )
-    if not active:
-        return
-    try:
-        sources = sources_for_draft(draft)
-    except (DraftAccessDeniedError, DraftConflictError, GatewayRefusedError):
-        # The provider charge remains settled, but a late source change earns
-        # no suggestion and cannot authorize another provider attempt.
-        return
-    parsed = parse_suggestions(
-        content,
-        sources=sources,
-        sections=tuple(draft.sections),
-        base_revision=draft.base_revision,
-        generation=draft.generation,
-    )
-    for item in parsed.sections:
-        if item.section in active:
-            pending_rows(DraftSectionSuggestion).create(
-                organization_id=draft.organization_id,
-                version_id=draft.version_id,
-                draft=draft,
-                section=item.section,
-                text=item.text,
-                citations=list(item.citations),
-                assertion_class=item.assertion_class,
-            )
-    # Proposals stay A0, separate from record_clinical_note and the inherited
-    # agent approval/execution path. No new clinical tool is implicitly granted.
-    if len(active) == len(draft.sections):
-        for index, proposal in enumerate(parsed.proposals):
-            pending_rows(DraftActionProposal).create(
-                organization_id=draft.organization_id,
-                version_id=draft.version_id,
-                draft=draft,
-                ordinal=index,
-                kind=proposal.kind,
-                text=proposal.text,
-                citations=list(proposal.citations),
-            )
-    record_phase1_event(
-        "scribe.draft.generated", clinic_id=draft.clinic_id, affected_record_id=draft.pk
-    )
+    with workflow(invocation.clinic_id):
+        draft = pending_rows(AIDraft).filter(invocation=invocation).first()
+        if draft is None:
+            return
+        generation_lock(draft.version_id)
+        active = tuple(
+            section for section in draft.sections if current_generation(draft, section)
+        )
+        if not active:
+            return
+        try:
+            sources = sources_for_draft(draft)
+        except (DraftAccessDeniedError, DraftConflictError, GatewayRefusedError):
+            # The provider charge remains settled, but a late source change earns
+            # no suggestion and cannot authorize another provider attempt.
+            return
+        parsed = parse_suggestions(
+            content,
+            sources=sources,
+            sections=tuple(draft.sections),
+            base_revision=draft.base_revision,
+            generation=draft.generation,
+        )
+        for item in parsed.sections:
+            if item.section in active:
+                pending_rows(DraftSectionSuggestion).create(
+                    organization_id=draft.organization_id,
+                    version_id=draft.version_id,
+                    draft=draft,
+                    section=item.section,
+                    text=item.text,
+                    citations=list(item.citations),
+                    assertion_class=item.assertion_class,
+                )
+        # Proposals stay A0, separate from record_clinical_note and the inherited
+        # agent approval/execution path. No new clinical tool is implicitly granted.
+        if len(active) == len(draft.sections):
+            for index, proposal in enumerate(parsed.proposals):
+                pending_rows(DraftActionProposal).create(
+                    organization_id=draft.organization_id,
+                    version_id=draft.version_id,
+                    draft=draft,
+                    ordinal=index,
+                    kind=proposal.kind,
+                    text=proposal.text,
+                    citations=list(proposal.citations),
+                )
+        record_phase1_event(
+            "scribe.draft.generated",
+            clinic_id=draft.clinic_id,
+            affected_record_id=draft.pk,
+        )

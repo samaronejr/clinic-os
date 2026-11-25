@@ -102,8 +102,10 @@ def test_withdrawal_hides_pending_drafts_but_preserves_clinician_text(
         accepted = DraftSectionSuggestion.objects.get(draft=draft, section="assessment")
         pending = DraftSectionSuggestion.objects.get(draft=draft, section="subjective")
         decision = accept(scope, accepted)
+    with runtime_role(), tenant_context(g.physician, g.organization_a):
         version = ClinicalDocumentVersion.objects.get(pk=scope.version)
-        assert version.soap[accepted.section] == accepted.text
+        accepted_section = accepted.section
+        assert version.soap[accepted_section] == accepted.text
         assert pending.text
         assert pending.text not in version.soap.values()
         output = draft.invocation.output.pk
@@ -133,7 +135,7 @@ def test_withdrawal_hides_pending_drafts_but_preserves_clinician_text(
                     assert not panel.rows
                     assert not panel.proposals
                     assert panel.latest is None
-                    assert panel.version.soap[accepted.section] == decision.applied_text
+                    assert panel.version.soap[accepted_section] == decision.applied_text
                 else:
                     with pytest.raises(GatewayRefusedError):
                         read_artifact(clinic_id=g.clinic_a, artifact_id=output)

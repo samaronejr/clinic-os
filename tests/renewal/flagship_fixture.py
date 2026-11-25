@@ -840,12 +840,14 @@ def _approve_without_dispatch(data: dict[str, str]) -> dict[str, object]:
     from apps.ai.approvals import approve_action  # noqa: PLC0415
     from apps.ai.attestations import step_up_evidence  # noqa: PLC0415
     from apps.ai.models import ActionProposal  # noqa: PLC0415
+    from apps.ai.pending_outputs import PendingKey  # noqa: PLC0415
     from apps.tenancy.db import tenant_context  # noqa: PLC0415
     from django.contrib.auth import get_user  # noqa: PLC0415
     from django.contrib.sessions.backends.db import SessionStore  # noqa: PLC0415
     from django.http import HttpRequest, HttpResponse  # noqa: PLC0415
     from django_otp.middleware import OTPMiddleware  # noqa: PLC0415
 
+    from ai.pending_observation import checked_value  # noqa: PLC0415
     from patient_service_support import runtime_role  # noqa: PLC0415
 
     request = HttpRequest()
@@ -857,15 +859,16 @@ def _approve_without_dispatch(data: dict[str, str]) -> dict[str, object]:
         request.user = get_user(request)
         OTPMiddleware(lambda _request: HttpResponse())(request)
         assert request.user.pk == actor
-        proposal = ActionProposal.objects.get(pk=proposal_id, clinic_id=clinic)
         approve_action(
             clinic_id=clinic,
-            proposal_id=proposal.pk,
+            proposal_id=proposal_id,
             expected_digest=data["digest"],
             evidence=step_up_evidence(request, clinic_id=clinic, digest=data["digest"]),
         )
-        proposal.refresh_from_db()
-        return {"state": proposal.state}
+        state = checked_value(
+            PendingKey(ActionProposal, proposal_id), clinic, lambda row: row.state
+        )
+        return {"state": state}
 
 
 def _execute_approved(data: dict[str, str]) -> dict[str, object]:

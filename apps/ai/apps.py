@@ -26,6 +26,7 @@ class AiConfig(AppConfig):
             eligible,
             organization_lock_key,
         )
+        from apps.ai.pending_outputs import install_pending_access  # noqa: PLC0415
         from apps.ai.tasks import dispatch  # noqa: PLC0415
         from apps.comms.inbox_inbound import (  # noqa: PLC0415
             register_inbound_message_hook,
@@ -40,6 +41,7 @@ class AiConfig(AppConfig):
             register_subject_recheck,
         )
 
+        install_pending_access()
         register_provider(SyntheticProvider())
         register_provider(RecordedFixtureProvider())
         register_action_adapter(GatewayActionAdapter())

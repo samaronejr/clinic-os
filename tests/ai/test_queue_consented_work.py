@@ -33,6 +33,7 @@ def test_withdrawn_approved_proposal_disappears_from_inflight_queue(
         proposal = ActionProposal.objects.get(pk=page.proposal)
         assert proposal.state == "validated"
         approve(world, proposal, request)
+    with finance_scope(world.setup):
         assert ActionProposal.objects.filter(pk=proposal.pk, state="approved").exists()
         assert not ActionExecution.objects.filter(proposal_id=proposal.pk).exists()
 
