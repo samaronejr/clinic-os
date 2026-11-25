@@ -101,7 +101,7 @@ def test_wrapper_generates_native_probe_cases_and_publishes_verdict(
     assert verdict["database_recreated"] is False
     assert verdict["differential"] == {
         "result": "PASS",
-        "projection_cases": 3844,
+        "projection_cases": 17506,
         "probe_window_cases": 118,
         "differences": [],
         "base_reject_lane_pass_pairs": [],

@@ -461,7 +461,7 @@ runpy.run_path(os.environ["UPGRADE_PROBE_DRIVER"])["run_seed"](
 }
 
 rehearse_wave_h() {
-    local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
+    local wave_sha=ab71193c110a3b579728d2811d28dad471875390
     local native="$secret_dir/native"
     mkdir -m 700 "$native"
     write_private_key "$native/tenant-kek.secret"
@@ -480,6 +480,9 @@ rehearse_wave_h() {
     local owner_dsn app_dsn secret_dir="$native"
     owner_dsn="$(upgrade_dsn "$MIGRATION_DATABASE_URL" "$wave_db")"
     app_dsn="$(upgrade_dsn "$APP_DATABASE_URL" "$wave_db")"
+    local LOCKS_DATABASE_URL
+    LOCKS_DATABASE_URL="$(upgrade_dsn "$lock_source_dsn" "$wave_db")"
+    export LOCKS_DATABASE_URL
     psql_super -d postgres -qc "CREATE DATABASE $wave_db TEMPLATE template0"
     wave_db_created=1
     psql_super -d "$wave_db" -v database_name="$wave_db" -v app_schema=clinic_app \
@@ -492,6 +495,10 @@ rehearse_wave_h() {
         CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
         CLINIC_SECRET_DIR="$native" DJANGO_SETTINGS_MODULE=config.settings.base \
         uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
+    (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
+        CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
+        CLINIC_SECRET_DIR="$native" DJANGO_SETTINGS_MODULE=config.settings.base \
+        uv run --frozen --no-sync --no-env-file python manage.py provision_comms_mac_secrets)
     APP_DATABASE_URL="$owner_dsn" UPGRADE_APP_DATABASE_URL="$app_dsn" \
         UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL" "$wave_db")" \
         CLINIC_SECRET_DIR="$native" UPGRADE_SEED_FILE="$native/seed.json" \
@@ -503,7 +510,8 @@ import sys
 from pathlib import Path
 
 keys = ("APP_DATABASE_URL", "UPGRADE_APP_DATABASE_URL", "UPGRADE_ADMIN_DATABASE_URL",
-        "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES")
+        "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES",
+        "LOCKS_DATABASE_URL")
 Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}))
 PYEOF
 }

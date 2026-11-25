@@ -19,7 +19,7 @@ from psycopg import sql
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-WAVE_H = "4f8d2454987ca1d083ead53a7501126d647a89bc"
+NATIVE_F7 = "ab71193c110a3b579728d2811d28dad471875390"
 type Row = dict[str, object]
 type Projection = list[tuple[str, Row]]
 
@@ -103,8 +103,8 @@ def _check_base(worktree: Path) -> None:
         ],
         text=True,
     )
-    if head != WAVE_H or status:
-        message = "differential requires a clean exact Wave H worktree"
+    if head != NATIVE_F7 or status:
+        message = "differential requires a clean exact F7 worktree"
         raise RuntimeError(message)
 
 
