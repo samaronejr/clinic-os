@@ -1,0 +1,40 @@
+{
+  "corrected_exact_gates": "passed",
+  "coverage": "93.59%",
+  "duplicates": 0,
+  "extra": 0,
+  "fsync_off_disposable_only_utc": "2026-11-24T20:52:13.994305+00:00",
+  "full_exit": 0,
+  "full_nonbrowser_tests": 16632,
+  "guards_before_after": [
+    126,
+    126
+  ],
+  "isolated_harness_tests": 3308,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795567881339894,
+    "nice": 10,
+    "result": "success",
+    "run_id": "d3092b07d8984d0e84a487a29c19c5af",
+    "start_us": 1795553870942435,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-sc5-full-6b84a4fa.service"
+  },
+  "missing": 0,
+  "negative_controls": {
+    "binder": "public canary failed",
+    "role_family": "grant regression failed"
+  },
+  "new_p1_posture_tests": 14,
+  "nonpass": 0,
+  "original_tests": 16618,
+  "parent": "76376101614f209d9d7b4ab4a74ac87fdca4f832",
+  "redis_binary_sha256": "acf84fdf1c977253714617a7470b0acf5237c4b0bc1b36c3842b332c8dce491b",
+  "redis_umask": "022",
+  "run_id": "d3092b07d8984d0e84a487a29c19c5af",
+  "sha": "6b84a4faf05183d3ac622d212c51bbdeb58987f6",
+  "static_files_checked": 2949,
+  "tree": "491dd5a2d4955c18d3242cd3f00a86bb0747e6f0"
+}
