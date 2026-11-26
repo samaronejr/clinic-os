@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import faulthandler
 import io
 import json
 import os
@@ -18,6 +19,17 @@ from psycopg.types.json import Jsonb
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+VERDICT_TIMEOUT_SECONDS = 180
+
+
+def _guarded_verify(entry: Path, fault: dict[str, Any]) -> dict[str, object]:
+    # A stuck verifier must not keep the parent blocked on its reply pipe.
+    faulthandler.dump_traceback_later(VERDICT_TIMEOUT_SECONDS, exit=True)
+    try:
+        return _verify(entry, fault)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 def _verify(entry: Path, fault: dict[str, Any]) -> dict[str, object]:
@@ -98,7 +110,7 @@ def main() -> None:
     django.setup()
     entry = Path.cwd() / "ops/testing/migration_upgrade_verify.py"
     for line in sys.stdin:
-        sys.stdout.write(json.dumps(_verify(entry, json.loads(line))) + "\n")
+        sys.stdout.write(json.dumps(_guarded_verify(entry, json.loads(line))) + "\n")
         sys.stdout.flush()
 
 
