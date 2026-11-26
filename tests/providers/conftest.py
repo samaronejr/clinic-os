@@ -9,22 +9,14 @@ import pytest
 from ops.release import activation
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
+    from pathlib import Path
 
 
 @pytest.fixture(autouse=True)
-def _clean_database_claims() -> Iterator[None]:
-    """Keep the deployment-local endpoint registry test-local.
-
-    ``activation._activate_report`` claims the bound database endpoint in
-    ``activation.DATABASE_CLAIMS_DIR``; claims persist by design, so each
-    test wipes the registry before and after itself.
-    """
-    for path in activation.DATABASE_CLAIMS_DIR.glob("*.json"):
-        path.unlink()
-    yield
-    for path in activation.DATABASE_CLAIMS_DIR.glob("*.json"):
-        path.unlink()
+def _isolated_database_claims(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider tests run in-process; never open or clean the deployment registry."""
+    monkeypatch.setattr(activation, "DATABASE_CLAIMS_DIR", tmp_path / "claims")
 
 
 @pytest.fixture(autouse=True)

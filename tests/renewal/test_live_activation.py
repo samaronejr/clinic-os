@@ -40,7 +40,7 @@ from release.profile_support import simulate_profile_approval
 from renewal.test_release_readiness import _live_bundle
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 RELEASE_ID = "test-release-2026-09-23"
@@ -82,20 +82,46 @@ def _scrubbed(extra: dict[str, str]) -> dict[str, str]:
 
 
 @pytest.fixture(autouse=True)
-def _clean_database_claims() -> Iterator[None]:
-    """Keep the deployment-local endpoint registry test-local.
+def _isolated_claim_deployment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Share claims with child processes without using the real deployment."""
+    deployment = tmp_path / "deployment"
+    # The production CLI derives its registry from its installation, not an
+    # environment override. Give the child a private installation of the same code.
+    shutil.copytree(
+        REPOSITORY / "ops",
+        deployment / "ops",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    record = Path("docs/compliance/reverification-log.md")
+    (deployment / record.parent).mkdir(parents=True)
+    _ = shutil.copyfile(REPOSITORY / record, deployment / record)
+    search = os.environ.get("PYTHONPATH")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join((str(REPOSITORY), search)) if search else str(REPOSITORY),
+    )
+    monkeypatch.setattr(sys.modules[__name__], "REPOSITORY", deployment)
+    monkeypatch.setattr(
+        activation, "DATABASE_CLAIMS_DIR", deployment / "var" / "live-database-claims"
+    )
 
-    Activation claims the bound database endpoint in
-    ``activation.DATABASE_CLAIMS_DIR`` so synthetic startup can refuse it
-    without the activation-state pointer. Claims persist by design, so each
-    test wipes the registry before and after itself; no real activation can
-    exist in this repository, so every file there is test residue.
-    """
-    for path in activation.DATABASE_CLAIMS_DIR.glob("*.json"):
-        path.unlink()
-    yield
-    for path in activation.DATABASE_CLAIMS_DIR.glob("*.json"):
-        path.unlink()
+
+def test_child_and_parent_share_a_test_local_claim_registry(tmp_path: Path) -> None:
+    child = _run_process(
+        [
+            sys.executable,
+            "-c",
+            "from ops.release.activation import DATABASE_CLAIMS_DIR; "
+            "print(DATABASE_CLAIMS_DIR)",
+        ],
+        cwd=REPOSITORY,
+        env=_scrubbed({}),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert Path(child.stdout.strip()) == activation.DATABASE_CLAIMS_DIR
+    assert activation.DATABASE_CLAIMS_DIR.is_relative_to(tmp_path)
 
 
 @pytest.fixture(autouse=True)

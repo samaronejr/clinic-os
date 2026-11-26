@@ -1661,20 +1661,21 @@ def test_firefox_zoom_profiles_request_the_scale_their_pref_names(
         assert scale == options["device_scale_factor"]
 
 
-def test_artifact_root_must_be_excluded_or_external(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(runner, "ensure_private_directory", lambda _path: True)
-    inside = REPOSITORY / "renewal-artifacts"
+def test_artifact_root_must_be_excluded_or_external(tmp_path: Path) -> None:
+    repository = _private(tmp_path / "repository")
+    inside = repository / "renewal-artifacts"
     with pytest.raises(IsolationError, match="artifact root"):
-        runner._artifact_root(str(inside), REPOSITORY)
-    excluded = REPOSITORY / ".omo" / "renewal-runs" / "x"
-    assert runner._artifact_root(str(excluded), REPOSITORY) == excluded
+        runner._artifact_root(str(inside), repository)
+    excluded = repository / ".omo" / "renewal-runs" / "x"
+    assert runner._artifact_root(str(excluded), repository) == excluded
     outside = tmp_path / "artifacts"
-    assert runner._artifact_root(str(outside), REPOSITORY) == outside
+    assert runner._artifact_root(str(outside), repository) == outside
     with pytest.raises(IsolationError):
-        runner._artifact_root("relative/path", REPOSITORY)
+        runner._artifact_root("relative/path", repository)
+    assert excluded.is_relative_to(tmp_path)
+    assert excluded.is_dir()
+    assert outside.is_dir()
+    assert not inside.exists()
 
 
 def test_artifact_root_rejects_symlink(tmp_path: Path) -> None:

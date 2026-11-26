@@ -52,6 +52,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 KEY = "video"
 
 
+def test_provider_claim_registry_is_test_local(tmp_path: Path) -> None:
+    assert activation.DATABASE_CLAIMS_DIR.is_relative_to(tmp_path)
+
+
 def _state(key: str = KEY) -> str:
     version = ProviderCapability.objects.get(
         key=key, clinic_id__isnull=True
