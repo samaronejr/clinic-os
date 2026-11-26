@@ -16,18 +16,25 @@ TABLES: Final = {
     "billing_cashsession",
     "billing_cashsessionevent",
 }
-TABLE_GRANTS: Final = {(table, "SELECT") for table in TABLES} | {
-    (table, "INSERT")
-    for table in (
-        "billing_account",
-        "billing_journalentry",
-        "billing_journalline",
-        "billing_invoiceterms",
-        "billing_journalsettlement",
-        "billing_settlementallocation",
-        "billing_cashsessionevent",
-    )
-}
+TABLE_GRANTS: Final = (
+    {(table, "SELECT") for table in TABLES}
+    | {
+        ("billing_transferconfirmation", "SELECT"),
+    }
+    | {
+        (table, "INSERT")
+        for table in (
+            "billing_account",
+            "billing_journalentry",
+            "billing_journalline",
+            "billing_invoiceterms",
+            "billing_journalsettlement",
+            "billing_settlementallocation",
+            "billing_cashsessionevent",
+            "billing_transferconfirmation",
+        )
+    }
+)
 COLUMN_GRANTS: Final = {
     ("billing_journalbook", "id", "UPDATE"),
     ("billing_journalentry", "state", "UPDATE"),
@@ -82,6 +89,7 @@ RESULTS: Final = {
     ): "TABLE(entry_id uuid, changed boolean, terms_id uuid, prepared boolean)",
     ("billing_refund_guard", ""): "trigger",
     ("billing_payout_guard", ""): "trigger",
+    ("billing_bind_transfer", ""): "trigger",
     (
         "billing_account_balance",
         "requested_book uuid, requested_account text",

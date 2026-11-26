@@ -73,6 +73,7 @@ DOMAIN_RELATIONS: Final = (
     "billing_settlementallocation",
     "billing_refund",
     "billing_payout",
+    "billing_transferconfirmation",
     "billing_cashsession",
     "billing_cashsessionevent",
     "billing_pspbinding",

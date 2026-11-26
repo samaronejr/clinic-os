@@ -249,6 +249,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
+    ("comms_integrationoperation", "provider_reference", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
     ("identity_user", "id", "SELECT"),

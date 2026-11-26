@@ -44,6 +44,9 @@ def synthetic_secret_backend(tmp_path: Path) -> Iterator[Path]:
     kek = root / "tenant-kek.secret"
     kek.write_text(secrets.token_hex(32))
     kek.chmod(0o600)
+    observer = root / "psp-observer-v1.secret"
+    observer.write_text(secrets.token_hex(32))
+    observer.chmod(0o600)
     with override_settings(
         CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
     ):

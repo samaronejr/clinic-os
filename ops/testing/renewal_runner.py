@@ -1055,6 +1055,11 @@ def _synthetic_secret_store(run_root: Path) -> Iterator[dict[str, str]]:
             secrets.token_hex(32).encode("ascii"),
             mode=MODE_PRIVATE,
         )
+        write_no_replace(
+            root / "psp-observer-v1.secret",
+            secrets.token_hex(32).encode("ascii"),
+            mode=MODE_PRIVATE,
+        )
         yield {
             "CLINIC_SECRET_BACKEND": "synthetic-file",
             "CLINIC_SECRET_DIR": str(root),

@@ -30,6 +30,7 @@ from apps.billing.money_models import (
     CashSessionEvent,
     Payout,
     Refund,
+    TransferConfirmation,
 )
 from apps.billing.psp_models import (
     PspBinding,
@@ -69,6 +70,7 @@ __all__ = (
     "Refund",
     "Settlement",
     "SettlementAllocation",
+    "TransferConfirmation",
 )
 
 

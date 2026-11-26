@@ -14,6 +14,7 @@ TABLES: Final = frozenset(
         "billing_settlementallocation",
         "billing_refund",
         "billing_payout",
+        "billing_transferconfirmation",
         "billing_cashsession",
         "billing_cashsessionevent",
     }
@@ -31,7 +32,9 @@ INSERT_TABLES: Final = frozenset(
     }
 )
 RUNTIME_GRANTS: Final = {
-    table: frozenset({"SELECT", "INSERT"} if table in INSERT_TABLES else {"SELECT"})
+    table: frozenset()
+    if table == "billing_transferconfirmation"
+    else frozenset({"SELECT", "INSERT"} if table in INSERT_TABLES else {"SELECT"})
     for table in TABLES
 }
 COLUMN_GRANTS: Final = frozenset(

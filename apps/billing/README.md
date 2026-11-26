@@ -219,7 +219,21 @@ collection earns repasse before PSP fees, and an independent matched statement
 releases clearing to bank with a separate fee expense. Outgoing confirmation
 requires fresh step-up and preserves the original refund/payout reservation.
 Unknown outcomes can be recorded without releasing that reservation.
-Replaying a fact cannot create a second collection, receipt, refund or fee.
+Provider sequence and delivery identity are separate. A replay acknowledges
+the original callback but retains a changed authoritative lookup under its own
+key, even when the delivery ID is already consumed. Statement reconciliation
+retains the independent lookup before matching lines. Newer or contradictory
+facts also fence `unknown` outgoing observations; they cannot advance a
+reservation. Replaying a fact cannot create a second collection, receipt,
+refund or fee.
+An `unknown` at a provider sequence records uncertainty, not a contrary
+status. An independent concrete result can resolve it at that sequence,
+but not below it. A concrete reversal at the same or a later sequence
+still blocks stale application and completion.
+First send and lookup-only recovery use the same database finalizer. It locks
+against evidence inserts, checks the retained observation in the guarded update,
+and writes the completion audit in the same transaction. A late response can
+remain in evidence without setting the outbox reference or marking it succeeded.
 
 `PspReceipt` is created only after a verified collection is posted and exactly
 allocated. Existing legacy Settlement/Receipt one-to-one contracts remain intact.
@@ -228,8 +242,26 @@ show stored non-payable instructions or the sealed synthetic receipt. Encrypted
 codes/links, FORCE RLS, immutable guards, exact resolver ACLs and recovery
 classification cover every new table. No payloads or credentials enter outbox,
 audit, error text or evidence.
-Binding and evidence inserts require the stored intent actor; financial read
-authority alone cannot manufacture proof for another actor's request.
+Before dispatch, binding and evidence inserts require the active intent actor.
+After dispatch, the recorded PSP observer may look up the original key, retain
+facts, and resolve the outbox, but cannot send, approve, post or release money.
+The requester remains immutable. Observer evidence and recovery completion
+are attributed to the non-user observer UUID in the clinic's audit chain.
+Financial read authority alone cannot manufacture proof for another actor.
+
+For this synthetic rehearsal, provision `psp-observer-v1` in the managed
+secret store independently of the callback secret and tenant encryption key.
+`set_psp_policy` stores only the verifier of the clinic-derived credential.
+Only the resolver can read the raw intent-to-operation association. The
+runtime dispatch check requires the current proof for the requested clinic;
+unknown, wrong-clinic and unauthorized inputs have the same null result, not
+a dispatch flag or an operation UUID.
+After an upgrade or credential rotation, append a fresh authorized policy
+with a new command ID; no old intent or approval changes. A missing or stale
+credential or revoked capability leaves an abandoned send unresolved. Fresh
+sends still require the original actor's current authority, and outgoing sends
+also require the exact dispatch session. Neither observer nor staff can enable
+a real provider here.
 
 ## Task 56: operational journal
 
@@ -281,6 +313,12 @@ does not approve outgoing money. Dispatch revalidates the executor's current
 Finance authority and fresh persisted proof; the original approval remains
 historical evidence. Authorized Finance can still record separately evidenced
 outcomes after dispatch if an original approver was offboarded.
+The confirmation evidence UUID identifies one transfer **line**, not a whole
+bank statement or batch. Refunds and payouts share one `(book, transfer line)`
+unique constraint. Clearing on the same instruction is idempotent; reuse on a
+different instruction rolls back both its state change and posting. Migration
+0015 backfills the private claim from confirmed postings and refuses conflicting
+historical evidence rather than silently assigning it to one instruction.
 
 `CashSession` counts must match posted petty cash. `CashSessionEvent` preserves
 each count/reopening and command identity. Unknown outcomes, unexplained
