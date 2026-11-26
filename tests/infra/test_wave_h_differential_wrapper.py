@@ -712,6 +712,12 @@ def test_environment_link_never_follows_a_planted_name(
 
 
 def _plant_commands(links: tuple[tuple[str, str], ...]) -> str:
+    """Replace each entry with a link the way a follower's attacker would.
+
+    The real entry (uv's lock file, its interpreter directory) is moved aside
+    first, so the link is always created; a name that cannot be planted fails
+    loudly instead of being mistaken for an escape.
+    """
     plants = ""
     for base, name in links:
         variable, label = PLANT_BASES[base]
@@ -719,11 +725,15 @@ def _plant_commands(links: tuple[tuple[str, str], ...]) -> str:
         target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
         written = f"{variable}/{name}/pwned" if directory else f"{variable}/{name}"
         plants += (
-            f'    ln -s -- "{target}" "{variable}/{name}"\n'
-            f'    if {{ echo PWN >> "{written}"; }} 2>/dev/null; then\n'
-            f"        echo WRITE_ESCAPED {label}{name} >&2\n"
+            f'    mv -f -- "{variable}/{name}" "{variable}/{name}.moved" 2>/dev/null\n'
+            f'    if ln -s -- "{target}" "{variable}/{name}" 2>/dev/null; then\n'
+            f'        if {{ echo PWN >> "{written}"; }} 2>/dev/null; then\n'
+            f"            echo WRITE_ESCAPED {label}{name} >&2\n"
+            "        else\n"
+            f"            echo WRITE_BLOCKED {label}{name} >&2\n"
+            "        fi\n"
             "    else\n"
-            f"        echo WRITE_BLOCKED {label}{name} >&2\n"
+            f"        echo PLANT_FAILED {label}{name} >&2\n"
             "    fi\n"
         )
     return plants
@@ -848,6 +858,7 @@ def test_links_planted_mid_run_never_reach_a_foreign_inode(
     assert result.returncode != 0, result.stdout
     _assert_untouched(directory, marker, before)
     assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
+    assert "PLANT_FAILED" not in result.stdout, result.stdout[-3000:]
     for base, name in links:
         label = PLANT_BASES[base][1] + name
         assert f"WRITE_BLOCKED {label}" in result.stdout, result.stdout[-3000:]
@@ -874,6 +885,7 @@ def test_pinned_wave_writers_never_write_through_planted_links(
     assert result.returncode != 0, result.stdout[-3000:]
     _assert_untouched(directory, marker, before)
     assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
+    assert "PLANT_FAILED" not in result.stdout, result.stdout[-3000:]
     published = tmp_path / "migration-upgrade" / "verdict.json"
     verdict = json.loads(published.read_text(encoding="utf-8"))
     assert verdict["result"] == "FAIL"
