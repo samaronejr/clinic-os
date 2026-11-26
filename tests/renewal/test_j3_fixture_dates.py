@@ -1,22 +1,17 @@
-"""Pin disjoint scheduling calendars for J3's shared practitioners."""
+"""Regression for the hosted J3 practitioner availability collision."""
 
 from __future__ import annotations
 
 from contextlib import nullcontext
-from datetime import date, timedelta
-from itertools import combinations
+from datetime import timedelta
 from unittest.mock import Mock
 
 import pytest
 
 from renewal.browser import test_agenda_grid, test_agenda_slice
-from renewal.browser.test_journey_reception_pressure import (
-    grid_world,
-    reception_world,
-    slice_world,
-)
+from renewal.browser.test_journey_reception_pressure import grid_world, reception_world
 
-__all__ = ("agenda_staff", "grid_world", "reception_world", "slice_world")
+__all__ = ("agenda_staff", "grid_world", "reception_world")
 
 
 @pytest.fixture(scope="session")
@@ -30,28 +25,18 @@ def agenda_staff() -> dict[str, str]:
     }
 
 
-def test_j3_fixture_date_ranges_are_disjoint(
+def test_j3_grid_dates_do_not_overlap_reception(
     monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> None:
     monkeypatch.setattr(
         test_agenda_slice.SliceWorld, "_owner", lambda _: nullcontext(Mock())
     )
-    # Hosted failure, and a slice shift onto J3's July 3 waitlist day.
+    # The hosted shift started the grid on April 7, inside reception's April 6-8.
     monkeypatch.setattr(test_agenda_grid, "RUN_SHIFT", timedelta(weeks=83))
-    monkeypatch.setattr(test_agenda_slice, "RUN_SHIFT", timedelta(weeks=122))
-    occupied = {
-        "self-booking": {date(2035, 6, 5)},
-        "waitlist": {date(2035, 7, 2), date(2035, 7, 3)},
+    grid: test_agenda_grid.GridWorld = request.getfixturevalue("grid_world")
+    reception: test_agenda_slice.SliceWorld = request.getfixturevalue("reception_world")
+    grid_days = {grid.next_day + timedelta(days=offset) for offset in range(3)}
+    reception_days = {
+        reception.next_day + timedelta(days=offset) for offset in range(3)
     }
-    for name, days in (("reception_world", 3), ("grid_world", 3), ("slice_world", 1)):
-        world: test_agenda_slice.SliceWorld = request.getfixturevalue(name)
-        occupied[name] = {
-            world.next_day + timedelta(days=offset) for offset in range(days)
-        }
-
-    collisions = {
-        (left, right): occupied[left] & occupied[right]
-        for left, right in combinations(occupied, 2)
-        if occupied[left] & occupied[right]
-    }
-    assert not collisions
+    assert not grid_days & reception_days

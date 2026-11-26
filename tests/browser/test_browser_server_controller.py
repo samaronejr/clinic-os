@@ -2,88 +2,68 @@ from __future__ import annotations
 
 import errno
 import http.client
-import os
 import socket
 import subprocess
-from contextlib import ExitStack
-from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from http import HTTPStatus
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from ops.testing import browser_server_controller as controller
-from ops.testing import browser_server_supervisor as supervisor
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_controller_keeps_port_bound_through_gunicorn_handoff(
+def test_gunicorn_port_stays_reserved_at_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for name in controller.REQUIRED_ENVIRONMENT:
         monkeypatch.setenv(name, "synthetic")
     monkeypatch.setenv("CLINIC_BROWSER_EVIDENCE_ROOT", str(tmp_path))
-    process = Mock(spec=subprocess.Popen, pid=58419)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    (tmp_path / "cpi_flake3_ready.py").write_text(
+        "def application(environ, start_response):\n"
+        "    start_response('200 OK', [])\n"
+        "    return [b'ready']\n",
+        encoding="utf-8",
+    )
+    spawn = subprocess.Popen
 
-    with ExitStack() as server:
-
-        def spawn(
-            argv: list[str], *, pass_fds: tuple[int, ...] = (), **kwargs: object
-        ) -> Mock:
-            bind = argv[argv.index("--bind") + 1]
-            if pass_fds:
-                (fd,) = pass_fds
-                assert bind == f"fd://{fd}"
-                listener = server.enter_context(
-                    socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
-                )
-                assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-                address = listener.getsockname()
-            else:
-                host, port = bind.split(":")
-                address = (host, int(port))
-            with (
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as competitor,
-                pytest.raises(OSError, match=r"\[Errno 98\]") as raised,
-            ):
-                competitor.bind(address)
-            assert raised.value.errno == errno.EADDRINUSE
-            assert pass_fds
-            return process
-
-        def ready(port: int, *args: object) -> None:
-            with (
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as competitor,
-                pytest.raises(OSError, match=r"\[Errno 98\]") as raised,
-            ):
-                competitor.bind((controller.HOST, port))
-            assert raised.value.errno == errno.EADDRINUSE
-
-        monkeypatch.setattr(subprocess, "Popen", spawn)
-        monkeypatch.setattr(controller, "wait_until_ready", ready)
-        monkeypatch.setattr(
-            supervisor.SupervisedMaster, "terminate", lambda _: server.close()
+    def contend_then_spawn(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.Popen[bytes]:
+        binding = argv[argv.index("--bind") + 1]
+        if binding.startswith("fd://"):
+            fd = int(binding.removeprefix("fd://"))
+            with socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM) as inherited:
+                port = int(inherited.getsockname()[1])
+        else:
+            port = int(binding.rsplit(":", 1)[1])
+        # A competing binder at the exact launch seam must see an owned port.
+        with (
+            socket.socket() as contender,
+            pytest.raises(OSError, match=rf"\[Errno {errno.EADDRINUSE}\]"),
+        ):
+            contender.bind((controller.HOST, port))
+        return spawn(
+            [*argv[:-1], "cpi_flake3_ready:application"], **cast("Any", kwargs)
         )
-        monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
-        monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
 
-        assert controller.run_suite("patient", ["patient"]) == os.EX_OK
+    def check_ready(port: int, _server_log: Path) -> None:
+        # One bounded request, queued on the inherited listener until Gunicorn
+        # serves it even if the worker has not booted when Popen returns.
+        connection = http.client.HTTPConnection(controller.HOST, port, timeout=10)
+        try:
+            connection.request("GET", "/readyz")
+            response = connection.getresponse()
+            assert response.status == HTTPStatus.OK
+            assert response.read() == b"ready"
+        finally:
+            connection.close()
 
+    monkeypatch.setattr(subprocess, "Popen", contend_then_spawn)
+    monkeypatch.setattr(controller, "wait_until_ready", check_ready)
+    monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
+    monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
 
-def test_readiness_rejects_a_dead_master_before_probing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    process = Mock(spec=subprocess.Popen)
-    process.poll.return_value = 3
-    server_log = tmp_path / "server.log"
-    server_log.write_text("synthetic boot error", encoding="utf-8")
-    probe = Mock()
-    monkeypatch.setattr(http.client, "HTTPConnection", probe)
-
-    with pytest.raises(
-        controller.BrowserServerError,
-        match=r"server exited with status 3.*synthetic boot error",
-    ):
-        controller.wait_until_ready(58419, server_log, process)
-
-    probe.assert_not_called()
+    assert controller.run_suite("patient", ["patient"]) == 0

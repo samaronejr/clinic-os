@@ -47,12 +47,12 @@ from config.display import (
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from ops.testing.browser_server_controller import reserve_listener, wait_until_ready
+from ops.testing.browser_server_controller import reserve_port, wait_until_ready
 from ops.testing.browser_server_supervisor import (
     SupervisedMaster,
-    SupervisorError,
-    require_released_port,
+    end_recorded,
     start_master,
+    stop_mask_available,
     supervised_argv,
 )
 from ops.testing.ci_postgres_settings import TEST_DATABASE_SETTINGS
@@ -1263,7 +1263,7 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
     return tuple(sorted(path for path in paths if path and not _excluded(path)))
 
 
-def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
+def _run_browser_suite(  # noqa: PLR0913, PLR0915 - one suite run needs its full context and teardown
     repository: Path,
     suite: str,
     artifact_root: Path,
@@ -1332,112 +1332,127 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                 enabled=suite in REALTIME_SUITES,
             )
         )
-        frames = extra_processes.enter_context(
-            broker_tap(
-                server_environment["REALTIME_REDIS_URL"]
-                if suite in REALTIME_SUITES
-                else None
-            )
+        caller_mask = (
+            set(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+            if stop_mask_available()
+            else None
         )
         try:
-            with reserve_listener() as listener:
-                port, listener_fd = int(listener.getsockname()[1]), listener.fileno()
-                master = start_master(
-                    supervised_argv(
-                        Path(sys.executable), listener_fd, artifact_root / "access.log"
-                    ),
-                    server_environment,
-                    server_log,
-                    owner=spawned,
-                    pass_fds=(listener_fd,),
-                )
-            wait_until_ready(port, server_log, master.process)
-            port_for_browser = extra_processes.enter_context(
-                browser_endpoint(
-                    repository,
-                    server_environment,
-                    run_root,
-                    port,
-                    enabled=suite in REALTIME_SUITES,
-                )
-            )
-            base_url = f"http://127.0.0.1:{port_for_browser}"
-            # Workers spawned by the suite read protected fields too.
-            suite_environment = {
-                **_pytest_environment(
-                    base_url=base_url,
-                    artifact_root=browser_root,
-                    browser=browser,
-                    engine=engine,
-                    username=fixture["username"],
-                    password=fixture["password"],
-                    secret_key=server_environment["SECRET_KEY"],
-                ),
-                **secret_environment,
-                **(_synthetic_adapters(suite) if suite == "resilience" else {}),
-                **(
-                    {"CLINIC_BROWSER_FAKE_MEDIA": "1"}
-                    if suite == "scribe-capture" or suite in FLAGSHIP_SUITES
-                    else {}
-                ),
-            }
-            # Owner access is fixture-only; Gunicorn retains clinic_app.
-            suite_environment.update(
-                {
-                    "CLINIC_RENEWAL_FIXTURE_DATABASE_URL": provisioned.owner_dsn,
-                    "CLINIC_RENEWAL_CLINIC_ID": fixture["clinic_id"],
-                    "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
-                    **(
-                        {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite in {"agenda", "reminders", "messages", "resilience"}
-                        or suite in VIDEO_SUITES
-                        or suite in SIGNING_SUITES
-                        else {}
-                    ),
-                    # Realtime workers store leases on the served stream's broker.
-                    **(
-                        {
-                            "CLINIC_RENEWAL_REALTIME_REDIS_URL": server_environment[
-                                "REALTIME_REDIS_URL"
-                            ]
-                        }
+            try:
+                with reserve_port() as (port, listener_fd):
+                    start_master(
+                        supervised_argv(
+                            Path(sys.executable),
+                            listener_fd,
+                            artifact_root / "access.log",
+                        ),
+                        server_environment,
+                        server_log,
+                        owner=spawned,
+                        pass_fds=(listener_fd,),
+                    )
+                # start_master's signal mask covers this thread only; a running
+                # tap thread could take a stop before the handle is stored. Tap
+                # after the handoff, before any request can publish a frame.
+                frames = extra_processes.enter_context(
+                    broker_tap(
+                        server_environment["REALTIME_REDIS_URL"]
                         if suite in REALTIME_SUITES
+                        else None
+                    )
+                )
+                wait_until_ready(port, server_log)
+                port_for_browser = extra_processes.enter_context(
+                    browser_endpoint(
+                        repository,
+                        server_environment,
+                        run_root,
+                        port,
+                        enabled=suite in REALTIME_SUITES,
+                    )
+                )
+                base_url = f"http://127.0.0.1:{port_for_browser}"
+                # Workers spawned by the suite read protected fields too.
+                suite_environment = {
+                    **_pytest_environment(
+                        base_url=base_url,
+                        artifact_root=browser_root,
+                        browser=browser,
+                        engine=engine,
+                        username=fixture["username"],
+                        password=fixture["password"],
+                        secret_key=server_environment["SECRET_KEY"],
+                    ),
+                    **secret_environment,
+                    **(_synthetic_adapters(suite) if suite == "resilience" else {}),
+                    **(
+                        {"CLINIC_BROWSER_FAKE_MEDIA": "1"}
+                        if suite == "scribe-capture" or suite in FLAGSHIP_SUITES
                         else {}
                     ),
                 }
-                if suite in FIXTURE_SUITES and provisioned is not None
-                else {}
-            )
-            pytest_code = _run_bounded(
-                [
-                    sys.executable,
-                    "-m",
-                    "pytest",
-                    "-q",
-                    "--tb=short",
-                    "-p",
-                    "no:cacheprovider",
-                    f"--junitxml={junit}",
-                    *SUITES[suite],
-                ],
-                suite_environment,
-                pytest_log,
-                timeout=PYTEST_TIMEOUT_SECONDS,
-                cwd=repository,
-            )
-            if provisioned is not None and pytest_code == 0:
-                sentinel_receipt = scan_suite_runtime(
-                    suite=suite,
-                    base_url=f"http://127.0.0.1:{port}",
-                    artifact_root=artifact_root,
-                    browser_root=browser_root,
-                    frames=frames,
-                    super_dsn=provisioned.super_dsn,
-                    self_injecting=suite_injects_sentinels(SUITES[suite], repository),
+                # Owner access is fixture-only; Gunicorn retains clinic_app.
+                suite_environment.update(
+                    {
+                        "CLINIC_RENEWAL_FIXTURE_DATABASE_URL": provisioned.owner_dsn,
+                        "CLINIC_RENEWAL_CLINIC_ID": fixture["clinic_id"],
+                        "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
+                        **(
+                            {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
+                            if suite
+                            in {"agenda", "reminders", "messages", "resilience"}
+                            or suite in VIDEO_SUITES
+                            or suite in SIGNING_SUITES
+                            else {}
+                        ),
+                        # Realtime workers store leases on the served stream's broker.
+                        **(
+                            {
+                                "CLINIC_RENEWAL_REALTIME_REDIS_URL": server_environment[
+                                    "REALTIME_REDIS_URL"
+                                ]
+                            }
+                            if suite in REALTIME_SUITES
+                            else {}
+                        ),
+                    }
+                    if suite in FIXTURE_SUITES and provisioned is not None
+                    else {}
                 )
+                pytest_code = _run_bounded(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pytest",
+                        "-q",
+                        "--tb=short",
+                        "-p",
+                        "no:cacheprovider",
+                        f"--junitxml={junit}",
+                        *SUITES[suite],
+                    ],
+                    suite_environment,
+                    pytest_log,
+                    timeout=PYTEST_TIMEOUT_SECONDS,
+                    cwd=repository,
+                )
+                if provisioned is not None and pytest_code == 0:
+                    sentinel_receipt = scan_suite_runtime(
+                        suite=suite,
+                        base_url=f"http://127.0.0.1:{port}",
+                        artifact_root=artifact_root,
+                        browser_root=browser_root,
+                        frames=frames,
+                        super_dsn=provisioned.super_dsn,
+                        self_injecting=suite_injects_sentinels(
+                            SUITES[suite], repository
+                        ),
+                    )
+            finally:
+                end_recorded(spawned, caller_mask)
         finally:
-            if spawned:
-                _terminate_master(spawned[0], port=port)
+            # Completes a teardown that a signal cut short at its very start.
+            end_recorded(spawned, caller_mask)
     tests = _passing_tests(junit, pytest_code)
     entries = manifest.get("entries")
     flagship = (
@@ -1545,28 +1560,6 @@ def _gate_static(repository: Path, logs: Path) -> list[JsonObject]:
         )
         results.append({"command": name, "exit": code})
     return results
-
-
-def _terminate_master(master: SupervisedMaster, *, port: int | None = None) -> None:
-    """Terminate the supervised group; propagate any observed interruption.
-
-    The bounded TERM/KILL/reap is retried once so a second signal cannot
-    abandon cleanup, but a cancellation observed during teardown is never
-    swallowed: it is re-raised even when the retry succeeds.
-    """
-    interrupted: RenewalInterruptError | None = None
-    for _attempt in range(2):
-        try:
-            master.terminate()
-        except RenewalInterruptError as error:
-            if interrupted is None:
-                interrupted = error
-        else:
-            break
-    if interrupted is not None:
-        raise interrupted
-    if port is not None:
-        require_released_port(port)
 
 
 def _gate_migration(
@@ -1985,7 +1978,7 @@ def main(argv: list[str] | None = None) -> int:
     except RenewalInterruptError as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 130
-    except (IsolationError, OSError, SupervisorError, ValueError) as error:
+    except (IsolationError, OSError, ValueError) as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 2
     finally:

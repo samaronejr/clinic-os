@@ -11,18 +11,18 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-import errno
+import functools
 import json
-import math
 import os
-import select
 import signal
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import rfc8785
 
@@ -38,14 +38,12 @@ WORKER_COUNT: Final = 2
 REQUEST_TIMEOUT_SECONDS: Final = 30
 MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
-# Linux TCP_TIMEWAIT_LEN is 60 seconds. This budget is for retired
-# connections only; it does not extend either process-group grace period.
-PORT_RELEASE_SECONDS: Final = 65
-TCP_TIME_WAIT: Final = "06"
-TFD_TIMER_ABSTIME: Final = 1
-PR_SET_CHILD_SUBREAPER: Final = 36
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
+STOP_SIGNALS: Final = frozenset({signal.SIGINT, signal.SIGTERM})
+# Harness-only Gunicorn hooks: each worker dies with its master.
+GUNICORN_CONFIG: Final = "python:ops.testing.browser_gunicorn_config"
+PR_SET_PDEATHSIG: Final = 1
 
 
 class SupervisorError(RuntimeError):
@@ -153,6 +151,8 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
         "--threads=1",
         f"--timeout={REQUEST_TIMEOUT_SECONDS}",
         "--preload",
+        "--config",
+        GUNICORN_CONFIG,
         "--access-logfile",
         str(access_log),
         # ADR-014: method + status + duration only; no request line or peer.
@@ -164,158 +164,64 @@ def supervised_argv(interpreter: Path, listener_fd: int, access_log: Path) -> li
     ]
 
 
-def _require_subreaper() -> None:
-    # Orphaned Gunicorn workers must be reparented here, not to PID 1.
-    if ctypes.CDLL(None).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
-        _fail("could not adopt orphaned Gunicorn workers")
+@functools.cache
+def _prctl() -> Callable[..., int]:
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, *[ctypes.c_ulong] * 4]
+    prctl.restype = ctypes.c_int
+    return prctl
 
 
-def _adopted_member(pgid: int) -> int | None:
-    # After the master exits, a surviving process tree in the group has
-    # at least one root reparented to this subreaper.
-    identity = [str(os.getpid()).encode(), str(pgid).encode()]
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdecimal():
-            continue
-        try:
-            stat = (entry / "stat").read_bytes().rsplit(b")", 1)[1].split()
-        except (FileNotFoundError, ProcessLookupError, PermissionError):
-            continue
-        if stat[1:3] == identity:
-            return int(entry.name)
-    return None
+def stop_mask_available() -> bool:
+    """Report whether this build can block SIGINT/SIGTERM (``pthread_sigmask``)."""
+    return hasattr(signal, "pthread_sigmask")
 
 
-def _wait_for_exit(pid: int, deadline: float) -> bool:
+@functools.cache
+def parent_death_available() -> bool:
+    """Report, once, whether libc ``prctl`` can tie a child to its parent.
+
+    Independent of the stop mask: without ``prctl`` only parent-death is
+    lost (the server then outlives a killed harness, as at a81da6e3); the
+    masked spawn and teardown still work.
+    """
     try:
-        fd = os.pidfd_open(pid)
-    except ProcessLookupError:
-        return True
-    try:
-        poller = select.poll()
-        poller.register(fd, select.POLLIN)
-        return bool(
-            poller.poll(max(0, math.ceil((deadline - time.monotonic()) * 1000)))
+        _prctl()
+    except (AttributeError, OSError):
+        sys.stderr.write(
+            "browser supervisor: prctl is unavailable; the server is not "
+            "killed with its harness on this build\n"
         )
-    finally:
-        os.close(fd)
+        return False
+    return True
 
 
-def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
-    while True:
-        if process.poll() is None:
-            pid = process.pid
-        else:
-            adopted = _adopted_member(process.pid)
-            if adopted is None:
-                try:
-                    os.killpg(process.pid, 0)
-                except ProcessLookupError:
-                    return True
-                # An adoption raced the process table scan. Never report an
-                # empty group without the kernel confirming it.
-                if time.monotonic() >= deadline:
-                    return False
-                continue
-            pid = adopted
-        if not _wait_for_exit(pid, deadline):
-            return False
-        if pid != process.pid:
-            with contextlib.suppress(ChildProcessError):
-                os.waitpid(pid, os.WNOHANG)
+def die_with_parent(parent_pid: int) -> None:
+    """Ask the kernel to SIGKILL this process when its forking thread ends.
+
+    Linux delivers the signal when the thread that forked this process
+    exits, for any reason, SIGKILL included; fork from the main thread.
+    """
+    if _prctl()(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if os.getppid() != parent_pid:
+        # The parent ended before the request took effect.
+        os._exit(1)
 
 
 def _terminate_group(process: subprocess.Popen[bytes]) -> None:
-    """Signal the owned session's process group even after its leader exits."""
-    for signum in (signal.SIGTERM, signal.SIGKILL):
-        # A live or unreaped owned child pins the group identity. Do not
-        # signal a numeric PGID after the entire owned group has been reaped.
-        if process.poll() is None or _adopted_member(process.pid) is not None:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signum)
-        if _wait_for_group(process, time.monotonic() + TERMINATION_GRACE_SECONDS):
-            return
-    _fail("Gunicorn process group or listener still owned after teardown deadline")
-
-
-def _time_wait_seconds(port: int) -> float | None:
-    # /proc exposes the remaining kernel timer in clock ticks. Only consider
-    # retired TCP sockets at the address this IPv4 listener used.
-    latest: int | None = None
-    with Path("/proc/self/net/tcp").open(encoding="ascii") as table:
-        next(table)
-        for line in table:
-            fields = line.split()
-            host, local_port = fields[1].split(":")
-            if (
-                fields[3] == TCP_TIME_WAIT
-                and int(local_port, 16) == port
-                and host in {"0100007F", "00000000"}
-            ):
-                _, ticks = fields[5].split(":")
-                latest = max(latest or 0, int(ticks, 16))
-    # Round up the exported tick count rather than waking before expiry.
-    return None if latest is None else (latest + 1) / os.sysconf("SC_CLK_TCK")
-
-
-class _Timespec(ctypes.Structure):
-    _fields_ = (("seconds", ctypes.c_long), ("nanoseconds", ctypes.c_long))
-
-
-class _TimerSpec(ctypes.Structure):
-    _fields_ = (("interval", _Timespec), ("value", _Timespec))
-
-
-def _wait_for_tcp_expiry(until: float) -> None:
-    # Python 3.12 does not expose timerfd; wait for the observed kernel
-    # expiry on a monotonic timer FD rather than periodically probing.
-    library = ctypes.CDLL(None, use_errno=True)
-    fd = int(library.timerfd_create(time.CLOCK_MONOTONIC, os.O_CLOEXEC))
-    if fd < 0:
-        _fail("could not open a Gunicorn port release timer")
+    """Bounded TERM/wait/KILL/reap for one spawned process group."""
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
     try:
-        seconds = int(until)
-        expiration = _Timespec(seconds, int((until - seconds) * 1e9))
-        timer = _TimerSpec(_Timespec(), expiration)
-        armed = library.timerfd_settime(
-            fd, TFD_TIMER_ABSTIME, ctypes.byref(timer), None
-        )
-        if armed != 0:
-            _fail("could not arm the Gunicorn port release timer")
-        os.read(fd, 8)
-    finally:
-        os.close(fd)
-
-
-def require_released_port(port: int) -> None:
-    """Prove an ordinary caller can bind after the owned listener closes."""
-    deadline = time.monotonic() + PORT_RELEASE_SECONDS
-    while (error := _ordinary_bind_error(port)) is not None:
-        if error.errno != errno.EADDRINUSE or time.monotonic() >= deadline:
-            break
-        try:
-            remaining = _time_wait_seconds(port)
-        except OSError as inspect_error:
-            message = "could not inspect Gunicorn port release state"
-            raise SupervisorError(message) from inspect_error
-        if remaining is None:
-            # A retired socket can expire between the bind and the table read.
-            # Check once against the observed state; a live holder still fails.
-            error = _ordinary_bind_error(port)
-            break
-        _wait_for_tcp_expiry(min(deadline, time.monotonic() + remaining))
-    if error is not None:
-        message = "Gunicorn listener port was not released"
-        raise SupervisorError(message) from error
-
-
-def _ordinary_bind_error(port: int) -> OSError | None:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind(("127.0.0.1", port))
-    except OSError as error:
-        return error
-    return None
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
 
 
 class SupervisedMaster:
@@ -324,9 +230,7 @@ class SupervisedMaster:
     def __init__(self, process: subprocess.Popen[bytes]) -> None:
         """Retain the forked master and its process group."""
         self.process = process
-        # Popen completes setsid() before returning, even if exec exits fast.
-        self.pgid = process.pid
-        self._terminated = False
+        self.pgid = os.getpgid(process.pid)
 
     @property
     def pid(self) -> int:
@@ -342,16 +246,7 @@ class SupervisedMaster:
 
     def terminate(self) -> None:
         """Terminate the whole group with a bounded TERM then KILL and reap."""
-        if self._terminated:
-            return
-        previous_mask = signal.pthread_sigmask(
-            signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM}
-        )
-        try:
-            _terminate_group(self.process)
-            self._terminated = True
-        finally:
-            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        _terminate_group(self.process)
 
 
 def start_master(
@@ -364,51 +259,118 @@ def start_master(
 ) -> SupervisedMaster:
     """Perform the journaled second phase: exec the master in a new group.
 
-    SIGINT/SIGTERM are blocked for the whole spawn→publish interval, so a
-    cancellation can never land while a live spawned process is unowned:
-    the child restores the inherited mask before exec, the handle is
-    published into ``owner``, and only then is the mask restored — a
-    pending cancellation lands inside the protected region, where the
-    group is reaped before the exception propagates. Any other exception
-    between the spawn and the completed handoff reaps the same way.
+    The master's lifetime follows the calling thread: the child sets
+    PR_SET_PDEATHSIG before exec, so however this process ends (an
+    interrupted teardown or SIGKILL included) the kernel kills the master,
+    and each worker dies with the master through ``GUNICORN_CONFIG``. Call
+    this from the main thread.
+
+    Only SIGINT/SIGTERM are blocked, and only while the child is started and
+    its handle stored in ``owner``: opening the log and any reap happen
+    outside, so a caller's other signals (a deadline) interrupt them as
+    before. A stop deferred by the mask lands at the restore, after the
+    handle is stored, and the group is reaped before it propagates. The
+    mask is per thread: start no helper thread first, since a signal taken
+    by another thread still runs its handler on this one. Without the
+    stop mask (``stop_mask_available``) this spawns as the baseline did;
+    without ``prctl`` only parent-death is skipped.
     """
-    _require_subreaper()
-    process: subprocess.Popen[bytes] | None = None
-    master: SupervisedMaster | None = None
-    previous_mask = signal.pthread_sigmask(
-        signal.SIG_BLOCK,
-        {signal.SIGINT, signal.SIGTERM},
-    )
-    try:
-        with log.open("wb") as stream:
-            process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
+    started: list[subprocess.Popen[bytes]] = []
+    with log.open("wb") as stream:
+
+        def start(prepare: Callable[[], None] | None) -> subprocess.Popen[bytes]:
+            return subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
                 argv,
                 env=environment,
                 pass_fds=pass_fds,
                 start_new_session=True,
-                # The child must not inherit the blocked mask: restore it
-                # after fork, before exec, so the master stays killable.
-                preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
-                    signal.SIG_SETMASK,
-                    previous_mask,
-                ),
+                preexec_fn=prepare,  # noqa: PLW1509 - single-threaded spawn; one sigmask and one prctl call.
                 stdout=stream,
                 stderr=subprocess.STDOUT,
             )
-        master = SupervisedMaster(process)
-        owner.append(master)
-        # Ownership is published; a deferred cancellation now lands inside
-        # this protected region and reaps the group before propagating.
+
+        try:
+            if stop_mask_available():
+                _spawn_and_record(start, started, owner)
+            else:
+                started.append(start(None))
+                owner.append(SupervisedMaster(started[0]))
+        except BaseException:
+            # The mask is restored; reap whatever was spawned, retried once
+            # so a second signal during cleanup cannot orphan the child.
+            for process in started:
+                for _attempt in range(2):
+                    with contextlib.suppress(Exception):
+                        _terminate_group(process)
+                        break
+            raise
+    return owner[-1]
+
+
+def _spawn_and_record(
+    start: Callable[[Callable[[], None]], subprocess.Popen[bytes]],
+    started: list[subprocess.Popen[bytes]],
+    owner: list[SupervisedMaster],
+) -> None:
+    """Start the master and store its handle with only SIGINT/SIGTERM blocked."""
+    parent_pid = os.getpid()
+    follow_parent = parent_death_available()
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
+
+    def prepare_child() -> None:
+        # Restore the inherited mask so the master stays killable.
         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-        return master  # noqa: TRY300 - the return boundary is where a deferred signal is delivered; it must stay inside the protected region.
-    except BaseException:
-        if master is not None:
-            master.terminate()
-        elif process is not None:
-            _terminate_group(process)
-        raise
+        if follow_parent:
+            die_with_parent(parent_pid)
+
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
+        started.append(start(prepare_child))
+        owner.append(SupervisedMaster(started[0]))
     finally:
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        # Nothing else here. If a caller handler pre-empts the first restore
+        # the second still runs; a stop deferred by the mask raises after it.
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+
+
+def end_recorded(masters: list[SupervisedMaster], caller_mask: set[int] | None) -> None:
+    """End every recorded master, then restore ``caller_mask``.
+
+    ``caller_mask`` is the caller's mask read before the run (``None``
+    without a stop mask). Every signal is blocked first; a handler already
+    pending raises at that call, after the block, and is re-raised once the
+    masters are gone. Every signal stays blocked until the final restore,
+    so no handler can run before it, and whatever arrived during teardown
+    is delivered right after it. Callers run this twice (nested
+    ``finally``) so a signal that cuts the first call short at its start
+    is still followed by a complete teardown; ending an ended master is a
+    no-op.
+    """
+    if caller_mask is None:
+        for master in masters:
+            master.terminate()
+        return
+    every = signal.valid_signals() if hasattr(signal, "valid_signals") else STOP_SIGNALS
+    interrupted: BaseException | None = None
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, every)
+    except BaseException as error:  # noqa: BLE001 - re-raised below
+        interrupted = error
+    try:
+        # A second distinct handler pending at once raises here.
+        signal.pthread_sigmask(signal.SIG_BLOCK, every)
+    except BaseException as error:  # noqa: BLE001 - re-raised below
+        interrupted = interrupted or error
+    try:
+        for master in masters:
+            master.terminate()
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, caller_mask)
+    if interrupted is not None:
+        raise interrupted
 
 
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
@@ -416,10 +378,15 @@ CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"
 
 def main() -> int:
     """Fork the journal-bound controller child and reap it on every exit."""
+    guarded = parent_death_available()
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     interpreter = sys.executable
+    supervisor_pid = os.getpid()
     pid = os.fork()
     if pid == 0:
+        if guarded:
+            # The controller, and through it the server, ends with this process.
+            die_with_parent(supervisor_pid)
         parent.close()
         os.environ["CLINIC_BROWSER_SUPERVISOR_FD"] = str(child.fileno())
         child.set_inheritable(True)
