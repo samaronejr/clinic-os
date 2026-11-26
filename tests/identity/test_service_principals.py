@@ -156,7 +156,7 @@ VOLATILE_GATES: dict[str, tuple[str, str]] = {
 PENDING_SELECT_GATES = {
     "clinic_app.ai_pending_visible": (
         "clinic_app.ai_pending_visible(text,uuid)",
-        "802443f63df6cb846aefc13be9f8709f66ae205a43353504ae5eeb8e1340baf5",
+        "5091c46cc16bf4269ce19588fb901b4394c7214ec16e01837473ce9f305d42bf",
     ),
     "clinic_app.enterprise_staff_context": (
         "clinic_app.enterprise_staff_context()",
