@@ -26,7 +26,7 @@ from apps.ehr.attachment_scanner import ACTIVE_MARKERS
 from apps.interop.access import Code, ImportConflictError, ImportInputError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
 MAX_SOURCE_BYTES: Final = 20 * 1024 * 1024
 MAX_ROWS: Final = 50_000
@@ -40,6 +40,7 @@ MAX_COMPRESSION_RATIO: Final = 100
 SMALL_MEMBER_BYTES: Final = 64 * 1024
 ARCHIVE_VERSION: Final = "clinic-import-archive-v1"
 MANIFEST: Final = "manifest.json"
+PROJECTION_WITNESS: Final = "v5-projection.json"
 DATASET_FILES: Final = {"patients": "patients.csv", "history": "history.csv"}
 ATTACHMENT_NAME: Final = re.compile(r"files/[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 DELIMITERS: Final = (",", ";", "\t", "|")
@@ -79,6 +80,7 @@ class Dataset:
     name: str
     headers: tuple[str, ...]
     rows: tuple[Row, ...]
+    csv_record_ends: tuple[int, ...] = ()
 
     def column(self, header: str) -> int:
         """Return a mapped header's position; mappings are validated first."""
@@ -148,21 +150,27 @@ def _headers(raw: list[str]) -> tuple[str, ...]:
     return headers
 
 
-def _rows(name: str, records: Iterator[list[str]]) -> Dataset:
+def _rows(
+    name: str,
+    records: Iterator[list[str]],
+    *,
+    line_number: Callable[[], int] | None = None,
+) -> Dataset:
     try:
         header = next(records, None)
         if header is None:
             raise ImportInputError(Code.EMPTY_DATASET)
         headers = _headers(header)
+        ends = [line_number()] if line_number is not None else []
         rows: list[Row] = []
         for cells in records:
-            if not cells:
-                continue
             if len(rows) >= MAX_ROWS:
                 raise ImportInputError(Code.TOO_MANY_ROWS)
             number = len(rows) + 1
             defect = ""
-            if len(cells) != len(headers):
+            if not cells:
+                defect = "blank_row"
+            elif len(cells) != len(headers):
                 defect = "column_count"
             elif any(len(cell) > MAX_CELL_CHARS for cell in cells):
                 defect = "too_long"
@@ -173,9 +181,13 @@ def _rows(name: str, records: Iterator[list[str]]) -> Dataset:
                     defect=defect,
                 )
             )
+            if line_number is not None:
+                ends.append(line_number())
     except csv.Error:
         raise ImportInputError(Code.MALFORMED_CSV) from None
-    return Dataset(name=name, headers=headers, rows=tuple(rows))
+    return Dataset(
+        name=name, headers=headers, rows=tuple(rows), csv_record_ends=tuple(ends)
+    )
 
 
 def read_csv(name: str, data: bytes, options: CsvOptions) -> Dataset:
@@ -186,7 +198,7 @@ def read_csv(name: str, data: bytes, options: CsvOptions) -> Dataset:
     reader = csv.reader(
         io.StringIO(text, newline=""), delimiter=options.delimiter, strict=True
     )
-    return _rows(name, iter(reader))
+    return _rows(name, iter(reader), line_number=lambda: reader.line_num)
 
 
 def read_api(data: bytes) -> dict[str, Dataset]:
@@ -250,7 +262,14 @@ def _reject_constant(_value: str) -> object:
     raise ImportInputError(Code.MALFORMED_JSON)
 
 
-def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
+def bounded_members(
+    archive: zipfile.ZipFile,
+    *,
+    allowed_file: Callable[[str], bool],
+    required_files: set[str],
+    directory: str | None = None,
+) -> dict[str, zipfile.ZipInfo]:
+    """Check layout and decompression limits before opening an archive member."""
     infos = archive.infolist()
     if len(infos) > MAX_MEMBERS:
         raise ImportInputError(Code.ARCHIVE_LAYOUT)
@@ -258,16 +277,15 @@ def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
     total = 0
     for info in infos:
         name = info.filename
+        if name != info.orig_filename:
+            raise ImportInputError(Code.ARCHIVE_LAYOUT)
         if info.is_dir():
-            if name != "files/":
+            if name != directory:
                 raise ImportInputError(Code.ARCHIVE_LAYOUT)
             continue
         if (
             name in members
-            or not (
-                name in (MANIFEST, *DATASET_FILES.values())
-                or ATTACHMENT_NAME.fullmatch(name)
-            )
+            or not allowed_file(name)
             or ".." in name
             or info.flag_bits & ENCRYPTED_FLAG
             or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
@@ -283,12 +301,13 @@ def _members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
         if total > MAX_ARCHIVE_BYTES:
             raise ImportInputError(Code.ARCHIVE_LAYOUT)
         members[name] = info
-    if MANIFEST not in members or DATASET_FILES["patients"] not in members:
+    if not members.keys() >= required_files:
         raise ImportInputError(Code.ARCHIVE_LAYOUT)
     return members
 
 
-def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+def read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    """Read one bounded member and require its full uncompressed length."""
     with archive.open(info) as stream:
         data = stream.read(MAX_MEMBER_BYTES + 1)
     if len(data) != info.file_size:
@@ -323,9 +342,17 @@ def open_archive(data: bytes) -> dict[str, bytes]:
     """Return verified member bytes; every member must match the manifest."""
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            members = _members(archive)
+            members = bounded_members(
+                archive,
+                allowed_file=lambda name: (
+                    name in (MANIFEST, PROJECTION_WITNESS, *DATASET_FILES.values())
+                    or ATTACHMENT_NAME.fullmatch(name) is not None
+                ),
+                required_files={MANIFEST, DATASET_FILES["patients"]},
+                directory="files/",
+            )
             contents = {
-                name: _read_member(archive, info) for name, info in members.items()
+                name: read_member(archive, info) for name, info in members.items()
             }
     except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError):
         raise ImportInputError(Code.MALFORMED_ARCHIVE) from None
@@ -424,12 +451,15 @@ def read_xlsx(data: bytes) -> Dataset:
             value, cell_defect = _cell_value(cell, strings)
             cells[position] = value
             defect = defect or cell_defect
-        if not cells:
+        if not cells and not parsed:
             continue
         if len(parsed) > MAX_ROWS:
             raise ImportInputError(Code.TOO_MANY_ROWS)
         parsed.append(
-            ([cells.get(index, "") for index in range(max(cells) + 1)], defect)
+            (
+                [cells.get(index, "") for index in range(max(cells, default=-1) + 1)],
+                defect,
+            )
         )
     if not parsed:
         raise ImportInputError(Code.EMPTY_DATASET)
@@ -438,7 +468,8 @@ def read_xlsx(data: bytes) -> Dataset:
         raise ImportInputError(Code.INVALID_HEADER)
     width = len(header)
     records = [header] + [
-        cells + [""] * (width - len(cells)) for cells, _defect in parsed[1:]
+        cells + [""] * (width - len(cells)) if cells else []
+        for cells, _defect in parsed[1:]
     ]
     dataset = _rows("patients", iter(records))
     rows = tuple(
@@ -503,19 +534,51 @@ def read_datasets(
     if kind == "api":
         return read_api(data)
     if kind == "zip":
-        contents = open_archive(data)
-        result: dict[str, Dataset] = {}
-        for name, member in DATASET_FILES.items():
-            if member in contents:
-                chosen = (options or {}).get(name) or detect_csv(contents[member])
-                result[name] = read_csv(name, contents[member], chosen)
-        return result
+        return archive_datasets(open_archive(data), options)
     raise ImportInputError(Code.UNSUPPORTED_SOURCE)
 
 
-def archive_attachments(data: bytes) -> tuple[Attachment, ...]:
+def dataset_row_counts(datasets: Mapping[str, Dataset]) -> dict[str, int]:
+    """Count parsed data rows, including structural rejects, in every dataset."""
+    return {name: len(dataset.rows) for name, dataset in datasets.items()}
+
+
+def dataset_census(datasets: Mapping[str, Dataset]) -> dict[str, object]:
+    """Bind counts and CSV record boundaries without storing any source cells."""
+    return {
+        name: {
+            "row_count": len(dataset.rows),
+            **(
+                {
+                    "csv_record_ends_sha256": sha256_hex(
+                        ",".join(map(str, dataset.csv_record_ends)).encode("ascii")
+                    )
+                }
+                if dataset.csv_record_ends
+                else {}
+            ),
+        }
+        for name, dataset in datasets.items()
+    }
+
+
+def archive_datasets(
+    contents: Mapping[str, bytes], options: Mapping[str, CsvOptions] | None
+) -> dict[str, Dataset]:
+    """Parse the tables from an already verified staged archive."""
+    return {
+        name: read_csv(
+            name,
+            contents[member],
+            (options or {}).get(name) or detect_csv(contents[member]),
+        )
+        for name, member in DATASET_FILES.items()
+        if member in contents
+    }
+
+
+def archive_attachments(contents: Mapping[str, bytes]) -> tuple[Attachment, ...]:
     """Scan every archive attachment; rejected bytes stay quarantined."""
-    contents = open_archive(data)
     return tuple(
         scan_attachment(path, member)
         for path, member in sorted(contents.items())

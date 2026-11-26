@@ -23,6 +23,11 @@ open.
   `files/<name>` attachments. The manifest lists every other member with its
   `sha256` and `bytes`; any missing, extra or mismatched member fails the
   upload (`manifest_mismatch` / `checksum_mismatch`).
+- Synthetic organization exports can enter the same governed flow through
+  `upload_v5_import` and `v5_import_mapping`. The bounded adapter verifies the
+  complete v5 ZIP and stages only the selected projections documented in
+  `docs/api/export-v5.md#import-compatibility`. It creates no new import states
+  and cannot replay export-only datasets or source authority.
 
 ## Sources and limits
 
@@ -37,6 +42,16 @@ Sources are at most 20 MiB, 50,000 rows and 64 columns per dataset; archive
 members at most 10 MiB, 64 MiB in total, a 100:1 compression ratio above
 64 KiB, no symlinks, no encryption and no paths outside the flat layout
 (threat model IE-E2). Nothing is extracted to disk.
+
+Upload seals the parsed row count per dataset and, for CSV, a digest of
+the record boundaries (no cell values). The saved profile and subsequent
+reads must match that census. CSV options can refine column parsing but
+cannot regroup records after profiling. The header is not a data row;
+blank records after it are counted and marked `blank_row`, not discarded.
+XLSX counts explicit rows after the header in the first worksheet; other
+worksheets and absent row positions are outside the supported source.
+If a pre-existing profile no longer matches the parsed source, it must
+be restaged rather than silently accepting a different inventory.
 
 ## State machine and authority
 
@@ -70,14 +85,25 @@ codes (`access.Code`), never source values.
 Validators are deterministic: CPF check digits and CNS length (intake's
 `normalize_identifier`), dates in the declared format (`DD/MM/YYYY`,
 `YYYY-MM-DD` or `excel_serial`; no future birth dates), clinic-local
-`DD/MM/YYYY HH:MM` or ISO minutes (never in the future), closed vocabularies
+`DD/MM/YYYY HH:MM` or ISO minutes, or `ISO-8601-offset` with seconds and up
+to six fractional digits (never in the future), closed vocabularies
 (sex at birth, history kinds), the local observation code set with its exact
 UCUM-like unit (`ehr.longitudinal_values`), clinic-required demographics,
 in-file duplicate source ids and identifiers, and patient names that would be
 spreadsheet formulas (`formula_like`, legal and social names). The dry-run
 report lists `[dataset, row, field, code, source_id]` rejections, where
 `source_id` is the operator's own row label, and reconciles
-`rows = accepted + rejected` per dataset. `export_import_report` returns the
+`rows = accepted + rejected + excluded` per dataset. An unmapped history
+dataset in a legacy ZIP or API source yields `unmapped_dataset` per row
+(or its structural reason). To deliberately omit history, save a
+patients-only mapping with `"history_exclusion": "operator_excluded_history"`.
+The dry-run and reconciliation reports name the rule and list the exact
+excluded history row numbers; it cannot also map history or omit patients.
+Approval's existing `rejects_acknowledged` flag covers both non-write
+outcomes. The legacy job `rejected_count` aggregates both (the persisted
+transition invariant is `row_count = valid_count + rejected_count`);
+per-dataset report counts separate rejected from explicitly excluded.
+`export_import_report` returns the
 same reasons as CSV in which every cell that a spreadsheet would evaluate
 (leading `=`, `+`, `-`, `@`, tab, carriage return or their full-width forms,
 also after leading spaces) is prefixed with an apostrophe. Existing-patient matches
@@ -86,10 +112,11 @@ indexes of visible patients) are reported per row; a commit still creates the
 patient and intake's own duplicate detection opens a `DuplicateCandidate` for
 human adjudication (todo 18). Nothing is ever merged automatically.
 
-The dry-run digest (RFC 8785 + SHA-256) binds the source checksum, the
-mapping digest, every accepted normalized row and every rejection. Approval
-binds that digest; `commit_import` recomputes it from the stored source and
-refuses any drift (`dry_run_stale`).
+The dry-run digest (RFC 8785 + SHA-256) binds the source checksum, mapping
+digest, accepted rows, rejection positions and reasons, and any exclusion
+rule and positions. Rejected rows' `source_id` display labels are not
+part of that digest. Approval binds the digest; `commit_import` recomputes
+it from the stored source and refuses any drift (`dry_run_stale`).
 
 Mapping suggestions (`suggest_mapping`) are advisory only: a fixed pt-BR and
 English header vocabulary, never patient values, and nothing applies until an
@@ -141,6 +168,15 @@ matching signature, no active content); only clean ones can be linked.
 The last batch appends `committed` with the reconciliation report: per
 dataset rows, accepted, rejected and committed counts; per batch digests;
 source and attachment bytes; source and attachment checksums re-verified.
+Every profiled row must appear exactly once as a committed accepted row,
+an acknowledged rejection, or an acknowledged explicit exclusion. A gap
+or overlap does not reconcile, even if totals match. Duplicate review
+hints are not a separate outcome: those rows still commit.
+For v5 projections, the sealed source also binds patient and history row
+counts and canonical values before the mapping. A commit is not reconciled
+if its mapping drops or changes those values, or if the target count,
+record digest, linkage or attachment check differs. Excluding already
+staged v5 rows does not satisfy the source-value check.
 Linked attachments are re-verified inside the database
 (`clinic_app.interop_attachment_checks`), which returns only counts, bytes and
 mismatches, never the bytes.

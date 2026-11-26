@@ -245,6 +245,7 @@ def test_xlsx_and_api_sources_import_their_cached_values(rbac_graph: RbacGraph) 
             ["X-1", "Paciente Planilha", "32874", cpf(31)],
             ["X-2", "Paciente Formula", "32874", cpf(32)],
             ["X-3", "Paciente Data Texto", "01/01/1990", cpf(33)],
+            [],
         ],
         formula_row=3,
     )
@@ -265,13 +266,14 @@ def test_xlsx_and_api_sources_import_their_cached_values(rbac_graph: RbacGraph) 
     }
     report = to_dry_run(world, book, kind="xlsx", document=xlsx_mapping)
     assert part(report.report, "datasets", "patients") == {
-        "rows": 3,
+        "rows": 4,
         "accepted": 1,
-        "rejected": 2,
+        "rejected": 3,
     }
     assert {(item[1], item[3]) for item in part(report.report, "rejections")} == {
         (2, "formula_cell"),
         (3, "invalid_date"),
+        (4, "blank_row"),
     }
     with pytest.raises(services.ImportInputError) as unsafe:
         sources.read_xlsx(_xlsx([header], dtd=True))

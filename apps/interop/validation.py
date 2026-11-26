@@ -11,9 +11,11 @@ the approved one.
 from __future__ import annotations
 
 import hashlib
+import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 from zoneinfo import ZoneInfo
 
@@ -25,11 +27,16 @@ from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.ehr.longitudinal_values import CODES, observation_value
 from apps.intake.demographics import DemographicsInputError, normalize_identifier
 from apps.intake.patient_creation import PatientBirthDateError, validate_birth_date
-from apps.interop.contract import HISTORY_KINDS, SEX_VALUES
+from apps.interop.contract import (
+    HISTORY_KINDS,
+    OFFSET_DATETIME,
+    OPERATOR_EXCLUDED_HISTORY,
+    SEX_VALUES,
+)
 from apps.interop.spreadsheet import is_formula_like
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Iterator, Mapping
 
     from apps.identity.models import Clinic
     from apps.interop.sources import Dataset, Row
@@ -45,6 +52,10 @@ BR_DATE_PARTS: Final = (2, 2, 4)
 ISO_DATE_LENGTH: Final = len("2000-01-01")
 IDENTIFIER_FIELDS: Final = ("cpf", "cns")
 CONTROL: Final = frozenset({"Cc", "Cs"})
+_OFFSET_TIME: Final = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,10 +82,16 @@ class PatientRow:
     identifiers: tuple[tuple[str, str], ...]
     registered_at: datetime | None
     registered_by: str | None
+    original_source_id: str | None = None
 
     def canonical(self) -> dict[str, object]:
         """Return the JSON form bound by the dry-run and batch digests."""
         return {
+            **(
+                {"original_source_id": self.original_source_id}
+                if self.original_source_id
+                else {}
+            ),
             "row": self.row,
             "source_id": self.source_id,
             "legal_name": self.legal_name,
@@ -101,10 +118,16 @@ class HistoryRow:
     author: str
     content: dict[str, str | int | None]
     file: str | None
+    original_source_id: str | None = None
 
     def canonical(self) -> dict[str, object]:
         """Return the JSON form bound by the dry-run and batch digests."""
         return {
+            **(
+                {"original_source_id": self.original_source_id}
+                if self.original_source_id
+                else {}
+            ),
             "row": self.row,
             "source_id": self.source_id,
             "patient_row": self.patient_row,
@@ -134,16 +157,50 @@ class Normalized:
     history: tuple[HistoryRow, ...]
     rejections: tuple[Rejection, ...]
     row_counts: dict[str, int]
+    source_projection: dict[str, object] | None = None
+    excluded_history_rows: tuple[int, ...] = ()
 
     @property
     def row_count(self) -> int:
-        """Count every source row of every mapped dataset."""
+        """Count every parsed source row, even outside the mapping."""
         return sum(self.row_counts.values())
 
     @property
     def valid_count(self) -> int:
         """Count the rows that a commit will import."""
         return len(self.patients) + len(self.history)
+
+    @property
+    def nonwrite_count(self) -> int:
+        """Count the outcomes that require explicit sign-off rather than writes."""
+        return len(self.rejections) + len(self.excluded_history_rows)
+
+    def nonwrite_positions(self) -> Iterator[tuple[str, int]]:
+        """Yield the source coordinates of rejects and explicit exclusions."""
+        yield from ((item.dataset, item.row) for item in self.rejections)
+        yield from (("history", row) for row in self.excluded_history_rows)
+
+    def outcomes_cover_source(self) -> bool:
+        """Reject a dry run with a gap or overlap before it can be approved."""
+        return rows_accounted(
+            self.row_counts,
+            chain(
+                (("patients", row.row) for row in self.patients),
+                (("history", row.row) for row in self.history),
+                self.nonwrite_positions(),
+            ),
+        )
+
+    def exclusions(self) -> dict[str, object]:
+        """Report the named exclusion with the exact profiled positions it covers."""
+        if not self.excluded_history_rows:
+            return {}
+        return {
+            "history": {
+                "rule": OPERATOR_EXCLUDED_HISTORY,
+                "rows": list(self.excluded_history_rows),
+            }
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,19 +291,25 @@ def parse_date(value: str, date_format: str, *, field: str) -> date:
 def parse_datetime(
     value: str, datetime_format: str, *, field: str, zone: ZoneInfo
 ) -> datetime:
-    """Parse one clinic-local minute and refuse future or implausible times."""
+    """Parse a clinic-local minute or an exact explicitly offset timestamp."""
     pattern = (
         "%Y-%m-%dT%H:%M" if datetime_format == "YYYY-MM-DDTHH:MM" else "%d/%m/%Y %H:%M"
     )
     try:
-        parsed = datetime.strptime(value.strip(), pattern)  # noqa: DTZ007
-    except ValueError:
+        value = value.strip()
+        if datetime_format == OFFSET_DATETIME:
+            if not _OFFSET_TIME.fullmatch(value):
+                _reject(field, "invalid_date")
+            aware = datetime.fromisoformat(value)
+        else:
+            parsed = datetime.strptime(value, pattern)  # noqa: DTZ007
+            aware = parsed.replace(tzinfo=zone)
+        if aware.date() < EARLIEST:
+            _reject(field, "implausible_date")
+        if aware > timezone.now().astimezone(UTC):
+            _reject(field, "future_date")
+    except (OverflowError, ValueError):
         _reject(field, "invalid_date")
-    aware = parsed.replace(tzinfo=zone)
-    if aware.date() < EARLIEST:
-        _reject(field, "implausible_date")
-    if aware > timezone.now().astimezone(UTC):
-        _reject(field, "future_date")
     return aware
 
 
@@ -329,6 +392,12 @@ def _patient(
             maximum=MAX_AUTHOR,
             required=False,
         ),
+        original_source_id=_text(
+            values.get("original_source_id", ""),
+            field="original_source_id",
+            maximum=MAX_SOURCE_ID,
+            required=False,
+        ),
     )
 
 
@@ -369,11 +438,13 @@ def _attachment(
         _reject("file", "missing_file")
     if facts.verdict != "clean":
         _reject("file", "file_rejected")
-    title = _text(
-        values.get("title", ""), field="title", maximum=MAX_TITLE, required=False
-    )
+    title = values.get("title", "")
+    if len(title) > MAX_TITLE:
+        _reject("title", "too_long")
+    if any(unicodedata.category(character) in CONTROL for character in title):
+        _reject("title", "invalid_text")
     return {
-        "title": title,
+        "title": title or None,
         "media_type": facts.media_type,
         "sha256": facts.sha256,
         "size_bytes": facts.size_bytes,
@@ -421,6 +492,12 @@ def _history(
         author=author,
         content=content,
         file=file,
+        original_source_id=_text(
+            values.get("original_source_id", ""),
+            field="original_source_id",
+            maximum=MAX_SOURCE_ID,
+            required=False,
+        ),
     )
 
 
@@ -532,24 +609,51 @@ def normalize(
         cast("dict[str, str]", mapped["patients"]["columns"]),
         options,
     )
-    counts = {"patients": len(datasets["patients"].rows)}
     history: list[HistoryRow] = []
-    if "history" in mapped and "history" in datasets:
-        counts["history"] = len(datasets["history"].rows)
+    excluded: tuple[int, ...] = ()
+    history_data = datasets.get("history")
+    if history_data is not None and "history" in mapped:
         history, refused = _histories(
-            datasets["history"],
+            history_data,
             cast("dict[str, str]", mapped["history"]["columns"]),
             options,
             patients={patient.source_id: patient.row for patient in patients},
             attachments=attachments,
         )
         rejections += refused
+    elif history_data is not None:
+        if mapping.get("history_exclusion") == OPERATOR_EXCLUDED_HISTORY:
+            excluded = tuple(row.number for row in history_data.rows)
+        else:
+            rejections.extend(
+                Rejection(
+                    "history",
+                    row.number,
+                    "row" if row.defect else "dataset",
+                    row.defect or "unmapped_dataset",
+                )
+                for row in history_data.rows
+            )
     return Normalized(
         patients=tuple(patients),
         history=tuple(history),
         rejections=tuple(rejections),
-        row_counts=counts,
+        row_counts={name: len(dataset.rows) for name, dataset in datasets.items()},
+        excluded_history_rows=excluded,
     )
+
+
+def rows_accounted(
+    counts: Mapping[str, int], positions: Iterable[tuple[str, int]]
+) -> bool:
+    """Require every one-based source position exactly once across dispositions."""
+    seen: set[tuple[str, int]] = set()
+    for dataset, row in positions:
+        key = (dataset, row)
+        if not 1 <= row <= counts.get(dataset, 0) or key in seen:
+            return False
+        seen.add(key)
+    return len(seen) == sum(counts.values())
 
 
 def canonical_bytes(value: object) -> bytes:
@@ -577,6 +681,11 @@ def dataset_digest(
                     [item.dataset, item.row, item.field, item.code]
                     for item in normalized.rejections
                 ],
+                **(
+                    {"exclusions": normalized.exclusions()}
+                    if normalized.excluded_history_rows
+                    else {}
+                ),
             }
         )
     ).hexdigest()

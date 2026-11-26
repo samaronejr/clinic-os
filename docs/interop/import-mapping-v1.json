@@ -47,8 +47,12 @@
         "datetime_format": {
           "enum": [
             "DD/MM/YYYY HH:MM",
-            "YYYY-MM-DDTHH:MM"
+            "YYYY-MM-DDTHH:MM",
+            "ISO-8601-offset"
           ]
+        },
+        "history_exclusion": {
+          "const": "operator_excluded_history"
         },
         "csv": {
           "type": "object",
@@ -128,6 +132,9 @@
                     "source_id": {
                       "$ref": "#/$defs/column"
                     },
+                    "original_source_id": {
+                      "$ref": "#/$defs/column"
+                    },
                     "legal_name": {
                       "$ref": "#/$defs/column"
                     },
@@ -201,6 +208,9 @@
                       "$ref": "#/$defs/column"
                     },
                     "patient_source_id": {
+                      "$ref": "#/$defs/column"
+                    },
+                    "original_source_id": {
                       "$ref": "#/$defs/column"
                     },
                     "kind": {

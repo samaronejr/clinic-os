@@ -15,6 +15,7 @@ from apps.interop.commit import (
     run_batch,
 )
 from apps.interop.contract import MappingSuggestion
+from apps.interop.export_import import upload_v5_import, v5_import_mapping
 from apps.interop.jobs import (
     CutoverPlan,
     DryRunReport,
@@ -78,4 +79,6 @@ __all__ = (
     "save_mapping",
     "suggest_mapping",
     "upload_import",
+    "upload_v5_import",
+    "v5_import_mapping",
 )

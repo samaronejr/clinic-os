@@ -124,6 +124,65 @@ decrypted bytes as `attachments/<id>.<extension>`, after the bytes match the
 row's `sha256` and detected type. Quarantined and failed attachments appear
 only as rows.
 
+## Import compatibility
+
+The [v5 import coverage matrix](export-v5-import-coverage.md) classifies all
+255 datasets against the todo 66 governed importer. **Eight are importable as
+projections; 247 are export-only.** This is a synthetic, single-target-clinic
+migration path, not a backup restore, a multi-clinic clone or a live import
+authorization. The caller is responsible for bringing an authorized source
+export and selecting the target clinic for these records.
+
+`apps.interop.services.upload_v5_import` takes the complete v5 ZIP, the
+archive SHA-256 from the source receipt, the explicit list of relations to
+import (including `intake_patient`), and the target clinic and idempotency
+key. It verifies the version, manifest digest, exact member set, byte
+lengths and every member digest before staging a `clinic-import-archive-v1`
+ZIP. An unsupported relation in the selection is refused; the mere presence
+of export-only datasets in the full ZIP is normal. The upload and projection
+are subject to the governed import's existing size, archive and row limits,
+not the larger download limit. Each serialized SOAP note must fit in one
+20,000-character import cell, even if its individual EHR sections fit their
+separate limits. Checksum verification checks integrity, not
+the identity of whoever supplied the export.
+
+The operator profiles the upload, saves and applies `v5_import_mapping()`,
+then follows the normal dry-run, sign-off, step-up commit and reconciliation
+flow. The sealed staging archive binds the selected source counts and
+canonical values, including document title, type, size and byte digest.
+Reconciliation is false if validation or mapping loses rows or values, or if
+the committed counts, record hashes, linkages, or file checks differ. A
+governed commit with acknowledged rejects is not a reconciled round trip.
+The import job's source digest and idempotency key bind the staged
+archive, not the exporting receipt; retain that receipt separately. The
+projection uses JSONL, not the
+spreadsheet-neutralized CSV. It keeps source timestamps with explicit offsets
+and sub-minute precision.
+
+| Target projection | Dataset | Not replayed |
+|---|---|---|
+| Registry name and birth date for patients with a non-hidden enrollment; source patient id, creation time and original registrar label when the first correction receipt exists | `intake_patient` | Source primary keys, enrollments and registration authority |
+| Current legal/social names and sex at birth on the new patient registration | `intake_patientdemographics` | Other demographics fields, unknown-field reasons, old versions and correction receipts |
+| Latest non-retired CPF/CNS values per patient and kind | `intake_patientidentifier` | Other identifier kinds, issuers, retired/older versions, indexes and source row ids |
+| RFC 8785 SOAP content as note text, with source version id, original author id label and finalization time | `ehr_clinicaldocumentversion` | Draft/discarded versions, template, encounter, amendment links and live SOAP state |
+| Code, value, unit and code-set version with source id, performer id label and effective time | `ehr_observation` | Reference ranges, derivation links, confirmation and live observation state |
+| Available filename, type, size and SHA-256 plus exact rescanned bytes, with source id, uploader id label and creation time | `ehr_clinicalattachment` | Unavailable/rejected files, object keys and source scan state |
+| Original patient source label, author and time; imported note, observation and document content and provenance | `interop_importedrecord` | Pending/rolled-back facts, hidden enrollments and the old job/approval |
+| Bytes, media type, size and checksum of clean files referenced by eligible imported documents | `interop_importfile` | Sealed source uploads and unreferenced/rejected files |
+
+Select both prior-import datasets together; an archive with eligible prior
+records refuses their omission. Source identity labels are kept separately
+from unique staging keys, so repeated labels from unrelated prior jobs do
+not collide.
+
+History is limited to a patient's non-hidden source enrollment scopes. The
+target creates fresh patient and enrollment ids, versions and indexes. Clinical
+history is immutable, labelled `imported` and attributed to no target user;
+source ids name evidence, not target authority. Selecting the current
+demographics or identifiers enriches a patient row rather than adding another
+registration. The normal dry run can still reject values that do not meet
+target clinic policy or files that fail scanning.
+
 ## Governed import records
 
 Version 2 adds the relations of the governed import (todo 66), which did not

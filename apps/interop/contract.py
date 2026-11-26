@@ -27,10 +27,12 @@ if TYPE_CHECKING:
 
 SCHEMA_NAME: Final = "import-mapping-v1"
 PROFILE_NAME: Final = "import-profile-v1"
+OPERATOR_EXCLUDED_HISTORY: Final = "operator_excluded_history"
 MIN_PARTIAL_SYNONYM: Final = 4
 SOURCE_KINDS: Final = ("csv", "xlsx", "zip", "api")
 PATIENT_FIELDS: Final = (
     "source_id",
+    "original_source_id",
     "legal_name",
     "social_name",
     "birth_date",
@@ -42,6 +44,7 @@ PATIENT_FIELDS: Final = (
 )
 HISTORY_FIELDS: Final = (
     "source_id",
+    "original_source_id",
     "patient_source_id",
     "kind",
     "recorded_at",
@@ -63,7 +66,8 @@ HISTORY_REQUIRED: Final = (
 SEX_VALUES: Final = ("declined", "female", "intersex", "male", "not_informed")
 HISTORY_KINDS: Final = ("note", "observation", "attachment")
 DATE_FORMATS: Final = ("DD/MM/YYYY", "YYYY-MM-DD", "excel_serial")
-DATETIME_FORMATS: Final = ("DD/MM/YYYY HH:MM", "YYYY-MM-DDTHH:MM")
+OFFSET_DATETIME: Final = "ISO-8601-offset"
+DATETIME_FORMATS: Final = ("DD/MM/YYYY HH:MM", "YYYY-MM-DDTHH:MM", OFFSET_DATETIME)
 
 
 def _columns(fields: tuple[str, ...], required: list[str]) -> dict[str, object]:
@@ -117,6 +121,7 @@ SCHEMA: Final[dict[str, object]] = {
                 "source_kind": {"enum": list(SOURCE_KINDS)},
                 "date_format": {"enum": list(DATE_FORMATS)},
                 "datetime_format": {"enum": list(DATETIME_FORMATS)},
+                "history_exclusion": {"const": OPERATOR_EXCLUDED_HISTORY},
                 "csv": {
                     "type": "object",
                     "additionalProperties": False,
@@ -263,6 +268,10 @@ def validate_mapping(document: object) -> dict[str, object]:
         raise ImportInputError(Code.INVALID_MAPPING)
     if "history" in datasets and document["source_kind"] not in ("zip", "api"):
         raise ImportInputError(Code.INVALID_MAPPING)
+    if "history_exclusion" in document and (
+        "history" in datasets or document["source_kind"] not in ("zip", "api")
+    ):
+        raise ImportInputError(Code.INVALID_MAPPING)
     for dataset in datasets.values():
         columns = list(dataset["columns"].values())
         if len(set(columns)) != len(columns):
@@ -281,6 +290,8 @@ def mapped_columns_present(
     """Whether every mapped column exists in the profiled source headers."""
     mapped = document["datasets"]
     if not isinstance(mapped, dict):
+        return False
+    if "history_exclusion" in document and "history" not in datasets:
         return False
     for name, dataset in mapped.items():
         source = datasets.get(name)
