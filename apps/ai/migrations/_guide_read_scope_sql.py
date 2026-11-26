@@ -36,11 +36,20 @@ REVOKE ALL ON FUNCTION clinic_app.insurance_guide_read_scope(uuid,uuid) FROM PUB
 GRANT EXECUTE ON FUNCTION clinic_app.insurance_guide_read_scope(uuid,uuid)
  TO clinic_app;
 """
-_PRIOR_USING = next(
-    using
-    for table, name, _, using, _ in POLICIES
-    if (table, name) == ("insurance_guide", "insurance_scope")
-)
+
+
+def _prior_guide_scope() -> str:
+    """Recover the original USING expression from the frozen policy manifest."""
+    for table, name, _, using, _ in POLICIES:
+        if (table, name) == ("insurance_guide", "insurance_scope"):
+            if using is None:
+                break
+            return using
+    msg = "missing original guide read predicate"
+    raise ValueError(msg)
+
+
+_PRIOR_USING = _prior_guide_scope()
 _POLICY = "ALTER POLICY insurance_scope ON clinic_app.insurance_guide USING "
 # Retain the enterprise migration's outer fence and original WITH CHECK. The
 # shared predicate includes the fence independently for non-policy callers.

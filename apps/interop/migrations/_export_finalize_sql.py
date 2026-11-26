@@ -54,14 +54,14 @@ def _reader() -> str:
 
 _METADATA = """ARRAY['part_count','archive_bytes','archive_sha256','manifest_sha256',
     'dataset_count','record_count','attachment_count']"""
-_GUARDED = _edit(
+_REQUEST_GUARD = _edit(
     _GUARD,
     "IF NEW.pending_origins IS NOT NULL OR NEW.state<>'requested'",
     "IF NEW.build_origins IS NOT NULL OR NEW.pending_origins IS NOT NULL "
     "OR NEW.state<>'requested'",
 )
-_GUARDED = _edit(
-    _GUARDED,
+_BUILD_GUARD = _edit(
+    _REQUEST_GUARD,
     "IF NEW.pending_origins IS DISTINCT FROM OLD.pending_origins",
     f"""IF OLD.state='building' AND NEW.state='building' AND {_AUTHORIZED}
    AND (to_jsonb(NEW)-{_METADATA})=(to_jsonb(OLD)-{_METADATA}) THEN
@@ -69,8 +69,8 @@ _GUARDED = _edit(
   END IF;
   IF NEW.pending_origins IS DISTINCT FROM OLD.pending_origins""",
 )
-_GUARDED = _edit(
-    _GUARDED,
+_CLAIM_GUARD = _edit(
+    _BUILD_GUARD,
     "NEW.started_at:=statement_timestamp();",
     """IF (__AUTHORIZED__) IS NOT TRUE THEN __DENY__ END IF;
     SELECT coalesce(jsonb_object_agg(keys.k,true),'{}'::jsonb)
@@ -79,8 +79,8 @@ _GUARDED = _edit(
     .replace("__DENY__", _DENY)
     .replace("__KEYS__", _KEYS),
 )
-_GUARDED = _edit(
-    _GUARDED,
+_SEAL_GUARD = _edit(
+    _CLAIM_GUARD,
     "NEW.started_at:=OLD.started_at;",
     """IF OLD.build_origins IS NULL OR (__AUTHORIZED__) IS NOT TRUE
     THEN __DENY__ END IF;
@@ -92,8 +92,8 @@ _GUARDED = _edit(
         "__DENY__", _DENY
     ),
 )
-_GUARDED = _edit(
-    _GUARDED,
+_FAIL_GUARD = _edit(
+    _SEAL_GUARD,
     "IF OLD.state IN ('requested','building') AND NEW.state='failed'",
     """IF OLD.state IN ('requested','building') AND NEW.state='failed' THEN
     NEW.build_origins:=NULL; NEW.part_count:=0; NEW.archive_bytes:=0;
@@ -103,7 +103,7 @@ _GUARDED = _edit(
    IF OLD.state IN ('requested','building') AND NEW.state='failed'""",
 )
 _GUARDED = _edit(
-    _GUARDED,
+    _FAIL_GUARD,
     "WHERE e.id=NEW.export_id AND e.organization_id=NEW.organization_id;",
     """WHERE e.id=NEW.export_id AND e.organization_id=NEW.organization_id
     AND e.requested_by_id=(SELECT u.id FROM clinic_app.load_current_user() u)

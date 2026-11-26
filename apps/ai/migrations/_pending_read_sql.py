@@ -3,6 +3,11 @@
 from apps.ai.migrations._care_sql import _edit, _function
 from apps.ai.migrations._pending_choice_sql import CHOICE, RELATIONS, SUBJECT
 from apps.ai.migrations._pending_refusal_sql import SQL as REFUSAL
+from apps.ai.migrations._pending_visible_function_sql import BODY as VISIBLE_BODY
+from apps.ai.migrations._pending_visible_function_sql import (
+    CANONICAL_BODY_SHA256,
+    POLICY_BODY_SHA256,
+)
 from apps.interop.migrations._export_sql import _BRANCHES, _branch
 from apps.interop.migrations._export_v2_sql import _V1_READER, _sealed
 from apps.interop.migrations._export_v5_sql import EXPORT_V5
@@ -16,12 +21,10 @@ REVOKE EXECUTE ON FUNCTION clinic_app.ai_pending_choice(text,uuid),
  FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 """
 
-# Only the migration compiler reads policies and emits static SQL. Nothing
-# supplied by the runtime caller is interpolated into a query. A public
-# boolean-by-id must not be an oracle for records hidden by ordinary RLS.
-# Derive the initial audience from the deployed policies, including their
-# permissive OR / restrictive AND combination and the separate agent role.
-_VISIBLE = """
+# A differing table privilege or permissive/restrictive expression must not
+# enlarge a reader. Compare the unmodified policy compiler's output before
+# installing the same branches with statically recognizable literal GUC names.
+_VERIFY_AUDIENCE = """
 DO $install$
 DECLARE nm text; actor text; allow_expr text; restrict_expr text;
  body text:=$body$
@@ -63,17 +66,55 @@ BEGIN
  RETURN clinic_app.ai_pending_choice(relation_name,requested);
 END
 $body$;
- EXECUTE format('CREATE FUNCTION clinic_app.ai_pending_visible(relation_name text,
-  requested uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
-  SET search_path=pg_catalog,clinic_app,pg_temp AS %L',body);
+ IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(body,'UTF8')),'hex')
+    IS DISTINCT FROM '__POLICY_DIGEST__' THEN
+  RAISE EXCEPTION 'pending visibility audience differs from reviewed policies'
+   USING ERRCODE='55000';
+ END IF;
 END $install$;
+""".replace("__NAMES__", _NAMES).replace("__POLICY_DIGEST__", POLICY_BODY_SHA256)
+
+_VISIBLE_DEFINITION = """CREATE FUNCTION clinic_app.ai_pending_visible(
+ relation_name text, requested uuid)
+ RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+ SET search_path=pg_catalog,clinic_app,pg_temp AS $visible$__FROZEN_BODY__$visible$;
+""".replace("__FROZEN_BODY__", VISIBLE_BODY)
+
+_VISIBLE = (
+    _VERIFY_AUDIENCE
+    + _VISIBLE_DEFINITION
+    + """
 REVOKE EXECUTE ON FUNCTION clinic_app.ai_pending_visible(text,uuid)
  FROM PUBLIC,clinic_app,clinic_agent,clinic_owner;
 -- run_agent reads ActionProposal and AgentRun on the authenticated agent
 -- connection. Their restrictive SELECT policies call this scalar decision.
 GRANT EXECUTE ON FUNCTION clinic_app.ai_pending_visible(text,uuid)
  TO clinic_app,clinic_agent;
-""".replace("__NAMES__", _NAMES)
+"""
+)
+
+# An already migrated database must receive the same reviewed body as a fresh
+# install. Refuse an unknown preimage; OR REPLACE retains the OID and grants.
+_NORMALIZE_GUARD = """SET LOCAL ROLE clinic_resolver;
+DO $check$
+DECLARE fingerprint text;
+BEGIN
+ SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),
+                          'hex') INTO fingerprint
+ FROM pg_catalog.pg_proc p
+ WHERE p.oid='clinic_app.ai_pending_visible(text,uuid)'::regprocedure;
+ IF fingerprint IS NULL OR fingerprint NOT IN ('__OLD__','__CANONICAL__') THEN
+  RAISE EXCEPTION 'unreviewed pending visibility function' USING ERRCODE='55000';
+ END IF;
+END $check$;
+"""
+NORMALIZE_VISIBLE = (
+    _NORMALIZE_GUARD.replace("__OLD__", POLICY_BODY_SHA256).replace(
+        "__CANONICAL__", CANONICAL_BODY_SHA256
+    )
+    + _VISIBLE_DEFINITION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1)
+    + "RESET ROLE;\n"
+)
 
 _POLICIES = "".join(
     f"CREATE POLICY pending_output_read ON clinic_app.{t} AS RESTRICTIVE "
@@ -97,9 +138,9 @@ def _protected_branch(
 ) -> str:
     """Keep archive version, original authority, redactions and pagination."""
     if relation == "ai_aiartifact":
-        omitted = (*omitted, "source_ref", "source_acceptance")
+        omitted += ("source_ref", "source_acceptance")
     elif relation == "interop_organizationexport":
-        omitted = (*omitted, "pending_origins")
+        omitted += ("pending_origins",)
     result = _sealed(
         _branch(
             relation,
@@ -122,7 +163,11 @@ def _protected_branch(
 
 
 _EXPORT = _V1_READER.replace(
-    _BRANCHES, "\n".join(_protected_branch(*entry) for entry in EXPORT_V5)
+    _BRANCHES,
+    "\n".join(
+        _protected_branch(relation, key, kind, omitted, scope)
+        for relation, key, kind, omitted, scope in EXPORT_V5
+    ),
 )
 _ARCHIVE = """
 CREATE FUNCTION clinic_app.ai_archive_current(requested uuid)
@@ -151,7 +196,7 @@ REVOKE EXECUTE ON FUNCTION clinic_app.ai_archive_current(uuid)
 GRANT EXECUTE ON FUNCTION clinic_app.ai_archive_current(uuid) TO clinic_app;
 """
 _PRIOR_GUARD = _function(INTEROP, "interop_partner_guard")
-_GUARD = _edit(
+_GUARD_BUILD = _edit(
     _edit(
         _PRIOR_GUARD,
         "IF NEW.state<>'requested' OR NEW.revision<>1",
@@ -169,7 +214,7 @@ _GUARD = _edit(
    AND (to_jsonb(NEW)-ARRAY['pending_origins','state','revision','started_at'""",
 )
 _GUARD = _edit(
-    _GUARD,
+    _GUARD_BUILD,
     "=(to_jsonb(OLD)-ARRAY['state','revision','started_at'",
     "=(to_jsonb(OLD)-ARRAY['pending_origins','state','revision','started_at'",
 )
