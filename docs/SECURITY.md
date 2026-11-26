@@ -369,6 +369,16 @@ database trust boundary, not as proof against a superuser.
   Private definer/migration helpers do not become staff or machine exceptions.
   Unknown executable overloads, widened ACLs, changed definitions, ambiguous
   policy rows, or exposure to an unintended runtime root fail closed.
+- Ownership is an independent source of delegation. Revoking all ordinary
+  privileges from both the owner and `PUBLIC` does not remove the owner's
+  implicit grant options (PostgreSQL 16, §5.7). In every database, a runtime
+  login or *any* role in its membership closure must not own a database,
+  schema, relation (including tables and sequences), type or large object.
+  Any runtime-reachable routine owner, in **any** namespace, requires the
+  exact reviewed signature, identity arguments, owner and definition **and**
+  authorization for the effective delegation. There are no such approvals
+  in the current policy. Merely being an approved EXECUTE grantee never
+  authorizes ownership. The scanner reads catalogs, not object contents.
 - Each exception cites creation of the surviving object, last installation of
   its signature, and last definition. Audit these by observing the local OID
   and its full identity after **each committed migration** in a clean replay;
@@ -383,7 +393,11 @@ database trust boundary, not as proof against a superuser.
   durations, backend counts/state/waits/transaction age/blocking, and process
   scheduling counters; never SQL, connection strings or input values.
   On deadline expiry, take a final observation and kill/reap the probe's
-  private process group. The trace locates observed waits; it does not infer
+  private process group. Observe Make's exit without reaping the leader;
+  signal only while its owned identity is pinned, then reap the leader and
+  adopted children. No signal or liveness probe uses the numeric group after
+  the leader is reaped. Observer teardown has a separate bounded budget, not
+  an extension of the Make deadline. The trace locates observed waits; it does not infer
   a historical lock or load cause from an aggregate run time.
 - Give the inspector `CONNECT` on restricted databases; do not grant runtime
   logins extra access for the check. On a stock PG16 cluster even a superuser

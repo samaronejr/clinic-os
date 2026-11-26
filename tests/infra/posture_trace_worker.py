@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from concurrent.futures import Future
 from pathlib import Path
-from threading import Event
-from typing import IO
+from threading import Event, Thread
+from typing import IO, TYPE_CHECKING
 
 import psycopg
 from ops.testing.final_e2e_supervisor import require_subreaper
@@ -21,10 +22,41 @@ from ops.testing.final_e2e_supervisor import require_subreaper
 from infra.posture_observation import activity, process_group
 from infra.test_db_posture_url import MAKE_BINARY, MAKE_TIMEOUT_SECONDS
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 _STAGES = re.compile(
     r"posture-stage (verifier-start|primary-connect|primary-query|primary-closed|"
     r"peer-connect|peer-query|role-query|routine-query|peer-finished) (\d+) (\d+)"
 )
+_CLEANUP_SECONDS = 3
+
+
+def _watch(operation: Callable[[], None]) -> Future[None]:
+    """A stuck observer must not hold the private worker open at interpreter exit."""
+    result: Future[None] = Future()
+
+    def run() -> None:
+        try:
+            operation()
+        except (OSError, ValueError, RuntimeError, psycopg.Error) as exc:
+            result.set_exception(RuntimeError(type(exc).__name__))
+        else:
+            result.set_result(None)
+
+    Thread(target=run, daemon=True).start()
+    return result
+
+
+def _observe_exit(pid: int, until: float) -> bool:
+    """Poll the kernel handle for exit without consuming the child wait status."""
+    fd = os.pidfd_open(pid)
+    try:
+        poller = select.poll()
+        poller.register(fd, select.POLLIN)
+        return bool(poller.poll(max(0, math.ceil((until - time.monotonic()) * 1000))))
+    finally:
+        os.close(fd)
 
 
 def _stages(pipe: IO[bytes], records: list[dict[str, object]]) -> None:
@@ -60,19 +92,30 @@ def _sample(
 
 
 def _reap_group(proc: subprocess.Popen[bytes]) -> None:
-    with suppress(ProcessLookupError):
-        os.killpg(proc.pid, signal.SIGKILL)
-    proc.wait()
-    # This process (not pytest) owns the subreaper; only reap this child's group.
-    with suppress(ChildProcessError):
-        while True:
-            os.waitpid(-proc.pid, 0)
-    try:
-        os.killpg(proc.pid, 0)
-    except ProcessLookupError:
+    # This dedicated worker is the sole waiter. A live or zombie direct child
+    # pins the numeric PGID. Never signal even with signal 0 after releasing it.
+    if proc.returncode is not None:
         return
-    message = "posture child group survived teardown"
-    raise RuntimeError(message)
+    until = time.monotonic() + _CLEANUP_SECONDS
+    os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait(timeout=max(0, until - time.monotonic()))
+    # Only this subprocess's children can be waited here. Every descendant
+    # was in the killed private session; adopted zombies also have to be reaped.
+    children = Path("/proc/thread-self/children")
+    try:
+        while True:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+            if pid:
+                continue
+            if time.monotonic() >= until:
+                break
+            adopted = children.read_text().split()
+            if adopted and not _observe_exit(int(adopted[0]), until):
+                break
+    except ChildProcessError:
+        return
+    message = "posture child cleanup exceeded its separate deadline"
+    raise TimeoutError(message)
 
 
 def _probe(db: psycopg.Connection, deadline: float) -> dict[str, object]:
@@ -84,57 +127,52 @@ def _probe(db: psycopg.Connection, deadline: float) -> dict[str, object]:
     stop = Event()
     timed_out = False
     at_deadline: list[dict[str, object]] = []
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        start = time.monotonic_ns()
-        marks.append({"stage": "make-launch", "ns": start, "ordinal": 0})
-        with subprocess.Popen(
-            ("/usr/bin/make", "db-posture", "DOCKER=true"),
-            cwd=Path(__file__).resolve().parents[2],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        ) as proc:
-            assert proc.stderr is not None
-            reader = pool.submit(_stages, proc.stderr, marks)
-            observer = pool.submit(_sample, db, proc.pid, stop, samples)
+    start = time.monotonic_ns()
+    marks.append({"stage": "make-launch", "ns": start, "ordinal": 0})
+    with subprocess.Popen(
+        ("/usr/bin/make", "db-posture", "DOCKER=true"),
+        cwd=Path(__file__).resolve().parents[2],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    ) as proc:
+        pipe = proc.stderr
+        assert pipe is not None
+        try:
+            reader = _watch(lambda: _stages(pipe, marks))
+            observer = _watch(lambda: _sample(db, proc.pid, stop, samples))
+            exited = _observe_exit(proc.pid, start / 1e9 + deadline)
+            end = time.monotonic_ns()
+            timed_out = not exited or (end - start) / 1e9 >= deadline
+        finally:
+            stop.set()
             try:
-                proc.wait(
-                    timeout=max(0, deadline - (time.monotonic_ns() - start) / 1e9)
-                )
-                end = time.monotonic_ns()
-                timed_out = (end - start) / 1e9 >= deadline
-            except subprocess.TimeoutExpired:
-                end = time.monotonic_ns()
-                timed_out = True
+                if timed_out:
+                    at_deadline = process_group(proc.pid)
             finally:
-                stop.set()
-                try:
-                    if timed_out:
-                        at_deadline = process_group(proc.pid)
-                finally:
-                    # Sampling runs independently. Never delay termination to
-                    # wait for another DB response on a stalled cluster.
-                    _reap_group(proc)
-            reader.result()
-            observer.result()
-        return {
-            "exit": proc.returncode,
-            "timed_out": timed_out,
-            "limit_seconds": deadline,
-            "start_ns": start,
-            "end_ns": end,
-            "elapsed_ns": end - start,
-            "stages": marks,
-            "samples": samples,
-            "processes_at_deadline": at_deadline,
-            "last_sample_before_deadline": next(
-                (row for row in reversed(samples) if int(str(row["ns"])) <= end), None
-            ),
-            "before": before,
-            "after": activity(db),
-            "group_reaped": True,
-        }
+                # Never wait on an observer while the owned group needs killing.
+                _reap_group(proc)
+        until = time.monotonic() + _CLEANUP_SECONDS
+        for result in (reader, observer):
+            result.result(timeout=max(0, until - time.monotonic()))
+    return {
+        "exit": proc.returncode,
+        "timed_out": timed_out,
+        "limit_seconds": deadline,
+        "start_ns": start,
+        "end_ns": end,
+        "elapsed_ns": end - start,
+        "stages": marks,
+        "samples": samples,
+        "processes_at_deadline": at_deadline,
+        "last_sample_before_deadline": next(
+            (row for row in reversed(samples) if int(str(row["ns"])) <= end), None
+        ),
+        "before": before,
+        "after": activity(db),
+        "group_reaped": True,
+    }
 
 
 def main() -> None:

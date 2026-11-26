@@ -146,8 +146,21 @@ SELECT NOT EXISTS (
        )
 )
 """)
-# Match EXECUTE ACL grantees against that database's complete family. PUBLIC
-# (OID zero) and superuser are the two cases that do not require an edge.
+# Owners can re-grant every privilege, even after revoking their own ordinary
+# access. None of these object classes has a reviewed runtime-owner exception.
+# pg_class includes ordinary/partitioned/foreign tables, views and sequences.
+SAFE_OBJECT_OWNERS: Final = ROLE_FAMILY + sql.SQL("""
+SELECT NOT EXISTS (
+    SELECT FROM family f WHERE f.login <> 'clinic_owner' AND (
+        EXISTS (SELECT FROM pg_catalog.pg_class c WHERE c.relowner = f.oid)
+        OR EXISTS (SELECT FROM pg_catalog.pg_type t WHERE t.typowner = f.oid)
+        OR EXISTS (SELECT FROM pg_catalog.pg_largeobject_metadata l
+                   WHERE l.lomowner = f.oid)
+    )
+)
+""")
+# An owned routine must enter the exact owner/signature policy regardless of
+# namespace, extension, or ACL. Never fold owner authority into ordinary EXECUTE.
 RESTRICTED_ROUTINES: Final = ROLE_FAMILY + sql.SQL("""
 , extension_members AS MATERIALIZED (
     SELECT p.oid, p.pronamespace FROM pg_depend d JOIN pg_proc p ON p.oid = d.objid
@@ -167,6 +180,7 @@ RESTRICTED_ROUTINES: Final = ROLE_FAMILY + sql.SQL("""
     WHERE (n.nspname = 'clinic_app'
            AND (NOT EXISTS (SELECT FROM extension_members e WHERE e.oid = p.oid)
                 OR p.oid::regprocedure::text = ANY(%s)))
+       OR p.proowner IN (SELECT oid FROM family WHERE login <> 'clinic_owner')
        OR ((n.nspname = 'pg_catalog'
            OR n.oid IN (SELECT extnamespace FROM pg_extension)
            OR n.oid IN (SELECT pronamespace FROM extension_members))
@@ -193,11 +207,15 @@ SELECT p.signature, pg_get_function_identity_arguments(p.oid),
        ARRAY(SELECT CASE WHEN grantee = 0 THEN 'PUBLIC'
                          ELSE pg_get_userbyid(grantee)::text END
              FROM unnest(p.executors) AS grantee),
-       p.delegators, reached.logins
+       p.delegators, reached.logins, reached.owner_roots
 FROM restricted p CROSS JOIN LATERAL (
-    SELECT array_agg(DISTINCT family.login) AS logins
+    SELECT array_agg(DISTINCT family.login) AS logins,
+           ARRAY_AGG(DISTINCT family.login) FILTER (
+               WHERE family.login <> 'clinic_owner' AND family.oid = p.proowner
+           ) AS owner_roots
     FROM family JOIN pg_roles role USING (oid)
     WHERE role.rolsuper OR 0 = ANY(p.executors) OR family.oid = ANY(p.executors)
+       OR (family.login <> 'clinic_owner' AND family.oid = p.proowner)
 ) reached
 WHERE reached.logins IS NOT NULL
 """)
@@ -279,13 +297,26 @@ def _valid_identity(signature: str, arguments: str) -> bool:
     )
 
 
-def _parse_audience(field: str) -> frozenset[str]:
+def _parse_audience(field: str, owner: str) -> frozenset[str]:
     parts = field.split(",")
     values = frozenset(parts)
-    if len(parts) != len(values) or not values <= _AUDIENCES:
+    if len(parts) != len(values) or not values <= _AUDIENCES | {owner}:
         message = "invalid routine audience"
         raise ValueError(message)
     return values
+
+
+def _approved_owner(owner: str, grantable: frozenset[str]) -> bool:
+    if owner in {"clinic_owner", "clinic_resolver"}:
+        return True
+    # A reviewed exception for another owner must explicitly authorize that
+    # exact principal's implicit delegation. Never accept a pattern or PUBLIC.
+    return (
+        bool(re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", owner))
+        and not owner.startswith("pg_")
+        and owner not in {"public", "postgres", "clinic_super", "clinic_posture"}
+        and owner in grantable
+    )
 
 
 def _read_policy(path: Path) -> dict[_RoutineKey, _ExecutePolicy]:
@@ -306,12 +337,12 @@ def _read_policy(path: Path) -> dict[_RoutineKey, _ExecutePolicy]:
             defined,
             reason,
         ) = line.split("\t")
-        grantees = _parse_audience(roles)
-        grantable = _parse_audience(options) if options != "-" else frozenset()
+        grantees = _parse_audience(roles, owner)
+        grantable = _parse_audience(options, owner) if options != "-" else frozenset()
         if (
             signature in signatures
             or not _valid_identity(signature, arguments)
-            or owner not in {"clinic_owner", "clinic_resolver"}
+            or not _approved_owner(owner, grantable)
             or not re.fullmatch("[0-9a-f]{64}", digest)
             or not grantable <= grantees
             or not all(
@@ -341,6 +372,8 @@ def _role_authority_safe(connection: psycopg.Connection, logins: list[str]) -> b
     _stage("role-query")
     if connection.execute(SAFE_ROLE_FAMILY_QUERY, (logins,)).fetchone() != (True,):
         return False
+    if connection.execute(SAFE_OBJECT_OWNERS, (logins,)).fetchone() != (True,):
+        return False
     return _routine_authority_safe(connection, logins)
 
 
@@ -355,12 +388,14 @@ def _routine_authority_safe(connection: psycopg.Connection, logins: list[str]) -
         grantees,
         grantable,
         roots,
+        owner_roots,
     ) in connection.execute(RESTRICTED_ROUTINES, (logins, [key[0] for key in allowed])):
         policy = allowed.get((signature, arguments, owner, digest))
         if (
             not policy
             or not set(grantees) <= policy.grantees
             or not set(grantable) <= policy.grantable
+            or (owner_roots and owner not in policy.grantable)
         ):
             return False
         # The migration owner deliberately reaches the app and resolver. A
@@ -368,6 +403,8 @@ def _routine_authority_safe(connection: psycopg.Connection, logins: list[str]) -
         for root in roots:
             audience = "clinic_agent" if root.startswith("clinic_agent_") else root
             if audience != "clinic_owner" and audience not in policy.grantees:
+                return False
+            if root in (owner_roots or ()) and audience not in policy.grantable:
                 return False
     return True
 

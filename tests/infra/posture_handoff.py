@@ -61,6 +61,9 @@ def _run(lease: ProvisionedDatabase, *, blocked: bool = False) -> dict[str, obje
             (sys.executable, "-m", "infra.posture_trace_worker"),
             capture_output=True,
             check=True,
+            # Outer bound for interpreter/monitor startup and teardown; the
+            # independently timed Make verdict below remains strictly <15 s.
+            timeout=MAKE_TIMEOUT_SECONDS + 16,
             cwd=Path(__file__).resolve().parents[2],
         )
     value = json.loads(result.stdout)
