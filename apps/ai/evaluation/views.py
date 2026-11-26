@@ -141,6 +141,7 @@ def _review(
                 clinic_id=clinic_id,
                 run_id=run.pk,
                 case_id=selected,
+                review_source="interactive",
                 labels={
                     name: form.cleaned_data[name]
                     for name in (*ERROR_LABELS, "correction_ms")

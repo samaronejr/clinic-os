@@ -291,7 +291,9 @@ for rejected decisions (the decline operation). Applied text uses an encrypted
 JSON string, so explicit deletion retains `""` rather than losing its payload to
 SQL NULL. Rejection stores no applied text. Accepted and modified AI origin remains
 visible on the encounter after local finalization, under the clinical note's
-reader policy. Finalization and signing remain separate explicit workflows.
+reader policy. Newest uses appear first; native page controls post the exact
+encounter and page number to the same authorized chart read. Finalization and
+signing remain separate explicit workflows.
 The four new tables are FORCE-RLS, immutable, non-truncatable and included in the
 recovery manifest. `0005_note_drafts` is additive, non-atomic and irreversible
 because it introduces encrypted columns; rollback uses a verified restore.

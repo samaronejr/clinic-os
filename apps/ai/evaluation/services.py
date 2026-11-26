@@ -14,6 +14,13 @@ from django.utils import timezone
 
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError
 from apps.ai.evaluation.corpus import CAPABILITIES, load_corpus
+from apps.ai.evaluation.origin import (
+    PURPOSE_CAPABILITIES,
+    domain_protocol_hash,
+    packet_bytes,
+    run_origin,
+    verify_receipt,
+)
 from apps.ai.evaluation.protocol import (
     EvaluationInputError,
     threshold_document,
@@ -36,7 +43,9 @@ from apps.ai.models import (
     ModelConfiguration,
 )
 from apps.audit.services import record_phase1_event
+from apps.core.secrets import secret_store
 from apps.identity.models import Clinic
+from apps.tenancy.envelope import KEK_SECRET_NAME, protect
 
 __all__ = (
     "PURPOSE_CAPABILITIES",
@@ -62,17 +71,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 type ReviewSlot = Literal["rater_one", "rater_two", "adjudicator"]
 type ManagementMode = Literal["owner", "clinical_owner", "clinician"]
-PURPOSE_CAPABILITIES = {
-    "scribe_asr": "AI-01",
-    "scribe_draft": "AI-01",
-    "brief": "AI-02",
-    "extraction": "AI-03",
-    "front_desk": "AI-04",
-    "care_coordination": "AI-05",
-    "revenue_cycle": "AI-06",
-    "analyst": "AI-07",
-    "decision_support": "AI-08",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +146,7 @@ def register_protocol(
         ],
         thresholds_document=document,
         thresholds_sha256=threshold_hash(thresholds),
+        domain_protocol_sha256=domain_protocol_hash(),
         registered_by_id=actor,
         clinical_owner_ref=clinical_owner_ref,
     )
@@ -230,6 +229,7 @@ def _start_run(
     versions = candidate_versions(configuration)
     if (
         corpus.sha256 != protocol.corpus_sha256
+        or protocol.domain_protocol_sha256 != domain_protocol_hash()
         or PURPOSE_CAPABILITIES.get(configuration.purpose) != protocol.capability
         or configuration.state == "retired"
         or versions["prompt"] != configuration.prompt_sha256
@@ -269,8 +269,14 @@ def store_results(
     corpus = load_corpus(run.protocol.corpus_version)
     cases = results.get("cases")
     failures = results.get("automatic_failures")
+    origin = run_origin(run)
     if (
         run.scored_at is not None
+        or not verify_receipt(results)
+        or run.protocol.domain_protocol_sha256 != domain_protocol_hash()
+        or results.get("origin") != origin
+        or results.get("domain_protocol_sha256") != run.protocol.domain_protocol_sha256
+        or results.get("corpus_version") != run.protocol.corpus_version
         or run.status != "pending"
         or candidate_versions(run.configuration) != run.versions
         or corpus.sha256 != run.protocol.corpus_sha256
@@ -281,16 +287,28 @@ def store_results(
         or results.get("human_review_complete") is not False
         or results.get("tool_calls") != 0
         or not isinstance(cases, list)
-        or [item.get("id") for item in cases if isinstance(item, dict)]
-        != [case["id"] for case in corpus.cases]
+        or len(cases) != len(corpus.cases)
+        or any(
+            not isinstance(item, dict)
+            or item.get("origin") != origin
+            or type(item.get("schema_valid")) is not bool
+            or any(item.get(key) != value for key, value in case.items())
+            for item, case in zip(cases, corpus.cases, strict=True)
+        )
         or type(failures) is not int
-        or not 0 <= failures <= len(corpus.cases)
+        or failures != sum(not item["schema_valid"] for item in cases)
     ):
         raise EvaluationInputError
-    run.sample_results = results
-    run.automatic_failures = failures
-    run.scored_at = timezone.now()
-    run.save(update_fields=("sample_results", "automatic_failures", "scored_at"))
+    envelope = protect(
+        purpose="ai.evaluation.samples.v1",
+        plaintext=packet_bytes(results),
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_eval_store(%s,%s,%s,%s)",
+            [clinic_id, run.pk, envelope, secret_store().get_secret(KEK_SECRET_NAME)],
+        )
+    run.refresh_from_db()
     record_phase1_event(
         "ai.evaluation.scored", clinic_id=clinic_id, affected_record_id=run.pk
     )
@@ -310,7 +328,12 @@ def review_slot(run: EvaluationRun, actor: UUID) -> ReviewSlot:
 
 @transaction.atomic
 def rate_case(
-    *, clinic_id: UUID, run_id: UUID, case_id: str, labels: Mapping[str, int]
+    *,
+    clinic_id: UUID,
+    run_id: UUID,
+    case_id: str,
+    labels: Mapping[str, int],
+    review_source: Literal["interactive", "scripted", "unattested"] = "unattested",
 ) -> EvaluationRating:
     """Persist one blinded vote; the SQL trigger enforces independent ordering."""
     actor = evaluation_staff(clinic_id=clinic_id, mode="clinician")
@@ -323,6 +346,7 @@ def rate_case(
         slot=review_slot(run, actor),
         user_id=actor,
         labels=validate_labels(dict(labels)),
+        review_source=review_source,
     )
     record_phase1_event(
         "ai.evaluation.rated", clinic_id=clinic_id, affected_record_id=rating.pk

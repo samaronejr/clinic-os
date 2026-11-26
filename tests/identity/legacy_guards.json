@@ -538,6 +538,13 @@
       "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
     },
     {
+      "symbol": "apps.ai.evaluation.runner.score_run",
+      "signals": ["authentication"],
+      "kind": "delegated",
+      "enforced_by": ["apps.identity.management.base.assert_owner_database_role"],
+      "reason": "Only the owner database scorer can compute and commit exact observations; runtime is refused before scoring or issuing. Covered by tests/ai/test_native_score_receipts.py."
+    },
+    {
       "symbol": "apps.ai.evaluation.services.decide_change",
       "signals": [
         "denial"
@@ -593,7 +600,8 @@
     {
       "symbol": "apps.ai.evaluation.services.store_results",
       "signals": [
-        "denial"
+        "denial",
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
@@ -12494,7 +12502,8 @@
     "clinic_app.ai_eval_record_guard": {
       "discovery": {
         "migrations": [
-          "apps/ai/migrations/_evaluation_sql.py"
+          "apps/ai/migrations/_evaluation_sql.py",
+          "apps/ai/migrations/_scorer_commitment_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -12509,22 +12518,13 @@
       },
       "kind": "domain_protocol",
       "probes": [
-        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
         "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
-        "test_two_independent_reviews_and_explicit_owner_change_are_required",
         "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
-        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
         "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
-        "test_adjudicator_only_receives_votes_after_both_independent_reviews",
-        "test_offline_approval_cannot_skip_shadow",
-        "test_progression_requires_reviewed_preceding_stage_and_separate_autonomy",
-        "test_native_skipped_stage_and_foreign_receipt_inserts_are_refused",
-        "test_revoked_approval_membership_invalidates_the_stage_and_its_receipt",
-        "test_kill_is_durable_across_reenable_and_requires_new_stage_evidence",
-        "test_revoked_approver_blocks_after_approval",
-        "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
+        "test_runtime_cannot_insert_precommitted_evaluation_run",
+        "test_issued_pending_commitment_cannot_be_replaced"
       ],
-      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+      "reason": "The row guard checks protocol changes, ratings and run assignments. A runtime creator's precommitted INSERT and an owner's replacement on an issued, still-unscored run both return 23514 / invalid evaluation receipt without changing the run set or the issued value. The same runtime INSERT with NULL is admitted."
     },
     "clinic_app.ai_eval_run_visible": {
       "discovery": {
@@ -12580,6 +12580,7 @@
           "clinic_app.ai_eval_rating_visible",
           "clinic_app.ai_eval_record_guard",
           "clinic_app.ai_eval_run_visible",
+          "clinic_app.ai_eval_store",
           "clinic_app.ai_rollout_status_for"
         ],
         "signatures": [
@@ -12609,6 +12610,30 @@
         "test_internal_stage_reader_is_not_a_runtime_cross_tenant_reader"
       ],
       "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_store": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_origin_sql.py",
+          "apps/ai/migrations/_scorer_commitment_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, subject uuid, samples bytea, kek text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_shadow_rejects_offline_samples_and_forged_counts",
+        "test_native_writer_refuses_nonissued_or_spent_score"
+      ],
+      "reason": "A current authorized creator may spend the pending run's single owner-scorer-issued commitment only on the exact signed packet. Native missing/invalid, other-run, replayed and altered input/scorer observations are indistinguishably denied without mutation."
     },
     "clinic_app.ai_eval_verdict": {
       "discovery": {
@@ -15429,6 +15454,7 @@
           "clinic_app.agent_audit",
           "clinic_app.ai_authorize_retained_proposal",
           "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_eval_store",
           "clinic_app.ai_front_desk_audit",
           "clinic_app.ai_front_desk_verify",
           "clinic_app.ai_rollout_authority",
@@ -19096,6 +19122,7 @@
         "resolvers": [
           "clinic_app.ai_authorize_effect",
           "clinic_app.ai_authorize_retained_proposal",
+          "clinic_app.ai_eval_store",
           "clinic_app.ai_front_desk_authorize",
           "clinic_app.ai_front_desk_enqueue",
           "clinic_app.ai_front_desk_finish",

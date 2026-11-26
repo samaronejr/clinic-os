@@ -1,15 +1,19 @@
 """Bind evaluation SQL discovery to executed real-role and workflow tests."""
 
+from collections.abc import Callable
+
 from ai import (
     test_agent_execution,
     test_evaluation_authority,
+    test_evaluation_fidelity,
     test_evaluation_native,
     test_evaluation_runtime,
+    test_native_score_receipts,
     test_rollout,
     test_rollout_posture,
 )
 
-CASES = {
+CASES: dict[str, Callable[..., None]] = {
     case.__name__: case
     for case in (
         test_evaluation_authority.test_evaluation_sql_checks_every_stored_role_and_exact_clinic,
@@ -40,7 +44,6 @@ SQL_PROTOCOL_ORACLES = {
         "clinic_app.ai_eval_finalize",
         "clinic_app.ai_eval_model_gate",
         "clinic_app.ai_eval_rating_visible",
-        "clinic_app.ai_eval_record_guard",
         "clinic_app.ai_eval_run_visible",
         "clinic_app.ai_eval_staff",
         "clinic_app.ai_eval_verdict",
@@ -56,6 +59,35 @@ SQL_PROTOCOL_ORACLES = {
 SQL_PROTOCOL_ORACLES["clinic_app.ai_evaluation_rollout_guard"] = [
     *_SHARED_CASES,
     _ROW_GUARD_CASE,
+]
+_ORIGIN_CASE = (
+    test_evaluation_fidelity.test_shadow_rejects_offline_samples_and_forged_counts
+)
+_STORE_CASE = (
+    test_native_score_receipts.test_native_writer_refuses_nonissued_or_spent_score
+)
+_INSERT_CASE = (
+    test_native_score_receipts.test_runtime_cannot_insert_precommitted_evaluation_run
+)
+_REISSUE_CASE = (
+    test_native_score_receipts.test_issued_pending_commitment_cannot_be_replaced
+)
+CASES.update(
+    {
+        case.__name__: case
+        for case in (_ORIGIN_CASE, _STORE_CASE, _INSERT_CASE, _REISSUE_CASE)
+    }
+)
+SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_store"] = [
+    _ORIGIN_CASE.__name__,
+    _STORE_CASE.__name__,
+]
+SQL_PROTOCOL_ORACLES["clinic_app.ai_eval_record_guard"] = [
+    "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+    "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+    "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+    _INSERT_CASE.__name__,
+    _REISSUE_CASE.__name__,
 ]
 ACTOR_PROTOCOL_ORACLES = dict.fromkeys(
     (

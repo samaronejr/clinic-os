@@ -22,6 +22,7 @@ class EvaluationProtocol(TenantScopedModel):
     case_manifest = models.JSONField()
     thresholds_document = models.TextField()
     thresholds_sha256 = models.CharField(max_length=64)
+    domain_protocol_sha256 = models.CharField(max_length=64, default="")
     registered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
@@ -65,6 +66,9 @@ class EvaluationRun(TenantScopedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     sample_results = EncryptedJSONField(purpose="ai.evaluation.samples.v1", null=True)
+    # No protected content: one owner-issued commitment to the exact signed
+    # plaintext packet. Runtime has neither an issue function nor UPDATE here.
+    producer_commitment = models.BinaryField(null=True, editable=False)
     automatic_failures = models.PositiveSmallIntegerField(default=0)
     scored_at = models.DateTimeField(null=True)
     status = models.CharField(max_length=8, default="pending")
@@ -86,6 +90,7 @@ class EvaluationRating(TenantScopedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     labels = models.JSONField()
+    review_source = models.CharField(max_length=16, default="unattested")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

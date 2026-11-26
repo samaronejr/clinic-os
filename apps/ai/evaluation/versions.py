@@ -41,7 +41,12 @@ def governed_paths() -> tuple[str, ...]:
                 for path in (ROOT / directory).rglob("*")
                 if path.is_file() and path.suffix in {".py", ".json", ".md", ".sql"}
             }
-            | {"uv.lock", "pyproject.toml"}
+            | {
+                "uv.lock",
+                "pyproject.toml",
+                "locale/pt_BR/LC_MESSAGES/django.po",
+                "locale/pt_BR/LC_MESSAGES/django.mo",
+            }
         )
     )
 

@@ -13,7 +13,7 @@ import pytest
 from apps.ai.adapters import SyntheticProvider, register_provider
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError, Purpose
 from apps.ai.evaluation import services
-from apps.ai.evaluation.runner import evaluate
+from apps.ai.evaluation.runner import score_run
 from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AIInvocation, EvaluationRun, ModelChangeRequest
 from apps.ai.owner import set_global_switch, transition_model
@@ -66,13 +66,7 @@ def stage_world(world: EvaluationWorld, change: ModelChangeRequest) -> Evaluatio
             change_id=change.pk,
             reviewers=world.reviewers,
         )
-    results = evaluate(
-        capability=world.protocol.capability,
-        corpus_version=world.protocol.corpus_version,
-        provider_key=world.configuration.provider,
-        model_id=world.configuration.model_id,
-        purpose=Purpose(world.configuration.purpose),
-    )
+    results = score_run(run)
     with as_reviewer(world, world.owner):
         run = services.store_results(
             clinic_id=world.clinic, run_id=run.pk, results=results

@@ -13,5 +13,12 @@
     </li>
     {% endfor %}
   </ul>
+  {% if page.has_other_pages %}
+  <form method="post" action="{% url 'ehr:encounter' clinic_id %}#ai-use-title">
+    {% csrf_token %}<input type="hidden" name="action" value="show"><input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+    {% if page.has_previous %}<button class="button button--secondary" name="ai_use_page" value="{{ page.previous_page_number }}">{% trans "Newer AI use records" %}</button>{% endif %}
+    {% if page.has_next %}<button class="button button--secondary" name="ai_use_page" value="{{ page.next_page_number }}">{% trans "Older AI use records" %}</button>{% endif %}
+  </form>
+  {% endif %}
 </section>
 {% endif %}

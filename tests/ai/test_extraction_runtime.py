@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.ai.contracts import GatewayAccessDeniedError, Purpose
+from apps.ai.contracts import GatewayAccessDeniedError, Price, Purpose
 from apps.ai.controls import set_organization_policy
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.extraction_views import extraction_view
 from apps.ai.models import ExtractionCandidateRecord, ExtractionJob
+from apps.ai.owner import ModelTerms
 from apps.ai.policy import OrganizationPolicy
 from apps.core.integration import execute_operation
 from apps.identity.clinic_configuration import latest_configuration
@@ -27,7 +28,7 @@ from django.urls import resolve, reverse
 from django.utils import timezone
 
 from ai.retained_rollout_support import authorize_native
-from ai.support import DEFAULT_BUDGET, model, seed
+from ai.support import DEFAULT_BUDGET, activate_reviewed_model, seed
 from ai.test_extraction import pdf_fixture
 from auth.stepup_test_support import verified_request
 from ehr.test_autosave import as_actor
@@ -49,11 +50,32 @@ def extracted_job(
     content_type: str = "application/pdf",
     world: World | None = None,
 ) -> ExtractionJob:
+    enable_extraction(rbac_graph, monkeypatch)
+    return collect_enabled_job(
+        rbac_graph, data=data, content_type=content_type, world=world
+    )
+
+
+def enable_extraction(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    recorded_scan: bool = False,
+) -> None:
+    """Finish genuine model evaluation before any test injects a dispatch fault."""
     gateway = seed(rbac_graph, monkeypatch)
-    model(
+    activate_reviewed_model(
         organization=rbac_graph.organization_a,
         clinic=rbac_graph.clinic_a,
-        purpose=Purpose.EXTRACTION,
+        terms=ModelTerms(
+            purpose=Purpose.EXTRACTION,
+            provider="recorded_fixture" if recorded_scan else "synthetic",
+            model_id="extraction-fixture-v1" if recorded_scan else "synthetic-v1",
+            region="br-synthetic",
+            retention_terms="synthetic-no-retention",
+            training_terms="synthetic-no-training",
+            price=Price(3, 5, 1, 7),
+        ),
     )
     with as_actor(rbac_graph, gateway.administrator):
         configuration = latest_configuration(rbac_graph.clinic_a)
@@ -68,6 +90,16 @@ def extracted_job(
                 purpose_budgets=((Purpose.EXTRACTION.value, 10_000_000),),
             ),
         )
+
+
+def collect_enabled_job(
+    rbac_graph: RbacGraph,
+    *,
+    data: bytes | None = None,
+    content_type: str = "application/pdf",
+    world: World | None = None,
+) -> ExtractionJob:
+    """Drive real admission, dispatch and collection on the already-approved model."""
     world = ordered(rbac_graph) if world is None else world
     with as_actor(rbac_graph, rbac_graph.physician):
         result = ingest_result(

@@ -6,6 +6,7 @@
 <main>
   <h1>{% trans "AI evaluation report" %}</h1>
   <p>{{ report.limitations }}</p>
+  {% if report.review_kind == "scripted_engineering" %}<p>{% trans "Scripted votes completed the review workflow. No human reviewed these samples." %}</p>{% elif not report.human_review_complete %}<p>{% trans "Human review is not attested for all votes." %}</p>{% endif %}
   <dl>
     <dt>{% trans "Capability" %}</dt><dd>{{ report.capability }}</dd>
     <dt>{% trans "Evaluation status" %}</dt><dd>{{ status }}</dd>

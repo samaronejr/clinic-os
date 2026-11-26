@@ -7,21 +7,26 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.ai.contracts import Purpose
 from apps.core import workspace
 from apps.core.navigation import granted_permissions
+from apps.ehr.finalization import finalize_version
 from apps.ehr.models import ClinicalDocumentVersion
 from apps.ehr.services import create_draft, record_clinical_note
 from apps.scribe.models import DraftSectionSuggestion, ReviewDecision
+from apps.scribe.templatetags import scribe_review
 from apps.tenancy.db import tenant_context
 from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext
 
+from ai.support import model
+from auth.stepup_test_support import verified_request
 from core.test_workspace_boundaries import _normalized_denial
 from otp_test_support import runtime_role
 from renewal.test_encounters import physician_client
 from scribe.draft_support import generate
-from scribe.test_draft_runtime import draft_world
+from scribe.test_draft_runtime import accept, draft_world
 from scribe.test_ingest import media
 from scribe.test_refusals import snapshot
 from scribe.test_transcript_views import bind, other_encounter
@@ -132,6 +137,67 @@ def test_native_review_shows_sources_diff_and_persistent_ai_origin(
             assert (
                 ClinicalDocumentVersion.objects.get(pk=scope.version).state == "draft"
             )
+
+
+def test_finalized_chart_pages_through_distinct_reviewed_configurations(
+    draft_world: DraftWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scope, graph = draft_world, draft_world.graph
+    clinic = graph.clinic_a
+    origins = []
+    # Exercise the production page boundary with two real, governed generations;
+    # the companion 101-record projection test covers the shipped page size.
+    monkeypatch.setattr(scribe_review, "HISTORY_PAGE_SIZE", 1)
+    for generation in range(2):
+        if generation:
+            model(
+                organization=graph.organization_a,
+                clinic=clinic,
+                purpose=Purpose.SCRIBE_DRAFT,
+            )
+        draft = generate(scope)
+        with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+            suggestion = DraftSectionSuggestion.objects.get(
+                draft=draft, section="subjective"
+            )
+            origins.append(
+                accept(scope, suggestion).capability_snapshot["configuration_id"]
+            )
+    assert origins[0] != origins[1]
+    request = verified_request(graph.physician)
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        version = ClinicalDocumentVersion.objects.get(pk=scope.version)
+        recorded = record_clinical_note(
+            clinic_id=clinic,
+            version_id=version.pk,
+            expected_revision=version.revision,
+            content={key: value or "Sintético" for key, value in version.soap.items()},
+        )
+        finalized = finalize_version(
+            clinic_id=clinic,
+            version_id=version.pk,
+            expected_revision=recorded.revision,
+            request=request,
+        )
+        assert finalized.state == "finalized"
+    with physician_client(graph) as client:
+        bind(graph, scope.recording, client, monkeypatch)
+        for index in (0, 1):
+            response = client.post(
+                reverse("ehr:encounter", args=(clinic,)),
+                {
+                    "action": "show",
+                    "encounter_id": str(scope.recording.encounter),
+                    "ai_use_page": str(index + 1),
+                },
+            )
+            assert response.status_code == 200
+            assert response.content.count(b"data-ai-use-record") == 1
+            assert origins[1 - index].encode() in response.content
+            assert origins[index].encode() not in response.content
+            assert b'name="ai_use_page"' in response.content
+            assert b'data-state="finalized"' in response.content
 
 
 @pytest.mark.parametrize("admitted", [False, True], ids=["physician", "automation"])

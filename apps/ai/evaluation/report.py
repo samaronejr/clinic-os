@@ -14,6 +14,7 @@ from apps.ai.evaluation.metrics import (
     cohens_kappa,
     wilson_interval,
 )
+from apps.ai.evaluation.origin import protocol_identity
 from apps.ai.evaluation.protocol import (
     CLINICAL_LABELS,
     ERROR_LABELS,
@@ -38,10 +39,16 @@ def build_report(*, clinic_id: UUID, run_id: UUID) -> dict[str, object]:
     run = authorized_run(clinic_id=clinic_id, run_id=run_id)
     if run.status == "pending" or not isinstance(run.sample_results, dict):
         raise EvaluationInputError
-    ratings = {
-        (row.case_id, row.slot): validate_labels(row.labels)
-        for row in EvaluationRating.objects.filter(run=run)
-    }
+    votes = list(EvaluationRating.objects.filter(run=run))
+    ratings = {(row.case_id, row.slot): validate_labels(row.labels) for row in votes}
+    sources = {row.review_source for row in votes}
+    review_kind = (
+        "scripted_engineering"
+        if sources == {"scripted"}
+        else "interactive_engineering"
+        if sources == {"interactive"}
+        else "mixed_or_unattested"
+    )
     thresholds = thresholds_for(run)
     cases = cast("list[dict[str, object]]", run.sample_results["cases"])
     counts = dict.fromkeys(ERROR_LABELS, 0)
@@ -107,12 +114,19 @@ def build_report(*, clinic_id: UUID, run_id: UUID) -> dict[str, object]:
         "corpus_version": run.protocol.corpus_version,
         "corpus_sha256": run.protocol.corpus_sha256,
         "thresholds_sha256": run.protocol.thresholds_sha256,
+        "domain_protocol_sha256": run.protocol.domain_protocol_sha256,
+        "protocol_sha256": protocol_identity(run.protocol)
+        if run.protocol.domain_protocol_sha256
+        else None,
+        "run_id": str(run.pk),
         "thresholds": thresholds,
         "registered_at": run.protocol.created_at.isoformat(),
         "scored_at": run.scored_at.isoformat() if run.scored_at else None,
         "cases": total,
         "encounters": len(errors),
-        "human_review_complete": True,
+        "review_kind": review_kind,
+        "vote_workflow_complete": True,
+        "human_review_complete": review_kind == "interactive_engineering",
         "adjudicated_disagreements": adjudications,
         "kappa": cohens_kappa(first, second),
         "rates": rates,
@@ -147,8 +161,7 @@ def build_report(*, clinic_id: UUID, run_id: UUID) -> dict[str, object]:
             "Synthetic engineering fixtures and scripted review are not representative "
             "clinical validation. Zero observed critical errors is a gate, not a "
             "safety "
-            "claim. Real-world performance and clinical thresholds require EG-3/EG-11. "
-            "AI-05/AI-06 fixture contracts do not implement their future workflows."
+            "claim. Real-world performance and clinical thresholds require EG-3/EG-11."
         ),
     }
 

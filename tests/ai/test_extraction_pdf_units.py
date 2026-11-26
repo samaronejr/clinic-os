@@ -15,7 +15,6 @@ from apps.ai.extraction_contracts import (
 )
 from apps.ai.extraction_documents import (
     document_input,
-    recorded_document_extraction,
     source_regions,
     synthetic_document_extraction,
 )
@@ -35,7 +34,11 @@ from ai.test_extraction import (
     pdf_with_stream,
     scan_fixture,
 )
-from ai.test_extraction_runtime import extracted_job
+from ai.test_extraction_runtime import (
+    collect_enabled_job,
+    enable_extraction,
+    extracted_job,
+)
 from auth.stepup_test_support import verified_request
 from ehr.test_autosave import as_actor
 
@@ -151,6 +154,35 @@ def _post_review(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_split_pdf_numbers_cannot_be_confirmed_even_with_a_manual_unit(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values = ("1 234,50", "12 ,34", "12 .34", "12 34", r"1\240234,50")
+    draws = " ".join(f"(lab{i}: {v} mg/dL) Tj 0 -30 Td" for i, v in enumerate(values))
+    data = pdf_with_stream(stream=f"BT /F1 12 Tf 40 740 Td {draws} ET", win_ansi=True)
+    job = extracted_job(rbac_graph, monkeypatch, data=data)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        rows = list(job.candidates.order_by("position"))
+        assert len(rows) == len(values)
+        for row in rows:
+            assert (row.status, row.payload["parsed_value"], row.payload["unit"]) == (
+                "ambiguous",
+                "",
+                "",
+            )
+            with pytest.raises(ExtractionInputError):
+                review_extraction(
+                    clinic_id=job.clinic_id,
+                    candidate_id=row.pk,
+                    decision="confirmed",
+                    manual_unit="mg/dL",
+                )
+        assert not ResultObservation.objects.filter(
+            version_id=job.result_version_id
+        ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_pdf_swap_is_not_stored_or_rendered_as_an_ai_unit(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -161,8 +193,9 @@ def test_pdf_swap_is_not_stored_or_rendered_as_an_ai_unit(
         row["raw_text"] = "glucose: 123,40 g/dL [70,0 - 99,0]"
         return json.dumps(reply)
 
+    enable_extraction(rbac_graph, monkeypatch)
     monkeypatch.setattr("apps.ai.adapters.synthetic_document_extraction", forged_reply)
-    job = extracted_job(rbac_graph, monkeypatch)
+    job = collect_enabled_job(rbac_graph)
     with as_actor(rbac_graph, rbac_graph.physician):
         row = job.candidates.get(position=0)
         assert (row.status, row.payload["value"], row.payload["unit"]) == (
@@ -285,13 +318,14 @@ def test_native_pdf_filing_rejects_a_forged_observation_unit_without_manual_entr
 def test_reviewed_image_ocr_still_confirms_its_bound_unit(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        "apps.ai.adapters.synthetic_document_extraction", recorded_document_extraction
-    )
-    job = extracted_job(
-        rbac_graph, monkeypatch, data=scan_fixture(), content_type="image/png"
-    )
+    enable_extraction(rbac_graph, monkeypatch, recorded_scan=True)
+    job = collect_enabled_job(rbac_graph, data=scan_fixture(), content_type="image/png")
     with as_actor(rbac_graph, rbac_graph.physician):
+        configuration = job.invocation.configuration
+        assert (configuration.provider, configuration.model_id) == (
+            "recorded_fixture",
+            "extraction-fixture-v1",
+        )
         row = job.candidates.get(position=0)
         assert row.payload["unit"] == "mg/dL"
         identifier = review_extraction(

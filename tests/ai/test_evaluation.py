@@ -2,36 +2,47 @@
 
 from __future__ import annotations
 
+import json
+from hashlib import sha256
 from importlib import import_module
 
 import pytest
 from apps.ai.contracts import Price, Purpose
+from apps.ai.evaluation.services import PURPOSE_CAPABILITIES
 from apps.ai.owner import ModelTerms, propose_model, transition_model
 from django.db import DatabaseError, transaction
 
 
-def test_fake_evaluation_is_deterministic_for_every_capability() -> None:
+@pytest.mark.parametrize("purpose", list(Purpose))
+def test_fake_evaluation_is_deterministic_for_every_capability(
+    purpose: Purpose,
+) -> None:
     runner = import_module("apps.ai.evaluation.runner")
-    corpus = import_module("apps.ai.evaluation.corpus")
-    for capability in corpus.CAPABILITIES:
-        first = runner.evaluate(
-            capability=capability,
-            corpus_version="engineering-v1",
-            provider_key="synthetic",
-            model_id="synthetic-v1",
-        )
-        second = runner.evaluate(
-            capability=capability,
-            corpus_version="engineering-v1",
-            provider_key="synthetic",
-            model_id="synthetic-v1",
-        )
-        assert first == second
-        assert first["data_class"] == "synthetic"
-        assert first["real_world_performance"] is False
-        assert first["cases"]
-        assert first["human_review_complete"] is False
-        assert first["tool_calls"] == 0
+    settings = {
+        "capability": PURPOSE_CAPABILITIES[purpose.value],
+        "purpose": purpose,
+        "corpus_version": "engineering-v1",
+        "provider_key": "synthetic",
+        "model_id": "synthetic-v1",
+    }
+    first = runner.evaluate(**settings)
+    second = runner.evaluate(**settings)
+    assert first == second
+    digests = [
+        sha256(
+            json.dumps(
+                report, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        ).hexdigest()
+        for report in (first, second)
+    ]
+    assert digests[0] == digests[1]
+    assert first["data_class"] == "synthetic"
+    assert first["real_world_performance"] is False
+    assert first["cases"]
+    assert first["human_review_complete"] is False
+    assert first["tool_calls"] == 0
+    assert first["automatic_failures"] == 0
 
 
 def test_error_metrics_preserve_insertions_and_unknown_denominators() -> None:

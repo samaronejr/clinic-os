@@ -163,7 +163,9 @@ def test_two_independent_reviews_and_explicit_owner_change_are_required(
     )
     assert report["cases"] == 12
     assert report["encounters"] == 4
-    assert report["human_review_complete"] is True
+    assert report["vote_workflow_complete"] is True
+    assert report["human_review_complete"] is False
+    assert report["review_kind"] == "scripted_engineering"
     assert report["real_world_performance"] is False
     assert report["external_gates_satisfied"] == []
     assert report["thresholds_sha256"] == world.protocol.thresholds_sha256

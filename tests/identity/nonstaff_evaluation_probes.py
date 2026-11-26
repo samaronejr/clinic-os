@@ -5,13 +5,14 @@ from __future__ import annotations
 import io
 from dataclasses import replace
 from functools import partial
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from apps.ai.artifacts import create_input
 from apps.ai.contracts import GatewayAccessDeniedError, GatewayRefusedError, Purpose
 from apps.ai.controls import set_organization_policy
 from apps.ai.evaluation import services, views
+from apps.ai.evaluation.runner import score_run
 from apps.ai.owner import set_global_switch, transition_model
 from apps.ai.services import invoke
 from apps.identity.clinic_configuration import (
@@ -22,6 +23,7 @@ from apps.identity.clinic_configuration import (
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import UserClinicRole
 from apps.providers.lifecycle import VersionInput, propose_version
+from apps.tenancy.db import tenant_context
 from django.core.management import call_command
 from django.db import connection
 from django.test import RequestFactory
@@ -39,6 +41,7 @@ from auth.stepup_test_support import verified_request
 from identity.delegation_probes import _as_owner
 from identity.nonstaff_differential import DifferentialProbe
 from identity.permission_support import owner_context
+from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -222,7 +225,21 @@ def evaluation_probes(graph: RbacGraph, actor: UUID) -> list[DifferentialProbe]:
     review_request = _request(
         actor, world.clinic, {"action": "open", "run_id": str(run.pk)}
     )
-    results = cast("dict[str, object]", world.run.sample_results)
+    # Score this actor's own pending run outside the rollback-only probe
+    # transactions. Borrowing a genuine completed run's samples is refused.
+    _memberships(graph, actor, ("physician", "owner"))
+    with runtime_role(), tenant_context(actor, world.organization):
+        storage_run = services.start_run(
+            clinic_id=world.clinic,
+            protocol_id=world.protocol.pk,
+            configuration_id=configuration.pk,
+            reviewers=world.reviewers,
+        )
+    results = score_run(storage_run)
+    with _as_owner(), owner_context(world.organization):
+        UserClinicRole.objects.filter(user_id=actor, revoked_at__isnull=True).update(
+            revoked_at=timezone.now()
+        )
 
     def start() -> object:
         return services.start_run(
@@ -234,18 +251,9 @@ def evaluation_probes(graph: RbacGraph, actor: UUID) -> list[DifferentialProbe]:
 
     def prepare_store(allowed: bool) -> None:
         nonlocal run
-        _memberships(graph, actor, ("physician", "owner"))
-        run = services.start_run(
-            clinic_id=world.clinic,
-            protocol_id=world.protocol.pk,
-            configuration_id=world.configuration.pk,
-            reviewers=world.reviewers,
-        )
-        if not allowed:
-            with _as_owner(), owner_context(world.organization):
-                UserClinicRole.objects.filter(user_id=actor).update(
-                    revoked_at=timezone.now()
-                )
+        run = storage_run
+        if allowed:
+            _memberships(graph, actor, ("physician", "owner"))
 
     def prepare_review(allowed: bool, *, owner_on_denial: bool = False) -> None:
         nonlocal run, review_request

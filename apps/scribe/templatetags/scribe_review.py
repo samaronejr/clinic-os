@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django import template
+from django.core.paginator import Paginator
 from django.utils.translation import gettext as _
 
 from apps.ehr.forms import SECTION_LABELS
@@ -14,10 +15,13 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 register = template.Library()
+HISTORY_PAGE_SIZE = 100
 
 
 @register.inclusion_tag("scribe/provenance.html")
-def note_ai_history(clinic_id: UUID, encounter_id: UUID) -> dict[str, object]:
+def note_ai_history(
+    clinic_id: UUID, encounter_id: UUID, page_number: str = ""
+) -> dict[str, object]:
     """Finalized-note readers see origin without access to raw AI artifacts."""
     records = (
         ReviewDecision.objects.filter(
@@ -26,9 +30,13 @@ def note_ai_history(clinic_id: UUID, encounter_id: UUID) -> dict[str, object]:
             action__in=("accepted", "modified"),
         )
         .defer("applied_text")
-        .order_by("created_at", "pk")[:100]
+        .order_by("-created_at", "-pk")
     )
+    page = Paginator(records, HISTORY_PAGE_SIZE).get_page(page_number)
     return {
+        "page": page,
+        "clinic_id": clinic_id,
+        "encounter_id": encounter_id,
         "ai_use_records": [
             {
                 "section": SECTION_LABELS[record.section],
@@ -40,6 +48,6 @@ def note_ai_history(clinic_id: UUID, encounter_id: UUID) -> dict[str, object]:
                 "revision": record.result_revision,
                 "created_at": record.created_at,
             }
-            for record in records
-        ]
+            for record in page
+        ],
     }

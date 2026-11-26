@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
-REFUSALS = ["shadow", "no_autonomy", "global_kill", "source_drift"]
+REFUSALS = ["shadow", "no_autonomy", "global_kill", "source_drift", "copy_drift"]
 
 
 def refuse(desk: Desk, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,11 +76,17 @@ def refuse(desk: Desk, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
     if mode == "global_kill":
         set_global_switch(enabled=False, approved_regions=("br-synthetic",))
         return
-    assert mode == "source_drift"
+    assert mode in {"source_drift", "copy_drift"}
     original = Path.read_bytes
 
     def changed(path: Path) -> bytes:
         content = original(path)
+        if mode == "copy_drift":
+            return (
+                content.replace(b"192 ", b"192!")
+                if path.name == "django.mo"
+                else content
+            )
         return (
             content + b"\n# synthetic front-desk source drift\n"
             if path.as_posix().endswith("apps/ai/front_desk.py")

@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from apps.ai.contracts import Price, Purpose
 from apps.ai.evaluation.corpus import load_corpus
 from apps.ai.evaluation.protocol import ENGINEERING_THRESHOLDS, ERROR_LABELS
-from apps.ai.evaluation.runner import evaluate
+from apps.ai.evaluation.runner import score_run
 from apps.ai.evaluation.services import (
     PURPOSE_CAPABILITIES,
     ReviewerAssignment,
@@ -134,13 +134,7 @@ def review_world(
             configuration_id=configuration.pk,
             reviewers=reviewers,
         )
-    results = evaluate(
-        capability=protocol.capability,
-        corpus_version=protocol.corpus_version,
-        provider_key=configuration.provider,
-        model_id=configuration.model_id,
-        purpose=Purpose(configuration.purpose),
-    )
+    results = score_run(run)
     with runtime_role(), tenant_context(users[0].pk, organization):
         run = store_results(clinic_id=clinic, run_id=run.pk, results=results)
     return EvaluationWorld(
@@ -179,6 +173,7 @@ def complete_reviews(world: EvaluationWorld) -> EvaluationRun:
                     run_id=world.run.pk,
                     case_id=case["id"],
                     labels=no_errors(),
+                    review_source="scripted",
                 )
     with as_reviewer(world, world.owner):
         return finish_run(clinic_id=world.clinic, run_id=world.run.pk)
@@ -215,13 +210,7 @@ def promote_stage(world: EvaluationWorld, change_id: UUID) -> ModelChangeRequest
         run = start_stage_run(
             clinic_id=world.clinic, change_id=change_id, reviewers=world.reviewers
         )
-    results = evaluate(
-        capability=world.protocol.capability,
-        corpus_version=world.protocol.corpus_version,
-        provider_key=world.configuration.provider,
-        model_id=world.configuration.model_id,
-        purpose=Purpose(world.configuration.purpose),
-    )
+    results = score_run(run)
     with as_reviewer(world, world.owner):
         store_results(clinic_id=world.clinic, run_id=run.pk, results=results)
     assert complete_reviews(replace(world, run=run)).status == "passed"
