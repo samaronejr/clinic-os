@@ -3,13 +3,18 @@
 #
 # Builds a disposable database on the job's claimed PostgreSQL, migrates it
 # with the *base* revision, seeds representative data through base service
-# entrypoints, migrates it forward with the candidate, then verifies data
-# preservation, protected-field transformation, FORCE RLS, tenant denial,
-# audit integrity, grants, and migration drift.
+# entrypoints plus the base's populated Phase 1A fixture (byte/audit-chain
+# witnesses), migrates it forward with the candidate while staging one
+# representative synthetic row graph into every model the candidate adds
+# (each at the first migration state where it exists, through historical
+# models), then verifies data preservation, protected-field transformation,
+# FORCE RLS, tenant denial, audit integrity, grants, every staged row's
+# readback and encrypted round trip, and migration drift.
 #
 # Required environment (from ci-postgres.env):
 #   POSTGRES_CONTAINER POSTGRES_PASSWORD POSTGRES_USER POSTGRES_PORT
-#   MIGRATION_DATABASE_URL APP_DATABASE_URL GITHUB_WORKSPACE RUNNER_TEMP
+#   MIGRATION_DATABASE_URL APP_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
+#   GITHUB_WORKSPACE RUNNER_TEMP
 # Usage: migration_upgrade.sh <base_sha>
 set -euo pipefail
 
@@ -19,6 +24,9 @@ readonly work_root="${RUNNER_TEMP:-/tmp}/migration-upgrade"
 readonly base_worktree="$work_root/base"
 readonly upgrade_db="upgrade_rc_$$"
 readonly seed_file="$work_root/seed.json"
+readonly domain_seed_file="$work_root/domain-seed.json"
+readonly witness_file="$work_root/witness-before.json"
+: "${TEST_SUPERUSER_DATABASE_URL:?clinic_super URL required for the witness census}"
 
 mkdir -p "$work_root"
 
@@ -36,11 +44,21 @@ case "$APP_DATABASE_URL" in
     *\?*) app_query="?${APP_DATABASE_URL#*\?}" ;;
 esac
 app_dsn="${app_dsn%/*}/$upgrade_db$app_query"
+# Service principals authenticate as the clinic_agent login (session_user is
+# their registered identity); the stager writes their records over it, as
+# service_principal_context does. An unset password gets a run-local one.
+agent_password_generated=0
+if [ -z "${CLINIC_AGENT_PASSWORD:-}" ]; then
+    CLINIC_AGENT_PASSWORD="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    agent_password_generated=1
+fi
+export CLINIC_AGENT_PASSWORD
+agent_dsn="postgresql://clinic_agent:$CLINIC_AGENT_PASSWORD@${owner_dsn#*@}"
 
 psql_super() {
     docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
-        -e CLINIC_SUPER_PASSWORD \
+        -e CLINIC_SUPER_PASSWORD -e CLINIC_AGENT_PASSWORD \
         "$POSTGRES_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -h localhost -p "$POSTGRES_PORT" \
         -U "$POSTGRES_USER" "$@"
@@ -61,6 +79,18 @@ cleanup() {
         psql_super -d postgres -qc "DROP DATABASE IF EXISTS $upgrade_db" || true
     fi
     rm -rf "$secret_dir"
+    # The run-local clinic_agent password must not outlive the run: clear it
+    # and prove the role holds no password, on success and on failure.
+    if [ "$agent_password_generated" = 1 ]; then
+        psql_super -d postgres -qc "ALTER ROLE clinic_agent PASSWORD NULL" || rc=1
+        if [ "$(psql_super -d postgres -tAc \
+            "SELECT rolpassword IS NULL FROM pg_authid WHERE rolname='clinic_agent'")" != t ]; then
+            echo "migration-upgrade: clinic_agent still holds the run-local password" >&2
+            rc=1
+        else
+            echo "migration-upgrade: run-local clinic_agent password removed"
+        fi
+    fi
     exit $rc
 }
 trap cleanup EXIT
@@ -91,6 +121,9 @@ fi
 mkdir -m 0700 -p "$secret_dir"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
+# Witness attachment objects and the fixture key probe stay private too.
+readonly attachment_root="$secret_dir/attachments"
+mkdir -m 0700 "$attachment_root"
 
 echo "== migrate at base revision =="
 (cd "$base_worktree" && env \
@@ -108,6 +141,10 @@ echo "== seed representative data at base revision =="
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
+    EHR_ATTACHMENT_ROOT="$attachment_root" \
+    UPGRADE_APP_DATABASE_URL="$app_dsn" \
+    UPGRADE_PRIVATE_DIR="$secret_dir" \
+    UPGRADE_WITNESS_FILE="$witness_file" \
     UPGRADE_SEED_FILE="$seed_file" \
     UPGRADE_HELPER_ROOT="$project_root" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
@@ -157,14 +194,17 @@ PYEOF
 )
 fi
 
-echo "== migrate forward with the candidate =="
+echo "== migrate forward with the candidate, staging every new domain =="
 (cd "$project_root" && env \
+    AGENT_DATABASE_URL="$agent_dsn" \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
-    uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
+    UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_DOMAIN_SEED_FILE="$domain_seed_file" \
+    uv run --frozen --no-sync --no-env-file python -m ops.testing.migration_upgrade_stages)
 
 echo "== verify preserved data, transform, and boundaries =="
 (cd "$project_root" && env \
@@ -173,8 +213,12 @@ echo "== verify preserved data, transform, and boundaries =="
     CLINIC_SECRET_BACKEND="synthetic-file" \
     CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
+    EHR_ATTACHMENT_ROOT="$attachment_root" \
     UPGRADE_APP_DATABASE_URL="$app_dsn" \
+    UPGRADE_PRIVATE_DIR="$secret_dir" \
+    UPGRADE_WITNESS_FILE="$witness_file" \
     UPGRADE_SEED_FILE="$seed_file" \
+    UPGRADE_DOMAIN_SEED_FILE="$domain_seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_verify.py")
 
@@ -183,6 +227,13 @@ echo "== confirm no migration drift =="
     APP_DATABASE_URL="$owner_dsn" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
+
+echo "== scan published files for live secrets =="
+(cd "$project_root" && env \
+    APP_DATABASE_URL="$owner_dsn" \
+    CLINIC_SECRET_DIR="$secret_dir" \
+    uv run --frozen --no-sync --no-env-file python -m ops.testing.migration_upgrade_leaks \
+        "$work_root")
 
 printf '{"schema_version":1,"result":"PASS","base_sha":"%s","upgrade_db":"%s"}\n' \
     "$base_sha" "$upgrade_db" > "$work_root/verdict.json"
