@@ -22,11 +22,18 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
+from django.contrib.postgres.expressions import ArraySubquery
+from django.contrib.postgres.fields import ArrayField
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import BinaryField, Case, F, Q, UUIDField, Value, When, Window
+from django.db.models.functions import JSONArray, RowNumber
+from django.db.models.lookups import IsNull, LessThanOrEqual
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
+from apps.core.secrets import SecretUnavailableError
+from apps.identity.models import Clinic
+from apps.intake.models import Patient
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
     authorized_agenda_scope,
@@ -49,6 +56,8 @@ from apps.scheduling.models import (
     ServiceType,
 )
 from apps.scheduling.timezones import civil_day_bounds, format_local_minute
+from apps.tenancy.column_key import stage_column_key
+from apps.tenancy.envelope import map_envelope_errors
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -69,6 +78,8 @@ CROSS_ORGANIZATION_BUSY: Final = False
 LOCAL_DATE: Final = slice(0, 10)
 LOCAL_TIME: Final = slice(11, 16)
 _RESOURCE_KINDS: Final = (Resource.Kind.ROOM, Resource.Kind.EQUIPMENT)
+_BOOKING_ORDER: Final = ("start_at", "practitioner_id", "pk")
+_NAME_COLUMN: Final = "patient__full_name"
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,23 +312,53 @@ def _slots(starts: list[str], ends: list[str]) -> tuple[str, ...]:
 
 
 def _catalog(
-    scope: AvailabilityViewScope, clinic_id: UUID, booked: set[UUID]
+    scope: AvailabilityViewScope,
+    clinic_id: UUID,
+    bookings: QuerySet[Appointment] | None,
 ) -> tuple[tuple[BoardLane, ...], tuple[BoardLane, ...], tuple[ServiceOption, ...]]:
+    # Keep each catalog's order and RLS predicates in independent subqueries.
+    resource_options = Resource.objects.filter(
+        clinic_id=clinic_id, kind__in=_RESOURCE_KINDS, active=True
+    ).order_by("kind", "name", "pk")
+    service_options = ServiceType.objects.filter(
+        clinic_id=clinic_id, active=True
+    ).order_by("name", "pk")
+    try:
+        booked, resource_rows, service_rows = (
+            Clinic.objects.filter(pk=clinic_id)
+            .annotate(
+                booked_ids=(
+                    Value([], output_field=ArrayField(UUIDField()))
+                    if bookings is None
+                    else ArraySubquery(
+                        bookings.order_by().values("practitioner_id").distinct()
+                    )
+                ),
+                resource_rows=ArraySubquery(
+                    resource_options.annotate(
+                        item=JSONArray("kind", "pk", "name")
+                    ).values("item")
+                ),
+                service_rows=ArraySubquery(
+                    service_options.annotate(
+                        item=JSONArray("pk", "name", "duration_min")
+                    ).values("item")
+                ),
+            )
+            .values_list("booked_ids", "resource_rows", "service_rows")
+            .get()
+        )
+    except Clinic.DoesNotExist as error:
+        raise AvailabilityAccessDeniedError from error
     professionals = tuple(
         BoardLane("practitioner", pk, label)
-        for pk, label in _columns(scope, booked).items()
+        for pk, label in _columns(scope, set(booked)).items()
     )
     resources = tuple(
-        BoardLane(str(row.kind), row.pk, row.name)
-        for row in Resource.objects.filter(
-            clinic_id=clinic_id, kind__in=_RESOURCE_KINDS, active=True
-        ).order_by("kind", "name", "pk")
+        BoardLane(kind, UUID(pk), name) for kind, pk, name in resource_rows
     )
     services = tuple(
-        ServiceOption(row.pk, row.name, row.duration_min)
-        for row in ServiceType.objects.filter(
-            clinic_id=clinic_id, active=True
-        ).order_by("name", "pk")
+        ServiceOption(UUID(pk), name, duration) for pk, name, duration in service_rows
     )
     return professionals, resources, services
 
@@ -475,6 +516,7 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     row: Appointment,
     rules: _MoveRules,
     *,
+    patient_display_name: str,
     book: tuple[_Grant, ...],
     move: tuple[_Grant, ...],
     lane_resources: set[UUID],
@@ -485,7 +527,7 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     deadline = row.hold_expires_at if held else None
     return BoardAppointment(
         appointment_id=row.pk,
-        patient_display_name=row.patient.full_name,
+        patient_display_name=patient_display_name,
         practitioner_id=row.practitioner_id,
         resource_ids=tuple(pk for pk in row.resource_ids if pk in lane_resources),
         service_type_id=row.service_type_id,
@@ -501,6 +543,62 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
             deadline.replace(second=0, microsecond=0), timezone_key
         )[LOCAL_TIME],
         hold_expiring=deadline is not None and deadline - now <= HOLD_WARNING,
+    )
+
+
+def _appointment_rows(
+    *,
+    shown: QuerySet[Appointment],
+) -> tuple[tuple[tuple[Appointment, str], ...], bool]:
+    """Read the authorized page; the one look-ahead row is never decrypted."""
+    field = Patient.full_name.field
+    ordered = shown.only(
+        "practitioner_id",
+        "resource_ids",
+        "service_type_id",
+        "start_at",
+        "end_at",
+        "status",
+        "revision",
+        "hold_expires_at",
+    ).order_by(*_BOOKING_ORDER)[: MAX_BOARD_APPOINTMENTS + 1]
+    try:
+        stage_column_key()
+    except SecretUnavailableError:
+        # Preserve an empty/all-null board during a KEK outage. Keep the same
+        # RLS patient join and do not select ciphertext even on this path.
+        missing_names = tuple(
+            ordered.annotate(name_missing=IsNull(F(_NAME_COLUMN), rhs=True))
+        )
+        visible = missing_names[:MAX_BOARD_APPOINTMENTS]
+        if any(not row.name_missing for row in visible):
+            raise
+        return (
+            tuple((row, field.decode_revealed(None)) for row in visible),
+            len(missing_names) > MAX_BOARD_APPOINTMENTS,
+        )
+    # The window ranks filtered, joined rows by metadata only. CASE keeps
+    # the extra truncation witness out of protected_decrypt. Both the
+    # statement and its parameters are free of both the KEK and envelopes.
+    visible_rank = LessThanOrEqual(
+        Window(expression=RowNumber(), order_by=_BOOKING_ORDER),
+        Value(MAX_BOARD_APPOINTMENTS),
+    )
+    with map_envelope_errors():
+        rows = tuple(
+            ordered.annotate(
+                revealed_name=Case(
+                    When(visible_rank, then=field.reveal_column(column=_NAME_COLUMN)),
+                    output_field=BinaryField(),
+                )
+            )
+        )
+    return (
+        tuple(
+            (row, field.decode_revealed(row.revealed_name))
+            for row in rows[:MAX_BOARD_APPOINTMENTS]
+        ),
+        len(rows) > MAX_BOARD_APPOINTMENTS,
     )
 
 
@@ -543,8 +641,7 @@ def view_agenda_board(
         ).exclude(due_hold())
         if scope.practitioner_id is not None:
             rows = rows.filter(practitioner_id=scope.practitioner_id)
-        booked = set(rows.values_list("practitioner_id", flat=True).distinct())
-        professionals, resources, services = _catalog(scope, clinic_id, booked)
+        professionals, resources, services = _catalog(scope, clinic_id, rows)
         if not BoardCatalog(professionals, resources, services).admits(selected):
             raise AgendaInputError
         rules = _move_rules(clinic_id)
@@ -560,29 +657,21 @@ def view_agenda_board(
         if view == "month":
             counts = _counts(shown, _days(first_day, last_day), timezone_key)
         else:
-            # The board shows only the patient's name. Loading their birth
-            # date would also call protected_decrypt for every non-null date.
-            ordered = tuple(
-                shown.select_related("patient")
-                .defer("patient__birth_date")
-                .order_by("start_at", "practitioner_id", "pk")[
-                    : MAX_BOARD_APPOINTMENTS + 1
-                ]
-            )
-            truncated = len(ordered) > MAX_BOARD_APPOINTMENTS
+            visible, truncated = _appointment_rows(shown=shown)
             lane_resources = {lane.lane_id for lane in resources}
             now = timezone.now()
             appointments = tuple(
                 _presented(
                     row,
                     rules,
+                    patient_display_name=name,
                     book=book,
                     move=move,
                     lane_resources=lane_resources,
                     timezone_key=timezone_key,
                     now=now,
                 )
-                for row in ordered[:MAX_BOARD_APPOINTMENTS]
+                for row, name in visible
             )
             if view != "list":
                 occupancy = _occupancy(
@@ -632,7 +721,7 @@ def board_catalog(*, clinic_id: UUID) -> BoardCatalog:
         raise AvailabilityAccessDeniedError
     with transaction.atomic():
         scope = authorized_agenda_scope(clinic_id)
-        return BoardCatalog(*_catalog(scope, clinic_id, set()))
+        return BoardCatalog(*_catalog(scope, clinic_id, None))
 
 
 def free_move_slots(*, clinic_id: UUID, appointment_id: UUID, date: str) -> FreeSlots:

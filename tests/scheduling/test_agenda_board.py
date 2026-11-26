@@ -19,8 +19,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.core.patient_context import SESSION_PREFIX
+from apps.core.secrets import SecretUnavailableError
 from apps.identity.models import User, UserClinicRole
 from apps.intake.models import PatientClinicEnrollment
+from apps.intake.services import create_patient
+from apps.scheduling import agenda_board
 from apps.scheduling.agenda_board import (
     CROSS_ORGANIZATION_BUSY,
     AgendaFilters,
@@ -42,7 +45,9 @@ from apps.scheduling.services import (
     create_availability,
 )
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import EnvelopeFormatError, protect
 from django.db import connection, connections, transaction
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils.translation import gettext
 
@@ -74,6 +79,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 DAY: Final = "2035-06-02"
 ROOM: Final = "Sala Sintetica Board"
 EQUIPMENT: Final = "Ultrassom Sintetico Board"
+LATER_NAMES: Final = ("Synthetic Agenda Beta", "Synthetic Agenda Gamma")
 
 
 class _Values(HTMLParser):
@@ -123,6 +129,29 @@ def _world(graph: RbacGraph) -> tuple[Client, User, AppointmentSetup, Appointmen
             content=ResourceInput(name=EQUIPMENT, kind="equipment"),
         )
     return client, receptionist, setup, booked
+
+
+def _book_later_names(setup: AppointmentSetup) -> list[UUID]:
+    patients = []
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        for hour, name in enumerate(LATER_NAMES, start=10):
+            registration = create_patient(
+                clinic_id=setup.clinic_id,
+                full_name=name,
+                birth_date=None,
+                idempotency_key=uuid4(),
+            )
+            patients.append(registration.patient.pk)
+            create_appointment(
+                clinic_id=setup.clinic_id,
+                enrollment_id=registration.enrollment.pk,
+                practitioner_id=setup.practitioner_id,
+                local_range=AppointmentLocalRange(
+                    f"{DAY}T{hour}:00", f"{DAY}T{hour}:30"
+                ),
+                idempotency_key=uuid4(),
+            )
+    return patients
 
 
 def _pin(client: Client, clinic_id: UUID, enrollment_id: UUID) -> None:
@@ -197,12 +226,13 @@ def test_every_view_renders_the_authorized_board_once_without_url_selectors(
     assert after[len(before) :].count(AGENDA_VIEWED_EVENT) == len(pages)
 
 
-@pytest.mark.parametrize(("view", "budget"), [("day", 56), ("week", 56), ("list", 55)])
+@pytest.mark.parametrize(("view", "budget"), [("day", 55), ("week", 55), ("list", 54)])
 def test_full_agenda_board_query_budget(
     rbac_graph: RbacGraph, view: str, budget: int
 ) -> None:
-    """Pin the whole signed-in GET, not just the board service's queries."""
+    """Pin the whole signed-in GET with multiple distinct encrypted names."""
     client, _, setup, booked = _world(rbac_graph)
+    _book_later_names(setup)
     url = _board(setup.clinic_id, view)
     with runtime_role():
         # Remember the clinic first, so a framework session write is not
@@ -212,14 +242,98 @@ def test_full_agenda_board_query_budget(
             page = client.get(url)
     assert page.status_code == 200
     assert f'value="{booked.pk}"'.encode() in page.content
+    assert page.content.index(LATER_NAMES[0].encode()) < page.content.index(
+        LATER_NAMES[1].encode()
+    )
     assert not page.wsgi_request.session.modified
     # Includes the tenant transactions and two cleanup batches, shell, read
-    # audit and the name decrypt. Day and week also read occupancy.
+    # audit and one joined projection/reveal. Day and week also read occupancy.
     assert len(captured) == budget
     assert sum("clinic_app.protected_decrypt(" in q["sql"] for q in captured) == 1
     # Route authorization, clinic discovery, then fresh selected-clinic grants.
     assert sum("clinic_app.has_permission(candidate" in q["sql"] for q in captured) == 3
     assert sum("FOR NO KEY UPDATE SKIP LOCKED" in q["sql"] for q in captured) == 1
+
+
+def test_truncated_board_does_not_reveal_the_lookahead_name(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, setup, _ = _world(rbac_graph)
+    _, lookahead = _book_later_names(setup)
+    with transaction.atomic(), owner_context(setup.organization_id):
+        wrong_purpose = protect(purpose="synthetic.other_field", plaintext=b"Sintetico")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "ALTER TABLE clinic_app.intake_patient "
+                "DISABLE TRIGGER intake_patient_mirror_guard"
+            )
+            cursor.execute(
+                "UPDATE clinic_app.intake_patient SET full_name = %s WHERE id = %s",
+                [wrong_purpose, lookahead],
+            )
+            assert cursor.rowcount == 1
+            cursor.execute(
+                "ALTER TABLE clinic_app.intake_patient "
+                "ENABLE TRIGGER intake_patient_mirror_guard"
+            )
+    with (
+        runtime_role(),
+        tenant_context(setup.actor_id, setup.organization_id),
+        pytest.raises(EnvelopeFormatError),
+    ):
+        view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
+    monkeypatch.setattr(agenda_board, "MAX_BOARD_APPOINTMENTS", 2)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        board = view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
+        month = view_agenda_board(clinic_id=setup.clinic_id, view="month", date=DAY)
+    assert board.truncated
+    assert [row.patient_display_name for row in board.appointments] == [
+        "Synthetic Booking Persona",
+        LATER_NAMES[0],
+    ]
+    assert not month.appointments
+    assert sum(day.total for day in month.counts) == 3
+
+
+def test_board_unknown_and_wrong_clinic_denials_are_silent(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, _, _, _ = _world(rbac_graph)
+    with runtime_role():
+        for clinic_id in (rbac_graph.clinic_b, rbac_graph.clinic_c, uuid4()):
+            with CaptureQueriesContext(connection) as captured:
+                page = client.get(_board(clinic_id, "list"))
+            assert page.status_code == 404
+            assert not page.wsgi_request.session.modified
+            assert b"Synthetic Booking Persona" not in page.content
+            assert all(
+                marker not in query["sql"]
+                for query in captured
+                for marker in (
+                    "scheduling_appointment",
+                    "protected_decrypt",
+                    "audit_append",
+                    "FOR NO KEY UPDATE SKIP LOCKED",
+                )
+            )
+
+
+def test_only_populated_board_reads_require_key_material(rbac_graph: RbacGraph) -> None:
+    _, _, setup, _ = _world(rbac_graph)
+    with (
+        override_settings(CLINIC_SECRET_BACKEND=None, CLINIC_SECRET_DIR=None),
+        runtime_role(),
+        tenant_context(setup.actor_id, setup.organization_id),
+    ):
+        empty = view_agenda_board(
+            clinic_id=setup.clinic_id,
+            view="list",
+            date=DAY,
+            filters=AgendaFilters(status="cancelled"),
+        )
+        assert not empty.appointments
+        with pytest.raises(SecretUnavailableError):
+            view_agenda_board(clinic_id=setup.clinic_id, view="list", date=DAY)
 
 
 def test_owner_reads_the_board_without_booking_or_lifecycle_hooks(
@@ -302,6 +416,7 @@ def test_filters_are_kept_server_side_and_a_hidden_booking_still_occupies(
     assert applied["Location"] == _grid(setup.clinic_id)
     assert stored == AgendaFilters(status="cancelled")
     assert f'data-appointment="{booked.pk}"'.encode() not in filtered.content
+    assert b"Synthetic Booking Persona" not in filtered.content
     assert gettext("Busy").encode() in filtered.content
     assert b'<option value="cancelled" selected>' in filtered.content
     with runtime_role():

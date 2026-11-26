@@ -7555,6 +7555,18 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.agenda_board._catalog",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.resource_booking.service_practitioners",
+        "apps.identity.current_context.practitioner_display_label"
+      ],
+      "reason": "After agenda authorization, one RLS-protected clinic row projects the ordered room and service catalogs and, for the board only, the already-scoped booked practitioners. A now-invisible clinic fails closed; no new grants or selectors are accepted."
+    },
+    {
       "symbol": "apps.scheduling.agenda_board.board_catalog",
       "signals": [
         "denial"
@@ -9298,6 +9310,18 @@
         "apps.tenancy.db.tenant_context"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.tenancy.fields.EncryptedTextField.reveal_column",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The projection resolves each non-null stored column through protected_decrypt; the live probe executes the RLS query as clinic_app.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.fields.EncryptedTextField.reveal_column#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.middleware.TenantMiddleware._patient",
@@ -11396,6 +11420,7 @@
     "apps.tenancy.envelope.reveal#observed",
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
+    "apps.tenancy.fields.EncryptedTextField.reveal_column#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
     "apps.tenancy.middleware.TenantMiddleware._response",
     "apps.workflows.access.may_self_claim#cut1",

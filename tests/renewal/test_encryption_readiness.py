@@ -17,6 +17,8 @@ from apps.core.secrets import (
     secret_store,
 )
 from apps.identity.models import Clinic, Organization, UserClinicRole
+from apps.intake.models import Patient
+from apps.tenancy.column_key import stage_column_key
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import (
     EnvelopeContextError,
@@ -26,10 +28,12 @@ from apps.tenancy.envelope import (
     decrypt,
     encrypt,
     issue_tenant_key,
+    map_envelope_errors,
     reencrypt,
     rewrap_tenant_keys,
     tenant_key_status,
 )
+from apps.tenancy.fields import EncryptedTextField
 from config.settings.contracts import validate_secret_store_env
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, transaction
@@ -42,6 +46,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
     from uuid import UUID
+
+    from django.db.models import QuerySet
 
     from conftest import RbacGraph
 
@@ -185,6 +191,142 @@ def test_envelope_round_trip_binds_tenant_and_purpose(
             pytest.raises(EnvelopeUnavailableError),
         ):
             decrypt(purpose=PURPOSE, envelope=envelope)
+
+
+def _patient_text_projection(
+    patients: QuerySet[Patient], *, purpose: str, column: str = "full_name"
+) -> tuple[str, ...]:
+    field = EncryptedTextField(purpose=purpose)
+    with transaction.atomic(), map_envelope_errors():
+        stage_column_key()
+        return tuple(
+            field.decode_revealed(value)
+            for value in patients.annotate(
+                revealed=field.reveal_column(column=column)
+            ).values_list("revealed", flat=True)
+        )
+
+
+def test_column_reveal_preserves_order_and_refuses_invalid_envelopes(
+    rbac_graph: RbacGraph,
+    encryption_orgs: EncryptionOrgs,
+    tmp_path: Path,
+) -> None:
+    root = _issue(encryption_orgs.organization_a, rbac_graph.physician, tmp_path)
+    patient_ids = [uuid4() for _ in range(3)]
+    names = ("Sintetico A", "Sintetico A", "Sintetico B")
+    purpose = "intake.patient.full_name"
+    patients = Patient.objects.filter(pk__in=patient_ids).order_by("created_at", "pk")
+    with override_settings(
+        CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
+    ):
+        for pid, name in zip(patient_ids, names, strict=True):
+            with _owner_scope(encryption_orgs.organization_a, rbac_graph.physician):
+                Patient.objects.create(
+                    pk=pid,
+                    organization_id=encryption_orgs.organization_a,
+                    full_name=name,
+                )
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+        ):
+            assert _patient_text_projection(patients, purpose=purpose) == names
+            assert _patient_text_projection(
+                patients,
+                purpose="intake.patient.birth_date",
+                column="birth_date",
+            ) == ("", "", "")
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeFormatError),
+        ):
+            _patient_text_projection(patients, purpose="other-purpose")
+        with (
+            _owner_scope(encryption_orgs.organization_a, rbac_graph.physician),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "INSERT INTO clinic_app.intake_patient "
+                "(id, organization_id, created_at, full_name) "
+                "VALUES (%s, %s, statement_timestamp(), %s)",
+                [uuid4(), encryption_orgs.organization_a, b"short"],
+            )
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeFormatError),
+        ):
+            _patient_text_projection(Patient.objects.all(), purpose=purpose)
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.shared_user, encryption_orgs.organization_b),
+        ):
+            assert _patient_text_projection(patients, purpose=purpose) == ()
+        with runtime_role():
+            assert _patient_text_projection(patients, purpose=purpose) == ()
+
+
+def test_column_reveal_reloads_key_material_after_a_successful_read(
+    rbac_graph: RbacGraph,
+    encryption_orgs: EncryptionOrgs,
+    tmp_path: Path,
+) -> None:
+    root = _issue(encryption_orgs.organization_a, rbac_graph.physician, tmp_path)
+    key = root / "tenant-kek.secret"
+    with (
+        override_settings(
+            CLINIC_SECRET_BACKEND="synthetic-file", CLINIC_SECRET_DIR=str(root)
+        ),
+    ):
+        name = "Sintetico Chave"
+        purpose = "intake.patient.full_name"
+        with _owner_scope(encryption_orgs.organization_a, rbac_graph.physician):
+            patient = Patient.objects.create(
+                organization_id=encryption_orgs.organization_a, full_name=name
+            )
+        patients = Patient.objects.filter(pk=patient.pk)
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+        ):
+            assert _patient_text_projection(patients, purpose=purpose) == (name,)
+        key.write_text(OTHER_KEK)
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(EnvelopeError),
+        ):
+            _patient_text_projection(patients, purpose=purpose)
+        key.unlink()
+        with (
+            runtime_role(),
+            tenant_context(rbac_graph.physician, encryption_orgs.organization_a),
+            pytest.raises(SecretUnavailableError),
+        ):
+            _patient_text_projection(patients, purpose=purpose)
+
+
+def test_column_key_rejects_unsafe_logging_and_is_transaction_local() -> None:
+    def key_staged() -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.column_reveal_kek', true), '') "
+                "IS NOT NULL"
+            )
+            row = cursor.fetchone()
+            return isinstance(row, tuple) and row == (True,)
+
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL log_parameter_max_length_on_error = -1")
+        with pytest.raises(EnvelopeUnavailableError):
+            stage_column_key()
+        assert not key_staged()
+    with runtime_role(), transaction.atomic():
+        stage_column_key()
+        assert key_staged()
+    assert not key_staged()
 
 
 def test_key_rotation_retires_and_reencrypts(

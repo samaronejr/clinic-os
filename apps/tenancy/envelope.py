@@ -16,6 +16,7 @@ the functions re-validate it in-database.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Never
 
@@ -24,6 +25,7 @@ from django.db import DatabaseError, connection
 from apps.core.secrets import secret_store
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from datetime import datetime
 
 KEK_SECRET_NAME = "tenant-kek"  # noqa: S105 - a secret name, not a value
@@ -217,6 +219,15 @@ def reveal(*, purpose: str, envelope: bytes) -> bytes:
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
     return bytes(result)
+
+
+@contextmanager
+def map_envelope_errors() -> Iterator[None]:
+    """Apply the envelope error vocabulary to a column reveal query."""
+    try:
+        yield
+    except DatabaseError as error:
+        _raise_mapped(error)
 
 
 def blind_indexes(*, purpose: str, plaintext: bytes) -> tuple[bytes, ...]:

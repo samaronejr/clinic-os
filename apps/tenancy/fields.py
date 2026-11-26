@@ -23,12 +23,13 @@ from typing import TYPE_CHECKING, Any
 import rfc8785
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.lookups import IsNull
 
 from apps.core.idempotency import (
     PatientNameValueError,
     normalize_patient_name,
 )
-from apps.tenancy.envelope import protect, reveal
+from apps.tenancy.envelope import EnvelopeUnavailableError, protect, reveal
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -130,6 +131,37 @@ class EncryptedTextField(EncryptedField):
 
     def _empty_value(self) -> str:
         return ""
+
+    def reveal_column(self, *, column: str) -> models.Case:
+        """Reveal only an ORM column in an already authorized row projection.
+
+        The caller stages the KEK on the same transaction before evaluating
+        this expression. Neither the KEK nor an envelope is a projection bind.
+        """
+        return models.Case(
+            models.When(IsNull(models.F(column), rhs=True), then=models.Value(None)),
+            default=models.Func(
+                models.Func(
+                    template=(
+                        "pg_catalog.current_setting('app.column_reveal_kek', true)"
+                    ),
+                    output_field=models.TextField(),
+                ),
+                models.Value(self.envelope_purpose),
+                models.F(column),
+                template="clinic_app.protected_decrypt(%(expressions)s)",
+                output_field=models.BinaryField(),
+            ),
+            output_field=models.BinaryField(),
+        )
+
+    def decode_revealed(self, value: object) -> str:
+        """Use the field's text codec on a value from its own SQL projection."""
+        if value is None:
+            return self._empty_value()
+        if not isinstance(value, (bytes, memoryview)):
+            raise EnvelopeUnavailableError
+        return self._decode(bytes(value))
 
 
 class EncryptedPatientNameField(EncryptedTextField):
