@@ -2,6 +2,8 @@
 
 from typing import Final
 
+from django.utils.translation import gettext_noop, pgettext_lazy
+
 ACTION_KINDS: Final = (
     "return_window",
     "order",
@@ -13,13 +15,34 @@ ACTION_KINDS: Final = (
 )
 # Administrative kinds are executed by staff; every other kind is a clinical
 # decision and only a clinician may author or approve it.
+# Display msgids for the closed kinds (rendered through gettext at use).
+ACTION_KIND_LABELS: Final = {
+    "return_window": gettext_noop("Return window"),
+    "staff_coordination": gettext_noop("Staff coordination"),
+    "order": gettext_noop("Order follow-up"),
+    "questionnaire": gettext_noop("Questionnaire"),
+    "monitoring_task": gettext_noop("Monitoring task"),
+    "referral": gettext_noop("Referral"),
+    "patient_instruction": gettext_noop("Patient instruction"),
+}
 ADMIN_KINDS: Final = frozenset({"return_window", "staff_coordination"})
 CLINICAL_KINDS: Final = frozenset(ACTION_KINDS) - ADMIN_KINDS
 # A patient-facing instruction is clinician-owned content, not staff work.
 TASKLESS_KINDS: Final = frozenset({"patient_instruction"})
 ACTION_STATES: Final = ("open", "assigned", "overdue", "done", "cancelled")
+ACTION_STATE_LABELS: Final = {
+    "open": pgettext_lazy("care action state", "Open"),
+    "assigned": pgettext_lazy("care action state", "Assigned"),
+    "overdue": pgettext_lazy("care action state", "Overdue"),
+    "done": pgettext_lazy("care action state", "Done"),
+    "cancelled": pgettext_lazy("care action state", "Cancelled"),
+}
 REVIEW_STATES: Final = ("none", "required", "confirmed")
 PLAN_STATES: Final = ("active", "superseded")
+PLAN_STATE_LABELS: Final = {
+    "active": pgettext_lazy("care plan state", "Active"),
+    "superseded": pgettext_lazy("care plan state", "Superseded"),
+}
 REFERRAL_TARGETS: Final = ("specialty", "external", "unspecified")
 REFERRAL_STATUSES: Final = (
     "requested",

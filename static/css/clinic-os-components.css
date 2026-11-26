@@ -705,6 +705,21 @@ a.is-active {
   border-inline-start: 0;
 }
 
+/* The time axis stays in view while the resources scroll sideways (phones
+   scroll the region). The pinned column is opaque raised paper and carries
+   the column rule itself, so the next cell drops its own. */
+.resource-grid-row > .resource-grid-cell:first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  border-inline-end: var(--line-1) solid var(--color-line);
+  background: var(--color-surface-raised);
+}
+
+.resource-grid-row > .resource-grid-cell:first-child + .resource-grid-cell {
+  border-inline-start: 0;
+}
+
 .resource-grid-cell[role="columnheader"] {
   align-items: center;
   font-weight: var(--weight-label);
@@ -1783,9 +1798,31 @@ a.citation:hover,
   padding-inline: var(--space-4);
 }
 
+/* The row wraps like the navigation above it (DESIGN.md Navigation: nothing
+   collapses behind a toggle), so no destination is clipped at any width. */
 .shell-subnav .tabs-list {
   margin: 0;
+  flex-wrap: wrap;
+  overflow-x: visible;
   border-bottom: 0;
+}
+
+.shell-subnav .tab {
+  white-space: normal;
+}
+
+/* Page-level action row (DESIGN.md Layout): a row of actions between page
+   blocks keeps the density stack above and below it. Plain .actions stays
+   margin-free, so rows inside forms, panels and tables do not move. */
+.actions--stack {
+  margin-block: var(--density-stack);
+}
+
+/* A one-button form in the row behaves like the button: full width while
+   the row stacks below 48rem, its own width in the row above it. */
+.actions--stack > form {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Patient banner: raised strip; identity first, actions last. Phones keep it

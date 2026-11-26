@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+from apps.comms.inbox_queries import STATES as CONVERSATION_STATES
+from apps.comms.inbox_queries import list_conversations
 from apps.ehr.longitudinal_access import patient_scope
 from apps.ehr.longitudinal_values import CODES
 from apps.ehr.models import (
@@ -28,25 +30,88 @@ from apps.ehr.workspace_forms import MedicationForm, ObservationForm, VitalsForm
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import Clinic
 from apps.intake.models import PatientClinicEnrollment
+from apps.orders.queries import result_rows
+from apps.orders.values import OrdersAccessDeniedError
+from apps.workflows.care.models import CarePlan
+from apps.workflows.care.vocab import (
+    ACTION_KIND_LABELS,
+    ACTION_STATE_LABELS,
+    PLAN_STATE_LABELS,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from django.forms import Form
 
     from apps.ehr.longitudinal_access import PatientScope
 
 TABS = (
-    ("overview", _("Overview"), "o", True),
-    ("timeline", _("Timeline"), "t", True),
-    ("encounters", _("Encounters"), "e", True),
-    ("medications", _("Medications"), "m", True),
-    ("results", _("Results"), "r", False),
-    ("documents", _("Documents"), "d", True),
-    ("plans", _("Plans"), "p", False),
-    ("forms", _("Forms"), "f", True),
-    ("messages", _("Messages"), "c", False),
-    ("vitals", _("Vitals and observations"), "v", True),
-    ("specialty", _("Specialty records"), "s", True),
+    ("overview", _("Overview"), "o"),
+    ("timeline", _("Timeline"), "t"),
+    ("encounters", _("Encounters"), "e"),
+    ("medications", _("Medications"), "m"),
+    ("results", _("Results"), "r"),
+    ("documents", _("Documents"), "d"),
+    ("plans", _("Plans"), "p"),
+    ("forms", _("Forms"), "f"),
+    ("messages", _("Messages"), "c"),
+    ("vitals", _("Vitals and observations"), "v"),
+    ("specialty", _("Specialty records"), "s"),
 )
+# Results, plans and conversations are owned by Results, care coordination and
+# Messages; the workspace reads them through those features' own scoped queries.
+CARE_PLAN_LIMIT = 20
+
+
+def _results_context(*, scope: PatientScope) -> dict[str, object]:
+    """List current filed results; a refused reader gets the restricted notice."""
+    try:
+        rows = result_rows(clinic_id=scope.clinic_id, enrollment_id=scope.enrollment_id)
+    except OrdersAccessDeniedError:
+        return {"section_restricted": True}
+    return {"results": rows}
+
+
+def _plans_context(*, scope: PatientScope) -> dict[str, object]:
+    """Care plans with their actions, labelled from the closed vocabularies."""
+    plans = CarePlan.objects.filter(
+        clinic_id=scope.clinic_id, enrollment_id=scope.enrollment_id
+    ).order_by("-created_at")[:CARE_PLAN_LIMIT]
+    return {
+        "care_plans": [
+            {
+                "plan": plan,
+                "state_label": PLAN_STATE_LABELS[plan.state],
+                "actions": [
+                    {
+                        "action": action,
+                        "kind_label": _(ACTION_KIND_LABELS[action.kind]),
+                        "state_label": ACTION_STATE_LABELS[action.state],
+                    }
+                    for action in plan.actions.order_by("window_start", "pk")
+                ],
+            }
+            for plan in plans
+        ]
+    }
+
+
+def _messages_context(*, scope: PatientScope) -> dict[str, object]:
+    """List the patient's conversations the actor may open, folder by folder."""
+    try:
+        rows = [
+            row
+            for state in CONVERSATION_STATES
+            for row in list_conversations(
+                clinic_id=scope.clinic_id,
+                state=state,
+                enrollment_id=scope.enrollment_id,
+            )
+        ]
+    except CurrentActorError:
+        return {"section_restricted": True}
+    return {"conversations": rows}
 
 
 def _vitals_context(
@@ -127,6 +192,35 @@ def _notes_context(*, scope: PatientScope) -> dict[str, object]:
     return context
 
 
+def _medications_context(*, scope: PatientScope) -> dict[str, object]:
+    """List reported and reconciled medication statements, newest first."""
+    return {
+        "medications": MedicationStatement.objects.filter(
+            clinic_id=scope.clinic_id, patient_id=scope.patient_id
+        ).order_by("-effective_at", "-pk")[:100]
+    }
+
+
+def _documents_context(*, scope: PatientScope) -> dict[str, object]:
+    """List encounters whose documents the reader may open."""
+    return {
+        "document_encounters": Encounter.objects.filter(
+            clinic_id=scope.clinic_id, patient_id=scope.patient_id
+        ).order_by("-created_at")[:100]
+    }
+
+
+# Read-only sections: each tab key loads only its own rows.
+SECTION_CONTEXTS: Final[dict[str, Callable[..., dict[str, object]]]] = {
+    "medications": _medications_context,
+    "encounters": _notes_context,
+    "results": _results_context,
+    "documents": _documents_context,
+    "plans": _plans_context,
+    "messages": _messages_context,
+}
+
+
 def _editing_permissions(*, scope: PatientScope) -> dict[str, bool]:
     """Describe editable controls without replacing any domain authorization."""
     permissions: dict[str, bool] = {}
@@ -177,8 +271,8 @@ def workspace_context(
         "enrollment": enrollment,
         "tab": tab,
         "tabs": [
-            {"key": key, "label": label, "shortcut": shortcut, "available": available}
-            for key, label, shortcut, available in TABS
+            {"key": key, "label": label, "shortcut": shortcut}
+            for key, label, shortcut in TABS
             if narrative or key in {"overview", "vitals", "timeline"}
         ],
         "can_write": permissions["write"],
@@ -199,20 +293,12 @@ def workspace_context(
                 scope=scope, zone=ZoneInfo(zone_name), trend_kind=trend_kind
             )
         )
-    if tab == "medications":
-        context["medications"] = MedicationStatement.objects.filter(
-            clinic_id=scope.clinic_id, patient_id=scope.patient_id
-        ).order_by("-effective_at", "-pk")[:100]
+    if tab in SECTION_CONTEXTS:
+        context.update(SECTION_CONTEXTS[tab](scope=scope))
     if narrative:
         context["episodes"] = Episode.objects.filter(
             clinic_id=scope.clinic_id, patient_id=scope.patient_id
         ).order_by("-opened_at")[:100]
-    if tab == "encounters":
-        context.update(_notes_context(scope=scope))
-    if tab == "documents":
-        context["document_encounters"] = Encounter.objects.filter(
-            clinic_id=scope.clinic_id, patient_id=scope.patient_id
-        ).order_by("-created_at")[:100]
     if tab == "specialty":
         forms.update(
             {

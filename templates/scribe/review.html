@@ -74,13 +74,15 @@
           <button class="button button--secondary" name="decision" value="rejected:{{ row.item.suggestion.pk }}" type="submit" data-review-reject data-review-write>{% trans "Reject suggestion" %}</button>
           {% else %}
           {% if row.item.comparison.state == "conflict" %}<p class="feedback feedback--error" role="status">{% trans "Manual edits are preserved. Compare both versions and type the replacement explicitly; accepting cannot overwrite a touched section, including edit-then-revert." %}</p>{% endif %}
-          <div class="actions">
+          <div class="actions actions--stack">
             <button class="button" name="decision" value="accepted:{{ row.item.suggestion.pk }}" type="submit" data-review-accept data-review-write{% if not panel.available or row.item.comparison.state == "conflict" %} disabled{% endif %}>{% trans "Accept suggestion" %}</button>
             <button class="button button--secondary" name="decision" value="rejected:{{ row.item.suggestion.pk }}" type="submit" data-review-reject data-review-write>{% trans "Reject suggestion" %}</button>
           </div>
           <div class="field"><label for="replacement-{{ row.item.suggestion.pk }}">{% trans "Your edited replacement" %} · {{ row.label }}</label><textarea id="replacement-{{ row.item.suggestion.pk }}" name="replacement-{{ row.item.suggestion.pk }}" rows="4" maxlength="20000" autocomplete="off" spellcheck="false">{% if row.item.comparison.state == "conflict" %}{{ row.item.current }}{% else %}{{ row.item.suggestion.text }}{% endif %}</textarea></div>
-          <button class="button button--secondary" name="decision" value="modified:{{ row.item.suggestion.pk }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Apply my edited replacement" %}</button>
-          {% if drafting_enabled %}<button class="button button--secondary" name="action" value="regenerate_{{ row.item.suggestion.section }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Regenerate section" %}</button>{% endif %}
+          <div class="actions actions--stack">
+            <button class="button button--secondary" name="decision" value="modified:{{ row.item.suggestion.pk }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Apply my edited replacement" %}</button>
+            {% if drafting_enabled %}<button class="button button--secondary" name="action" value="regenerate_{{ row.item.suggestion.section }}" type="submit" data-review-write{% if not panel.available %} disabled{% endif %}>{% trans "Regenerate section" %}</button>{% endif %}
+          </div>
           {% endif %}
         </article>
         {% empty %}<p>{% trans "No supported suggestions are available. Nothing has been added to the note." %}</p>{% endfor %}

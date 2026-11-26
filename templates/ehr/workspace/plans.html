@@ -1,0 +1,14 @@
+{% load i18n %}
+<section class="patient-workspace-section" aria-labelledby="plans-title">
+  <h2 id="plans-title">{% trans "Plans" %}</h2>
+  <p class="help-text">{% trans "Care plans start from a finalized note. Their actions are assigned and closed in care coordination and tasks." %}</p>
+  {% for item in care_plans %}
+  <div class="table-scroll" role="region" aria-labelledby="plan-caption-{{ forloop.counter }}" tabindex="0" data-workspace-plan>
+    <table class="table">
+      <caption id="plan-caption-{{ forloop.counter }}">{% trans "Care plan" %} · <time>{{ item.plan.created_at|date:"d/m/Y H:i" }}</time> <span class="badge">{{ item.state_label }}</span></caption>
+      <thead><tr><th scope="col">{% trans "Action" %}</th><th scope="col">{% trans "Window" %}</th><th scope="col">{% trans "Status" %}</th></tr></thead>
+      <tbody>{% for row in item.actions %}<tr><th scope="row">{{ row.kind_label }}</th><td>{{ row.action.window_start|date:"d/m/Y" }} – {{ row.action.window_end|date:"d/m/Y" }}</td><td>{{ row.state_label }}</td></tr>{% empty %}<tr><td colspan="3" class="table-empty">{% trans "No action in this plan." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% empty %}<p class="table-empty">{% trans "No care plan for this patient. A plan starts from a finalized note." %}</p>{% endfor %}
+</section>

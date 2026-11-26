@@ -3,16 +3,15 @@
 {% block title %}Configurações da clínica · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="settings-title">
-  <p class="eyebrow">{{ clinic.name }} · Administração</p>
   <h1 id="settings-title">Configurações da clínica</h1>
-  <div class="actions">
+  <p class="lede">Alterações valem somente para esta clínica. Documentos finalizados, assinaturas, consentimentos aceitos e lembretes já agendados permanecem inalterados.</p>
+  <div class="actions actions--stack">
     <a class="button button--secondary" href="{% url 'ehr:specialty-packs' clinic_id=clinic.pk %}">{% trans "Specialty packs" %}</a>
     <a class="button button--secondary" href="{% url 'scheduling:resource-settings' clinic.pk %}">{% trans "Scheduling settings" %}</a>
     <a class="button button--secondary" href="{% url 'identity:onboarding' clinic_id=clinic.pk %}">{% trans "First steps" %}</a>
     <a class="button button--secondary" href="{% url 'identity:staff' clinic_id=clinic.pk %}">{% trans "Staff and account security" %}</a>
     <a class="button button--secondary" href="{% url 'identity:sessions' %}">{% trans "Your sessions" %}</a>
   </div>
-  <p class="lede">Alterações valem somente para esta clínica. Documentos finalizados, assinaturas, consentimentos aceitos e lembretes já agendados permanecem inalterados.</p>
   <p role="note">Fuso horário: <strong>{{ clinic.timezone }}</strong>. A alteração continua exclusiva da operação controlada pelo titular, em clínica vazia. Esta tela não altera fuso, permissões, alertas ou auditoria.</p>
   <section class="panel" aria-labelledby="branding-title">
     <h2 id="branding-title">Contato, identidade e lembretes</h2>

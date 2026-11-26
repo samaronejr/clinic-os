@@ -11,6 +11,7 @@ from apps.identity.templatetags.clinic_locale import (
     appointment_label,
     brl,
     clinic_minute,
+    metric_value,
 )
 from apps.intake.forms import PatientCreateForm, PatientSearchForm
 from apps.intake.models import Patient
@@ -97,6 +98,10 @@ def test_brl_examples_keep_decimal_precision_and_existing_input_contract() -> No
     assert field.clean("1234.56") == Decimal("1234.56")
     assert brl(field.clean("1234,56")) == "R$ 1.234,56"
     assert brl(Decimal("0.10")) == "R$ 0,10"
+    # Governed report values keep their exact digits in the pt-BR format.
+    assert metric_value("0.00", "percent") == "0,00"
+    assert metric_value("1234.50", "seconds") == "1.234,50"
+    assert metric_value("123456", "minor") == "R$ 1.234,56"
     assert field.widget.format_value(Decimal("1234.56")) == "1234,56"
     assert field.clean(field.widget.format_value(Decimal("1234.56"))) == Decimal(
         "1234.56"

@@ -33,11 +33,24 @@
   white-space: nowrap;
 }
 
+/* Section tabs (DESIGN.md Tabs): quiet Label-weight items; the current tab
+   is navy ink over the 3px Trust Teal bottom rule in both themes, never a
+   fill, so it cannot read like a hovered or disabled control. */
+.patient-workspace-tabs .button {
+  border-width: 0 0 var(--line-3);
+  border-radius: var(--radius-1) var(--radius-1) 0 0;
+}
+
 .patient-workspace-tabs [aria-current="page"] {
-  background: var(--color-selection);
+  border-bottom-color: var(--color-primary);
   color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: var(--space-1);
+}
+
+@media (forced-colors: active) {
+  .patient-workspace-tabs [aria-current="page"] {
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+  }
 }
 
 .patient-workspace-section {
@@ -105,7 +118,48 @@
   display: none;
 }
 
+/* Section tables scroll inside their region; positioning it keeps the row
+   actions' visually hidden names inside it, so the page never widens. */
+.patient-workspace .table-scroll {
+  position: relative;
+  max-inline-size: 100%;
+}
+
+/* Columns keep their words; a narrow screen scrolls the region, not the page. */
+.patient-workspace .table th,
+.patient-workspace .table td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* The section select is the phone form of the tabs (IA: tab select). */
+.patient-workspace-select {
+  display: none;
+}
+
 @media (max-width: 47.99rem) {
+  .patient-workspace-tabs {
+    display: none;
+  }
+
+  .patient-workspace-select {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: end;
+  }
+
+  /* The picker takes the whole row, so the longest section name fits. */
+  .patient-workspace-select .field {
+    flex: 1 1 100%;
+    min-inline-size: 0;
+    margin: 0;
+  }
+
+  .patient-workspace-select select {
+    inline-size: 100%;
+  }
+
   .patient-workspace-filter {
     align-items: stretch;
     flex-direction: column;

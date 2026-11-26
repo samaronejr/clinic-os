@@ -213,6 +213,21 @@ def _vitals(page: Page, artifact_root: Path) -> None:
     _capture(page, artifact_root, "invalid-unit")
 
 
+# Every section name, rendered in the select's own font, fits its text box
+# (client width less padding and the native arrow's reserve).
+OPTIONS_FIT_JS = """() => {
+  const select = document.querySelector('#patient-workspace-section');
+  const style = getComputedStyle(select);
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const room = select.clientWidth - parseFloat(style.paddingLeft)
+    - parseFloat(style.paddingRight) - 24;
+  return [...select.options]
+    .filter(option => context.measureText(option.text).width > room)
+    .map(option => option.value);
+}"""
+
+
 def test_vitals_trend_invalid_unit_and_workspace_tabs(
     renewal_page: Page,
     renewal_base_url: str,
@@ -255,6 +270,20 @@ def test_vitals_trend_invalid_unit_and_workspace_tabs(
     for width in (640, 320):
         page.set_viewport_size({"width": width, "height": 900})
         _capture(page, renewal_artifact_root, f"reflow-{width}")
+    # Phones switch sections with the select; no section widens the page.
+    page.set_viewport_size({"width": 375, "height": 900})
+    expect(page.locator(".patient-workspace-tabs")).to_be_hidden()
+    for key in ("results", "plans", "messages"):
+        select = page.locator("#patient-workspace-section")
+        select.select_option(key)
+        _submit(page, page.locator(".patient-workspace-select button[type=submit]"))
+        expect(page.locator("#patient-workspace-section")).to_have_value(key)
+        for width in (375, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= innerWidth"
+            ), (key, width)
+            assert page.evaluate(OPTIONS_FIT_JS) == [], (key, width)
     page.set_viewport_size({"width": 1280, "height": 900})
     page.locator("#patient-workspace-title").focus()
     with page.expect_response(

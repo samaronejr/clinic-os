@@ -66,7 +66,7 @@ def test_native_reports_refresh_drill_save_load_and_stale(
         response = client.post(url, FIELDS | {"action": "refresh"})
         assert response.status_code == 200
         assert b'data-report-state="fresh"' in response.content
-        assert b"0.00" in response.content
+        assert b"0,00 %" in response.content
         assert client.post(url, FIELDS | {"action": "save"}).status_code == 200
         response = client.post(url, FIELDS | {"action": "drill"})
         assert response.status_code == 200

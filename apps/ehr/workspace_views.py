@@ -90,7 +90,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     )
     scope = authority()
     tab = request.POST.get("tab", "overview")
-    if tab not in {key for key, _label, _shortcut, available in TABS if available}:
+    if tab not in {key for key, _label, _shortcut in TABS}:
         raise ClinicalAccessDeniedError
     forms = empty_forms()
     outcome = ""

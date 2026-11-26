@@ -11,7 +11,7 @@
     {% ai_enabled "analyst" as analyst_enabled %}
     <div class="reports-fields">{% for field in form %}{% if field.name != "question" or analyst_enabled %}<div{% if field.name == "metric" or field.name == "question" %} class="reports-field-wide"{% endif %}>{% include "includes/field.html" with field=field hint=field.help_text hint_id=field.auto_id|add:"_helptext" %}</div>{% endif %}{% endfor %}</div>
     <p class="hint">{% trans "Dates use the clinic timezone. Balance metrics and staff usage support totals only." %} {{ clinic_timezone }}</p>
-    <div class="actions">
+    <div class="actions actions--stack">
       <button class="button" type="submit" name="action" value="refresh">{% trans "Refresh metric" %}</button>
       <button class="button button--secondary" type="submit" name="action" value="cached">{% trans "Read saved snapshot" %}</button>
       <button class="button button--secondary" type="submit" name="action" value="drill">{% trans "Inspect no-show sources" %}</button>
@@ -52,7 +52,7 @@
     <div class="table-scroll" role="region" aria-labelledby="metric-caption" tabindex="0">
       <table class="table"><caption id="metric-caption" data-report-metric="{{ result.query.metric_id }}" data-report-start="{{ result.query.start|date:'Y-m-d H:i' }}" data-report-end="{{ result.query.end|date:'Y-m-d H:i' }}">{% trans "Governed result" %} · {% trans "Version" %} 1</caption>
         <thead><tr><th scope="col">{% trans "Period" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Numerator" %}</th><th scope="col">{% trans "Denominator" %}</th><th scope="col">{% trans "Unresolved" %}</th></tr></thead>
-        <tbody>{% for row in result.rows %}<tr><th scope="row">{{ row.dimension|default:"—" }}</th><td>{% if row.value != None %}{{ row.value }} {% if selected.unit == "percent" %}%{% elif selected.unit == "seconds" %}{% trans "seconds" %}{% elif selected.unit == "minor" %}{% trans "BRL centavos" %}{% endif %}{% else %}{% trans "Unavailable" %}{% endif %}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td><td>{{ row.missing }}</td></tr>{% endfor %}</tbody>
+        <tbody>{% for row in result.rows %}<tr><th scope="row">{{ row.dimension|default:"—" }}</th><td>{% if row.value != None %}{{ row.value|metric_value:selected.unit }}{% if selected.unit == "percent" %} %{% elif selected.unit == "seconds" %} {% trans "seconds" %}{% endif %}{% else %}{% trans "Unavailable" %}{% endif %}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td><td>{{ row.missing }}</td></tr>{% endfor %}</tbody>
       </table>
     </div>
     {% endtimezone %}

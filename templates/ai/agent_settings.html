@@ -6,7 +6,7 @@
 <section class="shell-narrow" aria-labelledby="agent-policy-title">
   <h1 id="agent-policy-title">{% trans "Agent policies" %}</h1>
   <p class="lede">{% trans "Every save publishes a new version. Disabling a capability invalidates its queued approvals." %}</p>
-  <a class="button button--quiet" href="{% url 'ai:agents' clinic_id %}">{% trans "Back to proposals" %}</a>
+  <div class="actions actions--stack"><a class="button button--quiet" href="{% url 'ai:agents' clinic_id %}">{% trans "Back to proposals" %}</a></div>
   <div class="feedback" role="note"><p>{% trans "Synthetic execution only. No real message is sent and no money is charged." %}</p></div>
   {% for capability, label, form in forms %}
   <section class="settings-question" aria-labelledby="policy-{{ capability }}">

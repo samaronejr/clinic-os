@@ -1,0 +1,14 @@
+{% load i18n %}
+<section class="patient-workspace-section" aria-labelledby="results-title">
+  <h2 id="results-title">{% trans "Results" %}</h2>
+  <p class="help-text">{% trans "Current source versions filed for this patient. Acknowledgment and release happen in Results." %}</p>
+  {% if section_restricted %}{% include "includes/components/state.html" with state="permission-denied" only %}{% else %}
+  {% for row in results %}
+  <article class="patient-workspace-row" data-workspace-result>
+    <h3>{% trans "Source version" %} {{ row.match.version.number }}{% if row.match.version.critical %} <span class="badge badge--error">{% trans "Critical" %}</span>{% endif %}</h3>
+    <p><time>{{ row.match.version.created_at|date:"d/m/Y H:i" }}</time> · <span class="badge{% if row.patient_released %} badge--success{% endif %}">{% if row.patient_released %}{% trans "Released to patient" %}{% elif row.acknowledged %}{% trans "Acknowledged; not released to patient" %}{% else %}{% trans "Not yet acknowledged or released" %}{% endif %}</span></p>
+  </article>
+  {% empty %}<p class="table-empty">{% trans "No result is filed for this patient yet." %}</p>{% endfor %}
+  <div class="actions actions--stack"><a class="button button--secondary" hx-boost="false" href="{% url 'orders:results' clinic_id=clinic_id %}">{% trans "Open Results" %}</a></div>
+  {% endif %}
+</section>

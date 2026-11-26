@@ -160,6 +160,24 @@ def test_page_copy_comes_from_the_catalog(world: InboxWorld) -> None:
     assert pgettext("inbox filter", "Pending") in listing
 
 
+def test_the_listed_folder_and_narrowing_filter_are_current(
+    world: InboxWorld,
+) -> None:
+    client, _ = receptionist_client(world.graph)
+    listing = _filters(_get(client, _inbox(world.graph)))
+    assert 'href="?state=open" aria-current="page"' in listing
+    assert listing.count("aria-current=") == 1
+    mine = _filters(_get(client, f"{_inbox(world.graph)}?state=pending&mine=1"))
+    assert 'href="?state=pending" aria-current="true"' in mine
+    assert 'href="?state=pending&amp;mine=1" aria-current="page"' in mine
+    assert mine.count("aria-current=") == 2
+
+
+def _filters(html: str) -> str:
+    """Return only the folder and filter row, not the shell navigation."""
+    return html.split('class="actions messages-filters"', 1)[1].split("</nav>", 1)[0]
+
+
 def test_reception_finds_a_patient_and_links_the_verified_number(
     world: InboxWorld,
 ) -> None:

@@ -6,6 +6,21 @@
   min-width: 0;
 }
 
+/* The listed folder and any narrowing filter read as current: Selection Tint
+   with navy ink, the agenda view switch's treatment (DESIGN.md date bar); forced
+   colors drop the tint, so the current item is underlined there. */
+.messages-filters [aria-current] {
+  background: var(--color-selection);
+  color: var(--color-ink);
+}
+
+@media (forced-colors: active) {
+  .messages-filters [aria-current] {
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+  }
+}
+
 /* The list keeps the shared scroll region at phone widths. Positioning it makes
    it the containing block of the row actions' visually hidden names, which are
    absolutely positioned: otherwise they escape the region's clipping and widen
