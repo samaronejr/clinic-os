@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import faulthandler
 import io
 import json
@@ -30,6 +31,21 @@ def _guarded_verify(entry: Path, fault: dict[str, Any]) -> dict[str, object]:
         return _verify(entry, fault)
     finally:
         faulthandler.cancel_dump_traceback_later()
+
+
+def _remove_attestation(attestation: Path) -> None:
+    """Delete a prior receipt through the verified private-directory capability."""
+    expected = os.environ["UPGRADE_PRIVATE_RUN_IDENTITY"]
+    directory = os.open(attestation.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        identity = os.fstat(directory)
+        if f"{identity.st_dev}:{identity.st_ino}" != expected:
+            message = "private_run_identity_mismatch"
+            raise RuntimeError(message)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(attestation.name, dir_fd=directory)
+    finally:
+        os.close(directory)
 
 
 def _verify(entry: Path, fault: dict[str, Any]) -> dict[str, object]:
@@ -71,7 +87,7 @@ def _verify(entry: Path, fault: dict[str, Any]) -> dict[str, object]:
     status = 0
     output = io.StringIO()
     attestation = Path(os.environ["UPGRADE_VERIFIED_FILE"])
-    attestation.unlink(missing_ok=True)
+    _remove_attestation(attestation)
     try:
         with (
             connection.execute_wrapper(inject),

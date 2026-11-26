@@ -44,15 +44,27 @@ def create(name: str) -> None:
         os.close(parent)
 
 
-def unlink_owned(root: int, expected: str, name: str, *, missing_ok: bool) -> None:
-    """Remove a direct child only through the verified creation capability."""
+def _require_child_capability(root: int, expected: str, name: str) -> None:
     if name in {"", ".", ".."} or "/" in name:
         message = "private_run_invalid_child"
         raise ValueError(message)
     identity = os.fstat(root)
-    if f"{identity.st_dev}:{identity.st_ino}" != expected:
+    if not stat.S_ISDIR(identity.st_mode) or (
+        f"{identity.st_dev}:{identity.st_ino}" != expected
+    ):
         message = "private_run_identity_mismatch"
         raise RuntimeError(message)
+
+
+def mkdir_owned(root: int, expected: str, name: str) -> None:
+    """Create a direct child of the verified directory, refusing existing names."""
+    _require_child_capability(root, expected, name)
+    os.mkdir(name, PRIVATE_MODE, dir_fd=root)
+
+
+def unlink_owned(root: int, expected: str, name: str, *, missing_ok: bool) -> None:
+    """Remove a direct child only through the verified creation capability."""
+    _require_child_capability(root, expected, name)
     try:
         os.unlink(name, dir_fd=root)
     except FileNotFoundError:
@@ -65,5 +77,8 @@ if __name__ == "__main__":
         unlink_owned(
             int(sys.argv[2]), sys.argv[3], sys.argv[4], missing_ok=sys.argv[5] == "1"
         )
+    elif sys.argv[1] == "mkdir":
+        for child in sys.argv[4:]:
+            mkdir_owned(int(sys.argv[2]), sys.argv[3], child)
     else:
         create(sys.argv[1])

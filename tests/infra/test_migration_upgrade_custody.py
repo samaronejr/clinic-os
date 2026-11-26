@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from ops.testing.migration_upgrade_custody import unlink_owned
 
+from infra import wave_h_entry_worker
+
 
 def test_unlink_refuses_a_directory_with_the_wrong_identity(tmp_path: Path) -> None:
     root = tmp_path / "owned"
@@ -48,3 +50,27 @@ def test_unlink_removes_an_owned_link_without_following_it(tmp_path: Path) -> No
         os.close(descriptor)
     assert not link.is_symlink()
     assert marker.read_bytes() == b"foreign"
+
+
+def test_attestation_delete_refuses_a_foreign_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owned = tmp_path / "owned"
+    owned.mkdir(mode=0o700)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir(mode=0o700)
+    marker = foreign / "verified.json"
+    marker.write_bytes(b"foreign")
+    before = marker.stat()
+    created = owned.stat()
+    identity = f"{created.st_dev}:{created.st_ino}"
+    monkeypatch.setenv("UPGRADE_PRIVATE_RUN_IDENTITY", identity)
+    with pytest.raises(RuntimeError, match="private_run_identity_mismatch"):
+        wave_h_entry_worker._remove_attestation(marker)
+    assert os.path.samestat(before, marker.stat())
+
+    own_receipt = owned / "verified.json"
+    own_receipt.write_bytes(b"mine")
+    wave_h_entry_worker._remove_attestation(own_receipt)
+    assert not own_receipt.exists()
+    wave_h_entry_worker._remove_attestation(own_receipt)
