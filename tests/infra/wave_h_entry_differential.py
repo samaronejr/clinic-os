@@ -1,4 +1,4 @@
-"""Exercise both full verifier scripts against every Wave H projection fault."""
+"""Run native F7 inbox verification and differential projection checks."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ import shutil
 import subprocess
 import sys
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import psycopg
+from ops.testing.f7_replay_snapshot import restore, snapshot_digest
 from psycopg import sql
 
 if TYPE_CHECKING:
@@ -22,6 +24,15 @@ if TYPE_CHECKING:
 NATIVE_F7 = "ab71193c110a3b579728d2811d28dad471875390"
 type Row = dict[str, object]
 type Projection = list[tuple[str, Row]]
+
+
+@dataclass(frozen=True)
+class Replay:
+    environment: dict[str, str]
+    digest: str
+    tables: dict[str, Row]
+    probes: dict[str, dict[str, Row]]
+    attempt: str
 
 
 def _faults(table: str, originals: Projection) -> Iterator[dict[str, object]]:
@@ -108,63 +119,97 @@ def _check_base(worktree: Path) -> None:
         raise RuntimeError(message)
 
 
-def _projection(admin: psycopg.Connection, table: str, snapshot: Row) -> Projection:
+def _projection(
+    admin: psycopg.Connection, table: str, snapshot: Row, replacement: Row | None = None
+) -> Projection:
     keys = snapshot["rows"]
     columns = snapshot["columns"]
     assert isinstance(keys, dict)
     assert isinstance(columns, list)
-    originals = [
-        (key, {column: row[column] for column in columns})
-        for key, row in admin.execute(
-            sql.SQL("SELECT id::text,to_jsonb(t) FROM {} t").format(
-                sql.Identifier("clinic_app", table)
-            )
+    relation = sql.Identifier("clinic_app", table)
+    if replacement is None:
+        cursor = admin.execute(
+            sql.SQL("SELECT id::text,to_jsonb(t) FROM {} t").format(relation)
         )
-        if key in keys
+    else:
+        rows = replacement["rows"]
+        assert isinstance(rows, list)
+        ((key, row),) = rows
+        cursor = admin.execute(
+            sql.SQL(
+                "SELECT id::text,CASE WHEN id::text=%s THEN to_jsonb(t) || %s::jsonb "
+                "ELSE to_jsonb(t) END FROM {} t"
+            ).format(relation),
+            (key, json.dumps(row)),
+        )
+    originals = [
+        (key, {column: row[column] for column in columns}) for key, row in cursor
     ]
-    assert {
+    actual = {
         key: hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
         for key, row in originals
-    } == keys
+    }
+    if actual != keys or len(originals) != snapshot["count"]:
+        message = f"preserved:{table}"
+        raise ValueError(message)
     return originals
 
 
 def _compare(
-    old: subprocess.Popen[str],
-    new: subprocess.Popen[str],
     table: str,
     base_fault: Row,
     lane_fault: Row,
+    reference: Row,
+    snapshot: Row,
 ) -> Row | None:
-    base_result = _verdict(old, base_fault)
-    lane_result = _verdict(new, lane_fault)
-    for result in (base_result, lane_result):
-        failures = result["failures"]
-        assert isinstance(failures, list)
-        if (
-            result["status"] != 1
-            or result["attested"]
-            or not any(str(line).endswith(f"preserved:{table}") for line in failures)
-        ):
-            return {
-                "table": table,
-                "case": lane_fault["description"],
-                "wave_h": base_result,
-                "lane": lane_result,
-                "base_reject_lane_pass": base_result["status"] == 1
-                and (lane_result["status"] == 0 or lane_result["attested"] is True),
-            }
+    base_rejected = _rejects(reference, base_fault)
+    lane_rejected = _rejects(snapshot, lane_fault)
+    if not base_rejected or not lane_rejected:
+        return {
+            "table": table,
+            "case": lane_fault["description"],
+            "native_rejected": base_rejected,
+            "lane_rejected": lane_rejected,
+            "base_reject_lane_pass": base_rejected and not lane_rejected,
+        }
     return None
+
+
+def _rejects(snapshot: Row, fault: Row) -> bool:
+    keys = snapshot["rows"]
+    rows = fault["rows"]
+    assert isinstance(keys, dict)
+    assert isinstance(rows, list)
+    return any(
+        hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
+        != keys[key]
+        for key, row in rows
+    )
+
+
+def _mutate_byte(rows: Projection, attempt: str) -> Row:
+    for key, row in rows:
+        if key != attempt:
+            continue
+        for column, value in row.items():
+            if column.startswith("id") or not isinstance(value, str) or not value:
+                continue
+            if not value.isascii():
+                continue
+            changed = ("A" if value[0] != "A" else "B") + value[1:]
+            return {"rows": [(key, {**row, column: changed})]}
+    message = "no seeded inbox attempt string was available for the byte mutation"
+    raise RuntimeError(message)
 
 
 def _run(base: Path, report: Row, differences: list[Row]) -> None:
     old_env = json.loads(Path(os.environ["UPGRADE_WAVE_H_NATIVE_ENV"]).read_text())
-    base_snapshots = json.loads(Path(old_env["UPGRADE_SEED_FILE"]).read_text())["ai"][
-        "tables"
-    ]
-    snapshots = json.loads(Path(os.environ["UPGRADE_SEED_FILE"]).read_text())["ai"][
-        "tables"
-    ]
+    old_seed = json.loads(Path(old_env["UPGRADE_SEED_FILE"]).read_text())
+    lane_seed = json.loads(Path(os.environ["UPGRADE_SEED_FILE"]).read_text())
+    base_snapshots = old_seed["ai"]["tables"]
+    snapshots = lane_seed["ai"]["tables"]
+    native_attempt = old_seed["inbox"]["cases"]["r7_inflight"]["a"]
+    lane_attempt = lane_seed["inbox"]["cases"]["r7_inflight"]["a"]
     assert len(base_snapshots) == 59
     assert base_snapshots.keys() == snapshots.keys()
     base_probes = json.loads(Path(old_env["UPGRADE_WAVE_H_PROBE_CASES"]).read_text())
@@ -181,24 +226,65 @@ def _run(base: Path, report: Row, differences: list[Row]) -> None:
         assert base_probes[phase].keys() == probes[phase].keys() == snapshots.keys()
     worker = Path(__file__).with_name("wave_h_entry_worker.py").resolve()
     out = Path(os.environ["UPGRADE_VERIFIED_FILE"]).parent
-    with ExitStack() as stack:
-        old = stack.enter_context(
-            _worker(base, worker, out / "differential-base.json", old_env)
-        )
-        new = stack.enter_context(
-            _worker(Path.cwd(), worker, out / "differential-lane.json", {})
-        )
+    lane_env = {"UPGRADE_ADMIN_DATABASE_URL": os.environ["UPGRADE_ADMIN_DATABASE_URL"]}
+    native_digest = snapshot_digest(old_env["UPGRADE_ADMIN_DATABASE_URL"])
+    lane_digest = snapshot_digest(lane_env["UPGRADE_ADMIN_DATABASE_URL"])
+    with (
+        restore(old_env, "native_e2e", native_digest) as native,
+        _worker(base, worker, out / "differential-base.json", native) as old,
+    ):
         _check_clean(_verdict(old, {}), attested=False)
-        _check_clean(_verdict(new, {}), attested=True)
+        with psycopg.connect(native["UPGRADE_ADMIN_DATABASE_URL"]) as admin:
+            terminal = admin.execute(
+                "SELECT status, provider_reference IS NOT NULL "
+                "FROM clinic_app.comms_integrationoperation WHERE id = %s",
+                (native_attempt,),
+            ).fetchone()
+        assert terminal == ("succeeded", True), terminal
+    report["native_inbox"] = {
+        "result": "PASS",
+        "snapshot_sha256": native_digest,
+        "inflight_terminal": "succeeded",
+    }
+    report["projection_snapshot_sha256"] = {
+        "native": native_digest,
+        "lane": lane_digest,
+    }
+    report["tables"] = sorted(snapshots)
+    _compare_projections(
+        report,
+        differences,
+        Replay(old_env, native_digest, base_snapshots, base_probes, native_attempt),
+        Replay(lane_env, lane_digest, snapshots, probes, lane_attempt),
+    )
+
+
+def _compare_projections(
+    report: Row,
+    differences: list[Row],
+    native: Replay,
+    lane: Replay,
+) -> None:
+    with ExitStack() as stack:
+        old_env = stack.enter_context(
+            restore(native.environment, "native_projection", native.digest)
+        )
+        lane_env = stack.enter_context(
+            restore(lane.environment, "lane_projection", lane.digest)
+        )
         checked = 0
         with (
             psycopg.connect(old_env["UPGRADE_ADMIN_DATABASE_URL"]) as old_admin,
-            psycopg.connect(os.environ["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
+            psycopg.connect(lane_env["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
         ):
-            for table, snapshot in sorted(snapshots.items()):
-                reference = base_snapshots[table]
-                assert set(reference["columns"]) == set(snapshot["columns"])
-                columns = sorted(reference["columns"])
+            for table, snapshot in sorted(lane.tables.items()):
+                reference = native.tables[table]
+                reference_columns = reference["columns"]
+                snapshot_columns = snapshot["columns"]
+                assert isinstance(reference_columns, list)
+                assert isinstance(snapshot_columns, list)
+                assert set(reference_columns) == set(snapshot_columns)
+                columns = sorted(reference_columns)
                 old_rows = _projection(old_admin, table, reference)
                 new_rows = _projection(admin, table, snapshot)
                 assert len(old_rows) == len(new_rows)
@@ -213,17 +299,21 @@ def _run(base: Path, report: Row, differences: list[Row]) -> None:
                 for base_fault, fault in zip(
                     _faults(table, old_rows), _faults(table, new_rows), strict=True
                 ):
-                    if difference := _compare(old, new, table, base_fault, fault):
+                    if difference := _compare(
+                        table, base_fault, fault, reference, snapshot
+                    ):
                         differences.append(difference)
                     checked += 1
                     report["projection_cases"] = checked
-                for phase in probes:
-                    faults = []
+                for phase in lane.probes:
+                    faults: list[Row] = []
                     for case, clean_rows in (
-                        (base_probes[phase][table], old_rows),
-                        (probes[phase][table], new_rows),
+                        (native.probes[phase][table], old_rows),
+                        (lane.probes[phase][table], new_rows),
                     ):
-                        ((key, modified),) = case["rows"]
+                        case_rows = case["rows"]
+                        assert isinstance(case_rows, list)
+                        ((key, modified),) = case_rows
                         projected = {column: modified[column] for column in columns}
                         clean = dict(clean_rows)[key]
                         assert {
@@ -238,16 +328,47 @@ def _run(base: Path, report: Row, differences: list[Row]) -> None:
                                 "rows": [(key, projected)],
                             }
                         )
-                    if difference := _compare(old, new, table, *faults):
+                    if difference := _compare(
+                        table, faults[0], faults[1], reference, snapshot
+                    ):
                         differences.append(difference)
                     report["probe_window_cases"] = (
                         int(str(report["probe_window_cases"])) + 1
                     )
                 sys.stdout.write(f"Wave H differential: {table}: {checked} cases\n")
                 sys.stdout.flush()
+                if table == "ai_actionexecution":
+                    _prove_projection_red(
+                        admin, table, snapshot, next(_faults(table, new_rows))
+                    )
+                    report["projected_row_mutation"] = "REJECTED"
+                if table == "comms_integrationoperation":
+                    _prove_projection_red(
+                        old_admin,
+                        table,
+                        reference,
+                        _mutate_byte(old_rows, native.attempt),
+                    )
+                    _prove_projection_red(
+                        admin, table, snapshot, _mutate_byte(new_rows, lane.attempt)
+                    )
+                    report["inbox_attempt_byte_mutation"] = "REJECTED"
         assert checked > 0
-        _check_clean(_verdict(old, {}), attested=False)
-        _check_clean(_verdict(new, {}), attested=True)
+        assert report.get("projected_row_mutation") == "REJECTED"
+        assert report.get("inbox_attempt_byte_mutation") == "REJECTED"
+
+
+def _prove_projection_red(
+    admin: psycopg.Connection, table: str, snapshot: Row, mutation: Row
+) -> None:
+    try:
+        _projection(admin, table, snapshot, mutation)
+    except ValueError as error:
+        if str(error) != f"preserved:{table}":
+            raise
+    else:
+        message = f"modified projection was accepted: {table}"
+        raise AssertionError(message)
 
 
 def main() -> int:

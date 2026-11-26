@@ -99,13 +99,30 @@ def test_wrapper_generates_native_probe_cases_and_publishes_verdict(
     assert verdict["result"] == "PASS"
     assert verdict["base_sha"] == BASE
     assert verdict["database_recreated"] is False
-    assert verdict["differential"] == {
+    differential = verdict["differential"]
+    assert {
+        key: differential[key]
+        for key in (
+            "result",
+            "projection_cases",
+            "probe_window_cases",
+            "differences",
+            "base_reject_lane_pass_pairs",
+        )
+    } == {
         "result": "PASS",
         "projection_cases": 17506,
         "probe_window_cases": 118,
         "differences": [],
         "base_reject_lane_pass_pairs": [],
     }
+    assert differential["native_inbox"]["result"] == "PASS"
+    assert (
+        differential["native_inbox"]["snapshot_sha256"]
+        == differential["projection_snapshot_sha256"]["native"]
+    )
+    assert len(differential["tables"]) == len(set(differential["tables"])) == 59
+    assert differential["inbox_attempt_byte_mutation"] == "REJECTED"
     assert not (receipt / "base").exists()
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 

@@ -645,7 +645,11 @@ def _r7_inflight(world: _World, ids: dict[str, str], failures: list[str]) -> Non
     """Forge outcomes from another session after the provider accepted."""
     message, attempt = UUID(ids["message"]), UUID(ids["a"])
     with world.owner():
-        provider = IntegrationOperation.objects.get(pk=attempt).provider
+        operation = IntegrationOperation.objects.get(pk=attempt)
+        if operation.status != "pending":
+            failures.append("r7_inflight_precondition: expected pending attempt")
+            return
+        provider = operation.provider
     adapter = integration._SEND_ADAPTERS[provider]  # noqa: SLF001
     original, calls = adapter.send, []
     accepted, release = Event(), Event()

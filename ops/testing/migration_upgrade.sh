@@ -627,6 +627,7 @@ if [ -n "$differential" ]; then
         UPGRADE_WAVE_H_NATIVE_ENV="$secret_dir/native/environment.json" \
         UPGRADE_WAVE_H_PROBE_CASES="$secret_dir/lane-probes.json" \
         UPGRADE_WAVE_H_REPORT="$differential_report" \
+        PYTHONPATH="$project_root" \
         uv run --frozen --no-sync --no-env-file python \
         tests/infra/wave_h_entry_differential.py "$wave_tree") || differential_rc=$?
     if [ "$differential_rc" != 0 ]; then
