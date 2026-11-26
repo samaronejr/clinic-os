@@ -753,10 +753,28 @@ def test_environment_link_never_follows_a_planted_name(
     _assert_untouched(directory, marker, before)
 
 
+def _plant_commands(links: tuple[tuple[str, str], ...]) -> str:
+    plants = ""
+    for base, name in links:
+        variable, label = PLANT_BASES[base]
+        directory = name.endswith(DIRECTORY_PLANTS)
+        target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
+        written = f"{variable}/{name}/pwned" if directory else f"{variable}/{name}"
+        plants += (
+            f'    ln -s -- "{target}" "{variable}/{name}"\n'
+            f'    if {{ echo PWN >> "{written}"; }} 2>/dev/null; then\n'
+            f"        echo WRITE_ESCAPED {label}{name} >&2\n"
+            "    else\n"
+            f"        echo WRITE_BLOCKED {label}{name} >&2\n"
+            "    fi\n"
+        )
+    return plants
+
+
 def _mid_run_shim(
     bin_dir: Path,
     tool: str,
-    plant: tuple[str, tuple[str, ...]],
+    plant: tuple[str, tuple[tuple[str, str], ...]],
     scratch: Path,
     *,
     passthrough: bool,
@@ -765,51 +783,74 @@ def _mid_run_shim(
     trigger, links = plant
     real = shutil.which(tool)
     assert real is not None
-    plants = ""
-    for relative in links:
-        directory = relative.endswith(".venv")
-        target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
-        attempt = f"$RUN/{relative}/pwned" if directory else f"$RUN/{relative}"
-        plants += (
-            f'    ln -s -- "{target}" "$RUN/{relative}"\n'
-            f'    if {{ echo PWN >> "{attempt}"; }} 2>/dev/null; then\n'
-            f"        echo WRITE_ESCAPED {relative} >&2\n"
-            "    else\n"
-            f"        echo WRITE_BLOCKED {relative} >&2\n"
-            "    fi\n"
-        )
     shim = bin_dir / tool
     shim.unlink()
     shim.write_text(
         "#!/bin/bash\n"
         'RUN="$UPGRADE_PRIVATE_RUN_DIR"\n'
+        'NATIVE="${UPGRADE_WAVE_H_PROBE_CASES%/*}"\n'
+        'CACHE="$UV_CACHE_DIR"\n'
         f'FOREIGN_DIR="{scratch / "foreign-dir"}"\n'
         f'FOREIGN_FILE="{scratch / "foreign-file"}"\n'
         f"if [[ {trigger} ]]; then\n"
-        f"{plants}"
+        f"{_plant_commands(links)}"
         "fi\n" + (f'exec {real} "$@"\n' if passthrough else "exit 0\n"),
         encoding="utf-8",
     )
     shim.chmod(0o700)
 
 
+# Either the census or an exclusive create refuses a planted name.
+REFUSALS = ("private_tree_foreign_entry", "FileExistsError")
+PLANT_BASES = {
+    "run": ("$RUN", ""),
+    "native": ("$NATIVE", "native/"),
+    "cache": ("$CACHE", "uv-cache/"),
+}
+DIRECTORY_PLANTS = (".venv", "interpreter-v4", "simple-v19", "wheels-v6")
+# The reviewer's plant points, each with its siblings: the wave-commit writers
+# open native/seed.json and native/ai-assertions.json, uv opens its cache's
+# interpreter-v4 directory and lock file.
+NATIVE_WRITERS = '"${UPGRADE_WAVE_H_PROBE_CASES##*/}" == probes.json'
+NATIVE_PLANTS = (
+    ("native", "seed.json"),
+    ("native", "ai-assertions.json"),
+    ("native", "environment.json"),
+    ("cache", "interpreter-v4"),
+    ("cache", ".lock"),
+)
 MID_RUN_PLANTS = {
-    "uv_sync": ("uv", '"$1" == sync', ("uv-cache/.lock", "base/.venv")),
+    "uv_sync": (
+        "uv",
+        '"$1" == sync',
+        (("cache", ".lock"), ("cache", "interpreter-v4"), ("run", "base/.venv")),
+    ),
     "verifier": (
         "uv",
         '"$*" == *wave_h_entry_differential.py*',
-        ("verified.json", "differential.json"),
+        (
+            ("run", "verified.json"),
+            ("run", "differential.json"),
+            ("run", "native/ai-assertions.json"),
+            ("cache", "interpreter-v4"),
+        ),
     ),
-    "native": ("git", '"$3" == checkout', ("native/seed.json", "native/probes.json")),
+    "native": (
+        "git",
+        '"$3" == checkout',
+        (
+            ("run", "native/seed.json"),
+            ("run", "native/ai-assertions.json"),
+            ("run", "native/probes.json"),
+            ("run", "native/environment.json"),
+        ),
+    ),
+    "native_writers": ("uv", NATIVE_WRITERS, NATIVE_PLANTS),
 }
 
 
-@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
-def test_links_planted_mid_run_never_reach_a_foreign_inode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
-) -> None:
-    monkeypatch.delenv("UPGRADE_REUSE_ENVIRONMENT", raising=False)
-    # docker is a no-op here, so the connection strings only need to parse.
+def _database_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # docker is a no-op in these runs, so the connection strings only need to parse.
     for key in (
         "MIGRATION_DATABASE_URL",
         "APP_DATABASE_URL",
@@ -824,6 +865,14 @@ def test_links_planted_mid_run_never_reach_a_foreign_inode(
         ("POSTGRES_PORT", "5432"),
     ):
         monkeypatch.setenv(key, value)
+
+
+@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
+def test_links_planted_mid_run_never_reach_a_foreign_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    monkeypatch.delenv("UPGRADE_REUSE_ENVIRONMENT", raising=False)
+    _database_environment(monkeypatch)
     tool, trigger, links = MID_RUN_PLANTS[stage]
     directory, marker, before = _foreign(tmp_path)
     bin_dir = _tools(tmp_path)
@@ -841,13 +890,35 @@ def test_links_planted_mid_run_never_reach_a_foreign_inode(
     assert result.returncode != 0, result.stdout
     _assert_untouched(directory, marker, before)
     assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
-    for relative in links:
-        assert f"WRITE_BLOCKED {relative}" in result.stdout, result.stdout[-3000:]
-    assert "private_tree_foreign_entry" in result.stdout, result.stdout[-3000:]
+    for base, name in links:
+        label = PLANT_BASES[base][1] + name
+        assert f"WRITE_BLOCKED {label}" in result.stdout, result.stdout[-3000:]
+    assert any(refusal in result.stdout for refusal in REFUSALS), result.stdout[-3000:]
     published = tmp_path / "migration-upgrade" / "verdict.json"
     if published.is_file():
         verdict = json.loads(published.read_text(encoding="utf-8"))
         assert verdict["result"] != "PASS"
+
+
+@requires_postgres
+def test_pinned_wave_writers_never_write_through_planted_links(
+    tmp_path: Path,
+) -> None:
+    """The pinned wave-commit writers and the real uv meet the planted links."""
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _tools(tmp_path)
+    _mid_run_shim(
+        bin_dir, "uv", (NATIVE_WRITERS, NATIVE_PLANTS), tmp_path, passthrough=True
+    )
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode != 0, result.stdout[-3000:]
+    _assert_untouched(directory, marker, before)
+    assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
+    published = tmp_path / "migration-upgrade" / "verdict.json"
+    verdict = json.loads(published.read_text(encoding="utf-8"))
+    assert verdict["result"] == "FAIL"
 
 
 @requires_postgres

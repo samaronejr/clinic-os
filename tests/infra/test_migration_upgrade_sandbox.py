@@ -1,6 +1,7 @@
 """A rehearsal child reaches nothing writable except the private run directory."""
 
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -11,6 +12,7 @@ import pytest
 SANDBOX = (
     Path(__file__).resolve().parents[2] / "ops/testing/migration_upgrade_sandbox.py"
 )
+BWRAP = shutil.which("bwrap") or "bwrap"
 NAME = "migration-upgrade-secrets." + "a" * 32
 INSIDE = f"/dev/shm/{NAME}"  # noqa: S108 - the sandbox's private mount point
 TMP_INSIDE = f"{INSIDE}/tmp"  # noqa: S108 - an entry of that mount
@@ -186,3 +188,50 @@ def test_the_child_sees_no_host_processes_and_holds_no_inherited_handles(
     handles, processes = result.stdout.splitlines()
     assert handles == "[]", handles
     assert str(run.pid) not in processes
+
+
+@pytest.mark.parametrize("mount", ["--ro-bind", "--bind"])
+def test_a_host_submount_cannot_be_written_through_a_link(
+    run: Run, tmp_path: Path, mount: str
+) -> None:
+    """A reviewer-owned directory mounted over the host stays read-only inside."""
+    reviewer = tmp_path / "reviewer-owned"
+    reviewer.mkdir()
+    victim = reviewer / "target"
+    victim.write_bytes(b"foreign\n")
+    (run.root / "link").symlink_to(victim)
+
+    result = subprocess.run(  # noqa: S603 - fixed launcher under test
+        [
+            BWRAP,
+            "--bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+            mount,
+            str(reviewer),
+            str(reviewer),
+            "--",
+            sys.executable,
+            str(SANDBOX),
+            str(run.pid),
+            str(run.run_fd),
+            NAME,
+            "--",
+            sys.executable,
+            "-I",
+            "-c",
+            WRITE,
+            f"{INSIDE}/link",
+            "w",
+        ],
+        pass_fds=(run.run_fd,),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Read-only file system" in result.stderr, result.stderr
+    assert victim.read_bytes() == b"foreign\n"

@@ -141,6 +141,12 @@ def _link_allowed(
     return resolved == scope or resolved.startswith(scope + "/")
 
 
+def _may_share_links(relative: str) -> bool:
+    """Package-manager hard links between its cache and the venv it fills."""
+    parts = PurePosixPath(relative).parts
+    return parts[0] == "uv-cache" or ".venv" in parts
+
+
 def _census_entry(
     directory: int,
     prefix: str,
@@ -166,11 +172,15 @@ def _census_entry(
         raise RuntimeError(message)
     if stat.S_ISDIR(found.st_mode):
         return os.open(name, DIRECTORY_FLAGS, dir_fd=directory), relative + "/"
-    target = os.readlink(name, dir_fd=directory) if stat.S_ISLNK(found.st_mode) else ""
-    if (
-        stat.S_ISLNK(found.st_mode)
-        and not _link_allowed(relative, target, recorded, mount)
-    ) or not (stat.S_ISLNK(found.st_mode) or stat.S_ISREG(found.st_mode)):
+    if stat.S_ISLNK(found.st_mode):
+        target = os.readlink(name, dir_fd=directory)
+        allowed = _link_allowed(relative, target, recorded, mount)
+    else:
+        # A second name for an inode is how a foreign file would enter the tree.
+        allowed = stat.S_ISREG(found.st_mode) and (
+            found.st_nlink == 1 or _may_share_links(relative)
+        )
+    if not allowed:
         message = f"private_tree_foreign_entry: {relative}"
         raise RuntimeError(message)
     return None

@@ -313,3 +313,21 @@ def test_extraction_reports_the_links_the_archive_carried(
 
     assert links == {"base/pkg/alias": "tool.sh"}
     check_tree(descriptor, identity, {"base": _identity(root / "base")}, links)
+
+
+def test_census_refuses_a_second_name_for_an_inode(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    (root / "uv-cache").mkdir()
+    created["uv-cache"] = _identity(root / "uv-cache")
+    (root / "base/tool").write_bytes(b"x")
+    (root / "uv-cache/shared").hardlink_to(root / "base/tool")
+    (root / "uv-cache/other").hardlink_to(root / "base/tool")
+
+    # uv hard-links between its cache and the venv it fills; elsewhere no.
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry: base/tool"):
+        check_tree(descriptor, identity, created)
+    (root / "base/tool").unlink()
+    check_tree(descriptor, identity, created)
