@@ -1,0 +1,88 @@
+{
+  "coverage": "93.59%",
+  "distinct_fresh_module_clusters": 4,
+  "duplicates": 0,
+  "extra": 0,
+  "focused_tests": 60,
+  "fsync_off_disposable_only_utc": "2026-11-25T18:28:16.254143495Z",
+  "full_exit": 0,
+  "full_nonbrowser_tests": 16651,
+  "guards_before_after": [
+    126,
+    126
+  ],
+  "isolated_harness_tests": 3308,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795666537799490,
+    "nice": 10,
+    "result": "success",
+    "run_id": "a9f65c89de80459e80ce793491f007bb",
+    "start_us": 1795651755207428,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r4d-full-31938a30.service"
+  },
+  "missing": 0,
+  "mutation_result": {
+    "equivalent": [
+      "pg_read_all_stats",
+      "r.rolsuper"
+    ],
+    "killed": 29,
+    "requested_killed": [
+      "check_extension_members_only",
+      "filter_by_app_connect",
+      "omit_context_owner_edge",
+      "omit_native_memory_routine"
+    ],
+    "run_id": "6c8996bae419420c85b132a0c7c88fff"
+  },
+  "nonpass": 0,
+  "parent": "de424fa482adc1346392049fbf2d556cb05c957d",
+  "product_changes_from_de424fa4": 0,
+  "recorder_mutants_killed": 2,
+  "rejected_history": [
+    {
+      "evidence_commit": "0c744cef6345f9da7cc70a542b1cfe92ca33f765",
+      "historical_manifest": ".omo/evidence/clinic-ops-premium-intelligence/final-wave/pre-review-4f8d2454/SC5-de424fa4-rejected/outcomes.jsonl",
+      "historical_manifest_sha256": "f7ec7b6af610a91b60b13f8140d2af8b5a98430ec03b16b91d76799789e948b7",
+      "pytest_exit": 1,
+      "reason": "Seven pre-mutation baseline failures from a sealed scheduling template; separate committed-definition drift.",
+      "sha": "de424fa482adc1346392049fbf2d556cb05c957d",
+      "status": "rejected"
+    },
+    {
+      "evidence_commit": "0c744cef6345f9da7cc70a542b1cfe92ca33f765",
+      "historical_manifest": ".omo/evidence/clinic-ops-premium-intelligence/final-wave/pre-review-4f8d2454/SC5-661483f0-rejected/outcomes.jsonl",
+      "historical_manifest_sha256": "12865ffbd3cc711fb350413015ea44e75703fcde0f7ba9201f60447fa1e032f0",
+      "pytest_exit": 1,
+      "reason": "Same seven sealed-template baseline failures; rollback-only migration assertions also weaken the rehearsal.",
+      "sha": "661483f07919db74a27cec36875a1c23e8bebc8e",
+      "status": "rejected"
+    },
+    {
+      "evidence_commit": "0c744cef6345f9da7cc70a542b1cfe92ca33f765",
+      "historical_manifest": ".omo/evidence/clinic-ops-premium-intelligence/final-wave/pre-review-4f8d2454/SC5-bb64a1de/outcomes.jsonl",
+      "historical_manifest_sha256": "2609d5587b5f80fb56bd8152720b8b96dd3028b8d04b9f92f321ffea00a0077f",
+      "pytest_exit": 0,
+      "reason": "16,651 passed only on this rejected SHA. Recorder equality after forced rollback and missing explicit graph-leaf reinstallation weakened tests.",
+      "sha": "bb64a1de35504b5582b8d3adf0183f220f472ff7",
+      "status": "rejected"
+    },
+    {
+      "historical_manifest": ".omo/evidence/clinic-ops-premium-intelligence/final-wave/pre-review-4f8d2454/SC5-5c543f47-rejected/outcomes.jsonl",
+      "historical_manifest_sha256": "b24787ce5adf7c49aaf26af3415c1816c303f14d201eca4f709fbf02b1792857",
+      "pytest_exit": 1,
+      "reason": "One real make db-posture probe exceeded the unchanged 15-second bound. No verdict returned for the failed call; 16,650 other IDs passed. No push.",
+      "run_id": "7a8c8542afe7422498a155a9c3318a19",
+      "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9",
+      "status": "rejected"
+    }
+  ],
+  "run_id": "a9f65c89de80459e80ce793491f007bb",
+  "seven_polarity_witnesses": true,
+  "sha": "31938a30ab9bfc8a5cb9da9568d834719fbab975",
+  "tree": "f5ab0e74ed1806794abe846dd1ef18c83579724b",
+  "unchanged_make_timeout_seconds": 15
+}

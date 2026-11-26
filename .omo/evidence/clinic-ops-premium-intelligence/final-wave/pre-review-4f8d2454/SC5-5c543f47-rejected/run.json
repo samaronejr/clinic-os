@@ -1,0 +1,31 @@
+{
+  "aggregate_test_phase_seconds_since_previous_private_cluster_module": 2176.702,
+  "collected": 16651,
+  "errors": 0,
+  "event": "subprocess.TimeoutExpired: make db-posture did not exit within 15 seconds. No native privilege decision was returned for the timed-out subprocess.",
+  "failed": 1,
+  "failed_id": "tests/infra/test_db_posture_url.py::test_db_posture_authenticates_the_supplied_app_database_url",
+  "failed_phase": "call",
+  "independent_focused_exit": 0,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795649359856975,
+    "nice": 10,
+    "result": "exit-code",
+    "run_id": "7a8c8542afe7422498a155a9c3318a19",
+    "start_us": 1795633498272438,
+    "state": "failed",
+    "status": 1,
+    "unit": "cpi-kek-r4d-full-5c543f47.service"
+  },
+  "measured_failed_call_seconds": 15.07551923498977,
+  "passed": 16650,
+  "publication": "withheld; replacements must keep the deadline and pass a distinct single full run",
+  "run_id": "7a8c8542afe7422498a155a9c3318a19",
+  "sc5_release_published": false,
+  "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9",
+  "skipped": 0,
+  "standalone_isolation_passed": 3308,
+  "status": "REJECTED",
+  "tree": "e63f9382cfab08b289f87430e803dd5c49f63727"
+}

@@ -1,0 +1,1230 @@
+{
+  "additional_fail_closed_controls": {
+    "allow_uninspectable": true,
+    "filter_connection_enabled": true
+  },
+  "catalog": {
+    "all_database_query": "SELECT datname, oid FROM pg_catalog.pg_database ORDER BY datname",
+    "application_exceptions_with_migration_and_reason": 608,
+    "exception_policy_blob": "4de95d70be57561daf7640aa62759e50fb9892ec",
+    "includes_target_database_owner_edge": true,
+    "native_or_extension_member_exceptions": 0,
+    "posture_blob": "8e4a50e34ecdaafc89be700bc826a37b4f561004",
+    "scanned_as": "clinic_posture"
+  },
+  "full": {
+    "duplicates": 0,
+    "errors": 0,
+    "extras": 0,
+    "failed": 1,
+    "junit_sha256": "a928d84a752906059072fe548347b371267f365a56f66adfa70e810c5a1e1916",
+    "manifest_sha256": "b24787ce5adf7c49aaf26af3415c1816c303f14d201eca4f709fbf02b1792857",
+    "missing": 0,
+    "passed": 16650,
+    "run_id": "7a8c8542afe7422498a155a9c3318a19",
+    "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9",
+    "skipped": 0
+  },
+  "mutation_summary": {
+    "equivalent": [
+      "pg_read_all_stats",
+      "r.rolsuper"
+    ],
+    "killed": 29,
+    "requested_killed": [
+      "check_extension_members_only",
+      "filter_by_app_connect",
+      "omit_context_owner_edge",
+      "omit_native_memory_routine"
+    ],
+    "run_id": "849560460a1647f885d3ef6793f4211c"
+  },
+  "only_failure": {
+    "attribution": "Actual subprocess deadline, not a returned ACL verdict. Exact underlying operating-system stall is not determined.",
+    "deadline_seconds": 15,
+    "error_class": "subprocess.TimeoutExpired",
+    "measured_call_seconds": 15.07551923498977,
+    "node_id": "tests/infra/test_db_posture_url.py::test_db_posture_authenticates_the_supplied_app_database_url",
+    "phase": "call"
+  },
+  "positive_and_recorder_validation": {
+    "focused": {
+      "cases": 60,
+      "failures": 0,
+      "run_id": "56bcc688212e41bfb14e21af75e65871"
+    },
+    "recorder": {
+      "cases": 2,
+      "failures": 2,
+      "run_id": "2aae07bb18a54235adcd3fec14714448"
+    }
+  },
+  "positive_polarity_records": {
+    "cases": {
+      "tests/infra/test_db_posture_url.py::test_db_posture_authenticates_the_supplied_app_database_url": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_connectable_but_uninspectable_database_refuses_posture": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_connectable_secondary_has_independent_routine_grants": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          false,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_connection_disabled_database_is_not_skipped": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_machine_only_database_keeps_local_grant_in_scope": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_posture_refuses_transitive_set_only_parameter_authority": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      },
+      "tests/infra/test_role_family_posture.py::test_reachable_database_owner_activates_local_grant": {
+        "fixture_closed_databases": 0,
+        "separate_cluster": true,
+        "shared_cluster_had_closed_database": true,
+        "verdicts": [
+          true,
+          false,
+          true
+        ]
+      }
+    },
+    "exit": 0,
+    "run_id": "56bcc688212e41bfb14e21af75e65871",
+    "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9"
+  },
+  "provenance": {
+    "focused_sha256": "2ef415a46441aedb063a24d1aa4b43bcec9fcf1d23da630be7c570393256a6d7",
+    "isolation_junit_sha256": "d66ba35ef7acf51a0e4b94b6ad81aedd880898235dccfdce5d8111d497edfd28",
+    "junit_sha256": "a928d84a752906059072fe548347b371267f365a56f66adfa70e810c5a1e1916",
+    "mutant_junit_sha256": "0ba7242bbbc86c59a9267a7e10de1044b407812f90969589d1491488ed790a2d",
+    "recorder_sha256": "670c8f9196c7b0820700c14db6a9c660f0b68ec86a4205052356f89d8c3e44cc"
+  },
+  "publish": "withheld; full and manager witness exit 1",
+  "real_recorder_failures": {
+    "cases": {
+      "tests/teleconsult/test_event_migration.py::test_event_authority_reverse_is_exact_with_populated_v2_events": {
+        "exact_final_recorder_assertion": true,
+        "inserted": true,
+        "observed_committed": true,
+        "outcome": "failed",
+        "phase": "call"
+      },
+      "tests/teleconsult/test_mode_migration.py::test_populated_mode_migration_reverses_and_reapplies_exact_catalog": {
+        "exact_final_recorder_assertion": true,
+        "inserted": true,
+        "observed_committed": true,
+        "outcome": "failed",
+        "phase": "call"
+      }
+    },
+    "exit": 1,
+    "run_id": "2aae07bb18a54235adcd3fec14714448",
+    "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9"
+  },
+  "redundancies": {
+    "pg_read_all_stats": "The role already has effective EXECUTE on restricted pg_get_backend_memory_contexts() and pg_get_shmem_allocations().",
+    "r.rolsuper": "A superuser already has effective EXECUTE on restricted native routines."
+  },
+  "release_chain_exit": 1,
+  "sha": "5c543f47b01d7c44b08b1c531170800bdd01aee9",
+  "standalone_checks": {
+    "isolation_exit": 0,
+    "isolation_run_id": "53a110836a19442c9a688e9284abe5e5",
+    "isolation_tests": 3308,
+    "restore_guards": 6,
+    "static_bootstrap_migration_posture_exit": 0,
+    "strict_mypy_files": 2951
+  },
+  "status": "REJECTED",
+  "two_baseline_assertion_review": {
+    "comparisons": [
+      {
+        "baseline": "de424fa482adc1346392049fbf2d556cb05c957d",
+        "changed_paths": [
+          "tests/conftest.py",
+          "tests/infra/test_db_posture_url.py",
+          "tests/infra/test_role_family_posture.py",
+          "tests/isolated_pg_fixtures.py",
+          "tests/patients/delegate_support.py",
+          "tests/patients/test_dsar.py",
+          "tests/teleconsult/conftest.py",
+          "tests/teleconsult/test_event_migration.py",
+          "tests/teleconsult/test_mode_migration.py"
+        ],
+        "files": {
+          "tests/conftest.py": {
+            "changed": [],
+            "context": "Register independent test-only fixture providers; existing environments unaffected unless requested.",
+            "same": 7
+          },
+          "tests/infra/test_db_posture_url.py": {
+            "changed": [
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 91,
+                "new_predicate_sha256": "0e07ee3483ba126e9405057f0c82b31b1e65770df6b0afa7d675d819a93ab3ad",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 92,
+                "new_predicate_sha256": "cb87e088535db8034740399b46fa2b6adb9983716f40e020b6b9af49954aa9fa",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 93,
+                "new_predicate_sha256": "e664bcb2e5f96b6cd570e49d6902c006f44d9ee39b7a1444e46c323a14abccbb",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 94,
+                "new_predicate_sha256": "d4b5fe8a6f4607144ee1d4c9bfc6b5b1e8a0afea6c81d25a8c9f9107c4831179",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              }
+            ],
+            "context": "All legacy URL rejection, credential redaction and supplied-URL obligations retained; assert a refusal and return to success in the positive case too.",
+            "same": 8
+          },
+          "tests/infra/test_role_family_posture.py": {
+            "changed": [],
+            "context": "For six full-cluster cases only the fixture selection changed since de424fa4. It still runs the same production verifier with the complete PG inventory.",
+            "same": 43
+          },
+          "tests/isolated_pg_fixtures.py": {
+            "changed": [],
+            "context": "Real migrated, dedicated cluster; no intercepted database enumeration, privilege check or return value. Test-specific environment only. Required for cluster-wide posture.",
+            "same": 0
+          },
+          "tests/patients/delegate_support.py": {
+            "changed": [
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 174,
+                "new_predicate_sha256": "472a87e5c5023044ef0fc627fbc73b049080ef9f1bfeeecd49608dc293d43cd3",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 175,
+                "new_predicate_sha256": "a5d9b88dd3712aeb74157ed64b1df8ee23191053993d677572b88bf395ced90c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 190,
+                "new_predicate_sha256": "1c4d006b02cea2d49087da970aec4b7df94518baa0ad1ad08478a581ed77b608",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              }
+            ],
+            "context": "No date/role/authorization predicate changed. Save and restore the installed definition and require the expected statement-time expression.",
+            "same": 2
+          },
+          "tests/patients/test_dsar.py": {
+            "changed": [
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 220,
+                "new_predicate_sha256": "472a87e5c5023044ef0fc627fbc73b049080ef9f1bfeeecd49608dc293d43cd3",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 221,
+                "new_predicate_sha256": "a5d9b88dd3712aeb74157ed64b1df8ee23191053993d677572b88bf395ced90c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 236,
+                "new_predicate_sha256": "1c4d006b02cea2d49087da970aec4b7df94518baa0ad1ad08478a581ed77b608",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              }
+            ],
+            "context": "Original DDL during the freeze and all overdue/date equality tests retained. Post-fixture stored definition must be byte-identical.",
+            "same": 119
+          },
+          "tests/teleconsult/conftest.py": {
+            "changed": [
+              {
+                "classification": "additional check that the real seeded RBAC fixture is returned on the disposable database",
+                "kind": "assert",
+                "new_line": 59,
+                "new_predicate_sha256": "d3b178125aa3e5722b6019f9179b9d765fdf875468082416b22d6fbb8ec50f70",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "_committed_world"
+              }
+            ],
+            "context": "Private PG clone with real RBAC and provider fixtures. All aliases preserve role/binding; cleanup closes the clone only after assertions and real actions, without rollback or forced drop.",
+            "same": 0
+          },
+          "tests/teleconsult/test_event_migration.py": {
+            "changed": [
+              {
+                "classification": "extra exact recorder-set check on committed state; original final equality retained",
+                "kind": "assert",
+                "new_line": 73,
+                "new_predicate_sha256": "eb2c255b2bfe9c5eeb6fd7211e24cd41e5415cd95b324ce246376e78bdc2a19e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_event_authority_reverse_is_exact_with_populated_v2_events"
+              }
+            ],
+            "context": "Explicit leaf reinstall, original try/finally, all originally selected reverse/forward operations and assertions retained, no outer transaction. Extra reversible disclosure layer.",
+            "migration_proof": {
+              "external_disposal_only": true,
+              "full_original_rehearsal_body_equivalent": true,
+              "leaf_reinstall_line": 72,
+              "new_post_reinstall_equality": 73,
+              "retained_final_live_equality": 115
+            },
+            "same": 12
+          },
+          "tests/teleconsult/test_mode_migration.py": {
+            "changed": [
+              {
+                "classification": "extra exact recorder-set check on committed state; original final equality retained",
+                "kind": "assert",
+                "new_line": 111,
+                "new_predicate_sha256": "eb2c255b2bfe9c5eeb6fd7211e24cd41e5415cd95b324ce246376e78bdc2a19e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_populated_mode_migration_reverses_and_reapplies_exact_catalog"
+              }
+            ],
+            "context": "Same committed, populated repeated reverse/forward exercise and all original post-replay effects and assertions. Catalog hash covers an additional routine.",
+            "migration_proof": {
+              "external_disposal_only": true,
+              "full_original_rehearsal_body_equivalent": true,
+              "leaf_reinstall_line": 110,
+              "new_post_reinstall_equality": 111,
+              "retained_final_live_equality": 145
+            },
+            "same": 15
+          }
+        },
+        "head": "5c543f47b01d7c44b08b1c531170800bdd01aee9"
+      },
+      {
+        "baseline": "4f8d2454987ca1d083ead53a7501126d647a89bc",
+        "changed_paths": [
+          ".env.example",
+          "Makefile",
+          "config/settings/base.py",
+          "config/settings/database.py",
+          "config/settings/renewal.py",
+          "config/settings/test.py",
+          "docs/RUNBOOK.md",
+          "docs/SECURITY.md",
+          "ops/db/bootstrap.sql",
+          "ops/db/posture.py",
+          "ops/db/routine-exceptions.tsv",
+          "ops/testing/ci-serial-tests.txt",
+          "ops/testing/ci_postgres_runtime.py",
+          "ops/testing/https_role_bootstrap.py",
+          "ops/testing/renewal_runner.py",
+          "tests/conftest.py",
+          "tests/identity/test_identity_acl_migration.py",
+          "tests/infra/test_agent_database.py",
+          "tests/infra/test_bound_parameters.py",
+          "tests/infra/test_database_options.py",
+          "tests/infra/test_db_posture_url.py",
+          "tests/infra/test_https_role_bootstrap.py",
+          "tests/infra/test_role_family_posture.py",
+          "tests/isolated_pg_fixtures.py",
+          "tests/isolation/makefile_process_probe.py",
+          "tests/isolation/test_makefile_process_security.py",
+          "tests/patients/delegate_support.py",
+          "tests/patients/test_dsar.py",
+          "tests/realtime/test_pooling.py",
+          "tests/scribe/test_draft_authority.py",
+          "tests/teleconsult/conftest.py",
+          "tests/teleconsult/test_event_migration.py",
+          "tests/teleconsult/test_mode_migration.py"
+        ],
+        "files": {
+          "tests/conftest.py": {
+            "changed": [],
+            "context": "Register independent test-only fixture providers; existing environments unaffected unless requested.",
+            "same": 7
+          },
+          "tests/identity/test_identity_acl_migration.py": {
+            "changed": [],
+            "context": "Parameterized set_config(false) preserves session scope for exactly the same GUC names/values; all tests unchanged.",
+            "same": 14
+          },
+          "tests/infra/test_agent_database.py": {
+            "changed": [
+              {
+                "classification": "exact options dictionary; deleting only the required new binding=True field recovers original equality, no arbitrary key accepted",
+                "kind": "assert",
+                "new_line": 37,
+                "new_predicate_sha256": "c198b6110fa96cee97a421b4d9a28b50afd495a1263ad17528ab58152807e2ad",
+                "old_line": 37,
+                "old_predicate_sha256": "afc989ef78759c071a6421f893874ada6bf364f58fd0d91018ca65fd0d3145e1",
+                "test_or_helper": "test_agent_alias_uses_separate_login_with_exact_options"
+              },
+              {
+                "classification": "exact options dictionary; deleting only the required new binding=True field recovers original equality, no arbitrary key accepted",
+                "kind": "assert",
+                "new_line": 95,
+                "new_predicate_sha256": "69271840d28f26f1e8eb37341a688ce7c0e134dee7dc14de6220697d93c4df92",
+                "old_line": 94,
+                "old_predicate_sha256": "9c7561bf32c4469fcb0cec7bd19843421ab1d35b7ff14db0054993b258178f58",
+                "test_or_helper": "test_strict_agent_dsn_requires_verified_tls"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 11
+          },
+          "tests/infra/test_bound_parameters.py": {
+            "changed": [
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 85,
+                "new_predicate_sha256": "8d85df787796341a403fa9238d83b9b5d0025c36571379075f5b4f0959771e80",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "__call__"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 56,
+                "new_predicate_sha256": "4e2ac029ca3850371c451fc79216eb1523d4cdfdcac830d90d4e2843bbb503e9",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "_matches"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 104,
+                "new_predicate_sha256": "b6db327441b0c75c3d784c6568f3e24ef997c9c1da390cf7e7c6e503d2de058d",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_binds_every_envelope_and_webhook_argument"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 109,
+                "new_predicate_sha256": "17ddeba4de5779b49d7442f84637c38030b4c78af0f2eaefc4562ea8e2d7984e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_binds_every_envelope_and_webhook_argument"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 111,
+                "new_predicate_sha256": "f51324ef05700492424a897344cc0999070efff2762b964ddecb00d604960017",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_binds_every_envelope_and_webhook_argument"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 113,
+                "new_predicate_sha256": "adfd2fce3ac71b807f485f217224f8235b4f48456e01dbf2b601b0e531dfb827",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_binds_every_envelope_and_webhook_argument"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 114,
+                "new_predicate_sha256": "8c0dc9bcd459e66964760bd70c6504f763983f99e2d1fcf840b5a7c6059f69e1",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_binds_every_envelope_and_webhook_argument"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 119,
+                "new_predicate_sha256": "0d666387d0c28b202927d0c6d272d62fbd09f4b0b9d8ae3a259b634bff06efec",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_cannot_enable_server_bind_detail"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "assert",
+                "new_line": 137,
+                "new_predicate_sha256": "5b34719e71e6d6efbfef0c6cfa0c65cf69121633485800928771f31c9551fc80",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_cannot_enable_server_bind_detail"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "expectation",
+                "new_line": 123,
+                "new_predicate_sha256": "f6f0cfbbbd3d790280b5aea9ac79fcc4b8db02e00e9830d79cdb88dcf61f7548",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_cannot_enable_server_bind_detail"
+              },
+              {
+                "classification": "new native database binding/parameter control; no wave check replaced",
+                "kind": "expectation",
+                "new_line": 125,
+                "new_predicate_sha256": "f6f0cfbbbd3d790280b5aea9ac79fcc4b8db02e00e9830d79cdb88dcf61f7548",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_cannot_enable_server_bind_detail"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 0
+          },
+          "tests/infra/test_database_options.py": {
+            "changed": [
+              {
+                "classification": "all original subprocess assertions byte-identical plus binding=True on every configured alias",
+                "kind": "embedded Python",
+                "new_line": 144,
+                "new_predicate_sha256": "5c6a9ea03d268feb7d66732b1d2a986526d2495190085c8a47da73d223c53d99",
+                "old_line": 144,
+                "old_predicate_sha256": "104c09ca7d07af5d7a8620d14813cbbe808eb015e744d5c46a1e8f402e6d9ecc",
+                "test_or_helper": "test_production_database_has_runtime_and_session_lock_aliases"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 10
+          },
+          "tests/infra/test_db_posture_url.py": {
+            "changed": [
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 91,
+                "new_predicate_sha256": "0e07ee3483ba126e9405057f0c82b31b1e65770df6b0afa7d675d819a93ab3ad",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 92,
+                "new_predicate_sha256": "cb87e088535db8034740399b46fa2b6adb9983716f40e020b6b9af49954aa9fa",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 93,
+                "new_predicate_sha256": "e664bcb2e5f96b6cd570e49d6902c006f44d9ee39b7a1444e46c323a14abccbb",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              },
+              {
+                "classification": "additional real bad-password denial, redaction and valid-credential recovery; original positive unchanged",
+                "kind": "assert",
+                "new_line": 94,
+                "new_predicate_sha256": "d4b5fe8a6f4607144ee1d4c9bfc6b5b1e8a0afea6c81d25a8c9f9107c4831179",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_db_posture_authenticates_the_supplied_app_database_url"
+              }
+            ],
+            "context": "All legacy URL rejection, credential redaction and supplied-URL obligations retained; assert a refusal and return to success in the positive case too.",
+            "same": 8
+          },
+          "tests/infra/test_https_role_bootstrap.py": {
+            "changed": [
+              {
+                "classification": "additional exact count=3 or exact logging defaults equality on existing unchanged role grants",
+                "kind": "assert",
+                "new_line": 97,
+                "new_predicate_sha256": "e2094c74a75a0358461b2095520aa0850fbaf708a61962a0a73b07c619e84245",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_https_bootstrap_installs_migration_roles_with_closed_authority"
+              },
+              {
+                "classification": "additional exact count=3 or exact logging defaults equality on existing unchanged role grants",
+                "kind": "assert",
+                "new_line": 99,
+                "new_predicate_sha256": "56eae5588648153f2dda686e4632ebd22be0408ce33fa89dbbc844fc1c7929bb",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_https_bootstrap_installs_migration_roles_with_closed_authority"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 5
+          },
+          "tests/infra/test_role_family_posture.py": {
+            "changed": [
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 467,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_but_uninspectable_database_refuses_posture"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 472,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_but_uninspectable_database_refuses_posture"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 477,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_but_uninspectable_database_refuses_posture"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 249,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_secondary_has_independent_routine_grants"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 254,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_secondary_has_independent_routine_grants"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 265,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_secondary_has_independent_routine_grants"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 269,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_secondary_has_independent_routine_grants"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 275,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connectable_secondary_has_independent_routine_grants"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 483,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connection_disabled_database_is_not_skipped"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 488,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connection_disabled_database_is_not_skipped"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 493,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_connection_disabled_database_is_not_skipped"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 187,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_grant_and_revoke_behind_admin_only_edge"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 189,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_grant_and_revoke_behind_admin_only_edge"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 191,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_grant_and_revoke_behind_admin_only_edge"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 503,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_initially_restricted_native_routine_cannot_be_opened_to_public"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 505,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_initially_restricted_native_routine_cannot_be_opened_to_public"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 385,
+                "new_predicate_sha256": "8a69917022ca9b4342daaa0b017793fec6898f89ed939d9d43760aafdd70729b",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_machine_only_database_keeps_local_grant_in_scope"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 396,
+                "new_predicate_sha256": "fc547e55a96b228bcfe1e76fc3d47e34afc27d1d3e46a5f6eedf9feb1cd9c655",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_machine_only_database_keeps_local_grant_in_scope"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 397,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_machine_only_database_keeps_local_grant_in_scope"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 403,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_machine_only_database_keeps_local_grant_in_scope"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 409,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_machine_only_database_keeps_local_grant_in_scope"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 200,
+                "new_predicate_sha256": "c82411336989556f4fd90d8849cacf6581a198fd5712ed0513d1eb9cf1ccb87e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_migration_resolver_exception_is_not_an_app_exception"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 206,
+                "new_predicate_sha256": "8aa6ad0db280fa7307b5688472c6ebeaa8dad35a7ddbb129726ea696aab49a71",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_migration_resolver_exception_is_not_an_app_exception"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 210,
+                "new_predicate_sha256": "c82411336989556f4fd90d8849cacf6581a198fd5712ed0513d1eb9cf1ccb87e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_migration_resolver_exception_is_not_an_app_exception"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 285,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_native_memory_routine_direct_grant_refused"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 290,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_native_memory_routine_direct_grant_refused"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 295,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_native_memory_routine_direct_grant_refused"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 54,
+                "new_predicate_sha256": "3eb12fb62c2249843cca8734cfb06c14350922cbb712b6f31579a8ca11130760",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_refuses_transitive_set_only_parameter_authority"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 61,
+                "new_predicate_sha256": "bb822bda18c69b483194cd8e5584f73f16e26a18f2b36d708ce3d8a0f19ad815",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_refuses_transitive_set_only_parameter_authority"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 65,
+                "new_predicate_sha256": "d07ec0a6aa5616cf4099f0adbf6508b3c85b53e623035c46c3deda6702a56312",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_refuses_transitive_set_only_parameter_authority"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 67,
+                "new_predicate_sha256": "3eb12fb62c2249843cca8734cfb06c14350922cbb712b6f31579a8ca11130760",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_refuses_transitive_set_only_parameter_authority"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 136,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_rejects_inheritance_after_a_role_switch"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 138,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_rejects_inheritance_after_a_role_switch"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 140,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_posture_rejects_inheritance_after_a_role_switch"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 515,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_private_migrated_helper_does_not_allow_new_runtime_grantee"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 520,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_private_migrated_helper_does_not_allow_new_runtime_grantee"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 440,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_reachable_database_owner_activates_local_grant"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 445,
+                "new_predicate_sha256": "3bb17951156653f0fa03b8ff26b7587b7341c330bff69e13933a4ac9c5e558e9",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_reachable_database_owner_activates_local_grant"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 451,
+                "new_predicate_sha256": "1851dd95f6af62790accb9bf7b87312f40a26c5d3d68f40cc905ba56e77e530c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_reachable_database_owner_activates_local_grant"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 456,
+                "new_predicate_sha256": "27c536a44cbba22cc9266dd765d3d628e8b625eb9e6ef92a4d5b5a234d91fdba",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_reachable_database_owner_activates_local_grant"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 321,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_unlisted_restricted_routine_in_extension_schema"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 325,
+                "new_predicate_sha256": "96a4f5b25dd4fa46891cabe9da6656d90c32a5092ee73be2e75f6daf8aca07cf",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_unlisted_restricted_routine_in_extension_schema"
+              },
+              {
+                "classification": "additional real grant, graph, inspection or recovery oracle; no wave check replaced",
+                "kind": "assert",
+                "new_line": 329,
+                "new_predicate_sha256": "cadc286b0c4a3d3c12e68c0313a4b6b58e4d320537f76238903cabc599f73980",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_unlisted_restricted_routine_in_extension_schema"
+              }
+            ],
+            "context": "For six full-cluster cases only the fixture selection changed since de424fa4. It still runs the same production verifier with the complete PG inventory.",
+            "same": 0
+          },
+          "tests/isolated_pg_fixtures.py": {
+            "changed": [],
+            "context": "Real migrated, dedicated cluster; no intercepted database enumeration, privilege check or return value. Test-specific environment only. Required for cluster-wide posture.",
+            "same": 0
+          },
+          "tests/isolation/makefile_process_probe.py": {
+            "changed": [],
+            "context": "Original credentials, argument-protection and environment-delivery checks retained; add independent posture credential to both censuses.",
+            "same": 3
+          },
+          "tests/isolation/test_makefile_process_security.py": {
+            "changed": [],
+            "context": "Same literal assertions, expanded credential-input set includes posture credential.",
+            "same": 10
+          },
+          "tests/patients/delegate_support.py": {
+            "changed": [
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 174,
+                "new_predicate_sha256": "472a87e5c5023044ef0fc627fbc73b049080ef9f1bfeeecd49608dc293d43cd3",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 175,
+                "new_predicate_sha256": "a5d9b88dd3712aeb74157ed64b1df8ee23191053993d677572b88bf395ced90c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 190,
+                "new_predicate_sha256": "1c4d006b02cea2d49087da970aec4b7df94518baa0ad1ad08478a581ed77b608",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "delegate_clock"
+              }
+            ],
+            "context": "No date/role/authorization predicate changed. Save and restore the installed definition and require the expected statement-time expression.",
+            "same": 2
+          },
+          "tests/patients/test_dsar.py": {
+            "changed": [
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 220,
+                "new_predicate_sha256": "472a87e5c5023044ef0fc627fbc73b049080ef9f1bfeeecd49608dc293d43cd3",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 221,
+                "new_predicate_sha256": "a5d9b88dd3712aeb74157ed64b1df8ee23191053993d677572b88bf395ced90c",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              },
+              {
+                "classification": "additional clock body admission or exact installed definition restoration; frozen instant and boundary assertions unchanged",
+                "kind": "assert",
+                "new_line": 236,
+                "new_predicate_sha256": "1c4d006b02cea2d49087da970aec4b7df94518baa0ad1ad08478a581ed77b608",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "data_request_clock"
+              }
+            ],
+            "context": "Original DDL during the freeze and all overdue/date equality tests retained. Post-fixture stored definition must be byte-identical.",
+            "same": 119
+          },
+          "tests/realtime/test_pooling.py": {
+            "changed": [
+              {
+                "classification": "additional binding=True requirement; existing loop expanded from default/locks to include agent",
+                "kind": "assert",
+                "new_line": 101,
+                "new_predicate_sha256": "8c2fd37655c6fa2ed9b9abea4fc61762f504460d0741dbf9d4dd548ca8a6b806",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_runtime_aliases_disable_prepared_statements_and_implicit_transactions"
+              },
+              {
+                "classification": "exact effective tuple; all old columns unchanged plus three required logging values",
+                "kind": "assert",
+                "new_line": 71,
+                "new_predicate_sha256": "d0dbb77f1dfe1bb183e374ff75ce7263c2412a5e7d7bc8b644ed08889bb2fb96",
+                "old_line": 62,
+                "old_predicate_sha256": "8fc513d4c9b61ec38fa2789eac1ae30c44db7810b545f2a74311a0e60c42cfae",
+                "test_or_helper": "test_runtime_role_defaults_are_pinned_for_transaction_pooling"
+              },
+              {
+                "classification": "exact complete row list under the required new product contract: historical app settings unchanged, exclusively three new logging defaults on app/agent/owner; no arbitrary row/GUC or scoped override",
+                "kind": "assert",
+                "new_line": 79,
+                "new_predicate_sha256": "112687d1cfbae0f7837f049a8604cafcfa32771bc9b53050c9aa4c46ee6dd4d1",
+                "old_line": 63,
+                "old_predicate_sha256": "e7420b6d0ac6df903d8b1ced2053b05b5f82c65a6ceb442fbae57892f20211ca",
+                "test_or_helper": "test_runtime_role_defaults_are_pinned_for_transaction_pooling"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 12
+          },
+          "tests/scribe/test_draft_authority.py": {
+            "changed": [
+              {
+                "classification": "specific IntegrityError and expected domain message; a generic DatabaseError no longer passes",
+                "kind": "expectation",
+                "new_line": 118,
+                "new_predicate_sha256": "e6cb516d0d699b1f197f3dc83f7a41897f02edc4d7b44fdeec552df6df21b5ae",
+                "old_line": 118,
+                "old_predicate_sha256": "260ec0e9aeafe60365537a256b6364cbdf9d008f802fb3d5c07f050255fecd05",
+                "test_or_helper": "test_raw_citation_and_history_guards_reject_foreign_references"
+              }
+            ],
+            "context": "See classified assertions and SHA-bound source diff.",
+            "same": 13
+          },
+          "tests/teleconsult/conftest.py": {
+            "changed": [
+              {
+                "classification": "additional check that the real seeded RBAC fixture is returned on the disposable database",
+                "kind": "assert",
+                "new_line": 59,
+                "new_predicate_sha256": "d3b178125aa3e5722b6019f9179b9d765fdf875468082416b22d6fbb8ec50f70",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "_committed_world"
+              }
+            ],
+            "context": "Private PG clone with real RBAC and provider fixtures. All aliases preserve role/binding; cleanup closes the clone only after assertions and real actions, without rollback or forced drop.",
+            "same": 0
+          },
+          "tests/teleconsult/test_event_migration.py": {
+            "changed": [
+              {
+                "classification": "extra exact recorder-set check on committed state; original final equality retained",
+                "kind": "assert",
+                "new_line": 73,
+                "new_predicate_sha256": "eb2c255b2bfe9c5eeb6fd7211e24cd41e5415cd95b324ce246376e78bdc2a19e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_event_authority_reverse_is_exact_with_populated_v2_events"
+              }
+            ],
+            "context": "Explicit leaf reinstall, original try/finally, all originally selected reverse/forward operations and assertions retained, no outer transaction. Extra reversible disclosure layer.",
+            "migration_proof": {
+              "external_disposal_only": true,
+              "full_original_rehearsal_body_equivalent": true,
+              "leaf_reinstall_line": 72,
+              "new_post_reinstall_equality": 73,
+              "retained_final_live_equality": 115
+            },
+            "same": 12
+          },
+          "tests/teleconsult/test_mode_migration.py": {
+            "changed": [
+              {
+                "classification": "extra exact recorder-set check on committed state; original final equality retained",
+                "kind": "assert",
+                "new_line": 111,
+                "new_predicate_sha256": "eb2c255b2bfe9c5eeb6fd7211e24cd41e5415cd95b324ce246376e78bdc2a19e",
+                "old_line": null,
+                "old_predicate_sha256": null,
+                "test_or_helper": "test_populated_mode_migration_reverses_and_reapplies_exact_catalog"
+              }
+            ],
+            "context": "Same committed, populated repeated reverse/forward exercise and all original post-replay effects and assertions. Catalog hash covers an additional routine.",
+            "migration_proof": {
+              "external_disposal_only": true,
+              "full_original_rehearsal_body_equivalent": true,
+              "leaf_reinstall_line": 110,
+              "new_post_reinstall_equality": 111,
+              "retained_final_live_equality": 145
+            },
+            "same": 15
+          }
+        },
+        "head": "5c543f47b01d7c44b08b1c531170800bdd01aee9"
+      }
+    ]
+  }
+}
