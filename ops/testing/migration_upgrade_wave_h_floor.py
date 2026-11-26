@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, TypedDict
 from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
     from django.db.backends.utils import CursorWrapper
 
@@ -61,18 +61,27 @@ def capture_floor(cursor: CursorWrapper, tables: Iterable[str]) -> dict[str, Sna
 
 def preserved(cursor: CursorWrapper, tables: dict[str, Snapshot]) -> dict[str, bool]:
     """Recompute Wave H's original-column digest and exact PK set/count."""
-    assertions = {}
-    for table, snapshot in tables.items():
-        records = _records(cursor, table)
-        columns = snapshot["columns"]
-        if any(not record.keys() >= set(columns) for _, record in records):
-            assertions[f"preserved:{table}"] = False
-            continue
-        actual = {
-            key: _digest({column: record[column] for column in columns})
-            for key, record in records
-        }
-        assertions[f"preserved:{table}"] = (
-            actual == snapshot["rows"] and len(records) == snapshot["count"]
-        )
-    return assertions
+    return {
+        f"preserved:{table}": records_preserved(snapshot, _records(cursor, table))
+        for table, snapshot in tables.items()
+    }
+
+
+def records_preserved(
+    snapshot: Snapshot,
+    records: Iterable[tuple[str, Mapping[str, object]]],
+) -> bool:
+    """Apply the historical verifier's PK, column and digest contract."""
+    required = set(snapshot["columns"])
+    expected = snapshot["rows"]
+    seen: set[str] = set()
+    for key, record in records:
+        if (
+            key in seen
+            or key not in expected
+            or not record.keys() >= required
+            or _digest({column: record[column] for column in required}) != expected[key]
+        ):
+            return False
+        seen.add(key)
+    return len(seen) == snapshot["count"] and seen == expected.keys()

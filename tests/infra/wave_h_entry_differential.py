@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import itertools
 import json
 import os
@@ -13,9 +12,19 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import psycopg
+from ops.testing.f7_projection_bytes import (
+    BinaryProjectionMismatchError,
+    Cells,
+    Column,
+    ReadFault,
+    read_projection,
+    verify_projection,
+)
 from ops.testing.f7_replay_snapshot import restore, snapshot_digest
+from ops.testing.migration_upgrade_wave_h_floor import Snapshot, records_preserved
 from psycopg import sql
 
 if TYPE_CHECKING:
@@ -24,6 +33,10 @@ if TYPE_CHECKING:
 NATIVE_F7 = "ab71193c110a3b579728d2811d28dad471875390"
 type Row = dict[str, object]
 type Projection = list[tuple[str, Row]]
+
+INBOX_VALUE_CLASSES = frozenset(
+    {"actor_id", "foreign_key", "timestamptz", "jsonb", "bytea", "text"}
+)
 
 
 @dataclass(frozen=True)
@@ -145,11 +158,7 @@ def _projection(
     originals = [
         (key, {column: row[column] for column in columns}) for key, row in cursor
     ]
-    actual = {
-        key: hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
-        for key, row in originals
-    }
-    if actual != keys or len(originals) != snapshot["count"]:
+    if not records_preserved(_snapshot(snapshot), originals):
         message = f"preserved:{table}"
         raise ValueError(message)
     return originals
@@ -176,29 +185,37 @@ def _compare(
 
 
 def _rejects(snapshot: Row, fault: Row) -> bool:
-    keys = snapshot["rows"]
     rows = fault["rows"]
-    assert isinstance(keys, dict)
     assert isinstance(rows, list)
-    return any(
-        hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
-        != keys[key]
-        for key, row in rows
+    source = _snapshot(snapshot)
+    expected = {key: source["rows"][key] for key, _ in rows}
+    return not records_preserved(
+        {"columns": source["columns"], "rows": expected, "count": len(expected)},
+        rows,
     )
+
+
+def _snapshot(value: Row) -> Snapshot:
+    columns, rows, count = value["columns"], value["rows"], value["count"]
+    assert isinstance(columns, list)
+    assert isinstance(rows, dict)
+    assert isinstance(count, int)
+    return {"columns": columns, "rows": rows, "count": count}
 
 
 def _mutate_byte(rows: Projection, attempt: str) -> Row:
     for key, row in rows:
         if key != attempt:
             continue
-        for column, value in row.items():
-            if column.startswith("id") or not isinstance(value, str) or not value:
-                continue
-            if not value.isascii():
-                continue
-            changed = ("A" if value[0] != "A" else "B") + value[1:]
-            return {"rows": [(key, {**row, column: changed})]}
-    message = "no seeded inbox attempt string was available for the byte mutation"
+        actor = row["actor_id"]
+        assert isinstance(actor, str)
+        changed = UUID(int=UUID(actor).int ^ 1)
+        return {
+            "table": "comms_integrationoperation",
+            "description": "one byte of seeded r7_inflight.actor_id",
+            "rows": [(key, {**row, "actor_id": str(changed)})],
+        }
+    message = "seeded r7_inflight operation was absent"
     raise RuntimeError(message)
 
 
@@ -226,7 +243,16 @@ def _run(base: Path, report: Row, differences: list[Row]) -> None:
         assert base_probes[phase].keys() == probes[phase].keys() == snapshots.keys()
     worker = Path(__file__).with_name("wave_h_entry_worker.py").resolve()
     out = Path(os.environ["UPGRADE_VERIFIED_FILE"]).parent
-    lane_env = {"UPGRADE_ADMIN_DATABASE_URL": os.environ["UPGRADE_ADMIN_DATABASE_URL"]}
+    # Each full entry opens connections through more than the admin URL.
+    # Rebind only database URLs, never the caller's unrelated service URLs.
+    lane_env = {
+        key: os.environ[key]
+        for key in old_env
+        if key.endswith("_URL") and key in os.environ
+    }
+    lane_env["UPGRADE_ADMIN_DATABASE_URL"] = os.environ["UPGRADE_ADMIN_DATABASE_URL"]
+    lane_env["UPGRADE_SEED_FILE"] = os.environ["UPGRADE_SEED_FILE"]
+    lane_env["UPGRADE_BASE_OBSERVATION"] = os.environ["UPGRADE_BASE_OBSERVATION"]
     native_digest = snapshot_digest(old_env["UPGRADE_ADMIN_DATABASE_URL"])
     lane_digest = snapshot_digest(lane_env["UPGRADE_ADMIN_DATABASE_URL"])
     with (
@@ -251,12 +277,81 @@ def _run(base: Path, report: Row, differences: list[Row]) -> None:
         "lane": lane_digest,
     }
     report["tables"] = sorted(snapshots)
+    table = "comms_integrationoperation"
+    actor_results = {}
+    for label, tree, environment, digest, snapshot, attempt in (
+        ("native", base, old_env, native_digest, base_snapshots[table], native_attempt),
+        ("lane", Path.cwd(), lane_env, lane_digest, snapshots[table], lane_attempt),
+    ):
+        with restore(environment, "actor_fault", digest) as cloned:
+            if label == "lane":
+                cloned.update(_lane_clone_receipts(environment, cloned, out))
+            with psycopg.connect(cloned["UPGRADE_ADMIN_DATABASE_URL"]) as admin:
+                fault = _mutate_byte(_projection(admin, table, snapshot), attempt)
+            with _worker(tree, worker, out / f"actor-{label}.json", cloned) as process:
+                actor_results[label] = _verdict(process, fault)
+    report["full_entry_actor_id"] = actor_results
+    for label, result in actor_results.items():
+        failures = result["failures"]
+        assert isinstance(failures, list)
+        if (
+            result["status"] != 1
+            or result["attested"]
+            or not any(str(line).endswith(f"preserved:{table}") for line in failures)
+        ):
+            differences.append(
+                {
+                    "table": table,
+                    "case": "full_entry:r7_inflight.actor_id",
+                    "worker": label,
+                    "base_reject_lane_pass": actor_results["native"]["status"] == 1
+                    and actor_results["lane"]["status"] == 0,
+                }
+            )
     _compare_projections(
         report,
         differences,
         Replay(old_env, native_digest, base_snapshots, base_probes, native_attempt),
         Replay(lane_env, lane_digest, snapshots, probes, lane_attempt),
     )
+
+
+def _database_identity(dsn: str) -> list[object]:
+    with psycopg.connect(dsn) as admin:
+        row = admin.execute(
+            "SELECT current_database(), oid FROM pg_database "
+            "WHERE datname=current_database()"
+        ).fetchone()
+    assert row is not None
+    return list(row)
+
+
+def _lane_clone_receipts(
+    source: dict[str, str], clone: dict[str, str], out: Path
+) -> dict[str, str]:
+    """Bind copies of matching lane receipts to a fingerprint-verified restore."""
+    original = _database_identity(source["UPGRADE_ADMIN_DATABASE_URL"])
+    restored = _database_identity(clone["UPGRADE_ADMIN_DATABASE_URL"])
+    assert original != restored
+    copies = []
+    for variable, filename in (
+        ("UPGRADE_SEED_FILE", "actor-lane-seed.json"),
+        ("UPGRADE_BASE_OBSERVATION", "actor-lane-base.json"),
+    ):
+        receipt = json.loads(Path(source[variable]).read_text(encoding="utf-8"))
+        if receipt.get("database") != original:
+            message = f"actor_fault_source_identity_mismatch:{variable}"
+            raise RuntimeError(message)
+        receipt["database"] = restored
+        copies.append((variable, filename, receipt))
+
+    rebound = {}
+    for variable, filename, receipt in copies:
+        path = out / filename
+        with path.open("x", encoding="utf-8") as stream:
+            json.dump(receipt, stream)
+        rebound[variable] = str(path)
+    return rebound
 
 
 def _compare_projections(
@@ -277,6 +372,7 @@ def _compare_projections(
             psycopg.connect(old_env["UPGRADE_ADMIN_DATABASE_URL"]) as old_admin,
             psycopg.connect(lane_env["UPGRADE_ADMIN_DATABASE_URL"]) as admin,
         ):
+            _check_binary_projections(report, native, lane, old_admin, admin)
             for table, snapshot in sorted(lane.tables.items()):
                 reference = native.tables[table]
                 reference_columns = reference["columns"]
@@ -356,6 +452,126 @@ def _compare_projections(
         assert checked > 0
         assert report.get("projected_row_mutation") == "REJECTED"
         assert report.get("inbox_attempt_byte_mutation") == "REJECTED"
+
+
+def _check_binary_projections(
+    report: Row,
+    native: Replay,
+    lane: Replay,
+    native_clone: psycopg.Connection,
+    lane_clone: psycopg.Connection,
+) -> None:
+    binary_columns = {}
+    typed_mutations: dict[str, str] = {}
+    companion_jsonb = None
+    for replay, clone in ((native, native_clone), (lane, lane_clone)):
+        dsn = replay.environment["UPGRADE_ADMIN_DATABASE_URL"]
+        with psycopg.connect(dsn) as source:
+            for table, snapshot in sorted(replay.tables.items()):
+                required = _snapshot(snapshot)["columns"]
+                catalog, values = _binary_coverage(source, clone, table, required)
+                if replay is lane:
+                    binary_columns[table] = [column.name for column in catalog]
+                    if table.startswith("comms_"):
+                        _prove_typed_bytes(
+                            clone, table, (catalog, values), typed_mutations
+                        )
+                    elif companion_jsonb is None and any(
+                        column.data_type == "jsonb" for column in catalog
+                    ):
+                        fallback: dict[str, str] = {}
+                        _prove_typed_bytes(
+                            clone,
+                            table,
+                            (catalog, values),
+                            fallback,
+                            kinds=frozenset({"jsonb"}),
+                        )
+                        companion_jsonb = fallback.get("jsonb")
+    if "jsonb" not in typed_mutations and companion_jsonb is not None:
+        typed_mutations["jsonb"] = companion_jsonb
+        report["inbox_jsonb_scope"] = (
+            "No populated JSONB column in the historical comms tables; "
+            "JSONB witnessed in the same seeded preservation inventory."
+        )
+    assert typed_mutations.keys() == INBOX_VALUE_CLASSES, typed_mutations
+    report["binary_catalog_columns"] = binary_columns
+    report["inbox_binary_mutations_rejected"] = typed_mutations
+
+
+def _binary_coverage(
+    source: psycopg.Connection,
+    clone: psycopg.Connection,
+    table: str,
+    required: list[str],
+) -> tuple[list[Column], Cells]:
+    expected = read_projection(source, table, required)
+    actual = read_projection(clone, table, required)
+    if expected[0] != actual[0]:
+        message = f"binary_catalog_mismatch:{table}"
+        raise ValueError(message)
+    verify_projection(table, expected[1], actual[1])
+    return actual
+
+
+def _prove_byte_witness(
+    clone: psycopg.Connection,
+    table: str,
+    fault: ReadFault,
+    values: Cells,
+    index: int,
+) -> None:
+    key, column = fault.key, fault.column
+    cells = values[key]
+    frame = cells[index]
+    _, changed = read_projection(clone, table, (), fault=fault)
+    expected_change = (
+        *cells[:index],
+        frame[:-1] + bytes([frame[-1] ^ 1]),
+        *cells[index + 1 :],
+    )
+    if changed != {**values, key: expected_change}:
+        message = f"binary_fault_not_isolated:{table}.{column}"
+        raise AssertionError(message)
+    try:
+        verify_projection(table, values, changed)
+    except BinaryProjectionMismatchError:
+        return
+    message = f"byte_mutation_accepted:{table}.{column}"
+    raise AssertionError(message)
+
+
+def _prove_typed_bytes(
+    clone: psycopg.Connection,
+    table: str,
+    projection: tuple[list[Column], Cells],
+    witnesses: dict[str, str],
+    *,
+    kinds: frozenset[str] = INBOX_VALUE_CLASSES,
+) -> None:
+    catalog, values = projection
+    # record_send's one-field frame has a 12-byte header; NULL and an
+    # empty payload do not provide a value byte to change.
+    header_size = 12
+    for index, column in enumerate(catalog):
+        if column.name == "actor_id":
+            kind = "actor_id"
+        elif column.is_fk and column.data_type in {"uuid", "int2", "int4", "int8"}:
+            kind = "foreign_key"
+        elif column.data_type in {"text", "varchar", "bpchar"}:
+            kind = "text"
+        else:
+            kind = column.data_type
+        if kind not in kinds or kind in witnesses:
+            continue
+        for key, cells in values.items():
+            frame = cells[index]
+            if len(frame) <= header_size:
+                continue
+            fault = ReadFault(key, column.name)
+            _prove_byte_witness(clone, table, fault, values, index)
+            witnesses[kind] = f"{table}.{column.name}"
+            break
 
 
 def _prove_projection_red(
