@@ -130,6 +130,7 @@ def _tools(tmp_path: Path, *, missing: str = "") -> Path:
     bin_dir.mkdir(parents=True)
     for name in (
         "bash",
+        "bwrap",
         "git",
         "tar",
         "python3",
@@ -378,33 +379,44 @@ fi
 
 @pytest.mark.parametrize("directory", [False, True])
 def test_wrapper_refuses_preplaced_run_path(tmp_path: Path, directory: bool) -> None:
-    bin_dir = _tools(tmp_path, missing="mkdir")
-    mkdir = shutil.which("mkdir")
-    assert mkdir is not None
-    shim = bin_dir / "mkdir"
-    shim.write_text(
-        "#!/bin/bash\n"
-        'path="${@: -1}"\n'
-        'if [[ "${path##*.}" =~ ^[0-9a-f]{32}$ ]]; then\n'
-        + (f'    {mkdir} -- "$path" || exit 1\n' if directory else "")
-        + (
-            '    printf "untouched\\n" > "$path/marker"\n'
-            if directory
-            else '    printf "untouched\\n" > "$path"\n'
-        )
-        + f'fi\nexec {mkdir} "$@"\n',
-        encoding="utf-8",
-    )
+    bin_dir = _tools(tmp_path, missing="od")
+    shim = bin_dir / "od"
+    nonce = "a" * 32
+    path = tmp_path / f"migration-upgrade-secrets.{nonce}"
+    if directory:
+        path.mkdir(mode=0o700)
+    marker = path / "marker" if directory else path
+    marker.write_bytes(b"untouched\n")
+    before = marker.stat()
+    shim.write_text(f"#!/bin/bash\nprintf '%s\\n' {nonce}\n", encoding="utf-8")
     shim.chmod(0o700)
 
     result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
     assert result.returncode == 1
     assert "private_run_create_failed" in result.stdout
-    [path] = tmp_path.glob("migration-upgrade-secrets.*")
-    assert re.fullmatch(r"[0-9a-f]{32}", path.suffix[1:])
-    marker = path / "marker" if directory else path
+    assert list(tmp_path.glob("migration-upgrade-secrets.*")) == [path]
+    assert os.path.samestat(before, marker.stat())
     assert marker.read_bytes() == b"untouched\n"
+
+
+def test_wrapper_leaves_foreign_private_prefix_alone(tmp_path: Path) -> None:
+    run = tmp_path / "migration-upgrade-secrets.unrelated"
+    run.mkdir(mode=0o700)
+    marker = run / "marker"
+    marker.write_bytes(b"foreign\n")
+    before = marker.stat()
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=_tools(tmp_path))
+
+    assert result.returncode == 1
+    assert "private_run_create_failed" in result.stdout
+    verdict = json.loads(
+        (tmp_path / "migration-upgrade/verdict.json").read_text(encoding="utf-8")
+    )
+    assert verdict["result"] == "FAIL"
+    assert os.path.samestat(before, marker.stat())
+    assert marker.read_bytes() == b"foreign\n"
 
 
 def test_wrapper_removes_planted_tree_without_following_links(tmp_path: Path) -> None:

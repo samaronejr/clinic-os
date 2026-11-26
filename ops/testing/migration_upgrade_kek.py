@@ -11,12 +11,19 @@ def write_tenant_kek(run_directory: Path | None) -> None:
     if run_directory is None or not run_directory.is_absolute():
         message = "private_run_directory_required: tenant KEK"
         raise ValueError(message)
-    path = run_directory / "tenant-kek.secret"
+    directory = os.open(run_directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(
+            "tenant-kek.secret",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=directory,
+        )
     except FileExistsError as error:
         message = "private_output_exists: tenant-kek.secret"
         raise FileExistsError(message) from error
+    finally:
+        os.close(directory)
     with os.fdopen(fd, "w", encoding="ascii") as output:
         output.write(secrets.token_hex(32))
 

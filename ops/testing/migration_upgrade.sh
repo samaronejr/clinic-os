@@ -18,6 +18,12 @@
 set -euo pipefail
 export GIT_OPTIONAL_LOCKS=0
 
+if [[ "${1:-}" != --private-namespace ]]; then
+    exec /usr/bin/python3 -I "${BASH_SOURCE[0]%/*}/migration_upgrade_namespace.py" \
+        "${BASH_SOURCE[0]}" --private-namespace "$@"
+fi
+shift
+
 readonly base_sha="${1:-}"
 readonly runner_root="${RUNNER_TEMP:-/tmp}"
 work_root="$runner_root/migration-upgrade"
@@ -79,38 +85,33 @@ write_private_key() {
     python3 "$project_root/ops/testing/migration_upgrade_kek.py" "${1:-}"
 }
 
+require_run_identity() {
+    if [[ -z "$run_identity" || "$(stat -Lc '%d:%i' -- "$secret_dir")" != "$run_identity" ]]; then
+        echo "private_run_identity_mismatch" >&2
+        return 1
+    fi
+}
+
+unlink_private_child() {
+    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        unlink "$run_fd" "$run_identity" "$1" "$2"
+}
+
 remove_run_tree() {
-    python3 - "$root_fd" "$run_fd" "$run_name" "$run_identity" <<'PYEOF'
-import os
-import shutil
-import stat
-import sys
+    require_run_identity || return 1
+    # The kernel reclaims the anonymous mount at last close. There is no
+    # public private-tree name to unlink, nor any teardown traversal.
+    exec {run_fd}<&-
+}
 
-parent, root = map(int, sys.argv[1:3])
-name, expected = sys.argv[3:]
-
-def check_root():
-    entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
-    handle = os.fstat(root)
-    if not stat.S_ISDIR(entry.st_mode) or not os.path.samestat(entry, handle):
-        raise RuntimeError("private_run_replaced")
-    if f"{handle.st_dev}:{handle.st_ino}" != expected:
-        raise RuntimeError("private_run_identity_mismatch")
-
-check_root()
-if not shutil.rmtree.avoids_symlink_attacks:
-    raise RuntimeError("private_run_cleanup_unsupported")
-# Enumerate and delete through the original handle, never through a
-# pathname that can be redirected to an unrelated directory.
-for item in os.listdir(root):
-    entry = os.stat(item, dir_fd=root, follow_symlinks=False)
-    if stat.S_ISDIR(entry.st_mode):
-        shutil.rmtree(item, dir_fd=root)
-    else:
-        os.unlink(item, dir_fd=root)
-check_root()
-os.rmdir(name, dir_fd=parent)
-PYEOF
+refuse_public_private_entries() {
+    local peer
+    for peer in "$root_handle"/migration-upgrade-secrets.*; do
+        if [[ -e "$peer" || -L "$peer" ]]; then
+            setup_detail=private_run_create_failed
+            exit 1
+        fi
+    done
 }
 
 owns_path() {
@@ -327,7 +328,7 @@ publish_shell_verdict RUNNING
 running_published=1
 printf 'migration-upgrade: run_nonce=%s\n' "$run_nonce"
 differential_stage=setup
-for required in git tar python3 docker uv mkdir rm rmdir head od tr chmod cmp ln realpath grep env; do
+for required in git tar python3 bwrap docker uv mkdir rm rmdir head od tr chmod cmp ln realpath grep env; do
     if ! command -v "$required" >/dev/null; then
         setup_detail="missing_$required"
         exit 127
@@ -357,16 +358,23 @@ umask 077
 
 # The public artifact directory never contains fixture material.
 run_name="migration-upgrade-secrets.$run_nonce"
-if ! mkdir -m 0700 -- "$root_handle/$run_name"; then
+refuse_public_private_entries
+coproc CUSTODY {
+    exec python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" "$run_name"
+}
+custody_process=$CUSTODY_PID
+if ! read -r creator descriptor created_identity <&"${CUSTODY[0]}"; then
     setup_detail=private_run_create_failed
     exit 1
 fi
-exec {run_fd}< "$root_handle/$run_name"
+[[ "$creator:$descriptor" =~ ^[0-9]+:[0-9]+$ && "$created_identity" =~ ^[0-9]+:[0-9]+$ ]]
+exec {run_fd}< "/proc/$creator/fd/$descriptor"
 secret_dir="/proc/$$/fd/$run_fd"
-[[ ! -L "$root_handle/$run_name" && -d "$secret_dir" ]]
-opened_identity="$(stat -Lc '%d:%i' -- "$secret_dir")"
-[[ "$(stat -c '%d:%i:%a' -- "$root_handle/$run_name")" = "$opened_identity:700" ]]
-run_identity="$opened_identity"
+[[ "$(stat -Lc '%d:%i:%a' -- "$secret_dir")" = "$created_identity:700" ]]
+printf '.' >&"${CUSTODY[1]}"
+wait "$custody_process"
+run_identity="$created_identity"
+refuse_public_private_entries
 readonly base_worktree="$secret_dir/base" seed_file="$secret_dir/seed.json"
 wave_tree="$secret_dir/wave"
 differential_report="$secret_dir/differential.json"
@@ -377,7 +385,7 @@ echo "== check out base $base_sha =="
 mkdir -m 0700 -- "$base_worktree"
 git -C "$project_root" archive --format=tar --output="$secret_dir/base.tar" "$base_sha"
 tar -xf "$secret_dir/base.tar" -C "$base_worktree"
-rm -- "$secret_dir/base.tar"
+unlink_private_child base.tar 0
 
 echo "== sync base dependencies =="
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
@@ -513,7 +521,7 @@ else
     upgrade_db="${upgrade_db}_retry"
     for artifact in "$UPGRADE_BASE_OBSERVATION" "$UPGRADE_SEED_COUNTS" \
         "$seed_file" "$secret_dir/seed.pending" "$secret_dir/lane-probes.json"; do
-        rm -f -- "$artifact"
+        unlink_private_child "${artifact##*/}" 1
     done
     export UPGRADE_DATABASE_RECREATED=1
     create_and_migrate_base
